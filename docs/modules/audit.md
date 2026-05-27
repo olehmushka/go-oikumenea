@@ -6,12 +6,12 @@
 
 ## Purpose
 
-Owns the **append-only audit trail** of permission-sensitive actions across the service. Every
-grant/revoke, role/rank-scheme edit, unit lifecycle transition, membership change, and account
-link is recorded as an immutable row, correlated by `request_id` with logs, metrics, and traces.
-This is both an operational necessity and a deliberate **governance showcase** for the kind of
-auditability Palantir-grade deployments expect. Audit emits via `audit2log` **and** persists to
-`oikumenea.audit_log`; the table is guarded against mutation.
+Owns the **append-only audit trail of every write** (state mutation) across the service (D-Audit).
+Every create/update, grant/revoke, role/rank-scheme edit, unit lifecycle transition, membership
+change, account link, and localization edit is recorded as an immutable row, correlated by
+`request_id` with logs, metrics, and traces. This is both an operational necessity and a deliberate
+**governance showcase** for the kind of auditability Palantir-grade deployments expect. Audit emits
+via `audit2log` **and** persists to `oikumenea.audit_log`; the table is guarded against mutation.
 
 ## Entities & aggregates
 

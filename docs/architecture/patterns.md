@@ -110,6 +110,20 @@ Owners: [audit](../modules/audit.md), [tenant](../modules/tenant.md).
 
 ---
 
+## Audit-on-write
+
+Every **write** (state mutation) records an audit entry in the **same transaction** as the change —
+the audit row and the mutation share one fate, so there is no orphan audit and no missing audit.
+Denied write attempts are recorded too (`outcome='denied'`). **Reads are not audited.** Because
+every entity is audited on write, the audit query is symmetrically filterable by **every audited
+entity type** (read ↔ write symmetry): *"the history of person X"*, *"everything that happened in
+tenant T"*. This is the runtime obligation behind the storage shape in *Immutable event log +
+mutable overlay*; see [decisions.md](decisions.md) D-Audit.
+
+Owners: [audit](../modules/audit.md) + **every** mutating module.
+
+---
+
 ## Reversibility everywhere
 
 Destructive operations are soft and reversible within a grace window, never immediate hard
@@ -136,7 +150,7 @@ discoverable subject to normal read permission. The gate is applied *after* the 
 decision, as a second filter on result sets.
 
 Owners: [authorization](../modules/authorization.md), [tenant](../modules/tenant.md),
-[membership](../modules/membership.md).
+[membership](../modules/membership.md), [audit](../modules/audit.md).
 
 ---
 

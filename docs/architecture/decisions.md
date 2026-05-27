@@ -199,6 +199,35 @@ the stable `code` from the translatable `name` makes both jobs clean.
 becomes `code` (an API-only service has no subdomains). See [conventions.md](conventions.md)
 (Code vs. name) and [patterns.md](patterns.md) (Stable code vs translatable name).
 
+### D-Audit — Every write is audited; audit reads are permission-scoped
+
+**Decision.** Every **write** (state mutation) in every module — create / update / state
+transition / soft-delete / purge / grant / revoke / link / unlink — records an audit entry in the
+**same DB transaction** as the change (the audit row commits iff the change commits). Denied
+attempts on write actions are recorded with `outcome='denied'`. **Reads are not audited.** The
+action list in [audit](../modules/audit.md) is **representative, not exhaustive** — completeness is
+the rule; the list only illustrates it. Each entry names its **actor**: a `person` (all delegated
+administration, exercised through permissions — unit admins, tenant creators, grantors), a
+`super_admin` (the base/system configurator), or `system` (automated/internal action). Reading the
+log is gated by `audit.read`, **unit-scoped exactly like `person.read`** (PDP over the closure +
+shadow gate), and the audit query is filterable by **every audited entity type**, so read coverage
+mirrors write coverage.
+
+**Why.** Governance posture (D-Stack, Palantir-grade auditability) plus the D-Inherit consequence
+already on file — *safety against over-broad grants comes from reversibility + audit, not from
+filtering* — only hold if write coverage is **complete**. An enumerated allow-list silently drops
+new write paths (person create/update, i18n edits, transliteration) as the service grows; making
+"every write" the invariant closes that gap. Symmetrically, an audit trail is only useful if it can
+be *read* by the right people at the right scope — so audit reads reuse the unit-scoped PDP model
+rather than an all-or-nothing flag.
+
+**Consequence.** [audit](../modules/audit.md)'s list becomes examples; every write-bearing module
+calls the audit recorder in-transaction (see the *Audit-on-write* pattern in
+[patterns.md](patterns.md)). `target_type` is a closed audited-entity vocabulary that every filter
+keys on. Deferred seams recorded in [audit](../modules/audit.md): whether `super_admin` is a
+distinct entity or a flagged person (may refine D-InstanceAdmin), and naming the subsystem behind a
+`system` action.
+
 ---
 
 ## Carried-over locks (settled earlier; restated for self-containment)
