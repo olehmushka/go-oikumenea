@@ -1,0 +1,6 @@
+# Local-dev runtime configuration (hot-reloadable via pkg/refreshable).
+logging:
+  level: info
+
+# Token-pagination default (API conventions).
+default-page-size: 50

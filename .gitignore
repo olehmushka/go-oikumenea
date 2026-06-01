@@ -1,0 +1,6 @@
+# gödel build output
+/out/
+
+# local editor / OS noise
+*.swp
+.DS_Store

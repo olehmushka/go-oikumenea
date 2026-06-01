@@ -1,0 +1,9 @@
+version: 1
+projects:
+  platform:
+    output-dir: internal/conjure
+    # A directory of Conjure YAML sources (compiled to IR by the plugin). A bare file path
+    # would be treated as pre-built IR JSON, so point at the dir.
+    ir-locator: api
+    # Emit Conjure server interfaces + RegisterRoutes (transport implements these; D-Conjure).
+    server: true

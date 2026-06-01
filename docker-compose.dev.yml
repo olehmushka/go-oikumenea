@@ -1,0 +1,18 @@
+# Local-dev Postgres for go-oikumenea (M0). Not the production packaging — that lands in M11.
+# The default install.yml DSN points at this instance (localhost:5432, postgres/dev).
+#
+#   docker compose -f docker-compose.dev.yml up -d
+#   atlas migrate apply --env local
+#   ./godelw build && out/build/oikumenea/unspecified/linux-amd64/oikumenea serve
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - oik-pgdata:/var/lib/postgresql/data
+volumes:
+  oik-pgdata:

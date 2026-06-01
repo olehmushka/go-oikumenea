@@ -1,0 +1,17 @@
+# Local-dev install configuration (plaintext; ECV-encrypted in real deployments).
+# Operator-owned; supplies the Postgres connection and the deployment environment segment.
+product-name: oikumenea
+product-version: 0.0.0-dev
+use-console-log: true
+server:
+  address: "0.0.0.0"
+  port: 8443
+  management-port: 8444
+  context-path: ""
+
+# Deployment environment baked into every RID via app.environment (D-ResourceIdentifiers).
+environment: local
+
+# Operator-owned PostgreSQL (L-OperatorDB). Matches docker-compose.dev.yml / the verification DB.
+postgres:
+  dsn: "postgres://postgres:dev@localhost:5432/postgres?sslmode=disable"
