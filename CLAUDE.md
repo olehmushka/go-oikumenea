@@ -35,8 +35,9 @@ DAG) with **public/shadow visibility** — not flat, isolated realms.
 1. `docs/glossary.md` — domain vocabulary (the module docs assume these terms).
 2. `docs/architecture/decisions.md` — the binding decisions + carried-over locks.
 3. `docs/architecture/conventions.md` — schema / Go-witchcraft / Conjure / API conventions.
-4. `docs/architecture/patterns.md` — cross-cutting patterns.
-5. The relevant `docs/modules/*.md` for the task.
+4. `docs/ontology-mapping.md` — the binding Object/Link/Action type registry (D-Ontology).
+5. `docs/architecture/patterns.md` — cross-cutting patterns.
+6. The relevant `docs/modules/*.md` for the task.
 
 Each `docs/modules/*.md` is self-contained and follows a fixed template: **purpose → entities →
 data model → Conjure endpoint sketch → dependencies → authorization touchpoints → patterns →
@@ -52,12 +53,17 @@ no framework. Cross-module **queries** are direct interface calls; cross-module 
 domain events (keeps the monolith extraction-ready). Planned composition root:
 `cmd/oikumenea/main.go`.
 
-Nine modules (`docs/modules/`):
+Eleven modules (`docs/modules/`):
 
 - **tenant** — units as a DAG (multi-parent, multi-root) + a maintained transitive-closure table;
   `public`/`shadow` visibility; lifecycle. The closure feeds the PDP.
 - **person** — instance-global personnel directory; account-optional; holds exactly one rank.
+  Carries structured names (incl. patronymic), `birthdate`, ISO-5218 `sex`.
 - **membership** — person↔unit belonging; owns **positions** (unit-owned billets that can be vacant).
+- **document** — person-held identity papers + personal codes (passport, tax/social-insurance
+  number); catalog-typed (`document_types`), metadata only.
+- **order** — administrative orders (наказ): the legal basis for status changes (arrival,
+  appointment, leave, transfer, discipline, duty); catalog-typed; effects via events + provenance.
 - **rank** — the single system-wide rank scheme (category → type → rank, ordered).
 - **authorization** — RBAC + the **PDP** (the centerpiece): code-defined permissions, scoped
   assignments, the instance-admin plane.
@@ -80,6 +86,10 @@ Nine modules (`docs/modules/`):
 - **`code` vs `name`.** Every structural entity has a stable, locale-agnostic, immutable-by-convention
   **`code`** (what external systems reference) separate from a **translatable `name`**. Permission
   strings *are* codes.
+- **Ontology is the binding model (D-Ontology).** Every entity is an **Object**, a reified **Link**
+  (a relationship with its own identity/attributes/history), or an audited **Action**; the **RID**
+  encodes the kind (`<object>` / `link__<type>` / `action__<type>`). `docs/ontology-mapping.md` is
+  the binding type registry; module docs classify their entities by kind. Never reify a bare FK.
 - **i18n: all translations in every response.** Translatable labels are returned as a
   `locale → text` map — **no Accept-Language negotiation**. Supported locales are
   instance-admin-managed (seeded `ukr` + `eng`, ISO 639-3). Person names use per-person
@@ -90,7 +100,8 @@ Nine modules (`docs/modules/`):
   repo-root `migrations/` dir, an `atlas migrate lint` destructive-change gate, expand/contract
   releases, and a boot-time schema-version check. See `docs/architecture/upgrade-safety.md`.
 - **Schema conventions:** one schema **`oikumenea`**; per-module table prefixes
-  (`oikumenea.<module>_*`); `uuid_v7()` PKs; `TIMESTAMPTZ` UTC; soft-delete (`deleted_at`);
+  (`oikumenea.<module>_*`); composed URN **RID** PKs via `new_rid()` (D-ResourceIdentifiers —
+  `uuid_v7()` retained as the RID's crypto component); `TIMESTAMPTZ` UTC; soft-delete (`deleted_at`);
   `set_updated_at()` trigger; `reject_mutation()` guard on append-only tables; `TEXT`+`CHECK`
   enums (never native Postgres enums).
 

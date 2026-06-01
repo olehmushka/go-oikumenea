@@ -24,7 +24,7 @@ choice of `uber/fx` + generic OpenAPI; see [`decisions.md`](decisions.md) D-Stac
 | Metrics | **pkg/metrics** (`witchcraft-go-metrics`) | Tagged metric registry; RED discipline. |
 | Errors | **werror** | Structured errors with safe/unsafe params; surfaced as Conjure `SerializableError`. |
 | Config | **encrypted-config-value (ECV)** + **pkg/refreshable** | `var/conf/install.yml` + `runtime.yml`; live reload; operator-supplied DB DSN + IdP config. |
-| Health | **witchcraft-go-health** | Readiness/liveness reporters (DB reachability, schema-version check). |
+| Health | **witchcraft-go-health** | Readiness-gating reporters (DB reachability, schema-version) + diagnostic-only reporters (closure-drift, which never gates readiness). |
 | DB driver | **pgx** | No ORM (witchcraft prescribes none). Operator-owned credentials. |
 | Typed queries | **sqlc** | Compile-time-checked SQL; generates Go from `.sql` against the schema. |
 | Migrations | **Atlas** (versioned) + `atlas migrate lint` | One repo-root `migrations/` dir; destructive-change gate. See [`upgrade-safety.md`](upgrade-safety.md). |
@@ -134,33 +134,59 @@ query calls into network calls, with no domain restructuring.
                                      │
                           tenant     ▼
             ┌──────────────────────────────────────────────┐
-            │  Unit (visibility: public|shadow, kind?,      │
-            │        state)                                 │
-            │     edges: unit ──< parent-of >── unit  (DAG, │
-            │            multi-parent, multi-root)          │
-            │     closure(ancestor, descendant, depth)      │
+            │  Unit (public|shadow, kind?, level?, state)   │
+            │  edges belong to a GRAPH (named hierarchy):   │
+            │    command | operational | …  (per-graph DAG, │
+            │    multi-parent, multi-root)                  │
+            │  closure(graph, ancestor, descendant, depth)  │
             └────────────────────────┬─────────────────────┘
                                      │  closure feeds the PDP
                      authorization   ▼
             ┌──────────────────────────────────────────────┐
             │  Role(atomic permissions[code-defined])       │
             │  RoleAssignment(person, role, target_unit,    │
-            │                 scope: unit|subtree)          │
+            │                 scope: unit|subtree, graph)   │
             │  InstanceAdmin(person)  — instance-wide scope │
             │                                               │
             │  PDP(person, action, unit) →                  │
             │     instance-admin perms                      │
             │   ∪ unit-scoped grants at unit                │
-            │   ∪ subtree-scoped grants on any ancestor     │
+            │   ∪ subtree grants on ancestor (in graph)     │
             │   then shadow-visibility gate on reads        │
+            └──────────────────────────────────────────────┘
+
+                         document   ▼ (person-held)
+            ┌──────────────────────────────────────────────┐
+            │  Document(person, type, number, issuer,       │
+            │           validity, status)                   │
+            │     type ─▶ DocumentType (catalog)            │
+            │  metadata only · no authority · PII erased    │
+            │  on person purge                              │
+            └──────────────────────────────────────────────┘
+
+                         order      ▼ (unit-issued act)
+            ┌──────────────────────────────────────────────┐
+            │  Order(issuing_unit, number, date,            │
+            │        lifecycle: draft→issued→revoked)       │
+            │    └─ OrderItem(person, +unit/position/rank)  │
+            │       type ─▶ OrderType(category, effect)     │
+            │  legal basis for status changes; effect via   │
+            │  events + provenance (membership.order_item_id│
+            │  ; rank-change via audit) · no authority      │
             └──────────────────────────────────────────────┘
 ```
 
 Every permission-sensitive transition writes to the [audit](../modules/audit.md) log. The
-translatable labels of units, ranks, positions, and roles are localized by the
+translatable labels of units, graphs, ranks, positions, roles, document types, and order types are localized by the
 [localization](../modules/localization.md) module: each entity keeps a stable `code` plus a
 default-locale `name`, and responses return all locales as a `locale → text` map (no
 Accept-Language negotiation).
+
+Two attached records complete the eleven-module model: [document](../modules/document.md) holds a
+person's identity papers and personal codes (metadata only, catalog-typed, carries no authority), and
+[order](../modules/order.md) records a unit-issued administrative act (наказ) — the legal basis for a
+status change — whose effects reach membership/rank through **events + provenance**, never a
+synchronous cross-module write.
 
 ---
 
@@ -184,8 +210,9 @@ Accept-Language negotiation).
 1. transport validates the token → PDP context.
 2. The authorization application service resolves the decision: collect the person's active
    assignments + instance-admin status; for the requested unit, union `unit`-scoped grants at
-   U and `subtree`-scoped grants on every ancestor of U (closure lookup against
-   [tenant](../modules/tenant.md)); apply the shadow gate for read actions.
+   U and `subtree`-scoped grants on every ancestor of U **in each grant's own graph** (per-graph
+   closure lookup against [tenant](../modules/tenant.md)) — authority unions across graphs;
+   apply the shadow gate for read actions.
 3. Returns an allow/deny (+ the effective permission set for batch/explain variants).
    Results are cacheable **per request** but never across requests — a revoke is immediate.
 

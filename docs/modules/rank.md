@@ -15,6 +15,11 @@ one `rank`.
 
 ## Entities & aggregates
 
+**Ontology kinds** (D-Ontology; [registry](../ontology-mapping.md)) — three **Objects** forming the
+one ordered scheme: `Rank category`, `Rank type`, `Rank` (a person holds one via the `HOLDS_RANK`
+link — never an authz input). **Actions:** create/edit/reorder/soft-delete of scheme nodes
+(`rank.scheme.manage`) — audited, `action__<type>` RID.
+
 - **Rank category** — top level, ordered (e.g. `army`, `navy`, `marines`; or, in a university
   deployment, `academic`, `administrative`).
 - **Rank type** — a band within a category, ordered (e.g. `officers`, `warrant`, `enlisted`;
@@ -39,13 +44,13 @@ as a `locale → text` map).
 
 **`rank_types`**
 - `id` PK
-- `category_id UUID NOT NULL REFERENCES rank_categories(id) ON DELETE RESTRICT`
+- `category_id TEXT NOT NULL REFERENCES rank_categories(id) ON DELETE RESTRICT`
 - `code TEXT NOT NULL`, `name TEXT NOT NULL`, `sort_order INT NOT NULL`
 - `UNIQUE (category_id, code)`; timestamps + `deleted_at`
 
 **`rank_ranks`**
 - `id` PK
-- `type_id UUID NOT NULL REFERENCES rank_types(id) ON DELETE RESTRICT`
+- `type_id TEXT NOT NULL REFERENCES rank_types(id) ON DELETE RESTRICT`
 - `code TEXT NOT NULL`, `name TEXT NOT NULL`, `sort_order INT NOT NULL`
 - `abbreviation TEXT` — optional short form (e.g. `SGT`)
 - `UNIQUE (type_id, code)`; timestamps + `deleted_at`
@@ -56,7 +61,8 @@ siblings in one transaction. Seniority comparison across the whole scheme is
 
 ## Conjure API surface
 
-`RankService` — **reads are broadly allowed; writes are instance-scope only.**
+`RankService` — **reads use `rank.scheme.read` (an explicit grant, bundled in the `unit-reader`
+base role — D-BaseRoles); writes are instance-scope only.**
 
 | Op | Intent | Perm |
 |---|---|---|
@@ -79,9 +85,9 @@ siblings in one transaction. Seniority comparison across the whole scheme is
 
 ## Authorization touchpoints
 
-Defines/gates: `rank.scheme.read` (broad), `rank.scheme.manage` (**instance-scope** — the
-top-permission plane, never a unit assignment). Editing the scheme is the canonical
-instance-admin capability.
+Defines/gates: `rank.scheme.read` (in the `unit-reader` base role; an explicit grant, not an
+implicit allow — D-BaseRoles), `rank.scheme.manage` (**instance-scope** — the top-permission
+plane, never a unit assignment). Editing the scheme is the canonical instance-admin capability.
 
 ## Invariants & safety
 

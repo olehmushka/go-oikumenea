@@ -43,6 +43,15 @@ the old shape is provably unused, and is announced in `UPGRADING.md`.
 A column rename, for example, is three releases: (a) add the new column + dual-write; (b)
 backfill + switch reads; (c) drop the old column once nothing reads it.
 
+**Enabling RLS is an expand/contract change (D-RLSDefenseInDepth).** Turning on Row-Level
+Security can lock the application out of its own tables, so it ships in stages: (a) enable RLS on
+the target tables with a **permissive policy** while the per-transaction `app.*` GUC seam
+([platform](../modules/platform.md)) is deployed and verified setting the GUCs on every request;
+(b) **tighten** the policies to the `app.readable_units`/`app.writable_units` predicates once the
+GUCs are reliably present; ensure the application DB role lacks `BYPASSRLS` only after (b). The
+`atlas migrate lint` review must treat a policy tightening as the contract step (announced in
+`UPGRADING.md`), since a tightening that outruns the GUC plumbing is an availability regression.
+
 ### 2. Destructive-change gate in CI
 
 `atlas migrate lint` runs on every PR with destructive-change detection enabled. Any

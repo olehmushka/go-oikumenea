@@ -15,6 +15,10 @@ via `audit2log` **and** persists to `oikumenea.audit_log`; the table is guarded 
 
 ## Entities & aggregates
 
+**Ontology kinds** (D-Ontology; [registry](../ontology-mapping.md)) — one **Object:** the append-only
+`AuditEntry`, which **is the Action ledger**: each row records one **Action** and is keyed by that
+Action's RID (`action__<type>`; D-Audit). The audit module defines **no** Actions of its own.
+
 - **Audit entry** — an immutable record: who did what to which target, when, in which request,
   with before/after context.
 
@@ -24,19 +28,46 @@ Conventions per [conventions.md](../architecture/conventions.md). Append-only �
 `oikumenea.reject_mutation()` `BEFORE UPDATE OR DELETE` trigger.
 
 **`audit_log`** (append-only)
-- `id` PK (`uuid_v7()` — also gives chronological ordering)
+- `id TEXT` PK = the **Action RID** (`action__<type>`) of the write it records
+  (D-ResourceIdentifiers / D-Audit) — self-describing, and chronologically ordered via its
+  `uuid_v7()` component
 - `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`
-- `actor_person_id UUID` — the subject who acted (nullable for system actions)
+- `actor_type TEXT NOT NULL CHECK (actor_type IN ('person','system'))` — the two actor kinds
+  (D-Audit; there is no `super_admin` kind — an instance admin is a `person`)
+- `actor_person_id TEXT` — the person who acted (person RID); **NOT NULL when `actor_type='person'`, NULL when
+  `'system'`** (CHECK below)
+- `subsystem TEXT` — for `system` actions, the originating source (`bootstrap`, `recover-admin`,
+  `purge-worker`, `closure-rebuild`, `event-subscriber`, …); **NOT NULL when `actor_type='system'`,
+  NULL otherwise**
 - `action TEXT NOT NULL` — e.g. `assignment.grant`, `unit.transition`, `rank.scheme.update`
-- `target_type TEXT NOT NULL` — e.g. `unit`, `person`, `role_assignment`, `account`
-- `target_id UUID`
-- `unit_id UUID` — the unit context of the action where applicable (for scoped audit reads)
+- `target_type TEXT NOT NULL` — e.g. `unit`, `person`, `role_assignment`, `account`, `graph`
+- `target_id TEXT` — the acted-on entity's RID (an Object/Link/Action URN)
+- `unit_id TEXT` — the unit context of the action where applicable (for scoped audit reads)
 - `request_id TEXT NOT NULL` — the correlation key shared with logs/metrics/traces
-- `before JSONB`, `after JSONB` — state snapshot / change payload (no secrets; PII minimized)
+- `before JSONB`, `after JSONB` — state snapshot / change payload (no secrets; PII minimized) —
+  `pii:special` **(ceiling)**: a grab-bag may carry up to special-category data, so tagged at the
+  ceiling (D-PIITiers); special-category PII must **not** land here until the envelope seam (DS-29)
+  ships
 - `outcome TEXT NOT NULL DEFAULT 'success' CHECK (outcome IN ('success','denied','error'))`
 
-No `updated_at`/`deleted_at` (immutable). Indexes: `(actor_person_id)`, `(target_type,
-target_id)`, `(unit_id)`, `(created_at)`, `(request_id)`.
+Actor-shape CHECK (the two kinds, D-Audit): `(actor_type='person' AND actor_person_id IS NOT NULL
+AND subsystem IS NULL)` OR `(actor_type='system' AND actor_person_id IS NULL AND subsystem IS NOT
+NULL)`. The install **bootstrap** seed (D-Bootstrap) records as `actor_type='system',
+subsystem='bootstrap'`.
+
+An **event-driven cross-module reaction write** — e.g. [document](document.md)'s `PersonPurged`
+subscriber erasing the person's document PII, or [order](order.md)'s auto-apply on issue
+([membership](membership.md) fill/end and [person](person.md) rank change driven by the per-item
+effect events, D-OrderApply) — records as `actor_type='system'`, `actor_person_id=NULL`,
+**`subsystem='event-subscriber'`**. It is **not** attributed to the human who triggered the
+originating action; instead it is correlated to that action — which carries its own
+`person`-attributed row (e.g. the admin's `person.purge` or `order.issue`) — by the shared
+**`request_id`** (in-process events run within the originating request context, and for order
+auto-apply the same transaction). This is the general rule for any write performed by
+an event subscriber rather than by a direct authenticated request.
+
+No `updated_at`/`deleted_at` (immutable). Indexes: `(actor_person_id)`, `(actor_type)`,
+`(target_type, target_id)`, `(unit_id)`, `(created_at)`, `(request_id)`.
 
 ## How modules record audit
 
@@ -51,9 +82,11 @@ target_id)`, `(unit_id)`, `(created_at)`, `(request_id)`.
 ### What must be audited (non-negotiable)
 
 Role create/update/delete; assignment grant/revoke; instance-admin grant/revoke; unit lifecycle
-transitions; rank-scheme edits; position-catalog edits; membership create/update/end; account
-and external-identity link/unlink; person purge. Denied attempts on these are recorded with
-`outcome='denied'`.
+transitions; rank-scheme edits; position-catalog edits; membership create/update/end; document
+create/update/delete and document-type edits; order create/**issue**/**revoke** and order-type
+edits (issue/revoke are the headline legal-basis events); account and external-identity link/unlink;
+person purge; on-demand closure **rebuild** (target a `graph`; D-ClosureIntegrity — closure *verify*
+is read-only and not audited). Denied attempts on these are recorded with `outcome='denied'`.
 
 ## Conjure API surface
 
