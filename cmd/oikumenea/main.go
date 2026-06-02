@@ -4,9 +4,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 
+	"github.com/olegamysk/go-oikumenea/internal/audit"
 	"github.com/olegamysk/go-oikumenea/internal/platform"
 	"github.com/olegamysk/go-oikumenea/internal/platform/config"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
@@ -39,11 +41,28 @@ func serve() int {
 		WithInstallConfigFromFile("var/conf/install.yml").
 		WithRuntimeConfigFromFile("var/conf/runtime.yml").
 		WithSelfSignedCertificate().
-		WithInitFunc(platform.Init)
+		WithInitFunc(initServer)
 
 	if err := server.Start(); err != nil {
 		// witchcraft already logged the structured error; signal non-zero exit.
 		return 1
 	}
 	return 0
+}
+
+// initServer is the composition root's InitFunc (overview.md): wire the shared platform services,
+// then each module's module.go. The audit application service is held for later milestones' modules
+// to call its in-transaction Record(...) (D-Audit); no module mutates yet, so it has no callers in M1.
+func initServer(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
+	pool, cleanup, err := platform.Bootstrap(ctx, info)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := audit.Register(info, pool); err != nil {
+		cleanup()
+		return nil, err
+	}
+
+	return cleanup, nil
 }

@@ -6,6 +6,7 @@ package platform
 import (
 	"context"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	platformapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/platform"
 	"github.com/olegamysk/go-oikumenea/internal/platform/config"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
@@ -15,20 +16,22 @@ import (
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
 )
 
-// Init is the witchcraft InitFunc for the M0 walking skeleton: build the DB pool, install the
-// readiness gate, and register the platform ops routes. Returns a cleanup that closes the pool.
-func Init(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
+// Bootstrap wires the shared platform services: it builds the DB pool, installs the readiness gate
+// (DB reachability + a known schema revision — upgrade-safety.md), and registers the platform ops
+// routes. It returns the pool so the composition root can hand it to each domain module's Register,
+// plus a cleanup that closes the pool. This is the first thing cmd/oikumenea's InitFunc runs
+// (overview.md: the composition root wires platform, then each module's module.go).
+func Bootstrap(ctx context.Context, info witchcraft.InitInfo) (*pgxpool.Pool, func(), error) {
 	install, ok := info.InstallConfig.(config.Install)
 	if !ok {
-		return nil, werror.ErrorWithContextParams(ctx, "unexpected install config type")
+		return nil, nil, werror.ErrorWithContextParams(ctx, "unexpected install config type")
 	}
 
 	pool, err := db.NewPool(ctx, install.Postgres.DSN, install.Environment)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	// Readiness gates on DB reachability + a known schema revision (upgrade-safety.md).
 	info.Router.WithReadiness(health.NewReadinessSource(pool))
 
 	// Register the operational Conjure routes. ProductVersion is the binary revision reported by
@@ -36,8 +39,8 @@ func Init(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
 	ops := transport.NewOpsService(install.ProductVersion, db.ExpectedSchemaRevision)
 	if err := platformapi.RegisterRoutesPlatformOpsService(info.Router, ops); err != nil {
 		pool.Close()
-		return nil, werror.WrapWithContextParams(ctx, err, "register platform ops routes")
+		return nil, nil, werror.WrapWithContextParams(ctx, err, "register platform ops routes")
 	}
 
-	return func() { pool.Close() }, nil
+	return pool, func() { pool.Close() }, nil
 }

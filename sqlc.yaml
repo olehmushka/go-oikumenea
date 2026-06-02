@@ -1,0 +1,16 @@
+# sqlc configuration (docs/architecture/conventions.md: DB access = pgx + sqlc).
+# Queries are authored as *.sql per module and compiled into typed Go in that module's adapters/.
+# The schema is the repo-root Atlas migrations dir (single source of truth) — sqlc reads the same
+# DDL Atlas applies. Generated code is never hand-edited.
+version: "2"
+sql:
+  - engine: postgresql
+    schema: migrations
+    queries: internal/audit/adapters/queries
+    gen:
+      go:
+        package: auditsql
+        out: internal/audit/adapters/auditsql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false

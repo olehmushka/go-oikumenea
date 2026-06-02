@@ -6,6 +6,8 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/palantir/conjure-go-runtime/v2 v2.99.0
+	github.com/palantir/pkg/bearertoken v1.2.0
+	github.com/palantir/pkg/datetime v1.4.0
 	github.com/palantir/pkg/refreshable v1.8.0
 	github.com/palantir/pkg/safejson v1.2.0
 	github.com/palantir/pkg/safeyaml v1.2.0
@@ -25,7 +27,6 @@ require (
 	github.com/palantir/go-metrics v1.1.1 // indirect
 	github.com/palantir/pkg v1.1.0 // indirect
 	github.com/palantir/pkg/bytesbuffers v1.3.0 // indirect
-	github.com/palantir/pkg/datetime v1.4.0 // indirect
 	github.com/palantir/pkg/metrics v1.10.1 // indirect
 	github.com/palantir/pkg/refreshable/v2 v2.9.0 // indirect
 	github.com/palantir/pkg/retry v1.3.0 // indirect
