@@ -1,0 +1,241 @@
+# Rank module API (M4). The single, system-wide rank scheme (L-OneRankScheme / D-Rank /
+# docs/modules/rank.md): a three-level ordered ladder rank category -> rank type -> rank, strict
+# containment. A rank is a DIRECTORY attribute describing seniority and grants NO authorization (the
+# PDP never reads it). There is exactly one scheme per deployment, edited only by the instance admin.
+#
+# RID-bearing fields are typed `string` (the composed URN RID): Conjure reserves `rid` as a built-in
+# primitive whose `ri.` format is NOT our `urn:oikumenea:` RID, so a type named `Rid`/`rid` cannot be
+# used. Localized `name` is returned as an inline map<string,string> (locale->text), all enabled
+# locales, NO Accept-Language negotiation (D-i18n); the owning module assembles it from its
+# default-locale `name` column + the localization store. Generated Go lands in internal/conjure and
+# is never hand-edited.
+#
+# Endpoints declare `auth: header` so the contract carries the bearer token from now on; reads gate
+# on `rank.scheme.read` and writes are instance-scope (`rank.scheme.manage`) — both enforced once
+# authorization (M7) + identity-federation (M8) land. Writes are recorded in the audit log in-process
+# (D-Audit), under an interim `system` actor until the acting person can be resolved (M7/M8).
+types:
+  definitions:
+    default-package: com.palantir.oikumenea.rank
+    objects:
+      Rank:
+        docs: A specific grade within a type (e.g. sergeant, associate_professor), ordered for exact seniority.
+        fields:
+          id:
+            type: string
+            docs: The rank's URN RID (carried as a plain string).
+          code:
+            type: string
+            docs: Stable, locale-agnostic identifier (D-Code); unique within its type among active ranks.
+          name:
+            type: map<string, string>
+            docs: locale->text display name (all enabled locales; default-locale fallback + i18n store).
+          abbreviation:
+            type: optional<string>
+            docs: Optional short form (e.g. SGT); locale-agnostic.
+          sortOrder:
+            type: integer
+            docs: Seniority ordinal among active siblings within the type (lower = more junior).
+          typeId:
+            type: string
+            docs: The URN RID of the owning rank type.
+      RankType:
+        docs: A band within a category (e.g. officers, warrant, enlisted), ordered.
+        fields:
+          id:
+            type: string
+            docs: The type's URN RID (carried as a plain string).
+          code:
+            type: string
+            docs: Stable, locale-agnostic identifier; unique within its category among active types.
+          name:
+            type: map<string, string>
+            docs: locale->text display name.
+          sortOrder:
+            type: integer
+            docs: Seniority ordinal among active siblings within the category.
+          categoryId:
+            type: string
+            docs: The URN RID of the owning rank category.
+          ranks:
+            type: list<Rank>
+            docs: The type's ranks in seniority order. Populated by getRankScheme; empty on create/update of the type.
+      RankCategory:
+        docs: The top level of the scheme (e.g. army, navy; or academic, administrative), ordered.
+        fields:
+          id:
+            type: string
+            docs: The category's URN RID (carried as a plain string).
+          code:
+            type: string
+            docs: Stable, locale-agnostic identifier; unique among active categories.
+          name:
+            type: map<string, string>
+            docs: locale->text display name.
+          sortOrder:
+            type: integer
+            docs: Seniority ordinal among active categories.
+          types:
+            type: list<RankType>
+            docs: The category's types in seniority order. Populated by getRankScheme; empty on create/update of the category.
+      RankScheme:
+        docs: The whole scheme, categories -> types -> ranks, each level in seniority order.
+        fields:
+          categories: list<RankCategory>
+      AddCategoryRequest:
+        docs: Add a category. `name` is the default-locale text; other locales are managed via LocalizationService.
+        fields:
+          code: string
+          name: string
+          sortOrder:
+            type: optional<integer>
+            docs: Seniority ordinal; defaults to (max active sibling order + 1), i.e. appended last.
+      UpdateCategoryRequest:
+        docs: Edit/reorder a category. Omitted fields are unchanged. `code` is immutable by convention.
+        fields:
+          name: optional<string>
+          sortOrder: optional<integer>
+      AddTypeRequest:
+        docs: Add a type under a category.
+        fields:
+          categoryId:
+            type: string
+            docs: The URN RID of the owning (active) category.
+          code: string
+          name: string
+          sortOrder:
+            type: optional<integer>
+            docs: Seniority ordinal; defaults to appended last within the category.
+      UpdateTypeRequest:
+        docs: Edit/reorder a type. Omitted fields are unchanged. `code` is immutable.
+        fields:
+          name: optional<string>
+          sortOrder: optional<integer>
+      AddRankRequest:
+        docs: Add a rank under a type.
+        fields:
+          typeId:
+            type: string
+            docs: The URN RID of the owning (active) type.
+          code: string
+          name: string
+          abbreviation: optional<string>
+          sortOrder:
+            type: optional<integer>
+            docs: Seniority ordinal; defaults to appended last within the type.
+      UpdateRankRequest:
+        docs: Edit/reorder a rank. Omitted fields are unchanged. `code` is immutable.
+        fields:
+          name: optional<string>
+          abbreviation: optional<string>
+          sortOrder: optional<integer>
+    errors:
+      RankCategoryNotFound:
+        namespace: Rank
+        code: NOT_FOUND
+        safe-args:
+          categoryId: string
+      RankTypeNotFound:
+        namespace: Rank
+        code: NOT_FOUND
+        safe-args:
+          typeId: string
+      RankNotFound:
+        namespace: Rank
+        code: NOT_FOUND
+        safe-args:
+          rankId: string
+      RankCodeConflict:
+        docs: A scheme node with this code already exists at this level within its parent.
+        namespace: Rank
+        code: CONFLICT
+        safe-args:
+          level: string
+          code: string
+      RankInvalid:
+        docs: The node's code or name is malformed, or the request (e.g. an unknown delete level) is invalid.
+        namespace: Rank
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
+      RankInUse:
+        docs: The scheme node cannot be deleted while it is in use (has active children, or — post-M5 — is held by a person).
+        namespace: Rank
+        code: FAILED_PRECONDITION
+        safe-args:
+          reason: string
+services:
+  RankService:
+    name: Rank Service
+    package: com.palantir.oikumenea.rank
+    base-path: /rank/v1
+    default-auth: header
+    docs: |
+      The single system-wide rank scheme (L-OneRankScheme / D-Rank). Reads gate on
+      `rank.scheme.read` (bundled in the unit-reader base role); writes are instance-scope
+      (`rank.scheme.manage`) — both enforced once authorization lands (M7). Writes are audited
+      in-process (D-Audit). Rank is a directory attribute and never an authorization input.
+    endpoints:
+      getRankScheme:
+        http: GET /rank-scheme
+        docs: Read the whole scheme (categories -> types -> ranks) in seniority order.
+        returns: RankScheme
+      addCategory:
+        http: POST /rank-scheme/categories
+        docs: Add a category. Returns Rank:RankCodeConflict if the code is taken among active categories.
+        args:
+          request: AddCategoryRequest
+        returns: RankCategory
+      updateCategory:
+        http: PUT /rank-scheme/categories/{categoryId}
+        docs: Edit/reorder a category. `code` is immutable by convention.
+        args:
+          categoryId:
+            type: string
+            param-type: path
+          request: UpdateCategoryRequest
+        returns: RankCategory
+      addType:
+        http: POST /rank-scheme/types
+        docs: Add a type under a category. Returns Rank:RankCategoryNotFound if the parent is absent.
+        args:
+          request: AddTypeRequest
+        returns: RankType
+      updateType:
+        http: PUT /rank-scheme/types/{typeId}
+        docs: Edit/reorder a type. `code` is immutable.
+        args:
+          typeId:
+            type: string
+            param-type: path
+          request: UpdateTypeRequest
+        returns: RankType
+      addRank:
+        http: POST /rank-scheme/ranks
+        docs: Add a rank under a type. Returns Rank:RankTypeNotFound if the parent is absent.
+        args:
+          request: AddRankRequest
+        returns: Rank
+      updateRank:
+        http: PUT /rank-scheme/ranks/{rankId}
+        docs: Edit/reorder a rank. `code` is immutable.
+        args:
+          rankId:
+            type: string
+            param-type: path
+          request: UpdateRankRequest
+        returns: Rank
+      deleteNode:
+        http: DELETE /rank-scheme/{level}/{nodeId}
+        docs: |
+          Soft-delete a scheme node, blocked if in use (a category with active types, a type with
+          active ranks, or — post-M5 — a rank held by a person). `level` is one of
+          category | type | rank.
+        args:
+          level:
+            type: string
+            param-type: path
+            docs: The scheme level to delete; one of category | type | rank.
+          nodeId:
+            type: string
+            param-type: path

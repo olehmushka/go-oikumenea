@@ -12,6 +12,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/localization"
 	"github.com/olegamysk/go-oikumenea/internal/platform"
 	"github.com/olegamysk/go-oikumenea/internal/platform/config"
+	"github.com/olegamysk/go-oikumenea/internal/rank"
 	"github.com/olegamysk/go-oikumenea/internal/tenant"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
 )
@@ -75,6 +76,11 @@ func initServer(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
 	}
 
 	if _, err := tenant.Register(info, pool, auditSvc, locSvc); err != nil {
+		cleanup()
+		return nil, err
+	}
+
+	if _, err := rank.Register(info, pool, auditSvc, locSvc); err != nil {
 		cleanup()
 		return nil, err
 	}

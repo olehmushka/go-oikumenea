@@ -34,3 +34,13 @@ sql:
         sql_package: pgx/v5
         emit_methods_with_db_argument: false
         emit_exact_table_names: false
+  - engine: postgresql
+    schema: migrations
+    queries: internal/rank/adapters/queries
+    gen:
+      go:
+        package: ranksql
+        out: internal/rank/adapters/ranksql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false

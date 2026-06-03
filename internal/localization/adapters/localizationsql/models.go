@@ -83,6 +83,54 @@ type OikumeneaI18nTranslation struct {
 	UpdatedAt pgtype.Timestamptz
 }
 
+type OikumeneaRankCategory struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	SortOrder int32
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaRankRank struct {
+	// pii:none
+	ID string
+	// pii:none
+	TypeID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	Abbreviation pgtype.Text
+	// pii:none
+	SortOrder int32
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaRankType struct {
+	// pii:none
+	ID string
+	// pii:none
+	CategoryID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	SortOrder int32
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
 type OikumeneaSchemaVersion struct {
 	Singleton bool
 	Revision  string
