@@ -14,6 +14,7 @@ require (
 	github.com/palantir/pkg/uuid v1.3.0
 	github.com/palantir/witchcraft-go-error v1.45.0
 	github.com/palantir/witchcraft-go-server/v2 v2.101.0
+	github.com/palantir/witchcraft-go-tracing v1.42.0
 )
 
 require (
@@ -38,7 +39,6 @@ require (
 	github.com/palantir/witchcraft-go-health v1.17.0 // indirect
 	github.com/palantir/witchcraft-go-logging v1.67.0 // indirect
 	github.com/palantir/witchcraft-go-params v1.41.0 // indirect
-	github.com/palantir/witchcraft-go-tracing v1.42.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.28.0 // indirect

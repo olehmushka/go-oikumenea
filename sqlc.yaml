@@ -14,3 +14,13 @@ sql:
         sql_package: pgx/v5
         emit_methods_with_db_argument: false
         emit_exact_table_names: false
+  - engine: postgresql
+    schema: migrations
+    queries: internal/localization/adapters/queries
+    gen:
+      go:
+        package: localizationsql
+        out: internal/localization/adapters/localizationsql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false
