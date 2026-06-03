@@ -147,6 +147,59 @@ func (s *Service) TranslationsFor(ctx context.Context, entityType string, entity
 	return out, nil
 }
 
+// DefaultLocale returns the code of the sole enabled default locale (the fallback locale for
+// translatable labels — D-i18n). It is the read helper later modules use when assembling a
+// locale->text map from their own default-locale `name` column. Returns "" if no default is set
+// (the registry invariant should prevent that; callers treat "" as "no fallback key").
+func (s *Service) DefaultLocale(ctx context.Context) (string, error) {
+	locales, err := s.ListLocales(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, l := range locales {
+		if l.IsDefault {
+			return l.Code, nil
+		}
+	}
+	return "", nil
+}
+
+// NamesByID assembles the `locale -> text` display-name map for a set of another module's entities
+// (D-i18n: all locales in every response, no negotiation). The caller passes entityID -> its own
+// default-locale `name` column value; NamesByID seeds each map with the default locale -> that
+// value, then overlays the additional-locale translation rows from the store. It is the in-process
+// helper the tenant/rank/… response builders call. An entity with no translation rows still gets a
+// single-entry map (the default locale).
+func (s *Service) NamesByID(ctx context.Context, entityType string, defaultText map[string]string) (map[string]map[string]string, error) {
+	out := make(map[string]map[string]string, len(defaultText))
+	if len(defaultText) == 0 {
+		return out, nil
+	}
+	defaultLocale, err := s.DefaultLocale(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(defaultText))
+	for id := range defaultText {
+		ids = append(ids, id)
+	}
+	translations, err := s.TranslationsFor(ctx, entityType, ids, []string{"name"})
+	if err != nil {
+		return nil, err
+	}
+	for id, text := range defaultText {
+		m := make(map[string]string)
+		if defaultLocale != "" {
+			m[defaultLocale] = text
+		}
+		for locale, t := range translations[domain.TranslationKey{EntityID: id, Field: "name"}] {
+			m[locale] = t
+		}
+		out[id] = m
+	}
+	return out, nil
+}
+
 // validateLocales rejects the whole upsert if any translation cites a locale that is not a known,
 // enabled locale (domain.ErrUnknownLocale → INVALID_ARGUMENT).
 func (s *Service) validateLocales(ctx context.Context, ts []domain.Translation) error {

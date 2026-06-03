@@ -88,3 +88,99 @@ type OikumeneaSchemaVersion struct {
 	Revision  string
 	AppliedAt pgtype.Timestamptz
 }
+
+type OikumeneaTenantClosureStatus struct {
+	// pii:none
+	GraphID       string
+	LastCheckedAt pgtype.Timestamptz
+	// pii:none
+	MissingCount int32
+	// pii:none
+	ExtraCount int32
+	// pii:none
+	InDrift bool
+	// pii:none
+	Sample    []byte
+	UpdatedAt pgtype.Timestamptz
+}
+
+type OikumeneaTenantGraph struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	IsDefault bool
+	// pii:none
+	IsAuthorityBearing bool
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+	DeletedAt          pgtype.Timestamptz
+}
+
+type OikumeneaTenantUnit struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	UnitKind pgtype.Text
+	// pii:none
+	Level pgtype.Int2
+	// pii:none
+	Visibility string
+	// pii:none
+	State string
+	// pii:none
+	Metadata  []byte
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaTenantUnitClosure struct {
+	// pii:none
+	GraphID string
+	// pii:none
+	AncestorID string
+	// pii:none
+	DescendantID string
+	// pii:none
+	Depth int32
+}
+
+type OikumeneaTenantUnitEdge struct {
+	// pii:none
+	ID string
+	// pii:none
+	GraphID string
+	// pii:none
+	ParentID string
+	// pii:none
+	ChildID   string
+	CreatedAt pgtype.Timestamptz
+	// pii:basic
+	CreatedBy pgtype.Text
+}
+
+type OikumeneaTenantUnitLifecycleEvent struct {
+	// pii:none
+	ID string
+	// pii:none
+	UnitID string
+	// pii:none
+	FromState string
+	// pii:none
+	ToState string
+	// pii:none
+	Reason pgtype.Text
+	// pii:basic
+	ActorPersonID pgtype.Text
+	// pii:none
+	RequestID string
+	CreatedAt pgtype.Timestamptz
+}

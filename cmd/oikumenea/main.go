@@ -12,6 +12,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/localization"
 	"github.com/olegamysk/go-oikumenea/internal/platform"
 	"github.com/olegamysk/go-oikumenea/internal/platform/config"
+	"github.com/olegamysk/go-oikumenea/internal/tenant"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
 )
 
@@ -54,7 +55,7 @@ func serve() int {
 // initServer is the composition root's InitFunc (overview.md): wire the shared platform services,
 // then each module's module.go in dependency order. The audit application service is threaded into
 // the domain modules so their writes record in-transaction (D-Audit); localization's returned
-// service exposes TranslationsFor(...) for later milestones (M3 onward), unused for now.
+// service (TranslationsFor / NamesByID) is threaded into tenant to assemble localized responses.
 func initServer(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
 	pool, cleanup, err := platform.Bootstrap(ctx, info)
 	if err != nil {
@@ -67,7 +68,13 @@ func initServer(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
 		return nil, err
 	}
 
-	if _, err := localization.Register(info, pool, auditSvc); err != nil {
+	locSvc, err := localization.Register(info, pool, auditSvc)
+	if err != nil {
+		cleanup()
+		return nil, err
+	}
+
+	if _, err := tenant.Register(info, pool, auditSvc, locSvc); err != nil {
 		cleanup()
 		return nil, err
 	}

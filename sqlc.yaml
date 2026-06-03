@@ -24,3 +24,13 @@ sql:
         sql_package: pgx/v5
         emit_methods_with_db_argument: false
         emit_exact_table_names: false
+  - engine: postgresql
+    schema: migrations
+    queries: internal/tenant/adapters/queries
+    gen:
+      go:
+        package: tenantsql
+        out: internal/tenant/adapters/tenantsql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false

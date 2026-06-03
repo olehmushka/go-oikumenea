@@ -1038,6 +1038,37 @@ resource handle*; `code` stays the stable, locale-agnostic *business* key. See
 
 ---
 
+### D-RIDSeeding — RID-keyed seed rows are seeded at boot, not in migrations
+
+**Decision.** Reference rows whose PK is an RID (`new_rid('<svc>','<type>')`) are seeded **by the
+application at startup**, idempotently, **not** by the Atlas migration that creates their table.
+`new_rid()` reads the per-connection `app.environment` GUC (D-ResourceIdentifiers), which only the
+application pool sets (`db.NewPool`'s `AfterConnect`); **Atlas's migration connection does not set
+it**, so any migration that *inserts* a defaulted-RID row fails with `unrecognized configuration
+parameter "app.environment"`. The seed therefore runs in the owning module's `Register(...)` on the
+GUC-bearing pool, via `INSERT … ON CONFLICT (<natural-code>) … DO NOTHING` so it is safe on every
+boot (and after an operator changes a seeded row, e.g. promotes a different default). Migrations
+that seed reference data stay restricted to **natural-key** tables (`geo_countries`, `i18n_locales`
+— the D-ResourceIdentifiers carve-out).
+
+First applied by **tenant** (M3): the `command` (default, undeletable, locked authority-bearing) and
+`operational` graphs are RID-keyed Objects, seeded in `tenant.Register`. It is the **precedent** for
+the M7 base-role seeds (D-BaseRoles) and the M8 first-admin bootstrap (D-Bootstrap), which are
+likewise RID-keyed and application-seeded.
+
+**Why.** Only the application knows the deployment environment (from install config), so only it can
+mint RIDs with the correct `<environment>` segment; baking a fallback environment into `new_rid()`
+would stamp wrong-env RIDs when Atlas applies migrations in prod. Boot-time idempotent seeding keeps
+RIDs correct, keeps migrations pure DDL + natural-key seeds, and needs no provisioning-time
+`ALTER DATABASE … SET app.environment`.
+
+**Consequence.** A migration's table-create and its seed rows are no longer co-located for RID-keyed
+tables; the seed lives in module code and must be idempotent. Boot does one extra `INSERT … ON
+CONFLICT` per seeded registry (negligible). See [conventions.md](conventions.md) (Resource
+identifiers), [tenant](../modules/tenant.md), and [platform](../modules/platform.md).
+
+---
+
 ### D-Ontology — Object / Link / Action is the binding domain model
 
 **Decision.** The domain is modeled as a Palantir-style **ontology**, and that modeling is
