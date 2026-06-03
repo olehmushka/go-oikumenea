@@ -83,6 +83,48 @@ type OikumeneaI18nTranslation struct {
 	UpdatedAt pgtype.Timestamptz
 }
 
+type OikumeneaMembershipMembership struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:basic
+	UnitID string
+	// pii:basic
+	PositionID pgtype.Text
+	// pii:none
+	OrderItemID pgtype.Text
+	// pii:none
+	Status string
+	// pii:basic
+	EffectiveFrom pgtype.Timestamptz
+	// pii:basic
+	EffectiveTo pgtype.Timestamptz
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+	DeletedAt   pgtype.Timestamptz
+}
+
+type OikumeneaMembershipPosition struct {
+	// pii:none
+	ID string
+	// pii:none
+	UnitID string
+	// pii:none
+	Code string
+	// pii:none
+	Title string
+	// pii:none
+	RequiredRankID pgtype.Text
+	// pii:none
+	Status string
+	// pii:none
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
 type OikumeneaPersonCitizenship struct {
 	// pii:none
 	ID string

@@ -10,6 +10,7 @@ import (
 
 	"github.com/olegamysk/go-oikumenea/internal/audit"
 	"github.com/olegamysk/go-oikumenea/internal/localization"
+	"github.com/olegamysk/go-oikumenea/internal/membership"
 	"github.com/olegamysk/go-oikumenea/internal/person"
 	"github.com/olegamysk/go-oikumenea/internal/platform"
 	"github.com/olegamysk/go-oikumenea/internal/platform/config"
@@ -88,6 +89,11 @@ func initServer(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
 	}
 
 	if _, err := person.Register(info, pool, auditSvc, locSvc, rankSvc); err != nil {
+		cleanup()
+		return nil, err
+	}
+
+	if _, err := membership.Register(info, pool, auditSvc, locSvc); err != nil {
 		cleanup()
 		return nil, err
 	}

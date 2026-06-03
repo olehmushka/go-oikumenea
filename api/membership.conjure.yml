@@ -1,0 +1,313 @@
+# Membership module API (M6). People belonging to / filling billets in units
+# (docs/modules/membership.md). Two related resources:
+#   * POSITIONS — unit-owned billets that EXIST while vacant (D-Position). A position carries a stable
+#     `code`, a translatable `title`, an optional advisory `requiredRankId`, and a reversible status.
+#   * MEMBERSHIPS — the reified person->unit belonging/filling Link (link__member_of), effective-dated,
+#     optionally referencing the position it fills. Filling a billet is a membership that references it.
+#
+# RID-bearing fields are typed `string` (the composed URN RID): Conjure reserves `rid` as a built-in
+# primitive whose `ri.` format is NOT our `urn:oikumenea:` RID, so a type named `Rid`/`rid` cannot be
+# used. A position `title` is a TRANSLATABLE label, returned as a `locale -> text` map assembled from
+# the i18n store (D-i18n: all locales in every response, no negotiation) — unlike person names. The
+# person a membership references is returned as its `personId` (clients resolve the name via
+# PersonService); units/positions/ranks are likewise returned by RID.
+#
+# Neither resource stores visibility — it DERIVES from the owning unit's visibility (tenant.md); the
+# shadow-visibility read gate lands with the PDP (M7). Endpoints declare `auth: header` so the
+# contract carries the bearer token from now on; reads gate on `position.read`/`membership.read`,
+# writes on `position.create`/`position.update`/`membership.create`/`membership.update` — all
+# enforced once authorization (M7) + identity-federation (M8) land. Writes are recorded in the audit
+# log in-process (D-Audit), under an interim `system` actor until the acting person can be resolved.
+# Generated Go lands in internal/conjure and is never hand-edited.
+types:
+  definitions:
+    default-package: com.palantir.oikumenea.membership
+    objects:
+      Position:
+        docs: |
+          A unit-owned billet (D-Position) — an Object that exists whether or not anyone fills it (a
+          VACANCY is an active position with no active filling). Position grants no authority. The
+          current holder is populated by getPosition and is null in list responses.
+        fields:
+          id:
+            type: string
+            docs: The position's URN RID (carried as a plain string).
+          unitId:
+            type: string
+            docs: The URN RID of the owning unit.
+          code:
+            type: string
+            docs: Stable, locale-agnostic identifier, unique within the unit; immutable by convention.
+          title:
+            type: map<string, string>
+            docs: The billet title as a locale -> text map (default-locale fallback + i18n translations).
+          requiredRankId:
+            type: optional<string>
+            docs: Optional advisory establishment rank (a rank RID); never enforced against any filler.
+          status:
+            type: string
+            docs: One of active | abolished (abolish is a reversible status flip).
+          sortOrder:
+            type: optional<integer>
+            docs: App-managed display order within the unit.
+          holder:
+            type: optional<Membership>
+            docs: The current active filling, if any. Populated by getPosition; null in list responses.
+          createdAt: datetime
+          updatedAt: datetime
+      Membership:
+        docs: |
+          A person's belonging to a unit (the reified link__member_of), effective-dated, optionally
+          filling a position. A position-less membership is plain belonging. Reversible: ending flips
+          status and sets effectiveTo rather than deleting, vacating any filled billet.
+        fields:
+          id:
+            type: string
+            docs: The membership's URN RID (carried as a plain string).
+          personId:
+            type: string
+            docs: The URN RID of the person who belongs / fills.
+          unitId:
+            type: string
+            docs: The URN RID of the unit belonged to.
+          positionId:
+            type: optional<string>
+            docs: The URN RID of the position this membership fills; null for plain belonging.
+          orderItemId:
+            type: optional<string>
+            docs: Provenance — the order (наказ) item that authorized this fill/belonging (D-Orders); null when created without an order.
+          status:
+            type: string
+            docs: One of active | ended.
+          effectiveFrom: datetime
+          effectiveTo:
+            type: optional<datetime>
+            docs: When the membership ended; null while active.
+          createdAt: datetime
+          updatedAt: datetime
+      PositionPage:
+        docs: A page of positions plus the opaque token for the next page (empty when exhausted).
+        fields:
+          positions: list<Position>
+          nextPageToken: optional<string>
+      MembershipPage:
+        docs: A page of memberships plus the opaque token for the next page (empty when exhausted).
+        fields:
+          memberships: list<Membership>
+          nextPageToken: optional<string>
+      CreatePositionRequest:
+        docs: Create a billet in a unit (vacant). The title is the default-locale fallback; additional locales are set via LocalizationService.
+        fields:
+          code: string
+          title:
+            type: string
+            docs: The default-locale title (the i18n fallback); translatable separately.
+          requiredRankId: optional<string>
+          sortOrder: optional<integer>
+      UpdatePositionRequest:
+        docs: Update a position's title / required rank / sort order. `code` and unit are immutable. Omitted fields are unchanged.
+        fields:
+          title: optional<string>
+          requiredRankId:
+            type: optional<string>
+            docs: Set the advisory required rank; omitted leaves it unchanged (clearing it is an open seam).
+          sortOrder: optional<integer>
+      CreateMembershipRequest:
+        docs: Add a person's belonging to a unit, optionally filling a position. The position (if given) must belong to the unit.
+        fields:
+          personId: string
+          unitId: string
+          positionId:
+            type: optional<string>
+            docs: The position to fill; omit for plain belonging.
+          orderItemId:
+            type: optional<string>
+            docs: Optional provenance pointer to the authorizing order item (D-Orders).
+          effectiveFrom:
+            type: optional<datetime>
+            docs: When the membership takes effect; defaults to now.
+      FillPositionRequest:
+        docs: Fill a vacant position with a person (a membership referencing the position; its unit is the position's unit).
+        fields:
+          personId: string
+          orderItemId: optional<string>
+          effectiveFrom: optional<datetime>
+      EndMembershipRequest:
+        docs: End a membership, vacating any filled billet (reversible status flip + effectiveTo).
+        fields:
+          effectiveTo:
+            type: optional<datetime>
+            docs: When the membership ended; defaults to now.
+          orderItemId:
+            type: optional<string>
+            docs: Optional provenance pointer to the authorizing order item (D-Orders).
+    errors:
+      PositionNotFound:
+        namespace: Position
+        code: NOT_FOUND
+        safe-args:
+          positionId: string
+      PositionConflict:
+        docs: A position with this code already exists in the unit.
+        namespace: Position
+        code: CONFLICT
+        safe-args:
+          reason: string
+      PositionInUse:
+        docs: The position has an active filling and cannot be abolished; end the membership first.
+        namespace: Position
+        code: FAILED_PRECONDITION
+        safe-args:
+          positionId: string
+      PositionInvalid:
+        docs: The position request is malformed (bad code/title) or references an unknown unit or rank.
+        namespace: Position
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
+      MembershipNotFound:
+        namespace: Membership
+        code: NOT_FOUND
+        safe-args:
+          membershipId: string
+      MembershipConflict:
+        docs: A duplicate active plain belonging for this (person, unit) already exists.
+        namespace: Membership
+        code: CONFLICT
+        safe-args:
+          reason: string
+      PositionAlreadyFilled:
+        docs: The position already has an active filling (one billet, one holder).
+        namespace: Membership
+        code: FAILED_PRECONDITION
+        safe-args:
+          positionId: string
+      MembershipInvalid:
+        docs: The membership request is malformed, references an unknown person/unit/position, or the position does not belong to the unit.
+        namespace: Membership
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
+      MembershipLifecycleConflict:
+        docs: The membership is not in a state that allows the transition (e.g. ending an already-ended membership).
+        namespace: Membership
+        code: FAILED_PRECONDITION
+        safe-args:
+          reason: string
+services:
+  MembershipService:
+    name: Membership Service
+    package: com.palantir.oikumenea.membership
+    base-path: /membership/v1
+    default-auth: header
+    docs: |
+      Positions (unit-owned billets) and memberships (people belonging to / filling them). Reads gate
+      on `position.read`/`membership.read` + the shadow-visibility gate; writes on
+      `position.create`/`position.update`/`membership.create`/`membership.update` — all unit-scoped
+      and enforced once authorization (M7) lands. Position carries no authority (D-Position / D-Rank).
+      Writes are audited in-process (D-Audit).
+    endpoints:
+      createPosition:
+        http: POST /units/{unitId}/positions
+        docs: Create a billet in a unit (vacant). Returns Position:PositionConflict if the code is taken in the unit.
+        args:
+          unitId:
+            type: string
+            param-type: path
+          request: CreatePositionRequest
+        returns: Position
+      listPositions:
+        http: GET /units/{unitId}/positions
+        docs: List a unit's positions, token-paginated. Filter by state=vacant|filled.
+        args:
+          unitId:
+            type: string
+            param-type: path
+          state:
+            type: optional<string>
+            param-type: query
+            docs: Filter — vacant (active, unfilled) | filled (active, with a holder). Omit for all active.
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: PositionPage
+      getPosition:
+        http: GET /positions/{positionId}
+        docs: Read one position with its current holder (if any).
+        args:
+          positionId:
+            type: string
+            param-type: path
+        returns: Position
+      updatePosition:
+        http: PUT /positions/{positionId}
+        docs: Update title / required rank / sort order. `code` and unit are immutable.
+        args:
+          positionId:
+            type: string
+            param-type: path
+          request: UpdatePositionRequest
+        returns: Position
+      abolishPosition:
+        http: POST /positions/{positionId}/abolish
+        docs: Abolish a billet (reversible status flip). Returns Position:PositionInUse if it has an active filling.
+        args:
+          positionId:
+            type: string
+            param-type: path
+        returns: Position
+      createMembership:
+        http: POST /memberships
+        docs: Add a person's belonging to a unit, optionally filling a position. Returns Membership:PositionAlreadyFilled / Membership:MembershipConflict on a uniqueness clash.
+        args:
+          request: CreateMembershipRequest
+        returns: Membership
+      fillPosition:
+        http: POST /positions/{positionId}/fill
+        docs: Fill a vacant position with a person. Returns Membership:PositionAlreadyFilled if already filled.
+        args:
+          positionId:
+            type: string
+            param-type: path
+          request: FillPositionRequest
+        returns: Membership
+      endMembership:
+        http: POST /memberships/{membershipId}/end
+        docs: End a membership, vacating any filled billet. Returns Membership:MembershipLifecycleConflict if not active.
+        args:
+          membershipId:
+            type: string
+            param-type: path
+          request: EndMembershipRequest
+        returns: Membership
+      listMembers:
+        http: GET /units/{unitId}/members
+        docs: Roster of a unit's active memberships, token-paginated. (The shadow gate applies once authz lands, M7.)
+        args:
+          unitId:
+            type: string
+            param-type: path
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: MembershipPage
+      listPersonMemberships:
+        http: GET /persons/{personId}/memberships
+        docs: A person's active memberships across units, token-paginated.
+        args:
+          personId:
+            type: string
+            param-type: path
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: MembershipPage

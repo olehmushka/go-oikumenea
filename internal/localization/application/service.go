@@ -165,12 +165,20 @@ func (s *Service) DefaultLocale(ctx context.Context) (string, error) {
 }
 
 // NamesByID assembles the `locale -> text` display-name map for a set of another module's entities
-// (D-i18n: all locales in every response, no negotiation). The caller passes entityID -> its own
-// default-locale `name` column value; NamesByID seeds each map with the default locale -> that
-// value, then overlays the additional-locale translation rows from the store. It is the in-process
-// helper the tenant/rank/… response builders call. An entity with no translation rows still gets a
-// single-entry map (the default locale).
+// (D-i18n: all locales in every response, no negotiation). It is LabelsByID over the conventional
+// `name` field — the in-process helper the tenant/rank/… response builders call.
 func (s *Service) NamesByID(ctx context.Context, entityType string, defaultText map[string]string) (map[string]map[string]string, error) {
+	return s.LabelsByID(ctx, entityType, "name", defaultText)
+}
+
+// LabelsByID assembles the `locale -> text` map for a translatable FIELD of a set of another
+// module's entities (D-i18n: all locales in every response, no negotiation). The caller passes
+// entityID -> its own default-locale column value for that field; LabelsByID seeds each map with the
+// default locale -> that value, then overlays the additional-locale translation rows from the store.
+// It is the in-process helper response builders call for any translatable label (e.g. a unit/rank
+// `name`, a position `title`). An entity with no translation rows still gets a single-entry map (the
+// default locale).
+func (s *Service) LabelsByID(ctx context.Context, entityType, field string, defaultText map[string]string) (map[string]map[string]string, error) {
 	out := make(map[string]map[string]string, len(defaultText))
 	if len(defaultText) == 0 {
 		return out, nil
@@ -183,7 +191,7 @@ func (s *Service) NamesByID(ctx context.Context, entityType string, defaultText 
 	for id := range defaultText {
 		ids = append(ids, id)
 	}
-	translations, err := s.TranslationsFor(ctx, entityType, ids, []string{"name"})
+	translations, err := s.TranslationsFor(ctx, entityType, ids, []string{field})
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +200,7 @@ func (s *Service) NamesByID(ctx context.Context, entityType string, defaultText 
 		if defaultLocale != "" {
 			m[defaultLocale] = text
 		}
-		for locale, t := range translations[domain.TranslationKey{EntityID: id, Field: "name"}] {
+		for locale, t := range translations[domain.TranslationKey{EntityID: id, Field: field}] {
 			m[locale] = t
 		}
 		out[id] = m
