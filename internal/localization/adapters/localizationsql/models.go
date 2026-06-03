@@ -83,6 +83,123 @@ type OikumeneaI18nTranslation struct {
 	UpdatedAt pgtype.Timestamptz
 }
 
+type OikumeneaPersonCitizenship struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:basic
+	Country string
+	// pii:basic
+	Basis string
+	// pii:basic
+	AcquiredOn pgtype.Date
+	// pii:basic
+	LostOn pgtype.Date
+	// pii:none
+	IsPrimary bool
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaPersonNameVariant struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:none
+	Locale string
+	// pii:basic
+	DisplayName string
+	// pii:basic
+	Title pgtype.Text
+	// pii:basic
+	Given pgtype.Text
+	// pii:basic
+	Given2 pgtype.Text
+	// pii:basic
+	Surname pgtype.Text
+	// pii:basic
+	SurnamePrefix pgtype.Text
+	// pii:basic
+	Surname2 pgtype.Text
+	// pii:basic
+	Generation pgtype.Text
+	// pii:basic
+	Credentials pgtype.Text
+	// pii:basic
+	Preferred pgtype.Text
+	// pii:none
+	IsPrimary bool
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+type OikumeneaPersonPerson struct {
+	// pii:none
+	ID string
+	// pii:basic
+	Code pgtype.Text
+	// pii:basic
+	DisplayName string
+	// pii:basic
+	Title pgtype.Text
+	// pii:basic
+	Given pgtype.Text
+	// pii:basic
+	Given2 pgtype.Text
+	// pii:basic
+	Surname pgtype.Text
+	// pii:basic
+	SurnamePrefix pgtype.Text
+	// pii:basic
+	Surname2 pgtype.Text
+	// pii:basic
+	Generation pgtype.Text
+	// pii:basic
+	Credentials pgtype.Text
+	// pii:basic
+	Preferred pgtype.Text
+	// pii:basic
+	Birthdate pgtype.Date
+	// pii:basic
+	Sex string
+	// pii:basic
+	CountryOfBirth pgtype.Text
+	// pii:special
+	Attributes []byte
+	// pii:none
+	RankID pgtype.Text
+	// pii:none
+	Status string
+	// pii:none
+	DeactivatedAt pgtype.Timestamptz
+	// pii:none
+	PurgeAfter pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
+}
+
+type OikumeneaPersonResidence struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:contact
+	Country string
+	// pii:contact
+	Region pgtype.Text
+	// pii:contact
+	ValidFrom pgtype.Date
+	// pii:contact
+	ValidTo   pgtype.Date
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
 type OikumeneaRankCategory struct {
 	// pii:none
 	ID string

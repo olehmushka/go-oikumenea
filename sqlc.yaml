@@ -44,3 +44,13 @@ sql:
         sql_package: pgx/v5
         emit_methods_with_db_argument: false
         emit_exact_table_names: false
+  - engine: postgresql
+    schema: migrations
+    queries: internal/person/adapters/queries
+    gen:
+      go:
+        package: personsql
+        out: internal/person/adapters/personsql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false

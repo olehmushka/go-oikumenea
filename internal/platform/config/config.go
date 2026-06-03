@@ -35,4 +35,9 @@ type Runtime struct {
 
 	// DefaultPageSize is the token-pagination default (API conventions). Tunable at runtime.
 	DefaultPageSize int `yaml:"default-page-size"`
+
+	// PersonPurgeGraceHours is the reversible deactivate->purge window for persons, in hours
+	// (D-PersonReadScope). Purge is refused before deactivated_at + this window. Defaults to 720h
+	// (30 days) when unset. Tunable at runtime.
+	PersonPurgeGraceHours int `yaml:"person-purge-grace-hours"`
 }

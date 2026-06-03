@@ -4,3 +4,6 @@ logging:
 
 # Token-pagination default (API conventions).
 default-page-size: 50
+
+# Person reversible deactivate->purge window, in hours (D-PersonReadScope; default 720 = 30 days).
+person-purge-grace-hours: 720
