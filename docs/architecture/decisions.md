@@ -827,7 +827,7 @@ The fixed fields (all optional, all `pii:basic`): `title`, `given`, `given2`, `s
 
 **Pure CLDR (no dedicated patronymic).** There is **no `patronymic` column** — the Slavic
 по-батькові / отчество (and the Icelandic patronymic) lives in **`given2`** by locale convention.
-Formal Slavic address ("Олег Володимирович") is therefore **assembled by locale-aware formatting**
+Formal Slavic address ("Тарас Григорович") is therefore **assembled by locale-aware formatting**
 from `given` + `given2`, not read from a typed patronymic field. The old→new field map (for the
 expand/contract migration): `given_name`→`given`, `family_name`→`surname`, `patronymic`→`given2`,
 `middle_name`→`given2` (a person has at most one of patronymic/middle in practice; if both are

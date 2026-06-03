@@ -54,7 +54,7 @@ Conventions per [conventions.md](../architecture/conventions.md).
   - `given TEXT` — first / forename
   - `given2 TEXT` — second given name; **also where the Slavic по-батькові / отчество (and Icelandic
     patronymic) lives** — pure CLDR has no dedicated patronymic field, so formal Slavic address
-    ("Олег Володимирович") is assembled by locale-aware formatting from `given` + `given2`, not a
+    ("Тарас Григорович") is assembled by locale-aware formatting from `given` + `given2`, not a
     typed patronymic field
   - `surname TEXT` — primary surname
   - `surname_prefix TEXT` — nobiliary / genealogical particle (`van`, `von`, `de`, `bin`)
@@ -131,7 +131,7 @@ are `pii:basic`, residence columns are `pii:contact` (locator data) — D-PIITie
 Person names are **per-record data managed by the person's admins** — *not* the instance-admin
 [localization](localization.md) translation store (D-i18n). A person has one canonical
 `display_name` plus zero or more locale-tagged variants (the transliterations the user asked
-for, e.g. "Олег" / "Oleh"). Responses return the canonical name plus the variants; clients pick
+for, e.g. "Тарас" / "Taras"). Responses return the canonical name plus the variants; clients pick
 by locale.
 
 ### PII governance

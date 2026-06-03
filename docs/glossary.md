@@ -69,8 +69,8 @@ bio fields (`birthdate`, `sex`, `country_of_birth`), citizenships and residences
 
 **Name (CLDR).** Person names follow the **Unicode CLDR Person Names** fixed field set; `display_name`
 is authoritative and the structured parts are advisory (D-PersonNamesCLDR). There is **no dedicated
-patronymic field** — the Slavic по-батькові / отчество lives in `given2`, and formal address ("Олег
-Володимирович") is assembled by locale-aware formatting from `given` + `given2`.
+patronymic field** — the Slavic по-батькові / отчество lives in `given2`, and formal address ("Тарас
+Григорович") is assembled by locale-aware formatting from `given` + `given2`.
 
 **Country.** A seeded ISO-3166-1 alpha-2 entry in the `geo_countries` registry (stable `code` +
 translatable `name`), referenced wherever a country appears (country of birth, citizenship, residence,
@@ -229,8 +229,8 @@ some entity, stored in the [localization](modules/localization.md) translation s
 managed by the instance admin. Translatable fields are returned in every response as a
 `locale → text` map (no Accept-Language negotiation).
 
-**Transliteration.** A per-person alternate **name variant** for a locale/script (e.g. "Олег" /
-"Oleh"). Person-managed data on the person record — *not* the instance-admin translation store.
+**Transliteration.** A per-person alternate **name variant** for a locale/script (e.g. "Тарас" /
+"Taras"). Person-managed data on the person record — *not* the instance-admin translation store.
 
 ---
 

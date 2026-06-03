@@ -10,7 +10,7 @@ import (
 )
 
 func TestPersonValidate(t *testing.T) {
-	base := func() Person { return Person{Name: Name{DisplayName: "Олег Мушка"}, Sex: "male"} }
+	base := func() Person { return Person{Name: Name{DisplayName: "Тарас Шевченко"}, Sex: "male"} }
 
 	cases := []struct {
 		name    string
@@ -93,10 +93,10 @@ func TestResidenceValidate(t *testing.T) {
 }
 
 func TestNameVariantValidate(t *testing.T) {
-	if err := (NameVariant{Locale: "eng", Name: Name{DisplayName: "Oleh Mushka"}}).Validate(); err != nil {
+	if err := (NameVariant{Locale: "eng", Name: Name{DisplayName: "John Doe"}}).Validate(); err != nil {
 		t.Fatalf("valid variant: %v", err)
 	}
-	if err := (NameVariant{Name: Name{DisplayName: "Oleh"}}).Validate(); !errors.Is(err, ErrInvalid) {
+	if err := (NameVariant{Name: Name{DisplayName: "John"}}).Validate(); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("missing locale should be invalid, got %v", err)
 	}
 	if err := (NameVariant{Locale: "eng"}).Validate(); !errors.Is(err, ErrInvalid) {

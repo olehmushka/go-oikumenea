@@ -105,7 +105,7 @@ func TestCreateAndReadAccountless(t *testing.T) {
 	svc, _ := newService(t, 720)
 
 	created, err := svc.CreatePerson(ctx, domain.Person{
-		Name:      domain.Name{DisplayName: "Олег Володимирович Мушка", Given: "Олег", Given2: "Володимирович", Surname: "Мушка"},
+		Name:      domain.Name{DisplayName: "Тарас Григорович Шевченко", Given: "Тарас", Given2: "Григорович", Surname: "Шевченко"},
 		Birthdate: "1990-05-02",
 		Sex:       "male",
 	})
@@ -119,7 +119,7 @@ func TestCreateAndReadAccountless(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	if got.Given2 != "Володимирович" {
+	if got.Given2 != "Григорович" {
 		t.Fatalf("given2 = %q, want the по-батькові", got.Given2)
 	}
 	if got.Sex != "male" || got.Birthdate != "1990-05-02" {
@@ -222,20 +222,20 @@ func TestCitizenships(t *testing.T) {
 func TestNameVariants(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newService(t, 720)
-	p := newPerson(t, svc, "Олег Мушка")
+	p := newPerson(t, svc, "Тарас Шевченко")
 
-	if _, err := svc.UpsertNameVariant(ctx, domain.NameVariant{PersonID: p.ID, Locale: "eng", Name: domain.Name{DisplayName: "Oleh Mushka"}, IsPrimary: true}); err != nil {
+	if _, err := svc.UpsertNameVariant(ctx, domain.NameVariant{PersonID: p.ID, Locale: "eng", Name: domain.Name{DisplayName: "John Doe"}, IsPrimary: true}); err != nil {
 		t.Fatalf("add eng: %v", err)
 	}
 	// re-upsert eng updates in place (no duplicate, no conflict).
-	if _, err := svc.UpsertNameVariant(ctx, domain.NameVariant{PersonID: p.ID, Locale: "eng", Name: domain.Name{DisplayName: "Oleh V. Mushka"}}); err != nil {
+	if _, err := svc.UpsertNameVariant(ctx, domain.NameVariant{PersonID: p.ID, Locale: "eng", Name: domain.Name{DisplayName: "John V. Doe"}}); err != nil {
 		t.Fatalf("re-upsert eng: %v", err)
 	}
 	vs, err := svc.ListNameVariants(ctx, p.ID)
 	if err != nil {
 		t.Fatalf("list variants: %v", err)
 	}
-	if len(vs) != 1 || vs[0].DisplayName != "Oleh V. Mushka" {
+	if len(vs) != 1 || vs[0].DisplayName != "John V. Doe" {
 		t.Fatalf("variants = %+v, want one updated eng variant", vs)
 	}
 	// unknown locale.
