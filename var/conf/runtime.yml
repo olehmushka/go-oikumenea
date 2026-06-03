@@ -1,0 +1,9 @@
+# Local-dev runtime configuration (hot-reloadable via pkg/refreshable).
+logging:
+  level: info
+
+# Token-pagination default (API conventions).
+default-page-size: 50
+
+# Person reversible deactivate->purge window, in hours (D-PersonReadScope; default 720 = 30 days).
+person-purge-grace-hours: 720

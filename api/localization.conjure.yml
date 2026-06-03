@@ -1,0 +1,142 @@
+# Localization module API (M2). The supported-locale registry + the translation store
+# (docs/modules/localization.md / D-i18n). Translatable labels of other modules' entities are
+# returned everywhere as a locale->text map — there is NO Accept-Language negotiation; the client
+# receives all enabled locales and picks.
+#
+# RID-bearing fields are typed `string` (the composed URN RID): Conjure reserves `rid` as a
+# built-in primitive whose `ri.` format is NOT our `urn:oikumenea:` RID, so a type named `Rid`/`rid`
+# cannot be used. Localized maps are inline map<string,string> (locale->text); cross-module
+# assembly happens in Go (LocalizationService.TranslationsFor), not on the wire. Generated Go lands
+# in internal/conjure and is never hand-edited.
+#
+# Endpoints declare `auth: header` so the contract carries the bearer token from now on; the
+# `locale.read`/`locale.manage`/`translation.read`/`translation.manage` permission checks land once
+# authorization (M7) + identity-federation (M8) do. Writes are recorded in the audit log in-process.
+types:
+  definitions:
+    default-package: com.palantir.oikumenea.localization
+    objects:
+      Locale:
+        docs: A supported language for the deployment. `code` is the stable ISO 639-3 identifier; `name` is the endonym.
+        fields:
+          code:
+            type: string
+            docs: ISO 639-3 code (e.g. ukr, eng); the stable, locale-agnostic identifier.
+          name:
+            type: string
+            docs: Endonym/display name (e.g. "Українська", "English").
+          enabled: boolean
+          isDefault:
+            type: boolean
+            docs: Exactly one enabled locale is the default; its value is the fallback when a translation is absent.
+          sortOrder: integer
+      LocaleList:
+        docs: The supported locales, in display order.
+        fields:
+          locales: list<Locale>
+      AddLocaleRequest:
+        docs: Add a supported locale (instance-admin; `locale.manage`).
+        fields:
+          code:
+            type: string
+            docs: ISO 639-3 code; must be unique.
+          name: string
+          enabled:
+            type: optional<boolean>
+            docs: Defaults to true.
+          sortOrder: optional<integer>
+      UpdateLocaleRequest:
+        docs: Enable/disable, rename, set default, or reorder a locale (instance-admin; `locale.manage`). Omitted fields are unchanged.
+        fields:
+          name: optional<string>
+          enabled: optional<boolean>
+          isDefault:
+            type: optional<boolean>
+            docs: Setting true makes this the sole default; the previous default is cleared in the same transaction.
+          sortOrder: optional<integer>
+    errors:
+      LocaleNotFound:
+        namespace: Localization
+        code: NOT_FOUND
+        safe-args:
+          localeCode: string
+      LocaleCodeConflict:
+        docs: A locale with this code already exists.
+        namespace: Localization
+        code: CONFLICT
+        safe-args:
+          localeCode: string
+      LocaleInvalid:
+        docs: The locale code or name is malformed (code must be a 3-letter ISO 639-3 identifier).
+        namespace: Localization
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
+      LocaleConstraintViolation:
+        docs: The change would leave zero enabled locales or not-exactly-one default.
+        namespace: Localization
+        code: FAILED_PRECONDITION
+        safe-args:
+          reason: string
+      UnknownLocale:
+        docs: A translation cites a locale code that is not a known, enabled locale.
+        namespace: Localization
+        code: INVALID_ARGUMENT
+        safe-args:
+          localeCode: string
+services:
+  LocalizationService:
+    name: Localization Service
+    package: com.palantir.oikumenea.localization
+    base-path: /localization/v1
+    default-auth: header
+    docs: |
+      The supported-locale registry and the polymorphic translation store (D-i18n). Reads are gated
+      by `locale.read`/`translation.read`; writes are instance-admin (`locale.manage`/
+      `translation.manage`) — enforced once authorization lands (M7).
+    endpoints:
+      listLocales:
+        http: GET /locales
+        docs: List the supported locales in display order.
+        returns: LocaleList
+      addLocale:
+        http: POST /locales
+        docs: Add a supported locale. Returns Localization:LocaleCodeConflict if the code exists.
+        args:
+          request: AddLocaleRequest
+        returns: Locale
+      updateLocale:
+        http: PUT /locales/{localeCode}
+        docs: Enable/disable, rename, set default, or reorder a locale.
+        args:
+          localeCode:
+            type: string
+            param-type: path
+          request: UpdateLocaleRequest
+        returns: Locale
+      getTranslations:
+        http: GET /translations/{entityType}/{entityId}
+        docs: All translations of one entity, as field -> (locale -> text), for editing.
+        args:
+          entityType:
+            type: string
+            param-type: path
+          entityId:
+            type: string
+            param-type: path
+            docs: The owning entity's RID (carried as a plain string).
+        returns: map<string, map<string, string>>
+      putTranslations:
+        http: PUT /translations/{entityType}/{entityId}
+        docs: Upsert translations for one entity (one or many fields/locales). Returns the stored set.
+        args:
+          entityType:
+            type: string
+            param-type: path
+          entityId:
+            type: string
+            param-type: path
+          translations:
+            type: map<string, map<string, string>>
+            docs: field -> (locale -> text). Each locale must be a known, enabled locale.
+        returns: map<string, map<string, string>>

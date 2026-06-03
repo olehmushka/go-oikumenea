@@ -1,0 +1,385 @@
+# Tenant module API (M3). The unit graph the whole service hangs off (docs/modules/tenant.md /
+# D-Graphs): units as a multi-parent, multi-root DAG per named hierarchy (graph), a maintained
+# transitive closure (ancestors/descendants in one lookup for the M7 PDP), public/shadow
+# visibility, and lifecycle. The module never decides access — it calls the PDP (M7).
+#
+# RID-bearing fields are typed `string` (the composed URN RID): Conjure reserves `rid` as a
+# built-in primitive whose `ri.` format is NOT our `urn:oikumenea:` RID, so a type named `Rid`/`rid`
+# cannot be used. Localized `name` is returned as an inline map<string,string> (locale->text), all
+# enabled locales, NO Accept-Language negotiation (D-i18n); the owning module assembles it from its
+# default-locale `name` column + the localization store. Generated Go lands in internal/conjure and
+# is never hand-edited.
+#
+# Endpoints declare `auth: header` so the contract carries the bearer token from now on; the
+# unit-scoped `unit.*` / instance-scoped `graph.*`/`closure.rebuild` permission checks and the
+# shadow-visibility gate land once authorization (M7) + identity-federation (M8) do. Writes are
+# recorded in the audit log in-process (D-Audit).
+types:
+  definitions:
+    default-package: com.palantir.oikumenea.tenant
+    objects:
+      Visibility:
+        docs: A unit's read-time visibility. SHADOW units are filtered by the shadow gate (M7).
+        values:
+          - PUBLIC
+          - SHADOW
+      UnitState:
+        docs: A unit's lifecycle state. Transitions are reversible and recorded as append-only events.
+        values:
+          - ACTIVE
+          - SUSPENDED
+          - ARCHIVED
+      Unit:
+        docs: A node in the org graph. `code` is the stable external reference; `name` is the locale->text map.
+        fields:
+          id:
+            type: string
+            docs: The unit's URN RID (carried as a plain string).
+          code:
+            type: string
+            docs: Stable, locale-agnostic identifier external systems reference (D-Code); unique among active units.
+          name:
+            type: map<string, string>
+            docs: locale->text display name (all enabled locales; default-locale fallback + i18n store).
+          unitKind:
+            type: optional<string>
+            docs: Descriptive instance label (e.g. battalion); never branched on in code.
+          level:
+            type: optional<integer>
+            docs: Optional ordinal for sort/filter; never a PDP or shadow-gate input.
+          visibility: Visibility
+          state: UnitState
+          metadata:
+            type: optional<any>
+            docs: Free-form long-tail attributes (JSONB).
+          createdAt: datetime
+          updatedAt: datetime
+      Graph:
+        docs: A named hierarchy over the units (D-Graphs). Each graph is independently a DAG.
+        fields:
+          id:
+            type: string
+            docs: The graph's URN RID (carried as a plain string).
+          code:
+            type: string
+            docs: Stable, locale-agnostic identifier (e.g. command, operational); referenced by edges/closure/assignments.
+          name:
+            type: map<string, string>
+            docs: locale->text display name.
+          isDefault:
+            type: boolean
+            docs: The graph a subtree grant uses when none is named; exactly one default exists (seeded command).
+          isAuthorityBearing:
+            type: boolean
+            docs: Whether the PDP cascades subtree grants over this graph (D-DirectoryGraphs). command is locked TRUE.
+      UnitEdge:
+        docs: A directed parent->child relationship within one graph (link__parent_of).
+        fields:
+          id:
+            type: string
+            docs: The edge's URN RID (carried as a plain string).
+          graph:
+            type: string
+            docs: The graph code this edge belongs to.
+          parentId: string
+          childId: string
+          createdAt: datetime
+      UnitRef:
+        docs: A lightweight unit reference with its closure depth (ancestor/descendant listings).
+        fields:
+          id: string
+          code: string
+          name: map<string, string>
+          depth:
+            type: integer
+            docs: Closure distance from the queried unit (shortest path in the DAG).
+      UnitPage:
+        docs: A page of units plus the opaque token for the next page (empty when exhausted).
+        fields:
+          units: list<Unit>
+          nextPageToken: optional<string>
+      UnitRefList:
+        docs: An ordered list of unit references (ancestors), nearest first.
+        fields:
+          units: list<UnitRef>
+      UnitRefPage:
+        docs: A page of unit references (descendants) plus the opaque next-page token.
+        fields:
+          units: list<UnitRef>
+          nextPageToken: optional<string>
+      GraphList:
+        docs: The graph registry, in display order.
+        fields:
+          graphs: list<Graph>
+      ClosureReport:
+        docs: The result of a closure verify/rebuild for one graph (D-ClosureIntegrity / D-ClosureDriftHealth).
+        fields:
+          graph:
+            type: string
+            docs: The graph code this report covers.
+          missingCount:
+            type: integer
+            docs: Closure rows the recompute found missing vs. the stored closure.
+          extraCount:
+            type: integer
+            docs: Spurious stored closure rows the recompute did not produce.
+          inDrift: boolean
+          sample:
+            type: optional<any>
+            docs: Optional small drift sample for diagnostics.
+      ClosureReportList:
+        docs: Per-graph closure reports (one per graph processed).
+        fields:
+          reports: list<ClosureReport>
+      CreateUnitRequest:
+        docs: Create a unit. `name` is the default-locale text; other locales are managed via LocalizationService.
+        fields:
+          code: string
+          name: string
+          unitKind: optional<string>
+          level: optional<integer>
+          visibility:
+            type: optional<Visibility>
+            docs: Defaults to PUBLIC.
+          metadata: optional<any>
+      UpdateUnitRequest:
+        docs: Update name/kind/level/metadata/visibility. Omitted fields are unchanged. `code` is immutable.
+        fields:
+          name: optional<string>
+          unitKind: optional<string>
+          level: optional<integer>
+          visibility: optional<Visibility>
+          metadata: optional<any>
+      AddEdgeRequest:
+        docs: Attach the path unit as a child of `parentId` within a graph.
+        fields:
+          parentId: string
+          graph:
+            type: optional<string>
+            docs: The graph code; defaults to command.
+      TransitionRequest:
+        docs: Transition a unit's lifecycle state (suspend/archive/restore).
+        fields:
+          toState: UnitState
+          reason: optional<string>
+      AddGraphRequest:
+        docs: Add a graph to the registry (instance-admin; graph.manage).
+        fields:
+          code: string
+          name: string
+          isAuthorityBearing:
+            type: optional<boolean>
+            docs: Defaults to true.
+      UpdateGraphRequest:
+        docs: Rename / set default / flip isAuthorityBearing (guarded). Omitted fields are unchanged.
+        fields:
+          name: optional<string>
+          isDefault:
+            type: optional<boolean>
+            docs: Setting true makes this the sole default; the previous default is cleared in the same transaction.
+          isAuthorityBearing: optional<boolean>
+    errors:
+      UnitNotFound:
+        namespace: Tenant
+        code: NOT_FOUND
+        safe-args:
+          unitId: string
+      UnitCodeConflict:
+        docs: A unit with this code already exists.
+        namespace: Tenant
+        code: CONFLICT
+        safe-args:
+          code: string
+      UnitCycleDetected:
+        docs: Adding the edge would create a cycle within its graph (the child already reaches the parent).
+        namespace: Tenant
+        code: CONFLICT
+        safe-args:
+          graph: string
+          parentId: string
+          childId: string
+      UnitInvalid:
+        docs: The unit's code or name is malformed, or the request is otherwise invalid.
+        namespace: Tenant
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
+      TransitionInvalid:
+        docs: The requested lifecycle transition is not permitted from the unit's current state.
+        namespace: Tenant
+        code: FAILED_PRECONDITION
+        safe-args:
+          reason: string
+      GraphNotFound:
+        namespace: Tenant
+        code: NOT_FOUND
+        safe-args:
+          graph: string
+      GraphCodeConflict:
+        docs: A graph with this code already exists.
+        namespace: Tenant
+        code: CONFLICT
+        safe-args:
+          code: string
+      GraphInUse:
+        docs: The graph cannot be deleted while it has live edges (or, post-M7, active subtree assignments).
+        namespace: Tenant
+        code: FAILED_PRECONDITION
+        safe-args:
+          graph: string
+      GraphProtected:
+        docs: The command graph cannot be deleted or made directory-only; at least one graph must remain.
+        namespace: Tenant
+        code: FAILED_PRECONDITION
+        safe-args:
+          reason: string
+services:
+  TenantService:
+    name: Tenant Service
+    package: com.palantir.oikumenea.tenant
+    base-path: /tenant/v1
+    default-auth: header
+    docs: |
+      The unit graph, its per-graph closure, and the graph registry (D-Graphs). Reads pass the
+      shadow-visibility gate and are gated by `unit.read`/`graph.read`; writes are unit-scoped
+      (`unit.create`/`unit.update`/`unit.edges.*`/`unit.lifecycle`) or instance-scoped
+      (`graph.manage`/`closure.rebuild`) — all enforced once authorization lands (M7).
+    endpoints:
+      createUnit:
+        http: POST /units
+        docs: Create a unit. Returns Tenant:UnitCodeConflict if the code is taken among active units.
+        args:
+          request: CreateUnitRequest
+        returns: Unit
+      getUnit:
+        http: GET /units/{unitId}
+        docs: Read one unit by RID (shadow-gated once authz lands).
+        args:
+          unitId:
+            type: string
+            param-type: path
+        returns: Unit
+      updateUnit:
+        http: PUT /units/{unitId}
+        docs: Update name/kind/level/metadata/visibility. `code` is immutable by convention.
+        args:
+          unitId:
+            type: string
+            param-type: path
+          request: UpdateUnitRequest
+        returns: Unit
+      listUnits:
+        http: GET /units
+        docs: List/search units, token-paginated, optionally filtered by level.
+        args:
+          level:
+            type: optional<integer>
+            param-type: query
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: UnitPage
+      addEdge:
+        http: POST /units/{unitId}/edges
+        docs: Attach the path unit as a child of parentId within a graph (default command). Returns Tenant:UnitCycleDetected on a cycle.
+        args:
+          unitId:
+            type: string
+            param-type: path
+          request: AddEdgeRequest
+        returns: UnitEdge
+      removeEdge:
+        http: DELETE /units/{unitId}/edges
+        docs: Detach the path unit from a parent within a graph.
+        args:
+          unitId:
+            type: string
+            param-type: path
+          parentId:
+            type: string
+            param-type: query
+          graph:
+            type: optional<string>
+            param-type: query
+      unitAncestors:
+        http: GET /units/{unitId}/ancestors
+        docs: Ancestors of the unit in graph `graph` (default command), nearest first.
+        args:
+          unitId:
+            type: string
+            param-type: path
+          graph:
+            type: optional<string>
+            param-type: query
+        returns: UnitRefList
+      unitDescendants:
+        http: GET /units/{unitId}/descendants
+        docs: The unit's subtree in graph `graph` (default command), token-paginated.
+        args:
+          unitId:
+            type: string
+            param-type: path
+          graph:
+            type: optional<string>
+            param-type: query
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: UnitRefPage
+      transitionUnit:
+        http: POST /units/{unitId}/transition
+        docs: Transition the unit's lifecycle state. Returns Tenant:TransitionInvalid for an illegal transition.
+        args:
+          unitId:
+            type: string
+            param-type: path
+          request: TransitionRequest
+        returns: Unit
+      verifyClosure:
+        http: POST /closure/verify
+        docs: Diff the stored closure vs. the edges and upsert the per-graph drift status (default all graphs).
+        args:
+          graph:
+            type: optional<string>
+            param-type: query
+        returns: ClosureReportList
+      rebuildClosure:
+        http: POST /closure/rebuild
+        docs: Truncate + recompute the closure, one transaction per graph (default all graphs).
+        args:
+          graph:
+            type: optional<string>
+            param-type: query
+        returns: ClosureReportList
+      listGraphs:
+        http: GET /graphs
+        docs: List the graph registry in display order.
+        returns: GraphList
+      addGraph:
+        http: POST /graphs
+        docs: Add a graph. Returns Tenant:GraphCodeConflict if the code exists.
+        args:
+          request: AddGraphRequest
+        returns: Graph
+      updateGraph:
+        http: PUT /graphs/{graphId}
+        docs: Rename / set default / flip isAuthorityBearing (guarded; command is locked authority-bearing).
+        args:
+          graphId:
+            type: string
+            param-type: path
+          request: UpdateGraphRequest
+        returns: Graph
+      deleteGraph:
+        http: DELETE /graphs/{graphId}
+        docs: Delete a graph (blocked for command, or while it has live edges).
+        args:
+          graphId:
+            type: string
+            param-type: path

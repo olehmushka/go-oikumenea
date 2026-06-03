@@ -1,0 +1,56 @@
+# sqlc configuration (docs/architecture/conventions.md: DB access = pgx + sqlc).
+# Queries are authored as *.sql per module and compiled into typed Go in that module's adapters/.
+# The schema is the repo-root Atlas migrations dir (single source of truth) — sqlc reads the same
+# DDL Atlas applies. Generated code is never hand-edited.
+version: "2"
+sql:
+  - engine: postgresql
+    schema: migrations
+    queries: internal/audit/adapters/queries
+    gen:
+      go:
+        package: auditsql
+        out: internal/audit/adapters/auditsql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false
+  - engine: postgresql
+    schema: migrations
+    queries: internal/localization/adapters/queries
+    gen:
+      go:
+        package: localizationsql
+        out: internal/localization/adapters/localizationsql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false
+  - engine: postgresql
+    schema: migrations
+    queries: internal/tenant/adapters/queries
+    gen:
+      go:
+        package: tenantsql
+        out: internal/tenant/adapters/tenantsql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false
+  - engine: postgresql
+    schema: migrations
+    queries: internal/rank/adapters/queries
+    gen:
+      go:
+        package: ranksql
+        out: internal/rank/adapters/ranksql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false
+  - engine: postgresql
+    schema: migrations
+    queries: internal/person/adapters/queries
+    gen:
+      go:
+        package: personsql
+        out: internal/person/adapters/personsql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false

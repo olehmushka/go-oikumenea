@@ -1,0 +1,127 @@
+# Audit module API (M1). The append-only Action ledger's read surface (docs/modules/audit.md).
+#
+# Read-only by design: there is NO write endpoint — audit rows are written in-process, in the same
+# transaction as the mutation they record (D-Audit). RID-bearing fields are typed `string` (the
+# composed URN RID): Conjure reserves `rid` as a built-in primitive whose `ri.` format is NOT our
+# `urn:oikumenea:` RID, so it cannot be used here. Generated Go lands in internal/conjure and is
+# never hand-edited.
+#
+# Endpoints declare `auth: header` so the contract carries the bearer token from M1 onward; the
+# `audit.read` permission check, unit-scoping over the closure, and the shadow gate are wired once
+# authorization (M7) + identity-federation (M8) land.
+types:
+  definitions:
+    default-package: com.palantir.oikumenea.audit
+    objects:
+      AuditActorType:
+        docs: The two actor kinds (D-Audit). An instance admin is a PERSON, never a separate kind.
+        values:
+          - PERSON
+          - SYSTEM
+      AuditOutcome:
+        docs: Outcome of the recorded action; denied write attempts are recorded too (D-Audit).
+        values:
+          - SUCCESS
+          - DENIED
+          - ERROR
+      AuditEntry:
+        docs: One immutable audit record — who did what to which target, when, in which request.
+        fields:
+          id:
+            type: string
+            docs: The Action RID (action__<type>) this entry records; the audit log is the action ledger.
+          createdAt: datetime
+          actorType: AuditActorType
+          actorPersonId:
+            type: optional<string>
+            docs: The person who acted; present iff actorType is PERSON.
+          subsystem:
+            type: optional<string>
+            docs: Originating source for SYSTEM actions (bootstrap, event-subscriber, …); present iff actorType is SYSTEM.
+          action:
+            type: string
+            docs: The action code, e.g. assignment.grant, unit.transition, rank.scheme.update.
+          targetType:
+            type: string
+            docs: The acted-on entity kind, e.g. unit, person, role_assignment, account, graph.
+          targetId: optional<string>
+          unitId:
+            type: optional<string>
+            docs: The unit context of the action where applicable (drives scoped audit reads).
+          requestId:
+            type: string
+            docs: Correlation key shared with logs, metrics, and traces.
+          before:
+            type: optional<any>
+            docs: State snapshot before the change (no secrets; PII minimized).
+          after:
+            type: optional<any>
+            docs: State snapshot / change payload after the change (no secrets; PII minimized).
+          outcome: AuditOutcome
+      AuditEntryPage:
+        docs: A page of audit entries plus the opaque token for the next page (empty when exhausted).
+        fields:
+          entries: list<AuditEntry>
+          nextPageToken: optional<string>
+    errors:
+      AuditEntryNotFound:
+        namespace: Audit
+        code: NOT_FOUND
+        safe-args:
+          auditEntryId: string
+services:
+  AuditService:
+    name: Audit Service
+    package: com.palantir.oikumenea.audit
+    base-path: /audit/v1
+    default-auth: header
+    docs: |
+      Read-only access to the append-only audit log (D-Audit). Gated by `audit.read`, unit-scoped
+      exactly like `person.read` (PDP over the closure + shadow gate) once authorization lands (M7).
+    endpoints:
+      query:
+        http: GET /audit
+        docs: Query the log, filterable by actor/target/unit/action/outcome/time, token-paginated.
+        args:
+          actorPersonId:
+            type: optional<string>
+            param-type: query
+          actorType:
+            type: optional<AuditActorType>
+            param-type: query
+          targetType:
+            type: optional<string>
+            param-type: query
+          targetId:
+            type: optional<string>
+            param-type: query
+          unitId:
+            type: optional<string>
+            param-type: query
+          action:
+            type: optional<string>
+            param-type: query
+          outcome:
+            type: optional<AuditOutcome>
+            param-type: query
+          since:
+            type: optional<datetime>
+            param-type: query
+          until:
+            type: optional<datetime>
+            param-type: query
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: AuditEntryPage
+      get:
+        http: GET /audit/{entryId}
+        docs: Read one entry by its Action RID. Returns Audit:AuditEntryNotFound when absent.
+        args:
+          entryId:
+            type: string
+            param-type: path
+        returns: AuditEntry

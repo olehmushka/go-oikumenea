@@ -8,18 +8,21 @@ without a tutorial.
 
 ## PDP over a closure-backed DAG
 
-Authorization decisions are computed by walking the **unit graph**, not stored per
+Authorization decisions are computed by walking the **unit graphs**, not stored per
 (person, unit). The [tenant](../modules/tenant.md) module maintains a transitive-closure
-table; the [authorization](../modules/authorization.md) PDP resolves a decision by unioning:
+table **per named graph** (D-Graphs); the [authorization](../modules/authorization.md) PDP
+resolves a decision by unioning:
 
 - instance-admin permissions (unit-independent),
-- `unit`-scoped grants whose `target_unit` is exactly the queried unit,
-- `subtree`-scoped grants whose `target_unit` is an **ancestor** of the queried unit (one
-  indexed closure lookup),
+- `unit`-scoped grants whose `target_unit` is exactly the queried unit (graph-independent),
+- `subtree`-scoped grants whose `target_unit` is an **ancestor of the queried unit in that
+  grant's graph** (one indexed closure lookup keyed by `(graph, ancestor, descendant)`),
 
-then applying the shadow-visibility gate on read actions. No per-permission filtering inside
-an assignment; no cross-request caching (a revoke is immediate). This is drafts' "admin
-inheritance," generalized from a tree to a DAG and made **explicit per assignment**.
+then applying the shadow-visibility gate on read actions. Authority **unions across graphs**
+(a unit's `command` chain and its `operational` commander both contribute). No per-permission
+filtering inside an assignment; no cross-request caching (a revoke is immediate). This is
+drafts' "admin inheritance," generalized from a tree to **several named DAGs** and made
+**explicit per assignment**.
 
 Owners: [authorization](../modules/authorization.md), [tenant](../modules/tenant.md).
 
@@ -29,9 +32,9 @@ Owners: [authorization](../modules/authorization.md), [tenant](../modules/tenant
 
 Two distinct authority planes:
 
-- **Unit-scope** — role assignments bound to a `target_unit` (+ `unit`/`subtree` scope).
-  Governs everything *about the organization* (units, people, memberships, and a unit's
-  positions/billets).
+- **Unit-scope** — role assignments bound to a `target_unit` (+ `unit`/`subtree` scope; a
+  `subtree` grant names the graph it cascades over). Governs everything *about the organization*
+  (units, people, memberships, and a unit's positions/billets).
 - **Instance-scope** — the instance-admin plane, unit-independent. Governs everything *about
   the deployment itself*: the rank scheme, role definitions, supported locales & translations,
   global config.
@@ -79,7 +82,7 @@ value in the entity's own column, with other locales in the i18n store). Editing
 the name never changes the code, so external references never break.
 
 Owners: every module with a structural/catalog entity (tenant, authorization, membership/
-position, rank, localization). See [conventions.md](conventions.md) (Code vs. name).
+position, rank, localization, document, order). See [conventions.md](conventions.md) (Code vs. name).
 
 ---
 
@@ -94,7 +97,8 @@ name transliteration is the related-but-separate per-record mechanism (not the a
 
 Owner: [localization](../modules/localization.md); used by
 [tenant](../modules/tenant.md), [rank](../modules/rank.md), [membership](../modules/membership.md),
-[authorization](../modules/authorization.md).
+[authorization](../modules/authorization.md), [document](../modules/document.md),
+[order](../modules/order.md).
 
 ---
 
@@ -107,6 +111,20 @@ History is recorded append-only; current state is a separate column/table. Unit
 the original, never an in-place edit.
 
 Owners: [audit](../modules/audit.md), [tenant](../modules/tenant.md).
+
+---
+
+## Audit-on-write
+
+Every **write** (state mutation) records an audit entry in the **same transaction** as the change —
+the audit row and the mutation share one fate, so there is no orphan audit and no missing audit.
+Denied write attempts are recorded too (`outcome='denied'`). **Reads are not audited.** Because
+every entity is audited on write, the audit query is symmetrically filterable by **every audited
+entity type** (read ↔ write symmetry): *"the history of person X"*, *"everything that happened in
+tenant T"*. This is the runtime obligation behind the storage shape in *Immutable event log +
+mutable overlay*; see [decisions.md](decisions.md) D-Audit.
+
+Owners: [audit](../modules/audit.md) + **every** mutating module.
 
 ---
 
@@ -123,7 +141,8 @@ and the reversal is itself an audited action. Encourages decisive operation beca
 are correctable, and protects against catastrophic loss.
 
 Owners: [tenant](../modules/tenant.md), [person](../modules/person.md),
-[authorization](../modules/authorization.md).
+[authorization](../modules/authorization.md), [document](../modules/document.md) (soft-delete +
+`status` flips), [order](../modules/order.md) (revoke-not-delete).
 
 ---
 
@@ -136,7 +155,8 @@ discoverable subject to normal read permission. The gate is applied *after* the 
 decision, as a second filter on result sets.
 
 Owners: [authorization](../modules/authorization.md), [tenant](../modules/tenant.md),
-[membership](../modules/membership.md).
+[membership](../modules/membership.md), [audit](../modules/audit.md),
+[document](../modules/document.md), [order](../modules/order.md).
 
 ---
 
@@ -144,9 +164,8 @@ Owners: [authorization](../modules/authorization.md), [tenant](../modules/tenant
 
 Ship a column/table intentionally unused (always NULL/empty), reserved so a future capability
 is additive rather than a schema rewrite. Used for the future **full-IdP pivot** (password /
-2FA / session columns reserved on accounts, kept NULL while authentication is delegated) and
-for the `expires_at` on role assignments before the expiry feature is exercised. A dormant
-seam is documented as such in the owning module's *Open seams* section.
+2FA / session columns reserved on accounts, kept NULL while authentication is delegated). A
+dormant seam is documented as such in the owning module's *Open seams* section.
 
 Owners: [identity-federation](../modules/identity-federation.md),
 [authorization](../modules/authorization.md).

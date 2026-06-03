@@ -1,0 +1,425 @@
+# Person module API (M5). The personnel directory (docs/modules/person.md): the core aggregate of
+# the whole service — account-optional, instance-global, holding at most one rank. A person is the
+# primary PII store, so it carries a reversible deactivate -> purge (crypto-erase) lifecycle.
+#
+# RID-bearing fields are typed `string` (the composed URN RID): Conjure reserves `rid` as a built-in
+# primitive whose `ri.` format is NOT our `urn:oikumenea:` RID, so a type named `Rid`/`rid` cannot be
+# used. Calendar DATE fields (birthdate, citizenship/residence effective dates) are ISO-8601 date
+# strings ("YYYY-MM-DD") — a day, not an instant — while lifecycle timestamps are `datetime`.
+#
+# Person NAMES are per-record data managed by the person's admins (a canonical display_name plus
+# locale-tagged transliteration variants), NOT the instance-admin localization store (D-i18n) — so a
+# person's own name is returned verbatim, never as a locale->text map. The one rank a person holds is
+# returned as its `rankId`; clients resolve the label via RankService.
+#
+# Endpoints declare `auth: header` so the contract carries the bearer token from now on; reads gate
+# on `person.read`, writes on `person.create`/`person.update`/`person.rank.assign`/`person.lifecycle`/
+# `person.purge` — all enforced once authorization (M7, the read-scope rule D-PersonReadScope) +
+# identity-federation (M8) land. Writes are recorded in the audit log in-process (D-Audit), under an
+# interim `system` actor until the acting person can be resolved (M7/M8). Generated Go lands in
+# internal/conjure and is never hand-edited.
+types:
+  definitions:
+    default-package: com.palantir.oikumenea.person
+    objects:
+      Person:
+        docs: |
+          An individual personnel record. Names follow the Unicode CLDR fixed field set
+          (D-PersonNamesCLDR): displayName is authoritative, the structured parts are advisory. There
+          is no patronymic field — the Slavic по-батькові lives in given2. nameVariants/citizenships/
+          residences are populated by getPerson and empty in list responses.
+        fields:
+          id:
+            type: string
+            docs: The person's URN RID (carried as a plain string).
+          code:
+            type: optional<string>
+            docs: Optional stable, locale-agnostic external id (e.g. personnel/service number); unique among active persons.
+          displayName:
+            type: string
+            docs: The canonical full name form; authoritative for search/display.
+          title: optional<string>
+          given: optional<string>
+          given2:
+            type: optional<string>
+            docs: Second given name; also holds the Slavic по-батькові / Icelandic patronymic.
+          surname: optional<string>
+          surnamePrefix:
+            type: optional<string>
+            docs: Nobiliary / genealogical particle (van, von, de, bin).
+          surname2:
+            type: optional<string>
+            docs: Second surname (Hispanic / Lusophone).
+          generation:
+            type: optional<string>
+            docs: Generational suffix (Jr., Sr., III).
+          credentials:
+            type: optional<string>
+            docs: Post-nominal credentials (PhD, MD).
+          preferred:
+            type: optional<string>
+            docs: Known-as / nickname.
+          birthdate:
+            type: optional<string>
+            docs: ISO-8601 calendar date of birth (YYYY-MM-DD); a day, not an instant.
+          sex:
+            type: string
+            docs: Biological sex, ISO/IEC 5218 as text — one of not_known | male | female | not_applicable.
+          countryOfBirth:
+            type: optional<string>
+            docs: ISO-3166-1 alpha-2 country code, validated against the geo registry (D-Geo).
+          attributes:
+            type: optional<any>
+            docs: Free-form long-tail directory fields (JSONB). pii:special ceiling — no special-category data without the envelope seam.
+          rankId:
+            type: optional<string>
+            docs: The URN RID of the one rank the person holds (a DIRECTORY attribute; never an authz input). Null when unranked.
+          status:
+            type: string
+            docs: Lifecycle status — one of active | deactivated | purged.
+          deactivatedAt: optional<datetime>
+          purgeAfter:
+            type: optional<datetime>
+            docs: End of the reversibility window; purge is refused before it.
+          createdAt: datetime
+          updatedAt: datetime
+          nameVariants:
+            type: list<NameVariant>
+            docs: Locale-tagged transliterations. Populated by getPerson; empty in list responses.
+          citizenships:
+            type: list<Citizenship>
+            docs: The person's citizenships. Populated by getPerson; empty in list responses.
+          residences:
+            type: list<Residence>
+            docs: The person's residence history. Populated by getPerson; empty in list responses.
+      NameVariant:
+        docs: A full transliterated name form for one locale (e.g. ukr native, eng Latin). Person-managed, NOT the localization store.
+        fields:
+          id: string
+          personId: string
+          locale:
+            type: string
+            docs: The locale/script this form is for (an i18n_locales code).
+          displayName: string
+          title: optional<string>
+          given: optional<string>
+          given2: optional<string>
+          surname: optional<string>
+          surnamePrefix: optional<string>
+          surname2: optional<string>
+          generation: optional<string>
+          credentials: optional<string>
+          preferred: optional<string>
+          isPrimary: boolean
+      Citizenship:
+        docs: A person's effective-dated nationality in a country (D-Geo). A person may hold several; at most one active per country.
+        fields:
+          id: string
+          personId: string
+          country:
+            type: string
+            docs: ISO-3166-1 alpha-2 country code (geo registry).
+          basis:
+            type: string
+            docs: How the citizenship was acquired — one of birth | descent | naturalization | other.
+          acquiredOn:
+            type: optional<string>
+            docs: ISO-8601 date the citizenship was acquired.
+          lostOn:
+            type: optional<string>
+            docs: ISO-8601 date the citizenship was lost; null = currently held.
+          isPrimary:
+            type: boolean
+            docs: The person's primary nationality (at most one active).
+      Residence:
+        docs: A person's effective-dated residence in a country/region (D-Geo). Locator data (pii:contact).
+        fields:
+          id: string
+          personId: string
+          country:
+            type: string
+            docs: ISO-3166-1 alpha-2 country code (geo registry).
+          region:
+            type: optional<string>
+            docs: Optional sub-national region / locality (free text).
+          validFrom:
+            type: string
+            docs: ISO-8601 date the residence began.
+          validTo:
+            type: optional<string>
+            docs: ISO-8601 date the residence ended; null = current.
+      PersonPage:
+        docs: A page of persons plus the opaque token for the next page (empty when exhausted).
+        fields:
+          persons: list<Person>
+          nextPageToken: optional<string>
+      CreatePersonRequest:
+        docs: Create a person — no account and no unit required (L-AccountOptional / D-PersonGlobal).
+        fields:
+          code: optional<string>
+          displayName: string
+          title: optional<string>
+          given: optional<string>
+          given2: optional<string>
+          surname: optional<string>
+          surnamePrefix: optional<string>
+          surname2: optional<string>
+          generation: optional<string>
+          credentials: optional<string>
+          preferred: optional<string>
+          birthdate: optional<string>
+          sex:
+            type: optional<string>
+            docs: ISO/IEC 5218 value; defaults to not_known when omitted.
+          countryOfBirth: optional<string>
+          attributes: optional<any>
+          rankId:
+            type: optional<string>
+            docs: Optional initial rank (validated against the rank scheme).
+      UpdatePersonRequest:
+        docs: |
+          Update a person's names (canonical + CLDR parts), birthdate, sex, country_of_birth, and
+          attributes. Omitted fields are unchanged; an empty string clears an optional name part.
+          `code` is immutable by convention and rank is set via setRank.
+        fields:
+          displayName: optional<string>
+          title: optional<string>
+          given: optional<string>
+          given2: optional<string>
+          surname: optional<string>
+          surnamePrefix: optional<string>
+          surname2: optional<string>
+          generation: optional<string>
+          credentials: optional<string>
+          preferred: optional<string>
+          birthdate: optional<string>
+          sex: optional<string>
+          countryOfBirth: optional<string>
+          attributes: optional<any>
+      SetRankRequest:
+        docs: Set or clear the person's one rank. An absent rankId clears it (D-Rank).
+        fields:
+          rankId:
+            type: optional<string>
+            docs: The URN RID of the rank to assign; omit to clear the person's rank.
+      DeactivateRequest:
+        docs: Begin reversible deactivation; opens a grace window (purgeAfter = now + the configured grace).
+        fields:
+          reason:
+            type: optional<string>
+            docs: Optional free-text reason recorded in the audit entry.
+      UpsertNameVariantRequest:
+        docs: Add or replace the name variant for a locale (keyed by (person, locale)).
+        fields:
+          locale: string
+          displayName: string
+          title: optional<string>
+          given: optional<string>
+          given2: optional<string>
+          surname: optional<string>
+          surnamePrefix: optional<string>
+          surname2: optional<string>
+          generation: optional<string>
+          credentials: optional<string>
+          preferred: optional<string>
+          isPrimary: optional<boolean>
+      UpsertCitizenshipRequest:
+        docs: Add or replace the active citizenship for a country (keyed by (person, country)).
+        fields:
+          country: string
+          basis:
+            type: optional<string>
+            docs: birth | descent | naturalization | other; defaults to other.
+          acquiredOn: optional<string>
+          lostOn: optional<string>
+          isPrimary: optional<boolean>
+      UpsertResidenceRequest:
+        docs: Add a residence row, or replace one when id is supplied.
+        fields:
+          id:
+            type: optional<string>
+            docs: The URN RID of an existing residence row to replace; omit to add a new row.
+          country: string
+          region: optional<string>
+          validFrom: string
+          validTo: optional<string>
+    errors:
+      PersonNotFound:
+        namespace: Person
+        code: NOT_FOUND
+        safe-args:
+          personId: string
+      PersonConflict:
+        docs: A unique constraint was violated — the external code is taken, or an active citizenship for the country already exists.
+        namespace: Person
+        code: CONFLICT
+        safe-args:
+          reason: string
+      PersonInvalid:
+        docs: The request is malformed (bad name/code/date/enum) or references an unknown rank, country, or locale.
+        namespace: Person
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
+      PersonLifecycleConflict:
+        docs: The lifecycle transition is not allowed from the current state (e.g. purge before the grace window, reactivate a person that is not deactivated).
+        namespace: Person
+        code: FAILED_PRECONDITION
+        safe-args:
+          reason: string
+services:
+  PersonService:
+    name: Person Service
+    package: com.palantir.oikumenea.person
+    base-path: /person/v1
+    default-auth: header
+    docs: |
+      The personnel directory (D-PersonGlobal). Reads gate on `person.read` via the read-scope rule
+      (D-PersonReadScope); writes on `person.create`/`person.update`/`person.rank.assign`/
+      `person.lifecycle`/`person.purge` — all enforced once authorization (M7) lands. Writes are
+      audited in-process (D-Audit). The module never reads rank to make a decision (D-Rank).
+    endpoints:
+      createPerson:
+        http: POST /persons
+        docs: Create a person (no account, no unit needed). Returns Person:PersonConflict if the code is taken.
+        args:
+          request: CreatePersonRequest
+        returns: Person
+      getPerson:
+        http: GET /persons/{personId}
+        docs: Read one person with its name variants, citizenships, and residences.
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: Person
+      updatePerson:
+        http: PUT /persons/{personId}
+        docs: Update names, birthdate, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpdatePersonRequest
+        returns: Person
+      listPersons:
+        http: GET /persons
+        docs: Search/list the directory, token-paginated. (The read-scope union is applied once authz lands, M7.)
+        args:
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: PersonPage
+      setRank:
+        http: PUT /persons/{personId}/rank
+        docs: Set or clear the person's one rank (a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: SetRankRequest
+        returns: Person
+      deactivatePerson:
+        http: POST /persons/{personId}/deactivate
+        docs: Begin reversible deactivation (opens the grace window before purge).
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: DeactivateRequest
+        returns: Person
+      reactivatePerson:
+        http: POST /persons/{personId}/reactivate
+        docs: Cancel deactivation within the grace window. Returns Person:PersonLifecycleConflict if not deactivated.
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: Person
+      purgePerson:
+        http: POST /persons/{personId}/purge
+        docs: |
+          Hard-erase PII after the grace window (idempotent): NULLs every PII column and removes
+          citizenship/residence/name-variant rows, keeping the id as a tombstone so audit history
+          stays intact. Returns Person:PersonLifecycleConflict before purgeAfter.
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: Person
+      upsertNameVariant:
+        http: PUT /persons/{personId}/name-variants
+        docs: Add or replace a locale name form (transliteration). Keyed by (person, locale).
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertNameVariantRequest
+        returns: NameVariant
+      deleteNameVariant:
+        http: DELETE /persons/{personId}/name-variants/{locale}
+        docs: Remove a name variant.
+        args:
+          personId:
+            type: string
+            param-type: path
+          locale:
+            type: string
+            param-type: path
+      listCitizenships:
+        http: GET /persons/{personId}/citizenships
+        docs: List a person's citizenships.
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<Citizenship>
+      upsertCitizenship:
+        http: PUT /persons/{personId}/citizenships
+        docs: Add or replace the active citizenship for a country. Returns Person:PersonInvalid for an unknown country.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertCitizenshipRequest
+        returns: Citizenship
+      deleteCitizenship:
+        http: DELETE /persons/{personId}/citizenships/{country}
+        docs: Remove a citizenship by country code.
+        args:
+          personId:
+            type: string
+            param-type: path
+          country:
+            type: string
+            param-type: path
+      listResidences:
+        http: GET /persons/{personId}/residences
+        docs: List a person's residence history.
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<Residence>
+      upsertResidence:
+        http: PUT /persons/{personId}/residences
+        docs: Add a residence row, or replace one when id is supplied. Returns Person:PersonInvalid for an unknown country.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertResidenceRequest
+        returns: Residence
+      deleteResidence:
+        http: DELETE /persons/{personId}/residences/{residenceId}
+        docs: Remove a residence row by id.
+        args:
+          personId:
+            type: string
+            param-type: path
+          residenceId:
+            type: string
+            param-type: path

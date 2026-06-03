@@ -21,6 +21,11 @@ admin-managed translations).
 
 ## Entities & aggregates
 
+**Ontology kinds** (D-Ontology; [registry](../ontology-mapping.md)) — **Objects:** `Locale` and
+`Translation` (the polymorphic `(entity_type, entity_id, field, locale) → text` row — a Link-like
+projection that deliberately carries **no FK**). **Actions:** `AddLocale`/`UpdateLocale`,
+`UpsertTranslations` — audited, `action__<type>` RID.
+
 - **Locale** — a supported language for the deployment: ISO 639-3 code, display name, enabled
   flag, default flag, ordering. Instance-admin-managed; seeded with `ukr` + `eng`.
 - **Translation** — one `(entity_type, entity_id, field, locale) → text` row: the localized
@@ -44,9 +49,9 @@ Conventions per [conventions.md](../architecture/conventions.md).
 
 **`i18n_translations`** (shared, polymorphic store)
 - `id` PK
-- `entity_type TEXT NOT NULL` — e.g. `unit`, `rank_category`, `rank_type`, `rank`, `position`,
-  `role`
-- `entity_id UUID NOT NULL` — the owning entity's id (polymorphic; no FK — see Invariants)
+- `entity_type TEXT NOT NULL` — e.g. `unit`, `graph`, `rank_category`, `rank_type`, `rank`,
+  `position`, `role`, `document_type`, `order_type`, `personal_code_scheme`, `country`
+- `entity_id TEXT NOT NULL` — the owning entity's id (polymorphic; no FK — see Invariants)
 - `field TEXT NOT NULL` — the translatable field key, e.g. `name`, `title`, `description`
 - `locale TEXT NOT NULL REFERENCES i18n_locales(code) ON UPDATE RESTRICT`
 - `text TEXT NOT NULL`
@@ -86,17 +91,23 @@ in-process via the localization application service (below).
 
 ## Dependencies
 
-- **Calls:** [platform](platform.md) for infra; subscribes to other modules' delete events to
-  purge orphaned translations.
-- **Called by:** [tenant](tenant.md), [rank](rank.md), [membership](membership.md) (positions),
-  [authorization](authorization.md) (roles) — in-process, to assemble localized responses and to
-  validate `locale` codes. [audit](audit.md) records locale/translation changes.
+- **Calls:** [platform](platform.md) for infra; subscribes to other modules' **delete/retire**
+  events — units, graphs, ranks, positions, roles, **countries**, and the **document-type /
+  order-type / personal-code-scheme** catalogs (which *retire* rather than hard-delete) — to purge
+  orphaned translations.
+- **Called by:** [tenant](tenant.md) (units, graphs), [rank](rank.md),
+  [membership](membership.md) (positions), [authorization](authorization.md) (roles),
+  [document](document.md) (document types, personal-code schemes), [order](order.md) (order types),
+  [platform](platform.md) (country registry names) — in-process, to assemble localized responses and
+  to validate `locale` codes. [audit](audit.md) records locale/translation changes.
 
 ## Authorization touchpoints
 
-Defines/gates (all in authorization's code catalog): `locale.read`, `locale.manage`
-(**instance-scope**), `translation.read`, `translation.manage` (**instance-scope**). Managing
-languages and translations is an instance-admin capability — "super admin manages it."
+Defines/gates (all in authorization's code catalog): the reads `locale.read`, `translation.read`
+(granted via the `unit-reader` base role, D-BaseRoles) and the **instance-scope** writes
+`locale.manage`, `translation.manage`. Managing languages and translations is an instance-admin
+capability ("super admin" is colloquial for the instance admin — there is no separate super-admin
+entity, OQ-1).
 
 ## Invariants & safety
 
@@ -107,8 +118,9 @@ languages and translations is an instance-admin capability — "super admin mana
 - **No domain language is hardcoded-excluded** — drafts' "no Russian locale" rule is dropped;
   the operator chooses (D-i18n).
 - **Polymorphic `entity_id` has no DB FK** (it spans many tables). Integrity is kept by: the
-  owning module emitting a delete event that localization consumes to remove that entity's
-  translations; orphan translations are otherwise harmless (never read without their entity).
+  owning module emitting a delete event (or, for the document-type / order-type catalogs, a
+  **retire** event) that localization consumes to remove that entity's translations; orphan
+  translations are otherwise harmless (never read without their entity).
 - Translations reference a valid, existing locale `code`.
 
 ## Open seams / future

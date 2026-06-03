@@ -1,0 +1,9 @@
+# gödel build output
+/out/
+
+# local editor / OS noise
+*.swp
+.DS_Store
+
+# local-dev tooling connection/secrets (commit .env.example instead)
+.env
