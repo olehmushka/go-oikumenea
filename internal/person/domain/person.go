@@ -25,17 +25,17 @@ const ISODate = "2006-01-02"
 // Sentinel errors mapped to Conjure SerializableErrors by the transport layer. The DB constraints
 // (partial-unique code/citizenship, RESTRICT/CASCADE FKs) enforce the same shapes as a backstop.
 var (
-	ErrNotFound             = errors.New("person not found")
-	ErrCodeConflict         = errors.New("person code already exists")
-	ErrCitizenshipConflict  = errors.New("active citizenship for this country already exists")
-	ErrInvalid              = errors.New("invalid person request")
-	ErrUnknownRank          = errors.New("rank does not exist")
-	ErrUnknownCountry       = errors.New("country does not exist")
-	ErrUnknownLocale        = errors.New("locale does not exist")
-	ErrNameVariantNotFound  = errors.New("name variant not found")
-	ErrCitizenshipNotFound  = errors.New("citizenship not found")
-	ErrResidenceNotFound    = errors.New("residence not found")
-	ErrLifecycle            = errors.New("invalid lifecycle transition")
+	ErrNotFound            = errors.New("person not found")
+	ErrCodeConflict        = errors.New("person code already exists")
+	ErrCitizenshipConflict = errors.New("active citizenship for this country already exists")
+	ErrInvalid             = errors.New("invalid person request")
+	ErrUnknownRank         = errors.New("rank does not exist")
+	ErrUnknownCountry      = errors.New("country does not exist")
+	ErrUnknownLocale       = errors.New("locale does not exist")
+	ErrNameVariantNotFound = errors.New("name variant not found")
+	ErrCitizenshipNotFound = errors.New("citizenship not found")
+	ErrResidenceNotFound   = errors.New("residence not found")
+	ErrLifecycle           = errors.New("invalid lifecycle transition")
 )
 
 // Status is the person lifecycle state (D-PersonReadScope reversibility window).

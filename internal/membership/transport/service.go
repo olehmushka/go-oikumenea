@@ -6,10 +6,15 @@
 //
 // A position `title` is a translatable label returned as a `locale -> text` map (assembled from the
 // i18n store under the "title" field); a membership references its person/unit/position by RID
-// (clients resolve names via the owning services). Authorization is intentionally not yet enforced:
-// the endpoints declare `auth: header` so the bearer token is parsed, but the unit-scoped permission
-// checks and the shadow-visibility gate land once authorization (M7) + identity-federation (M8) do
-// (docs/modules/membership.md). The handlers receive the token and ignore it for now.
+// (clients resolve names via the owning services).
+//
+// Authorization (M7): unit-keyed endpoints (create/list positions, create membership, list members)
+// gate on their `position.*`/`membership.*` permission AT the unit via the PEP; id-keyed endpoints
+// (get/update/abolish a position, fill/end a membership, list a person's memberships) have no unit in
+// the request, so they use the coarse "holds the permission anywhere" form pending the load-then-check
+// + shadow gate tightening (a documented follow-up, cleanest once M8 supplies a real subject). The
+// bearer token carries the acting subject (interim: token == person RID; see
+// internal/authorization/pep).
 package transport
 
 import (
@@ -17,6 +22,8 @@ import (
 	"errors"
 	"time"
 
+	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
+	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
 	membershipapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/membership"
 	locapp "github.com/olegamysk/go-oikumenea/internal/localization/application"
 	"github.com/olegamysk/go-oikumenea/internal/membership/application"
@@ -39,12 +46,13 @@ const positionEntity = "position"
 type Service struct {
 	app *application.Service
 	loc *locapp.Service
+	pep *pep.Enforcer
 }
 
-// NewService builds the transport adapter over the membership application service and the
-// localization service (for title-map assembly).
-func NewService(app *application.Service, loc *locapp.Service) Service {
-	return Service{app: app, loc: loc}
+// NewService builds the transport adapter over the membership application service, the localization
+// service (for title-map assembly), and the PEP enforcer.
+func NewService(app *application.Service, loc *locapp.Service, enforcer *pep.Enforcer) Service {
+	return Service{app: app, loc: loc, pep: enforcer}
 }
 
 // compile-time assertion that the transport satisfies the generated server interface.
@@ -52,7 +60,10 @@ var _ membershipapi.MembershipService = Service{}
 
 // ---------------------------------------------------------------- positions
 
-func (s Service) CreatePosition(ctx context.Context, _ bearertoken.Token, unitID string, req membershipapi.CreatePositionRequest) (membershipapi.Position, error) {
+func (s Service) CreatePosition(ctx context.Context, token bearertoken.Token, unitID string, req membershipapi.CreatePositionRequest) (membershipapi.Position, error) {
+	if err := s.pep.Require(ctx, token, string(authzdomain.PermPositionCreate), unitID); err != nil {
+		return membershipapi.Position{}, err
+	}
 	created, err := s.app.CreatePosition(ctx, domain.Position{
 		UnitID:         unitID,
 		Code:           req.Code,
@@ -66,7 +77,10 @@ func (s Service) CreatePosition(ctx context.Context, _ bearertoken.Token, unitID
 	return s.positionToAPI(ctx, created)
 }
 
-func (s Service) ListPositions(ctx context.Context, _ bearertoken.Token, unitID string, state *string, pageSize *int, pageToken *string) (membershipapi.PositionPage, error) {
+func (s Service) ListPositions(ctx context.Context, token bearertoken.Token, unitID string, state *string, pageSize *int, pageToken *string) (membershipapi.PositionPage, error) {
+	if err := s.pep.Require(ctx, token, string(authzdomain.PermPositionRead), unitID); err != nil {
+		return membershipapi.PositionPage{}, err
+	}
 	filter, err := parseFilter(state)
 	if err != nil {
 		return membershipapi.PositionPage{}, s.mapError(ctx, err, errCtx{unitID: unitID})
@@ -82,7 +96,10 @@ func (s Service) ListPositions(ctx context.Context, _ bearertoken.Token, unitID 
 	return membershipapi.PositionPage{Positions: positions, NextPageToken: tokenPtr(page.NextPageToken)}, nil
 }
 
-func (s Service) GetPosition(ctx context.Context, _ bearertoken.Token, positionID string) (membershipapi.Position, error) {
+func (s Service) GetPosition(ctx context.Context, token bearertoken.Token, positionID string) (membershipapi.Position, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermPositionRead)); err != nil {
+		return membershipapi.Position{}, err
+	}
 	p, err := s.app.GetPosition(ctx, positionID)
 	if err != nil {
 		return membershipapi.Position{}, s.mapError(ctx, err, errCtx{positionID: positionID})
@@ -90,7 +107,10 @@ func (s Service) GetPosition(ctx context.Context, _ bearertoken.Token, positionI
 	return s.positionToAPI(ctx, p)
 }
 
-func (s Service) UpdatePosition(ctx context.Context, _ bearertoken.Token, positionID string, req membershipapi.UpdatePositionRequest) (membershipapi.Position, error) {
+func (s Service) UpdatePosition(ctx context.Context, token bearertoken.Token, positionID string, req membershipapi.UpdatePositionRequest) (membershipapi.Position, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermPositionUpdate)); err != nil {
+		return membershipapi.Position{}, err
+	}
 	updated, err := s.app.UpdatePosition(ctx, positionID, domain.PositionPatch{
 		Title:          req.Title,
 		RequiredRankID: req.RequiredRankId,
@@ -102,7 +122,10 @@ func (s Service) UpdatePosition(ctx context.Context, _ bearertoken.Token, positi
 	return s.positionToAPI(ctx, updated)
 }
 
-func (s Service) AbolishPosition(ctx context.Context, _ bearertoken.Token, positionID string) (membershipapi.Position, error) {
+func (s Service) AbolishPosition(ctx context.Context, token bearertoken.Token, positionID string) (membershipapi.Position, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermPositionUpdate)); err != nil {
+		return membershipapi.Position{}, err
+	}
 	abolished, err := s.app.AbolishPosition(ctx, positionID)
 	if err != nil {
 		return membershipapi.Position{}, s.mapError(ctx, err, errCtx{positionID: positionID})
@@ -112,7 +135,10 @@ func (s Service) AbolishPosition(ctx context.Context, _ bearertoken.Token, posit
 
 // ---------------------------------------------------------------- memberships
 
-func (s Service) CreateMembership(ctx context.Context, _ bearertoken.Token, req membershipapi.CreateMembershipRequest) (membershipapi.Membership, error) {
+func (s Service) CreateMembership(ctx context.Context, token bearertoken.Token, req membershipapi.CreateMembershipRequest) (membershipapi.Membership, error) {
+	if err := s.pep.Require(ctx, token, string(authzdomain.PermMembershipCreate), req.UnitId); err != nil {
+		return membershipapi.Membership{}, err
+	}
 	created, err := s.app.CreateMembership(ctx, domain.Membership{
 		PersonID:      req.PersonId,
 		UnitID:        req.UnitId,
@@ -126,7 +152,10 @@ func (s Service) CreateMembership(ctx context.Context, _ bearertoken.Token, req 
 	return toAPIMembership(created), nil
 }
 
-func (s Service) FillPosition(ctx context.Context, _ bearertoken.Token, positionID string, req membershipapi.FillPositionRequest) (membershipapi.Membership, error) {
+func (s Service) FillPosition(ctx context.Context, token bearertoken.Token, positionID string, req membershipapi.FillPositionRequest) (membershipapi.Membership, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermMembershipCreate)); err != nil {
+		return membershipapi.Membership{}, err
+	}
 	created, err := s.app.FillPosition(ctx, positionID, req.PersonId, derefOr(req.OrderItemId, ""), dtVal(req.EffectiveFrom))
 	if err != nil {
 		return membershipapi.Membership{}, s.mapError(ctx, err, errCtx{positionID: positionID})
@@ -134,7 +163,10 @@ func (s Service) FillPosition(ctx context.Context, _ bearertoken.Token, position
 	return toAPIMembership(created), nil
 }
 
-func (s Service) EndMembership(ctx context.Context, _ bearertoken.Token, membershipID string, req membershipapi.EndMembershipRequest) (membershipapi.Membership, error) {
+func (s Service) EndMembership(ctx context.Context, token bearertoken.Token, membershipID string, req membershipapi.EndMembershipRequest) (membershipapi.Membership, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermMembershipUpdate)); err != nil {
+		return membershipapi.Membership{}, err
+	}
 	ended, err := s.app.EndMembership(ctx, membershipID, derefOr(req.OrderItemId, ""), dtVal(req.EffectiveTo))
 	if err != nil {
 		return membershipapi.Membership{}, s.mapError(ctx, err, errCtx{membershipID: membershipID})
@@ -142,7 +174,10 @@ func (s Service) EndMembership(ctx context.Context, _ bearertoken.Token, members
 	return toAPIMembership(ended), nil
 }
 
-func (s Service) ListMembers(ctx context.Context, _ bearertoken.Token, unitID string, pageSize *int, pageToken *string) (membershipapi.MembershipPage, error) {
+func (s Service) ListMembers(ctx context.Context, token bearertoken.Token, unitID string, pageSize *int, pageToken *string) (membershipapi.MembershipPage, error) {
+	if err := s.pep.Require(ctx, token, string(authzdomain.PermMembershipRead), unitID); err != nil {
+		return membershipapi.MembershipPage{}, err
+	}
 	page, err := s.app.ListMembers(ctx, unitID, derefOr(pageSize, 0), derefOr(pageToken, ""))
 	if err != nil {
 		return membershipapi.MembershipPage{}, s.mapError(ctx, err, errCtx{unitID: unitID})
@@ -150,7 +185,10 @@ func (s Service) ListMembers(ctx context.Context, _ bearertoken.Token, unitID st
 	return toAPIMembershipPage(page), nil
 }
 
-func (s Service) ListPersonMemberships(ctx context.Context, _ bearertoken.Token, personID string, pageSize *int, pageToken *string) (membershipapi.MembershipPage, error) {
+func (s Service) ListPersonMemberships(ctx context.Context, token bearertoken.Token, personID string, pageSize *int, pageToken *string) (membershipapi.MembershipPage, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermMembershipRead)); err != nil {
+		return membershipapi.MembershipPage{}, err
+	}
 	page, err := s.app.ListPersonMemberships(ctx, personID, derefOr(pageSize, 0), derefOr(pageToken, ""))
 	if err != nil {
 		return membershipapi.MembershipPage{}, s.mapError(ctx, err, errCtx{})

@@ -14,6 +14,7 @@ package membership
 import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
+	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
 	membershipapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/membership"
 	locapp "github.com/olegamysk/go-oikumenea/internal/localization/application"
 	"github.com/olegamysk/go-oikumenea/internal/membership/adapters"
@@ -30,11 +31,11 @@ import (
 // routes onto the witchcraft router. It seeds nothing (positions/memberships are created through the
 // API) and owns no resources of its own (the pool is owned by platform), so there is no
 // module-level cleanup.
-func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, loc *locapp.Service) (*application.Service, error) {
+func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, loc *locapp.Service, enforcer *pep.Enforcer) (*application.Service, error) {
 	repoFor := func(conn db.DBTX) domain.Repository { return adapters.NewRepository(conn) }
 	svc := application.NewService(pool, repoFor, audit)
 
-	if err := membershipapi.RegisterRoutesMembershipService(info.Router, transport.NewService(svc, loc)); err != nil {
+	if err := membershipapi.RegisterRoutesMembershipService(info.Router, transport.NewService(svc, loc, enforcer)); err != nil {
 		return nil, werror.Wrap(err, "register membership service routes")
 	}
 	return svc, nil

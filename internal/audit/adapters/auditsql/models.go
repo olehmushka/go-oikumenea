@@ -37,6 +37,73 @@ type OikumeneaAuditLog struct {
 	Outcome string
 }
 
+type OikumeneaAuthzInstanceAdmin struct {
+	// pii:none
+	ID string
+	// pii:basic
+	PersonID string
+	// pii:none
+	GrantedBy pgtype.Text
+	// pii:none
+	GrantedAt pgtype.Timestamptz
+	// pii:none
+	RevokedAt pgtype.Timestamptz
+	// pii:none
+	RevokedBy pgtype.Text
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+type OikumeneaAuthzRole struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	Description pgtype.Text
+	// pii:none
+	IsBase    bool
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaAuthzRoleAssignment struct {
+	// pii:none
+	ID string
+	// pii:basic
+	SubjectPersonID string
+	// pii:none
+	RoleID string
+	// pii:basic
+	TargetUnitID string
+	// pii:none
+	Scope string
+	// pii:none
+	GraphID pgtype.Text
+	// pii:none
+	GrantedBy pgtype.Text
+	// pii:none
+	GrantedAt pgtype.Timestamptz
+	// pii:none
+	RevokedAt pgtype.Timestamptz
+	// pii:none
+	RevokedBy pgtype.Text
+	// pii:none
+	ExpiresAt pgtype.Timestamptz
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+type OikumeneaAuthzRolePermission struct {
+	// pii:none
+	RoleID string
+	// pii:none
+	PermissionCode string
+}
+
 type OikumeneaGeoCountry struct {
 	// pii:none
 	Code string

@@ -9,6 +9,7 @@ package rank
 import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
+	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
 	rankapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/rank"
 	locapp "github.com/olegamysk/go-oikumenea/internal/localization/application"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
@@ -24,11 +25,11 @@ import (
 // in-transaction — D-Audit), and the localization service (name-map assembly), and registers its
 // routes onto the witchcraft router. It owns no resources of its own (the pool is owned by platform),
 // so there is no module-level cleanup.
-func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, loc *locapp.Service) (*application.Service, error) {
+func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, loc *locapp.Service, enforcer *pep.Enforcer) (*application.Service, error) {
 	repoFor := func(conn db.DBTX) domain.Repository { return adapters.NewRepository(conn) }
 	svc := application.NewService(pool, repoFor, audit)
 
-	if err := rankapi.RegisterRoutesRankService(info.Router, transport.NewService(svc, loc)); err != nil {
+	if err := rankapi.RegisterRoutesRankService(info.Router, transport.NewService(svc, loc, enforcer)); err != nil {
 		return nil, werror.Wrap(err, "register rank service routes")
 	}
 	return svc, nil

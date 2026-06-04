@@ -9,6 +9,8 @@ import (
 	"os"
 
 	"github.com/olegamysk/go-oikumenea/internal/audit"
+	"github.com/olegamysk/go-oikumenea/internal/authorization"
+	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
 	"github.com/olegamysk/go-oikumenea/internal/localization"
 	"github.com/olegamysk/go-oikumenea/internal/membership"
 	"github.com/olegamysk/go-oikumenea/internal/person"
@@ -65,35 +67,49 @@ func initServer(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
 		return nil, err
 	}
 
-	auditSvc, err := audit.Register(info, pool)
+	// The PEP enforcer is created UNBOUND and threaded into every module's transport: the PDP it
+	// fronts needs tenant's closure, so authorization is built last (after tenant) and binds the
+	// enforcer there — all within this InitFunc, before any request is served (see
+	// internal/authorization/pep). Every guarded endpoint resolves its subject + decision through it.
+	enforcer := pep.NewUnbound()
+
+	auditSvc, err := audit.Register(info, pool, enforcer)
 	if err != nil {
 		cleanup()
 		return nil, err
 	}
 
-	locSvc, err := localization.Register(info, pool, auditSvc)
+	locSvc, err := localization.Register(info, pool, auditSvc, enforcer)
 	if err != nil {
 		cleanup()
 		return nil, err
 	}
 
-	if _, err := tenant.Register(info, pool, auditSvc, locSvc); err != nil {
-		cleanup()
-		return nil, err
-	}
-
-	rankSvc, err := rank.Register(info, pool, auditSvc, locSvc)
+	tenantSvc, err := tenant.Register(info, pool, auditSvc, locSvc, enforcer)
 	if err != nil {
 		cleanup()
 		return nil, err
 	}
 
-	if _, err := person.Register(info, pool, auditSvc, locSvc, rankSvc); err != nil {
+	rankSvc, err := rank.Register(info, pool, auditSvc, locSvc, enforcer)
+	if err != nil {
 		cleanup()
 		return nil, err
 	}
 
-	if _, err := membership.Register(info, pool, auditSvc, locSvc); err != nil {
+	if _, err := person.Register(info, pool, auditSvc, locSvc, rankSvc, enforcer); err != nil {
+		cleanup()
+		return nil, err
+	}
+
+	if _, err := membership.Register(info, pool, auditSvc, locSvc, enforcer); err != nil {
+		cleanup()
+		return nil, err
+	}
+
+	// Authorization last: it builds the PDP over tenant's closure, seeds the base roles, and binds
+	// the enforcer the modules above already hold (D-BaseRoles / D-RIDSeeding).
+	if _, err := authorization.Register(info, pool, auditSvc, locSvc, tenantSvc, enforcer); err != nil {
 		cleanup()
 		return nil, err
 	}
