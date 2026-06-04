@@ -278,6 +278,9 @@ type Repository interface {
 	// persons
 	InsertPerson(ctx context.Context, p Person) (Person, error)
 	GetPerson(ctx context.Context, id string) (Person, error)
+	// GetActivePersonByCode resolves an active person by stable code (JIT/bootstrap); ErrNotFound
+	// when none matches.
+	GetActivePersonByCode(ctx context.Context, code string) (Person, error)
 	UpdatePerson(ctx context.Context, id string, patch PersonPatch) (Person, error)
 	ListPersons(ctx context.Context, after string, limit int) ([]Person, error)
 	SetRank(ctx context.Context, id string, rankID *string) (Person, error)

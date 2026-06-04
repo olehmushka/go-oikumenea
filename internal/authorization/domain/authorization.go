@@ -216,6 +216,9 @@ type Repository interface {
 	GetInstanceAdmin(ctx context.Context, id string) (InstanceAdmin, error)
 	RevokeInstanceAdmin(ctx context.Context, id, revokedBy string) (InstanceAdmin, error)
 	IsActiveInstanceAdmin(ctx context.Context, personID string) (bool, error)
+	// HasActiveInstanceAdmin reports whether ANY active instance admin exists (bootstrap idempotency
+	// gate — D-Bootstrap).
+	HasActiveInstanceAdmin(ctx context.Context) (bool, error)
 }
 
 func wrapInvalid(base error, msg string) error { return errors.Join(base, errors.New(msg)) }

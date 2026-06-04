@@ -8,6 +8,37 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type OikumeneaAccountAccount struct {
+	// pii:none
+	ID string
+	// pii:basic
+	PersonID string
+	// pii:contact
+	Email pgtype.Text
+	// pii:none
+	Status string
+	// secret
+	PasswordHash pgtype.Text
+	// pii:none
+	MfaEnrolledAt pgtype.Timestamptz
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	DeletedAt     pgtype.Timestamptz
+}
+
+type OikumeneaAccountExternalIdentity struct {
+	// pii:none
+	ID string
+	// pii:none
+	AccountID string
+	// pii:none
+	Issuer string
+	// pii:basic
+	Subject string
+	// pii:none
+	CreatedAt pgtype.Timestamptz
+}
+
 type OikumeneaAuditLog struct {
 	// pii:none
 	ID string

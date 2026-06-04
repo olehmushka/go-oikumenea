@@ -168,7 +168,7 @@ func (s Service) GrantAssignment(ctx context.Context, token bearertoken.Token, r
 		TargetUnitID:    req.TargetUnitId,
 		Scope:           domain.Scope(req.Scope),
 		GraphCode:       derefOr(req.Graph, ""),
-		GrantedBy:       pep.Subject(token),
+		GrantedBy:       pep.Subject(ctx),
 		ExpiresAt:       dtPtr(req.ExpiresAt),
 	})
 	if err != nil {
@@ -178,7 +178,7 @@ func (s Service) GrantAssignment(ctx context.Context, token bearertoken.Token, r
 }
 
 func (s Service) RevokeAssignment(ctx context.Context, token bearertoken.Token, assignmentID string) (authzapi.Assignment, error) {
-	revoked, err := s.app.RevokeAssignment(ctx, assignmentID, pep.Subject(token))
+	revoked, err := s.app.RevokeAssignment(ctx, assignmentID, pep.Subject(ctx))
 	if err != nil {
 		return authzapi.Assignment{}, s.mapError(ctx, err)
 	}
@@ -218,7 +218,7 @@ func (s Service) GrantInstanceAdmin(ctx context.Context, token bearertoken.Token
 	if err := s.pep.Require(ctx, token, string(domain.PermInstanceAdminManage), ""); err != nil {
 		return authzapi.InstanceAdmin{}, err
 	}
-	created, err := s.app.GrantInstanceAdmin(ctx, req.PersonId, pep.Subject(token))
+	created, err := s.app.GrantInstanceAdmin(ctx, req.PersonId, pep.Subject(ctx))
 	if err != nil {
 		return authzapi.InstanceAdmin{}, s.mapError(ctx, err)
 	}
@@ -229,7 +229,7 @@ func (s Service) RevokeInstanceAdmin(ctx context.Context, token bearertoken.Toke
 	if err := s.pep.Require(ctx, token, string(domain.PermInstanceAdminManage), ""); err != nil {
 		return authzapi.InstanceAdmin{}, err
 	}
-	revoked, err := s.app.RevokeInstanceAdmin(ctx, instanceAdminID, pep.Subject(token))
+	revoked, err := s.app.RevokeInstanceAdmin(ctx, instanceAdminID, pep.Subject(ctx))
 	if err != nil {
 		return authzapi.InstanceAdmin{}, s.mapError(ctx, err)
 	}

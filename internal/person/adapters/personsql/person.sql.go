@@ -155,6 +155,44 @@ func (q *Queries) DeleteResidence(ctx context.Context, arg DeleteResidenceParams
 	return id, err
 }
 
+const getActivePersonByCode = `-- name: GetActivePersonByCode :one
+SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, rank_id, status, deactivated_at, purge_after, created_at, updated_at, deleted_at FROM oikumenea.person_persons
+WHERE code = $1 AND status = 'active' AND deleted_at IS NULL
+`
+
+// Look up an active person by their stable `code` (D-Code). Used by identity-federation for
+// just-in-time link-on-match (D-JIT) and the first-admin bootstrap's find-or-create (D-Bootstrap).
+func (q *Queries) GetActivePersonByCode(ctx context.Context, code pgtype.Text) (OikumeneaPersonPerson, error) {
+	row := q.db.QueryRow(ctx, getActivePersonByCode, code)
+	var i OikumeneaPersonPerson
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.DisplayName,
+		&i.Title,
+		&i.Given,
+		&i.Given2,
+		&i.Surname,
+		&i.SurnamePrefix,
+		&i.Surname2,
+		&i.Generation,
+		&i.Credentials,
+		&i.Preferred,
+		&i.Birthdate,
+		&i.Sex,
+		&i.CountryOfBirth,
+		&i.Attributes,
+		&i.RankID,
+		&i.Status,
+		&i.DeactivatedAt,
+		&i.PurgeAfter,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const getPerson = `-- name: GetPerson :one
 SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, rank_id, status, deactivated_at, purge_after, created_at, updated_at, deleted_at FROM oikumenea.person_persons WHERE id = $1 AND deleted_at IS NULL
 `

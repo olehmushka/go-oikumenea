@@ -15,3 +15,30 @@ environment: local
 # Operator-owned PostgreSQL (L-OperatorDB). Matches docker-compose.dev.yml / the verification DB.
 postgres:
   dsn: "postgres://postgres:dev@localhost:5432/postgres?sslmode=disable"
+
+# Inbound-token validation (identity-federation.md, M8). Authentication is delegated (L-AuthzOnly):
+# production issuers use OIDC discovery + JWKS (type: oidc); this local-dev issuer uses a symmetric
+# HS256 key so dev/tests can mint tokens. The hmac-key is ECV-encrypted in real deployments.
+idp:
+  clock-skew-seconds: 60
+  jit:
+    enabled: false           # default reject-unknown (D-JIT). When true, link-on-match via `claim`.
+    claim: person_code       # token claim mapped to person.code for link-on-match
+  issuers:
+    - issuer: "https://local-dev.oikumenea.test"
+      type: hs256
+      audience: oikumenea
+      hmac-key: "local-dev-insecure-signing-key-change-me"
+
+# Identity-federation account knobs (identity-federation.md). identity-linking-enabled gates linking
+# ADDITIONAL login points to one account (default true).
+account:
+  identity-linking-enabled: true
+
+# First instance admin seeded at first boot (D-Bootstrap), bound to the local-dev IdP identity above.
+# Idempotent: skipped once any instance admin exists. Remove/replace for real deployments.
+bootstrap-admin:
+  issuer: "https://local-dev.oikumenea.test"
+  subject: "local-admin"
+  display-name: "Local Admin"
+  person-code: "admin"

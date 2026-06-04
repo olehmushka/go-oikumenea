@@ -151,3 +151,10 @@ SELECT EXISTS(
   SELECT 1 FROM oikumenea.authz_instance_admins
   WHERE person_id = @person_id AND revoked_at IS NULL
 ) AS is_admin;
+
+-- name: HasActiveInstanceAdmin :one
+-- Whether ANY active instance admin exists. Gates the idempotent first-admin bootstrap (D-Bootstrap):
+-- the seed runs only when no instance admin exists yet (or under an explicit --force).
+SELECT EXISTS(
+  SELECT 1 FROM oikumenea.authz_instance_admins WHERE revoked_at IS NULL
+) AS has_admin;

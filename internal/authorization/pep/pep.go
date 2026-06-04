@@ -1,13 +1,15 @@
 // Package pep is the Policy Enforcement Point seam every module's transport calls before a guarded
-// operation. It resolves the acting subject from the request's bearer token, asks the authorization
-// PDP (in-process), and returns the shared Conjure Authorization:PermissionDenied on denial. Putting
-// the subject resolution + denial mapping here keeps it in ONE place so identity-federation (M8) can
-// harden it without touching any call site.
+// operation. It resolves the acting subject from the request CONTEXT, asks the authorization PDP
+// (in-process), and returns the shared Conjure Authorization:PermissionDenied on denial. Putting the
+// subject resolution + denial mapping here keeps it in ONE place.
 //
-// INTERIM (M7): the bearer token's raw value is treated as the subject person RID. There is no
-// implicit "authenticated ⇒ may act" exemption — a missing/empty token is denied (read is an
-// explicit grant; D-BaseRoles). M8 replaces Subject with OIDC/JWKS validation → person mapping
-// (issuer/subject → account → person); the Require/Subject call sites are unchanged.
+// SUBJECT RESOLUTION (M8): the acting person RID is read from the request context via pkg/authn. The
+// identity-federation validation middleware (OIDC/JWKS) verifies the inbound token, maps
+// (issuer, subject) → account → person, and attaches the resolved subject there
+// (identity-federation.md step 4). There is no implicit "authenticated ⇒ may act" exemption — an
+// absent subject is denied (read is an explicit grant; D-BaseRoles). The `token` parameter is retained
+// on the Require* methods purely for call-site stability (the M7 transports already thread it
+// through); the subject now comes from the context, so the parameter is unused.
 package pep
 
 import (
@@ -17,6 +19,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/authorization/application"
 	"github.com/olegamysk/go-oikumenea/internal/authorization/domain"
 	authzapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/authorization"
+	"github.com/olegamysk/go-oikumenea/pkg/authn"
 	"github.com/palantir/pkg/bearertoken"
 )
 
@@ -39,14 +42,16 @@ func NewUnbound() *Enforcer { return &Enforcer{} }
 // Bind wires the authorization service into a previously-unbound Enforcer. Called once at boot.
 func (e *Enforcer) Bind(svc *application.Service) { e.svc = svc }
 
-// Subject resolves the acting person RID from the bearer token (INTERIM: the token value IS the RID).
-// Returns "" when no token is present.
-func Subject(token bearertoken.Token) string { return string(token) }
+// Subject resolves the acting person RID from the request context (the subject the
+// identity-federation middleware attached via pkg/authn). Returns "" when the request carries no
+// authenticated subject. The authorization transport reads this for grant/revoke provenance
+// (granted_by / revoked_by).
+func Subject(ctx context.Context) string { return authn.PersonID(ctx) }
 
-// Require enforces `action` at `unitID` for the token's subject. unitID is "" for instance-scope
+// Require enforces `action` at `unitID` for the request's subject. unitID is "" for instance-scope
 // actions. Returns Authorization:PermissionDenied when the subject is absent or the PDP denies.
 func (e *Enforcer) Require(ctx context.Context, token bearertoken.Token, action, unitID string) error {
-	subject := Subject(token)
+	subject := Subject(ctx)
 	if subject == "" {
 		return authzapi.NewPermissionDenied(action)
 	}
@@ -64,7 +69,7 @@ func (e *Enforcer) Require(ctx context.Context, token bearertoken.Token, action,
 // broad unit.edges.manage. Returns Authorization:PermissionDenied (naming the first action) when none
 // pass.
 func (e *Enforcer) RequireAny(ctx context.Context, token bearertoken.Token, unitID string, actions ...string) error {
-	subject := Subject(token)
+	subject := Subject(ctx)
 	if subject == "" || len(actions) == 0 {
 		return authzapi.NewPermissionDenied(firstOr(actions))
 	}
@@ -90,7 +95,7 @@ func firstOr(actions []string) string {
 // RequireAnywhere enforces that the token's subject can satisfy `action` at some unit (or on the
 // instance plane) — the gate for instance-global reads whose resource is not unit-keyed.
 func (e *Enforcer) RequireAnywhere(ctx context.Context, token bearertoken.Token, action string) error {
-	subject := Subject(token)
+	subject := Subject(ctx)
 	if subject == "" {
 		return authzapi.NewPermissionDenied(action)
 	}

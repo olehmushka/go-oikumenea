@@ -71,6 +71,20 @@ func (r *Repository) GetPerson(ctx context.Context, id string) (domain.Person, e
 	return toPerson(row), nil
 }
 
+// GetActivePersonByCode looks up an active person by their stable `code` (used by
+// identity-federation JIT link-on-match and the first-admin bootstrap). ErrNotFound when no active
+// person carries that code.
+func (r *Repository) GetActivePersonByCode(ctx context.Context, code string) (domain.Person, error) {
+	row, err := r.q.GetActivePersonByCode(ctx, pgtype.Text{String: code, Valid: true})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Person{}, domain.ErrNotFound
+		}
+		return domain.Person{}, err
+	}
+	return toPerson(row), nil
+}
+
 func (r *Repository) UpdatePerson(ctx context.Context, id string, patch domain.PersonPatch) (domain.Person, error) {
 	row, err := r.q.UpdatePerson(ctx, personsql.UpdatePersonParams{
 		DisplayName:    textPtr(patch.DisplayName),

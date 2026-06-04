@@ -215,6 +215,21 @@ func (q *Queries) GetRolePermissions(ctx context.Context, roleID string) ([]stri
 	return items, nil
 }
 
+const hasActiveInstanceAdmin = `-- name: HasActiveInstanceAdmin :one
+SELECT EXISTS(
+  SELECT 1 FROM oikumenea.authz_instance_admins WHERE revoked_at IS NULL
+) AS has_admin
+`
+
+// Whether ANY active instance admin exists. Gates the idempotent first-admin bootstrap (D-Bootstrap):
+// the seed runs only when no instance admin exists yet (or under an explicit --force).
+func (q *Queries) HasActiveInstanceAdmin(ctx context.Context) (bool, error) {
+	row := q.db.QueryRow(ctx, hasActiveInstanceAdmin)
+	var has_admin bool
+	err := row.Scan(&has_admin)
+	return has_admin, err
+}
+
 const insertAssignment = `-- name: InsertAssignment :one
 
 INSERT INTO oikumenea.authz_role_assignments

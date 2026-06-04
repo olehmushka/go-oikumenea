@@ -263,6 +263,12 @@ func (r *Repository) IsActiveInstanceAdmin(ctx context.Context, personID string)
 	return r.q.IsActiveInstanceAdmin(ctx, personID)
 }
 
+// HasActiveInstanceAdmin reports whether ANY active instance admin exists — the idempotency gate for
+// the first-admin bootstrap (D-Bootstrap).
+func (r *Repository) HasActiveInstanceAdmin(ctx context.Context) (bool, error) {
+	return r.q.HasActiveInstanceAdmin(ctx)
+}
+
 // ---------------------------------------------------------------- conversions
 
 func assignmentFrom(a authzsql.OikumeneaAuthzRoleAssignment) domain.Assignment {
