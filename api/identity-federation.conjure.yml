@@ -12,7 +12,7 @@
 # (D-Audit). Generated Go lands in internal/conjure and is never hand-edited.
 types:
   definitions:
-    default-package: com.palantir.oikumenea.identityfederation
+    default-package: oikumenea.identityfederation
     objects:
       Account:
         docs: |
@@ -128,7 +128,7 @@ types:
 services:
   IdentityFederationService:
     name: Identity Federation Service
-    package: com.palantir.oikumenea.identityfederation
+    package: oikumenea.identityfederation
     base-path: /identity/v1
     default-auth: header
     docs: |

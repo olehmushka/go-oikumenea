@@ -11,7 +11,7 @@
 # authorization (M7) + identity-federation (M8) land.
 types:
   definitions:
-    default-package: com.palantir.oikumenea.audit
+    default-package: oikumenea.audit
     objects:
       AuditActorType:
         docs: The two actor kinds (D-Audit). An instance admin is a PERSON, never a separate kind.
@@ -72,7 +72,7 @@ types:
 services:
   AuditService:
     name: Audit Service
-    package: com.palantir.oikumenea.audit
+    package: oikumenea.audit
     base-path: /audit/v1
     default-auth: header
     docs: |

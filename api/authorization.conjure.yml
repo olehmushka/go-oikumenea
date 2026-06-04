@@ -16,7 +16,7 @@
 # internal/conjure and is never hand-edited.
 types:
   definitions:
-    default-package: com.palantir.oikumenea.authorization
+    default-package: oikumenea.authorization
     objects:
       Role:
         docs: A named set of permission codes (Object Role). Base roles are seeded and immutable.
@@ -252,7 +252,7 @@ types:
 services:
   AuthorizationService:
     name: Authorization Service
-    package: com.palantir.oikumenea.authorization
+    package: oikumenea.authorization
     base-path: /authorization/v1
     default-auth: header
     docs: |

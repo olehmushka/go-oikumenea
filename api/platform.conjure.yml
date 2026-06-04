@@ -5,7 +5,7 @@
 # mapping (M0 exit criterion). Generated Go lands in internal/conjure and is never hand-edited.
 types:
   definitions:
-    default-package: com.palantir.oikumenea.platform
+    default-package: oikumenea.platform
     objects:
       # The composed URN resource identifier (D-ResourceIdentifiers). Every Object/Link/Action
       # reference carries the full RID, never a bare uuid. Defined here so the alias exists from
@@ -29,7 +29,7 @@ types:
 services:
   PlatformOpsService:
     name: Platform Ops Service
-    package: com.palantir.oikumenea.platform
+    package: oikumenea.platform
     base-path: /platform/v1
     docs: Unauthenticated operational endpoints owned by the platform module.
     endpoints:

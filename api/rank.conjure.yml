@@ -16,7 +16,7 @@
 # (D-Audit), under an interim `system` actor until the acting person can be resolved (M7/M8).
 types:
   definitions:
-    default-package: com.palantir.oikumenea.rank
+    default-package: oikumenea.rank
     objects:
       Rank:
         docs: A specific grade within a type (e.g. sergeant, associate_professor), ordered for exact seniority.
@@ -167,7 +167,7 @@ types:
 services:
   RankService:
     name: Rank Service
-    package: com.palantir.oikumenea.rank
+    package: oikumenea.rank
     base-path: /rank/v1
     default-auth: header
     docs: |

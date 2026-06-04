@@ -21,7 +21,7 @@
 # Generated Go lands in internal/conjure and is never hand-edited.
 types:
   definitions:
-    default-package: com.palantir.oikumenea.membership
+    default-package: oikumenea.membership
     objects:
       Position:
         docs: |
@@ -197,7 +197,7 @@ types:
 services:
   MembershipService:
     name: Membership Service
-    package: com.palantir.oikumenea.membership
+    package: oikumenea.membership
     base-path: /membership/v1
     default-auth: header
     docs: |
