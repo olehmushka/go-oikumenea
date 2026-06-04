@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"flag"
 	"fmt"
 	"os"
@@ -16,6 +17,7 @@ import (
 	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
 	"github.com/olegamysk/go-oikumenea/internal/authorization"
 	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
+	"github.com/olegamysk/go-oikumenea/internal/document"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation/bootstrap"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation/middleware"
@@ -27,6 +29,8 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/internal/rank"
 	"github.com/olegamysk/go-oikumenea/internal/tenant"
+	"github.com/olegamysk/go-oikumenea/pkg/crypto"
+	"github.com/olegamysk/go-oikumenea/pkg/personalcode"
 	werror "github.com/palantir/witchcraft-go-error"
 	"github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
@@ -141,6 +145,19 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 		return nil, err
 	}
 
+	// Document: person-held papers and envelope-encrypted personal codes (D-Documents / D-PersonalCodes).
+	// The envelope cipher (D-CryptoProvider) + the personal-code validator registry are built from
+	// install config; the enforcer it holds is bound by authorization above.
+	cipher, err := buildCipher(install)
+	if err != nil {
+		cleanup()
+		return nil, werror.Wrap(err, "build envelope cipher")
+	}
+	if _, err := document.Register(info, pool, auditSvc, locSvc, enforcer, cipher, personalcode.New()); err != nil {
+		cleanup()
+		return nil, err
+	}
+
 	// Identity-federation: the external-IdP seam. Its application service is the (issuer, subject)
 	// resolver the validation middleware binds to.
 	identitySvc, err := identityfederation.Register(info, pool, auditSvc, enforcer, install.IdentityLinkingEnabled)
@@ -187,6 +204,46 @@ func validatorConfig(install config.Install) middleware.Config {
 		claim = "person_code"
 	}
 	return middleware.Config{Issuers: issuers, ClockSkew: skew, JITEnabled: install.IDP.JIT.Enabled, JITClaim: claim}
+}
+
+// defaultDEKCacheTTLSeconds is the unwrapped-DEK cache window when the install config omits it.
+const defaultDEKCacheTTLSeconds = 300
+
+// buildCipher constructs the envelope cipher from the install crypto block (D-CryptoProvider): it
+// selects the KeyProvider backend (today only local-dev), decodes the base64 KEK + blind-index key, and
+// applies the DEK-cache TTL. A missing/short key is a fatal config error (personal codes can't be
+// protected without it).
+func buildCipher(install config.Install) (*crypto.Cipher, error) {
+	c := install.Crypto
+	blind, err := base64.StdEncoding.DecodeString(c.BlindIndexKey)
+	if err != nil {
+		return nil, werror.Wrap(err, "decode crypto.blind-index-key (base64)")
+	}
+
+	provider := c.Provider
+	if provider == "" {
+		provider = "local-dev"
+	}
+	var kp crypto.KeyProvider
+	switch provider {
+	case "local-dev":
+		kek, err := base64.StdEncoding.DecodeString(c.LocalDev.KEK)
+		if err != nil {
+			return nil, werror.Wrap(err, "decode crypto.local-dev.kek (base64)")
+		}
+		kp, err = crypto.NewLocalDevProvider(kek)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, werror.Error("unsupported crypto provider (supported: local-dev)", werror.SafeParam("provider", provider))
+	}
+
+	ttl := c.DEKCacheTTLSeconds
+	if ttl == 0 {
+		ttl = defaultDEKCacheTTLSeconds
+	}
+	return crypto.NewCipher(kp, blind, time.Duration(ttl)*time.Second)
 }
 
 func seedFrom(b config.BootstrapAdmin) bootstrap.AdminSeed {

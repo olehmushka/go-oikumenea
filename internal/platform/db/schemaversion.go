@@ -10,7 +10,7 @@ import (
 // ExpectedSchemaRevision is the schema revision this binary is built against. It must match the
 // revision recorded in oikumenea.schema_version by the latest applied migration. Bump this in the
 // same change that adds a migration (upgrade-safety.md, boot-time schema-version check).
-const ExpectedSchemaRevision = "0009_identity_federation"
+const ExpectedSchemaRevision = "0010_document"
 
 // ReadSchemaRevision returns the single-row schema_version marker's revision.
 func ReadSchemaRevision(ctx context.Context, pool *pgxpool.Pool) (string, error) {

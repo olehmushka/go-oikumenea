@@ -31,8 +31,9 @@ type Install struct {
 	// nil/absent => no bootstrap is attempted (the operator uses the recover-admin CLI instead).
 	BootstrapAdmin *BootstrapAdmin `yaml:"bootstrap-admin"`
 
-	// Reserved seam, wired in a later milestone: the crypto/KMS block (D-CryptoProvider, M9).
-	// Intentionally omitted here.
+	// Crypto configures envelope encryption for pii:sensitive data (D-CryptoProvider, M9): the KMS
+	// backend and the blind-index key the document module uses for personal-code values.
+	Crypto Crypto `yaml:"crypto"`
 }
 
 // Postgres holds the operator-supplied connection string.
@@ -90,6 +91,29 @@ func (i Install) IdentityLinkingEnabled() bool {
 		return true
 	}
 	return *i.Account.IdentityLinkingEnabled
+}
+
+// Crypto configures envelope encryption for pii:sensitive data (D-CryptoProvider): the pluggable KMS
+// backend plus the keyed-HMAC blind-index key. Secrets (KEK material, blind-index key) are
+// ECV-encrypted in real deployments; the local-dev file is plaintext. Keys are base64-encoded.
+type Crypto struct {
+	// Provider selects the KeyProvider backend: local-dev (today) | aws-kms | gcp-kms | vault-transit |
+	// azure-kv. Defaults to local-dev when empty.
+	Provider string `yaml:"provider"`
+	// BlindIndexKey is the base64-encoded HMAC key for personal-code blind indexing (required for the
+	// document module). Equality lookup / cross-person uniqueness over ciphertext depends on it.
+	BlindIndexKey string `yaml:"blind-index-key"`
+	// DEKCacheTTLSeconds bounds how long an unwrapped DEK is cached off the KMS read path (default 300s
+	// when zero; a negative value disables caching).
+	DEKCacheTTLSeconds int `yaml:"dek-cache-ttl-seconds"`
+	// LocalDev holds the local-dev backend's symmetric KEK (used when Provider is local-dev/empty).
+	LocalDev CryptoLocalDev `yaml:"local-dev"`
+}
+
+// CryptoLocalDev is the local-dev KeyProvider's key material.
+type CryptoLocalDev struct {
+	// KEK is the base64-encoded 32-byte key-encryption key that wraps per-record DEKs (secret).
+	KEK string `yaml:"kek"`
 }
 
 // Runtime is the hot-reloadable configuration (var/conf/runtime.yml), read through a refreshable.

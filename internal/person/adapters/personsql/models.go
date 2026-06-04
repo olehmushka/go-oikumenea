@@ -135,6 +135,90 @@ type OikumeneaAuthzRolePermission struct {
 	PermissionCode string
 }
 
+type OikumeneaDocumentDocument struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:none
+	TypeID string
+	// pii:basic
+	Number pgtype.Text
+	// pii:basic
+	Issuer pgtype.Text
+	// pii:none
+	IssuingCountry pgtype.Text
+	// pii:none
+	IssuedOn pgtype.Date
+	// pii:none
+	ExpiresOn pgtype.Date
+	// pii:special
+	Attributes []byte
+	// pii:none
+	Status    string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaDocumentDocumentType struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	Status string
+	// pii:none
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaDocumentPersonalCode struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:none
+	SchemeCode string
+	// pii:sensitive
+	ValueCiphertext []byte
+	// secret
+	WrappedDek []byte
+	// pii:none
+	KeyRef string
+	// pii:none
+	ValueBlindIndex []byte
+	// pii:none
+	Status    string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaDocumentPersonalCodeScheme struct {
+	// pii:none
+	Code string
+	// pii:none
+	CountryIso pgtype.Text
+	// pii:none
+	GenericCategory string
+	// pii:none
+	Name string
+	// pii:none
+	ValidationRegex pgtype.Text
+	// pii:none
+	Status string
+	// pii:none
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
 type OikumeneaGeoCountry struct {
 	// pii:none
 	Code string

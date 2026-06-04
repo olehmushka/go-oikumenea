@@ -35,6 +35,18 @@ idp:
 account:
   identity-linking-enabled: true
 
+# Envelope encryption for pii:sensitive data (D-CryptoProvider, M9): the document module encrypts
+# personal-code values at rest. The local-dev backend wraps per-record DEKs with a symmetric KEK held
+# here (base64); production selects a real KMS (aws-kms/gcp-kms/vault-transit/azure-kv) where the KEK
+# never leaves it. The kek + blind-index-key are ECV-encrypted in real deployments. INSECURE DEFAULTS —
+# change for any non-local deployment.
+crypto:
+  provider: local-dev
+  blind-index-key: "bG9jYWwtZGV2LWluc2VjdXJlLWJsaW5kLWlkeC1rZXk="
+  dek-cache-ttl-seconds: 300
+  local-dev:
+    kek: "bG9jYWwtZGV2LWluc2VjdXJlLWtlay1jaGFuZ2UtbWU="
+
 # First instance admin seeded at first boot (D-Bootstrap), bound to the local-dev IdP identity above.
 # Idempotent: skipped once any instance admin exists. Remove/replace for real deployments.
 bootstrap-admin:
