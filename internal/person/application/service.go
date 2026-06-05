@@ -20,8 +20,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
 	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
+	orderevents "github.com/olegamysk/go-oikumenea/internal/order/events"
 	"github.com/olegamysk/go-oikumenea/internal/person/domain"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olegamysk/go-oikumenea/pkg/events"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 
@@ -35,6 +37,11 @@ const (
 // + identity-federation (M8) resolve the acting person, these writes are recorded as a `system`
 // action under this subsystem (the no-unaudited-mutation ground rule still holds).
 const auditSubsystem = "person-admin"
+
+// eventSubsystem labels the system actor for a write made by an ORDER-EVENT SUBSCRIBER (D-OrderApply):
+// an order's rank-change effect, auto-applied in the issue transaction, audits as `system` /
+// `event-subscriber`, correlated to the human's order.issue row by the shared request_id.
+const eventSubsystem = "event-subscriber"
 
 // targetPerson is the audited entity kind; every person-scoped action targets the person id.
 const targetPerson = "person"
@@ -162,18 +169,44 @@ func (s *Service) ListPersons(ctx context.Context, pageSize int, pageToken strin
 func (s *Service) SetRank(ctx context.Context, id string, rankID *string) (domain.Person, error) {
 	var out domain.Person
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		updated, err := s.newRepo(tx).SetRank(ctx, id, rankID)
-		if err != nil {
-			return err
-		}
+		updated, err := s.setRankTx(ctx, tx, auditSubsystem, id, rankID, "")
 		out = updated
-		after := map[string]any{"id": id, "rankId": nil}
-		if rankID != nil {
-			after["rankId"] = *rankID
-		}
-		return s.record(ctx, tx, "person.rank.assign", id, after)
+		return err
 	})
 	return out, err
+}
+
+// setRankTx is the shared rank-set core, running on the caller's transaction and recording under
+// `subsystem`. orderItemID, when set (the order rank-change effect path), is carried into the audit
+// payload as provenance — rank is a person column, so there is no provenance FK (D-OrderApply).
+func (s *Service) setRankTx(ctx context.Context, tx pgx.Tx, subsystem, id string, rankID *string, orderItemID string) (domain.Person, error) {
+	updated, err := s.newRepo(tx).SetRank(ctx, id, rankID)
+	if err != nil {
+		return domain.Person{}, err
+	}
+	after := map[string]any{"id": id, "rankId": nil}
+	if rankID != nil {
+		after["rankId"] = *rankID
+	}
+	if orderItemID != "" {
+		after["orderItemId"] = orderItemID
+	}
+	return updated, s.recordWith(ctx, tx, subsystem, "person.rank.assign", id, after)
+}
+
+// SubscribeOrderEvents registers the person rank-change handler on the bus: RankChangeOrdered sets the
+// person's rank synchronously in the order's issue transaction (D-OrderApply), so a failure rolls the
+// whole issue back. Registered once at composition time (module.go), before serving.
+func (s *Service) SubscribeOrderEvents(bus *events.Bus) {
+	bus.Subscribe(orderevents.TypeRankChangeOrdered, func(ctx context.Context, tx pgx.Tx, evt events.Event) error {
+		e, ok := evt.(orderevents.RankChangeOrdered)
+		if !ok {
+			return nil
+		}
+		rankID := e.RankID
+		_, err := s.setRankTx(ctx, tx, eventSubsystem, e.PersonID, &rankID, e.OrderItemID)
+		return err
+	})
 }
 
 // ---------------------------------------------------------------- lifecycle
@@ -415,6 +448,12 @@ func (s *Service) inTx(ctx context.Context, fn func(pgx.Tx) error) error {
 // payload carries only non-PII identifiers (person id + the changed key/status). Person writes are
 // instance-scoped, so no unit is attributed.
 func (s *Service) record(ctx context.Context, tx pgx.Tx, action, targetID string, after any) error {
+	return s.recordWith(ctx, tx, auditSubsystem, action, targetID, after)
+}
+
+// recordWith is the subsystem-parameterized form: an order-driven rank change records under
+// event-subscriber (D-OrderApply); all other person writes use person-admin via record.
+func (s *Service) recordWith(ctx context.Context, tx pgx.Tx, subsystem, action, targetID string, after any) error {
 	rid, err := mintActionRID(ctx, tx, action)
 	if err != nil {
 		return err
@@ -422,7 +461,7 @@ func (s *Service) record(ctx context.Context, tx pgx.Tx, action, targetID string
 	return s.audit.Record(ctx, tx, auditdomain.Entry{
 		ID:         rid,
 		ActorType:  auditdomain.ActorSystem,
-		Subsystem:  auditSubsystem,
+		Subsystem:  subsystem,
 		Action:     action,
 		TargetType: targetPerson,
 		TargetID:   targetID,

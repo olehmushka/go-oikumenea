@@ -307,6 +307,69 @@ type OikumeneaMembershipPosition struct {
 	DeletedAt pgtype.Timestamptz
 }
 
+type OikumeneaOrderOrder struct {
+	// pii:none
+	ID string
+	// pii:none
+	Number pgtype.Text
+	// pii:none
+	IssuedOn pgtype.Date
+	// pii:none
+	IssuingUnitID string
+	// pii:none
+	Status           string
+	RevokedByOrderID pgtype.Text
+	RevokedAt        pgtype.Timestamptz
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	DeletedAt        pgtype.Timestamptz
+}
+
+type OikumeneaOrderOrderItem struct {
+	// pii:none
+	ID string
+	// pii:none
+	OrderID string
+	// pii:none
+	TypeID string
+	// pii:none
+	PersonID string
+	// pii:none
+	UnitID pgtype.Text
+	// pii:none
+	PositionID pgtype.Text
+	// pii:none
+	RankID pgtype.Text
+	// pii:none
+	EffectiveFrom pgtype.Date
+	// pii:none
+	EffectiveTo pgtype.Date
+	// pii:basic
+	Note      pgtype.Text
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+type OikumeneaOrderOrderType struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	Category string
+	// pii:none
+	Effect string
+	// pii:none
+	Status string
+	// pii:none
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
 type OikumeneaPersonCitizenship struct {
 	// pii:none
 	ID string

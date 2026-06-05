@@ -94,3 +94,13 @@ sql:
         sql_package: pgx/v5
         emit_methods_with_db_argument: false
         emit_exact_table_names: false
+  - engine: postgresql
+    schema: migrations
+    queries: internal/order/adapters/queries
+    gen:
+      go:
+        package: ordersql
+        out: internal/order/adapters/ordersql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false

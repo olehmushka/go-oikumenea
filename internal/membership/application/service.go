@@ -23,7 +23,9 @@ import (
 	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
 	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
 	"github.com/olegamysk/go-oikumenea/internal/membership/domain"
+	orderevents "github.com/olegamysk/go-oikumenea/internal/order/events"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olegamysk/go-oikumenea/pkg/events"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 
@@ -38,6 +40,11 @@ const (
 // action under this subsystem (the no-unaudited-mutation ground rule still holds). M7/M8 replace
 // this with the resolved person actor.
 const auditSubsystem = "membership-admin"
+
+// eventSubsystem labels the system actor for writes made by an ORDER-EVENT SUBSCRIBER (D-OrderApply):
+// when membership effects are auto-applied inside an order's issue transaction, they audit as
+// `system` / `event-subscriber`, correlated to the human's order.issue row by the shared request_id.
+const eventSubsystem = "event-subscriber"
 
 // Audit target types (the audited entity kinds).
 const (
@@ -90,7 +97,7 @@ func (s *Service) CreatePosition(ctx context.Context, p domain.Position) (domain
 			return err
 		}
 		out = created
-		return s.record(ctx, tx, "position.create", targetPosition, created.ID, map[string]any{"id": created.ID, "unitId": created.UnitID, "code": created.Code})
+		return s.record(ctx, tx, auditSubsystem, "position.create", targetPosition, created.ID, map[string]any{"id": created.ID, "unitId": created.UnitID, "code": created.Code})
 	})
 	return out, err
 }
@@ -126,7 +133,7 @@ func (s *Service) UpdatePosition(ctx context.Context, id string, patch domain.Po
 			return err
 		}
 		out = updated
-		return s.record(ctx, tx, "position.update", targetPosition, id, map[string]any{"id": id})
+		return s.record(ctx, tx, auditSubsystem, "position.update", targetPosition, id, map[string]any{"id": id})
 	})
 	return out, err
 }
@@ -156,7 +163,7 @@ func (s *Service) AbolishPosition(ctx context.Context, id string) (domain.Positi
 			return err
 		}
 		out = abolished
-		return s.record(ctx, tx, "position.abolish", targetPosition, id, map[string]any{"id": id, "status": string(abolished.Status)})
+		return s.record(ctx, tx, auditSubsystem, "position.abolish", targetPosition, id, map[string]any{"id": id, "status": string(abolished.Status)})
 	})
 	return out, err
 }
@@ -191,20 +198,28 @@ func (s *Service) CreateMembership(ctx context.Context, m domain.Membership) (do
 	}
 	var out domain.Membership
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if m.PositionID != "" {
-			if err := s.checkPositionForFill(ctx, repo, m.PositionID, m.UnitID); err != nil {
-				return err
-			}
-		}
-		created, err := repo.InsertMembership(ctx, m)
-		if err != nil {
-			return err
-		}
+		created, err := s.createMembershipTx(ctx, tx, auditSubsystem, m)
 		out = created
-		return s.recordMembership(ctx, tx, "membership.create", created)
+		return err
 	})
 	return out, err
+}
+
+// createMembershipTx is the shared create core: it runs on the caller's transaction so a write and its
+// audit row commit together, recording under `subsystem` (membership-admin for API calls,
+// event-subscriber for order-driven appointments). The membership is pre-validated by the caller.
+func (s *Service) createMembershipTx(ctx context.Context, tx pgx.Tx, subsystem string, m domain.Membership) (domain.Membership, error) {
+	repo := s.newRepo(tx)
+	if m.PositionID != "" {
+		if err := s.checkPositionForFill(ctx, repo, m.PositionID, m.UnitID); err != nil {
+			return domain.Membership{}, err
+		}
+	}
+	created, err := repo.InsertMembership(ctx, m)
+	if err != nil {
+		return domain.Membership{}, err
+	}
+	return created, s.recordMembershipWith(ctx, tx, subsystem, "membership.create", created)
 }
 
 // FillPosition fills a vacant position with a person (a membership whose unit is the position's).
@@ -213,58 +228,130 @@ func (s *Service) CreateMembership(ctx context.Context, m domain.Membership) (do
 func (s *Service) FillPosition(ctx context.Context, positionID, personID, orderItemID string, effectiveFrom time.Time) (domain.Membership, error) {
 	var out domain.Membership
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		pos, err := repo.GetPosition(ctx, positionID)
-		if err != nil {
-			return err
-		}
-		if pos.Status != domain.PositionActive {
-			return errors.Join(domain.ErrMembershipInvalid, errors.New("position is not active"))
-		}
-		m := domain.Membership{
-			PersonID:      personID,
-			UnitID:        pos.UnitID,
-			PositionID:    positionID,
-			OrderItemID:   orderItemID,
-			EffectiveFrom: effectiveFrom,
-		}
-		if err := m.Validate(); err != nil {
-			return err
-		}
-		created, err := repo.InsertMembership(ctx, m)
-		if err != nil {
-			return err
-		}
+		created, err := s.fillPositionTx(ctx, tx, auditSubsystem, positionID, personID, orderItemID, effectiveFrom)
 		out = created
-		return s.recordMembership(ctx, tx, "membership.fill", created)
+		return err
 	})
 	return out, err
+}
+
+// fillPositionTx is the shared fill core, running on the caller's transaction and recording under
+// `subsystem`. It is the membership-start effect path for an order that names a position (D-OrderApply).
+func (s *Service) fillPositionTx(ctx context.Context, tx pgx.Tx, subsystem, positionID, personID, orderItemID string, effectiveFrom time.Time) (domain.Membership, error) {
+	repo := s.newRepo(tx)
+	pos, err := repo.GetPosition(ctx, positionID)
+	if err != nil {
+		return domain.Membership{}, err
+	}
+	if pos.Status != domain.PositionActive {
+		return domain.Membership{}, errors.Join(domain.ErrMembershipInvalid, errors.New("position is not active"))
+	}
+	m := domain.Membership{
+		PersonID:      personID,
+		UnitID:        pos.UnitID,
+		PositionID:    positionID,
+		OrderItemID:   orderItemID,
+		EffectiveFrom: effectiveFrom,
+	}
+	if err := m.Validate(); err != nil {
+		return domain.Membership{}, err
+	}
+	created, err := repo.InsertMembership(ctx, m)
+	if err != nil {
+		return domain.Membership{}, err
+	}
+	return created, s.recordMembershipWith(ctx, tx, subsystem, "membership.fill", created)
 }
 
 // EndMembership ends a membership, vacating any filled billet (reversible flip + effective_to).
 // Allowed only from active (else ErrMembershipLifecycle).
 func (s *Service) EndMembership(ctx context.Context, id, orderItemID string, effectiveTo time.Time) (domain.Membership, error) {
+	var out domain.Membership
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		ended, err := s.endMembershipTx(ctx, tx, auditSubsystem, id, orderItemID, effectiveTo)
+		out = ended
+		return err
+	})
+	return out, err
+}
+
+// endMembershipTx is the shared end core, running on the caller's transaction and recording under
+// `subsystem`. It is the membership-end effect path for an order (D-OrderApply); a zero effectiveTo
+// defaults to now.
+func (s *Service) endMembershipTx(ctx context.Context, tx pgx.Tx, subsystem, id, orderItemID string, effectiveTo time.Time) (domain.Membership, error) {
 	if effectiveTo.IsZero() {
 		effectiveTo = time.Now().UTC()
 	}
-	var out domain.Membership
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		m, err := repo.GetMembership(ctx, id)
-		if err != nil {
-			return err
+	repo := s.newRepo(tx)
+	m, err := repo.GetMembership(ctx, id)
+	if err != nil {
+		return domain.Membership{}, err
+	}
+	if !m.CanEnd() {
+		return domain.Membership{}, domain.ErrMembershipLifecycle
+	}
+	ended, err := repo.EndMembership(ctx, id, effectiveTo, orderItemPtr(orderItemID))
+	if err != nil {
+		return domain.Membership{}, err
+	}
+	return ended, s.recordMembershipWith(ctx, tx, subsystem, "membership.end", ended)
+}
+
+// ---------------------------------------------------------------- order-event subscribers (D-OrderApply)
+
+// SubscribeOrderEvents registers the membership effect handlers on the bus: AppointmentOrdered creates
+// the membership (fills the named position, or a plain belonging) and RemovalOrdered ends the target
+// membership — both run synchronously in the order's issue transaction, so a violated invariant rolls
+// the whole issue back. Registered once at composition time (module.go), before serving.
+func (s *Service) SubscribeOrderEvents(bus *events.Bus) {
+	bus.Subscribe(orderevents.TypeAppointmentOrdered, func(ctx context.Context, tx pgx.Tx, evt events.Event) error {
+		e, ok := evt.(orderevents.AppointmentOrdered)
+		if !ok {
+			return nil
 		}
-		if !m.CanEnd() {
-			return domain.ErrMembershipLifecycle
-		}
-		ended, err := repo.EndMembership(ctx, id, effectiveTo, orderItemPtr(orderItemID))
-		if err != nil {
-			return err
-		}
-		out = ended
-		return s.recordMembership(ctx, tx, "membership.end", ended)
+		return s.handleAppointmentOrdered(ctx, tx, e)
 	})
-	return out, err
+	bus.Subscribe(orderevents.TypeRemovalOrdered, func(ctx context.Context, tx pgx.Tx, evt events.Event) error {
+		e, ok := evt.(orderevents.RemovalOrdered)
+		if !ok {
+			return nil
+		}
+		return s.handleRemovalOrdered(ctx, tx, e)
+	})
+}
+
+// handleAppointmentOrdered realizes a membership-start item: it fills the named billet, or — when the
+// item names a unit but no position — creates a plain belonging, citing order_item_id as provenance.
+func (s *Service) handleAppointmentOrdered(ctx context.Context, tx pgx.Tx, e orderevents.AppointmentOrdered) error {
+	if e.PositionID != "" {
+		_, err := s.fillPositionTx(ctx, tx, eventSubsystem, e.PositionID, e.PersonID, e.OrderItemID, e.EffectiveFrom)
+		return err
+	}
+	m := domain.Membership{PersonID: e.PersonID, UnitID: e.UnitID, OrderItemID: e.OrderItemID, EffectiveFrom: e.EffectiveFrom}
+	if err := m.Validate(); err != nil {
+		return err
+	}
+	_, err := s.createMembershipTx(ctx, tx, eventSubsystem, m)
+	return err
+}
+
+// handleRemovalOrdered realizes a membership-end item: it resolves the target membership (the filling
+// of the named position, or the person's plain belonging in the named unit) and ends it. A missing
+// target surfaces ErrMembershipNotFound, rolling the issue back.
+func (s *Service) handleRemovalOrdered(ctx context.Context, tx pgx.Tx, e orderevents.RemovalOrdered) error {
+	repo := s.newRepo(tx)
+	var target domain.Membership
+	var err error
+	if e.PositionID != "" {
+		target, err = repo.ActiveFillingByPosition(ctx, e.PositionID)
+	} else {
+		target, err = repo.ActivePlainMembership(ctx, e.PersonID, e.UnitID)
+	}
+	if err != nil {
+		return err
+	}
+	_, err = s.endMembershipTx(ctx, tx, eventSubsystem, target.ID, e.OrderItemID, e.EffectiveTo)
+	return err
 }
 
 // ListMembers returns a keyset-paginated page of a unit's active memberships (its roster).
@@ -333,19 +420,25 @@ func (s *Service) inTx(ctx context.Context, fn func(pgx.Tx) error) error {
 	return tx.Commit(ctx)
 }
 
-// recordMembership writes the audit row for a membership action, carrying only non-PII identifiers
-// (the membership/person/unit ids + status), never personal data — person is the PII store.
-func (s *Service) recordMembership(ctx context.Context, tx pgx.Tx, action string, m domain.Membership) error {
+// recordMembershipWith writes the audit row for a membership action under the given subsystem, carrying
+// only non-PII identifiers (the membership/person/unit ids + status), never personal data — person is
+// the PII store. The subsystem is membership-admin for API writes, event-subscriber for order-driven
+// ones (D-OrderApply).
+func (s *Service) recordMembershipWith(ctx context.Context, tx pgx.Tx, subsystem, action string, m domain.Membership) error {
 	after := map[string]any{"id": m.ID, "personId": m.PersonID, "unitId": m.UnitID, "status": string(m.Status)}
 	if m.PositionID != "" {
 		after["positionId"] = m.PositionID
 	}
-	return s.record(ctx, tx, action, targetMembership, m.ID, after)
+	if m.OrderItemID != "" {
+		after["orderItemId"] = m.OrderItemID
+	}
+	return s.record(ctx, tx, subsystem, action, targetMembership, m.ID, after)
 }
 
 // record mints an Action RID in the caller's transaction and writes the audit row on it, so the
-// audit entry commits iff the change commits (D-Audit). The actor is the interim system actor.
-func (s *Service) record(ctx context.Context, tx pgx.Tx, action, targetType, targetID string, after any) error {
+// audit entry commits iff the change commits (D-Audit). The actor is the interim system actor under
+// the given subsystem.
+func (s *Service) record(ctx context.Context, tx pgx.Tx, subsystem, action, targetType, targetID string, after any) error {
 	rid, err := mintActionRID(ctx, tx, action)
 	if err != nil {
 		return err
@@ -353,7 +446,7 @@ func (s *Service) record(ctx context.Context, tx pgx.Tx, action, targetType, tar
 	return s.audit.Record(ctx, tx, auditdomain.Entry{
 		ID:         rid,
 		ActorType:  auditdomain.ActorSystem,
-		Subsystem:  auditSubsystem,
+		Subsystem:  subsystem,
 		Action:     action,
 		TargetType: targetType,
 		TargetID:   targetID,

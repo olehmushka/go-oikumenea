@@ -103,6 +103,13 @@ RETURNING *;
 SELECT * FROM oikumenea.membership_memberships
 WHERE position_id = @position_id AND status = 'active' AND deleted_at IS NULL;
 
+-- name: GetActivePlainMembership :one
+-- A person's active PLAIN belonging (no position) in a unit, if any — the target an order's
+-- membership-end item ends when it names a unit but no position. The belonging index keeps it unique.
+SELECT * FROM oikumenea.membership_memberships
+WHERE person_id = @person_id AND unit_id = @unit_id
+  AND position_id IS NULL AND status = 'active' AND deleted_at IS NULL;
+
 -- name: ListMembersByUnit :many
 -- A unit's active memberships (its roster), keyset-paginated by RID.
 SELECT * FROM oikumenea.membership_memberships
