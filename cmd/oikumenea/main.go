@@ -162,8 +162,10 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	}
 
 	// Authorization: builds the PDP over tenant's closure, seeds the base roles, and binds the
-	// enforcer the modules above already hold (D-BaseRoles / D-RIDSeeding).
-	if _, err := authorization.Register(info, pool, auditSvc, locSvc, tenantSvc, enforcer); err != nil {
+	// enforcer the modules above already hold (D-BaseRoles / D-RIDSeeding). Its service also resolves
+	// each request's RLS reach for the authenticator's connection-pinning (D-RLSDefenseInDepth).
+	authzSvc, err := authorization.Register(info, pool, auditSvc, locSvc, tenantSvc, enforcer)
+	if err != nil {
 		cleanup()
 		return nil, err
 	}
@@ -191,7 +193,7 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 
 	// Bind the inbound-token validation middleware: the configured issuers' validator, the
 	// (issuer, subject) resolver, the person directory (JIT claim -> person.code), and the JIT flag.
-	authenticator.Bind(middleware.NewValidator(validatorConfig(install)), identitySvc, personSvc, install.IDP.JIT.Enabled)
+	authenticator.Bind(middleware.NewValidator(validatorConfig(install)), identitySvc, personSvc, install.IDP.JIT.Enabled, authzSvc, pool)
 
 	// First-admin bootstrap (D-Bootstrap): idempotent — skips once any instance admin exists.
 	if install.BootstrapAdmin != nil {

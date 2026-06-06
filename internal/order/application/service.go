@@ -128,7 +128,7 @@ func (s *Service) UpdateOrderType(ctx context.Context, id string, patch domain.O
 }
 
 func (s *Service) ListOrderTypes(ctx context.Context) ([]domain.OrderType, error) {
-	return s.newRepo(s.pool).ListOrderTypes(ctx)
+	return s.newRepo(s.querier(ctx)).ListOrderTypes(ctx)
 }
 
 // ---------------------------------------------------------------- orders
@@ -276,7 +276,7 @@ func (s *Service) RevokeOrder(ctx context.Context, id string, revokingOrderID *s
 
 // GetOrder returns an order header with its items (each carrying the type's effect).
 func (s *Service) GetOrder(ctx context.Context, id string) (domain.Order, error) {
-	repo := s.newRepo(s.pool)
+	repo := s.newRepo(s.querier(ctx))
 	order, err := repo.GetOrder(ctx, id)
 	if err != nil {
 		return domain.Order{}, err
@@ -291,13 +291,13 @@ func (s *Service) GetOrder(ctx context.Context, id string) (domain.Order, error)
 
 func (s *Service) ListOrdersByUnit(ctx context.Context, unitID string, pageSize int, pageToken string) (OrderPage, error) {
 	return s.listOrders(ctx, pageSize, pageToken, func(after string, limit int) ([]domain.Order, error) {
-		return s.newRepo(s.pool).ListOrdersByUnit(ctx, unitID, after, limit)
+		return s.newRepo(s.querier(ctx)).ListOrdersByUnit(ctx, unitID, after, limit)
 	})
 }
 
 func (s *Service) ListOrdersByPerson(ctx context.Context, personID string, pageSize int, pageToken string) (OrderPage, error) {
 	return s.listOrders(ctx, pageSize, pageToken, func(after string, limit int) ([]domain.Order, error) {
-		return s.newRepo(s.pool).ListOrdersByPerson(ctx, personID, after, limit)
+		return s.newRepo(s.querier(ctx)).ListOrdersByPerson(ctx, personID, after, limit)
 	})
 }
 
@@ -398,8 +398,18 @@ func derefStr(p *string) string {
 
 // ---------------------------------------------------------------- tx + audit plumbing
 
+// querier returns the request-pinned RLS connection if one is in context (db.AcquireScoped/WithConn),
+// else the bare pool. Reads/writes on order_orders (unit-scoped on issuing_unit_id) MUST go through it
+// so the app.* RLS GUCs apply (D-RLSDefenseInDepth).
+func (s *Service) querier(ctx context.Context) db.Querier {
+	if c, ok := db.ConnFromContext(ctx); ok {
+		return c
+	}
+	return s.pool
+}
+
 func (s *Service) inTx(ctx context.Context, fn func(pgx.Tx) error) error {
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.querier(ctx).Begin(ctx)
 	if err != nil {
 		return err
 	}

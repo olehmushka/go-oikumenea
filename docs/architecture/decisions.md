@@ -580,6 +580,32 @@ expand/contract (permissive-first, then tighten — see
 [upgrade-safety.md](upgrade-safety.md)); the app DB role must lack `BYPASSRLS`. Resolves **DS-17**.
 See [conventions.md](conventions.md).
 
+**Realized mechanism (M11, revision `0012_rls`).** The seam is implemented as a **per-request pinned
+connection** rather than per-statement `SET LOCAL`, because unit-scoped reads do not all open a
+transaction: the identity-federation authenticator middleware, once it resolves the subject, calls
+`authorization.RLSStateFor` (→ `EffectiveReach`) and **pins one pooled connection** for the request
+with the four GUCs set via `set_config(name, value, false)` (`internal/platform/db` `AcquireScoped`),
+resetting them on release. The four RLS-touching modules (`tenant`, `membership`, `order`, `audit`)
+run their reads/writes on that pinned connection (`querier(ctx)`/`reader(ctx)`); a write begins its
+transaction on it, so the GUCs cover the `WITH CHECK` too. Reach is computed on the bare pool first
+(its reads hit only non-RLS tables + the exempt closure), so there is no chicken-and-egg. Unit sets
+are comma-joined RID lists read by the policies as
+`<col> = ANY (string_to_array(current_setting('app.readable_units', true), ','))` (the `, true`
+missing-ok form means an unset GUC reads as no-reach, never an error). Trusted no-subject paths use
+`db.RunAsSystem` (the `app.is_instance_admin` flag), never a DB superuser.
+
+`audit_log` carries a **read-only** backstop: a `FOR SELECT` policy keyed on `unit_id` (NULL ⇒
+instance-admin-only) plus a permissive `FOR INSERT` policy, because audit rows are appended from both
+request transactions and system paths (first-admin bootstrap, boot seeds) that have no unit reach —
+the app, not RLS, governs what is written (append-only is already enforced by `reject_mutation()`).
+
+**Enablement timing (this never-released service).** `upgrade-safety.md` stages RLS as
+permissive→tighten so a policy tightening on a **live, already-released** deployment cannot outrun the
+GUC plumbing. go-oikumenea has **never been released**: revision `0012_rls` ships the GUC wiring and
+the tightened policies **atomically in one revision**, since on a fresh install there is no window in
+which the policy outruns the plumbing. The staged (permissive-first) rollout re-applies for any
+**post-v1** RLS change.
+
 ### D-PersonReadScope — A person's read scope projects through its memberships
 
 **Decision.** Read access to a **person** (and, by inheritance, to that person's

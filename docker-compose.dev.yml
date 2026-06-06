@@ -6,7 +6,9 @@
 #   cp .env.example .env                     # one-time
 #   docker compose -f docker-compose.dev.yml up -d
 #   set -a; . ./.env; set +a                 # export DATABASE_URL for atlas
-#   atlas migrate apply --env local
+#   atlas migrate apply --env local          # migration 0012 creates the oikumenea_app group role
+#   # one-time: create the non-superuser LOGIN role the SERVER connects as (RLS backstop, D-RLSDefenseInDepth)
+#   psql "$DATABASE_URL" -c "CREATE ROLE oikumenea LOGIN PASSWORD 'dev' IN ROLE oikumenea_app;"
 #   ./godelw build && out/build/oikumenea/unspecified/linux-amd64/oikumenea serve
 services:
   postgres:

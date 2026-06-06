@@ -185,6 +185,11 @@ trivial Conjure endpoint — the chassis every module bolts onto.
 
 ## M11 — Hardening & upgrade-safety
 
+**Status: delivered** (revision `0012_rls`). RLS backstop enabled+tightened in one revision (the
+service is pre-release; see [decisions.md](architecture/decisions.md) D-RLSDefenseInDepth *Enablement
+timing*), per-request reach GUCs on a pinned connection, the non-superuser `oikumenea_app` role,
+`UPGRADING.md` revision log, CI workflows, Docker packaging, and PDP/closure benchmarks.
+
 **Goal.** Tighten the cross-cutting guarantees and package for release.
 
 - **Delivers:** **staged RLS enablement** (permissive→tightened per [upgrade-safety.md](architecture/upgrade-safety.md));

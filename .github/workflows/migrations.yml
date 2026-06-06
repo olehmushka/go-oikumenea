@@ -1,0 +1,62 @@
+name: Migrations
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "migrations/**"
+      - "atlas.hcl"
+      - ".github/workflows/migrations.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  integrity-and-lint:
+    name: atlas integrity + destructive-change gate
+    runs-on: ubuntu-latest
+    env:
+      # validate/lint analyse migrations on an ephemeral dev DB (Docker on the runner). apply targets
+      # this if ever needed; the dev block in atlas.hcl is docker://postgres/16/dev.
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ariga/setup-atlas@v0
+      - name: Hash integrity (atlas.sum matches migrations/)
+        run: |
+          atlas migrate hash --env local
+          git diff --exit-code migrations/atlas.sum \
+            || { echo "::error::migrations/atlas.sum is stale — run 'atlas migrate hash --env local'"; exit 1; }
+      - name: Validate (replayable on a clean dev DB)
+        run: atlas migrate validate --env local
+      - name: Destructive-change lint (gate)
+        # `atlas migrate lint` is Atlas-Pro-gated since v0.38; without `atlas login` it cannot run the
+        # destructive-change analyzers. The gate is wired here and runs when a token is present; until
+        # then it is non-blocking and the expand-only invariant is enforced by review + UPGRADING.md.
+        continue-on-error: true
+        run: atlas migrate lint --env local --latest 1
+
+  upgrade-test:
+    name: data-safe upgrade (prior revision -> HEAD)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ariga/setup-atlas@v0
+      - name: Upgrade test (seed at prior revision, migrate to HEAD, assert preserved)
+        run: ./scripts/upgrade-test.sh

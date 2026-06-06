@@ -104,7 +104,7 @@ func (s *Service) CreatePosition(ctx context.Context, p domain.Position) (domain
 
 // GetPosition reads one position with its current holder (the single active filling) attached.
 func (s *Service) GetPosition(ctx context.Context, id string) (domain.Position, error) {
-	repo := s.newRepo(s.pool)
+	repo := s.newRepo(s.querier(ctx))
 	p, err := repo.GetPosition(ctx, id)
 	if err != nil {
 		return domain.Position{}, err
@@ -176,7 +176,7 @@ func (s *Service) ListPositions(ctx context.Context, unitID string, filter domai
 	if err != nil {
 		return PositionPage{}, err
 	}
-	positions, err := s.newRepo(s.pool).ListPositions(ctx, unitID, filter, after, size+1)
+	positions, err := s.newRepo(s.querier(ctx)).ListPositions(ctx, unitID, filter, after, size+1)
 	if err != nil {
 		return PositionPage{}, err
 	}
@@ -357,14 +357,14 @@ func (s *Service) handleRemovalOrdered(ctx context.Context, tx pgx.Tx, e orderev
 // ListMembers returns a keyset-paginated page of a unit's active memberships (its roster).
 func (s *Service) ListMembers(ctx context.Context, unitID string, pageSize int, pageToken string) (MembershipPage, error) {
 	return s.listMemberships(ctx, pageSize, pageToken, func(after string, limit int) ([]domain.Membership, error) {
-		return s.newRepo(s.pool).ListMembersByUnit(ctx, unitID, after, limit)
+		return s.newRepo(s.querier(ctx)).ListMembersByUnit(ctx, unitID, after, limit)
 	})
 }
 
 // ListPersonMemberships returns a keyset-paginated page of a person's active memberships.
 func (s *Service) ListPersonMemberships(ctx context.Context, personID string, pageSize int, pageToken string) (MembershipPage, error) {
 	return s.listMemberships(ctx, pageSize, pageToken, func(after string, limit int) ([]domain.Membership, error) {
-		return s.newRepo(s.pool).ListMembershipsByPerson(ctx, personID, after, limit)
+		return s.newRepo(s.querier(ctx)).ListMembershipsByPerson(ctx, personID, after, limit)
 	})
 }
 
@@ -407,9 +407,19 @@ func (s *Service) listMemberships(ctx context.Context, pageSize int, pageToken s
 	return MembershipPage{Memberships: ms}, nil
 }
 
+// querier returns the request-pinned RLS connection if one is in context (db.AcquireScoped/WithConn),
+// else the bare pool. Reads/writes on the unit-scoped membership tables MUST go through it so the
+// app.* RLS GUCs apply (D-RLSDefenseInDepth).
+func (s *Service) querier(ctx context.Context) db.Querier {
+	if c, ok := db.ConnFromContext(ctx); ok {
+		return c
+	}
+	return s.pool
+}
+
 // inTx runs fn in a transaction, committing on success and rolling back on error.
 func (s *Service) inTx(ctx context.Context, fn func(pgx.Tx) error) error {
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.querier(ctx).Begin(ctx)
 	if err != nil {
 		return err
 	}

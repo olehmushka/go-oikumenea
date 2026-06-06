@@ -33,6 +33,17 @@ func NewService(pool db.DBTX, newRepo RepositoryFactory, defaultSize func() int)
 	return &Service{pool: pool, newRepo: newRepo, defaultSize: defaultSize}
 }
 
+// reader returns the request-pinned RLS connection if one is in context (db.AcquireScoped/WithConn),
+// else the bare pool. audit_log carries a SELECT-only RLS policy keyed on unit_id (the read backstop —
+// D-RLSDefenseInDepth), so reads must run on the GUC-bearing connection; inserts are unrestricted
+// (Record uses the caller's transaction, which for request-driven writes is already the pinned conn).
+func (s *Service) reader(ctx context.Context) db.DBTX {
+	if c, ok := db.ConnFromContext(ctx); ok {
+		return c
+	}
+	return s.pool
+}
+
 // Record persists one audit entry on the caller-supplied command surface — typically the open
 // transaction of the mutation being audited, so the audit row commits iff the change commits
 // (D-Audit). It is the in-process entry point every write-bearing module calls; there is no HTTP
@@ -46,7 +57,7 @@ func (s *Service) Record(ctx context.Context, conn db.DBTX, e domain.Entry) erro
 
 // Get reads one entry by its Action RID, returning domain.ErrNotFound when absent.
 func (s *Service) Get(ctx context.Context, id string) (domain.Entry, error) {
-	return s.newRepo(s.pool).Get(ctx, id)
+	return s.newRepo(s.reader(ctx)).Get(ctx, id)
 }
 
 // QueryParams are the read filters plus pagination request. Pointer fields are optional (nil
@@ -81,7 +92,7 @@ func (s *Service) Query(ctx context.Context, p QueryParams) (Page, error) {
 		return Page{}, err
 	}
 
-	entries, err := s.newRepo(s.pool).Query(ctx, domain.Filter{
+	entries, err := s.newRepo(s.reader(ctx)).Query(ctx, domain.Filter{
 		ActorPersonID: p.ActorPersonID,
 		ActorType:     p.ActorType,
 		TargetType:    p.TargetType,

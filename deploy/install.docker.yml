@@ -1,0 +1,45 @@
+# Install config for the docker-compose stack. Mounted over /app/var/conf/install.yml in the app
+# container. The DSN points at the compose `postgres` service and connects as the NON-superuser
+# `oikumenea` app role so the RLS backstop is in force (D-RLSDefenseInDepth). INSECURE local defaults —
+# replace every secret (DSN password, hmac-key, crypto keys, bootstrap admin) for a real deployment,
+# and supply them ECV-encrypted.
+product-name: oikumenea
+product-version: 0.0.0-dev
+use-console-log: true
+server:
+  address: "0.0.0.0"
+  port: 8443
+  management-port: 8444
+  context-path: ""
+
+environment: docker
+
+postgres:
+  dsn: "postgres://oikumenea:oikumenea@postgres:5432/postgres?sslmode=disable"
+
+idp:
+  clock-skew-seconds: 60
+  jit:
+    enabled: false
+    claim: person_code
+  issuers:
+    - issuer: "https://local-dev.oikumenea.test"
+      type: hs256
+      audience: oikumenea
+      hmac-key: "local-dev-insecure-signing-key-change-me"
+
+account:
+  identity-linking-enabled: true
+
+crypto:
+  provider: local-dev
+  blind-index-key: "bG9jYWwtZGV2LWluc2VjdXJlLWJsaW5kLWlkeC1rZXk="
+  dek-cache-ttl-seconds: 300
+  local-dev:
+    kek: "bG9jYWwtZGV2LWluc2VjdXJlLWtlay1jaGFuZ2UtbWU="
+
+bootstrap-admin:
+  issuer: "https://local-dev.oikumenea.test"
+  subject: "local-admin"
+  display-name: "Local Admin"
+  person-code: "admin"
