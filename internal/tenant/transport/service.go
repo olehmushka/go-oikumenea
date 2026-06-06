@@ -3,10 +3,13 @@
 // the localization service (cross-module query — overview.md), and maps domain errors to Conjure
 // SerializableErrors (D-Conjure). Generated code in internal/conjure is never hand-edited.
 //
-// Authorization is intentionally not yet enforced here: the endpoints declare `auth: header` so the
-// bearer token is parsed, but the unit-/instance-scoped permission checks and the shadow gate are
-// wired once authorization (M7) + identity-federation (M8) land (docs/modules/tenant.md). The
-// handlers receive the token and ignore it for now.
+// Authorization (M7): unit endpoints gate on their unit-scoped permission AT the unit via the PEP
+// (read/update/lifecycle); edge mutations require the per-graph OR broad edge permission at the path
+// unit (D-EdgePerms); creating a unit and reading the graph registry use the coarse "holds anywhere"
+// form (a unit is created standalone, with no parent to scope against — root creation falls to the
+// instance admin); graph management and on-demand closure verify/rebuild are instance-scope. The
+// shadow-visibility gate on list/ancestor/descendant reads is a documented follow-up. The bearer
+// token carries the acting subject (interim: token == person RID; see internal/authorization/pep).
 package transport
 
 import (
@@ -14,6 +17,8 @@ import (
 	"encoding/json"
 	"errors"
 
+	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
+	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
 	tenantapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/tenant"
 	locapp "github.com/olegamysk/go-oikumenea/internal/localization/application"
 	"github.com/olegamysk/go-oikumenea/internal/tenant/application"
@@ -24,16 +29,25 @@ import (
 )
 
 // Service adapts *application.Service to the generated tenantapi.TenantService interface. It holds
-// the localization service to assemble the `locale -> text` display-name maps responses return.
+// the localization service to assemble the `locale -> text` display-name maps responses return, and
+// the PEP enforcer for the endpoints' permission gates.
 type Service struct {
 	app *application.Service
 	loc *locapp.Service
+	pep *pep.Enforcer
 }
 
-// NewService builds the transport adapter over the tenant application service and the localization
-// service (for name-map assembly).
-func NewService(app *application.Service, loc *locapp.Service) Service {
-	return Service{app: app, loc: loc}
+// NewService builds the transport adapter over the tenant application service, the localization
+// service (for name-map assembly), and the PEP enforcer.
+func NewService(app *application.Service, loc *locapp.Service, enforcer *pep.Enforcer) Service {
+	return Service{app: app, loc: loc, pep: enforcer}
+}
+
+// edgeActions returns the acceptable edge-management permissions for a graph: the per-graph code (if
+// one exists for that graph; only command/operational do) plus the broad fallback (D-EdgePerms).
+func edgeActions(graph string) []string {
+	perGraph := "unit.edges." + graph + ".manage"
+	return []string{perGraph, string(authzdomain.PermUnitEdgesManage)}
 }
 
 // compile-time assertion that the transport satisfies the generated server interface.
@@ -41,7 +55,10 @@ var _ tenantapi.TenantService = Service{}
 
 // ---------------------------------------------------------------- units
 
-func (s Service) CreateUnit(ctx context.Context, _ bearertoken.Token, req tenantapi.CreateUnitRequest) (tenantapi.Unit, error) {
+func (s Service) CreateUnit(ctx context.Context, token bearertoken.Token, req tenantapi.CreateUnitRequest) (tenantapi.Unit, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermUnitCreate)); err != nil {
+		return tenantapi.Unit{}, err
+	}
 	u := domain.Unit{
 		Code:       req.Code,
 		Name:       req.Name,
@@ -57,7 +74,10 @@ func (s Service) CreateUnit(ctx context.Context, _ bearertoken.Token, req tenant
 	return s.unitToAPI(ctx, created)
 }
 
-func (s Service) GetUnit(ctx context.Context, _ bearertoken.Token, unitID string) (tenantapi.Unit, error) {
+func (s Service) GetUnit(ctx context.Context, token bearertoken.Token, unitID string) (tenantapi.Unit, error) {
+	if err := s.pep.Require(ctx, token, string(authzdomain.PermUnitRead), unitID); err != nil {
+		return tenantapi.Unit{}, err
+	}
 	u, err := s.app.GetUnit(ctx, unitID)
 	if err != nil {
 		return tenantapi.Unit{}, s.mapError(ctx, err, errCtx{unitID: unitID})
@@ -65,7 +85,10 @@ func (s Service) GetUnit(ctx context.Context, _ bearertoken.Token, unitID string
 	return s.unitToAPI(ctx, u)
 }
 
-func (s Service) UpdateUnit(ctx context.Context, _ bearertoken.Token, unitID string, req tenantapi.UpdateUnitRequest) (tenantapi.Unit, error) {
+func (s Service) UpdateUnit(ctx context.Context, token bearertoken.Token, unitID string, req tenantapi.UpdateUnitRequest) (tenantapi.Unit, error) {
+	if err := s.pep.Require(ctx, token, string(authzdomain.PermUnitUpdate), unitID); err != nil {
+		return tenantapi.Unit{}, err
+	}
 	patch := domain.UnitPatch{
 		Name:     req.Name,
 		UnitKind: req.UnitKind,
@@ -83,7 +106,10 @@ func (s Service) UpdateUnit(ctx context.Context, _ bearertoken.Token, unitID str
 	return s.unitToAPI(ctx, updated)
 }
 
-func (s Service) ListUnits(ctx context.Context, _ bearertoken.Token, level *int, pageSize *int, pageToken *string) (tenantapi.UnitPage, error) {
+func (s Service) ListUnits(ctx context.Context, token bearertoken.Token, level *int, pageSize *int, pageToken *string) (tenantapi.UnitPage, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermUnitRead)); err != nil {
+		return tenantapi.UnitPage{}, err
+	}
 	page, err := s.app.ListUnits(ctx, level, derefOr(pageSize, 0), derefOr(pageToken, ""))
 	if err != nil {
 		return tenantapi.UnitPage{}, s.mapError(ctx, err, errCtx{})
@@ -95,7 +121,10 @@ func (s Service) ListUnits(ctx context.Context, _ bearertoken.Token, level *int,
 	return tenantapi.UnitPage{Units: units, NextPageToken: tokenPtr(page.NextPageToken)}, nil
 }
 
-func (s Service) TransitionUnit(ctx context.Context, _ bearertoken.Token, unitID string, req tenantapi.TransitionRequest) (tenantapi.Unit, error) {
+func (s Service) TransitionUnit(ctx context.Context, token bearertoken.Token, unitID string, req tenantapi.TransitionRequest) (tenantapi.Unit, error) {
+	if err := s.pep.Require(ctx, token, string(authzdomain.PermUnitLifecycle), unitID); err != nil {
+		return tenantapi.Unit{}, err
+	}
 	updated, err := s.app.TransitionUnit(ctx, unitID, fromAPIState(req.ToState), derefOr(req.Reason, ""))
 	if err != nil {
 		return tenantapi.Unit{}, s.mapError(ctx, err, errCtx{unitID: unitID})
@@ -105,8 +134,11 @@ func (s Service) TransitionUnit(ctx context.Context, _ bearertoken.Token, unitID
 
 // ---------------------------------------------------------------- edges
 
-func (s Service) AddEdge(ctx context.Context, _ bearertoken.Token, unitID string, req tenantapi.AddEdgeRequest) (tenantapi.UnitEdge, error) {
+func (s Service) AddEdge(ctx context.Context, token bearertoken.Token, unitID string, req tenantapi.AddEdgeRequest) (tenantapi.UnitEdge, error) {
 	graph := derefOr(req.Graph, domain.CommandGraphCode)
+	if err := s.pep.RequireAny(ctx, token, unitID, edgeActions(graph)...); err != nil {
+		return tenantapi.UnitEdge{}, err
+	}
 	edge, err := s.app.AddEdge(ctx, unitID, req.ParentId, graph)
 	if err != nil {
 		return tenantapi.UnitEdge{}, s.mapError(ctx, err, errCtx{
@@ -122,15 +154,21 @@ func (s Service) AddEdge(ctx context.Context, _ bearertoken.Token, unitID string
 	}, nil
 }
 
-func (s Service) RemoveEdge(ctx context.Context, _ bearertoken.Token, unitID string, parentID string, graph *string) error {
+func (s Service) RemoveEdge(ctx context.Context, token bearertoken.Token, unitID string, parentID string, graph *string) error {
 	g := derefOr(graph, domain.CommandGraphCode)
+	if err := s.pep.RequireAny(ctx, token, unitID, edgeActions(g)...); err != nil {
+		return err
+	}
 	if err := s.app.RemoveEdge(ctx, unitID, parentID, g); err != nil {
 		return s.mapError(ctx, err, errCtx{unitID: unitID, graph: g, parentID: parentID, childID: unitID})
 	}
 	return nil
 }
 
-func (s Service) UnitAncestors(ctx context.Context, _ bearertoken.Token, unitID string, graph *string) (tenantapi.UnitRefList, error) {
+func (s Service) UnitAncestors(ctx context.Context, token bearertoken.Token, unitID string, graph *string) (tenantapi.UnitRefList, error) {
+	if err := s.pep.Require(ctx, token, string(authzdomain.PermUnitRead), unitID); err != nil {
+		return tenantapi.UnitRefList{}, err
+	}
 	refs, err := s.app.Ancestors(ctx, unitID, derefOr(graph, domain.CommandGraphCode))
 	if err != nil {
 		return tenantapi.UnitRefList{}, s.mapError(ctx, err, errCtx{unitID: unitID, graph: derefOr(graph, domain.CommandGraphCode)})
@@ -142,7 +180,10 @@ func (s Service) UnitAncestors(ctx context.Context, _ bearertoken.Token, unitID 
 	return tenantapi.UnitRefList{Units: out}, nil
 }
 
-func (s Service) UnitDescendants(ctx context.Context, _ bearertoken.Token, unitID string, graph *string, pageSize *int, pageToken *string) (tenantapi.UnitRefPage, error) {
+func (s Service) UnitDescendants(ctx context.Context, token bearertoken.Token, unitID string, graph *string, pageSize *int, pageToken *string) (tenantapi.UnitRefPage, error) {
+	if err := s.pep.Require(ctx, token, string(authzdomain.PermUnitRead), unitID); err != nil {
+		return tenantapi.UnitRefPage{}, err
+	}
 	page, err := s.app.Descendants(ctx, unitID, derefOr(graph, domain.CommandGraphCode), derefOr(pageSize, 0), derefOr(pageToken, ""))
 	if err != nil {
 		return tenantapi.UnitRefPage{}, s.mapError(ctx, err, errCtx{unitID: unitID, graph: derefOr(graph, domain.CommandGraphCode)})
@@ -156,7 +197,10 @@ func (s Service) UnitDescendants(ctx context.Context, _ bearertoken.Token, unitI
 
 // ---------------------------------------------------------------- closure
 
-func (s Service) VerifyClosure(ctx context.Context, _ bearertoken.Token, graph *string) (tenantapi.ClosureReportList, error) {
+func (s Service) VerifyClosure(ctx context.Context, token bearertoken.Token, graph *string) (tenantapi.ClosureReportList, error) {
+	if err := s.pep.Require(ctx, token, string(authzdomain.PermClosureRebuild), ""); err != nil {
+		return tenantapi.ClosureReportList{}, err
+	}
 	reports, err := s.app.VerifyClosure(ctx, graph)
 	if err != nil {
 		return tenantapi.ClosureReportList{}, s.mapError(ctx, err, errCtx{graph: derefOr(graph, "")})
@@ -164,7 +208,10 @@ func (s Service) VerifyClosure(ctx context.Context, _ bearertoken.Token, graph *
 	return tenantapi.ClosureReportList{Reports: toAPIReports(reports)}, nil
 }
 
-func (s Service) RebuildClosure(ctx context.Context, _ bearertoken.Token, graph *string) (tenantapi.ClosureReportList, error) {
+func (s Service) RebuildClosure(ctx context.Context, token bearertoken.Token, graph *string) (tenantapi.ClosureReportList, error) {
+	if err := s.pep.Require(ctx, token, string(authzdomain.PermClosureRebuild), ""); err != nil {
+		return tenantapi.ClosureReportList{}, err
+	}
 	reports, err := s.app.RebuildClosure(ctx, graph)
 	if err != nil {
 		return tenantapi.ClosureReportList{}, s.mapError(ctx, err, errCtx{graph: derefOr(graph, "")})
@@ -174,7 +221,10 @@ func (s Service) RebuildClosure(ctx context.Context, _ bearertoken.Token, graph 
 
 // ---------------------------------------------------------------- graphs
 
-func (s Service) ListGraphs(ctx context.Context, _ bearertoken.Token) (tenantapi.GraphList, error) {
+func (s Service) ListGraphs(ctx context.Context, token bearertoken.Token) (tenantapi.GraphList, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermGraphRead)); err != nil {
+		return tenantapi.GraphList{}, err
+	}
 	graphs, err := s.app.ListGraphs(ctx)
 	if err != nil {
 		return tenantapi.GraphList{}, s.mapError(ctx, err, errCtx{})
@@ -186,7 +236,10 @@ func (s Service) ListGraphs(ctx context.Context, _ bearertoken.Token) (tenantapi
 	return tenantapi.GraphList{Graphs: out}, nil
 }
 
-func (s Service) AddGraph(ctx context.Context, _ bearertoken.Token, req tenantapi.AddGraphRequest) (tenantapi.Graph, error) {
+func (s Service) AddGraph(ctx context.Context, token bearertoken.Token, req tenantapi.AddGraphRequest) (tenantapi.Graph, error) {
+	if err := s.pep.Require(ctx, token, string(authzdomain.PermGraphManage), ""); err != nil {
+		return tenantapi.Graph{}, err
+	}
 	created, err := s.app.AddGraph(ctx, req.Code, req.Name, derefOr(req.IsAuthorityBearing, true))
 	if err != nil {
 		return tenantapi.Graph{}, s.mapError(ctx, err, errCtx{code: req.Code})
@@ -194,7 +247,10 @@ func (s Service) AddGraph(ctx context.Context, _ bearertoken.Token, req tenantap
 	return s.graphToAPI(ctx, created)
 }
 
-func (s Service) UpdateGraph(ctx context.Context, _ bearertoken.Token, graphID string, req tenantapi.UpdateGraphRequest) (tenantapi.Graph, error) {
+func (s Service) UpdateGraph(ctx context.Context, token bearertoken.Token, graphID string, req tenantapi.UpdateGraphRequest) (tenantapi.Graph, error) {
+	if err := s.pep.Require(ctx, token, string(authzdomain.PermGraphManage), ""); err != nil {
+		return tenantapi.Graph{}, err
+	}
 	updated, err := s.app.UpdateGraph(ctx, graphID, domain.GraphPatch{
 		Name:               req.Name,
 		IsDefault:          req.IsDefault,
@@ -206,7 +262,10 @@ func (s Service) UpdateGraph(ctx context.Context, _ bearertoken.Token, graphID s
 	return s.graphToAPI(ctx, updated)
 }
 
-func (s Service) DeleteGraph(ctx context.Context, _ bearertoken.Token, graphID string) error {
+func (s Service) DeleteGraph(ctx context.Context, token bearertoken.Token, graphID string) error {
+	if err := s.pep.Require(ctx, token, string(authzdomain.PermGraphManage), ""); err != nil {
+		return err
+	}
 	if err := s.app.DeleteGraph(ctx, graphID); err != nil {
 		return s.mapError(ctx, err, errCtx{graph: graphID})
 	}

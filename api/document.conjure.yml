@@ -1,0 +1,389 @@
+# Document module API (M9). Person-held papers and government personal codes
+# (docs/modules/document.md): what a person HAS, distinct from an order (an administrative act). Two
+# parallel models — PAPERS (document_documents, typed by the document-type catalog) and CODES
+# (document_personal_codes, typed by the country-namespaced scheme catalog). A code's value is
+# pii:sensitive, ENVELOPE-ENCRYPTED at rest (D-CryptoProvider): the plaintext is accepted on write,
+# validated against the scheme (D-PersonalCodes), and returned decrypted on read — both sensitive
+# actions gated by personal-code.* permissions. A document/code carries NO authority (directory data).
+#
+# RID-bearing fields are typed `string` (the composed URN RID — Conjure reserves `rid`, whose `ri.`
+# format is NOT our `urn:oikumenea:` RID). Calendar DATE fields (issuedOn/expiresOn) are ISO-8601 date
+# strings ("YYYY-MM-DD") — a day, not an instant — while lifecycle timestamps are `datetime`. A
+# type/scheme `name` is a translatable label returned as a `locale -> text` map (assembled from the
+# i18n store, D-i18n); the scheme `code` is the stable, locale-agnostic key (D-Code).
+#
+# Reads gate on `document.read` / `personal-code.read` (scoped through the holder, D-PersonReadScope, +
+# shadow gate); writes on the matching create/update/delete permission; catalog edits are instance-
+# scope (`document.type.manage` / `personal-code-scheme.manage`). Writes are audited in-process under
+# an interim `system` actor (D-Audit). Generated Go lands in internal/conjure and is never hand-edited.
+types:
+  definitions:
+    default-package: oikumenea.document
+    objects:
+      DocumentType:
+        docs: An instance-admin catalog entry naming a PAPER kind (passport, driver-license). Stable code + translatable name.
+        fields:
+          id:
+            type: string
+            docs: The document type's URN RID (carried as a plain string).
+          code:
+            type: string
+            docs: Stable, locale-agnostic identifier (D-Code); immutable by convention.
+          name:
+            type: map<string, string>
+            docs: The translatable label as a locale -> text map (all enabled locales; D-i18n).
+          status:
+            type: string
+            docs: One of active | retired.
+          sortOrder: optional<integer>
+          createdAt: datetime
+          updatedAt: datetime
+      Document:
+        docs: A person-held paper of some type — metadata only (no binaries). number/issuer are pii:basic.
+        fields:
+          id:
+            type: string
+            docs: The document's URN RID.
+          personId:
+            type: string
+            docs: The holder's person URN RID.
+          typeId:
+            type: string
+            docs: The document type's URN RID.
+          number:
+            type: optional<string>
+            docs: The document number (passport no., licence no.). pii:basic.
+          issuer:
+            type: optional<string>
+            docs: Issuing authority (e.g. ДМС України). pii:basic.
+          issuingCountry:
+            type: optional<string>
+            docs: ISO-3166-1 alpha-2 code of the issuing country (geo registry); lets one person hold same-type papers from several countries.
+          issuedOn:
+            type: optional<string>
+            docs: ISO-8601 date the document was issued.
+          expiresOn:
+            type: optional<string>
+            docs: ISO-8601 date the document expires.
+          attributes:
+            type: optional<any>
+            docs: Free-form long-tail per-type fields (JSONB). pii:special ceiling.
+          status:
+            type: string
+            docs: One of active | superseded | revoked — self-asserted, reversible, orthogonal to deletion.
+          createdAt: datetime
+          updatedAt: datetime
+      DocumentPage:
+        docs: A page of documents plus the opaque token for the next page (empty when exhausted).
+        fields:
+          documents: list<Document>
+          nextPageToken: optional<string>
+      PersonalCodeScheme:
+        docs: An instance-admin catalog entry naming a country-namespaced national-identifier scheme (ua-rnokpp, us-ssn).
+        fields:
+          code:
+            type: string
+            docs: The scheme id (D-Code); the natural key. Immutable by convention.
+          countryIso:
+            type: optional<string>
+            docs: ISO-3166-1 alpha-2 code of the scheme's country (geo registry).
+          genericCategory:
+            type: string
+            docs: Semantic grouping — one of tax-id | national-id | social-insurance | health-insurance | residence-permit | other.
+          name:
+            type: map<string, string>
+            docs: The translatable label as a locale -> text map (D-i18n).
+          validationRegex:
+            type: optional<string>
+            docs: Optional data-side fallback format check (a compiled validator takes precedence).
+          status:
+            type: string
+            docs: One of active | retired.
+          sortOrder: optional<integer>
+          createdAt: datetime
+          updatedAt: datetime
+      PersonalCode:
+        docs: A person-held government identifier of some scheme. Its value is pii:sensitive — stored encrypted, returned decrypted here.
+        fields:
+          id:
+            type: string
+            docs: The personal code's URN RID.
+          personId:
+            type: string
+            docs: The holder's person URN RID.
+          schemeCode:
+            type: string
+            docs: The scheme this code belongs to (its country derives from the scheme).
+          value:
+            type: string
+            docs: The decrypted national-identifier value (pii:sensitive). Reading it is a sensitive action gated by personal-code.read.
+          status:
+            type: string
+            docs: One of active | superseded | revoked.
+          createdAt: datetime
+          updatedAt: datetime
+      CreateDocumentRequest:
+        docs: Attach a paper to a person. The type and (optional) issuing country are validated against their registries.
+        fields:
+          typeId: string
+          number: optional<string>
+          issuer: optional<string>
+          issuingCountry: optional<string>
+          issuedOn: optional<string>
+          expiresOn: optional<string>
+          attributes: optional<any>
+      UpdateDocumentRequest:
+        docs: Update number/issuer/issuing-country/validity/attributes/status. Omitted fields are unchanged.
+        fields:
+          number: optional<string>
+          issuer: optional<string>
+          issuingCountry: optional<string>
+          issuedOn: optional<string>
+          expiresOn: optional<string>
+          attributes: optional<any>
+          status:
+            type: optional<string>
+            docs: New status — active | superseded | revoked (reversible).
+      CreateDocumentTypeRequest:
+        docs: Add a document (paper) type to the catalog.
+        fields:
+          code: string
+          name:
+            type: string
+            docs: Default-locale label; translatable via the localization store.
+          sortOrder: optional<integer>
+      UpdateDocumentTypeRequest:
+        docs: Edit a document type. `code` is immutable by convention.
+        fields:
+          name: optional<string>
+          status: optional<string>
+          sortOrder: optional<integer>
+      CreatePersonalCodeRequest:
+        docs: Attach a national-identifier code to a person. The value is validated against the scheme then encrypted.
+        fields:
+          schemeCode: string
+          value:
+            type: string
+            docs: The plaintext identifier (pii:sensitive). Validated against the scheme, then stored as ciphertext + blind index.
+      UpdatePersonalCodeRequest:
+        docs: Update a personal code's value (re-validated + re-encrypted) and/or status. Omitted fields are unchanged.
+        fields:
+          value: optional<string>
+          status: optional<string>
+      CreatePersonalCodeSchemeRequest:
+        docs: Add a national-identifier scheme to the catalog.
+        fields:
+          code: string
+          countryIso: optional<string>
+          genericCategory: string
+          name:
+            type: string
+            docs: Default-locale label; translatable via the localization store.
+          validationRegex: optional<string>
+          sortOrder: optional<integer>
+      UpdatePersonalCodeSchemeRequest:
+        docs: Edit a scheme. `code` is immutable by convention.
+        fields:
+          countryIso: optional<string>
+          genericCategory: optional<string>
+          name: optional<string>
+          validationRegex: optional<string>
+          status: optional<string>
+          sortOrder: optional<integer>
+    errors:
+      DocumentNotFound:
+        namespace: Document
+        code: NOT_FOUND
+        safe-args:
+          documentId: string
+      DocumentConflict:
+        docs: A unique constraint was violated — the person already holds this (type, number).
+        namespace: Document
+        code: CONFLICT
+        safe-args:
+          reason: string
+      DocumentInvalid:
+        docs: The request is malformed or references an unknown person, document type, or country.
+        namespace: Document
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
+      DocumentTypeNotFound:
+        namespace: Document
+        code: NOT_FOUND
+        safe-args:
+          typeId: string
+      DocumentTypeConflict:
+        docs: The document-type code is already taken.
+        namespace: Document
+        code: CONFLICT
+        safe-args:
+          reason: string
+      PersonalCodeNotFound:
+        namespace: Document
+        code: NOT_FOUND
+        safe-args:
+          codeId: string
+      PersonalCodeInvalid:
+        docs: The value failed its scheme's validator (checksum/format), or the request references an unknown person/scheme.
+        namespace: Document
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
+      PersonalCodeDuplicate:
+        docs: The same (scheme, value) is already held (cross-person uniqueness over the blind index).
+        namespace: Document
+        code: CONFLICT
+        safe-args:
+          reason: string
+      PersonalCodeSchemeNotFound:
+        namespace: Document
+        code: NOT_FOUND
+        safe-args:
+          schemeCode: string
+      PersonalCodeSchemeConflict:
+        docs: The scheme code is already taken.
+        namespace: Document
+        code: CONFLICT
+        safe-args:
+          reason: string
+services:
+  DocumentService:
+    name: Document Service
+    package: oikumenea.document
+    base-path: /document/v1
+    default-auth: header
+    docs: |
+      Person-held papers and government personal codes (D-Documents / D-PersonalCodes). Documents and
+      codes are scoped THROUGH THE HOLDER (D-PersonReadScope) + the shadow gate; type/scheme catalogs
+      are instance-admin-managed. Personal-code values are envelope-encrypted at rest (D-CryptoProvider)
+      and validated against their scheme on write. Writes are audited in-process (D-Audit).
+    endpoints:
+      attachDocument:
+        http: POST /persons/{personId}/documents
+        docs: Attach a paper to a person. Returns Document:DocumentConflict on a duplicate (type, number).
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: CreateDocumentRequest
+        returns: Document
+      listPersonDocuments:
+        http: GET /persons/{personId}/documents
+        docs: List a person's documents, token-paginated.
+        args:
+          personId:
+            type: string
+            param-type: path
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: DocumentPage
+      getDocument:
+        http: GET /documents/{documentId}
+        docs: Read one document.
+        args:
+          documentId:
+            type: string
+            param-type: path
+        returns: Document
+      updateDocument:
+        http: PUT /documents/{documentId}
+        docs: Update number/issuer/issuing-country/validity/attributes/status. Omitted fields are unchanged.
+        args:
+          documentId:
+            type: string
+            param-type: path
+          request: UpdateDocumentRequest
+        returns: Document
+      deleteDocument:
+        http: DELETE /documents/{documentId}
+        docs: Soft-delete (reversible) a document.
+        args:
+          documentId:
+            type: string
+            param-type: path
+      listDocumentTypes:
+        http: GET /document-types
+        docs: List the paper-type catalog.
+        returns: list<DocumentType>
+      createDocumentType:
+        http: POST /document-types
+        docs: Add a document type (instance-scope). Returns Document:DocumentTypeConflict if the code is taken.
+        args:
+          request: CreateDocumentTypeRequest
+        returns: DocumentType
+      updateDocumentType:
+        http: PUT /document-types/{typeId}
+        docs: Edit a document type (instance-scope). `code` is immutable by convention.
+        args:
+          typeId:
+            type: string
+            param-type: path
+          request: UpdateDocumentTypeRequest
+        returns: DocumentType
+      attachPersonalCode:
+        http: POST /persons/{personId}/personal-codes
+        docs: |
+          Attach a national-identifier code to a person. The value is validated against the scheme
+          (Document:PersonalCodeInvalid on failure) and encrypted; a duplicate (scheme, value) returns
+          Document:PersonalCodeDuplicate.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: CreatePersonalCodeRequest
+        returns: PersonalCode
+      listPersonPersonalCodes:
+        http: GET /persons/{personId}/personal-codes
+        docs: List a person's personal codes (values decrypted on read; a sensitive action).
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<PersonalCode>
+      updatePersonalCode:
+        http: PUT /personal-codes/{codeId}
+        docs: Update a personal code (value re-validated + re-encrypted, and/or status).
+        args:
+          codeId:
+            type: string
+            param-type: path
+          request: UpdatePersonalCodeRequest
+        returns: PersonalCode
+      deletePersonalCode:
+        http: DELETE /personal-codes/{codeId}
+        docs: Soft-delete a personal code.
+        args:
+          codeId:
+            type: string
+            param-type: path
+      listPersonalCodeSchemes:
+        http: GET /personal-code-schemes
+        docs: List the scheme catalog, optionally filtered by country and/or generic category.
+        args:
+          country:
+            type: optional<string>
+            param-type: query
+          category:
+            type: optional<string>
+            param-type: query
+        returns: list<PersonalCodeScheme>
+      createPersonalCodeScheme:
+        http: POST /personal-code-schemes
+        docs: Add a scheme (instance-scope). Returns Document:PersonalCodeSchemeConflict if the code is taken.
+        args:
+          request: CreatePersonalCodeSchemeRequest
+        returns: PersonalCodeScheme
+      updatePersonalCodeScheme:
+        http: PUT /personal-code-schemes/{schemeCode}
+        docs: Edit a scheme (instance-scope). `code` is immutable by convention.
+        args:
+          schemeCode:
+            type: string
+            param-type: path
+          request: UpdatePersonalCodeSchemeRequest
+        returns: PersonalCodeScheme

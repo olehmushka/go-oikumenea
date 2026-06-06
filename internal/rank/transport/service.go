@@ -3,15 +3,18 @@
 // the localization service (cross-module query — overview.md), and maps domain errors to Conjure
 // SerializableErrors (D-Conjure). Generated code in internal/conjure is never hand-edited.
 //
-// Authorization is intentionally not yet enforced here: the endpoints declare `auth: header` so the
-// bearer token is parsed, but the `rank.scheme.read` / `rank.scheme.manage` checks land once
-// authorization (M7) + identity-federation (M8) do. The handlers receive the token and ignore it.
+// Authorization (M7): reading the scheme requires `rank.scheme.read` (held anywhere — the single
+// system-wide scheme is instance-global, not unit-keyed); all writes require the instance-scope
+// `rank.scheme.manage`, enforced via the PEP. The bearer token carries the acting subject (interim:
+// token == person RID; see internal/authorization/pep).
 package transport
 
 import (
 	"context"
 	"errors"
 
+	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
+	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
 	rankapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/rank"
 	locapp "github.com/olegamysk/go-oikumenea/internal/localization/application"
 	"github.com/olegamysk/go-oikumenea/internal/rank/application"
@@ -32,20 +35,30 @@ const (
 type Service struct {
 	app *application.Service
 	loc *locapp.Service
+	pep *pep.Enforcer
 }
 
-// NewService builds the transport adapter over the rank application service and the localization
-// service (for name-map assembly).
-func NewService(app *application.Service, loc *locapp.Service) Service {
-	return Service{app: app, loc: loc}
+// NewService builds the transport adapter over the rank application service, the localization
+// service (for name-map assembly), and the PEP enforcer.
+func NewService(app *application.Service, loc *locapp.Service, enforcer *pep.Enforcer) Service {
+	return Service{app: app, loc: loc, pep: enforcer}
 }
+
+// readPerm / managePerm are the rank scheme's read / instance-scope-write permission codes.
+const (
+	readPerm   = string(authzdomain.PermRankSchemeRead)
+	managePerm = string(authzdomain.PermRankSchemeManage)
+)
 
 // compile-time assertion that the transport satisfies the generated server interface.
 var _ rankapi.RankService = Service{}
 
 // ---------------------------------------------------------------- scheme read
 
-func (s Service) GetRankScheme(ctx context.Context, _ bearertoken.Token) (rankapi.RankScheme, error) {
+func (s Service) GetRankScheme(ctx context.Context, token bearertoken.Token) (rankapi.RankScheme, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
+		return rankapi.RankScheme{}, err
+	}
 	scheme, err := s.app.GetScheme(ctx)
 	if err != nil {
 		return rankapi.RankScheme{}, s.mapError(ctx, err, errCtx{})
@@ -88,7 +101,10 @@ func (s Service) GetRankScheme(ctx context.Context, _ bearertoken.Token) (rankap
 
 // ---------------------------------------------------------------- categories
 
-func (s Service) AddCategory(ctx context.Context, _ bearertoken.Token, req rankapi.AddCategoryRequest) (rankapi.RankCategory, error) {
+func (s Service) AddCategory(ctx context.Context, token bearertoken.Token, req rankapi.AddCategoryRequest) (rankapi.RankCategory, error) {
+	if err := s.pep.Require(ctx, token, managePerm, ""); err != nil {
+		return rankapi.RankCategory{}, err
+	}
 	created, err := s.app.AddCategory(ctx, req.Code, req.Name, req.SortOrder)
 	if err != nil {
 		return rankapi.RankCategory{}, s.mapError(ctx, err, errCtx{level: string(domain.LevelCategory), code: req.Code})
@@ -96,7 +112,10 @@ func (s Service) AddCategory(ctx context.Context, _ bearertoken.Token, req ranka
 	return s.categoryToAPI(ctx, created)
 }
 
-func (s Service) UpdateCategory(ctx context.Context, _ bearertoken.Token, categoryID string, req rankapi.UpdateCategoryRequest) (rankapi.RankCategory, error) {
+func (s Service) UpdateCategory(ctx context.Context, token bearertoken.Token, categoryID string, req rankapi.UpdateCategoryRequest) (rankapi.RankCategory, error) {
+	if err := s.pep.Require(ctx, token, managePerm, ""); err != nil {
+		return rankapi.RankCategory{}, err
+	}
 	updated, err := s.app.UpdateCategory(ctx, categoryID, domain.CategoryPatch{Name: req.Name, SortOrder: req.SortOrder})
 	if err != nil {
 		return rankapi.RankCategory{}, s.mapError(ctx, err, errCtx{categoryID: categoryID})
@@ -106,7 +125,10 @@ func (s Service) UpdateCategory(ctx context.Context, _ bearertoken.Token, catego
 
 // ---------------------------------------------------------------- types
 
-func (s Service) AddType(ctx context.Context, _ bearertoken.Token, req rankapi.AddTypeRequest) (rankapi.RankType, error) {
+func (s Service) AddType(ctx context.Context, token bearertoken.Token, req rankapi.AddTypeRequest) (rankapi.RankType, error) {
+	if err := s.pep.Require(ctx, token, managePerm, ""); err != nil {
+		return rankapi.RankType{}, err
+	}
 	created, err := s.app.AddType(ctx, req.CategoryId, req.Code, req.Name, req.SortOrder)
 	if err != nil {
 		return rankapi.RankType{}, s.mapError(ctx, err, errCtx{
@@ -116,7 +138,10 @@ func (s Service) AddType(ctx context.Context, _ bearertoken.Token, req rankapi.A
 	return s.typeToAPI(ctx, created)
 }
 
-func (s Service) UpdateType(ctx context.Context, _ bearertoken.Token, typeID string, req rankapi.UpdateTypeRequest) (rankapi.RankType, error) {
+func (s Service) UpdateType(ctx context.Context, token bearertoken.Token, typeID string, req rankapi.UpdateTypeRequest) (rankapi.RankType, error) {
+	if err := s.pep.Require(ctx, token, managePerm, ""); err != nil {
+		return rankapi.RankType{}, err
+	}
 	updated, err := s.app.UpdateType(ctx, typeID, domain.TypePatch{Name: req.Name, SortOrder: req.SortOrder})
 	if err != nil {
 		return rankapi.RankType{}, s.mapError(ctx, err, errCtx{typeID: typeID})
@@ -126,7 +151,10 @@ func (s Service) UpdateType(ctx context.Context, _ bearertoken.Token, typeID str
 
 // ---------------------------------------------------------------- ranks
 
-func (s Service) AddRank(ctx context.Context, _ bearertoken.Token, req rankapi.AddRankRequest) (rankapi.Rank, error) {
+func (s Service) AddRank(ctx context.Context, token bearertoken.Token, req rankapi.AddRankRequest) (rankapi.Rank, error) {
+	if err := s.pep.Require(ctx, token, managePerm, ""); err != nil {
+		return rankapi.Rank{}, err
+	}
 	created, err := s.app.AddRank(ctx, req.TypeId, req.Code, req.Name, req.Abbreviation, req.SortOrder)
 	if err != nil {
 		return rankapi.Rank{}, s.mapError(ctx, err, errCtx{
@@ -136,7 +164,10 @@ func (s Service) AddRank(ctx context.Context, _ bearertoken.Token, req rankapi.A
 	return s.rankToAPI(ctx, created)
 }
 
-func (s Service) UpdateRank(ctx context.Context, _ bearertoken.Token, rankID string, req rankapi.UpdateRankRequest) (rankapi.Rank, error) {
+func (s Service) UpdateRank(ctx context.Context, token bearertoken.Token, rankID string, req rankapi.UpdateRankRequest) (rankapi.Rank, error) {
+	if err := s.pep.Require(ctx, token, managePerm, ""); err != nil {
+		return rankapi.Rank{}, err
+	}
 	updated, err := s.app.UpdateRank(ctx, rankID, domain.RankPatch{
 		Name: req.Name, Abbreviation: req.Abbreviation, SortOrder: req.SortOrder,
 	})
@@ -148,7 +179,10 @@ func (s Service) UpdateRank(ctx context.Context, _ bearertoken.Token, rankID str
 
 // ---------------------------------------------------------------- delete
 
-func (s Service) DeleteNode(ctx context.Context, _ bearertoken.Token, level string, nodeID string) error {
+func (s Service) DeleteNode(ctx context.Context, token bearertoken.Token, level string, nodeID string) error {
+	if err := s.pep.Require(ctx, token, managePerm, ""); err != nil {
+		return err
+	}
 	lvl := domain.Level(level)
 	if !domain.ValidLevel(lvl) {
 		return rankapi.NewRankInvalid("unknown level " + level + "; want one of category|type|rank")

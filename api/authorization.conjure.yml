@@ -1,0 +1,362 @@
+# Authorization module API (M7) — the centerpiece: RBAC + the Policy Decision Point (PDP)
+# (docs/modules/authorization.md). Three resources + the decision surface:
+#   * ROLES — named sets of code-defined permissions (the permission CATALOG is code, not data; a
+#     role only references permission codes). Base roles are seeded + immutable.
+#   * ASSIGNMENTS — the reified link__has_role: (subject, role, target_unit, scope, graph) + optional
+#     expiry. The unit of granted authority; authority comes ONLY from these (never rank/position).
+#   * INSTANCE ADMINS — the instance-wide authority plane (the cluster-admin analog).
+#   * /authorize[/batch] — the decision the PDP computes over the unit-graph closure.
+#
+# RID-bearing fields are typed `string` (the composed URN RID): Conjure reserves `rid` as a built-in
+# primitive whose `ri.` format is NOT our `urn:oikumenea:` RID. A role's `name`/`description` are
+# TRANSLATABLE labels returned as `locale -> text` maps (assembled from the i18n store; D-i18n) —
+# unlike permission codes, which are stable codes. Endpoints declare `auth: header`; the bearer token
+# carries the acting subject (M8 hardens token->person; until then the PEP resolves an interim
+# subject from the token). Writes are audited in-process (D-Audit). Generated Go lands in
+# internal/conjure and is never hand-edited.
+types:
+  definitions:
+    default-package: oikumenea.authorization
+    objects:
+      Role:
+        docs: A named set of permission codes (Object Role). Base roles are seeded and immutable.
+        fields:
+          id:
+            type: string
+            docs: The role's URN RID (carried as a plain string).
+          code:
+            type: string
+            docs: Stable, locale-agnostic identifier; immutable by convention.
+          name:
+            type: map<string, string>
+            docs: The role name as a locale -> text map (default-locale fallback + i18n translations).
+          description:
+            type: map<string, string>
+            docs: The role description as a locale -> text map; empty when unset.
+          permissions:
+            type: list<string>
+            docs: The role's permission codes (the closed catalog; code-defined).
+          isBase:
+            type: boolean
+            docs: True for seeded base roles (immutable by instance admins).
+          createdAt: datetime
+          updatedAt: datetime
+      RolePage:
+        docs: A page of roles plus the opaque token for the next page (empty when exhausted).
+        fields:
+          roles: list<Role>
+          nextPageToken: optional<string>
+      Assignment:
+        docs: |
+          The reified link__has_role — the unit of granted authority. graphId is null for unit scope
+          and names the cascade graph for subtree scope. Reversible: revoking sets revokedAt rather
+          than deleting.
+        fields:
+          id:
+            type: string
+            docs: The assignment's URN RID (carried as a plain string).
+          subjectPersonId: string
+          roleId: string
+          targetUnitId: string
+          scope:
+            type: string
+            docs: One of unit | subtree.
+          graphId:
+            type: optional<string>
+            docs: The cascade graph RID (subtree only); null for unit scope.
+          grantedBy:
+            type: optional<string>
+            docs: The granting person RID; null for the install bootstrap grant.
+          grantedAt: datetime
+          revokedAt:
+            type: optional<datetime>
+            docs: When revoked; null while active.
+          revokedBy: optional<string>
+          expiresAt:
+            type: optional<datetime>
+            docs: Optional decision-time expiry; null = no expiry.
+          createdAt: datetime
+          updatedAt: datetime
+      AssignmentPage:
+        docs: A page of assignments plus the opaque token for the next page (empty when exhausted).
+        fields:
+          assignments: list<Assignment>
+          nextPageToken: optional<string>
+      InstanceAdmin:
+        docs: A person on the instance-wide authority plane (the reified link__instance_admin).
+        fields:
+          id:
+            type: string
+            docs: The grant's URN RID (carried as a plain string).
+          personId: string
+          grantedBy:
+            type: optional<string>
+            docs: The granting person RID; null for the install bootstrap grant.
+          grantedAt: datetime
+          revokedAt: optional<datetime>
+          revokedBy: optional<string>
+      CreateRoleRequest:
+        docs: Create a custom role. name/description are the default-locale fallbacks (translatable separately).
+        fields:
+          code: string
+          name: string
+          description: optional<string>
+          permissions:
+            type: list<string>
+            docs: Permission codes from the catalog; instance-scope and unknown codes are rejected.
+      UpdateRoleRequest:
+        docs: Update a custom role's name/description and (when present) replace its permission set. code/isBase immutable.
+        fields:
+          name: optional<string>
+          description: optional<string>
+          permissions:
+            type: optional<list<string>>
+            docs: When present, fully replaces the permission set. Omit to leave permissions unchanged.
+      GrantAssignmentRequest:
+        docs: Grant a role to a person at a target unit. graph applies to subtree scope (default command); ignored for unit.
+        fields:
+          subjectPersonId: string
+          roleId: string
+          targetUnitId: string
+          scope:
+            type: string
+            docs: One of unit | subtree.
+          graph:
+            type: optional<string>
+            docs: The cascade graph CODE for a subtree grant; omit to default to the command graph. Ignored for unit scope.
+          expiresAt:
+            type: optional<datetime>
+            docs: Optional decision-time expiry (RFC 3339).
+      GrantInstanceAdminRequest:
+        docs: Place a person on the instance-admin plane.
+        fields:
+          personId: string
+      AuthorizeRequest:
+        docs: Ask the PDP whether subject may perform action on unit. unitId is omitted for instance-scope actions.
+        fields:
+          subjectPersonId: string
+          action: string
+          unitId: optional<string>
+          explain:
+            type: optional<boolean>
+            docs: When true, the response carries an explanation (DS-16). Default false.
+      AuthorizeResponse:
+        docs: A PDP decision. explanation is present only when explain was requested.
+        fields:
+          allow: boolean
+          explanation: optional<Explanation>
+      Explanation:
+        docs: Why a decision was reached. For ALLOW, the contributing grants (may be several across graphs); for DENY, the reason.
+        fields:
+          contributions: list<Contribution>
+          denyReason: optional<string>
+      Contribution:
+        docs: One reason an ALLOW was reached. instanceAdmin true means the instance plane; otherwise the assignment is named.
+        fields:
+          instanceAdmin: boolean
+          assignmentId: optional<string>
+          roleCode: optional<string>
+          targetUnitId: optional<string>
+          scope: optional<string>
+          graphCode: optional<string>
+      AuthorizeQuery:
+        docs: One question in a batch decision.
+        fields:
+          action: string
+          unitId: optional<string>
+      BatchAuthorizeRequest:
+        docs: Several questions for one subject; the subject's authority state is fetched once.
+        fields:
+          subjectPersonId: string
+          queries: list<AuthorizeQuery>
+          explain: optional<boolean>
+      BatchAuthorizeResponse:
+        fields:
+          decisions: list<AuthorizeResponse>
+    errors:
+      RoleNotFound:
+        namespace: Role
+        code: NOT_FOUND
+        safe-args:
+          roleId: string
+      RoleConflict:
+        docs: A role with this code already exists.
+        namespace: Role
+        code: CONFLICT
+        safe-args:
+          reason: string
+      RoleInvalid:
+        docs: The role request is malformed or names an unknown / instance-scope permission code.
+        namespace: Role
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
+      RoleImmutable:
+        docs: Base roles cannot be edited or deleted by instance admins.
+        namespace: Role
+        code: FAILED_PRECONDITION
+        safe-args:
+          roleId: string
+      RoleInUse:
+        docs: The role has active assignments and cannot be deleted; revoke them first.
+        namespace: Role
+        code: FAILED_PRECONDITION
+        safe-args:
+          roleId: string
+      AssignmentNotFound:
+        namespace: Assignment
+        code: NOT_FOUND
+        safe-args:
+          assignmentId: string
+      AssignmentConflict:
+        docs: An identical active assignment already exists.
+        namespace: Assignment
+        code: CONFLICT
+        safe-args:
+          reason: string
+      AssignmentInvalid:
+        docs: The assignment request is malformed or references an unknown subject/role/unit/graph.
+        namespace: Assignment
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
+      NonAuthorityBearingGraph:
+        docs: A subtree grant named a directory-only graph; authority does not cascade there (D-DirectoryGraphs).
+        namespace: Authorization
+        code: FAILED_PRECONDITION
+        safe-args:
+          graph: string
+      SelfEscalation:
+        docs: The grantor lacks the authority to grant this assignment (no self-escalation).
+        namespace: Authorization
+        code: PERMISSION_DENIED
+        safe-args:
+          reason: string
+      PermissionDenied:
+        docs: The PDP denied the action. The shared denial every module's PEP returns.
+        namespace: Authorization
+        code: PERMISSION_DENIED
+        safe-args:
+          action: string
+      InstanceAdminNotFound:
+        namespace: Authorization
+        code: NOT_FOUND
+        safe-args:
+          instanceAdminId: string
+      InstanceAdminConflict:
+        docs: The person is already an active instance admin.
+        namespace: Authorization
+        code: CONFLICT
+        safe-args:
+          reason: string
+services:
+  AuthorizationService:
+    name: Authorization Service
+    package: oikumenea.authorization
+    base-path: /authorization/v1
+    default-auth: header
+    docs: |
+      The PDP + RBAC management. /authorize answers (person, action, unit) over the unit-graph
+      closure; roles/assignments/instance-admins are policy-as-data. /authorize requires
+      assignment.read (no self-exemption, OQ-5); role.* are instance-scope; assignment.grant/revoke
+      are unit-scoped on the target unit; instance.admin.manage is instance-scope. Writes audited
+      (D-Audit). Denied operations surface Authorization:PermissionDenied.
+    endpoints:
+      authorize:
+        http: POST /authorize
+        docs: Decide (subject, action, unit). Requires assignment.read reaching the unit.
+        args:
+          request: AuthorizeRequest
+        returns: AuthorizeResponse
+      authorizeBatch:
+        http: POST /authorize/batch
+        docs: Batch decisions for one subject, with optional decision-explain (DS-16).
+        args:
+          request: BatchAuthorizeRequest
+        returns: BatchAuthorizeResponse
+      createRole:
+        http: POST /roles
+        docs: Create a custom role (instance-scope role.create). Returns Role:RoleConflict if the code is taken.
+        args:
+          request: CreateRoleRequest
+        returns: Role
+      listRoles:
+        http: GET /roles
+        docs: List roles, token-paginated (role.read).
+        args:
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: RolePage
+      getRole:
+        http: GET /roles/{roleId}
+        docs: Read one role with its permission set (role.read).
+        args:
+          roleId:
+            type: string
+            param-type: path
+        returns: Role
+      updateRole:
+        http: PUT /roles/{roleId}
+        docs: Edit a custom role (instance-scope role.update). Base roles return Role:RoleImmutable.
+        args:
+          roleId:
+            type: string
+            param-type: path
+          request: UpdateRoleRequest
+        returns: Role
+      deleteRole:
+        http: DELETE /roles/{roleId}
+        docs: Soft-delete a custom role (instance-scope role.delete). Blocked with Role:RoleInUse if assigned.
+        args:
+          roleId:
+            type: string
+            param-type: path
+      grantAssignment:
+        http: POST /assignments
+        docs: Grant (subject, role, unit, scope, graph) + optional expiry (assignment.grant on the target unit).
+        args:
+          request: GrantAssignmentRequest
+        returns: Assignment
+      revokeAssignment:
+        http: DELETE /assignments/{assignmentId}
+        docs: Revoke an assignment (reversible flip; assignment.revoke).
+        args:
+          assignmentId:
+            type: string
+            param-type: path
+        returns: Assignment
+      listAssignments:
+        http: GET /assignments
+        docs: List active assignments by subjectPersonId OR targetUnitId (exactly one), token-paginated (assignment.read).
+        args:
+          subjectPersonId:
+            type: optional<string>
+            param-type: query
+          targetUnitId:
+            type: optional<string>
+            param-type: query
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: AssignmentPage
+      grantInstanceAdmin:
+        http: POST /instance-admins
+        docs: Grant instance-admin (instance.admin.manage). Returns Authorization:InstanceAdminConflict if already active.
+        args:
+          request: GrantInstanceAdminRequest
+        returns: InstanceAdmin
+      revokeInstanceAdmin:
+        http: DELETE /instance-admins/{instanceAdminId}
+        docs: Revoke instance-admin (instance.admin.manage; reversible flip).
+        args:
+          instanceAdminId:
+            type: string
+            param-type: path
+        returns: InstanceAdmin

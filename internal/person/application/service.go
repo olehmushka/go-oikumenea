@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -84,6 +85,24 @@ func (s *Service) CreatePerson(ctx context.Context, p domain.Person) (domain.Per
 		return s.record(ctx, tx, "person.create", created.ID, map[string]any{"id": created.ID})
 	})
 	return out, err
+}
+
+// PersonIDByCode resolves an active person's RID from their stable code, reporting whether a match
+// was found. It is the cross-module query identity-federation's just-in-time link-on-match (D-JIT)
+// uses to map a token claim -> person.code -> person without exposing the person aggregate. An empty
+// code never matches.
+func (s *Service) PersonIDByCode(ctx context.Context, code string) (string, bool, error) {
+	if code == "" {
+		return "", false, nil
+	}
+	p, err := s.newRepo(s.pool).GetActivePersonByCode(ctx, code)
+	if errors.Is(err, domain.ErrNotFound) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return p.ID, true, nil
 }
 
 // GetPerson reads one person with its name variants, citizenships, and residences attached.

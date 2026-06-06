@@ -85,10 +85,11 @@ All other columns (`id`, `person_id`, `type_id`, `status`, `sort_order`, lifecyc
 `issuing_country`, `issued_on`/`expires_on`) are `pii:none` (D-PIITiers).
 
 **`document_personal_code_schemes`** (instance-admin catalog — national-identifier schemes; D-PersonalCodes)
-- `id` PK
-- `code TEXT NOT NULL UNIQUE` — the **country-namespaced scheme** id (D-Code); immutable by
-  convention. Seeded with a representative set (`ua-rnokpp`, `ua-unzr`, `us-ssn`, `de-steuer-id`,
-  `it-codice-fiscale`, `pl-pesel`, …); the instance admin adds more — `pii:none`
+- `code TEXT PRIMARY KEY` — the **country-namespaced scheme** id (D-Code); the **natural-key PK** (the
+  D-ResourceIdentifiers carve-out, like `geo_countries` / `i18n_locales` — a seeded shared reference
+  registry FK'd by code, **not** an RID-keyed runtime entity, so it can be seeded in the migration).
+  Immutable by convention. Seeded with a representative set (`ua-rnokpp`, `ua-unzr`, `us-ssn`,
+  `de-steuer-id`, `it-codice-fiscale`, `pl-pesel`, …); the instance admin adds more — `pii:none`
 - `country_iso CHAR(2) REFERENCES geo_countries(code) ON DELETE RESTRICT` — the scheme's issuing
   country (NOT NULL for national schemes) — `pii:none`
 - `generic_category TEXT NOT NULL CHECK (generic_category IN ('tax-id','national-id',
@@ -102,21 +103,24 @@ All other columns (`id`, `person_id`, `type_id`, `status`, `sort_order`, lifecyc
 - `created_at`, `updated_at`, `deleted_at`
 
 **`document_personal_codes`** (person-held national identifiers; value encrypted — D-CryptoProvider)
-- `id` PK
+- `id` PK (RID — `new_rid('document','personal_code')`)
 - `person_id TEXT NOT NULL REFERENCES person_persons(id) ON DELETE RESTRICT` — the holder
-- `scheme_id TEXT NOT NULL REFERENCES document_personal_code_schemes(id) ON DELETE RESTRICT` — which
-  scheme; the code's **country derives from `scheme.country_iso`** (no per-row country)
-- `value_ciphertext BYTEA NOT NULL` — the identifier, **envelope-encrypted** — **`pii:sensitive`**
-- `wrapped_dek BYTEA NOT NULL` — the per-record data key, wrapped by the KMS-held KEK — `secret`
+- `scheme_code TEXT NOT NULL REFERENCES document_personal_code_schemes(code) ON DELETE RESTRICT` — which
+  scheme (FK to the scheme's natural `code` PK); the code's **country derives from `scheme.country_iso`**
+  (no per-row country)
+- `value_ciphertext BYTEA` — the identifier, **envelope-encrypted** — **`pii:sensitive`**. **Nullable**
+  so person purge can crypto-erase it (NULL once erased); always set on active rows.
+- `wrapped_dek BYTEA` — the per-record data key, wrapped by the KMS-held KEK — `secret`. **Nullable**
+  for the same reason (crypto-erase destroys it).
 - `key_ref TEXT NOT NULL` — the KEK id + version used (D-CryptoProvider) — `pii:none`
 - `value_blind_index BYTEA NOT NULL` — keyed HMAC of the normalized value, for equality lookup /
   uniqueness without decryption — `pii:none` (opaque; not reversible to the value)
 - `status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','superseded','revoked'))`
 - `created_at`, `updated_at`, `deleted_at`
-- **Uniqueness:** `UNIQUE (scheme_id, value_blind_index) WHERE deleted_at IS NULL` — the same code in
+- **Uniqueness:** `UNIQUE (scheme_code, value_blind_index) WHERE deleted_at IS NULL` — the same code in
   the same scheme is not held by two people (cross-person), enforced over the blind index since the
   value is ciphertext.
-- Index `(person_id) WHERE deleted_at IS NULL`, `(scheme_id)`.
+- Index `(person_id) WHERE deleted_at IS NULL`, `(scheme_code)`.
 
 ### Validation (D-PersonalCodes)
 

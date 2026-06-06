@@ -20,7 +20,7 @@
 # internal/conjure and is never hand-edited.
 types:
   definitions:
-    default-package: com.palantir.oikumenea.person
+    default-package: oikumenea.person
     objects:
       Person:
         docs: |
@@ -270,7 +270,7 @@ types:
 services:
   PersonService:
     name: Person Service
-    package: com.palantir.oikumenea.person
+    package: oikumenea.person
     base-path: /person/v1
     default-auth: header
     docs: |

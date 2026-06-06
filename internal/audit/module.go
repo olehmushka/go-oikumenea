@@ -10,6 +10,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/audit/application"
 	"github.com/olegamysk/go-oikumenea/internal/audit/domain"
 	"github.com/olegamysk/go-oikumenea/internal/audit/transport"
+	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
 	auditapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/audit"
 	pconfig "github.com/olegamysk/go-oikumenea/internal/platform/config"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
@@ -25,7 +26,7 @@ const defaultPageSize = 50
 // witchcraft router. The returned *application.Service is the in-process Record(...) entry point
 // every write-bearing module will use; it carries no resources of its own (the pool is owned by
 // platform), so there is no module-level cleanup.
-func Register(info witchcraft.InitInfo, pool *pgxpool.Pool) (*application.Service, error) {
+func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, enforcer *pep.Enforcer) (*application.Service, error) {
 	repoFor := func(conn db.DBTX) domain.Repository { return adapters.NewRepository(conn) }
 
 	sizeRef := pkgconfig.IntOrDefault(info.RuntimeConfig, defaultPageSize, func(v any) int {
@@ -43,7 +44,7 @@ func Register(info witchcraft.InitInfo, pool *pgxpool.Pool) (*application.Servic
 
 	svc := application.NewService(pool, repoFor, pageSize)
 
-	if err := auditapi.RegisterRoutesAuditService(info.Router, transport.NewService(svc)); err != nil {
+	if err := auditapi.RegisterRoutesAuditService(info.Router, transport.NewService(svc, enforcer)); err != nil {
 		return nil, werror.Wrap(err, "register audit service routes")
 	}
 	return svc, nil

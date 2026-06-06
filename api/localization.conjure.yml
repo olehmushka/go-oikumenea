@@ -14,7 +14,7 @@
 # authorization (M7) + identity-federation (M8) do. Writes are recorded in the audit log in-process.
 types:
   definitions:
-    default-package: com.palantir.oikumenea.localization
+    default-package: oikumenea.localization
     objects:
       Locale:
         docs: A supported language for the deployment. `code` is the stable ISO 639-3 identifier; `name` is the endonym.
@@ -87,7 +87,7 @@ types:
 services:
   LocalizationService:
     name: Localization Service
-    package: com.palantir.oikumenea.localization
+    package: oikumenea.localization
     base-path: /localization/v1
     default-auth: header
     docs: |

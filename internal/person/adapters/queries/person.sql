@@ -168,3 +168,9 @@ RETURNING id;
 -- name: ListResidences :many
 SELECT * FROM oikumenea.person_residences
 WHERE person_id = @person_id AND deleted_at IS NULL ORDER BY valid_from DESC, id;
+
+-- name: GetActivePersonByCode :one
+-- Look up an active person by their stable `code` (D-Code). Used by identity-federation for
+-- just-in-time link-on-match (D-JIT) and the first-admin bootstrap's find-or-create (D-Bootstrap).
+SELECT * FROM oikumenea.person_persons
+WHERE code = @code AND status = 'active' AND deleted_at IS NULL;

@@ -16,7 +16,7 @@
 # recorded in the audit log in-process (D-Audit).
 types:
   definitions:
-    default-package: com.palantir.oikumenea.tenant
+    default-package: oikumenea.tenant
     objects:
       Visibility:
         docs: A unit's read-time visibility. SHADOW units are filtered by the shadow gate (M7).
@@ -236,7 +236,7 @@ types:
 services:
   TenantService:
     name: Tenant Service
-    package: com.palantir.oikumenea.tenant
+    package: oikumenea.tenant
     base-path: /tenant/v1
     default-auth: header
     docs: |

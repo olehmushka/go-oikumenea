@@ -3,10 +3,12 @@
 // SerializableErrors (overview.md; D-Conjure). Generated code in internal/conjure is never
 // hand-edited.
 //
-// Authorization is intentionally not yet enforced here: the endpoints declare `auth: header` so
-// the bearer token is parsed, but the `audit.read` permission check, unit-scoping over the
-// closure, and the shadow gate are wired once authorization (M7) + identity-federation (M8) land
-// (docs/modules/audit.md). The handlers receive the token and ignore it for now.
+// Authorization (M7): both reads require `audit.read`, enforced via the PEP. Audit reads are
+// documented as unit-scoped exactly like person.read (D-Audit), but the audit log is not yet
+// unit-keyed, so the gate is the coarse "holds audit.read somewhere (or instance admin)" form;
+// per-unit audit filtering + the shadow gate over the closure are a follow-up (cleanest once M8
+// supplies a real subject). The bearer token carries the acting subject (interim: token == person
+// RID; see internal/authorization/pep).
 package transport
 
 import (
@@ -18,6 +20,8 @@ import (
 
 	"github.com/olegamysk/go-oikumenea/internal/audit/application"
 	"github.com/olegamysk/go-oikumenea/internal/audit/domain"
+	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
+	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
 	auditapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/audit"
 	cerrors "github.com/palantir/conjure-go-runtime/v2/conjure-go-contract/errors"
 	"github.com/palantir/pkg/bearertoken"
@@ -28,11 +32,12 @@ import (
 // Service adapts *application.Service to the generated auditapi.AuditService interface.
 type Service struct {
 	app *application.Service
+	pep *pep.Enforcer
 }
 
-// NewService builds the transport adapter over the audit application service.
-func NewService(app *application.Service) Service {
-	return Service{app: app}
+// NewService builds the transport adapter over the audit application service and the PEP enforcer.
+func NewService(app *application.Service, enforcer *pep.Enforcer) Service {
+	return Service{app: app, pep: enforcer}
 }
 
 // compile-time assertion that the transport satisfies the generated server interface.
@@ -41,7 +46,7 @@ var _ auditapi.AuditService = Service{}
 // Query implements the GET /audit endpoint.
 func (s Service) Query(
 	ctx context.Context,
-	_ bearertoken.Token,
+	token bearertoken.Token,
 	actorPersonID *string,
 	actorType *auditapi.AuditActorType,
 	targetType *string,
@@ -54,6 +59,9 @@ func (s Service) Query(
 	pageSize *int,
 	pageToken *string,
 ) (auditapi.AuditEntryPage, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermAuditRead)); err != nil {
+		return auditapi.AuditEntryPage{}, err
+	}
 	page, err := s.app.Query(ctx, application.QueryParams{
 		ActorPersonID: actorPersonID,
 		ActorType:     fromAPIActorType(actorType),
@@ -82,7 +90,10 @@ func (s Service) Query(
 }
 
 // Get implements the GET /audit/{entryId} endpoint.
-func (s Service) Get(ctx context.Context, _ bearertoken.Token, entryID string) (auditapi.AuditEntry, error) {
+func (s Service) Get(ctx context.Context, token bearertoken.Token, entryID string) (auditapi.AuditEntry, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermAuditRead)); err != nil {
+		return auditapi.AuditEntry{}, err
+	}
 	e, err := s.app.Get(ctx, entryID)
 	if err != nil {
 		return auditapi.AuditEntry{}, mapError(ctx, err, entryID)

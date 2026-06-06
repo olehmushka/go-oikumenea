@@ -54,3 +54,43 @@ sql:
         sql_package: pgx/v5
         emit_methods_with_db_argument: false
         emit_exact_table_names: false
+  - engine: postgresql
+    schema: migrations
+    queries: internal/membership/adapters/queries
+    gen:
+      go:
+        package: membershipsql
+        out: internal/membership/adapters/membershipsql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false
+  - engine: postgresql
+    schema: migrations
+    queries: internal/authorization/adapters/queries
+    gen:
+      go:
+        package: authzsql
+        out: internal/authorization/adapters/authzsql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false
+  - engine: postgresql
+    schema: migrations
+    queries: internal/identityfederation/adapters/queries
+    gen:
+      go:
+        package: accountsql
+        out: internal/identityfederation/adapters/accountsql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false
+  - engine: postgresql
+    schema: migrations
+    queries: internal/document/adapters/queries
+    gen:
+      go:
+        package: documentsql
+        out: internal/document/adapters/documentsql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false

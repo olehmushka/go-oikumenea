@@ -8,6 +8,37 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type OikumeneaAccountAccount struct {
+	// pii:none
+	ID string
+	// pii:basic
+	PersonID string
+	// pii:contact
+	Email pgtype.Text
+	// pii:none
+	Status string
+	// secret
+	PasswordHash pgtype.Text
+	// pii:none
+	MfaEnrolledAt pgtype.Timestamptz
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	DeletedAt     pgtype.Timestamptz
+}
+
+type OikumeneaAccountExternalIdentity struct {
+	// pii:none
+	ID string
+	// pii:none
+	AccountID string
+	// pii:none
+	Issuer string
+	// pii:basic
+	Subject string
+	// pii:none
+	CreatedAt pgtype.Timestamptz
+}
+
 type OikumeneaAuditLog struct {
 	// pii:none
 	ID string
@@ -35,6 +66,157 @@ type OikumeneaAuditLog struct {
 	After []byte
 	// pii:none
 	Outcome string
+}
+
+type OikumeneaAuthzInstanceAdmin struct {
+	// pii:none
+	ID string
+	// pii:basic
+	PersonID string
+	// pii:none
+	GrantedBy pgtype.Text
+	// pii:none
+	GrantedAt pgtype.Timestamptz
+	// pii:none
+	RevokedAt pgtype.Timestamptz
+	// pii:none
+	RevokedBy pgtype.Text
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+type OikumeneaAuthzRole struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	Description pgtype.Text
+	// pii:none
+	IsBase    bool
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaAuthzRoleAssignment struct {
+	// pii:none
+	ID string
+	// pii:basic
+	SubjectPersonID string
+	// pii:none
+	RoleID string
+	// pii:basic
+	TargetUnitID string
+	// pii:none
+	Scope string
+	// pii:none
+	GraphID pgtype.Text
+	// pii:none
+	GrantedBy pgtype.Text
+	// pii:none
+	GrantedAt pgtype.Timestamptz
+	// pii:none
+	RevokedAt pgtype.Timestamptz
+	// pii:none
+	RevokedBy pgtype.Text
+	// pii:none
+	ExpiresAt pgtype.Timestamptz
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+type OikumeneaAuthzRolePermission struct {
+	// pii:none
+	RoleID string
+	// pii:none
+	PermissionCode string
+}
+
+type OikumeneaDocumentDocument struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:none
+	TypeID string
+	// pii:basic
+	Number pgtype.Text
+	// pii:basic
+	Issuer pgtype.Text
+	// pii:none
+	IssuingCountry pgtype.Text
+	// pii:none
+	IssuedOn pgtype.Date
+	// pii:none
+	ExpiresOn pgtype.Date
+	// pii:special
+	Attributes []byte
+	// pii:none
+	Status    string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaDocumentDocumentType struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	Status string
+	// pii:none
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaDocumentPersonalCode struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:none
+	SchemeCode string
+	// pii:sensitive
+	ValueCiphertext []byte
+	// secret
+	WrappedDek []byte
+	// pii:none
+	KeyRef string
+	// pii:none
+	ValueBlindIndex []byte
+	// pii:none
+	Status    string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaDocumentPersonalCodeScheme struct {
+	// pii:none
+	Code string
+	// pii:none
+	CountryIso pgtype.Text
+	// pii:none
+	GenericCategory string
+	// pii:none
+	Name string
+	// pii:none
+	ValidationRegex pgtype.Text
+	// pii:none
+	Status string
+	// pii:none
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
 }
 
 type OikumeneaGeoCountry struct {
@@ -81,6 +263,48 @@ type OikumeneaI18nTranslation struct {
 	Text      string
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
+}
+
+type OikumeneaMembershipMembership struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:basic
+	UnitID string
+	// pii:basic
+	PositionID pgtype.Text
+	// pii:none
+	OrderItemID pgtype.Text
+	// pii:none
+	Status string
+	// pii:basic
+	EffectiveFrom pgtype.Timestamptz
+	// pii:basic
+	EffectiveTo pgtype.Timestamptz
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+	DeletedAt   pgtype.Timestamptz
+}
+
+type OikumeneaMembershipPosition struct {
+	// pii:none
+	ID string
+	// pii:none
+	UnitID string
+	// pii:none
+	Code string
+	// pii:none
+	Title string
+	// pii:none
+	RequiredRankID pgtype.Text
+	// pii:none
+	Status string
+	// pii:none
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
 }
 
 type OikumeneaPersonCitizenship struct {

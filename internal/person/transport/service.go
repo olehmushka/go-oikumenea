@@ -4,10 +4,15 @@
 //
 // Person names are per-record data returned verbatim (a canonical display name + locale-tagged
 // variants), NOT the instance localization store (D-i18n) — so unlike rank/tenant this transport
-// assembles no locale->text maps. Authorization is intentionally not yet enforced: the endpoints
-// declare `auth: header` so the bearer token is parsed, but the `person.*` checks + the read-scope
-// rule (D-PersonReadScope) land once authorization (M7) + identity-federation (M8) do. The handlers
-// receive the token and ignore it.
+// assembles no locale->text maps.
+//
+// Authorization (M7): each endpoint is gated via the PEP on its `person.*` permission. Because a
+// person is instance-global with no unit column, the precise read-scope rule (D-PersonReadScope —
+// intersect the reader's effective reach with the person's active-membership units, shadow-gated) is
+// NOT yet applied; the interim gate is the coarse "holds the permission anywhere (or instance admin)"
+// form. Tightening to the per-person membership projection is a documented follow-up, cleanest once
+// identity-federation (M8) supplies a validated subject. The bearer token carries the acting subject
+// (interim: token == person RID; see internal/authorization/pep).
 package transport
 
 import (
@@ -16,6 +21,8 @@ import (
 	"errors"
 	"time"
 
+	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
+	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
 	personapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/person"
 	"github.com/olegamysk/go-oikumenea/internal/person/application"
 	"github.com/olegamysk/go-oikumenea/internal/person/domain"
@@ -24,20 +31,37 @@ import (
 	werror "github.com/palantir/witchcraft-go-error"
 )
 
+// Person permission codes (D-BaseRoles); reads project through memberships per D-PersonReadScope (see
+// the package note for the interim coarse gate).
+const (
+	permRead       = string(authzdomain.PermPersonRead)
+	permCreate     = string(authzdomain.PermPersonCreate)
+	permUpdate     = string(authzdomain.PermPersonUpdate)
+	permRankAssign = string(authzdomain.PermPersonRankAssign)
+	permLifecycle  = string(authzdomain.PermPersonLifecycle)
+	permPurge      = string(authzdomain.PermPersonPurge)
+)
+
 // Service adapts *application.Service to the generated personapi.PersonService interface.
 type Service struct {
 	app *application.Service
+	pep *pep.Enforcer
 }
 
-// NewService builds the transport adapter over the person application service.
-func NewService(app *application.Service) Service { return Service{app: app} }
+// NewService builds the transport adapter over the person application service and the PEP enforcer.
+func NewService(app *application.Service, enforcer *pep.Enforcer) Service {
+	return Service{app: app, pep: enforcer}
+}
 
 // compile-time assertion that the transport satisfies the generated server interface.
 var _ personapi.PersonService = Service{}
 
 // ---------------------------------------------------------------- persons
 
-func (s Service) CreatePerson(ctx context.Context, _ bearertoken.Token, req personapi.CreatePersonRequest) (personapi.Person, error) {
+func (s Service) CreatePerson(ctx context.Context, token bearertoken.Token, req personapi.CreatePersonRequest) (personapi.Person, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permCreate); err != nil {
+		return personapi.Person{}, err
+	}
 	created, err := s.app.CreatePerson(ctx, domain.Person{
 		Code: derefOr(req.Code, ""),
 		Name: nameFromParts(req.DisplayName, req.Title, req.Given, req.Given2, req.Surname,
@@ -54,7 +78,10 @@ func (s Service) CreatePerson(ctx context.Context, _ bearertoken.Token, req pers
 	return toAPIPerson(created), nil
 }
 
-func (s Service) GetPerson(ctx context.Context, _ bearertoken.Token, personID string) (personapi.Person, error) {
+func (s Service) GetPerson(ctx context.Context, token bearertoken.Token, personID string) (personapi.Person, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return personapi.Person{}, err
+	}
 	p, err := s.app.GetPerson(ctx, personID)
 	if err != nil {
 		return personapi.Person{}, s.mapError(ctx, err, personID)
@@ -62,7 +89,10 @@ func (s Service) GetPerson(ctx context.Context, _ bearertoken.Token, personID st
 	return toAPIPerson(p), nil
 }
 
-func (s Service) UpdatePerson(ctx context.Context, _ bearertoken.Token, personID string, req personapi.UpdatePersonRequest) (personapi.Person, error) {
+func (s Service) UpdatePerson(ctx context.Context, token bearertoken.Token, personID string, req personapi.UpdatePersonRequest) (personapi.Person, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return personapi.Person{}, err
+	}
 	updated, err := s.app.UpdatePerson(ctx, personID, domain.PersonPatch{
 		DisplayName:    req.DisplayName,
 		Title:          req.Title,
@@ -85,7 +115,10 @@ func (s Service) UpdatePerson(ctx context.Context, _ bearertoken.Token, personID
 	return toAPIPerson(updated), nil
 }
 
-func (s Service) ListPersons(ctx context.Context, _ bearertoken.Token, pageSize *int, pageToken *string) (personapi.PersonPage, error) {
+func (s Service) ListPersons(ctx context.Context, token bearertoken.Token, pageSize *int, pageToken *string) (personapi.PersonPage, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return personapi.PersonPage{}, err
+	}
 	page, err := s.app.ListPersons(ctx, derefOr(pageSize, 0), derefOr(pageToken, ""))
 	if err != nil {
 		return personapi.PersonPage{}, s.mapError(ctx, err, "")
@@ -97,7 +130,10 @@ func (s Service) ListPersons(ctx context.Context, _ bearertoken.Token, pageSize 
 	return personapi.PersonPage{Persons: persons, NextPageToken: tokenPtr(page.NextPageToken)}, nil
 }
 
-func (s Service) SetRank(ctx context.Context, _ bearertoken.Token, personID string, req personapi.SetRankRequest) (personapi.Person, error) {
+func (s Service) SetRank(ctx context.Context, token bearertoken.Token, personID string, req personapi.SetRankRequest) (personapi.Person, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRankAssign); err != nil {
+		return personapi.Person{}, err
+	}
 	updated, err := s.app.SetRank(ctx, personID, req.RankId)
 	if err != nil {
 		return personapi.Person{}, s.mapError(ctx, err, personID)
@@ -107,7 +143,10 @@ func (s Service) SetRank(ctx context.Context, _ bearertoken.Token, personID stri
 
 // ---------------------------------------------------------------- lifecycle
 
-func (s Service) DeactivatePerson(ctx context.Context, _ bearertoken.Token, personID string, req personapi.DeactivateRequest) (personapi.Person, error) {
+func (s Service) DeactivatePerson(ctx context.Context, token bearertoken.Token, personID string, req personapi.DeactivateRequest) (personapi.Person, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permLifecycle); err != nil {
+		return personapi.Person{}, err
+	}
 	updated, err := s.app.DeactivatePerson(ctx, personID, derefOr(req.Reason, ""))
 	if err != nil {
 		return personapi.Person{}, s.mapError(ctx, err, personID)
@@ -115,7 +154,10 @@ func (s Service) DeactivatePerson(ctx context.Context, _ bearertoken.Token, pers
 	return toAPIPerson(updated), nil
 }
 
-func (s Service) ReactivatePerson(ctx context.Context, _ bearertoken.Token, personID string) (personapi.Person, error) {
+func (s Service) ReactivatePerson(ctx context.Context, token bearertoken.Token, personID string) (personapi.Person, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permLifecycle); err != nil {
+		return personapi.Person{}, err
+	}
 	updated, err := s.app.ReactivatePerson(ctx, personID)
 	if err != nil {
 		return personapi.Person{}, s.mapError(ctx, err, personID)
@@ -123,7 +165,10 @@ func (s Service) ReactivatePerson(ctx context.Context, _ bearertoken.Token, pers
 	return toAPIPerson(updated), nil
 }
 
-func (s Service) PurgePerson(ctx context.Context, _ bearertoken.Token, personID string) (personapi.Person, error) {
+func (s Service) PurgePerson(ctx context.Context, token bearertoken.Token, personID string) (personapi.Person, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permPurge); err != nil {
+		return personapi.Person{}, err
+	}
 	purged, err := s.app.PurgePerson(ctx, personID)
 	if err != nil {
 		return personapi.Person{}, s.mapError(ctx, err, personID)
@@ -133,7 +178,10 @@ func (s Service) PurgePerson(ctx context.Context, _ bearertoken.Token, personID 
 
 // ---------------------------------------------------------------- name variants
 
-func (s Service) UpsertNameVariant(ctx context.Context, _ bearertoken.Token, personID string, req personapi.UpsertNameVariantRequest) (personapi.NameVariant, error) {
+func (s Service) UpsertNameVariant(ctx context.Context, token bearertoken.Token, personID string, req personapi.UpsertNameVariantRequest) (personapi.NameVariant, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return personapi.NameVariant{}, err
+	}
 	created, err := s.app.UpsertNameVariant(ctx, domain.NameVariant{
 		PersonID: personID,
 		Locale:   req.Locale,
@@ -147,7 +195,10 @@ func (s Service) UpsertNameVariant(ctx context.Context, _ bearertoken.Token, per
 	return toAPIVariant(created), nil
 }
 
-func (s Service) DeleteNameVariant(ctx context.Context, _ bearertoken.Token, personID, locale string) error {
+func (s Service) DeleteNameVariant(ctx context.Context, token bearertoken.Token, personID, locale string) error {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return err
+	}
 	if err := s.app.DeleteNameVariant(ctx, personID, locale); err != nil {
 		return s.mapError(ctx, err, personID)
 	}
@@ -156,7 +207,10 @@ func (s Service) DeleteNameVariant(ctx context.Context, _ bearertoken.Token, per
 
 // ---------------------------------------------------------------- citizenships
 
-func (s Service) ListCitizenships(ctx context.Context, _ bearertoken.Token, personID string) ([]personapi.Citizenship, error) {
+func (s Service) ListCitizenships(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.Citizenship, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
 	cs, err := s.app.ListCitizenships(ctx, personID)
 	if err != nil {
 		return nil, s.mapError(ctx, err, personID)
@@ -168,7 +222,10 @@ func (s Service) ListCitizenships(ctx context.Context, _ bearertoken.Token, pers
 	return out, nil
 }
 
-func (s Service) UpsertCitizenship(ctx context.Context, _ bearertoken.Token, personID string, req personapi.UpsertCitizenshipRequest) (personapi.Citizenship, error) {
+func (s Service) UpsertCitizenship(ctx context.Context, token bearertoken.Token, personID string, req personapi.UpsertCitizenshipRequest) (personapi.Citizenship, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return personapi.Citizenship{}, err
+	}
 	created, err := s.app.UpsertCitizenship(ctx, domain.Citizenship{
 		PersonID:   personID,
 		Country:    req.Country,
@@ -183,7 +240,10 @@ func (s Service) UpsertCitizenship(ctx context.Context, _ bearertoken.Token, per
 	return toAPICitizenship(created), nil
 }
 
-func (s Service) DeleteCitizenship(ctx context.Context, _ bearertoken.Token, personID, country string) error {
+func (s Service) DeleteCitizenship(ctx context.Context, token bearertoken.Token, personID, country string) error {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return err
+	}
 	if err := s.app.DeleteCitizenship(ctx, personID, country); err != nil {
 		return s.mapError(ctx, err, personID)
 	}
@@ -192,7 +252,10 @@ func (s Service) DeleteCitizenship(ctx context.Context, _ bearertoken.Token, per
 
 // ---------------------------------------------------------------- residences
 
-func (s Service) ListResidences(ctx context.Context, _ bearertoken.Token, personID string) ([]personapi.Residence, error) {
+func (s Service) ListResidences(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.Residence, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
 	rs, err := s.app.ListResidences(ctx, personID)
 	if err != nil {
 		return nil, s.mapError(ctx, err, personID)
@@ -204,7 +267,10 @@ func (s Service) ListResidences(ctx context.Context, _ bearertoken.Token, person
 	return out, nil
 }
 
-func (s Service) UpsertResidence(ctx context.Context, _ bearertoken.Token, personID string, req personapi.UpsertResidenceRequest) (personapi.Residence, error) {
+func (s Service) UpsertResidence(ctx context.Context, token bearertoken.Token, personID string, req personapi.UpsertResidenceRequest) (personapi.Residence, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return personapi.Residence{}, err
+	}
 	created, err := s.app.UpsertResidence(ctx, domain.Residence{
 		ID:        derefOr(req.Id, ""),
 		PersonID:  personID,
@@ -219,7 +285,10 @@ func (s Service) UpsertResidence(ctx context.Context, _ bearertoken.Token, perso
 	return toAPIResidence(created), nil
 }
 
-func (s Service) DeleteResidence(ctx context.Context, _ bearertoken.Token, personID, residenceID string) error {
+func (s Service) DeleteResidence(ctx context.Context, token bearertoken.Token, personID, residenceID string) error {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return err
+	}
 	if err := s.app.DeleteResidence(ctx, personID, residenceID); err != nil {
 		return s.mapError(ctx, err, personID)
 	}

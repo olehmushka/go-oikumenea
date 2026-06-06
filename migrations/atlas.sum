@@ -1,7 +1,11 @@
-h1:xk87rULBEQ+kl3Onfmi23Ng4OS/V3y5mvObsjw1vj3A=
+h1:sJkAH+o6K4xEkRSCgo9zKfLXBYuMEXCxYFmawO917ho=
 20260601000000_schema_bootstrap.sql h1:3AGzl4kfuTZjdQMRcKCuIXlffowSBYSlcV2GkLpmhMU=
 20260601000001_audit_log.sql h1:d/rQjnfzvEWcfEibNHB+qzustjzFxqcLE+q715QfRKA=
 20260601000002_localization.sql h1:CfQ1Rnp7HndQ4NvN/yM0lEARygkW3wwmOVkcVTHYGtc=
 20260601000003_tenant.sql h1:brCYLLgpwSUFQLJwavV+wFYSNKIl2WV3vm8oN50Qn6g=
 20260601000004_rank.sql h1:GPwKJLird/PJNnbD1t1UDcY3+VWQ2a0BtjpbDaLGh2M=
 20260601000005_person.sql h1:LFzYknQwr879iJj+cAoKaKtgJd/zYj02Z49gJEN03kw=
+20260601000006_membership.sql h1:gn83Ezi0t8/oJQGaC47ZOsQFknWznsi8Oxe+aTsEjHU=
+20260601000007_authorization.sql h1:3M4jFs+RqDTs+ie8L6lEr/J9miOPMLkuV4TACYXpD10=
+20260601000008_identity_federation.sql h1:2mssFsPKWnDqGeUzYh9u8buoqF+g7KFf8CYyjGMj8Ko=
+20260601000009_document.sql h1:IX1kAoCdCoUtntnAccZ5adgC7flZX0pfbYJ8vCrRbbk=

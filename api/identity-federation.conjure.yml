@@ -1,0 +1,190 @@
+# Identity-federation module API (M8). The external-IdP seam (docs/modules/identity-federation.md).
+# go-oikumenea does NOT authenticate (L-AuthzOnly): it stores no credentials and issues no tokens. It
+# owns the optional login ACCOUNT (an attachment to a person, <=1 active) and the verified
+# (issuer, subject) EXTERNAL IDENTITIES that federate to it. Inbound-token validation (OIDC discovery
+# + JWKS) is MIDDLEWARE, not an endpoint — there is intentionally no login/token-issuing operation.
+#
+# RID-bearing fields are typed `string` (the composed URN RID): Conjure reserves `rid` as a built-in
+# primitive whose `ri.` format is NOT our `urn:oikumenea:` RID. Account/identity management gates on
+# the `person.*` permissions of the LINKED person (an account is an attachment to a person, so it
+# inherits that person's authorization surface); /whoami is authenticated-only (the middleware is the
+# authentication boundary, not an authorization check). Writes are recorded in the audit log in-process
+# (D-Audit). Generated Go lands in internal/conjure and is never hand-edited.
+types:
+  definitions:
+    default-package: oikumenea.identityfederation
+    objects:
+      Account:
+        docs: |
+          An optional login attachment to exactly one person (Object Account). A person may have zero
+          accounts (roster-only) or one active account. `identities` are the linked login points and is
+          populated by getAccount/createAccount; it is empty in contexts that do not load it.
+        fields:
+          id:
+            type: string
+            docs: The account's URN RID (carried as a plain string).
+          personId:
+            type: string
+            docs: The URN RID of the person this account attaches to.
+          email:
+            type: optional<string>
+            docs: The IdP-asserted email, if any; unique among active accounts when present.
+          status:
+            type: string
+            docs: One of active | disabled (disable is a reversible login block).
+          identities:
+            type: list<ExternalIdentity>
+            docs: The external identities (login points) federated to this account.
+          createdAt: datetime
+          updatedAt: datetime
+      ExternalIdentity:
+        docs: |
+          A verified (issuer, subject) login point federating to one account (Object External
+          identity). Globally unique; immutable once created and removed by unlink. No token columns —
+          access/refresh tokens are never persisted.
+        fields:
+          id:
+            type: string
+            docs: The external identity's URN RID (carried as a plain string).
+          accountId:
+            type: string
+            docs: The URN RID of the account this identity federates to.
+          issuer:
+            type: string
+            docs: The IdP `iss` (an allowed issuer).
+          subject:
+            type: string
+            docs: The IdP `sub` — a pseudonymous identifier for the person.
+          createdAt: datetime
+      Whoami:
+        docs: |
+          The caller's own resolved PDP context — the person (and optional account) the inbound token
+          mapped to. Produced from the request context the validation middleware attached.
+        fields:
+          personId:
+            type: string
+            docs: The URN RID of the resolved person (the PDP subject).
+          accountId:
+            type: optional<string>
+            docs: The URN RID of the resolved account; absent only on out-of-band/system contexts.
+          email:
+            type: optional<string>
+            docs: The account's IdP-asserted email, if any.
+      LinkIdentityRequest:
+        docs: Link a verified (issuer, subject) login point to an account.
+        fields:
+          issuer: string
+          subject: string
+      CreateAccountRequest:
+        docs: |
+          Create an account for a person, optionally linking its first external identity in the same
+          operation. The first identity on a new account is always permitted (the linking cap applies
+          only to ADDITIONAL identities).
+        fields:
+          personId: string
+          email:
+            type: optional<string>
+            docs: The IdP-asserted email, if known.
+          identity:
+            type: optional<LinkIdentityRequest>
+            docs: The first login point to link; omit to create a login-less account shell.
+    errors:
+      AccountNotFound:
+        namespace: Account
+        code: NOT_FOUND
+        safe-args:
+          accountId: string
+      AccountConflict:
+        docs: The person already has an active account, or the email is already taken.
+        namespace: Account
+        code: CONFLICT
+        safe-args:
+          reason: string
+      AccountInvalid:
+        docs: The request is malformed or references an unknown person.
+        namespace: Account
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
+      IdentityNotFound:
+        namespace: Identity
+        code: NOT_FOUND
+        safe-args:
+          identityId: string
+      IdentityConflict:
+        docs: |
+          The (issuer, subject) is already linked to an account, or identity linking is disabled
+          (account.identity_linking.enabled = false) and the account already has an active identity.
+        namespace: Identity
+        code: CONFLICT
+        safe-args:
+          reason: string
+      IdentityInvalid:
+        docs: The identity request is malformed (empty issuer/subject).
+        namespace: Identity
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
+services:
+  IdentityFederationService:
+    name: Identity Federation Service
+    package: oikumenea.identityfederation
+    base-path: /identity/v1
+    default-auth: header
+    docs: |
+      Optional login accounts + the external identities that federate to them. Account/identity
+      management gates on the `person.*` permissions of the linked person; /whoami is
+      authenticated-only. Token validation itself is middleware, not an endpoint. Writes are audited
+      in-process (D-Audit).
+    endpoints:
+      getAccount:
+        http: GET /accounts/{accountId}
+        docs: Read an account with its linked identities. Gates on `person.read` of the linked person.
+        args:
+          accountId:
+            type: string
+            param-type: path
+        returns: Account
+      createAccount:
+        http: POST /accounts
+        docs: |
+          Create an account for a person, optionally linking its first identity. Gates on
+          `person.update`. Returns Account:AccountConflict if the person already has an active
+          account, Identity:IdentityConflict if the initial (issuer, subject) is already linked.
+        args:
+          request: CreateAccountRequest
+        returns: Account
+      disableAccount:
+        http: POST /accounts/{accountId}/disable
+        docs: Disable login on an account (reversible). Gates on `person.update`.
+        args:
+          accountId:
+            type: string
+            param-type: path
+        returns: Account
+      linkIdentity:
+        http: POST /accounts/{accountId}/identities
+        docs: |
+          Link an additional external identity (login point) to an account. Gates on `person.update`.
+          Returns Identity:IdentityConflict when linking is disabled and the account already has an
+          active identity, or when the (issuer, subject) is already linked elsewhere.
+        args:
+          accountId:
+            type: string
+            param-type: path
+          request: LinkIdentityRequest
+        returns: ExternalIdentity
+      unlinkIdentity:
+        http: DELETE /accounts/{accountId}/identities/{identityId}
+        docs: Unlink an external identity from an account (hard removal). Gates on `person.update`.
+        args:
+          accountId:
+            type: string
+            param-type: path
+          identityId:
+            type: string
+            param-type: path
+      whoami:
+        http: GET /whoami
+        docs: Resolve the caller's own PDP context (person + account) from the validated inbound token.
+        returns: Whoami

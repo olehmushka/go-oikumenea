@@ -25,17 +25,17 @@ const ISODate = "2006-01-02"
 // Sentinel errors mapped to Conjure SerializableErrors by the transport layer. The DB constraints
 // (partial-unique code/citizenship, RESTRICT/CASCADE FKs) enforce the same shapes as a backstop.
 var (
-	ErrNotFound             = errors.New("person not found")
-	ErrCodeConflict         = errors.New("person code already exists")
-	ErrCitizenshipConflict  = errors.New("active citizenship for this country already exists")
-	ErrInvalid              = errors.New("invalid person request")
-	ErrUnknownRank          = errors.New("rank does not exist")
-	ErrUnknownCountry       = errors.New("country does not exist")
-	ErrUnknownLocale        = errors.New("locale does not exist")
-	ErrNameVariantNotFound  = errors.New("name variant not found")
-	ErrCitizenshipNotFound  = errors.New("citizenship not found")
-	ErrResidenceNotFound    = errors.New("residence not found")
-	ErrLifecycle            = errors.New("invalid lifecycle transition")
+	ErrNotFound            = errors.New("person not found")
+	ErrCodeConflict        = errors.New("person code already exists")
+	ErrCitizenshipConflict = errors.New("active citizenship for this country already exists")
+	ErrInvalid             = errors.New("invalid person request")
+	ErrUnknownRank         = errors.New("rank does not exist")
+	ErrUnknownCountry      = errors.New("country does not exist")
+	ErrUnknownLocale       = errors.New("locale does not exist")
+	ErrNameVariantNotFound = errors.New("name variant not found")
+	ErrCitizenshipNotFound = errors.New("citizenship not found")
+	ErrResidenceNotFound   = errors.New("residence not found")
+	ErrLifecycle           = errors.New("invalid lifecycle transition")
 )
 
 // Status is the person lifecycle state (D-PersonReadScope reversibility window).
@@ -278,6 +278,9 @@ type Repository interface {
 	// persons
 	InsertPerson(ctx context.Context, p Person) (Person, error)
 	GetPerson(ctx context.Context, id string) (Person, error)
+	// GetActivePersonByCode resolves an active person by stable code (JIT/bootstrap); ErrNotFound
+	// when none matches.
+	GetActivePersonByCode(ctx context.Context, code string) (Person, error)
 	UpdatePerson(ctx context.Context, id string, patch PersonPatch) (Person, error)
 	ListPersons(ctx context.Context, after string, limit int) ([]Person, error)
 	SetRank(ctx context.Context, id string, rankID *string) (Person, error)

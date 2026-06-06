@@ -13,6 +13,7 @@ package person
 import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
+	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
 	personapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/person"
 	locapp "github.com/olegamysk/go-oikumenea/internal/localization/application"
 	"github.com/olegamysk/go-oikumenea/internal/person/adapters"
@@ -36,7 +37,7 @@ const defaultPurgeGraceHours = 720
 // routes onto the witchcraft router. The purge-grace window is read from the (refreshable) runtime
 // config. It owns no resources of its own (the pool is owned by platform), so there is no
 // module-level cleanup.
-func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, _ *locapp.Service, _ *rankapp.Service) (*application.Service, error) {
+func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, _ *locapp.Service, _ *rankapp.Service, enforcer *pep.Enforcer) (*application.Service, error) {
 	repoFor := func(conn db.DBTX) domain.Repository { return adapters.NewRepository(conn) }
 
 	graceRef := pkgconfig.IntOrDefault(info.RuntimeConfig, defaultPurgeGraceHours, func(v any) int {
@@ -54,7 +55,7 @@ func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Serv
 
 	svc := application.NewService(pool, repoFor, audit, graceHours)
 
-	if err := personapi.RegisterRoutesPersonService(info.Router, transport.NewService(svc)); err != nil {
+	if err := personapi.RegisterRoutesPersonService(info.Router, transport.NewService(svc, enforcer)); err != nil {
 		return nil, werror.Wrap(err, "register person service routes")
 	}
 	return svc, nil

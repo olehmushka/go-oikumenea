@@ -15,3 +15,42 @@ environment: local
 # Operator-owned PostgreSQL (L-OperatorDB). Matches docker-compose.dev.yml / the verification DB.
 postgres:
   dsn: "postgres://postgres:dev@localhost:5432/postgres?sslmode=disable"
+
+# Inbound-token validation (identity-federation.md, M8). Authentication is delegated (L-AuthzOnly):
+# production issuers use OIDC discovery + JWKS (type: oidc); this local-dev issuer uses a symmetric
+# HS256 key so dev/tests can mint tokens. The hmac-key is ECV-encrypted in real deployments.
+idp:
+  clock-skew-seconds: 60
+  jit:
+    enabled: false           # default reject-unknown (D-JIT). When true, link-on-match via `claim`.
+    claim: person_code       # token claim mapped to person.code for link-on-match
+  issuers:
+    - issuer: "https://local-dev.oikumenea.test"
+      type: hs256
+      audience: oikumenea
+      hmac-key: "local-dev-insecure-signing-key-change-me"
+
+# Identity-federation account knobs (identity-federation.md). identity-linking-enabled gates linking
+# ADDITIONAL login points to one account (default true).
+account:
+  identity-linking-enabled: true
+
+# Envelope encryption for pii:sensitive data (D-CryptoProvider, M9): the document module encrypts
+# personal-code values at rest. The local-dev backend wraps per-record DEKs with a symmetric KEK held
+# here (base64); production selects a real KMS (aws-kms/gcp-kms/vault-transit/azure-kv) where the KEK
+# never leaves it. The kek + blind-index-key are ECV-encrypted in real deployments. INSECURE DEFAULTS —
+# change for any non-local deployment.
+crypto:
+  provider: local-dev
+  blind-index-key: "bG9jYWwtZGV2LWluc2VjdXJlLWJsaW5kLWlkeC1rZXk="
+  dek-cache-ttl-seconds: 300
+  local-dev:
+    kek: "bG9jYWwtZGV2LWluc2VjdXJlLWtlay1jaGFuZ2UtbWU="
+
+# First instance admin seeded at first boot (D-Bootstrap), bound to the local-dev IdP identity above.
+# Idempotent: skipped once any instance admin exists. Remove/replace for real deployments.
+bootstrap-admin:
+  issuer: "https://local-dev.oikumenea.test"
+  subject: "local-admin"
+  display-name: "Local Admin"
+  person-code: "admin"
