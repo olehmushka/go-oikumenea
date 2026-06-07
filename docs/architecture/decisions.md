@@ -969,6 +969,17 @@ person **purge** by **crypto-erase** (drop the wrapped DEK). All writes audited 
 [document](../modules/document.md), [person](../modules/person.md),
 [platform](../modules/platform.md).
 
+**Scheme set (expanded).** Beyond the originally seeded schemes (`ua-rnokpp`, `ua-unzr`, `us-ssn`,
+`de-steuer-id`, `it-codice-fiscale`, `pl-pesel`), the catalog seeds RU/BY/LATAM identifiers:
+`ru-inn`, `ru-snils`, `by-personal-number`, `br-cpf`, `ar-dni`, `ar-cuil`, `mx-curp`, `mx-rfc`,
+`cl-rut`, `co-cedula`. Compiled `pkg/personalcode` **checksum** validators ship for the schemes with a
+well-known algorithm (`ru-inn`, `ru-snils`, `br-cpf`, `ar-cuil`, `cl-rut`); **structural/format**
+validators ship for `mx-curp` / `mx-rfc` (their homoclave check character is name-derived and not
+verifiable from the code alone); `ar-dni`, `co-cedula`, `by-personal-number` rely on the catalog regex
+/ accept-and-warn fallback. All
+`country_iso` values are already in the seeded `geo_countries` registry. Purely additive — new seed
+rows + new compiled validators, no schema or decision change.
+
 ### D-CryptoProvider — Pluggable envelope encryption for sensitive PII (reshapes DS-29)
 
 **Decision.** Introduce **envelope encryption** behind a **pluggable key-provider seam**, used now to
@@ -1134,6 +1145,88 @@ first-class addressable resources, and lets the audit log be the action ledger. 
 registry**; the module docs gain explicit Object/Link/Action labeling and RID-shaped data models (a
 doc-only pass — no schema change beyond what D-ResourceIdentifiers already set). New entities must
 declare their kind at design time.
+
+### D-PersonContactChannels — Emails, phones, and call signs as effective-dated person child tables (extends D-Geo)
+
+**Decision.** A person gains three additional **multi-valued contact/identity channels**, each modeled
+as a [person](../modules/person.md) child table that follows the existing `person_citizenships` /
+`person_residences` pattern (RID PK, `person_id` FK `ON DELETE CASCADE`, soft-delete, `is_primary`,
+`set_updated_at`, all writes audited, erased on purge):
+
+- **`person_emails`** — `address` (`citext`, `pii:contact`); a derived **`provider`** column
+  (`pii:contact`) populated on write from a static domain→provider map (e.g. `gmail.com → google`);
+  `type_code` FK to a new **`person_email_types`** catalog. Uniqueness: one **active** row per
+  `(person, lower(address))`. The contact email is **distinct from the login email**
+  (`account_accounts.email`, [identity-federation](../modules/identity-federation.md)) — no FK between
+  them; they are independent concerns.
+- **`person_phones`** — `number` stored **E.164-normalized** (`pii:contact`) and a derived
+  **`country`** FK to `geo_countries` (`pii:contact`), both computed via a libphonenumber-class parser
+  (`github.com/nyaruka/phonenumbers`); `type_code` FK to a new **`person_phone_types`** catalog.
+  Uniqueness: one **active** row per `(person, number)`. **Carrier/provider lookup is out of scope**
+  (not statically derivable — number portability needs an external HLR service) → parked as **DS-40**.
+- **`person_call_signs`** — `call_sign` (`TEXT`, **NOT NULL**, `pii:basic`); **unique per person**
+  among active rows (`UNIQUE (person_id, call_sign) WHERE deleted_at IS NULL`); `is_primary` marks at
+  most one active.
+
+The two **type catalogs** (`person_email_types`, `person_phone_types`) follow D-Code/D-i18n: natural
+`code` PK, translatable `name` (default-locale fallback + the i18n store, new
+`entity_type='email_type'`/`'phone_type'`), `status`, `sort_order`. Seeded: email
+`personal`/`work`/`other`; phone `mobile`/`home`/`work`/`other`.
+
+**Why.** A universal personnel directory must carry reachable contact data (people hold several emails
+and phones) and, for the military target domain, **call signs (позивний)**. Modelling each as an
+effective child table reuses the proven citizenship/residence slice rather than inventing a new shape;
+catalog-typed kinds keep the vocabulary operator-managed and localizable instead of a compiled CHECK
+list. Storing phones in E.164 with a derived country gives stable equality/dedup and lets the country
+join `geo_countries`; deriving the email provider on write supports "who uses provider X" queries
+without a separate lookup. Keeping the contact email distinct from the login email avoids conflating
+directory data with the federated-identity seam.
+
+**Consequence.** New tables `person_email_types`, `person_phone_types`, `person_emails`,
+`person_phones`, `person_call_signs` ([person](../modules/person.md)); email/phone type names join the
+[localization](../modules/localization.md) store (`entity_type='email_type'`/`'phone_type'`). New
+person sub-resource endpoints (`/persons/{id}/emails`, `/phones`, `/call-signs`) + catalog reads
+(`GET /person/email-types`, `/phone-types`), gated by `person.read`/`person.update` (scoped through the
+holder per D-PersonReadScope). New dependency `github.com/nyaruka/phonenumbers`. All writes audited
+(D-Audit); all three channels **erased on person purge** (the purge erasure list extends to their
+`pii:contact`/`pii:basic` columns + `DeleteAll*` of the child rows). Carrier lookup parked as DS-40.
+Module count unchanged. See [person](../modules/person.md), [localization](../modules/localization.md).
+
+### D-DocumentAttrSchema — Per-document-type attribute schema with write-time validation (extends D-Documents)
+
+**Decision.** The generic `document_documents.attributes` JSONB grab-bag gains **optional per-type
+structure**. `document_document_types` gains a nullable **`attr_schema` JSONB** column declaring the
+attribute fields a document of that type may/must carry:
+
+```
+{ "fields": { "<name>": { "type": "string|number|boolean|date", "required": <bool>,
+                          "enum": [ ... ]? } } }
+```
+
+When a type's `attr_schema` is non-null, a document's `attributes` is **validated against it on every
+create/update** (unknown keys rejected, required keys enforced, declared types/enums checked) by a
+minimal field-spec validator in the [document](../modules/document.md) domain (standard-library only,
+in the spirit of `pkg/personalcode`). When `attr_schema` is null, `attributes` is free-form as today.
+The seeded `military-id` type ships a schema (e.g. VOS/specialty code, fitness category, mobilization
+category, issuing commissariat).
+
+**Why.** Military cards and similar papers carry well-known structured fields that operators want
+validated, but promoting them to typed columns would fork the schema per country/type. A per-type
+attribute schema keeps one generic `document_documents` table while giving typed, validated fields
+where a type declares them — the investigate-then-decide military-doc item resolves to **generic
+typed-attributes**, not country-specific columns. Reusing the existing `attributes` JSONB means no new
+data table and no migration churn as schemas evolve.
+
+**Why not typed columns / external JSON-Schema.** Typed columns fork the table per type and are hard
+to expand; a full JSON-Schema engine is heavier than needed and pulls a dependency. A minimal,
+code-owned field-spec validator matches the project's "enforcement-as-code" stance.
+
+**Consequence.** New nullable column `document_document_types.attr_schema` (expand-only); a field-spec
+validator + `ErrDocumentInvalid` mapping in [document](../modules/document.md); the `military-id`
+seed gains a schema. `attributes` stays at the `pii:special` **ceiling** (D-PIITiers) — no
+special-category data lands there without the envelope seam (DS-29); a typed field that is genuinely
+`pii:special` still waits on DS-29. No new endpoint (document create/update already carry
+`attributes`). See [document](../modules/document.md).
 
 ---
 

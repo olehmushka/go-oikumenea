@@ -7,6 +7,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.9.2
+	github.com/nyaruka/phonenumbers v1.8.0
 	github.com/palantir/conjure-go-runtime/v2 v2.99.0
 	github.com/palantir/pkg/bearertoken v1.2.0
 	github.com/palantir/pkg/datetime v1.4.0

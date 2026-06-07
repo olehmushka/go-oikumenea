@@ -8,6 +8,32 @@ import (
 	"github.com/palantir/pkg/safeyaml"
 )
 
+// A person's informal identifier / позивний (D-PersonContactChannels). pii:basic; unique per person among active.
+type CallSign struct {
+	Id       string `json:"id"`
+	PersonId string `json:"personId"`
+	// The call sign label (required; unique per person).
+	CallSign string `json:"callSign"`
+	// The person's primary call sign (at most one active).
+	IsPrimary bool `json:"isPrimary"`
+}
+
+func (o CallSign) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *CallSign) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // A person's effective-dated nationality in a country (D-Geo). A person may hold several; at most one active per country.
 type Citizenship struct {
 	Id       string `json:"id"`
@@ -93,6 +119,84 @@ func (o DeactivateRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *DeactivateRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// A person's contact email (D-PersonContactChannels). pii:contact; distinct from the login email.
+type Email struct {
+	Id       string `json:"id"`
+	PersonId string `json:"personId"`
+	// The email-type catalog code (personal | work | other ...).
+	TypeCode string `json:"typeCode"`
+	// The email address (stored case-insensitively).
+	Address string `json:"address"`
+	// Provider derived from the address domain on write (gmail.com -> google); null when no mapping.
+	Provider *string `json:"provider,omitempty"`
+	// The person's primary email (at most one active).
+	IsPrimary bool `json:"isPrimary"`
+}
+
+func (o Email) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *Email) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// An instance-admin catalog entry naming a contact-email kind. Stable code + translatable name.
+type EmailType struct {
+	// Stable, locale-agnostic identifier (D-Code); immutable by convention.
+	Code string `json:"code"`
+	// The translatable label as a locale -> text map (all enabled locales; D-i18n).
+	Name map[string]string `json:"name"`
+	// One of active | retired.
+	Status    string `json:"status"`
+	SortOrder *int   `json:"sortOrder,omitempty"`
+}
+
+func (o EmailType) MarshalJSON() ([]byte, error) {
+	if o.Name == nil {
+		o.Name = make(map[string]string)
+	}
+	type _tmpEmailType EmailType
+	return safejson.Marshal(_tmpEmailType(o))
+}
+
+func (o *EmailType) UnmarshalJSON(data []byte) error {
+	type _tmpEmailType EmailType
+	var rawEmailType _tmpEmailType
+	if err := safejson.Unmarshal(data, &rawEmailType); err != nil {
+		return err
+	}
+	if rawEmailType.Name == nil {
+		rawEmailType.Name = make(map[string]string)
+	}
+	*o = EmailType(rawEmailType)
+	return nil
+}
+
+func (o EmailType) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *EmailType) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -186,6 +290,12 @@ type Person struct {
 	Citizenships []Citizenship `json:"citizenships"`
 	// The person's residence history. Populated by getPerson; empty in list responses.
 	Residences []Residence `json:"residences"`
+	// The person's contact emails. Populated by getPerson; empty in list responses.
+	Emails []Email `json:"emails"`
+	// The person's contact phones. Populated by getPerson; empty in list responses.
+	Phones []Phone `json:"phones"`
+	// The person's call signs. Populated by getPerson; empty in list responses.
+	CallSigns []CallSign `json:"callSigns"`
 }
 
 func (o Person) MarshalJSON() ([]byte, error) {
@@ -197,6 +307,15 @@ func (o Person) MarshalJSON() ([]byte, error) {
 	}
 	if o.Residences == nil {
 		o.Residences = make([]Residence, 0)
+	}
+	if o.Emails == nil {
+		o.Emails = make([]Email, 0)
+	}
+	if o.Phones == nil {
+		o.Phones = make([]Phone, 0)
+	}
+	if o.CallSigns == nil {
+		o.CallSigns = make([]CallSign, 0)
 	}
 	type _tmpPerson Person
 	return safejson.Marshal(_tmpPerson(o))
@@ -216,6 +335,15 @@ func (o *Person) UnmarshalJSON(data []byte) error {
 	}
 	if rawPerson.Residences == nil {
 		rawPerson.Residences = make([]Residence, 0)
+	}
+	if rawPerson.Emails == nil {
+		rawPerson.Emails = make([]Email, 0)
+	}
+	if rawPerson.Phones == nil {
+		rawPerson.Phones = make([]Phone, 0)
+	}
+	if rawPerson.CallSigns == nil {
+		rawPerson.CallSigns = make([]CallSign, 0)
 	}
 	*o = Person(rawPerson)
 	return nil
@@ -273,6 +401,84 @@ func (o PersonPage) MarshalYAML() (interface{}, error) {
 }
 
 func (o *PersonPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// A person's contact phone (D-PersonContactChannels). number is E.164-normalized; country is derived. pii:contact.
+type Phone struct {
+	Id       string `json:"id"`
+	PersonId string `json:"personId"`
+	// The phone-type catalog code (mobile | home | work | other ...).
+	TypeCode string `json:"typeCode"`
+	// The phone number, E.164-normalized on write.
+	Number string `json:"number"`
+	// ISO-3166-1 alpha-2 country code derived from the number; null when underivable.
+	Country *string `json:"country,omitempty"`
+	// The person's primary phone (at most one active).
+	IsPrimary bool `json:"isPrimary"`
+}
+
+func (o Phone) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *Phone) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// An instance-admin catalog entry naming a contact-phone kind. Stable code + translatable name.
+type PhoneType struct {
+	// Stable, locale-agnostic identifier (D-Code); immutable by convention.
+	Code string `json:"code"`
+	// The translatable label as a locale -> text map (all enabled locales; D-i18n).
+	Name map[string]string `json:"name"`
+	// One of active | retired.
+	Status    string `json:"status"`
+	SortOrder *int   `json:"sortOrder,omitempty"`
+}
+
+func (o PhoneType) MarshalJSON() ([]byte, error) {
+	if o.Name == nil {
+		o.Name = make(map[string]string)
+	}
+	type _tmpPhoneType PhoneType
+	return safejson.Marshal(_tmpPhoneType(o))
+}
+
+func (o *PhoneType) UnmarshalJSON(data []byte) error {
+	type _tmpPhoneType PhoneType
+	var rawPhoneType _tmpPhoneType
+	if err := safejson.Unmarshal(data, &rawPhoneType); err != nil {
+		return err
+	}
+	if rawPhoneType.Name == nil {
+		rawPhoneType.Name = make(map[string]string)
+	}
+	*o = PhoneType(rawPhoneType)
+	return nil
+}
+
+func (o PhoneType) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *PhoneType) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -370,6 +576,30 @@ func (o *UpdatePersonRequest) UnmarshalYAML(unmarshal func(interface{}) error) e
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// Add a call sign, or replace one when id is supplied. The value is required and unique per person.
+type UpsertCallSignRequest struct {
+	// The URN RID of an existing call-sign row to replace; omit to add a new row.
+	Id        *string `json:"id,omitempty"`
+	CallSign  string  `json:"callSign"`
+	IsPrimary *bool   `json:"isPrimary,omitempty"`
+}
+
+func (o UpsertCallSignRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertCallSignRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // Add or replace the active citizenship for a country (keyed by (person, country)).
 type UpsertCitizenshipRequest struct {
 	Country string `json:"country"`
@@ -389,6 +619,31 @@ func (o UpsertCitizenshipRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *UpsertCitizenshipRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Add a contact email, or replace one when id is supplied. provider is derived from the address.
+type UpsertEmailRequest struct {
+	// The URN RID of an existing email row to replace; omit to add a new row.
+	Id        *string `json:"id,omitempty"`
+	TypeCode  string  `json:"typeCode"`
+	Address   string  `json:"address"`
+	IsPrimary *bool   `json:"isPrimary,omitempty"`
+}
+
+func (o UpsertEmailRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertEmailRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -421,6 +676,31 @@ func (o UpsertNameVariantRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *UpsertNameVariantRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Add a contact phone, or replace one when id is supplied. number is E.164-normalized and country derived.
+type UpsertPhoneRequest struct {
+	// The URN RID of an existing phone row to replace; omit to add a new row.
+	Id        *string `json:"id,omitempty"`
+	TypeCode  string  `json:"typeCode"`
+	Number    string  `json:"number"`
+	IsPrimary *bool   `json:"isPrimary,omitempty"`
+}
+
+func (o UpsertPhoneRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertPhoneRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

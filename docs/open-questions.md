@@ -60,6 +60,15 @@ is ISO/IEC 5218.
   envelope seam is **extended to `pii:special`** (DS-29; the `pii:sensitive` envelope already ships
   via D-CryptoProvider). `parked`
 
+**DS-40 · Phone carrier / provider lookup.**
+Introduced by [D-PersonContactChannels](architecture/decisions.md): `person_phones` derives the
+**country** from the E.164 number, but **not** the carrier/provider.
+- *Default* — no carrier/provider on a phone; only the derived `country` is stored (the email
+  `provider` is derivable from the domain, a phone's is not).
+- *Trigger* — carrier/provider is wanted → it is **not statically derivable** (number portability),
+  so this needs an external HLR / number-lookup service (an external-dependency seam, akin to a KMS
+  backend). `parked`
+
 ---
 
 ## membership — [`modules/membership.md`](modules/membership.md)

@@ -67,7 +67,7 @@ func (q *Queries) GetDocument(ctx context.Context, id string) (OikumeneaDocument
 }
 
 const getDocumentType = `-- name: GetDocumentType :one
-SELECT id, code, name, status, sort_order, created_at, updated_at, deleted_at FROM oikumenea.document_document_types WHERE id = $1 AND deleted_at IS NULL
+SELECT id, code, name, status, sort_order, created_at, updated_at, deleted_at, attr_schema FROM oikumenea.document_document_types WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetDocumentType(ctx context.Context, id string) (OikumeneaDocumentDocumentType, error) {
@@ -82,6 +82,7 @@ func (q *Queries) GetDocumentType(ctx context.Context, id string) (OikumeneaDocu
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.AttrSchema,
 	)
 	return i, err
 }
@@ -188,15 +189,16 @@ func (q *Queries) InsertDocument(ctx context.Context, arg InsertDocumentParams) 
 const insertDocumentType = `-- name: InsertDocumentType :one
 
 
-INSERT INTO oikumenea.document_document_types (code, name, sort_order)
-VALUES ($1, $2, $3)
-RETURNING id, code, name, status, sort_order, created_at, updated_at, deleted_at
+INSERT INTO oikumenea.document_document_types (code, name, attr_schema, sort_order)
+VALUES ($1, $2, $3::jsonb, $4)
+RETURNING id, code, name, status, sort_order, created_at, updated_at, deleted_at, attr_schema
 `
 
 type InsertDocumentTypeParams struct {
-	Code      string
-	Name      string
-	SortOrder pgtype.Int4
+	Code       string
+	Name       string
+	AttrSchema []byte
+	SortOrder  pgtype.Int4
 }
 
 // Document module queries (docs/modules/document.md). Papers (document_documents) typed by
@@ -207,7 +209,12 @@ type InsertDocumentTypeParams struct {
 // the adapter), so these queries carry no pre-check lookups.
 // ============================ document types ============================
 func (q *Queries) InsertDocumentType(ctx context.Context, arg InsertDocumentTypeParams) (OikumeneaDocumentDocumentType, error) {
-	row := q.db.QueryRow(ctx, insertDocumentType, arg.Code, arg.Name, arg.SortOrder)
+	row := q.db.QueryRow(ctx, insertDocumentType,
+		arg.Code,
+		arg.Name,
+		arg.AttrSchema,
+		arg.SortOrder,
+	)
 	var i OikumeneaDocumentDocumentType
 	err := row.Scan(
 		&i.ID,
@@ -218,6 +225,7 @@ func (q *Queries) InsertDocumentType(ctx context.Context, arg InsertDocumentType
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.AttrSchema,
 	)
 	return i, err
 }
@@ -317,7 +325,7 @@ func (q *Queries) InsertScheme(ctx context.Context, arg InsertSchemeParams) (Oik
 }
 
 const listDocumentTypes = `-- name: ListDocumentTypes :many
-SELECT id, code, name, status, sort_order, created_at, updated_at, deleted_at FROM oikumenea.document_document_types
+SELECT id, code, name, status, sort_order, created_at, updated_at, deleted_at, attr_schema FROM oikumenea.document_document_types
 WHERE deleted_at IS NULL
 ORDER BY sort_order NULLS LAST, code
 `
@@ -340,6 +348,7 @@ func (q *Queries) ListDocumentTypes(ctx context.Context) ([]OikumeneaDocumentDoc
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.AttrSchema,
 		); err != nil {
 			return nil, err
 		}
@@ -565,23 +574,28 @@ func (q *Queries) UpdateDocument(ctx context.Context, arg UpdateDocumentParams) 
 
 const updateDocumentType = `-- name: UpdateDocumentType :one
 UPDATE oikumenea.document_document_types SET
-  name       = COALESCE($1, name),
-  status     = COALESCE($2, status),
-  sort_order = COALESCE($3, sort_order)
-WHERE id = $4 AND deleted_at IS NULL
-RETURNING id, code, name, status, sort_order, created_at, updated_at, deleted_at
+  name        = COALESCE($1, name),
+  attr_schema = COALESCE($2::jsonb, attr_schema),
+  status      = COALESCE($3, status),
+  sort_order  = COALESCE($4, sort_order)
+WHERE id = $5 AND deleted_at IS NULL
+RETURNING id, code, name, status, sort_order, created_at, updated_at, deleted_at, attr_schema
 `
 
 type UpdateDocumentTypeParams struct {
-	Name      pgtype.Text
-	Status    pgtype.Text
-	SortOrder pgtype.Int4
-	ID        string
+	Name       pgtype.Text
+	AttrSchema []byte
+	Status     pgtype.Text
+	SortOrder  pgtype.Int4
+	ID         string
 }
 
+// attr_schema is replaced when provided (NULL narg leaves it unchanged via COALESCE; clearing it back
+// to NULL is an open seam, consistent with the other COALESCE'd fields).
 func (q *Queries) UpdateDocumentType(ctx context.Context, arg UpdateDocumentTypeParams) (OikumeneaDocumentDocumentType, error) {
 	row := q.db.QueryRow(ctx, updateDocumentType,
 		arg.Name,
+		arg.AttrSchema,
 		arg.Status,
 		arg.SortOrder,
 		arg.ID,
@@ -596,6 +610,7 @@ func (q *Queries) UpdateDocumentType(ctx context.Context, arg UpdateDocumentType
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.AttrSchema,
 	)
 	return i, err
 }

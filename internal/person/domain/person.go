@@ -36,6 +36,14 @@ var (
 	ErrCitizenshipNotFound = errors.New("citizenship not found")
 	ErrResidenceNotFound   = errors.New("residence not found")
 	ErrLifecycle           = errors.New("invalid lifecycle transition")
+	ErrEmailConflict       = errors.New("active email already exists for this person")
+	ErrPhoneConflict       = errors.New("active phone already exists for this person")
+	ErrEmailNotFound       = errors.New("email not found")
+	ErrPhoneNotFound       = errors.New("phone not found")
+	ErrCallSignNotFound    = errors.New("call sign not found")
+	ErrCallSignConflict    = errors.New("active call sign with this value already exists for this person")
+	ErrUnknownContactType  = errors.New("contact type does not exist")
+	ErrUnparseablePhone    = errors.New("phone number could not be parsed")
 )
 
 // Status is the person lifecycle state (D-PersonReadScope reversibility window).
@@ -104,6 +112,9 @@ type Person struct {
 	NameVariants []NameVariant
 	Citizenships []Citizenship
 	Residences   []Residence
+	Emails       []Email
+	Phones       []Phone
+	CallSigns    []CallSign
 }
 
 // Validate enforces the create-time invariants: a valid optional code, a non-empty display name, a
@@ -236,7 +247,97 @@ func (r Residence) Validate() error {
 	return nil
 }
 
+// Email is a person's contact email (D-PersonContactChannels). pii:contact; distinct from the login
+// email. Provider is derived on write from the address domain (application layer); "" when no mapping.
+// ID == "" => insert; otherwise replace that row.
+type Email struct {
+	ID        string
+	PersonID  string
+	TypeCode  string
+	Address   string
+	Provider  string
+	IsPrimary bool
+}
+
+// Validate enforces a non-empty type code and a basic email shape (one @, non-empty local part, a
+// dotted domain). The person_email_types FK enforces a known type as a backstop.
+func (e Email) Validate() error {
+	if strings.TrimSpace(e.TypeCode) == "" {
+		return wrapInvalid("typeCode is required")
+	}
+	if !validEmail(e.Address) {
+		return wrapInvalid("address must be a valid email address")
+	}
+	return nil
+}
+
+// Phone is a person's contact phone (D-PersonContactChannels). Number is stored E.164-normalized and
+// Country derived from it (application layer, via libphonenumber); both "" when underivable. pii:contact.
+// ID == "" => insert; otherwise replace that row.
+type Phone struct {
+	ID        string
+	PersonID  string
+	TypeCode  string
+	Number    string
+	Country   string
+	IsPrimary bool
+}
+
+// Validate enforces a non-empty type code and a non-empty number; E.164 normalization (and the
+// resulting ErrUnparseablePhone) happens in the application layer where the parser lives.
+func (p Phone) Validate() error {
+	if strings.TrimSpace(p.TypeCode) == "" {
+		return wrapInvalid("typeCode is required")
+	}
+	if strings.TrimSpace(p.Number) == "" {
+		return wrapInvalid("number is required")
+	}
+	return nil
+}
+
+// CallSign is a person's informal identifier / позивний (D-PersonContactChannels). pii:basic; the
+// value is required and unique per person among active rows. ID == "" => insert; otherwise replace.
+type CallSign struct {
+	ID        string
+	PersonID  string
+	CallSign  string
+	IsPrimary bool
+}
+
+// Validate enforces a non-empty call sign value (the column is NOT NULL).
+func (c CallSign) Validate() error {
+	if strings.TrimSpace(c.CallSign) == "" {
+		return wrapInvalid("callSign is required")
+	}
+	return nil
+}
+
+// ContactType is a row of an instance-admin contact-kind catalog (person_email_types /
+// person_phone_types): a stable code + default-locale name (D-Code/D-i18n). The transport assembles
+// the locale->text name map via the localization store.
+type ContactType struct {
+	Code      string
+	Name      string
+	Status    string
+	SortOrder int
+}
+
 func wrapInvalid(msg string) error { return errors.Join(ErrInvalid, errors.New(msg)) }
+
+// validEmail is a deliberately minimal shape check (exactly one @, non-empty local part, a dotted
+// domain) — not full RFC 5322. Normalization (trim/lowercase) happens in the application layer.
+func validEmail(s string) bool {
+	at := strings.IndexByte(s, '@')
+	if at <= 0 || at != strings.LastIndexByte(s, '@') {
+		return false
+	}
+	domainPart := s[at+1:]
+	if len(domainPart) < 3 || !strings.Contains(domainPart, ".") ||
+		strings.HasPrefix(domainPart, ".") || strings.HasSuffix(domainPart, ".") {
+		return false
+	}
+	return !strings.ContainsAny(s, " \t\n\r")
+}
 
 // validCode is the shared code shape guard: non-empty, <=128 chars, no whitespace (D-Code:
 // operator-assigned, locale-agnostic, immutable by convention).
@@ -306,4 +407,26 @@ type Repository interface {
 	UpsertResidence(ctx context.Context, r Residence) (Residence, error)
 	DeleteResidence(ctx context.Context, personID, residenceID string) error
 	ListResidences(ctx context.Context, personID string) ([]Residence, error)
+
+	// emails (e.ID == "" => insert; otherwise replace that row)
+	UpsertEmail(ctx context.Context, e Email) (Email, error)
+	ClearPrimaryEmails(ctx context.Context, personID string) error
+	DeleteEmail(ctx context.Context, personID, emailID string) error
+	ListEmails(ctx context.Context, personID string) ([]Email, error)
+
+	// phones (p.ID == "" => insert; otherwise replace that row)
+	UpsertPhone(ctx context.Context, p Phone) (Phone, error)
+	ClearPrimaryPhones(ctx context.Context, personID string) error
+	DeletePhone(ctx context.Context, personID, phoneID string) error
+	ListPhones(ctx context.Context, personID string) ([]Phone, error)
+
+	// call signs (c.ID == "" => insert; otherwise replace that row)
+	UpsertCallSign(ctx context.Context, c CallSign) (CallSign, error)
+	ClearPrimaryCallSigns(ctx context.Context, personID string) error
+	DeleteCallSign(ctx context.Context, personID, callSignID string) error
+	ListCallSigns(ctx context.Context, personID string) ([]CallSign, error)
+
+	// contact-kind catalogs
+	ListEmailTypes(ctx context.Context) ([]ContactType, error)
+	ListPhoneTypes(ctx context.Context) ([]ContactType, error)
 }

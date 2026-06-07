@@ -56,6 +56,28 @@ type PersonServiceClient interface {
 	UpsertResidence(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertResidenceRequest) (Residence, error)
 	// Remove a residence row by id.
 	DeleteResidence(ctx context.Context, authHeader bearertoken.Token, personIdArg string, residenceIdArg string) error
+	// List a person's contact emails.
+	ListEmails(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Email, error)
+	// Add or replace a contact email. Returns Person:PersonConflict if the address is taken, Person:PersonInvalid for an unknown type or malformed address.
+	UpsertEmail(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertEmailRequest) (Email, error)
+	// Remove a contact email by id.
+	DeleteEmail(ctx context.Context, authHeader bearertoken.Token, personIdArg string, emailIdArg string) error
+	// List a person's contact phones.
+	ListPhones(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Phone, error)
+	// Add or replace a contact phone. Returns Person:PersonConflict if the number is taken, Person:PersonInvalid for an unknown type or unparseable number.
+	UpsertPhone(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertPhoneRequest) (Phone, error)
+	// Remove a contact phone by id.
+	DeletePhone(ctx context.Context, authHeader bearertoken.Token, personIdArg string, phoneIdArg string) error
+	// List a person's call signs.
+	ListCallSigns(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]CallSign, error)
+	// Add or replace a call sign. Returns Person:PersonConflict if the value is already held by the person.
+	UpsertCallSign(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertCallSignRequest) (CallSign, error)
+	// Remove a call sign by id.
+	DeleteCallSign(ctx context.Context, authHeader bearertoken.Token, personIdArg string, callSignIdArg string) error
+	// List the contact-email type catalog (locale -> text names; D-i18n).
+	ListEmailTypes(ctx context.Context, authHeader bearertoken.Token) ([]EmailType, error)
+	// List the contact-phone type catalog (locale -> text names; D-i18n).
+	ListPhoneTypes(ctx context.Context, authHeader bearertoken.Token) ([]PhoneType, error)
 }
 
 type personServiceClient struct {
@@ -338,6 +360,181 @@ func (c *personServiceClient) DeleteResidence(ctx context.Context, authHeader be
 	return nil
 }
 
+func (c *personServiceClient) ListEmails(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Email, error) {
+	var returnVal []Email
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListEmails"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/emails", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listEmails failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listEmails response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) UpsertEmail(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertEmailRequest) (Email, error) {
+	var returnVal *Email
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertEmail"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/emails", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(Email), werror.WrapWithContextParams(ctx, err, "upsertEmail failed")
+	}
+	if returnVal == nil {
+		return *new(Email), werror.ErrorWithContextParams(ctx, "upsertEmail response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) DeleteEmail(ctx context.Context, authHeader bearertoken.Token, personIdArg string, emailIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeleteEmail"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/emails/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(emailIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deleteEmail failed")
+	}
+	return nil
+}
+
+func (c *personServiceClient) ListPhones(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Phone, error) {
+	var returnVal []Phone
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListPhones"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/phones", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listPhones failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listPhones response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) UpsertPhone(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertPhoneRequest) (Phone, error) {
+	var returnVal *Phone
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertPhone"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/phones", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(Phone), werror.WrapWithContextParams(ctx, err, "upsertPhone failed")
+	}
+	if returnVal == nil {
+		return *new(Phone), werror.ErrorWithContextParams(ctx, "upsertPhone response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) DeletePhone(ctx context.Context, authHeader bearertoken.Token, personIdArg string, phoneIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeletePhone"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/phones/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(phoneIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deletePhone failed")
+	}
+	return nil
+}
+
+func (c *personServiceClient) ListCallSigns(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]CallSign, error) {
+	var returnVal []CallSign
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListCallSigns"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/call-signs", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listCallSigns failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listCallSigns response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) UpsertCallSign(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertCallSignRequest) (CallSign, error) {
+	var returnVal *CallSign
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertCallSign"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/call-signs", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(CallSign), werror.WrapWithContextParams(ctx, err, "upsertCallSign failed")
+	}
+	if returnVal == nil {
+		return *new(CallSign), werror.ErrorWithContextParams(ctx, "upsertCallSign response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) DeleteCallSign(ctx context.Context, authHeader bearertoken.Token, personIdArg string, callSignIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeleteCallSign"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/call-signs/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(callSignIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deleteCallSign failed")
+	}
+	return nil
+}
+
+func (c *personServiceClient) ListEmailTypes(ctx context.Context, authHeader bearertoken.Token) ([]EmailType, error) {
+	var returnVal []EmailType
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListEmailTypes"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/person/email-types"))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listEmailTypes failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listEmailTypes response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) ListPhoneTypes(ctx context.Context, authHeader bearertoken.Token) ([]PhoneType, error) {
+	var returnVal []PhoneType
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListPhoneTypes"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/person/phone-types"))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listPhoneTypes failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listPhoneTypes response cannot be nil")
+	}
+	return returnVal, nil
+}
+
 /*
 The personnel directory (D-PersonGlobal). Reads gate on `person.read` via the read-scope rule
 (D-PersonReadScope); writes on `person.create`/`person.update`/`person.rank.assign`/
@@ -381,6 +578,28 @@ type PersonServiceClientWithAuth interface {
 	UpsertResidence(ctx context.Context, personIdArg string, requestArg UpsertResidenceRequest) (Residence, error)
 	// Remove a residence row by id.
 	DeleteResidence(ctx context.Context, personIdArg string, residenceIdArg string) error
+	// List a person's contact emails.
+	ListEmails(ctx context.Context, personIdArg string) ([]Email, error)
+	// Add or replace a contact email. Returns Person:PersonConflict if the address is taken, Person:PersonInvalid for an unknown type or malformed address.
+	UpsertEmail(ctx context.Context, personIdArg string, requestArg UpsertEmailRequest) (Email, error)
+	// Remove a contact email by id.
+	DeleteEmail(ctx context.Context, personIdArg string, emailIdArg string) error
+	// List a person's contact phones.
+	ListPhones(ctx context.Context, personIdArg string) ([]Phone, error)
+	// Add or replace a contact phone. Returns Person:PersonConflict if the number is taken, Person:PersonInvalid for an unknown type or unparseable number.
+	UpsertPhone(ctx context.Context, personIdArg string, requestArg UpsertPhoneRequest) (Phone, error)
+	// Remove a contact phone by id.
+	DeletePhone(ctx context.Context, personIdArg string, phoneIdArg string) error
+	// List a person's call signs.
+	ListCallSigns(ctx context.Context, personIdArg string) ([]CallSign, error)
+	// Add or replace a call sign. Returns Person:PersonConflict if the value is already held by the person.
+	UpsertCallSign(ctx context.Context, personIdArg string, requestArg UpsertCallSignRequest) (CallSign, error)
+	// Remove a call sign by id.
+	DeleteCallSign(ctx context.Context, personIdArg string, callSignIdArg string) error
+	// List the contact-email type catalog (locale -> text names; D-i18n).
+	ListEmailTypes(ctx context.Context) ([]EmailType, error)
+	// List the contact-phone type catalog (locale -> text names; D-i18n).
+	ListPhoneTypes(ctx context.Context) ([]PhoneType, error)
 }
 
 func NewPersonServiceClientWithAuth(client PersonServiceClient, authHeader bearertoken.Token) PersonServiceClientWithAuth {
@@ -454,6 +673,50 @@ func (c *personServiceClientWithAuth) UpsertResidence(ctx context.Context, perso
 
 func (c *personServiceClientWithAuth) DeleteResidence(ctx context.Context, personIdArg string, residenceIdArg string) error {
 	return c.client.DeleteResidence(ctx, c.authHeader, personIdArg, residenceIdArg)
+}
+
+func (c *personServiceClientWithAuth) ListEmails(ctx context.Context, personIdArg string) ([]Email, error) {
+	return c.client.ListEmails(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertEmail(ctx context.Context, personIdArg string, requestArg UpsertEmailRequest) (Email, error) {
+	return c.client.UpsertEmail(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) DeleteEmail(ctx context.Context, personIdArg string, emailIdArg string) error {
+	return c.client.DeleteEmail(ctx, c.authHeader, personIdArg, emailIdArg)
+}
+
+func (c *personServiceClientWithAuth) ListPhones(ctx context.Context, personIdArg string) ([]Phone, error) {
+	return c.client.ListPhones(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertPhone(ctx context.Context, personIdArg string, requestArg UpsertPhoneRequest) (Phone, error) {
+	return c.client.UpsertPhone(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) DeletePhone(ctx context.Context, personIdArg string, phoneIdArg string) error {
+	return c.client.DeletePhone(ctx, c.authHeader, personIdArg, phoneIdArg)
+}
+
+func (c *personServiceClientWithAuth) ListCallSigns(ctx context.Context, personIdArg string) ([]CallSign, error) {
+	return c.client.ListCallSigns(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertCallSign(ctx context.Context, personIdArg string, requestArg UpsertCallSignRequest) (CallSign, error) {
+	return c.client.UpsertCallSign(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) DeleteCallSign(ctx context.Context, personIdArg string, callSignIdArg string) error {
+	return c.client.DeleteCallSign(ctx, c.authHeader, personIdArg, callSignIdArg)
+}
+
+func (c *personServiceClientWithAuth) ListEmailTypes(ctx context.Context) ([]EmailType, error) {
+	return c.client.ListEmailTypes(ctx, c.authHeader)
+}
+
+func (c *personServiceClientWithAuth) ListPhoneTypes(ctx context.Context) ([]PhoneType, error) {
+	return c.client.ListPhoneTypes(ctx, c.authHeader)
 }
 
 func NewPersonServiceClientWithTokenProvider(client PersonServiceClient, tokenProvider httpclient.TokenProvider) PersonServiceClientWithAuth {
@@ -591,4 +854,92 @@ func (c *personServiceClientWithTokenProvider) DeleteResidence(ctx context.Conte
 		return err
 	}
 	return c.client.DeleteResidence(ctx, bearertoken.Token(token), personIdArg, residenceIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListEmails(ctx context.Context, personIdArg string) ([]Email, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListEmails(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertEmail(ctx context.Context, personIdArg string, requestArg UpsertEmailRequest) (Email, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Email), err
+	}
+	return c.client.UpsertEmail(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) DeleteEmail(ctx context.Context, personIdArg string, emailIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeleteEmail(ctx, bearertoken.Token(token), personIdArg, emailIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListPhones(ctx context.Context, personIdArg string) ([]Phone, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListPhones(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertPhone(ctx context.Context, personIdArg string, requestArg UpsertPhoneRequest) (Phone, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Phone), err
+	}
+	return c.client.UpsertPhone(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) DeletePhone(ctx context.Context, personIdArg string, phoneIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeletePhone(ctx, bearertoken.Token(token), personIdArg, phoneIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListCallSigns(ctx context.Context, personIdArg string) ([]CallSign, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListCallSigns(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertCallSign(ctx context.Context, personIdArg string, requestArg UpsertCallSignRequest) (CallSign, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(CallSign), err
+	}
+	return c.client.UpsertCallSign(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) DeleteCallSign(ctx context.Context, personIdArg string, callSignIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeleteCallSign(ctx, bearertoken.Token(token), personIdArg, callSignIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListEmailTypes(ctx context.Context) ([]EmailType, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListEmailTypes(ctx, bearertoken.Token(token))
+}
+
+func (c *personServiceClientWithTokenProvider) ListPhoneTypes(ctx context.Context) ([]PhoneType, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListPhoneTypes(ctx, bearertoken.Token(token))
 }

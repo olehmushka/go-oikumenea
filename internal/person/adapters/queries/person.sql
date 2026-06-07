@@ -174,3 +174,105 @@ WHERE person_id = @person_id AND deleted_at IS NULL ORDER BY valid_from DESC, id
 -- just-in-time link-on-match (D-JIT) and the first-admin bootstrap's find-or-create (D-Bootstrap).
 SELECT * FROM oikumenea.person_persons
 WHERE code = @code AND status = 'active' AND deleted_at IS NULL;
+
+-- ============================ emails (D-PersonContactChannels) ============================
+
+-- name: InsertEmail :one
+-- address is citext (case-insensitive); provider is derived in the application before insert. The
+-- person_email_types FK validates type_code; the partial unique index dedupes active (person, address).
+INSERT INTO oikumenea.person_emails (person_id, type_code, address, provider, is_primary)
+VALUES (@person_id, @type_code, @address, sqlc.narg('provider'), @is_primary)
+RETURNING *;
+
+-- name: UpdateEmail :one
+UPDATE oikumenea.person_emails SET
+  type_code = @type_code, address = @address, provider = sqlc.narg('provider'), is_primary = @is_primary
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING *;
+
+-- name: ClearPrimaryEmails :exec
+UPDATE oikumenea.person_emails SET is_primary = false
+WHERE person_id = @person_id AND deleted_at IS NULL AND is_primary;
+
+-- name: DeleteEmail :one
+UPDATE oikumenea.person_emails SET deleted_at = now()
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING id;
+
+-- name: ListEmails :many
+SELECT * FROM oikumenea.person_emails
+WHERE person_id = @person_id AND deleted_at IS NULL ORDER BY is_primary DESC, address;
+
+-- ============================ phones (D-PersonContactChannels) ============================
+
+-- name: InsertPhone :one
+-- number is E.164-normalized and country derived in the application before insert. The
+-- person_phone_types FK validates type_code; geo_countries FK validates the derived country.
+INSERT INTO oikumenea.person_phones (person_id, type_code, number, country, is_primary)
+VALUES (@person_id, @type_code, @number, sqlc.narg('country'), @is_primary)
+RETURNING *;
+
+-- name: UpdatePhone :one
+UPDATE oikumenea.person_phones SET
+  type_code = @type_code, number = @number, country = sqlc.narg('country'), is_primary = @is_primary
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING *;
+
+-- name: ClearPrimaryPhones :exec
+UPDATE oikumenea.person_phones SET is_primary = false
+WHERE person_id = @person_id AND deleted_at IS NULL AND is_primary;
+
+-- name: DeletePhone :one
+UPDATE oikumenea.person_phones SET deleted_at = now()
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING id;
+
+-- name: ListPhones :many
+SELECT * FROM oikumenea.person_phones
+WHERE person_id = @person_id AND deleted_at IS NULL ORDER BY is_primary DESC, number;
+
+-- ============================ call signs (D-PersonContactChannels) ============================
+
+-- name: InsertCallSign :one
+-- call_sign is required (NOT NULL) and unique per person among active rows.
+INSERT INTO oikumenea.person_call_signs (person_id, call_sign, is_primary)
+VALUES (@person_id, @call_sign, @is_primary)
+RETURNING *;
+
+-- name: UpdateCallSign :one
+UPDATE oikumenea.person_call_signs SET
+  call_sign = @call_sign, is_primary = @is_primary
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING *;
+
+-- name: ClearPrimaryCallSigns :exec
+UPDATE oikumenea.person_call_signs SET is_primary = false
+WHERE person_id = @person_id AND deleted_at IS NULL AND is_primary;
+
+-- name: DeleteCallSign :one
+UPDATE oikumenea.person_call_signs SET deleted_at = now()
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING id;
+
+-- name: ListCallSigns :many
+SELECT * FROM oikumenea.person_call_signs
+WHERE person_id = @person_id AND deleted_at IS NULL ORDER BY is_primary DESC, id;
+
+-- ============================ contact-kind catalogs ============================
+
+-- name: ListEmailTypes :many
+SELECT * FROM oikumenea.person_email_types WHERE deleted_at IS NULL ORDER BY sort_order, code;
+
+-- name: ListPhoneTypes :many
+SELECT * FROM oikumenea.person_phone_types WHERE deleted_at IS NULL ORDER BY sort_order, code;
+
+-- ============================ purge erasure (extends PurgePerson) ============================
+
+-- name: DeleteAllEmails :exec
+DELETE FROM oikumenea.person_emails WHERE person_id = @person_id;
+
+-- name: DeleteAllPhones :exec
+DELETE FROM oikumenea.person_phones WHERE person_id = @person_id;
+
+-- name: DeleteAllCallSigns :exec
+DELETE FROM oikumenea.person_call_signs WHERE person_id = @person_id;

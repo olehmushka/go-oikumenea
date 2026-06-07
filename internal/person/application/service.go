@@ -128,6 +128,15 @@ func (s *Service) GetPerson(ctx context.Context, id string) (domain.Person, erro
 	if p.Residences, err = repo.ListResidences(ctx, id); err != nil {
 		return domain.Person{}, err
 	}
+	if p.Emails, err = repo.ListEmails(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if p.Phones, err = repo.ListPhones(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if p.CallSigns, err = repo.ListCallSigns(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
 	return p, nil
 }
 
@@ -426,6 +435,172 @@ func (s *Service) ListResidences(ctx context.Context, personID string) ([]domain
 		return nil, err
 	}
 	return repo.ListResidences(ctx, personID)
+}
+
+// ---------------------------------------------------------------- emails
+
+// UpsertEmail validates and adds/replaces a contact email, deriving the provider from the address
+// domain on write (D-PersonContactChannels). When marked primary, the person's other active emails
+// are demoted in the same transaction.
+func (s *Service) UpsertEmail(ctx context.Context, e domain.Email) (domain.Email, error) {
+	e.Address = normalizeEmail(e.Address)
+	if err := e.Validate(); err != nil {
+		return domain.Email{}, err
+	}
+	e.Provider = emailProvider(e.Address)
+	var out domain.Email
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		repo := s.newRepo(tx)
+		if _, err := repo.GetPerson(ctx, e.PersonID); err != nil {
+			return err
+		}
+		if e.IsPrimary {
+			if err := repo.ClearPrimaryEmails(ctx, e.PersonID); err != nil {
+				return err
+			}
+		}
+		created, err := repo.UpsertEmail(ctx, e)
+		if err != nil {
+			return err
+		}
+		out = created
+		return s.record(ctx, tx, "person.email.upsert", e.PersonID, map[string]any{"id": e.PersonID, "emailId": created.ID})
+	})
+	return out, err
+}
+
+// DeleteEmail removes a person's contact email by id.
+func (s *Service) DeleteEmail(ctx context.Context, personID, emailID string) error {
+	return s.inTx(ctx, func(tx pgx.Tx) error {
+		repo := s.newRepo(tx)
+		if err := repo.DeleteEmail(ctx, personID, emailID); err != nil {
+			return err
+		}
+		return s.record(ctx, tx, "person.email.delete", personID, map[string]any{"id": personID, "emailId": emailID})
+	})
+}
+
+// ListEmails lists a person's contact emails (the person must exist).
+func (s *Service) ListEmails(ctx context.Context, personID string) ([]domain.Email, error) {
+	repo := s.newRepo(s.pool)
+	if _, err := repo.GetPerson(ctx, personID); err != nil {
+		return nil, err
+	}
+	return repo.ListEmails(ctx, personID)
+}
+
+// ---------------------------------------------------------------- phones
+
+// UpsertPhone validates and adds/replaces a contact phone, normalizing the number to E.164 and
+// deriving its country on write (D-PersonContactChannels). When marked primary, the person's other
+// active phones are demoted in the same transaction.
+func (s *Service) UpsertPhone(ctx context.Context, p domain.Phone) (domain.Phone, error) {
+	if err := p.Validate(); err != nil {
+		return domain.Phone{}, err
+	}
+	number, country, err := normalizePhone(p.Number)
+	if err != nil {
+		return domain.Phone{}, err
+	}
+	p.Number, p.Country = number, country
+	var out domain.Phone
+	err = s.inTx(ctx, func(tx pgx.Tx) error {
+		repo := s.newRepo(tx)
+		if _, err := repo.GetPerson(ctx, p.PersonID); err != nil {
+			return err
+		}
+		if p.IsPrimary {
+			if err := repo.ClearPrimaryPhones(ctx, p.PersonID); err != nil {
+				return err
+			}
+		}
+		created, err := repo.UpsertPhone(ctx, p)
+		if err != nil {
+			return err
+		}
+		out = created
+		return s.record(ctx, tx, "person.phone.upsert", p.PersonID, map[string]any{"id": p.PersonID, "phoneId": created.ID})
+	})
+	return out, err
+}
+
+// DeletePhone removes a person's contact phone by id.
+func (s *Service) DeletePhone(ctx context.Context, personID, phoneID string) error {
+	return s.inTx(ctx, func(tx pgx.Tx) error {
+		repo := s.newRepo(tx)
+		if err := repo.DeletePhone(ctx, personID, phoneID); err != nil {
+			return err
+		}
+		return s.record(ctx, tx, "person.phone.delete", personID, map[string]any{"id": personID, "phoneId": phoneID})
+	})
+}
+
+// ListPhones lists a person's contact phones (the person must exist).
+func (s *Service) ListPhones(ctx context.Context, personID string) ([]domain.Phone, error) {
+	repo := s.newRepo(s.pool)
+	if _, err := repo.GetPerson(ctx, personID); err != nil {
+		return nil, err
+	}
+	return repo.ListPhones(ctx, personID)
+}
+
+// ---------------------------------------------------------------- call signs
+
+// UpsertCallSign adds/replaces a call sign (D-PersonContactChannels). When marked primary, the
+// person's other active call signs are demoted in the same transaction.
+func (s *Service) UpsertCallSign(ctx context.Context, c domain.CallSign) (domain.CallSign, error) {
+	if err := c.Validate(); err != nil {
+		return domain.CallSign{}, err
+	}
+	var out domain.CallSign
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		repo := s.newRepo(tx)
+		if _, err := repo.GetPerson(ctx, c.PersonID); err != nil {
+			return err
+		}
+		if c.IsPrimary {
+			if err := repo.ClearPrimaryCallSigns(ctx, c.PersonID); err != nil {
+				return err
+			}
+		}
+		created, err := repo.UpsertCallSign(ctx, c)
+		if err != nil {
+			return err
+		}
+		out = created
+		return s.record(ctx, tx, "person.call-sign.upsert", c.PersonID, map[string]any{"id": c.PersonID, "callSignId": created.ID})
+	})
+	return out, err
+}
+
+// DeleteCallSign removes a person's call sign by id.
+func (s *Service) DeleteCallSign(ctx context.Context, personID, callSignID string) error {
+	return s.inTx(ctx, func(tx pgx.Tx) error {
+		repo := s.newRepo(tx)
+		if err := repo.DeleteCallSign(ctx, personID, callSignID); err != nil {
+			return err
+		}
+		return s.record(ctx, tx, "person.call-sign.delete", personID, map[string]any{"id": personID, "callSignId": callSignID})
+	})
+}
+
+// ListCallSigns lists a person's call signs (the person must exist).
+func (s *Service) ListCallSigns(ctx context.Context, personID string) ([]domain.CallSign, error) {
+	repo := s.newRepo(s.pool)
+	if _, err := repo.GetPerson(ctx, personID); err != nil {
+		return nil, err
+	}
+	return repo.ListCallSigns(ctx, personID)
+}
+
+// ListEmailTypes / ListPhoneTypes return the instance-admin contact-kind catalogs (reads; no person
+// scope). The transport assembles the translatable name maps.
+func (s *Service) ListEmailTypes(ctx context.Context) ([]domain.ContactType, error) {
+	return s.newRepo(s.pool).ListEmailTypes(ctx)
+}
+
+func (s *Service) ListPhoneTypes(ctx context.Context) ([]domain.ContactType, error) {
+	return s.newRepo(s.pool).ListPhoneTypes(ctx)
 }
 
 // ---------------------------------------------------------------- helpers

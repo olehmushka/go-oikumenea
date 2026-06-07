@@ -175,6 +175,8 @@ type OikumeneaDocumentDocumentType struct {
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
+	// pii:none
+	AttrSchema []byte
 }
 
 type OikumeneaDocumentPersonalCode struct {
@@ -370,6 +372,20 @@ type OikumeneaOrderOrderType struct {
 	DeletedAt pgtype.Timestamptz
 }
 
+type OikumeneaPersonCallSign struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:basic
+	CallSign string
+	// pii:none
+	IsPrimary bool
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
 type OikumeneaPersonCitizenship struct {
 	// pii:none
 	ID string
@@ -385,6 +401,38 @@ type OikumeneaPersonCitizenship struct {
 	LostOn pgtype.Date
 	// pii:none
 	IsPrimary bool
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaPersonEmail struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:none
+	TypeCode string
+	// pii:contact
+	Address string
+	// pii:contact
+	Provider pgtype.Text
+	// pii:none
+	IsPrimary bool
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaPersonEmailType struct {
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	Status string
+	// pii:none
+	SortOrder pgtype.Int4
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
@@ -467,6 +515,38 @@ type OikumeneaPersonPerson struct {
 	CreatedAt  pgtype.Timestamptz
 	UpdatedAt  pgtype.Timestamptz
 	DeletedAt  pgtype.Timestamptz
+}
+
+type OikumeneaPersonPhone struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:none
+	TypeCode string
+	// pii:contact
+	Number string
+	// pii:contact
+	Country pgtype.Text
+	// pii:none
+	IsPrimary bool
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaPersonPhoneType struct {
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	Status string
+	// pii:none
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
 }
 
 type OikumeneaPersonResidence struct {

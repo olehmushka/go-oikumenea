@@ -87,16 +87,17 @@ var genericCategories = map[string]struct{}{
 // DocumentType is an instance-admin catalog entry for a PAPER kind. Name is the default-locale
 // fallback; the transport assembles the locale->text map from the i18n store.
 type DocumentType struct {
-	ID        string
-	Code      string
-	Name      string
-	Status    CatalogStatus
-	SortOrder *int
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID         string
+	Code       string
+	Name       string
+	AttrSchema json.RawMessage // optional per-type attribute schema (D-DocumentAttrSchema); nil = none
+	Status     CatalogStatus
+	SortOrder  *int
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
-// Validate enforces a valid code and a non-empty name on create.
+// Validate enforces a valid code, a non-empty name, and (when present) a well-formed attr_schema.
 func (t DocumentType) Validate() error {
 	if !validCode(t.Code) {
 		return wrapInvalid(ErrDocumentInvalid, "code must be non-empty, <=128 chars, and contain no whitespace")
@@ -104,14 +105,15 @@ func (t DocumentType) Validate() error {
 	if strings.TrimSpace(t.Name) == "" {
 		return wrapInvalid(ErrDocumentInvalid, "name is required")
 	}
-	return nil
+	return ValidateAttrSchema(t.AttrSchema)
 }
 
 // DocumentTypePatch is a partial update (nil = unchanged). Code is immutable by convention.
 type DocumentTypePatch struct {
-	Name      *string
-	Status    *string
-	SortOrder *int
+	Name       *string
+	AttrSchema *json.RawMessage // nil = unchanged; non-nil replaces the schema (D-DocumentAttrSchema)
+	Status     *string
+	SortOrder  *int
 }
 
 // Validate checks the present fields.
@@ -121,6 +123,9 @@ func (p DocumentTypePatch) Validate() error {
 	}
 	if p.Status != nil && !validCatalogStatus(*p.Status) {
 		return wrapInvalid(ErrDocumentInvalid, "status must be active or retired")
+	}
+	if p.AttrSchema != nil {
+		return ValidateAttrSchema(*p.AttrSchema)
 	}
 	return nil
 }

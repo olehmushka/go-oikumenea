@@ -114,6 +114,57 @@ func seedPerson(t *testing.T, pool *pgxpool.Pool) string {
 	return id
 }
 
+// TestDocumentAttrSchema exercises the per-type attribute schema (D-DocumentAttrSchema): a document of
+// a type that declares a schema is validated against it on write — valid attributes are accepted,
+// unknown keys / wrong types / bad enum values are rejected as ErrDocumentInvalid.
+func TestDocumentAttrSchema(t *testing.T) {
+	ctx := context.Background()
+	svc, pool := newService(t)
+	person := seedPerson(t, pool)
+
+	schema := []byte(`{"fields":{
+	  "vos":{"type":"string"},
+	  "fitness_category":{"type":"string","enum":["А","Б","В","Г","Д"]},
+	  "issued_year":{"type":"number"}
+	}}`)
+	typ, err := svc.CreateDocumentType(ctx, domain.DocumentType{Code: code(t, "milid"), Name: "Military ID", AttrSchema: schema})
+	if err != nil {
+		t.Fatalf("create typed type: %v", err)
+	}
+
+	// Valid attributes are accepted.
+	if _, err := svc.AttachDocument(ctx, domain.Document{
+		PersonID: person, TypeID: typ.ID, Number: code(t, "mil"),
+		Attributes: []byte(`{"vos":"100","fitness_category":"А","issued_year":2014}`),
+	}); err != nil {
+		t.Fatalf("valid attributes rejected: %v", err)
+	}
+
+	// Unknown key, wrong type, and bad enum are each rejected.
+	for name, attrs := range map[string]string{
+		"unknown key": `{"unknown":"x"}`,
+		"wrong type":  `{"issued_year":"not-a-number"}`,
+		"bad enum":    `{"fitness_category":"Z"}`,
+	} {
+		if _, err := svc.AttachDocument(ctx, domain.Document{
+			PersonID: person, TypeID: typ.ID, Number: code(t, "mil"), Attributes: []byte(attrs),
+		}); !errors.Is(err, domain.ErrDocumentInvalid) {
+			t.Fatalf("%s: want ErrDocumentInvalid, got %v", name, err)
+		}
+	}
+
+	// A type with no schema accepts free-form attributes.
+	free, err := svc.CreateDocumentType(ctx, domain.DocumentType{Code: code(t, "free"), Name: "Freeform"})
+	if err != nil {
+		t.Fatalf("create freeform type: %v", err)
+	}
+	if _, err := svc.AttachDocument(ctx, domain.Document{
+		PersonID: person, TypeID: free.ID, Number: code(t, "free"), Attributes: []byte(`{"anything":"goes","n":1}`),
+	}); err != nil {
+		t.Fatalf("freeform attributes rejected: %v", err)
+	}
+}
+
 func TestDocumentLifecycle(t *testing.T) {
 	ctx := context.Background()
 	svc, pool := newService(t)

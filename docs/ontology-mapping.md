@@ -47,6 +47,8 @@ Real-world entities with identity over time → Objects.
 | `Unit` | [tenant](modules/tenant.md) | yes (`code` unique among active) | `state` (active/suspended/archived) + soft-delete | `visibility` public/shadow; `level` & `unit_kind` are **directory attributes**, never PDP inputs |
 | `Graph` | [tenant](modules/tenant.md) | yes | soft-delete (`command` undeletable) | named hierarchy; `is_authority_bearing` gates PDP cascade |
 | `Person` | [person](modules/person.md) | optional `code` | `status` (active/deactivated/purged) + soft-delete; **crypto-erase on purge** | instance-global; CLDR structured names (patronymic in `given2`); `birthdate`, ISO-5218 `sex` |
+| `PersonEmail` / `PersonPhone` / `PersonCallSign` | [person](modules/person.md) | no | soft-delete; **erased on purge** | effective person child rows; email/phone `pii:contact`, call sign `pii:basic`; each unique per person among active; `is_primary` |
+| `PersonEmailType` / `PersonPhoneType` | [person](modules/person.md) | yes (`code`/`name`) | `status` + soft-delete | instance-admin catalogs for the contact-channel `kind` |
 | `Position` | [membership](modules/membership.md) | yes (unique per unit) | `status` (active/abolished) + soft-delete | unit-owned billet; an Object that **exists while vacant** — not just a link end |
 | `Document` / `DocumentType` | [document](modules/document.md) | type has `code`/`name` | `status` + soft-delete | papers, metadata only; type is an instance-admin catalog |
 | `PersonalCode` / `PersonalCodeScheme` | [document](modules/document.md) | scheme has `code`/`name` | `status` + soft-delete; crypto-erase | value is `pii:sensitive`, **envelope-encrypted** + blind-indexed |
@@ -90,6 +92,8 @@ RID is `link__<link_type>` in lower_snake (e.g. the `PARENT_OF` row → `link__p
 | `FEDERATES` | `Account` → `ExternalIdentity` | [identity-federation](modules/identity-federation.md) | `(issuer, subject)` | identity row append-only |
 | `HOLDS_DOCUMENT` / `HOLDS_CODE` | `Person` → `Document`/`PersonalCode` | [document](modules/document.md) | — | `status`; scoped through the holder |
 | `OF_TYPE` / `OF_SCHEME` | `Document`/`PersonalCode` → catalog | [document](modules/document.md) | — | — |
+| `HOLDS_EMAIL` / `HOLDS_PHONE` / `HOLDS_CALL_SIGN` | `Person` → email/phone/call-sign | [person](modules/person.md) | `is_primary`; email `provider`, phone `country` (derived) | scoped through the holder |
+| `OF_EMAIL_TYPE` / `OF_PHONE_TYPE` | email/phone → type catalog | [person](modules/person.md) | — | — |
 | `ISSUED_BY` | `Order` → `Unit` | [order](modules/order.md) | — | anchors authz + RLS |
 | `TARGETS` | `OrderItem` → `Person`(+`Unit`/`Position`/`Rank`) | [order](modules/order.md) | `effect`, `effective_from/to` (legal metadata) | — |
 | `CAUSED_BY` (provenance) | `Membership`/rank change → `OrderItem` | [membership](modules/membership.md) / [order](modules/order.md) | `order_item_id` | the наказ that authorized the change |
@@ -117,7 +121,8 @@ ledger ([Identifier scheme](#identifier-scheme-rids)).
 
 - **Direct CRUD:** `CreateUnit`, `AddEdge`/`RemoveEdge`, `TransitionUnit`, `CreatePerson`,
   `AssignRank`, `CreatePosition`/`AbolishPosition`, `CreateMembership`/`EndMembership`,
-  `AttachDocument`/`AttachPersonalCode`, `CreateRole`, `GrantAssignment`/`RevokeAssignment`,
+  `AttachDocument`/`AttachPersonalCode`, `UpsertEmail`/`UpsertPhone`/`UpsertCallSign` (+ their
+  deletes), `CreateRole`, `GrantAssignment`/`RevokeAssignment`,
   `GrantInstanceAdmin`, `CreateAccount`/`LinkExternalIdentity`, rank/locale/catalog edits.
 - **Order-driven effects (the strongest ontology fit):** `IssueOrder` is one Action whose effects are
   **emitted as domain events** (`AppointmentOrdered`, `RemovalOrdered`, `RankChangeOrdered`) that

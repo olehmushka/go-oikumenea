@@ -39,8 +39,10 @@ migrates, and demos** on its own, so the service is runnable at every step.
 | **M9** | Document | papers + envelope-encrypted personal codes | M5 (+ M0 crypto) |
 | **M10** | Order | наказ + items + event-driven effects on issue | M3–M6 (+ M0 events) |
 | **M11** | Hardening & upgrade-safety | staged RLS enablement, lint gate, CI upgrade tests, decision-explain/time-bound polish, packaging | M7–M10 |
+| **M12** | Person enrichment & expanded identity | person emails / phones / call signs; RU·BY·LATAM personal-ID schemes; per-document-type attribute schema | M5, M9 |
 
 M1/M2 and M3/M4 are independent and may be built in parallel. Everything after M2 assumes audit + i18n exist.
+M12 is **scoped (in progress)** — see its section below (D-PersonContactChannels, D-DocumentAttrSchema, expanded D-PersonalCodes).
 
 ---
 
@@ -200,6 +202,79 @@ timing*), per-request reach GUCs on a pinned connection, the non-superuser `oiku
 - **Exit:** an upgrade from the prior release applies non-destructively in CI; RLS backstop active
   without `BYPASSRLS`; image builds and runs from compose.
 
+## M12 — Person enrichment & expanded identity
+
+**Status: scoped (in progress).** The open questions are resolved (see *Resolved scope* below) and
+the work is binding via **D-PersonContactChannels** + **D-DocumentAttrSchema** (and the expanded
+**D-PersonalCodes** scheme set) in [decisions.md](architecture/decisions.md); the only newly parked
+seam is **DS-40** (phone carrier lookup). A bundle of additive person/document enrichments — expand-only
+(new child tables, a new nullable column, new seed rows, new compiled validators).
+
+**Goal.** Richer contact + identity data on a person: structured emails, phone numbers, call signs, a
+wider set of national personal-ID schemes, and a per-document-type attribute schema for military papers.
+
+**Resolved scope.**
+- **Email/phone `kind`** → instance-admin **catalog tables** (`person_email_types`,
+  `person_phone_types`, code + translatable name), not a CHECK enum.
+- **Phone** → `github.com/nyaruka/phonenumbers` for E.164 normalization + derived `country`.
+- **Email** → stored derived `provider` column (domain→provider map on write).
+- **Call signs** → `pii:basic`, required value, **unique per person** among active, `is_primary`.
+- **Military docs (D)** → **per-type attribute schema** (`document_document_types.attr_schema` +
+  write-time validation), not country-specific typed columns.
+- **ID schemes (C)** → RU (`ru-inn`,`ru-snils`), BY (`by-personal-number`), BR (`br-cpf`),
+  AR (`ar-dni`,`ar-cuil`), MX (`mx-curp`,`mx-rfc`), CL (`cl-rut`), CO (`co-cedula`); checksum
+  validators where well-known, regex/accept-warn otherwise.
+
+The per-item notes below record the original open questions (now answered as above) for provenance.
+
+**A. Person emails (multiple).** *Where:* new `person_emails` child table (mirrors
+[person](modules/person.md)'s `person_citizenships`/`person_residences`: CASCADE to `person_persons`,
+soft-delete, `is_primary`). *Shape:* `address` (`citext`, `pii:contact`), `kind` (personal/work/other),
+optional derived `provider`. *Open:* provider extraction = map the domain → a known provider
+(gmail.com → Google); store derived or compute on read? a closed provider vocabulary or free text?
+validation/normalization rules; per-person uniqueness; relation to the login `account_accounts.email`
+([identity-federation](modules/identity-federation.md)) — contact email ≠ login email, keep distinct.
+`pii:contact`, erased on purge.
+
+**B. Person phone numbers (multiple).** *Where:* new `person_phones` child table (same pattern).
+*Shape:* E.164-normalized `number`, derived `country` (from the dial prefix → `geo_countries`), `kind`,
+`is_primary`, all `pii:contact`. *Open:* country extraction needs an E.164/libphonenumber parser (pick
+a Go lib or a minimal prefix table); **carrier/provider lookup is NOT statically derivable** (number
+portability → needs an external HLR/lookup service) → likely **out of scope** or a parked
+external-dependency seam; normalization + validation rules. Erased on purge.
+
+**C. Expanded personal-ID schemes — RU, BY, LATAM.** *Where:* additional
+`document_personal_code_schemes` seed rows + optional `pkg/personalcode` compiled validators (mirrors
+`ua-rnokpp`/`us-ssn`/`pl-pesel`; precedence code-validator > regex > accept-warn, D-PersonalCodes; see
+[document](modules/document.md)). Candidates: RU `ru-inn`/`ru-snils`; BY personal number; LATAM
+`br-cpf`, `ar-dni`/`ar-cuil`, `mx-curp`/`mx-rfc`, `cl-rut`, `co-cedula`, … *Open:* exact country/scheme
+list + `generic_category` mapping; which get a checksum validator vs regex-only; confirm every
+`country_iso` is in the seeded `geo_countries` registry. Purely additive (a code change is still needed
+for compiled validators, but no schema/decision change).
+
+**D. Military documents — model depth (research item).** *Where:* [document](modules/document.md)
+module. `military-id` already exists as a seeded `document_type`; the question is whether a UA military
+card (військовий квиток) and analogues need **structured fields** (e.g. ВОС/VOS specialty code, fitness
+category, mobilization category, issuing commissariat) promoted out of the `attributes` JSONB. *Open:*
+enumerate the real fields per target country; decide generic-document-with-attributes vs typed columns
+vs a per-type attribute schema; whether any field is `pii:sensitive`/`pii:special` (envelope-encryption
+seam, DS-29). **Resolved → per-type attribute schema** (D-DocumentAttrSchema): a nullable
+`document_document_types.attr_schema` declaring typed/validated `attributes`, validated on document
+write; `military-id` ships a schema. Generic for all types, not country-specific columns. Genuinely
+special-category fields still wait on DS-29.
+
+**E. Call signs (позивний, multiple).** *Where:* new `person_call_signs` child table (same child
+pattern). *Shape:* `call_sign` text, `is_primary`, soft-delete; a person may hold several. *Resolved →*
+`pii:basic`, **NOT NULL**, **unique per person** among active rows (`UNIQUE (person_id, call_sign)
+WHERE deleted_at IS NULL`), surfaced in person reads, erased on purge.
+
+**Dependencies / notes.** All five are additive and depend only on the existing
+[person](modules/person.md)/[document](modules/document.md) modules + the `geo_countries` registry.
+Items A/B/E follow the existing effective-dated child-table pattern, and the person **purge** erasure
+list must be extended to cover their `pii:contact`/`pii:basic` columns (D-PIITiers). When scoped,
+update `decisions.md` (new decisions for the contact model + call signs), `glossary.md`,
+`ontology-mapping.md` (new Link/Object kinds), and allocate DS-40+ in `open-questions.md`.
+
 ---
 
 ## Cross-cutting threads (woven through, not separate milestones)
@@ -217,3 +292,7 @@ The [open-questions.md](open-questions.md) DS backlog stays parked unless its tr
 common blocker is the **background worker runtime (DS-25)** — anything needing a scheduler
 (audit-retention partitioning DS-28, future-dated order effects, expiry sweeps, duty-roster
 DS-37) waits behind it. The `pii:special` / audit-payload envelope extension stays parked as DS-29.
+
+The **M12** milestone (above) is now **scoped** — a person/document enrichment bundle (emails, phones,
+call signs, RU·BY·LATAM personal-ID schemes, per-document-type attribute schema). Its one newly parked
+seam is **DS-40** (phone carrier/provider lookup, needs an external service).

@@ -17,9 +17,11 @@ system-wide scheme — a **directory attribute, not a permission** (D-Rank).
 
 **Ontology kinds** (D-Ontology; [registry](../ontology-mapping.md)) — **Objects:** `Person` (the core
 aggregate; holds one rank via the `HOLDS_RANK` link — a directory attribute, **never** an authz
-input) and the per-person `Name variant`. **Links:** the temporal `Citizenship` and `Residence`
-(person → country). **Actions:** `CreatePerson`/`UpdatePerson`, `DeactivatePerson`/`PurgePerson`
-(crypto-erase, emits `PersonPurged`), `AssignRank`, citizenship/residence/variant upserts — audited,
+input), the per-person `Name variant`, the contact channels `Email`/`Phone`/`Call sign`, and the
+instance-admin `Email type`/`Phone type` catalogs. **Links:** the temporal `Citizenship` and
+`Residence` (person → country), and `HOLDS_EMAIL`/`HOLDS_PHONE`/`HOLDS_CALL_SIGN` (person → channel).
+**Actions:** `CreatePerson`/`UpdatePerson`, `DeactivatePerson`/`PurgePerson` (crypto-erase, emits
+`PersonPurged`), `AssignRank`, citizenship/residence/variant/email/phone/call-sign upserts — audited,
 `action__<type>` RID.
 
 - **Person** (aggregate root) — names (canonical + CLDR structured parts), bio attributes
@@ -28,6 +30,11 @@ input) and the per-person `Name variant`. **Links:** the temporal `Citizenship` 
 - **Citizenship** — a person's nationality in a country, effective-dated; a person may hold several
   (D-Geo).
 - **Residence** — a person's effective-dated residence in a country/region (D-Geo).
+- **Email / Phone / Call sign** — a person's contact/identity channels, multi-valued, each a
+  catalog-typed (email/phone) or free (call sign) child row; `is_primary` marks at most one active per
+  channel (D-PersonContactChannels).
+- **Email type / Phone type** — instance-admin catalogs (`code` + translatable `name`) for the
+  email/phone `kind` (D-Code/D-i18n).
 
 (Accounts live in [identity-federation](identity-federation.md) — at most one per person, and
 that account carries the person's login points across IdPs (e.g. Google + Keycloak);
@@ -128,6 +135,55 @@ lifecycle timestamps) are `pii:none` (D-PIITiers); the name parts, `birthdate`, 
 All `id`/`person_id`/lifecycle columns on both tables are `pii:none`; `country`/dates on citizenship
 are `pii:basic`, residence columns are `pii:contact` (locator data) — D-PIITiers.
 
+**`person_email_types`** / **`person_phone_types`** (instance-admin catalogs — D-Code/D-i18n)
+- `code TEXT PRIMARY KEY` — natural key (e.g. `personal`, `work`, `other`; phone `mobile`, `home`,
+  `work`, `other`); locale-agnostic, immutable by convention. Not an RID (catalog carve-out, like
+  `document_personal_code_schemes`).
+- `name TEXT NOT NULL` — default-locale label; other locales in the [localization](localization.md)
+  store (`entity_type='email_type'` / `'phone_type'`).
+- `status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','retired'))`, `sort_order INTEGER`
+- `created_at`, `updated_at`, `deleted_at`. All `pii:none`.
+
+**`person_emails`** (multi-valued contact email — D-PersonContactChannels)
+- `id` PK (`new_rid('person','email')`)
+- `person_id TEXT NOT NULL REFERENCES person_persons(id) ON DELETE CASCADE`
+- `type_code TEXT NOT NULL REFERENCES person_email_types(code) ON DELETE RESTRICT`
+- `address CITEXT NOT NULL` — the email address, stored lowercased — `pii:contact`
+- `provider TEXT` — derived on write from the address domain (`gmail.com → google`); nullable when no
+  mapping — `pii:contact`
+- `is_primary BOOLEAN NOT NULL DEFAULT FALSE` — at most one active primary
+- `created_at`, `updated_at`, `deleted_at`
+- **Uniqueness:** one **active** row per `(person_id, address)`:
+  `UNIQUE (person_id, address) WHERE deleted_at IS NULL`. Index `(person_id) WHERE deleted_at IS NULL`.
+- **Distinct from the login email** (`account_accounts.email`) — no FK; independent concerns.
+
+**`person_phones`** (multi-valued contact phone — D-PersonContactChannels)
+- `id` PK (`new_rid('person','phone')`)
+- `person_id TEXT NOT NULL REFERENCES person_persons(id) ON DELETE CASCADE`
+- `type_code TEXT NOT NULL REFERENCES person_phone_types(code) ON DELETE RESTRICT`
+- `number TEXT NOT NULL` — **E.164-normalized** via `github.com/nyaruka/phonenumbers` — `pii:contact`
+- `country CHAR(2) REFERENCES geo_countries(code) ON DELETE RESTRICT` — **derived** from the number;
+  nullable when underivable — `pii:contact`
+- `is_primary BOOLEAN NOT NULL DEFAULT FALSE`
+- `created_at`, `updated_at`, `deleted_at`
+- **Uniqueness:** one **active** row per `(person_id, number)`:
+  `UNIQUE (person_id, number) WHERE deleted_at IS NULL`. Index `(person_id) WHERE deleted_at IS NULL`.
+- Carrier/provider is **not** stored (not statically derivable; parked DS-40).
+
+**`person_call_signs`** (multi-valued informal identifier / позивний — D-PersonContactChannels)
+- `id` PK (`new_rid('person','call_sign')`)
+- `person_id TEXT NOT NULL REFERENCES person_persons(id) ON DELETE CASCADE`
+- `call_sign TEXT NOT NULL` — the call sign label — `pii:basic`
+- `is_primary BOOLEAN NOT NULL DEFAULT FALSE`
+- `created_at`, `updated_at`, `deleted_at`
+- **Uniqueness:** one **active** call sign per `(person_id, call_sign)`:
+  `UNIQUE (person_id, call_sign) WHERE deleted_at IS NULL` (the leading `person_id` also serves the
+  list lookup).
+
+On all three channel tables `id`/`person_id`/`type_code`/`is_primary`/lifecycle are `pii:none`; email
+`address`/`provider` and phone `number`/`country` are `pii:contact`; `call_sign` is `pii:basic`
+(D-PIITiers). All three are **erased on person purge**.
+
 Person names are **per-record data managed by the person's admins** — *not* the instance-admin
 [localization](localization.md) translation store (D-i18n). A person has one canonical
 `display_name` plus zero or more locale-tagged variants (the transliterations the user asked
@@ -143,8 +199,9 @@ DATA-GOVERNANCE:
 - Erasure is the **purge** path (below): mutable PII columns are NULLed, the `id` is kept as a
   tombstone so audit history (which references the id) stays intact. The purge erasure list covers
   **every** `pii:basic`/`pii:contact`/`pii:special` column on all person tables — including the CLDR
-  name parts, `birthdate`, `sex`, `country_of_birth` (D-PersonNamesCLDR / D-PersonBio), and the rows
-  of `person_citizenships` and `person_residences` (D-Geo), plus the JSONB `attributes`.
+  name parts, `birthdate`, `sex`, `country_of_birth` (D-PersonNamesCLDR / D-PersonBio), the rows
+  of `person_citizenships` and `person_residences` (D-Geo), the rows of `person_emails`,
+  `person_phones`, and `person_call_signs` (D-PersonContactChannels), plus the JSONB `attributes`.
   [document](document.md) rows for the person — including its **personal codes** (crypto-erased by
   destroying the wrapped DEK; D-CryptoProvider) — are erased by the `document` module's `PersonPurged`
   subscriber.
@@ -178,10 +235,27 @@ DATA-GOVERNANCE:
 | `GET /persons/{id}/residences` | List a person's residence history | `person.read` |
 | `PUT /persons/{id}/residences` | Upsert a residence row | `person.update` |
 | `DELETE /persons/{id}/residences/{id}` | Remove a residence row | `person.update` |
+| `GET /persons/{id}/emails` | List a person's contact emails | `person.read` |
+| `PUT /persons/{id}/emails` | Upsert a contact email (type, address, primary) | `person.update` |
+| `DELETE /persons/{id}/emails/{id}` | Remove a contact email | `person.update` |
+| `GET /persons/{id}/phones` | List a person's contact phones | `person.read` |
+| `PUT /persons/{id}/phones` | Upsert a contact phone (type, number, primary) | `person.update` |
+| `DELETE /persons/{id}/phones/{id}` | Remove a contact phone | `person.update` |
+| `GET /persons/{id}/call-signs` | List a person's call signs | `person.read` |
+| `PUT /persons/{id}/call-signs` | Upsert a call sign (value, primary) | `person.update` |
+| `DELETE /persons/{id}/call-signs/{id}` | Remove a call sign | `person.update` |
+| `GET /person/email-types` | List the email-type catalog (locale→text names) | `person.read` |
+| `GET /person/phone-types` | List the phone-type catalog (locale→text names) | `person.read` |
 
 Citizenship and residence reads follow the same **read-scope rule** as the person (D-PersonReadScope);
 their writes are audited (D-Audit) and erased on **purge**. `country_of_birth`, citizenship `country`,
 and residence `country` are validated against the `geo_countries` registry (D-Geo).
+
+Emails, phones, and call signs likewise follow the person **read-scope rule** (D-PersonReadScope); their
+writes are audited and **erased on purge** (D-PersonContactChannels). Phone `number` is E.164-normalized
+and its `country` derived on write; email `provider` is derived from the address domain. The
+email/phone `kind` is validated against the `person_email_types`/`person_phone_types` catalogs, whose
+`name`s return as locale→text maps via [localization](localization.md).
 
 Read endpoints that list people *by unit* are served by [membership](membership.md) and pass
 the shadow gate; `PersonService` directory reads are gated on `person.read` per the **read-scope
@@ -200,10 +274,11 @@ therefore answered via [audit](audit.md), not a person field.
 ## Dependencies
 
 - **Calls:** [rank](rank.md) (validate `rank_id` exists), [localization](localization.md)
-  (validate name-variant `locale` codes), the **`geo_countries`** registry
-  ([platform](platform.md); validate `country_of_birth` / citizenship / residence country codes).
-  [platform](platform.md) for infra. Emits `PersonCreated`, `PersonDeactivated`, `PersonRankChanged`,
-  `PersonPurged` events. **Subscribes** to [order](order.md)'s `RankChangeOrdered` event and applies
+  (validate name-variant `locale` codes; assemble email/phone-type `name` locale maps), the
+  **`geo_countries`** registry ([platform](platform.md); validate `country_of_birth` / citizenship /
+  residence / derived-phone country codes). Uses `github.com/nyaruka/phonenumbers` to normalize phone
+  numbers to E.164 and derive their country. [platform](platform.md) for infra. Emits `PersonCreated`,
+  `PersonDeactivated`, `PersonRankChanged`, `PersonPurged` events. **Subscribes** to [order](order.md)'s `RankChangeOrdered` event and applies
   the rank change in the issue transaction (D-OrderApply).
 - **Called by:** [membership](membership.md) (a membership references a person),
   [identity-federation](identity-federation.md) (an account links to a person),
@@ -249,6 +324,11 @@ through the holder.
 - A person may hold **several citizenships** (one active row per `(person, country)`); `is_primary`
   marks at most one. `country_of_birth`, citizenship and residence countries are FK-validated against
   `geo_countries` (D-Geo).
+- A person may hold **several emails / phones / call signs** (D-PersonContactChannels), each unique
+  among active rows per person: `(person, address)`, `(person, number)`, `(person, call_sign)`
+  respectively. `is_primary` marks at most one active per channel. The **contact email is distinct from
+  the login email** (no FK to `account_accounts`). Email/phone `kind` is FK-validated against the
+  type catalogs; phone `number` is E.164 and its `country` FK-validated against `geo_countries`.
 
 ## Open seams / future
 
@@ -265,3 +345,5 @@ through the holder.
   to a field would be an additive change (D-PersonNamesCLDR).
 - **Richer geography** (structured sub-national regions as a registry, geocoding) stays out of scope;
   `person_residences.region` is free text for now (D-Geo).
+- **Phone carrier / provider lookup** is parked (DS-40) — not statically derivable (number
+  portability), so it needs an external HLR/lookup service. Only the derived `country` is stored.
