@@ -43,6 +43,52 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "oikumenea-web",
+      "name": "go-oikumenea web admin console (local dev)",
+      "description": "Confidential dev client for the optional Next.js BFF admin UI on :8445 (D-WebUI). Authorization-Code flow; Auth.js exchanges the code server-side. The audience mapper adds aud=oikumenea so access tokens pass the app's check.",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "dev-oikumenea-web-secret",
+      "clientAuthenticatorType": "client-secret",
+      "directAccessGrantsEnabled": false,
+      "standardFlowEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:8445/api/auth/callback/keycloak"
+      ],
+      "webOrigins": ["http://localhost:8445"],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:8445/login##http://localhost:8445"
+      },
+      "protocolMappers": [
+        {
+          "name": "oikumenea-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "oikumenea",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "person-code",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "person_code",
+            "claim.value": "admin",
+            "jsonType.label": "String",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
     }
   ],
   "users": [

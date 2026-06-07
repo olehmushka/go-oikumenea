@@ -64,5 +64,34 @@ services:
       - "8443:8443"
       - "8444:8444"
 
+  # OPTIONAL admin console (D-WebUI). Opt-in only: it starts only with `--profile ui`, so a
+  # default `docker compose up` is unchanged (no 8445). It is a pure API consumer (BFF) — the
+  # `app` service is untouched. The IdP is external: point AUTH_KEYCLOAK_ISSUER at a Keycloak
+  # reachable from BOTH the browser and this container (this prod compose ships no Keycloak —
+  # for an all-in-one local demo, run the UI from the host: see web/README.md).
+  #
+  #   docker compose --profile ui up --build
+  #   open http://localhost:8445
+  web:
+    build: ./web
+    profiles: ["ui"]
+    depends_on:
+      - app
+    ports:
+      - "8445:3000"
+    environment:
+      # The BFF target. The app serves self-signed TLS, so let the Node server trust it (dev).
+      API_BASE_URL: "https://app:8443"
+      NODE_TLS_REJECT_UNAUTHORIZED: "0"
+      # Auth.js — replace the secret for any real use (openssl rand -base64 32).
+      AUTH_SECRET: "dev-only-change-me-please-0000000000000000000="
+      AUTH_URL: "http://localhost:8445"
+      AUTH_TRUST_HOST: "true"
+      # Keycloak confidential client (oikumenea-web). Issuer must be reachable from browser AND
+      # this container, and must match the token `iss` exactly.
+      AUTH_KEYCLOAK_ID: "oikumenea-web"
+      AUTH_KEYCLOAK_SECRET: "dev-oikumenea-web-secret"
+      AUTH_KEYCLOAK_ISSUER: "http://localhost:8080/realms/oikumenea"
+
 volumes:
   oik-pgdata:

@@ -89,3 +89,17 @@ contract into the nested module [`client/`](client/README.md) — `go get
 github.com/olegamysk/go-oikumenea/client`. An **OpenAPI** reference is generated from the same IR in CI
 (see [`docs/api/README.md`](docs/api/README.md)). Both derive from one contract, so they cannot drift
 from the server.
+
+## Web UI (optional)
+
+An optional **Next.js admin console** ([`web/`](web/README.md), [`docs/web-ui.md`](docs/web-ui.md))
+runs on **port 8445** beside the API. It is opt-in and a pure API consumer (a Backend-for-Frontend
+with Keycloak login) — the server is unchanged whether or not it runs.
+
+```bash
+# local dev (with the dev Postgres + Keycloak + server already up — see deploy/keycloak/README.md):
+cd web && cp .env.example .env.local && npm install && npm run dev   # http://localhost:8445
+
+# or production-shaped, opt-in via the `ui` compose profile (default `up` does NOT start it):
+docker compose --profile ui up --build
+```

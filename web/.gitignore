@@ -1,0 +1,13 @@
+/node_modules
+/.next
+/out
+/build
+.env
+.env.local
+*.tsbuildinfo
+next-env.d.ts.bak
+
+# NOTE: src/lib/api/schema.d.ts is GENERATED from docs/api/openapi/openapi.json
+# (scripts/gen-api-types.sh) but is COMMITTED — like the repo's other generated artifacts
+# (client/, openapi.json) — so the Docker build (context ./web) has it without the spec.
+# Never hand-edit it; run `npm run gen:api` to refresh.

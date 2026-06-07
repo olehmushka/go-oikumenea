@@ -11,6 +11,9 @@ full `token → validate → resolve → PDP` path by hand. The app validates in
   - realm **`oikumenea`**;
   - public client **`oikumenea`** with the direct-access (password) grant + standard flow, an **audience
     mapper** that adds `aud: oikumenea`, and a hardcoded **`person_code: admin`** claim (for the JIT path);
+  - **confidential** client **`oikumenea-web`** (secret `dev-oikumenea-web-secret`) for the optional
+    Next.js admin UI on **:8445** ([D-WebUI](../../docs/web-ui.md)) — standard (Authorization-Code) flow,
+    redirect URI `http://localhost:8445/api/auth/callback/keycloak`, same `aud: oikumenea` audience mapper;
   - user **`admin`** / password **`admin`**, with a **fixed `sub`** UUID
     `11111111-1111-1111-1111-111111111111`.
 - `var/conf/install.yml` adds the issuer `http://localhost:8080/realms/oikumenea` (`type: oidc`,
@@ -73,5 +76,16 @@ also works if you set `idp.jit.enabled: true`, since the client stamps `person_c
   when it expires.
 - **Changing the port:** if `OIKU_KEYCLOAK_HOST_PORT` ≠ 8080, also change the issuer URL in
   `var/conf/install.yml` (`idp.issuers` **and** `bootstrap-admin`) — the token `iss` must match exactly.
-- This is **insecure local config** (public client, password grant, `admin/admin`). Real deployments use
-  a confidential client / proper flows and ECV-encrypted secrets.
+- This is **insecure local config** (public client, password grant, `admin/admin`, a hard-coded web
+  client secret). Real deployments use proper flows, a rotated `oikumenea-web` secret, and
+  ECV-encrypted secrets.
+
+## The web admin UI (`oikumenea-web`)
+
+The optional Next.js console (`web/`, port **8445**; see [`docs/web-ui.md`](../../docs/web-ui.md)) logs
+in through this realm via Auth.js (OIDC Authorization-Code). It uses the **confidential**
+`oikumenea-web` client and exchanges the code **server-side**, so the browser never holds a token; the
+Next.js server then proxies API calls to `:8443` with the bearer attached. Because the access token
+carries `aud: oikumenea`, the app validates it with the same `idp.issuers[]` rules as a curl token. Run
+it from `web/` (`npm run dev`, `PORT=8445`) against this dev stack, or as the `ui`-profiled compose
+service — see `web/README.md`.

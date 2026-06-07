@@ -1230,6 +1230,55 @@ special-category data lands there without the envelope seam (DS-29); a typed fie
 
 ---
 
+### D-WebUI — An optional standalone Next.js admin UI (reverses the "API-only, no UI" drop)
+
+**Decision.** Ship an **optional, separately-run web admin console** as a standalone **Next.js**
+application living in `web/`, served on **port 8445**. It is a **consumer** of the existing public
+HTTP API, not a backend module: it adds **no Go code, no Conjure contract, no schema change, and no
+new port to the `oikumenea` binary**. It is built on the **Backend-for-Frontend (BFF)** pattern —
+the Next.js server holds an httpOnly session and proxies API calls with the bearer token attached;
+the browser never sees a token and never calls the Go API directly. Authentication is the standard
+**Keycloak OIDC Authorization-Code flow** (a confidential `oikumenea-web` client whose access token
+carries `aud: oikumenea`), so [L-AuthzOnly](#carried-over-locks-settled-earlier-restated-for-self-containment)
+holds unchanged — the UI authenticates *at the IdP* and the service still validates inbound tokens
+and decides authorization. The UI is **opt-in to run** (a `ui`-profiled docker-compose service / a
+`web/` dev server); a default deployment is unaffected. This **supersedes the earlier "the Next.js UI
+(API-only)" drop**.
+
+**Why.** Operators of a hierarchical org (army/church/university) need a human-usable surface for
+directory and authorization administration; curl + the OpenAPI reference is not it. A standalone BFF
+keeps the service **API-first** (the UI cannot do anything the API doesn't expose) while giving a
+secure, idiomatic experience: the access/refresh token stays server-side, there is **no CORS surface
+on the Go app**, and the UI stays an independently-versioned, independently-deployed, **removable**
+artifact — extraction-friendly, exactly like the modular monolith's stance on the backend. Because
+TypeScript types are **generated from `docs/api/openapi/openapi.json`**, the UI cannot drift from the
+contract.
+
+**Why not** (a) embed a static export served by the Go binary on a second listener: loses server-side
+sessions/SSR and forces a browser-held token (weaker posture), and couples UI release to the Go
+binary; (b) keep API-only: leaves operators without a usable console. The original drop was about
+*not coupling* a UI into the core — a standalone, optional BFF honours that intent while still
+delivering the UI.
+
+**Consequence (binding rules the UI must honour).**
+- **No client-side authorization.** The UI never decides access; it asks the PDP
+  (`POST /authorization/v1/authorize`, or `/authorize/batch` with `explain` where the caller holds
+  `assignment.read`) and renders accordingly. It never branches on rank/position
+  ([D-Rank](#d-rank--rank-on-person-rank--permission)).
+- **Shadow visibility is server-enforced.** The UI renders exactly what the API returns and never
+  does its own visibility filtering ([L-Visibility](#carried-over-locks-settled-earlier-restated-for-self-containment),
+  [D-PersonReadScope](#d-personreadscope--a-persons-read-scope-projects-through-its-memberships)).
+- **All translations in every response** ([D-i18n](#d-i18n--i18n-is-required-all-translations-in-every-response)).
+  Translatable labels arrive as `locale → text` maps; the UI picks per a UI-locale switch with
+  fallback and writes the full map back. Person names use the per-person transliteration variants,
+  not the admin translation store.
+- New top-level `web/` (Next.js + Auth.js + generated typed client); a confidential `oikumenea-web`
+  Keycloak client (dev realm); an **optional** `ui`-profiled `web` service in `docker-compose.yml`
+  (port 8445). The generated `web/src/lib/api/schema.d.ts` is never hand-edited. See
+  [web-ui.md](../web-ui.md).
+
+---
+
 ## Carried-over locks (settled earlier; restated for self-containment)
 
 These come from the high-level plan and are not re-litigated here.
@@ -1259,6 +1308,8 @@ Religion-specific concepts (denominations, tradition families, the Nicene gate, 
 Russian-locale rules); the org-type discriminator; per-tenant rank adoption; `content`
 (pages/blocks/i18n); `location`/PostGIS/H3/geography; `vouching`/web-of-trust; content
 `moderation`/policy engine; `integrations`/scrapers; the OAuth **credential vault** (auth is
-delegated — we validate, we do not store secrets); `uber/fx`; the Next.js UI (API-only); and
-all AWS/Supabase/Cloudflare specifics (self-hostable instead). These appear in the docs only as
-"dropped" notes.
+delegated — we validate, we do not store secrets); `uber/fx`; ~~the Next.js UI (API-only)~~
+(**superseded by [D-WebUI](#d-webui--an-optional-standalone-nextjs-admin-ui-reverses-the-api-only-no-ui-drop)** —
+re-adopted as an *optional, standalone* BFF that does not couple into the core, so the original
+"don't bake a UI into the service" intent still holds); and all AWS/Supabase/Cloudflare specifics
+(self-hostable instead). These appear in the docs only as "dropped" notes.

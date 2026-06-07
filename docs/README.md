@@ -10,8 +10,11 @@
 A generic, domain-agnostic **personnel & authorization service** — Keycloak-like, but for
 **hierarchical, multi-tenant organizations** (an army, a church, a university). It is:
 
-- **API-only.** No UI. The contract is [Conjure](architecture/overview.md) IDL; clients and
-  an [OpenAPI reference](api/README.md) are generated from it.
+- **API-first.** The contract is [Conjure](architecture/overview.md) IDL; clients and an
+  [OpenAPI reference](api/README.md) are generated from it. The service ships **no UI of its
+  own**, but an **optional, standalone** Next.js admin console
+  ([`web-ui.md`](web-ui.md), [D-WebUI](architecture/decisions.md)) can be run beside it as a
+  pure API consumer — opt-in, separately deployed, no coupling into the core.
 - **AuthZ + directory, not authentication.** Authentication is delegated to an external
   identity provider (IdP). go-oikumenea validates inbound identities and **decides
   authorization** — it is a Policy Decision Point (PDP). It never stores credentials or
@@ -51,6 +54,12 @@ across graphs. That — *hierarchy + inheritance + visibility, decided by a PDP*
 | [localization](modules/localization.md) | i18n: instance-admin-managed locales + the translation store for entity labels. |
 | [platform](modules/platform.md) | witchcraft bootstrap, config, observability, schema bootstrap, country registry, crypto/KMS seam, boot-time schema-version check. |
 | [audit](modules/audit.md) | Append-only audit trail of permission-sensitive actions. |
+
+A **consumer** of the above (not a backend module), documented alongside them:
+
+| Surface | Responsibility |
+|---|---|
+| [web-ui](web-ui.md) | **Optional** standalone Next.js **admin console** (port 8445). BFF over the public API; Keycloak login; no client-side authz. |
 
 ## Reading order for a new agent
 
