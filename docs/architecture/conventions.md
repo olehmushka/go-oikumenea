@@ -248,8 +248,12 @@ See [decisions.md](decisions.md) D-NoRLS + D-RLSDefenseInDepth.
   fields `camelCase`; enums `UPPER_SNAKE`. IDs are an `Rid` string alias (the URN format above) —
   Object, Link, and Action references all carry the full RID, never a bare uuid.
 - **Errors** are declared as Conjure error types (see below) with safe-arg params.
-- Generated code lands under `internal/<module>/transport` (server interfaces) and a shared
-  `generated/clients` for client structs. **Generated files are never hand-edited.**
+- Generated code lands under **`internal/conjure`** (server interfaces + `RegisterRoutes` + clients,
+  consumed in-repo) and, for the **publishable Go SDK**, a **nested module `client/`** (module path
+  `…/go-oikumenea/client`) emitted client-only from the same IR by a second `conjure-plugin` project —
+  so external code can `go get` it (the `internal/` copy is import-restricted). Both derive from the
+  same `api/*.conjure.yml`, so they cannot drift. **Generated files are never hand-edited.** See
+  [../api/README.md](../api/README.md) and [client/README.md](../../client/README.md).
 - The transport layer implements the generated server interface; the compiler enforces the
   contract.
 

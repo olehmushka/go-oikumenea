@@ -1,15 +1,21 @@
-# Local-dev Postgres for go-oikumenea (M0). Not the production packaging — that lands in M11.
-# The default install.yml DSN points at this instance (localhost:5432, postgres/dev). The host
-# port is taken from $OIKU_DB_HOST_PORT (compose auto-loads ./.env), defaulting to 5432; override
-# it in .env if 5432 is taken locally (then update the DSNs in .env + var/conf/install.yml to match).
+# Local-dev infrastructure for go-oikumenea: Postgres (the operator DB) + Keycloak (a real OIDC IdP
+# for manual auth testing). NOT the production packaging — that is docker-compose.yml (M11). The app
+# itself runs from the HOST binary (it reads var/conf/install.yml); this file only provides the infra
+# it talks to. The Postgres host port is $OIKU_DB_HOST_PORT (default 5432); Keycloak's is
+# $OIKU_KEYCLOAK_HOST_PORT (default 8080) — compose auto-loads ./.env.
 #
 #   cp .env.example .env                     # one-time
-#   docker compose -f docker-compose.dev.yml up -d
+#   docker compose -f docker-compose.dev.yml up -d   # postgres + keycloak
 #   set -a; . ./.env; set +a                 # export DATABASE_URL for atlas
 #   atlas migrate apply --env local          # migration 0012 creates the oikumenea_app group role
 #   # one-time: create the non-superuser LOGIN role the SERVER connects as (RLS backstop, D-RLSDefenseInDepth)
 #   psql "$DATABASE_URL" -c "CREATE ROLE oikumenea LOGIN PASSWORD 'dev' IN ROLE oikumenea_app;"
 #   ./godelw build && out/build/oikumenea/unspecified/linux-amd64/oikumenea serve
+#
+# Keycloak auto-imports deploy/keycloak/realm-oikumenea.json (realm `oikumenea`, client `oikumenea`,
+# user admin/admin). The token issuer is http://localhost:8080/realms/oikumenea — the same URL the
+# host uses to mint tokens and the host-run app uses for OIDC discovery (no hostname juggling). See
+# deploy/keycloak/README.md for the full manual end-to-end recipe.
 services:
   postgres:
     image: postgres:16
@@ -20,5 +26,22 @@ services:
       - "${OIKU_DB_HOST_PORT:-5432}:5432"
     volumes:
       - oik-pgdata:/var/lib/postgresql/data
+
+  # Real OIDC IdP for manual testing (identity-federation.md, M8). Dev mode: HTTP on 8080, ephemeral
+  # embedded H2, the realm re-imported on every `up`. The KC_BOOTSTRAP_ADMIN_* creds are for the
+  # KEYCLOAK CONSOLE (http://localhost:8080), NOT the app's instance admin (that is the imported realm
+  # user `admin`, bound to the app via var/conf/install.yml bootstrap-admin).
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "${OIKU_KEYCLOAK_HOST_PORT:-8080}:8080"
+    volumes:
+      - ./deploy/keycloak/realm-oikumenea.json:/opt/keycloak/data/import/realm-oikumenea.json:ro
+
 volumes:
   oik-pgdata:

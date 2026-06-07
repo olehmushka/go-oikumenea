@@ -1,0 +1,62 @@
+# Generate the OpenAPI v3 spec from the Conjure contract and publish a rendered API reference to
+# GitHub Pages. OpenAPI is a derived artifact (api/*.conjure.yml is the source of truth), so the docs
+# cannot drift from the server. No JVM tools are needed: tools/ir2openapi gets the Conjure IR from godel
+# and converts it (see docs/api/README.md).
+name: API docs (OpenAPI)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "api/**"
+      - "tools/ir2openapi/**"
+      - "scripts/gen-openapi.sh"
+      - ".github/workflows/api-docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  openapi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Generate OpenAPI from the Conjure contract
+        run: scripts/gen-openapi.sh
+
+      # Fail the build if the committed spec is stale (regenerate + commit when api/ changes).
+      - name: Verify the committed spec is up to date
+        run: git diff --exit-code docs/api/openapi/openapi.json
+
+      - name: Render API reference (Redoc)
+        run: |
+          set -euo pipefail
+          mkdir -p site
+          npx --yes @redocly/cli@latest build-docs docs/api/openapi/openapi.json -o site/index.html
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openapi
+          path: docs/api/openapi/openapi.json
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy-pages:
+    needs: openapi
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

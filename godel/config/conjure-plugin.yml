@@ -1,5 +1,7 @@
 version: 1
 projects:
+  # Server-side generation used IN-REPO: server interfaces + RegisterRoutes + clients, under
+  # internal/conjure (the transport layer implements the server interfaces; D-Conjure).
   platform:
     output-dir: internal/conjure
     # A directory of Conjure YAML sources (compiled to IR by the plugin). A bare file path
@@ -7,3 +9,12 @@ projects:
     ir-locator: api
     # Emit Conjure server interfaces + RegisterRoutes (transport implements these; D-Conjure).
     server: true
+  # Publishable Go CLIENT SDK: the same Conjure contract emitted as client + types only (no server)
+  # into the nested module client/ (own go.mod, path .../go-oikumenea/client) so external code can
+  # `go get` it. godel computes import paths as <main-module>/client/..., which equals the nested
+  # module's own path, so generated cross-imports resolve under client/go.mod. Generated, committed,
+  # never hand-edited. See client/README.md.
+  client:
+    output-dir: client
+    ir-locator: api
+    # server omitted -> client + structs + errors + enums only.

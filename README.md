@@ -26,11 +26,15 @@ cp .env.example .env        # tweak ports/DSNs for your machine if 5432 is taken
 Key variables (see `.env.example`): `DATABASE_URL` (Atlas target), `OIKUMENEA_TEST_DSN`
 (integration tests), `OIKU_DB_HOST_PORT` (compose host port), `OIKU_ENVIRONMENT`.
 
-### 2. Start Postgres
+### 2. Start Postgres (and Keycloak)
 
 ```bash
 docker compose -f docker-compose.dev.yml up -d
 ```
+
+This brings up Postgres **and a local Keycloak** (a real OIDC IdP for manual auth testing, on
+`:8080`, with a realm auto-imported). For the full hands-on login/token recipe — minting a token and
+calling the API as the bootstrapped admin — see [`deploy/keycloak/README.md`](deploy/keycloak/README.md).
 
 ### 3. Run migrations
 
@@ -77,3 +81,11 @@ go test ./...                                            # unit tests
 set -a; . ./.env; set +a
 go test -tags=integration ./internal/...                 # integration tests (need a migrated DB)
 ```
+
+## Client SDK & API reference
+
+The API is Conjure-first (`api/*.conjure.yml`). A typed **Go client SDK** is generated from that same
+contract into the nested module [`client/`](client/README.md) — `go get
+github.com/olegamysk/go-oikumenea/client`. An **OpenAPI** reference is generated from the same IR in CI
+(see [`docs/api/README.md`](docs/api/README.md)). Both derive from one contract, so they cannot drift
+from the server.

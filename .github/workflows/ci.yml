@@ -22,6 +22,24 @@ jobs:
       - run: go vet ./...
       - run: go test ./...
 
+  sdk:
+    name: client SDK module (build + vet + test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      # The publishable client SDK is a nested module (client/go.mod), excluded from the parent
+      # module's `go build ./...`, so it is checked here.
+      - name: build + vet + test client SDK
+        working-directory: client
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./...
+
   integration:
     name: integration tests (+ RLS backstop)
     runs-on: ubuntu-latest

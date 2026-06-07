@@ -21,8 +21,10 @@ postgres:
   dsn: "postgres://oikumenea:dev@localhost:5432/postgres?sslmode=disable"
 
 # Inbound-token validation (identity-federation.md, M8). Authentication is delegated (L-AuthzOnly):
-# production issuers use OIDC discovery + JWKS (type: oidc); this local-dev issuer uses a symmetric
-# HS256 key so dev/tests can mint tokens. The hmac-key is ECV-encrypted in real deployments.
+# real issuers use OIDC discovery + JWKS (type: oidc); the local-dev issuer uses a symmetric HS256 key
+# so dev/tests can mint tokens. The local Keycloak (docker-compose.dev.yml + deploy/keycloak/) is a
+# real OIDC issuer for manual testing — see deploy/keycloak/README.md. The hmac-key is ECV-encrypted in
+# real deployments.
 idp:
   clock-skew-seconds: 60
   jit:
@@ -33,6 +35,12 @@ idp:
       type: hs256
       audience: oikumenea
       hmac-key: "local-dev-insecure-signing-key-change-me"
+    # Local Keycloak (docker-compose.dev.yml). OIDC discovery + JWKS are fetched lazily on the first
+    # token, so the app boots fine before Keycloak is up. The issuer URL must match the token's `iss`
+    # exactly; with host-run app + host-minted tokens both use localhost:8080.
+    - issuer: "http://localhost:8080/realms/oikumenea"
+      type: oidc
+      audience: oikumenea
 
 # Identity-federation account knobs (identity-federation.md). identity-linking-enabled gates linking
 # ADDITIONAL login points to one account (default true).
@@ -51,10 +59,14 @@ crypto:
   local-dev:
     kek: "bG9jYWwtZGV2LWluc2VjdXJlLWtlay1jaGFuZ2UtbWU="
 
-# First instance admin seeded at first boot (D-Bootstrap), bound to the local-dev IdP identity above.
-# Idempotent: skipped once any instance admin exists. Remove/replace for real deployments.
+# First instance admin seeded at first boot (D-Bootstrap), bound to the LOCAL KEYCLOAK identity so the
+# imported realm user (admin/admin) is the instance admin from first boot. `subject` is that user's
+# fixed `sub` UUID from deploy/keycloak/realm-oikumenea.json. Idempotent: skipped once any instance
+# admin exists. (To bootstrap against the HS256 local-dev issuer instead, point issuer/subject back to
+# "https://local-dev.oikumenea.test"/"local-admin".) Remove/replace for real deployments.
 bootstrap-admin:
-  issuer: "https://local-dev.oikumenea.test"
-  subject: "local-admin"
+  issuer: "http://localhost:8080/realms/oikumenea"
+  subject: "11111111-1111-1111-1111-111111111111"
+  email: "admin@oikumenea.test"
   display-name: "Local Admin"
   person-code: "admin"
