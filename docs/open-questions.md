@@ -69,6 +69,47 @@ Introduced by [D-PersonContactChannels](architecture/decisions.md): `person_phon
   so this needs an external HLR / number-lookup service (an external-dependency seam, akin to a KMS
   backend). `parked`
 
+**DS-41 · Social-network / messenger references for contact channels.**
+Builds on [D-PersonContactChannels](architecture/decisions.md): today a person's reachability is
+email / phone / call-sign only.
+- *Default* — no record of which messengers a phone/email is reachable on, and no social-network
+  handles.
+- *Trigger* — operators want to reach or identify people via messengers / social profiles → two
+  additive, non-breaking directions: (a) a **linkage** annotating existing `person_phones` /
+  `person_emails` rows with the platforms that number/address is reachable on (phone-derived
+  messengers: Telegram / WhatsApp / Signal / Viber); (b) a **standalone** catalog-typed channel
+  child table (e.g. `person_social_accounts`, mirroring the email/phone child-table pattern) for
+  handles independent of any phone/email (social usernames — Instagram / LinkedIn / X — or a
+  Telegram @username with no phone). Platforms are catalog-typed like `person_*_types`. Direction
+  only; concrete shape and breadth decided when promoted. `person↔person` friend links (DS-42)
+  would consume this linkage as proof-of-friendship. `parked`
+
+**DS-42 · Person↔person relationships (marriage, kinship, next-of-kin, social).**
+A new relationship area in the [person](modules/person.md) module: ties *between two people*,
+modelled as **reified self-links** (`Person → Person`, D-Ontology `link__<type>`) with **both
+endpoints in-directory** `person_persons` rows. **Per-type tables** (not one generic table), each
+mirroring the `membership_memberships` temporal-link shape (soft-delete, timestamps,
+`effective_from`/`effective_to`, `status TEXT`+`CHECK`). Instance-global like Person; reads project
+through [D-PersonReadScope](architecture/decisions.md).
+- *Default* — no person↔person relationships are stored at all.
+- *Trigger* — an org needs to record family / social structure → add the per-type link tables
+  below. Each is additive, non-breaking, and can land independently:
+  - **`person_marriages`** — symmetric pair (canonical ordering `CHECK (person_id_a < person_id_b)`,
+    no self-marriage), `status ∈ married | divorced | widowed | annulled`, `effective_from`/
+    `effective_to` (NULL = ongoing); at most one active `married` row per person.
+  - **`person_kinships`** — directional `parent_of` (`parent_id → child_id`, no self-edge); siblings
+    are derivable, not stored; generally permanent (adoption / legal disestablishment are the
+    lifecycle edge cases — soft-delete or a `status`).
+  - **`person_next_of_kin`** — a person's nominated next-of-kin / emergency contact
+    (`subject_id → contact_id`, both in-directory), with a relation label + priority ordering.
+    Distinct from `person_kinships`: a *nomination*, not a blood fact. (External, non-personnel
+    next-of-kin is **out of scope for now** — both ends must be directory persons; revisit if real
+    deployments need free-text contacts.)
+  - **`person_social_links`** — friend / follower, `status ∈ active | archived`. **Blocked on
+    DS-41**: the only accepted *proof* of friendship is a linked social-network account, so this
+    table waits on that linkage. Other (non-social) notions of "friendship" are **deferred** —
+    undefined for now. `parked`
+
 ---
 
 ## membership — [`modules/membership.md`](modules/membership.md)

@@ -347,3 +347,12 @@ through the holder.
   `person_residences.region` is free text for now (D-Geo).
 - **Phone carrier / provider lookup** is parked (DS-40) — not statically derivable (number
   portability), so it needs an external HLR/lookup service. Only the derived `country` is stored.
+- **Social-network / messenger references** for contact channels are parked (DS-41) — a future
+  additive layer linking existing phones/emails to messengers (Telegram/WhatsApp/Signal) plus a
+  standalone catalog-typed channel for independent social handles. Direction only; not modelled yet.
+- **Person↔person relationships** (marriage, kinship, next-of-kin, social) are parked (DS-42) — a
+  future set of per-type reified self-links (`Person → Person`, both in-directory), each mirroring
+  the `membership_memberships` temporal-link shape. Marriage carries `married/divorced/widowed/
+  annulled` + an effective interval; kinship is directional `parent_of`; next-of-kin is an
+  in-directory nomination; social/friend links are blocked on DS-41 (social-account linkage). Not
+  modelled yet.
