@@ -8,18 +8,21 @@
 -- ============================ document types ============================
 
 -- name: InsertDocumentType :one
-INSERT INTO oikumenea.document_document_types (code, name, sort_order)
-VALUES (@code, @name, sqlc.narg('sort_order'))
+INSERT INTO oikumenea.document_document_types (code, name, attr_schema, sort_order)
+VALUES (@code, @name, sqlc.narg('attr_schema')::jsonb, sqlc.narg('sort_order'))
 RETURNING *;
 
 -- name: GetDocumentType :one
 SELECT * FROM oikumenea.document_document_types WHERE id = @id AND deleted_at IS NULL;
 
 -- name: UpdateDocumentType :one
+-- attr_schema is replaced when provided (NULL narg leaves it unchanged via COALESCE; clearing it back
+-- to NULL is an open seam, consistent with the other COALESCE'd fields).
 UPDATE oikumenea.document_document_types SET
-  name       = COALESCE(sqlc.narg('name'), name),
-  status     = COALESCE(sqlc.narg('status'), status),
-  sort_order = COALESCE(sqlc.narg('sort_order'), sort_order)
+  name        = COALESCE(sqlc.narg('name'), name),
+  attr_schema = COALESCE(sqlc.narg('attr_schema')::jsonb, attr_schema),
+  status      = COALESCE(sqlc.narg('status'), status),
+  sort_order  = COALESCE(sqlc.narg('sort_order'), sort_order)
 WHERE id = @id AND deleted_at IS NULL
 RETURNING *;
 

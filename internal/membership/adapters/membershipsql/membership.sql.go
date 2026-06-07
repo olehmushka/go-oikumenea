@@ -98,6 +98,38 @@ func (q *Queries) GetActiveFillingByPosition(ctx context.Context, positionID pgt
 	return i, err
 }
 
+const getActivePlainMembership = `-- name: GetActivePlainMembership :one
+SELECT id, person_id, unit_id, position_id, order_item_id, status, effective_from, effective_to, created_at, updated_at, deleted_at FROM oikumenea.membership_memberships
+WHERE person_id = $1 AND unit_id = $2
+  AND position_id IS NULL AND status = 'active' AND deleted_at IS NULL
+`
+
+type GetActivePlainMembershipParams struct {
+	PersonID string
+	UnitID   string
+}
+
+// A person's active PLAIN belonging (no position) in a unit, if any — the target an order's
+// membership-end item ends when it names a unit but no position. The belonging index keeps it unique.
+func (q *Queries) GetActivePlainMembership(ctx context.Context, arg GetActivePlainMembershipParams) (OikumeneaMembershipMembership, error) {
+	row := q.db.QueryRow(ctx, getActivePlainMembership, arg.PersonID, arg.UnitID)
+	var i OikumeneaMembershipMembership
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.UnitID,
+		&i.PositionID,
+		&i.OrderItemID,
+		&i.Status,
+		&i.EffectiveFrom,
+		&i.EffectiveTo,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const getMembership = `-- name: GetMembership :one
 SELECT id, person_id, unit_id, position_id, order_item_id, status, effective_from, effective_to, created_at, updated_at, deleted_at FROM oikumenea.membership_memberships WHERE id = $1 AND deleted_at IS NULL
 `

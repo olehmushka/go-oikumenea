@@ -157,7 +157,7 @@ func (s Service) CreateDocumentType(ctx context.Context, token bearertoken.Token
 	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermDocumentTypeManage)); err != nil {
 		return documentapi.DocumentType{}, err
 	}
-	created, err := s.app.CreateDocumentType(ctx, domain.DocumentType{Code: req.Code, Name: req.Name, SortOrder: req.SortOrder})
+	created, err := s.app.CreateDocumentType(ctx, domain.DocumentType{Code: req.Code, Name: req.Name, AttrSchema: attrToBytes(req.AttrSchema), SortOrder: req.SortOrder})
 	if err != nil {
 		return documentapi.DocumentType{}, s.mapError(ctx, err, errCtx{})
 	}
@@ -168,7 +168,7 @@ func (s Service) UpdateDocumentType(ctx context.Context, token bearertoken.Token
 	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermDocumentTypeManage)); err != nil {
 		return documentapi.DocumentType{}, err
 	}
-	updated, err := s.app.UpdateDocumentType(ctx, typeID, domain.DocumentTypePatch{Name: req.Name, Status: req.Status, SortOrder: req.SortOrder})
+	updated, err := s.app.UpdateDocumentType(ctx, typeID, domain.DocumentTypePatch{Name: req.Name, AttrSchema: attrToRawPtr(req.AttrSchema), Status: req.Status, SortOrder: req.SortOrder})
 	if err != nil {
 		return documentapi.DocumentType{}, s.mapError(ctx, err, errCtx{typeID: typeID})
 	}

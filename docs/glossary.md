@@ -82,6 +82,23 @@ a paper's issuing country, a personal-code scheme's country). Instance-admin-ext
 **Residence.** A person's effective-dated residence in a country/region (D-Geo). Owned by
 [person](modules/person.md).
 
+**Email (contact).** A person's email address — multi-valued, `pii:contact`, catalog-typed `kind`
+(`personal`/`work`/…), with a derived `provider` and an `is_primary` flag (D-PersonContactChannels).
+**Distinct from the login email** on an [account](modules/identity-federation.md). Owned by
+[person](modules/person.md); erased on purge.
+
+**Phone (contact).** A person's phone number — multi-valued, `pii:contact`, stored **E.164-normalized**
+with a **derived country**, catalog-typed `kind`, `is_primary` (D-PersonContactChannels). Carrier/
+provider is not stored (DS-40). Owned by [person](modules/person.md); erased on purge.
+
+**Call sign (позивний).** An informal radio/identifier label on a person — multi-valued, `pii:basic`,
+a required value, unique per person among active rows, `is_primary` (D-PersonContactChannels). Owned by
+[person](modules/person.md); erased on purge.
+
+**Email type / phone type.** Instance-admin-managed catalogs (stable `code` + translatable `name`)
+naming the `kind` of a contact email/phone (D-PersonContactChannels, D-Code/D-i18n). Owned by
+[person](modules/person.md).
+
 **Account.** An *optional* login attachment to a person — at most one per person. People
 without accounts (rosters, personnel who never sign in) are first-class. The account is the
 person's **set of login points**: it may hold several external identities (e.g. Google +
@@ -118,7 +135,12 @@ never binaries. Owned by the [document](modules/document.md) module. Distinct fr
 
 **Document type.** The **instance-admin-managed catalog** entry naming a kind of **paper** (stable
 `code` + translatable `name`), e.g. `passport`, `driver-license`. Like the rank scheme / locale
-registry, it is reference data, not a code-defined enum.
+registry, it is reference data, not a code-defined enum. A type may carry an *attribute schema*.
+
+**Document attribute schema.** An optional per-document-type declaration (`attr_schema` JSONB) of the
+fields a document's `attributes` may/must carry (name → type/required/enum), validated on every
+document write (D-DocumentAttrSchema). Used e.g. by `military-id` for VOS/fitness/mobilization fields;
+when absent, `attributes` is free-form. Owned by the [document](modules/document.md) module.
 
 **Personal code.** A government-issued **national identifier** a person holds — tax number (РНОКПП),
 national ID (УНЗР), SSN, social-/health-insurance number. Belongs to a *personal-code scheme*; its
@@ -318,12 +340,12 @@ layer derives from a validated inbound token and passes to the PDP and to audit.
 ## Alphabetical index
 
 Account · Action (type) · Action RID · Append-only event log · Atomic permission · Audit log · Authority-bearing · Blind index ·
-Citizenship · Closure · Code · Country · Document · Document type · Dormant seam ·
-Effective permissions · Envelope encryption · Environment slot · Expand/contract · External identity ·
+Call sign · Citizenship · Closure · Code · Country · Document · Document attribute schema · Document type · Dormant seam ·
+Effective permissions · Email (contact) · Email type · Envelope encryption · Environment slot · Expand/contract · External identity ·
 Graph (named hierarchy) · Instance admin · Level · Link (type) · Link RID · Locale · Membership · Name (CLDR) ·
 Object (type) · Object-set · Ontology · Order ·
 Order category · Order item · Order type · PDP · PDP context · Person · Personal code ·
-Personal-code scheme · PII tier · Position · Public/shadow · Rank · Rank category · Rank scheme ·
+Personal-code scheme · Phone (contact) · Phone type · PII tier · Position · Public/shadow · Rank · Rank category · Rank scheme ·
 Rank type · Residence · Reversibility · RID (Resource Identifier) · RLS backstop · Role · Role assignment · Scope ·
 Supported language · Translation · Transliteration · Unit · Unit graph (DAG) · Unit kind ·
 Vacancy · Visibility

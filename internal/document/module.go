@@ -44,6 +44,24 @@ INSERT INTO oikumenea.document_document_types (code, name, sort_order) VALUES
   ('military-id',      'Military ID',            50)
 ON CONFLICT (code) DO NOTHING`
 
+// seedMilitaryIDSchemaSQL sets the military-id type's attribute schema (D-DocumentAttrSchema) at boot,
+// only when it has none yet (so an operator's later customization is not clobbered). The schema types
+// the UA military card's structured fields (VOS specialty, fitness/mobilization category, issuing
+// commissariat) that previously rode untyped in the attributes JSONB; documents of this type are
+// validated against it on write.
+const seedMilitaryIDSchemaSQL = `
+UPDATE oikumenea.document_document_types
+SET attr_schema = '{
+  "fields": {
+    "vos": {"type": "string"},
+    "fitness_category": {"type": "string", "enum": ["А","Б","В","Г","Д"]},
+    "mobilization_category": {"type": "string"},
+    "commissariat": {"type": "string"},
+    "issued_year": {"type": "number"}
+  }
+}'::jsonb
+WHERE code = 'military-id' AND attr_schema IS NULL AND deleted_at IS NULL`
+
 // Register seeds the document-type catalog, builds the module over the platform pool, the audit service
 // (writes record in-transaction — D-Audit), the localization service (name-map assembly), the envelope
 // cipher (D-CryptoProvider), and the personal-code validator registry (D-PersonalCodes), and registers
@@ -52,6 +70,9 @@ ON CONFLICT (code) DO NOTHING`
 func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, loc *locapp.Service, enforcer *pep.Enforcer, cipher *crypto.Cipher, codes *personalcode.Registry) (*application.Service, error) {
 	if _, err := pool.Exec(context.Background(), seedDocumentTypesSQL); err != nil {
 		return nil, werror.Wrap(err, "seed document type catalog")
+	}
+	if _, err := pool.Exec(context.Background(), seedMilitaryIDSchemaSQL); err != nil {
+		return nil, werror.Wrap(err, "seed military-id attribute schema")
 	}
 
 	repoFor := func(conn db.DBTX) domain.Repository { return adapters.NewRepository(conn) }

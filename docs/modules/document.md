@@ -26,7 +26,8 @@ This module stores **metadata only** — numbers, issuers, validity dates — ne
 — audited, `action__<type>` RID; the `PersonPurged` event crypto-erases codes.
 
 - **Document type** (catalog) — a stable `code` (e.g. `passport`, `driver-license`) + translatable
-  `name`. Instance-admin-managed reference data, for **papers**.
+  `name`, and an **optional `attr_schema`** declaring typed/validated `attributes` for documents of
+  that type (D-DocumentAttrSchema). Instance-admin-managed reference data, for **papers**.
 - **Document** (aggregate root) — a person-held **paper** of some type, with its number, issuer,
   issuing country, and validity window.
 - **Personal-code scheme** (catalog) — a **country-namespaced** national-identifier scheme
@@ -49,6 +50,11 @@ Conventions per [conventions.md](../architecture/conventions.md).
   convention. Seeded with a representative set (`passport`, `national-id`, `tax-id`,
   `social-insurance`, `driver-license`, `military-id`); the instance admin adds more — `pii:none`
 - `name TEXT NOT NULL` — default-locale label; **translatable** via [localization](localization.md)
+- `attr_schema JSONB` — **optional** per-type attribute schema (D-DocumentAttrSchema): when non-null it
+  declares the fields a document's `attributes` may/must carry (`{ "fields": { "<name>": { "type":
+  "string|number|boolean|date", "required": <bool>, "enum": [...]? } } }`), validated on every document
+  write. The seeded `military-id` type ships one (VOS/specialty, fitness category, mobilization
+  category, issuing commissariat). When null, `attributes` is free-form — `pii:none`
 - `status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','retired'))`
 - `sort_order INT`
 - `created_at`, `updated_at`, `deleted_at`
@@ -66,9 +72,10 @@ Conventions per [conventions.md](../architecture/conventions.md).
   (e.g. a UA **and** a PL passport) — D-Geo / D-PersonalCodes — `pii:none`
 - `issued_on DATE`, `expires_on DATE` — validity window (a `DATE`, not an instant) — `pii:none`
 - `attributes JSONB NOT NULL DEFAULT '{}'` — long-tail per-type fields (place of issue, series,
-  endorsements); column-ize a key once shared/queried — `pii:special` **(ceiling)**: a grab-bag may
-  hold up to special-category data, so tagged at the ceiling (D-PIITiers); special-category fields
-  must not land here without the envelope seam
+  endorsements); column-ize a key once shared/queried. When the document's **type declares an
+  `attr_schema`**, `attributes` is **validated against it on write** (D-DocumentAttrSchema). —
+  `pii:special` **(ceiling)**: a grab-bag may hold up to special-category data, so tagged at the
+  ceiling (D-PIITiers); special-category fields must not land here without the envelope seam
 - `status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','superseded','revoked'))` —
   `active` = current; `superseded` = replaced by a renewal/reissue (e.g. a new passport); `revoked` =
   invalidated by the issuer. Transitions are **admin-set via `PUT /documents/{id}`**:
@@ -236,6 +243,11 @@ rank/position).
   workflow (parked seam).
 - The type **and personal-code scheme** catalogs are **instance-admin-managed**; codes are immutable
   by convention.
+- When a document's type declares an **`attr_schema`**, its `attributes` is **validated against the
+  schema on every write** (unknown keys rejected, required keys enforced, declared types/enums checked;
+  D-DocumentAttrSchema) — a violation is `ErrDocumentInvalid`. A null `attr_schema` leaves `attributes`
+  free-form. Validated values still ride in the JSONB at the `pii:special` ceiling — a genuinely
+  special-category field waits on the envelope seam (DS-29).
 - **RLS backstop.** `document_documents` **and `document_personal_codes`** have **no unit column**
   (scoped via the holder), so they are **exempt from the direct `app.readable_units` predicate**
   (D-RLSDefenseInDepth): the app-layer PDP (D-PersonReadScope) is the authoritative read scope; a

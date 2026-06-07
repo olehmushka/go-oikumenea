@@ -1,0 +1,315 @@
+# Order module API (M10). Administrative orders (наказ) — the formal acts that are the LEGAL BASIS for
+# a change in a person's status (docs/modules/order.md, D-Orders). An order is issued by a unit, carries
+# a number + date and a draft→issued→revoked lifecycle, and contains ≥1 items each targeting one person
+# (+ optional unit/position/rank per the type's effect). The order TYPE is an instance-admin catalog
+# (stable `code` + translatable `name`) carrying a `category` (the five UA-army families) and an
+# `effect` (membership-start | membership-end | rank-change | record-only).
+#
+# Issue is the headline: POST /orders/{id}/issue locks the order and AUTO-APPLIES its structural effects
+# in the SAME transaction via domain events that membership/person subscribers handle (D-OrderApply) —
+# all-or-nothing: if an effect violates a target invariant the whole issue rolls back (the order stays
+# draft) and that module's error surfaces (e.g. Membership:PositionAlreadyFilled). Revoke is a legal-
+# status flip that does NOT auto-reverse effects (undo is the revoking order's own items).
+#
+# RID-bearing fields are typed `string` (the composed URN RID — Conjure reserves `rid`). Calendar DATE
+# fields (issuedOn / effectiveFrom / effectiveTo) are ISO-8601 date strings ("YYYY-MM-DD") — a day, not
+# an instant — while lifecycle timestamps are `datetime`. A type `name` is a translatable label returned
+# as a `locale -> text` map (D-i18n); `code` is the stable, locale-agnostic key (D-Code). Orders are
+# unit-scoped on issuing_unit_id (+ shadow gate); type catalog edits are instance-scope. Writes are
+# audited in-process (D-Audit). Generated Go lands in internal/conjure and is never hand-edited.
+types:
+  definitions:
+    default-package: oikumenea.order
+    objects:
+      OrderType:
+        docs: An instance-admin catalog entry naming an order kind (arrival, appoint, leave-annual). Stable code + translatable name, with a category and an effect.
+        fields:
+          id:
+            type: string
+            docs: The order type's URN RID (carried as a plain string).
+          code:
+            type: string
+            docs: Stable, locale-agnostic identifier (D-Code); immutable by convention.
+          name:
+            type: map<string, string>
+            docs: The translatable label as a locale -> text map (all enabled locales; D-i18n).
+          category:
+            type: string
+            docs: One of personnel-list | appointment | leave-travel | discipline-incentive | duty-roster.
+          effect:
+            type: string
+            docs: The downstream consequence — one of membership-start | membership-end | rank-change | record-only.
+          status:
+            type: string
+            docs: One of active | retired.
+          sortOrder: optional<integer>
+          createdAt: datetime
+          updatedAt: datetime
+      OrderItem:
+        docs: One affected person/act within an order. Parent-scoped — no lifecycle of its own.
+        fields:
+          id:
+            type: string
+            docs: The order item's URN RID.
+          orderId:
+            type: string
+            docs: The parent order's URN RID.
+          typeId:
+            type: string
+            docs: The order type's URN RID (its effect drives the required target columns).
+          personId:
+            type: string
+            docs: The affected person's URN RID.
+          unitId:
+            type: optional<string>
+            docs: Target unit RID (arrival/transfer/appointment); per the type's effect.
+          positionId:
+            type: optional<string>
+            docs: Target billet RID (appoint/dismiss); per the type's effect.
+          rankId:
+            type: optional<string>
+            docs: Target rank RID (rank-change); per the type's effect.
+          effectiveFrom:
+            type: optional<string>
+            docs: ISO-8601 date the act takes effect (legal metadata, not a scheduler trigger).
+          effectiveTo:
+            type: optional<string>
+            docs: ISO-8601 date the act ceases effect.
+          note:
+            type: optional<string>
+            docs: Free-text detail (reason, reference). pii:basic — minimized, no secrets.
+          createdAt: datetime
+          updatedAt: datetime
+      Order:
+        docs: An order header (наказ) plus its items. Mutable while draft; locked on issue.
+        fields:
+          id:
+            type: string
+            docs: The order's URN RID.
+          number:
+            type: optional<string>
+            docs: The order number (unique within its issuing unit).
+          issuedOn:
+            type: optional<string>
+            docs: ISO-8601 date of the order.
+          issuingUnitId:
+            type: string
+            docs: The unit that issues the order (NOT NULL — no instance-level orders); anchors unit-scope authz.
+          status:
+            type: string
+            docs: One of draft | issued | revoked.
+          revokedByOrderId:
+            type: optional<string>
+            docs: The later order that revoked this one (set on revoke).
+          revokedAt: optional<datetime>
+          items:
+            type: list<OrderItem>
+            docs: The order's items (≥1). Returned on get/create/issue/revoke; empty on list pages.
+          createdAt: datetime
+          updatedAt: datetime
+      OrderPage:
+        docs: A page of orders plus the opaque token for the next page (empty when exhausted). Items are omitted on list rows.
+        fields:
+          orders: list<Order>
+          nextPageToken: optional<string>
+      OrderItemInput:
+        docs: One item in a create/edit request. Which targets are required is validated against the type's effect.
+        fields:
+          typeId: string
+          personId: string
+          unitId: optional<string>
+          positionId: optional<string>
+          rankId: optional<string>
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+          note: optional<string>
+      CreateOrderRequest:
+        docs: Create a draft order for an issuing unit, with its items (≥1).
+        fields:
+          number: optional<string>
+          issuedOn: optional<string>
+          items: list<OrderItemInput>
+      UpdateOrderRequest:
+        docs: Edit a draft order. Omitted scalar fields are unchanged; when `items` is present it REPLACES the draft's items. Rejected once issued.
+        fields:
+          number: optional<string>
+          issuedOn: optional<string>
+          items: optional<list<OrderItemInput>>
+      RevokeOrderRequest:
+        docs: Revoke an issued order. The optional revoking order's RID is recorded as revoked_by_order_id.
+        fields:
+          revokingOrderId: optional<string>
+      CreateOrderTypeRequest:
+        docs: Add an order type to the catalog.
+        fields:
+          code: string
+          name:
+            type: string
+            docs: Default-locale label; translatable via the localization store.
+          category:
+            type: string
+            docs: One of personnel-list | appointment | leave-travel | discipline-incentive | duty-roster.
+          effect:
+            type: string
+            docs: One of membership-start | membership-end | rank-change | record-only.
+          sortOrder: optional<integer>
+      UpdateOrderTypeRequest:
+        docs: Edit an order type. `code`, `category`, and `effect` are immutable by convention.
+        fields:
+          name: optional<string>
+          status: optional<string>
+          sortOrder: optional<integer>
+    errors:
+      OrderNotFound:
+        namespace: Order
+        code: NOT_FOUND
+        safe-args:
+          orderId: string
+      OrderConflict:
+        docs: A unique constraint was violated — this issuing unit already has an order with this number.
+        namespace: Order
+        code: CONFLICT
+        safe-args:
+          reason: string
+      OrderInvalid:
+        docs: The request is malformed, references an unknown type/person/unit/position/rank, or an item lacks a target its effect requires.
+        namespace: Order
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
+      OrderAlreadyIssued:
+        docs: The order is already issued (or revoked) — drafts only may be edited/issued.
+        namespace: Order
+        code: FAILED_PRECONDITION
+        safe-args:
+          orderId: string
+      OrderNotIssued:
+        docs: The order is not in the issued state — only an issued order may be revoked.
+        namespace: Order
+        code: FAILED_PRECONDITION
+        safe-args:
+          orderId: string
+      OrderTypeNotFound:
+        namespace: Order
+        code: NOT_FOUND
+        safe-args:
+          typeId: string
+      OrderTypeConflict:
+        docs: The order-type code is already taken.
+        namespace: Order
+        code: CONFLICT
+        safe-args:
+          reason: string
+      OrderEffectFailed:
+        docs: An auto-applied effect violated a target module's invariant on issue; the whole issue rolled back and the order stays draft.
+        namespace: Order
+        code: FAILED_PRECONDITION
+        safe-args:
+          reason: string
+services:
+  OrderService:
+    name: Order Service
+    package: oikumenea.order
+    base-path: /order/v1
+    default-auth: header
+    docs: |
+      Administrative orders (наказ) — the legal basis for status changes (D-Orders). Orders are unit-
+      scoped on issuing_unit_id (+ shadow gate); the order-type catalog is instance-admin-managed.
+      Issuing a draft auto-applies its structural effects in the same transaction via domain events
+      (D-OrderApply): all-or-nothing, so a violated target invariant rolls the whole issue back and the
+      order stays draft. Writes are audited in-process (D-Audit).
+    endpoints:
+      createOrder:
+        http: POST /units/{unitId}/orders
+        docs: Create a draft order (+ items) for an issuing unit. Returns Order:OrderConflict on a duplicate number.
+        args:
+          unitId:
+            type: string
+            param-type: path
+          request: CreateOrderRequest
+        returns: Order
+      getOrder:
+        http: GET /orders/{orderId}
+        docs: Read one order with its items.
+        args:
+          orderId:
+            type: string
+            param-type: path
+        returns: Order
+      updateOrder:
+        http: PUT /orders/{orderId}
+        docs: Edit a draft order/items. Returns Order:OrderAlreadyIssued once issued.
+        args:
+          orderId:
+            type: string
+            param-type: path
+          request: UpdateOrderRequest
+        returns: Order
+      issueOrder:
+        http: POST /orders/{orderId}/issue
+        docs: |
+          Issue a draft order: lock it and AUTO-APPLY its structural effects in the same transaction
+          (D-OrderApply). All-or-nothing — a violated target invariant rolls the whole issue back (the
+          order stays draft) and surfaces as Order:OrderEffectFailed. Returns Order:OrderAlreadyIssued
+          if not draft.
+        args:
+          orderId:
+            type: string
+            param-type: path
+        returns: Order
+      revokeOrder:
+        http: POST /orders/{orderId}/revoke
+        docs: Revoke an issued order (legal-status flip; effects are not auto-reversed). Returns Order:OrderNotIssued if not issued.
+        args:
+          orderId:
+            type: string
+            param-type: path
+          request: RevokeOrderRequest
+        returns: Order
+      listUnitOrders:
+        http: GET /units/{unitId}/orders
+        docs: List an issuing unit's orders (headers only), token-paginated.
+        args:
+          unitId:
+            type: string
+            param-type: path
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: OrderPage
+      listPersonOrders:
+        http: GET /persons/{personId}/orders
+        docs: List orders affecting a person (via their items), token-paginated.
+        args:
+          personId:
+            type: string
+            param-type: path
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: OrderPage
+      listOrderTypes:
+        http: GET /order-types
+        docs: List the order-type catalog.
+        returns: list<OrderType>
+      createOrderType:
+        http: POST /order-types
+        docs: Add an order type (instance-scope). Returns Order:OrderTypeConflict if the code is taken.
+        args:
+          request: CreateOrderTypeRequest
+        returns: OrderType
+      updateOrderType:
+        http: PUT /order-types/{typeId}
+        docs: Edit an order type (instance-scope). `code`, `category`, and `effect` are immutable by convention.
+        args:
+          typeId:
+            type: string
+            param-type: path
+          request: UpdateOrderTypeRequest
+        returns: OrderType

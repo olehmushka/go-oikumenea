@@ -189,6 +189,33 @@ func (s *Service) EffectiveReach(ctx context.Context, subjectPersonID string) (d
 	return s.pdp.ReachSet(ctx, grants, isAdmin)
 }
 
+// RLSStateFor builds the per-request RLS backstop GUC state (D-RLSDefenseInDepth) for a subject from
+// its effective reach: the identity-federation authenticator calls this once per request and pins the
+// resulting unit reach onto the connection that serves the request (db.AcquireScoped). The flattened
+// readable/writable RID lists become the app.readable_units / app.writable_units GUCs the RLS policies
+// read; an instance admin is expressed as the GUC flag (never a DB superuser).
+func (s *Service) RLSStateFor(ctx context.Context, subjectPersonID string) (db.RLSState, error) {
+	reach, err := s.EffectiveReach(ctx, subjectPersonID)
+	if err != nil {
+		return db.RLSState{}, err
+	}
+	return db.RLSState{
+		PersonID:        subjectPersonID,
+		IsInstanceAdmin: reach.InstanceAdmin,
+		ReadableUnits:   unitKeys(reach.Readable),
+		WritableUnits:   unitKeys(reach.Writable),
+	}, nil
+}
+
+// unitKeys flattens a reach unit-set into a slice (order is irrelevant — the GUC is a membership test).
+func unitKeys(m map[string]struct{}) []string {
+	out := make([]string, 0, len(m))
+	for u := range m {
+		out = append(out, u)
+	}
+	return out
+}
+
 // FilterVisibleUnits applies the shadow-visibility gate (owned here, called by tenant/membership read
 // paths): from candidates, drop shadow units the subject's *.read does not reach. `shadow` reports
 // per unit id whether it is shadow. Returns the visible subset preserving input order.

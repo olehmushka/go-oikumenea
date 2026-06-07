@@ -39,8 +39,10 @@ func (o *CreateDocumentRequest) UnmarshalYAML(unmarshal func(interface{}) error)
 type CreateDocumentTypeRequest struct {
 	Code string `json:"code"`
 	// Default-locale label; translatable via the localization store.
-	Name      string `json:"name"`
-	SortOrder *int   `json:"sortOrder,omitempty"`
+	Name string `json:"name"`
+	// Optional per-type attribute schema (D-DocumentAttrSchema); validated on document write when set.
+	AttrSchema *interface{} `json:"attrSchema,omitempty"`
+	SortOrder  *int         `json:"sortOrder,omitempty"`
 }
 
 func (o CreateDocumentTypeRequest) MarshalYAML() (interface{}, error) {
@@ -202,6 +204,12 @@ type DocumentType struct {
 	Code string `json:"code"`
 	// The translatable label as a locale -> text map (all enabled locales; D-i18n).
 	Name map[string]string `json:"name"`
+	/*
+	   Optional per-type attribute schema (D-DocumentAttrSchema): when set, a document's
+	   `attributes` is validated against it on write. Shape:
+	   { "fields": { "<name>": { "type": "string|number|boolean|date", "required": bool, "enum": [...]? } } }.
+	*/
+	AttrSchema *interface{} `json:"attrSchema,omitempty"`
 	// One of active | retired.
 	Status    string            `json:"status"`
 	SortOrder *int              `json:"sortOrder,omitempty"`
@@ -364,9 +372,11 @@ func (o *UpdateDocumentRequest) UnmarshalYAML(unmarshal func(interface{}) error)
 
 // Edit a document type. `code` is immutable by convention.
 type UpdateDocumentTypeRequest struct {
-	Name      *string `json:"name,omitempty"`
-	Status    *string `json:"status,omitempty"`
-	SortOrder *int    `json:"sortOrder,omitempty"`
+	Name *string `json:"name,omitempty"`
+	// Replace the per-type attribute schema (D-DocumentAttrSchema). Omitted leaves it unchanged.
+	AttrSchema *interface{} `json:"attrSchema,omitempty"`
+	Status     *string      `json:"status,omitempty"`
+	SortOrder  *int         `json:"sortOrder,omitempty"`
 }
 
 func (o UpdateDocumentTypeRequest) MarshalYAML() (interface{}, error) {

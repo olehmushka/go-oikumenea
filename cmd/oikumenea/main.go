@@ -23,6 +23,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation/middleware"
 	"github.com/olegamysk/go-oikumenea/internal/localization"
 	"github.com/olegamysk/go-oikumenea/internal/membership"
+	"github.com/olegamysk/go-oikumenea/internal/order"
 	"github.com/olegamysk/go-oikumenea/internal/person"
 	"github.com/olegamysk/go-oikumenea/internal/platform"
 	"github.com/olegamysk/go-oikumenea/internal/platform/config"
@@ -30,6 +31,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/rank"
 	"github.com/olegamysk/go-oikumenea/internal/tenant"
 	"github.com/olegamysk/go-oikumenea/pkg/crypto"
+	"github.com/olegamysk/go-oikumenea/pkg/events"
 	"github.com/olegamysk/go-oikumenea/pkg/personalcode"
 	werror "github.com/palantir/witchcraft-go-error"
 	"github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
@@ -103,6 +105,12 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// within this InitFunc, before any request is served (see internal/authorization/pep).
 	enforcer := pep.NewUnbound()
 
+	// The in-process event bus dispatches cross-module domain events to subscribers WITHIN the
+	// publisher's transaction (pkg/events). M10 is its first user: order.issue publishes per-item
+	// effect events that the membership/person subscribers (registered below, before serving) apply in
+	// the issue transaction — all-or-nothing (D-OrderApply).
+	bus := events.NewBus()
+
 	auditSvc, err := audit.Register(info, pool, enforcer)
 	if err != nil {
 		cleanup()
@@ -132,15 +140,32 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 		cleanup()
 		return nil, err
 	}
+	// Person subscribes to order's rank-change effect (D-OrderApply): RankChangeOrdered -> SetRank in
+	// the issue transaction.
+	personSvc.SubscribeOrderEvents(bus)
 
-	if _, err := membership.Register(info, pool, auditSvc, locSvc, enforcer); err != nil {
+	membershipSvc, err := membership.Register(info, pool, auditSvc, locSvc, enforcer)
+	if err != nil {
+		cleanup()
+		return nil, err
+	}
+	// Membership subscribes to order's appointment/removal effects (D-OrderApply): AppointmentOrdered
+	// fills/creates, RemovalOrdered ends — all in the issue transaction.
+	membershipSvc.SubscribeOrderEvents(bus)
+
+	// Order: administrative orders (наказ). On issue it PUBLISHES the effect events the membership/
+	// person subscribers above handle in the same transaction (D-OrderApply); the enforcer it holds is
+	// bound by authorization below.
+	if _, err := order.Register(info, pool, auditSvc, locSvc, enforcer, bus); err != nil {
 		cleanup()
 		return nil, err
 	}
 
 	// Authorization: builds the PDP over tenant's closure, seeds the base roles, and binds the
-	// enforcer the modules above already hold (D-BaseRoles / D-RIDSeeding).
-	if _, err := authorization.Register(info, pool, auditSvc, locSvc, tenantSvc, enforcer); err != nil {
+	// enforcer the modules above already hold (D-BaseRoles / D-RIDSeeding). Its service also resolves
+	// each request's RLS reach for the authenticator's connection-pinning (D-RLSDefenseInDepth).
+	authzSvc, err := authorization.Register(info, pool, auditSvc, locSvc, tenantSvc, enforcer)
+	if err != nil {
 		cleanup()
 		return nil, err
 	}
@@ -168,7 +193,7 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 
 	// Bind the inbound-token validation middleware: the configured issuers' validator, the
 	// (issuer, subject) resolver, the person directory (JIT claim -> person.code), and the JIT flag.
-	authenticator.Bind(middleware.NewValidator(validatorConfig(install)), identitySvc, personSvc, install.IDP.JIT.Enabled)
+	authenticator.Bind(middleware.NewValidator(validatorConfig(install)), identitySvc, personSvc, install.IDP.JIT.Enabled, authzSvc, pool)
 
 	// First-admin bootstrap (D-Bootstrap): idempotent — skips once any instance admin exists.
 	if install.BootstrapAdmin != nil {

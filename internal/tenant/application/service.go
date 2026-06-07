@@ -91,7 +91,7 @@ func (s *Service) CreateUnit(ctx context.Context, u domain.Unit) (domain.Unit, e
 
 // GetUnit reads one unit, returning domain.ErrUnitNotFound when absent or soft-deleted.
 func (s *Service) GetUnit(ctx context.Context, id string) (domain.Unit, error) {
-	return s.newRepo(s.pool).GetUnit(ctx, id)
+	return s.newRepo(s.querier(ctx)).GetUnit(ctx, id)
 }
 
 // UpdateUnit applies a partial change (name/kind/level/metadata/visibility) and records the action.
@@ -123,7 +123,7 @@ func (s *Service) ListUnits(ctx context.Context, level *int, pageSize int, pageT
 	if err != nil {
 		return UnitPage{}, err
 	}
-	units, err := s.newRepo(s.pool).ListUnits(ctx, level, after, size+1)
+	units, err := s.newRepo(s.querier(ctx)).ListUnits(ctx, level, after, size+1)
 	if err != nil {
 		return UnitPage{}, err
 	}
@@ -237,7 +237,7 @@ func (s *Service) RemoveEdge(ctx context.Context, childID, parentID, graphCode s
 
 // Ancestors returns the unit's ancestors in graph graphCode (default command), nearest first.
 func (s *Service) Ancestors(ctx context.Context, unitID, graphCode string) ([]domain.UnitRef, error) {
-	repo := s.newRepo(s.pool)
+	repo := s.newRepo(s.querier(ctx))
 	g, err := repo.GetGraphByCode(ctx, defaultGraph(graphCode))
 	if err != nil {
 		return nil, err
@@ -256,7 +256,7 @@ func (s *Service) Descendants(ctx context.Context, unitID, graphCode string, pag
 	if err != nil {
 		return UnitRefPage{}, err
 	}
-	repo := s.newRepo(s.pool)
+	repo := s.newRepo(s.querier(ctx))
 	g, err := repo.GetGraphByCode(ctx, defaultGraph(graphCode))
 	if err != nil {
 		return UnitRefPage{}, err
@@ -337,7 +337,7 @@ func (s *Service) RebuildClosure(ctx context.Context, graphCode *string) ([]doma
 
 // ListGraphs returns the graph registry in display order.
 func (s *Service) ListGraphs(ctx context.Context) ([]domain.Graph, error) {
-	return s.newRepo(s.pool).ListGraphs(ctx)
+	return s.newRepo(s.querier(ctx)).ListGraphs(ctx)
 }
 
 // AddGraph validates and adds a graph (instance-admin) and records the action. New graphs are never
@@ -434,7 +434,7 @@ func (s *Service) DeleteGraph(ctx context.Context, id string) error {
 
 // resolveGraphs returns the single graph named by code, or all graphs when code is nil.
 func (s *Service) resolveGraphs(ctx context.Context, graphCode *string) ([]domain.Graph, error) {
-	repo := s.newRepo(s.pool)
+	repo := s.newRepo(s.querier(ctx))
 	if graphCode != nil {
 		g, err := repo.GetGraphByCode(ctx, *graphCode)
 		if err != nil {
@@ -488,10 +488,21 @@ func decodeCursor(token string) (string, error) {
 	return string(raw), nil
 }
 
+// querier returns the request-pinned RLS connection if one is in context (every authenticated request
+// pins one — db.AcquireScoped/WithConn), else the bare pool. Reads/writes on unit-scoped tables MUST go
+// through it so the app.* RLS GUCs apply (D-RLSDefenseInDepth); a write begun on a non-pinned pool
+// connection would have empty writable_units and fail the policy's WITH CHECK.
+func (s *Service) querier(ctx context.Context) db.Querier {
+	if c, ok := db.ConnFromContext(ctx); ok {
+		return c
+	}
+	return s.pool
+}
+
 // inTx runs fn in a transaction, committing on success and rolling back on error (the deferred
 // rollback after a successful commit is a no-op).
 func (s *Service) inTx(ctx context.Context, fn func(pgx.Tx) error) error {
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.querier(ctx).Begin(ctx)
 	if err != nil {
 		return err
 	}

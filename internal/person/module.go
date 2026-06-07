@@ -37,7 +37,7 @@ const defaultPurgeGraceHours = 720
 // routes onto the witchcraft router. The purge-grace window is read from the (refreshable) runtime
 // config. It owns no resources of its own (the pool is owned by platform), so there is no
 // module-level cleanup.
-func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, _ *locapp.Service, _ *rankapp.Service, enforcer *pep.Enforcer) (*application.Service, error) {
+func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, loc *locapp.Service, _ *rankapp.Service, enforcer *pep.Enforcer) (*application.Service, error) {
 	repoFor := func(conn db.DBTX) domain.Repository { return adapters.NewRepository(conn) }
 
 	graceRef := pkgconfig.IntOrDefault(info.RuntimeConfig, defaultPurgeGraceHours, func(v any) int {
@@ -55,7 +55,7 @@ func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Serv
 
 	svc := application.NewService(pool, repoFor, audit, graceHours)
 
-	if err := personapi.RegisterRoutesPersonService(info.Router, transport.NewService(svc, enforcer)); err != nil {
+	if err := personapi.RegisterRoutesPersonService(info.Router, transport.NewService(svc, loc, enforcer)); err != nil {
 		return nil, werror.Wrap(err, "register person service routes")
 	}
 	return svc, nil

@@ -92,6 +92,15 @@ types:
           residences:
             type: list<Residence>
             docs: The person's residence history. Populated by getPerson; empty in list responses.
+          emails:
+            type: list<Email>
+            docs: The person's contact emails. Populated by getPerson; empty in list responses.
+          phones:
+            type: list<Phone>
+            docs: The person's contact phones. Populated by getPerson; empty in list responses.
+          callSigns:
+            type: list<CallSign>
+            docs: The person's call signs. Populated by getPerson; empty in list responses.
       NameVariant:
         docs: A full transliterated name form for one locale (e.g. ukr native, eng Latin). Person-managed, NOT the localization store.
         fields:
@@ -148,6 +157,77 @@ types:
           validTo:
             type: optional<string>
             docs: ISO-8601 date the residence ended; null = current.
+      Email:
+        docs: A person's contact email (D-PersonContactChannels). pii:contact; distinct from the login email.
+        fields:
+          id: string
+          personId: string
+          typeCode:
+            type: string
+            docs: The email-type catalog code (personal | work | other ...).
+          address:
+            type: string
+            docs: The email address (stored case-insensitively).
+          provider:
+            type: optional<string>
+            docs: Provider derived from the address domain on write (gmail.com -> google); null when no mapping.
+          isPrimary:
+            type: boolean
+            docs: The person's primary email (at most one active).
+      Phone:
+        docs: A person's contact phone (D-PersonContactChannels). number is E.164-normalized; country is derived. pii:contact.
+        fields:
+          id: string
+          personId: string
+          typeCode:
+            type: string
+            docs: The phone-type catalog code (mobile | home | work | other ...).
+          number:
+            type: string
+            docs: The phone number, E.164-normalized on write.
+          country:
+            type: optional<string>
+            docs: ISO-3166-1 alpha-2 country code derived from the number; null when underivable.
+          isPrimary:
+            type: boolean
+            docs: The person's primary phone (at most one active).
+      CallSign:
+        docs: A person's informal identifier / позивний (D-PersonContactChannels). pii:basic; unique per person among active.
+        fields:
+          id: string
+          personId: string
+          callSign:
+            type: string
+            docs: The call sign label (required; unique per person).
+          isPrimary:
+            type: boolean
+            docs: The person's primary call sign (at most one active).
+      EmailType:
+        docs: An instance-admin catalog entry naming a contact-email kind. Stable code + translatable name.
+        fields:
+          code:
+            type: string
+            docs: Stable, locale-agnostic identifier (D-Code); immutable by convention.
+          name:
+            type: map<string, string>
+            docs: The translatable label as a locale -> text map (all enabled locales; D-i18n).
+          status:
+            type: string
+            docs: One of active | retired.
+          sortOrder: optional<integer>
+      PhoneType:
+        docs: An instance-admin catalog entry naming a contact-phone kind. Stable code + translatable name.
+        fields:
+          code:
+            type: string
+            docs: Stable, locale-agnostic identifier (D-Code); immutable by convention.
+          name:
+            type: map<string, string>
+            docs: The translatable label as a locale -> text map (all enabled locales; D-i18n).
+          status:
+            type: string
+            docs: One of active | retired.
+          sortOrder: optional<integer>
       PersonPage:
         docs: A page of persons plus the opaque token for the next page (empty when exhausted).
         fields:
@@ -243,6 +323,32 @@ types:
           region: optional<string>
           validFrom: string
           validTo: optional<string>
+      UpsertEmailRequest:
+        docs: Add a contact email, or replace one when id is supplied. provider is derived from the address.
+        fields:
+          id:
+            type: optional<string>
+            docs: The URN RID of an existing email row to replace; omit to add a new row.
+          typeCode: string
+          address: string
+          isPrimary: optional<boolean>
+      UpsertPhoneRequest:
+        docs: Add a contact phone, or replace one when id is supplied. number is E.164-normalized and country derived.
+        fields:
+          id:
+            type: optional<string>
+            docs: The URN RID of an existing phone row to replace; omit to add a new row.
+          typeCode: string
+          number: string
+          isPrimary: optional<boolean>
+      UpsertCallSignRequest:
+        docs: Add a call sign, or replace one when id is supplied. The value is required and unique per person.
+        fields:
+          id:
+            type: optional<string>
+            docs: The URN RID of an existing call-sign row to replace; omit to add a new row.
+          callSign: string
+          isPrimary: optional<boolean>
     errors:
       PersonNotFound:
         namespace: Person
@@ -423,3 +529,92 @@ services:
           residenceId:
             type: string
             param-type: path
+      listEmails:
+        http: GET /persons/{personId}/emails
+        docs: List a person's contact emails.
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<Email>
+      upsertEmail:
+        http: PUT /persons/{personId}/emails
+        docs: Add or replace a contact email. Returns Person:PersonConflict if the address is taken, Person:PersonInvalid for an unknown type or malformed address.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertEmailRequest
+        returns: Email
+      deleteEmail:
+        http: DELETE /persons/{personId}/emails/{emailId}
+        docs: Remove a contact email by id.
+        args:
+          personId:
+            type: string
+            param-type: path
+          emailId:
+            type: string
+            param-type: path
+      listPhones:
+        http: GET /persons/{personId}/phones
+        docs: List a person's contact phones.
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<Phone>
+      upsertPhone:
+        http: PUT /persons/{personId}/phones
+        docs: Add or replace a contact phone. Returns Person:PersonConflict if the number is taken, Person:PersonInvalid for an unknown type or unparseable number.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertPhoneRequest
+        returns: Phone
+      deletePhone:
+        http: DELETE /persons/{personId}/phones/{phoneId}
+        docs: Remove a contact phone by id.
+        args:
+          personId:
+            type: string
+            param-type: path
+          phoneId:
+            type: string
+            param-type: path
+      listCallSigns:
+        http: GET /persons/{personId}/call-signs
+        docs: List a person's call signs.
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<CallSign>
+      upsertCallSign:
+        http: PUT /persons/{personId}/call-signs
+        docs: Add or replace a call sign. Returns Person:PersonConflict if the value is already held by the person.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertCallSignRequest
+        returns: CallSign
+      deleteCallSign:
+        http: DELETE /persons/{personId}/call-signs/{callSignId}
+        docs: Remove a call sign by id.
+        args:
+          personId:
+            type: string
+            param-type: path
+          callSignId:
+            type: string
+            param-type: path
+      listEmailTypes:
+        http: GET /person/email-types
+        docs: List the contact-email type catalog (locale -> text names; D-i18n).
+        returns: list<EmailType>
+      listPhoneTypes:
+        http: GET /person/phone-types
+        docs: List the contact-phone type catalog (locale -> text names; D-i18n).
+        returns: list<PhoneType>

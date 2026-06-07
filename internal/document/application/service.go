@@ -125,7 +125,18 @@ func (s *Service) AttachDocument(ctx context.Context, d domain.Document) (domain
 	}
 	var out domain.Document
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		created, err := s.newRepo(tx).InsertDocument(ctx, d)
+		repo := s.newRepo(tx)
+		t, err := repo.GetDocumentType(ctx, d.TypeID)
+		if err != nil {
+			if errors.Is(err, domain.ErrDocumentTypeNotFound) {
+				return domain.ErrUnknownType // surface as "document type does not exist"
+			}
+			return err
+		}
+		if err := domain.ValidateAttributes(t.AttrSchema, d.Attributes); err != nil {
+			return err
+		}
+		created, err := repo.InsertDocument(ctx, d)
 		if err != nil {
 			return err
 		}
@@ -146,7 +157,23 @@ func (s *Service) UpdateDocument(ctx context.Context, id string, patch domain.Do
 	}
 	var out domain.Document
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		updated, err := s.newRepo(tx).UpdateDocument(ctx, id, patch)
+		repo := s.newRepo(tx)
+		// When the update sets attributes, validate them against the document's type schema
+		// (D-DocumentAttrSchema): resolve the document's type, then its schema.
+		if patch.Attributes != nil {
+			doc, err := repo.GetDocument(ctx, id)
+			if err != nil {
+				return err
+			}
+			t, err := repo.GetDocumentType(ctx, doc.TypeID)
+			if err != nil {
+				return err
+			}
+			if err := domain.ValidateAttributes(t.AttrSchema, *patch.Attributes); err != nil {
+				return err
+			}
+		}
+		updated, err := repo.UpdateDocument(ctx, id, patch)
 		if err != nil {
 			return err
 		}

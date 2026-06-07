@@ -32,6 +32,12 @@ types:
           name:
             type: map<string, string>
             docs: The translatable label as a locale -> text map (all enabled locales; D-i18n).
+          attrSchema:
+            type: optional<any>
+            docs: |
+              Optional per-type attribute schema (D-DocumentAttrSchema): when set, a document's
+              `attributes` is validated against it on write. Shape:
+              { "fields": { "<name>": { "type": "string|number|boolean|date", "required": bool, "enum": [...]? } } }.
           status:
             type: string
             docs: One of active | retired.
@@ -151,11 +157,17 @@ types:
           name:
             type: string
             docs: Default-locale label; translatable via the localization store.
+          attrSchema:
+            type: optional<any>
+            docs: Optional per-type attribute schema (D-DocumentAttrSchema); validated on document write when set.
           sortOrder: optional<integer>
       UpdateDocumentTypeRequest:
         docs: Edit a document type. `code` is immutable by convention.
         fields:
           name: optional<string>
+          attrSchema:
+            type: optional<any>
+            docs: Replace the per-type attribute schema (D-DocumentAttrSchema). Omitted leaves it unchanged.
           status: optional<string>
           sortOrder: optional<integer>
       CreatePersonalCodeRequest:

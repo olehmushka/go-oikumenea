@@ -351,6 +351,104 @@ func TestPurgeGate(t *testing.T) {
 	}
 }
 
+// TestContactChannels exercises emails/phones/call signs (D-PersonContactChannels): provider/country
+// are derived on write, validation rejects bad input, and a purge erases every channel row.
+func TestContactChannels(t *testing.T) {
+	ctx := context.Background()
+	svc, pool := newService(t, 0)
+
+	p := newPerson(t, svc, "Contactable Person")
+
+	// Email: provider derived from the domain; primary flag honored.
+	email, err := svc.UpsertEmail(ctx, domain.Email{PersonID: p.ID, TypeCode: "personal", Address: "Person@Gmail.com", IsPrimary: true})
+	if err != nil {
+		t.Fatalf("upsert email: %v", err)
+	}
+	if email.Address != "person@gmail.com" || email.Provider != "google" || !email.IsPrimary {
+		t.Fatalf("email not normalized/derived: %+v", email)
+	}
+	// Duplicate active address is a conflict.
+	if _, err := svc.UpsertEmail(ctx, domain.Email{PersonID: p.ID, TypeCode: "work", Address: "person@gmail.com"}); !errors.Is(err, domain.ErrEmailConflict) {
+		t.Fatalf("duplicate email: want ErrEmailConflict, got %v", err)
+	}
+	// Unknown type code is rejected (FK).
+	if _, err := svc.UpsertEmail(ctx, domain.Email{PersonID: p.ID, TypeCode: "nope", Address: "x@y.com"}); !errors.Is(err, domain.ErrUnknownContactType) {
+		t.Fatalf("unknown email type: want ErrUnknownContactType, got %v", err)
+	}
+	// Malformed address is rejected before the DB.
+	if _, err := svc.UpsertEmail(ctx, domain.Email{PersonID: p.ID, TypeCode: "personal", Address: "not-an-email"}); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("bad email: want ErrInvalid, got %v", err)
+	}
+
+	// Phone: E.164-normalized + country derived.
+	phone, err := svc.UpsertPhone(ctx, domain.Phone{PersonID: p.ID, TypeCode: "mobile", Number: "+380 (44) 123-45-67"})
+	if err != nil {
+		t.Fatalf("upsert phone: %v", err)
+	}
+	if phone.Number != "+380441234567" || phone.Country != "UA" {
+		t.Fatalf("phone not normalized/derived: %+v", phone)
+	}
+	if _, err := svc.UpsertPhone(ctx, domain.Phone{PersonID: p.ID, TypeCode: "mobile", Number: "garbage"}); !errors.Is(err, domain.ErrUnparseablePhone) {
+		t.Fatalf("bad phone: want ErrUnparseablePhone, got %v", err)
+	}
+
+	// Call sign: required value, unique per person among active.
+	if _, err := svc.UpsertCallSign(ctx, domain.CallSign{PersonID: p.ID, CallSign: "Сокіл", IsPrimary: true}); err != nil {
+		t.Fatalf("upsert call sign: %v", err)
+	}
+	if _, err := svc.UpsertCallSign(ctx, domain.CallSign{PersonID: p.ID, CallSign: "Беркут"}); err != nil {
+		t.Fatalf("second distinct call sign: %v", err)
+	}
+	// Duplicate value for the same person is a conflict.
+	if _, err := svc.UpsertCallSign(ctx, domain.CallSign{PersonID: p.ID, CallSign: "Сокіл"}); !errors.Is(err, domain.ErrCallSignConflict) {
+		t.Fatalf("duplicate call sign: want ErrCallSignConflict, got %v", err)
+	}
+	// An empty call sign is rejected (NOT NULL).
+	if _, err := svc.UpsertCallSign(ctx, domain.CallSign{PersonID: p.ID, CallSign: ""}); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("empty call sign: want ErrInvalid, got %v", err)
+	}
+
+	// getPerson assembles all three channels.
+	got, err := svc.GetPerson(ctx, p.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if len(got.Emails) != 1 || len(got.Phones) != 1 || len(got.CallSigns) != 2 {
+		t.Fatalf("channels: emails=%d phones=%d callSigns=%d", len(got.Emails), len(got.Phones), len(got.CallSigns))
+	}
+
+	// Purge erases every channel row, keeping the id tombstone.
+	if _, err := svc.DeactivatePerson(ctx, p.ID, "x"); err != nil {
+		t.Fatalf("deactivate: %v", err)
+	}
+	if _, err := svc.PurgePerson(ctx, p.ID); err != nil {
+		t.Fatalf("purge: %v", err)
+	}
+	for _, table := range []string{"person_emails", "person_phones", "person_call_signs"} {
+		var n int
+		if err := pool.QueryRow(ctx, "SELECT count(*) FROM oikumenea."+table+" WHERE person_id = $1", p.ID).Scan(&n); err != nil {
+			t.Fatalf("count %s: %v", table, err)
+		}
+		if n != 0 {
+			t.Fatalf("%s rows after purge = %d, want 0", table, n)
+		}
+	}
+}
+
+// TestContactTypeCatalogs reads the seeded email/phone-type catalogs.
+func TestContactTypeCatalogs(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newService(t, 720)
+	ets, err := svc.ListEmailTypes(ctx)
+	if err != nil || len(ets) == 0 {
+		t.Fatalf("list email types: %d err %v", len(ets), err)
+	}
+	pts, err := svc.ListPhoneTypes(ctx)
+	if err != nil || len(pts) == 0 {
+		t.Fatalf("list phone types: %d err %v", len(pts), err)
+	}
+}
+
 // TestCreateAuditsInOneTx confirms a create records exactly one audit row keyed to it.
 func TestCreateAuditsInOneTx(t *testing.T) {
 	ctx := context.Background()

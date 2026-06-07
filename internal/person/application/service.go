@@ -20,8 +20,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
 	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
+	orderevents "github.com/olegamysk/go-oikumenea/internal/order/events"
 	"github.com/olegamysk/go-oikumenea/internal/person/domain"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olegamysk/go-oikumenea/pkg/events"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 
@@ -35,6 +37,11 @@ const (
 // + identity-federation (M8) resolve the acting person, these writes are recorded as a `system`
 // action under this subsystem (the no-unaudited-mutation ground rule still holds).
 const auditSubsystem = "person-admin"
+
+// eventSubsystem labels the system actor for a write made by an ORDER-EVENT SUBSCRIBER (D-OrderApply):
+// an order's rank-change effect, auto-applied in the issue transaction, audits as `system` /
+// `event-subscriber`, correlated to the human's order.issue row by the shared request_id.
+const eventSubsystem = "event-subscriber"
 
 // targetPerson is the audited entity kind; every person-scoped action targets the person id.
 const targetPerson = "person"
@@ -121,6 +128,15 @@ func (s *Service) GetPerson(ctx context.Context, id string) (domain.Person, erro
 	if p.Residences, err = repo.ListResidences(ctx, id); err != nil {
 		return domain.Person{}, err
 	}
+	if p.Emails, err = repo.ListEmails(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if p.Phones, err = repo.ListPhones(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if p.CallSigns, err = repo.ListCallSigns(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
 	return p, nil
 }
 
@@ -162,18 +178,44 @@ func (s *Service) ListPersons(ctx context.Context, pageSize int, pageToken strin
 func (s *Service) SetRank(ctx context.Context, id string, rankID *string) (domain.Person, error) {
 	var out domain.Person
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		updated, err := s.newRepo(tx).SetRank(ctx, id, rankID)
-		if err != nil {
-			return err
-		}
+		updated, err := s.setRankTx(ctx, tx, auditSubsystem, id, rankID, "")
 		out = updated
-		after := map[string]any{"id": id, "rankId": nil}
-		if rankID != nil {
-			after["rankId"] = *rankID
-		}
-		return s.record(ctx, tx, "person.rank.assign", id, after)
+		return err
 	})
 	return out, err
+}
+
+// setRankTx is the shared rank-set core, running on the caller's transaction and recording under
+// `subsystem`. orderItemID, when set (the order rank-change effect path), is carried into the audit
+// payload as provenance — rank is a person column, so there is no provenance FK (D-OrderApply).
+func (s *Service) setRankTx(ctx context.Context, tx pgx.Tx, subsystem, id string, rankID *string, orderItemID string) (domain.Person, error) {
+	updated, err := s.newRepo(tx).SetRank(ctx, id, rankID)
+	if err != nil {
+		return domain.Person{}, err
+	}
+	after := map[string]any{"id": id, "rankId": nil}
+	if rankID != nil {
+		after["rankId"] = *rankID
+	}
+	if orderItemID != "" {
+		after["orderItemId"] = orderItemID
+	}
+	return updated, s.recordWith(ctx, tx, subsystem, "person.rank.assign", id, after)
+}
+
+// SubscribeOrderEvents registers the person rank-change handler on the bus: RankChangeOrdered sets the
+// person's rank synchronously in the order's issue transaction (D-OrderApply), so a failure rolls the
+// whole issue back. Registered once at composition time (module.go), before serving.
+func (s *Service) SubscribeOrderEvents(bus *events.Bus) {
+	bus.Subscribe(orderevents.TypeRankChangeOrdered, func(ctx context.Context, tx pgx.Tx, evt events.Event) error {
+		e, ok := evt.(orderevents.RankChangeOrdered)
+		if !ok {
+			return nil
+		}
+		rankID := e.RankID
+		_, err := s.setRankTx(ctx, tx, eventSubsystem, e.PersonID, &rankID, e.OrderItemID)
+		return err
+	})
 }
 
 // ---------------------------------------------------------------- lifecycle
@@ -395,6 +437,172 @@ func (s *Service) ListResidences(ctx context.Context, personID string) ([]domain
 	return repo.ListResidences(ctx, personID)
 }
 
+// ---------------------------------------------------------------- emails
+
+// UpsertEmail validates and adds/replaces a contact email, deriving the provider from the address
+// domain on write (D-PersonContactChannels). When marked primary, the person's other active emails
+// are demoted in the same transaction.
+func (s *Service) UpsertEmail(ctx context.Context, e domain.Email) (domain.Email, error) {
+	e.Address = normalizeEmail(e.Address)
+	if err := e.Validate(); err != nil {
+		return domain.Email{}, err
+	}
+	e.Provider = emailProvider(e.Address)
+	var out domain.Email
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		repo := s.newRepo(tx)
+		if _, err := repo.GetPerson(ctx, e.PersonID); err != nil {
+			return err
+		}
+		if e.IsPrimary {
+			if err := repo.ClearPrimaryEmails(ctx, e.PersonID); err != nil {
+				return err
+			}
+		}
+		created, err := repo.UpsertEmail(ctx, e)
+		if err != nil {
+			return err
+		}
+		out = created
+		return s.record(ctx, tx, "person.email.upsert", e.PersonID, map[string]any{"id": e.PersonID, "emailId": created.ID})
+	})
+	return out, err
+}
+
+// DeleteEmail removes a person's contact email by id.
+func (s *Service) DeleteEmail(ctx context.Context, personID, emailID string) error {
+	return s.inTx(ctx, func(tx pgx.Tx) error {
+		repo := s.newRepo(tx)
+		if err := repo.DeleteEmail(ctx, personID, emailID); err != nil {
+			return err
+		}
+		return s.record(ctx, tx, "person.email.delete", personID, map[string]any{"id": personID, "emailId": emailID})
+	})
+}
+
+// ListEmails lists a person's contact emails (the person must exist).
+func (s *Service) ListEmails(ctx context.Context, personID string) ([]domain.Email, error) {
+	repo := s.newRepo(s.pool)
+	if _, err := repo.GetPerson(ctx, personID); err != nil {
+		return nil, err
+	}
+	return repo.ListEmails(ctx, personID)
+}
+
+// ---------------------------------------------------------------- phones
+
+// UpsertPhone validates and adds/replaces a contact phone, normalizing the number to E.164 and
+// deriving its country on write (D-PersonContactChannels). When marked primary, the person's other
+// active phones are demoted in the same transaction.
+func (s *Service) UpsertPhone(ctx context.Context, p domain.Phone) (domain.Phone, error) {
+	if err := p.Validate(); err != nil {
+		return domain.Phone{}, err
+	}
+	number, country, err := normalizePhone(p.Number)
+	if err != nil {
+		return domain.Phone{}, err
+	}
+	p.Number, p.Country = number, country
+	var out domain.Phone
+	err = s.inTx(ctx, func(tx pgx.Tx) error {
+		repo := s.newRepo(tx)
+		if _, err := repo.GetPerson(ctx, p.PersonID); err != nil {
+			return err
+		}
+		if p.IsPrimary {
+			if err := repo.ClearPrimaryPhones(ctx, p.PersonID); err != nil {
+				return err
+			}
+		}
+		created, err := repo.UpsertPhone(ctx, p)
+		if err != nil {
+			return err
+		}
+		out = created
+		return s.record(ctx, tx, "person.phone.upsert", p.PersonID, map[string]any{"id": p.PersonID, "phoneId": created.ID})
+	})
+	return out, err
+}
+
+// DeletePhone removes a person's contact phone by id.
+func (s *Service) DeletePhone(ctx context.Context, personID, phoneID string) error {
+	return s.inTx(ctx, func(tx pgx.Tx) error {
+		repo := s.newRepo(tx)
+		if err := repo.DeletePhone(ctx, personID, phoneID); err != nil {
+			return err
+		}
+		return s.record(ctx, tx, "person.phone.delete", personID, map[string]any{"id": personID, "phoneId": phoneID})
+	})
+}
+
+// ListPhones lists a person's contact phones (the person must exist).
+func (s *Service) ListPhones(ctx context.Context, personID string) ([]domain.Phone, error) {
+	repo := s.newRepo(s.pool)
+	if _, err := repo.GetPerson(ctx, personID); err != nil {
+		return nil, err
+	}
+	return repo.ListPhones(ctx, personID)
+}
+
+// ---------------------------------------------------------------- call signs
+
+// UpsertCallSign adds/replaces a call sign (D-PersonContactChannels). When marked primary, the
+// person's other active call signs are demoted in the same transaction.
+func (s *Service) UpsertCallSign(ctx context.Context, c domain.CallSign) (domain.CallSign, error) {
+	if err := c.Validate(); err != nil {
+		return domain.CallSign{}, err
+	}
+	var out domain.CallSign
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		repo := s.newRepo(tx)
+		if _, err := repo.GetPerson(ctx, c.PersonID); err != nil {
+			return err
+		}
+		if c.IsPrimary {
+			if err := repo.ClearPrimaryCallSigns(ctx, c.PersonID); err != nil {
+				return err
+			}
+		}
+		created, err := repo.UpsertCallSign(ctx, c)
+		if err != nil {
+			return err
+		}
+		out = created
+		return s.record(ctx, tx, "person.call-sign.upsert", c.PersonID, map[string]any{"id": c.PersonID, "callSignId": created.ID})
+	})
+	return out, err
+}
+
+// DeleteCallSign removes a person's call sign by id.
+func (s *Service) DeleteCallSign(ctx context.Context, personID, callSignID string) error {
+	return s.inTx(ctx, func(tx pgx.Tx) error {
+		repo := s.newRepo(tx)
+		if err := repo.DeleteCallSign(ctx, personID, callSignID); err != nil {
+			return err
+		}
+		return s.record(ctx, tx, "person.call-sign.delete", personID, map[string]any{"id": personID, "callSignId": callSignID})
+	})
+}
+
+// ListCallSigns lists a person's call signs (the person must exist).
+func (s *Service) ListCallSigns(ctx context.Context, personID string) ([]domain.CallSign, error) {
+	repo := s.newRepo(s.pool)
+	if _, err := repo.GetPerson(ctx, personID); err != nil {
+		return nil, err
+	}
+	return repo.ListCallSigns(ctx, personID)
+}
+
+// ListEmailTypes / ListPhoneTypes return the instance-admin contact-kind catalogs (reads; no person
+// scope). The transport assembles the translatable name maps.
+func (s *Service) ListEmailTypes(ctx context.Context) ([]domain.ContactType, error) {
+	return s.newRepo(s.pool).ListEmailTypes(ctx)
+}
+
+func (s *Service) ListPhoneTypes(ctx context.Context) ([]domain.ContactType, error) {
+	return s.newRepo(s.pool).ListPhoneTypes(ctx)
+}
+
 // ---------------------------------------------------------------- helpers
 
 // inTx runs fn in a transaction, committing on success and rolling back on error.
@@ -415,6 +623,12 @@ func (s *Service) inTx(ctx context.Context, fn func(pgx.Tx) error) error {
 // payload carries only non-PII identifiers (person id + the changed key/status). Person writes are
 // instance-scoped, so no unit is attributed.
 func (s *Service) record(ctx context.Context, tx pgx.Tx, action, targetID string, after any) error {
+	return s.recordWith(ctx, tx, auditSubsystem, action, targetID, after)
+}
+
+// recordWith is the subsystem-parameterized form: an order-driven rank change records under
+// event-subscriber (D-OrderApply); all other person writes use person-admin via record.
+func (s *Service) recordWith(ctx context.Context, tx pgx.Tx, subsystem, action, targetID string, after any) error {
 	rid, err := mintActionRID(ctx, tx, action)
 	if err != nil {
 		return err
@@ -422,7 +636,7 @@ func (s *Service) record(ctx context.Context, tx pgx.Tx, action, targetID string
 	return s.audit.Record(ctx, tx, auditdomain.Entry{
 		ID:         rid,
 		ActorType:  auditdomain.ActorSystem,
-		Subsystem:  auditSubsystem,
+		Subsystem:  subsystem,
 		Action:     action,
 		TargetType: targetPerson,
 		TargetID:   targetID,

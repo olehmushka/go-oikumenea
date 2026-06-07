@@ -11,7 +11,7 @@ A generic, domain-agnostic **personnel & authorization service** — Keycloak-li
 **hierarchical, multi-tenant organizations** (an army, a church, a university). It is:
 
 - **API-only.** No UI. The contract is [Conjure](architecture/overview.md) IDL; clients and
-  an OpenAPI reference site are generated from it.
+  an [OpenAPI reference](api/README.md) are generated from it.
 - **AuthZ + directory, not authentication.** Authentication is delegated to an external
   identity provider (IdP). go-oikumenea validates inbound identities and **decides
   authorization** — it is a Policy Decision Point (PDP). It never stores credentials or

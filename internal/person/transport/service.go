@@ -24,6 +24,7 @@ import (
 	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
 	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
 	personapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/person"
+	locapp "github.com/olegamysk/go-oikumenea/internal/localization/application"
 	"github.com/olegamysk/go-oikumenea/internal/person/application"
 	"github.com/olegamysk/go-oikumenea/internal/person/domain"
 	"github.com/palantir/pkg/bearertoken"
@@ -42,15 +43,24 @@ const (
 	permPurge      = string(authzdomain.PermPersonPurge)
 )
 
-// Service adapts *application.Service to the generated personapi.PersonService interface.
+// Localization entity-type keys for the translatable contact-kind catalog names (D-i18n).
+const (
+	emailTypeEntity = "email_type"
+	phoneTypeEntity = "phone_type"
+)
+
+// Service adapts *application.Service to the generated personapi.PersonService interface. It holds the
+// localization service to assemble the contact-kind catalog `name` locale->text maps (D-i18n).
 type Service struct {
 	app *application.Service
+	loc *locapp.Service
 	pep *pep.Enforcer
 }
 
-// NewService builds the transport adapter over the person application service and the PEP enforcer.
-func NewService(app *application.Service, enforcer *pep.Enforcer) Service {
-	return Service{app: app, pep: enforcer}
+// NewService builds the transport adapter over the person application service, the localization
+// service (contact-type name maps), and the PEP enforcer.
+func NewService(app *application.Service, loc *locapp.Service, enforcer *pep.Enforcer) Service {
+	return Service{app: app, loc: loc, pep: enforcer}
 }
 
 // compile-time assertion that the transport satisfies the generated server interface.
@@ -295,6 +305,191 @@ func (s Service) DeleteResidence(ctx context.Context, token bearertoken.Token, p
 	return nil
 }
 
+// ---------------------------------------------------------------- emails
+
+func (s Service) ListEmails(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.Email, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	es, err := s.app.ListEmails(ctx, personID)
+	if err != nil {
+		return nil, s.mapError(ctx, err, personID)
+	}
+	out := make([]personapi.Email, 0, len(es))
+	for _, e := range es {
+		out = append(out, toAPIEmail(e))
+	}
+	return out, nil
+}
+
+func (s Service) UpsertEmail(ctx context.Context, token bearertoken.Token, personID string, req personapi.UpsertEmailRequest) (personapi.Email, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return personapi.Email{}, err
+	}
+	created, err := s.app.UpsertEmail(ctx, domain.Email{
+		ID:        derefOr(req.Id, ""),
+		PersonID:  personID,
+		TypeCode:  req.TypeCode,
+		Address:   req.Address,
+		IsPrimary: derefOr(req.IsPrimary, false),
+	})
+	if err != nil {
+		return personapi.Email{}, s.mapError(ctx, err, personID)
+	}
+	return toAPIEmail(created), nil
+}
+
+func (s Service) DeleteEmail(ctx context.Context, token bearertoken.Token, personID, emailID string) error {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return err
+	}
+	if err := s.app.DeleteEmail(ctx, personID, emailID); err != nil {
+		return s.mapError(ctx, err, personID)
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------- phones
+
+func (s Service) ListPhones(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.Phone, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	ps, err := s.app.ListPhones(ctx, personID)
+	if err != nil {
+		return nil, s.mapError(ctx, err, personID)
+	}
+	out := make([]personapi.Phone, 0, len(ps))
+	for _, p := range ps {
+		out = append(out, toAPIPhone(p))
+	}
+	return out, nil
+}
+
+func (s Service) UpsertPhone(ctx context.Context, token bearertoken.Token, personID string, req personapi.UpsertPhoneRequest) (personapi.Phone, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return personapi.Phone{}, err
+	}
+	created, err := s.app.UpsertPhone(ctx, domain.Phone{
+		ID:        derefOr(req.Id, ""),
+		PersonID:  personID,
+		TypeCode:  req.TypeCode,
+		Number:    req.Number,
+		IsPrimary: derefOr(req.IsPrimary, false),
+	})
+	if err != nil {
+		return personapi.Phone{}, s.mapError(ctx, err, personID)
+	}
+	return toAPIPhone(created), nil
+}
+
+func (s Service) DeletePhone(ctx context.Context, token bearertoken.Token, personID, phoneID string) error {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return err
+	}
+	if err := s.app.DeletePhone(ctx, personID, phoneID); err != nil {
+		return s.mapError(ctx, err, personID)
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------- call signs
+
+func (s Service) ListCallSigns(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.CallSign, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	cs, err := s.app.ListCallSigns(ctx, personID)
+	if err != nil {
+		return nil, s.mapError(ctx, err, personID)
+	}
+	out := make([]personapi.CallSign, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, toAPICallSign(c))
+	}
+	return out, nil
+}
+
+func (s Service) UpsertCallSign(ctx context.Context, token bearertoken.Token, personID string, req personapi.UpsertCallSignRequest) (personapi.CallSign, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return personapi.CallSign{}, err
+	}
+	created, err := s.app.UpsertCallSign(ctx, domain.CallSign{
+		ID:        derefOr(req.Id, ""),
+		PersonID:  personID,
+		CallSign:  req.CallSign,
+		IsPrimary: derefOr(req.IsPrimary, false),
+	})
+	if err != nil {
+		return personapi.CallSign{}, s.mapError(ctx, err, personID)
+	}
+	return toAPICallSign(created), nil
+}
+
+func (s Service) DeleteCallSign(ctx context.Context, token bearertoken.Token, personID, callSignID string) error {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return err
+	}
+	if err := s.app.DeleteCallSign(ctx, personID, callSignID); err != nil {
+		return s.mapError(ctx, err, personID)
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------- contact-kind catalogs
+
+func (s Service) ListEmailTypes(ctx context.Context, token bearertoken.Token) ([]personapi.EmailType, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	types, err := s.app.ListEmailTypes(ctx)
+	if err != nil {
+		return nil, s.mapError(ctx, err, "")
+	}
+	names, err := s.contactTypeNames(ctx, emailTypeEntity, types)
+	if err != nil {
+		return nil, s.mapError(ctx, err, "")
+	}
+	out := make([]personapi.EmailType, 0, len(types))
+	for _, t := range types {
+		out = append(out, personapi.EmailType{
+			Code: t.Code, Name: names[t.Code], Status: t.Status, SortOrder: sortOrderPtr(t.SortOrder),
+		})
+	}
+	return out, nil
+}
+
+func (s Service) ListPhoneTypes(ctx context.Context, token bearertoken.Token) ([]personapi.PhoneType, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	types, err := s.app.ListPhoneTypes(ctx)
+	if err != nil {
+		return nil, s.mapError(ctx, err, "")
+	}
+	names, err := s.contactTypeNames(ctx, phoneTypeEntity, types)
+	if err != nil {
+		return nil, s.mapError(ctx, err, "")
+	}
+	out := make([]personapi.PhoneType, 0, len(types))
+	for _, t := range types {
+		out = append(out, personapi.PhoneType{
+			Code: t.Code, Name: names[t.Code], Status: t.Status, SortOrder: sortOrderPtr(t.SortOrder),
+		})
+	}
+	return out, nil
+}
+
+// contactTypeNames assembles each catalog row's translatable `name` as a locale->text map, keyed by
+// the type code, with the default-locale `name` as the fallback (D-i18n).
+func (s Service) contactTypeNames(ctx context.Context, entity string, types []domain.ContactType) (map[string]map[string]string, error) {
+	defaults := make(map[string]string, len(types))
+	for _, t := range types {
+		defaults[t.Code] = t.Name
+	}
+	return s.loc.NamesByID(ctx, entity, defaults)
+}
+
 // ---------------------------------------------------------------- response assembly
 
 func toAPIPerson(p domain.Person) personapi.Person {
@@ -324,6 +519,9 @@ func toAPIPerson(p domain.Person) personapi.Person {
 		NameVariants:   toAPIVariants(p.NameVariants),
 		Citizenships:   toAPICitizenships(p.Citizenships),
 		Residences:     toAPIResidences(p.Residences),
+		Emails:         toAPIEmails(p.Emails),
+		Phones:         toAPIPhones(p.Phones),
+		CallSigns:      toAPICallSigns(p.CallSigns),
 	}
 }
 
@@ -393,6 +591,69 @@ func toAPIResidences(rs []domain.Residence) []personapi.Residence {
 	return out
 }
 
+func toAPIEmail(e domain.Email) personapi.Email {
+	return personapi.Email{
+		Id:        e.ID,
+		PersonId:  e.PersonID,
+		TypeCode:  e.TypeCode,
+		Address:   e.Address,
+		Provider:  strPtrOrNil(e.Provider),
+		IsPrimary: e.IsPrimary,
+	}
+}
+
+func toAPIEmails(es []domain.Email) []personapi.Email {
+	out := make([]personapi.Email, 0, len(es))
+	for _, e := range es {
+		out = append(out, toAPIEmail(e))
+	}
+	return out
+}
+
+func toAPIPhone(p domain.Phone) personapi.Phone {
+	return personapi.Phone{
+		Id:        p.ID,
+		PersonId:  p.PersonID,
+		TypeCode:  p.TypeCode,
+		Number:    p.Number,
+		Country:   strPtrOrNil(p.Country),
+		IsPrimary: p.IsPrimary,
+	}
+}
+
+func toAPIPhones(ps []domain.Phone) []personapi.Phone {
+	out := make([]personapi.Phone, 0, len(ps))
+	for _, p := range ps {
+		out = append(out, toAPIPhone(p))
+	}
+	return out
+}
+
+func toAPICallSign(c domain.CallSign) personapi.CallSign {
+	return personapi.CallSign{
+		Id:        c.ID,
+		PersonId:  c.PersonID,
+		CallSign:  c.CallSign,
+		IsPrimary: c.IsPrimary,
+	}
+}
+
+func toAPICallSigns(cs []domain.CallSign) []personapi.CallSign {
+	out := make([]personapi.CallSign, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, toAPICallSign(c))
+	}
+	return out
+}
+
+// sortOrderPtr maps a catalog sort order (0 == unset by convention) to the optional API field.
+func sortOrderPtr(n int) *int {
+	if n == 0 {
+		return nil
+	}
+	return &n
+}
+
 func nameFromParts(displayName string, title, given, given2, surname, surnamePrefix, surname2, generation, credentials, preferred *string) domain.Name {
 	return domain.Name{
 		DisplayName:   displayName,
@@ -418,14 +679,27 @@ func (s Service) mapError(ctx context.Context, err error, personID string) error
 	case errors.Is(err, domain.ErrNotFound),
 		errors.Is(err, domain.ErrNameVariantNotFound),
 		errors.Is(err, domain.ErrCitizenshipNotFound),
-		errors.Is(err, domain.ErrResidenceNotFound):
+		errors.Is(err, domain.ErrResidenceNotFound),
+		errors.Is(err, domain.ErrEmailNotFound),
+		errors.Is(err, domain.ErrPhoneNotFound),
+		errors.Is(err, domain.ErrCallSignNotFound):
 		return personapi.NewPersonNotFound(personID)
 	case errors.Is(err, domain.ErrCodeConflict):
 		return personapi.NewPersonConflict("a person with this code already exists")
 	case errors.Is(err, domain.ErrCitizenshipConflict):
 		return personapi.NewPersonConflict("an active citizenship for this country already exists")
+	case errors.Is(err, domain.ErrEmailConflict):
+		return personapi.NewPersonConflict("an active email with this address already exists")
+	case errors.Is(err, domain.ErrPhoneConflict):
+		return personapi.NewPersonConflict("an active phone with this number already exists")
+	case errors.Is(err, domain.ErrCallSignConflict):
+		return personapi.NewPersonConflict("an active call sign with this value already exists")
 	case errors.Is(err, domain.ErrUnknownRank):
 		return personapi.NewPersonInvalid("rank does not exist")
+	case errors.Is(err, domain.ErrUnknownContactType):
+		return personapi.NewPersonInvalid("contact type does not exist")
+	case errors.Is(err, domain.ErrUnparseablePhone):
+		return personapi.NewPersonInvalid("phone number could not be parsed")
 	case errors.Is(err, domain.ErrUnknownCountry):
 		return personapi.NewPersonInvalid("country does not exist")
 	case errors.Is(err, domain.ErrUnknownLocale):

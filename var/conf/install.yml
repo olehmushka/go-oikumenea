@@ -13,8 +13,12 @@ server:
 environment: local
 
 # Operator-owned PostgreSQL (L-OperatorDB). Matches docker-compose.dev.yml / the verification DB.
+# The SERVER connects as the non-superuser application role so the RLS backstop is in force at runtime
+# (D-RLSDefenseInDepth; the oikumenea_app role + policies land in migration 0012). MIGRATIONS run as the
+# owner/superuser (see .env DATABASE_URL / atlas.hcl). Create the login role once, after applying
+# migrations:  CREATE ROLE oikumenea LOGIN PASSWORD 'dev' IN ROLE oikumenea_app;
 postgres:
-  dsn: "postgres://postgres:dev@localhost:5432/postgres?sslmode=disable"
+  dsn: "postgres://oikumenea:dev@localhost:5432/postgres?sslmode=disable"
 
 # Inbound-token validation (identity-federation.md, M8). Authentication is delegated (L-AuthzOnly):
 # production issuers use OIDC discovery + JWKS (type: oidc); this local-dev issuer uses a symmetric

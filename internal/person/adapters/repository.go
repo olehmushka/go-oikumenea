@@ -174,6 +174,15 @@ func (r *Repository) Purge(ctx context.Context, id string) (domain.Person, error
 	if err := r.q.DeleteAllResidences(ctx, id); err != nil {
 		return domain.Person{}, err
 	}
+	if err := r.q.DeleteAllEmails(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if err := r.q.DeleteAllPhones(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if err := r.q.DeleteAllCallSigns(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
 	row, err := r.q.PurgePerson(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -333,7 +342,240 @@ func (r *Repository) ListResidences(ctx context.Context, personID string) ([]dom
 	return out, nil
 }
 
+// ---------------------------------------------------------------- emails
+
+// UpsertEmail inserts a new row when e.ID is empty, otherwise replaces the named row.
+func (r *Repository) UpsertEmail(ctx context.Context, e domain.Email) (domain.Email, error) {
+	if e.ID == "" {
+		row, err := r.q.InsertEmail(ctx, personsql.InsertEmailParams{
+			PersonID:  e.PersonID,
+			TypeCode:  e.TypeCode,
+			Address:   e.Address,
+			Provider:  text(e.Provider),
+			IsPrimary: e.IsPrimary,
+		})
+		if err != nil {
+			return domain.Email{}, mapWriteErr(err)
+		}
+		return toEmail(row), nil
+	}
+	row, err := r.q.UpdateEmail(ctx, personsql.UpdateEmailParams{
+		TypeCode:  e.TypeCode,
+		Address:   e.Address,
+		Provider:  text(e.Provider),
+		IsPrimary: e.IsPrimary,
+		ID:        e.ID,
+		PersonID:  e.PersonID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Email{}, domain.ErrEmailNotFound
+		}
+		return domain.Email{}, mapWriteErr(err)
+	}
+	return toEmail(row), nil
+}
+
+func (r *Repository) ClearPrimaryEmails(ctx context.Context, personID string) error {
+	return r.q.ClearPrimaryEmails(ctx, personID)
+}
+
+func (r *Repository) DeleteEmail(ctx context.Context, personID, emailID string) error {
+	if _, err := r.q.DeleteEmail(ctx, personsql.DeleteEmailParams{ID: emailID, PersonID: personID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrEmailNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) ListEmails(ctx context.Context, personID string) ([]domain.Email, error) {
+	rows, err := r.q.ListEmails(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Email, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toEmail(row))
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------- phones
+
+// UpsertPhone inserts a new row when p.ID is empty, otherwise replaces the named row.
+func (r *Repository) UpsertPhone(ctx context.Context, p domain.Phone) (domain.Phone, error) {
+	if p.ID == "" {
+		row, err := r.q.InsertPhone(ctx, personsql.InsertPhoneParams{
+			PersonID:  p.PersonID,
+			TypeCode:  p.TypeCode,
+			Number:    p.Number,
+			Country:   text(p.Country),
+			IsPrimary: p.IsPrimary,
+		})
+		if err != nil {
+			return domain.Phone{}, mapWriteErr(err)
+		}
+		return toPhone(row), nil
+	}
+	row, err := r.q.UpdatePhone(ctx, personsql.UpdatePhoneParams{
+		TypeCode:  p.TypeCode,
+		Number:    p.Number,
+		Country:   text(p.Country),
+		IsPrimary: p.IsPrimary,
+		ID:        p.ID,
+		PersonID:  p.PersonID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Phone{}, domain.ErrPhoneNotFound
+		}
+		return domain.Phone{}, mapWriteErr(err)
+	}
+	return toPhone(row), nil
+}
+
+func (r *Repository) ClearPrimaryPhones(ctx context.Context, personID string) error {
+	return r.q.ClearPrimaryPhones(ctx, personID)
+}
+
+func (r *Repository) DeletePhone(ctx context.Context, personID, phoneID string) error {
+	if _, err := r.q.DeletePhone(ctx, personsql.DeletePhoneParams{ID: phoneID, PersonID: personID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrPhoneNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) ListPhones(ctx context.Context, personID string) ([]domain.Phone, error) {
+	rows, err := r.q.ListPhones(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Phone, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toPhone(row))
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------- call signs
+
+// UpsertCallSign inserts a new row when c.ID is empty, otherwise replaces the named row.
+func (r *Repository) UpsertCallSign(ctx context.Context, c domain.CallSign) (domain.CallSign, error) {
+	if c.ID == "" {
+		row, err := r.q.InsertCallSign(ctx, personsql.InsertCallSignParams{
+			PersonID:  c.PersonID,
+			CallSign:  c.CallSign,
+			IsPrimary: c.IsPrimary,
+		})
+		if err != nil {
+			return domain.CallSign{}, mapWriteErr(err)
+		}
+		return toCallSign(row), nil
+	}
+	row, err := r.q.UpdateCallSign(ctx, personsql.UpdateCallSignParams{
+		CallSign:  c.CallSign,
+		IsPrimary: c.IsPrimary,
+		ID:        c.ID,
+		PersonID:  c.PersonID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.CallSign{}, domain.ErrCallSignNotFound
+		}
+		return domain.CallSign{}, mapWriteErr(err)
+	}
+	return toCallSign(row), nil
+}
+
+func (r *Repository) ClearPrimaryCallSigns(ctx context.Context, personID string) error {
+	return r.q.ClearPrimaryCallSigns(ctx, personID)
+}
+
+func (r *Repository) DeleteCallSign(ctx context.Context, personID, callSignID string) error {
+	if _, err := r.q.DeleteCallSign(ctx, personsql.DeleteCallSignParams{ID: callSignID, PersonID: personID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrCallSignNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) ListCallSigns(ctx context.Context, personID string) ([]domain.CallSign, error) {
+	rows, err := r.q.ListCallSigns(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.CallSign, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toCallSign(row))
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------- contact-kind catalogs
+
+func (r *Repository) ListEmailTypes(ctx context.Context) ([]domain.ContactType, error) {
+	rows, err := r.q.ListEmailTypes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.ContactType, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, domain.ContactType{Code: row.Code, Name: row.Name, Status: row.Status, SortOrder: int(row.SortOrder.Int32)})
+	}
+	return out, nil
+}
+
+func (r *Repository) ListPhoneTypes(ctx context.Context) ([]domain.ContactType, error) {
+	rows, err := r.q.ListPhoneTypes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.ContactType, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, domain.ContactType{Code: row.Code, Name: row.Name, Status: row.Status, SortOrder: int(row.SortOrder.Int32)})
+	}
+	return out, nil
+}
+
 // ---------------------------------------------------------------- mapping helpers
+
+func toEmail(r personsql.OikumeneaPersonEmail) domain.Email {
+	return domain.Email{
+		ID:        r.ID,
+		PersonID:  r.PersonID,
+		TypeCode:  r.TypeCode,
+		Address:   r.Address,
+		Provider:  r.Provider.String,
+		IsPrimary: r.IsPrimary,
+	}
+}
+
+func toPhone(r personsql.OikumeneaPersonPhone) domain.Phone {
+	return domain.Phone{
+		ID:        r.ID,
+		PersonID:  r.PersonID,
+		TypeCode:  r.TypeCode,
+		Number:    r.Number,
+		Country:   r.Country.String,
+		IsPrimary: r.IsPrimary,
+	}
+}
+
+func toCallSign(r personsql.OikumeneaPersonCallSign) domain.CallSign {
+	return domain.CallSign{
+		ID:        r.ID,
+		PersonID:  r.PersonID,
+		CallSign:  r.CallSign,
+		IsPrimary: r.IsPrimary,
+	}
+}
 
 func toPerson(r personsql.OikumeneaPersonPerson) domain.Person {
 	return domain.Person{
@@ -422,6 +664,12 @@ func mapWriteErr(err error) error {
 		switch {
 		case strings.Contains(name, "citizenship"):
 			return domain.ErrCitizenshipConflict
+		case strings.Contains(name, "email"):
+			return domain.ErrEmailConflict
+		case strings.Contains(name, "phone"):
+			return domain.ErrPhoneConflict
+		case strings.Contains(name, "call_sign"):
+			return domain.ErrCallSignConflict
 		case strings.Contains(name, "code"):
 			return domain.ErrCodeConflict
 		}
@@ -431,6 +679,8 @@ func mapWriteErr(err error) error {
 			return domain.ErrUnknownRank
 		case strings.Contains(name, "locale"):
 			return domain.ErrUnknownLocale
+		case strings.Contains(name, "type_code"):
+			return domain.ErrUnknownContactType
 		case strings.Contains(name, "country"):
 			return domain.ErrUnknownCountry
 		}

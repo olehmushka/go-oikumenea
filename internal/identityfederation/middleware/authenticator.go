@@ -7,7 +7,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation/domain"
+	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/pkg/authn"
 )
 
@@ -24,6 +26,12 @@ type PersonDirectory interface {
 	PersonIDByCode(ctx context.Context, code string) (string, bool, error)
 }
 
+// RLSResolver computes the per-request RLS backstop GUC state for a resolved subject
+// (D-RLSDefenseInDepth). The authorization application service satisfies it (RLSStateFor).
+type RLSResolver interface {
+	RLSStateFor(ctx context.Context, personID string) (db.RLSState, error)
+}
+
 // Authenticator is the inbound-token validation middleware (installed via server.WithMiddleware). It
 // supports LATE BINDING: the composition root registers it on the server before Start, then Binds the
 // validator + resolver once the DB pool and services exist inside the boot InitFunc — all before any
@@ -38,17 +46,20 @@ type bound struct {
 	resolver   Resolver
 	persons    PersonDirectory
 	jitEnabled bool
+	rls        RLSResolver
+	pool       *pgxpool.Pool
 }
 
 // NewUnbound builds an Authenticator whose validator/resolver are wired later via Bind.
 func NewUnbound() *Authenticator { return &Authenticator{} }
 
-// Bind wires the validator, the (issuer, subject) resolver, the person directory (for JIT), and the
-// JIT-enabled flag. Called once at boot.
-func (a *Authenticator) Bind(validator *Validator, resolver Resolver, persons PersonDirectory, jitEnabled bool) {
+// Bind wires the validator, the (issuer, subject) resolver, the person directory (for JIT), the
+// JIT-enabled flag, the RLS-state resolver, and the pool used to pin a per-request RLS-scoped
+// connection (D-RLSDefenseInDepth). Called once at boot.
+func (a *Authenticator) Bind(validator *Validator, resolver Resolver, persons PersonDirectory, jitEnabled bool, rls RLSResolver, pool *pgxpool.Pool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.bound = &bound{validator: validator, resolver: resolver, persons: persons, jitEnabled: jitEnabled}
+	a.bound = &bound{validator: validator, resolver: resolver, persons: persons, jitEnabled: jitEnabled, rls: rls, pool: pool}
 }
 
 func (a *Authenticator) snapshot() *bound {
@@ -87,6 +98,26 @@ func (a *Authenticator) Handle(rw http.ResponseWriter, r *http.Request, next htt
 		return
 	}
 	ctx := authn.NewContext(r.Context(), authn.Subject{PersonID: res.PersonID, AccountID: res.AccountID, Email: res.Email})
+
+	// RLS backstop (D-RLSDefenseInDepth): compute the subject's read/write unit reach and pin a
+	// connection with the app.* GUCs set, so unit-scoped reads/writes are filtered at the DB even if a
+	// handler forgets the PDP/shadow-gate filter. Reach is computed on the bare pool (its reads hit
+	// only non-RLS tables + the exempt closure), then the request runs on the pinned connection.
+	if b.rls != nil && b.pool != nil {
+		state, err := b.rls.RLSStateFor(ctx, res.PersonID)
+		if err != nil {
+			serverError(rw)
+			return
+		}
+		conn, release, err := db.AcquireScoped(ctx, b.pool, state)
+		if err != nil {
+			serverError(rw)
+			return
+		}
+		defer release()
+		ctx = db.WithConn(ctx, conn)
+	}
+
 	next.ServeHTTP(rw, r.WithContext(ctx))
 }
 
@@ -136,4 +167,13 @@ func unauthorized(rw http.ResponseWriter) {
 	rw.Header().Set("Content-Type", "application/json")
 	rw.WriteHeader(http.StatusUnauthorized)
 	_, _ = rw.Write([]byte(`{"errorCode":"CUSTOM_CLIENT","errorName":"IdentityFederation:Unauthorized","parameters":{}}`))
+}
+
+// serverError writes a generic 500 when the request is authenticated but a server-side step (computing
+// reach / pinning the RLS connection) fails — distinct from a 401 so a DB outage is not reported as an
+// auth failure. Fails closed: the handler never runs without its RLS-scoped connection.
+func serverError(rw http.ResponseWriter) {
+	rw.Header().Set("Content-Type", "application/json")
+	rw.WriteHeader(http.StatusInternalServerError)
+	_, _ = rw.Write([]byte(`{"errorCode":"INTERNAL","errorName":"Default:Internal","parameters":{}}`))
 }

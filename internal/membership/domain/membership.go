@@ -173,6 +173,10 @@ type Repository interface {
 	// ActiveFillingByPosition returns the position's single active filling, or ErrMembershipNotFound
 	// when the billet is vacant.
 	ActiveFillingByPosition(ctx context.Context, positionID string) (Membership, error)
+	// ActivePlainMembership returns a person's active plain belonging (no position) in a unit, or
+	// ErrMembershipNotFound — the target an order's membership-end item ends when it names a unit but
+	// no position.
+	ActivePlainMembership(ctx context.Context, personID, unitID string) (Membership, error)
 	ListMembersByUnit(ctx context.Context, unitID, after string, limit int) ([]Membership, error)
 	ListMembershipsByPerson(ctx context.Context, personID, after string, limit int) ([]Membership, error)
 }

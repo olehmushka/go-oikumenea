@@ -39,9 +39,10 @@ var _ domain.Repository = (*Repository)(nil)
 
 func (r *Repository) InsertDocumentType(ctx context.Context, t domain.DocumentType) (domain.DocumentType, error) {
 	row, err := r.q.InsertDocumentType(ctx, documentsql.InsertDocumentTypeParams{
-		Code:      t.Code,
-		Name:      t.Name,
-		SortOrder: int4Ptr(t.SortOrder),
+		Code:       t.Code,
+		Name:       t.Name,
+		AttrSchema: []byte(t.AttrSchema),
+		SortOrder:  int4Ptr(t.SortOrder),
 	})
 	if err != nil {
 		return domain.DocumentType{}, mapWriteErr(err)
@@ -62,10 +63,11 @@ func (r *Repository) GetDocumentType(ctx context.Context, id string) (domain.Doc
 
 func (r *Repository) UpdateDocumentType(ctx context.Context, id string, patch domain.DocumentTypePatch) (domain.DocumentType, error) {
 	row, err := r.q.UpdateDocumentType(ctx, documentsql.UpdateDocumentTypeParams{
-		Name:      textPtr(patch.Name),
-		Status:    textPtr(patch.Status),
-		SortOrder: int4Ptr(patch.SortOrder),
-		ID:        id,
+		Name:       textPtr(patch.Name),
+		AttrSchema: rawPtr(patch.AttrSchema),
+		Status:     textPtr(patch.Status),
+		SortOrder:  int4Ptr(patch.SortOrder),
+		ID:         id,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -303,14 +305,23 @@ func (r *Repository) CryptoErasePersonCodes(ctx context.Context, personID string
 
 func toDocumentType(r documentsql.OikumeneaDocumentDocumentType) domain.DocumentType {
 	return domain.DocumentType{
-		ID:        r.ID,
-		Code:      r.Code,
-		Name:      r.Name,
-		Status:    domain.CatalogStatus(r.Status),
-		SortOrder: int4Val(r.SortOrder),
-		CreatedAt: r.CreatedAt.Time,
-		UpdatedAt: r.UpdatedAt.Time,
+		ID:         r.ID,
+		Code:       r.Code,
+		Name:       r.Name,
+		AttrSchema: rawOrNil(r.AttrSchema),
+		Status:     domain.CatalogStatus(r.Status),
+		SortOrder:  int4Val(r.SortOrder),
+		CreatedAt:  r.CreatedAt.Time,
+		UpdatedAt:  r.UpdatedAt.Time,
 	}
+}
+
+// rawOrNil maps a stored attr_schema column to json.RawMessage, keeping nil as nil (no schema).
+func rawOrNil(b []byte) json.RawMessage {
+	if len(b) == 0 {
+		return nil
+	}
+	return json.RawMessage(b)
 }
 
 func toDocument(r documentsql.OikumeneaDocumentDocument) domain.Document {

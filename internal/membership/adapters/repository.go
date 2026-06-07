@@ -167,6 +167,17 @@ func (r *Repository) ActiveFillingByPosition(ctx context.Context, positionID str
 	return toMembership(row), nil
 }
 
+func (r *Repository) ActivePlainMembership(ctx context.Context, personID, unitID string) (domain.Membership, error) {
+	row, err := r.q.GetActivePlainMembership(ctx, membershipsql.GetActivePlainMembershipParams{PersonID: personID, UnitID: unitID})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Membership{}, domain.ErrMembershipNotFound
+		}
+		return domain.Membership{}, err
+	}
+	return toMembership(row), nil
+}
+
 func (r *Repository) ListMembersByUnit(ctx context.Context, unitID, after string, limit int) ([]domain.Membership, error) {
 	rows, err := r.q.ListMembersByUnit(ctx, membershipsql.ListMembersByUnitParams{UnitID: unitID, After: after, Lim: int32(limit)})
 	if err != nil {

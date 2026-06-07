@@ -59,6 +59,28 @@ type PersonService interface {
 	UpsertResidence(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertResidenceRequest) (Residence, error)
 	// Remove a residence row by id.
 	DeleteResidence(ctx context.Context, authHeader bearertoken.Token, personIdArg string, residenceIdArg string) error
+	// List a person's contact emails.
+	ListEmails(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Email, error)
+	// Add or replace a contact email. Returns Person:PersonConflict if the address is taken, Person:PersonInvalid for an unknown type or malformed address.
+	UpsertEmail(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertEmailRequest) (Email, error)
+	// Remove a contact email by id.
+	DeleteEmail(ctx context.Context, authHeader bearertoken.Token, personIdArg string, emailIdArg string) error
+	// List a person's contact phones.
+	ListPhones(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Phone, error)
+	// Add or replace a contact phone. Returns Person:PersonConflict if the number is taken, Person:PersonInvalid for an unknown type or unparseable number.
+	UpsertPhone(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertPhoneRequest) (Phone, error)
+	// Remove a contact phone by id.
+	DeletePhone(ctx context.Context, authHeader bearertoken.Token, personIdArg string, phoneIdArg string) error
+	// List a person's call signs.
+	ListCallSigns(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]CallSign, error)
+	// Add or replace a call sign. Returns Person:PersonConflict if the value is already held by the person.
+	UpsertCallSign(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertCallSignRequest) (CallSign, error)
+	// Remove a call sign by id.
+	DeleteCallSign(ctx context.Context, authHeader bearertoken.Token, personIdArg string, callSignIdArg string) error
+	// List the contact-email type catalog (locale -> text names; D-i18n).
+	ListEmailTypes(ctx context.Context, authHeader bearertoken.Token) ([]EmailType, error)
+	// List the contact-phone type catalog (locale -> text names; D-i18n).
+	ListPhoneTypes(ctx context.Context, authHeader bearertoken.Token) ([]PhoneType, error)
 }
 
 // RegisterRoutesPersonService registers handlers for the PersonService endpoints with a witchcraft wrouter.
@@ -115,6 +137,39 @@ func RegisterRoutesPersonService(router wrouter.Router, impl PersonService, rout
 	}
 	if err := resource.Delete("DeleteResidence", "/person/v1/persons/{personId}/residences/{residenceId}", httpserver.NewJSONHandler(handler.HandleDeleteResidence, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteResidence route")
+	}
+	if err := resource.Get("ListEmails", "/person/v1/persons/{personId}/emails", httpserver.NewJSONHandler(handler.HandleListEmails, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listEmails route")
+	}
+	if err := resource.Put("UpsertEmail", "/person/v1/persons/{personId}/emails", httpserver.NewJSONHandler(handler.HandleUpsertEmail, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertEmail route")
+	}
+	if err := resource.Delete("DeleteEmail", "/person/v1/persons/{personId}/emails/{emailId}", httpserver.NewJSONHandler(handler.HandleDeleteEmail, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteEmail route")
+	}
+	if err := resource.Get("ListPhones", "/person/v1/persons/{personId}/phones", httpserver.NewJSONHandler(handler.HandleListPhones, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listPhones route")
+	}
+	if err := resource.Put("UpsertPhone", "/person/v1/persons/{personId}/phones", httpserver.NewJSONHandler(handler.HandleUpsertPhone, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertPhone route")
+	}
+	if err := resource.Delete("DeletePhone", "/person/v1/persons/{personId}/phones/{phoneId}", httpserver.NewJSONHandler(handler.HandleDeletePhone, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deletePhone route")
+	}
+	if err := resource.Get("ListCallSigns", "/person/v1/persons/{personId}/call-signs", httpserver.NewJSONHandler(handler.HandleListCallSigns, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listCallSigns route")
+	}
+	if err := resource.Put("UpsertCallSign", "/person/v1/persons/{personId}/call-signs", httpserver.NewJSONHandler(handler.HandleUpsertCallSign, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertCallSign route")
+	}
+	if err := resource.Delete("DeleteCallSign", "/person/v1/persons/{personId}/call-signs/{callSignId}", httpserver.NewJSONHandler(handler.HandleDeleteCallSign, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteCallSign route")
+	}
+	if err := resource.Get("ListEmailTypes", "/person/v1/person/email-types", httpserver.NewJSONHandler(handler.HandleListEmailTypes, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listEmailTypes route")
+	}
+	if err := resource.Get("ListPhoneTypes", "/person/v1/person/phone-types", httpserver.NewJSONHandler(handler.HandleListPhoneTypes, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listPhoneTypes route")
 	}
 	return nil
 }
@@ -491,4 +546,240 @@ func (p *personServiceHandler) HandleDeleteResidence(rw http.ResponseWriter, req
 	}
 	rw.WriteHeader(http.StatusNoContent)
 	return nil
+}
+
+func (p *personServiceHandler) HandleListEmails(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.ListEmails(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpsertEmail(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg UpsertEmailRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertEmail(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleDeleteEmail(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	emailIdArg, ok := pathParams["emailId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"emailId\" not present")
+	}
+	if err := p.impl.DeleteEmail(req.Context(), bearertoken.Token(authHeader), personIdArg, emailIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (p *personServiceHandler) HandleListPhones(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.ListPhones(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpsertPhone(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg UpsertPhoneRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertPhone(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleDeletePhone(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	phoneIdArg, ok := pathParams["phoneId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"phoneId\" not present")
+	}
+	if err := p.impl.DeletePhone(req.Context(), bearertoken.Token(authHeader), personIdArg, phoneIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (p *personServiceHandler) HandleListCallSigns(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.ListCallSigns(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpsertCallSign(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg UpsertCallSignRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertCallSign(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleDeleteCallSign(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	callSignIdArg, ok := pathParams["callSignId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"callSignId\" not present")
+	}
+	if err := p.impl.DeleteCallSign(req.Context(), bearertoken.Token(authHeader), personIdArg, callSignIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (p *personServiceHandler) HandleListEmailTypes(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	respArg, err := p.impl.ListEmailTypes(req.Context(), bearertoken.Token(authHeader))
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleListPhoneTypes(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	respArg, err := p.impl.ListPhoneTypes(req.Context(), bearertoken.Token(authHeader))
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
 }

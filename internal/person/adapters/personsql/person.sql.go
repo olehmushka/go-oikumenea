@@ -11,6 +11,16 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearPrimaryCallSigns = `-- name: ClearPrimaryCallSigns :exec
+UPDATE oikumenea.person_call_signs SET is_primary = false
+WHERE person_id = $1 AND deleted_at IS NULL AND is_primary
+`
+
+func (q *Queries) ClearPrimaryCallSigns(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, clearPrimaryCallSigns, personID)
+	return err
+}
+
 const clearPrimaryCitizenships = `-- name: ClearPrimaryCitizenships :exec
 UPDATE oikumenea.person_citizenships SET is_primary = false
 WHERE person_id = $1 AND deleted_at IS NULL AND is_primary
@@ -21,6 +31,16 @@ func (q *Queries) ClearPrimaryCitizenships(ctx context.Context, personID string)
 	return err
 }
 
+const clearPrimaryEmails = `-- name: ClearPrimaryEmails :exec
+UPDATE oikumenea.person_emails SET is_primary = false
+WHERE person_id = $1 AND deleted_at IS NULL AND is_primary
+`
+
+func (q *Queries) ClearPrimaryEmails(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, clearPrimaryEmails, personID)
+	return err
+}
+
 const clearPrimaryNameVariants = `-- name: ClearPrimaryNameVariants :exec
 UPDATE oikumenea.person_name_variants SET is_primary = false
 WHERE person_id = $1 AND is_primary
@@ -28,6 +48,16 @@ WHERE person_id = $1 AND is_primary
 
 func (q *Queries) ClearPrimaryNameVariants(ctx context.Context, personID string) error {
 	_, err := q.db.Exec(ctx, clearPrimaryNameVariants, personID)
+	return err
+}
+
+const clearPrimaryPhones = `-- name: ClearPrimaryPhones :exec
+UPDATE oikumenea.person_phones SET is_primary = false
+WHERE person_id = $1 AND deleted_at IS NULL AND is_primary
+`
+
+func (q *Queries) ClearPrimaryPhones(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, clearPrimaryPhones, personID)
 	return err
 }
 
@@ -74,12 +104,32 @@ func (q *Queries) DeactivatePerson(ctx context.Context, arg DeactivatePersonPara
 	return i, err
 }
 
+const deleteAllCallSigns = `-- name: DeleteAllCallSigns :exec
+DELETE FROM oikumenea.person_call_signs WHERE person_id = $1
+`
+
+func (q *Queries) DeleteAllCallSigns(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllCallSigns, personID)
+	return err
+}
+
 const deleteAllCitizenships = `-- name: DeleteAllCitizenships :exec
 DELETE FROM oikumenea.person_citizenships WHERE person_id = $1
 `
 
 func (q *Queries) DeleteAllCitizenships(ctx context.Context, personID string) error {
 	_, err := q.db.Exec(ctx, deleteAllCitizenships, personID)
+	return err
+}
+
+const deleteAllEmails = `-- name: DeleteAllEmails :exec
+
+DELETE FROM oikumenea.person_emails WHERE person_id = $1
+`
+
+// ============================ purge erasure (extends PurgePerson) ============================
+func (q *Queries) DeleteAllEmails(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllEmails, personID)
 	return err
 }
 
@@ -92,6 +142,15 @@ func (q *Queries) DeleteAllNameVariants(ctx context.Context, personID string) er
 	return err
 }
 
+const deleteAllPhones = `-- name: DeleteAllPhones :exec
+DELETE FROM oikumenea.person_phones WHERE person_id = $1
+`
+
+func (q *Queries) DeleteAllPhones(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllPhones, personID)
+	return err
+}
+
 const deleteAllResidences = `-- name: DeleteAllResidences :exec
 DELETE FROM oikumenea.person_residences WHERE person_id = $1
 `
@@ -99,6 +158,24 @@ DELETE FROM oikumenea.person_residences WHERE person_id = $1
 func (q *Queries) DeleteAllResidences(ctx context.Context, personID string) error {
 	_, err := q.db.Exec(ctx, deleteAllResidences, personID)
 	return err
+}
+
+const deleteCallSign = `-- name: DeleteCallSign :one
+UPDATE oikumenea.person_call_signs SET deleted_at = now()
+WHERE id = $1 AND person_id = $2 AND deleted_at IS NULL
+RETURNING id
+`
+
+type DeleteCallSignParams struct {
+	ID       string
+	PersonID string
+}
+
+func (q *Queries) DeleteCallSign(ctx context.Context, arg DeleteCallSignParams) (string, error) {
+	row := q.db.QueryRow(ctx, deleteCallSign, arg.ID, arg.PersonID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }
 
 const deleteCitizenship = `-- name: DeleteCitizenship :one
@@ -120,6 +197,24 @@ func (q *Queries) DeleteCitizenship(ctx context.Context, arg DeleteCitizenshipPa
 	return id, err
 }
 
+const deleteEmail = `-- name: DeleteEmail :one
+UPDATE oikumenea.person_emails SET deleted_at = now()
+WHERE id = $1 AND person_id = $2 AND deleted_at IS NULL
+RETURNING id
+`
+
+type DeleteEmailParams struct {
+	ID       string
+	PersonID string
+}
+
+func (q *Queries) DeleteEmail(ctx context.Context, arg DeleteEmailParams) (string, error) {
+	row := q.db.QueryRow(ctx, deleteEmail, arg.ID, arg.PersonID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const deleteNameVariant = `-- name: DeleteNameVariant :one
 DELETE FROM oikumenea.person_name_variants WHERE person_id = $1 AND locale = $2
 RETURNING id
@@ -132,6 +227,24 @@ type DeleteNameVariantParams struct {
 
 func (q *Queries) DeleteNameVariant(ctx context.Context, arg DeleteNameVariantParams) (string, error) {
 	row := q.db.QueryRow(ctx, deleteNameVariant, arg.PersonID, arg.Locale)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
+const deletePhone = `-- name: DeletePhone :one
+UPDATE oikumenea.person_phones SET deleted_at = now()
+WHERE id = $1 AND person_id = $2 AND deleted_at IS NULL
+RETURNING id
+`
+
+type DeletePhoneParams struct {
+	ID       string
+	PersonID string
+}
+
+func (q *Queries) DeletePhone(ctx context.Context, arg DeletePhoneParams) (string, error) {
+	row := q.db.QueryRow(ctx, deletePhone, arg.ID, arg.PersonID)
 	var id string
 	err := row.Scan(&id)
 	return id, err
@@ -221,6 +334,77 @@ func (q *Queries) GetPerson(ctx context.Context, id string) (OikumeneaPersonPers
 		&i.Status,
 		&i.DeactivatedAt,
 		&i.PurgeAfter,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const insertCallSign = `-- name: InsertCallSign :one
+
+INSERT INTO oikumenea.person_call_signs (person_id, call_sign, is_primary)
+VALUES ($1, $2, $3)
+RETURNING id, person_id, call_sign, is_primary, created_at, updated_at, deleted_at
+`
+
+type InsertCallSignParams struct {
+	PersonID  string
+	CallSign  string
+	IsPrimary bool
+}
+
+// ============================ call signs (D-PersonContactChannels) ============================
+// call_sign is required (NOT NULL) and unique per person among active rows.
+func (q *Queries) InsertCallSign(ctx context.Context, arg InsertCallSignParams) (OikumeneaPersonCallSign, error) {
+	row := q.db.QueryRow(ctx, insertCallSign, arg.PersonID, arg.CallSign, arg.IsPrimary)
+	var i OikumeneaPersonCallSign
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.CallSign,
+		&i.IsPrimary,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const insertEmail = `-- name: InsertEmail :one
+
+INSERT INTO oikumenea.person_emails (person_id, type_code, address, provider, is_primary)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, person_id, type_code, address, provider, is_primary, created_at, updated_at, deleted_at
+`
+
+type InsertEmailParams struct {
+	PersonID  string
+	TypeCode  string
+	Address   string
+	Provider  pgtype.Text
+	IsPrimary bool
+}
+
+// ============================ emails (D-PersonContactChannels) ============================
+// address is citext (case-insensitive); provider is derived in the application before insert. The
+// person_email_types FK validates type_code; the partial unique index dedupes active (person, address).
+func (q *Queries) InsertEmail(ctx context.Context, arg InsertEmailParams) (OikumeneaPersonEmail, error) {
+	row := q.db.QueryRow(ctx, insertEmail,
+		arg.PersonID,
+		arg.TypeCode,
+		arg.Address,
+		arg.Provider,
+		arg.IsPrimary,
+	)
+	var i OikumeneaPersonEmail
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.TypeCode,
+		&i.Address,
+		&i.Provider,
+		&i.IsPrimary,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -318,6 +502,47 @@ func (q *Queries) InsertPerson(ctx context.Context, arg InsertPersonParams) (Oik
 	return i, err
 }
 
+const insertPhone = `-- name: InsertPhone :one
+
+INSERT INTO oikumenea.person_phones (person_id, type_code, number, country, is_primary)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, person_id, type_code, number, country, is_primary, created_at, updated_at, deleted_at
+`
+
+type InsertPhoneParams struct {
+	PersonID  string
+	TypeCode  string
+	Number    string
+	Country   pgtype.Text
+	IsPrimary bool
+}
+
+// ============================ phones (D-PersonContactChannels) ============================
+// number is E.164-normalized and country derived in the application before insert. The
+// person_phone_types FK validates type_code; geo_countries FK validates the derived country.
+func (q *Queries) InsertPhone(ctx context.Context, arg InsertPhoneParams) (OikumeneaPersonPhone, error) {
+	row := q.db.QueryRow(ctx, insertPhone,
+		arg.PersonID,
+		arg.TypeCode,
+		arg.Number,
+		arg.Country,
+		arg.IsPrimary,
+	)
+	var i OikumeneaPersonPhone
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.TypeCode,
+		&i.Number,
+		&i.Country,
+		&i.IsPrimary,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const insertResidence = `-- name: InsertResidence :one
 
 INSERT INTO oikumenea.person_residences (person_id, country, region, valid_from, valid_to)
@@ -357,6 +582,39 @@ func (q *Queries) InsertResidence(ctx context.Context, arg InsertResidenceParams
 	return i, err
 }
 
+const listCallSigns = `-- name: ListCallSigns :many
+SELECT id, person_id, call_sign, is_primary, created_at, updated_at, deleted_at FROM oikumenea.person_call_signs
+WHERE person_id = $1 AND deleted_at IS NULL ORDER BY is_primary DESC, id
+`
+
+func (q *Queries) ListCallSigns(ctx context.Context, personID string) ([]OikumeneaPersonCallSign, error) {
+	rows, err := q.db.Query(ctx, listCallSigns, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonCallSign
+	for rows.Next() {
+		var i OikumeneaPersonCallSign
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.CallSign,
+			&i.IsPrimary,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCitizenships = `-- name: ListCitizenships :many
 SELECT id, person_id, country, basis, acquired_on, lost_on, is_primary, created_at, updated_at, deleted_at FROM oikumenea.person_citizenships
 WHERE person_id = $1 AND deleted_at IS NULL ORDER BY country
@@ -378,6 +636,75 @@ func (q *Queries) ListCitizenships(ctx context.Context, personID string) ([]Oiku
 			&i.Basis,
 			&i.AcquiredOn,
 			&i.LostOn,
+			&i.IsPrimary,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEmailTypes = `-- name: ListEmailTypes :many
+
+SELECT code, name, status, sort_order, created_at, updated_at, deleted_at FROM oikumenea.person_email_types WHERE deleted_at IS NULL ORDER BY sort_order, code
+`
+
+// ============================ contact-kind catalogs ============================
+func (q *Queries) ListEmailTypes(ctx context.Context) ([]OikumeneaPersonEmailType, error) {
+	rows, err := q.db.Query(ctx, listEmailTypes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonEmailType
+	for rows.Next() {
+		var i OikumeneaPersonEmailType
+		if err := rows.Scan(
+			&i.Code,
+			&i.Name,
+			&i.Status,
+			&i.SortOrder,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEmails = `-- name: ListEmails :many
+SELECT id, person_id, type_code, address, provider, is_primary, created_at, updated_at, deleted_at FROM oikumenea.person_emails
+WHERE person_id = $1 AND deleted_at IS NULL ORDER BY is_primary DESC, address
+`
+
+func (q *Queries) ListEmails(ctx context.Context, personID string) ([]OikumeneaPersonEmail, error) {
+	rows, err := q.db.Query(ctx, listEmails, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonEmail
+	for rows.Next() {
+		var i OikumeneaPersonEmail
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.TypeCode,
+			&i.Address,
+			&i.Provider,
 			&i.IsPrimary,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -477,6 +804,73 @@ func (q *Queries) ListPersons(ctx context.Context, arg ListPersonsParams) ([]Oik
 			&i.Status,
 			&i.DeactivatedAt,
 			&i.PurgeAfter,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPhoneTypes = `-- name: ListPhoneTypes :many
+SELECT code, name, status, sort_order, created_at, updated_at, deleted_at FROM oikumenea.person_phone_types WHERE deleted_at IS NULL ORDER BY sort_order, code
+`
+
+func (q *Queries) ListPhoneTypes(ctx context.Context) ([]OikumeneaPersonPhoneType, error) {
+	rows, err := q.db.Query(ctx, listPhoneTypes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonPhoneType
+	for rows.Next() {
+		var i OikumeneaPersonPhoneType
+		if err := rows.Scan(
+			&i.Code,
+			&i.Name,
+			&i.Status,
+			&i.SortOrder,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPhones = `-- name: ListPhones :many
+SELECT id, person_id, type_code, number, country, is_primary, created_at, updated_at, deleted_at FROM oikumenea.person_phones
+WHERE person_id = $1 AND deleted_at IS NULL ORDER BY is_primary DESC, number
+`
+
+func (q *Queries) ListPhones(ctx context.Context, personID string) ([]OikumeneaPersonPhone, error) {
+	rows, err := q.db.Query(ctx, listPhones, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonPhone
+	for rows.Next() {
+		var i OikumeneaPersonPhone
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.TypeCode,
+			&i.Number,
+			&i.Country,
+			&i.IsPrimary,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
@@ -651,6 +1045,80 @@ func (q *Queries) SetRank(ctx context.Context, arg SetRankParams) (OikumeneaPers
 	return i, err
 }
 
+const updateCallSign = `-- name: UpdateCallSign :one
+UPDATE oikumenea.person_call_signs SET
+  call_sign = $1, is_primary = $2
+WHERE id = $3 AND person_id = $4 AND deleted_at IS NULL
+RETURNING id, person_id, call_sign, is_primary, created_at, updated_at, deleted_at
+`
+
+type UpdateCallSignParams struct {
+	CallSign  string
+	IsPrimary bool
+	ID        string
+	PersonID  string
+}
+
+func (q *Queries) UpdateCallSign(ctx context.Context, arg UpdateCallSignParams) (OikumeneaPersonCallSign, error) {
+	row := q.db.QueryRow(ctx, updateCallSign,
+		arg.CallSign,
+		arg.IsPrimary,
+		arg.ID,
+		arg.PersonID,
+	)
+	var i OikumeneaPersonCallSign
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.CallSign,
+		&i.IsPrimary,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const updateEmail = `-- name: UpdateEmail :one
+UPDATE oikumenea.person_emails SET
+  type_code = $1, address = $2, provider = $3, is_primary = $4
+WHERE id = $5 AND person_id = $6 AND deleted_at IS NULL
+RETURNING id, person_id, type_code, address, provider, is_primary, created_at, updated_at, deleted_at
+`
+
+type UpdateEmailParams struct {
+	TypeCode  string
+	Address   string
+	Provider  pgtype.Text
+	IsPrimary bool
+	ID        string
+	PersonID  string
+}
+
+func (q *Queries) UpdateEmail(ctx context.Context, arg UpdateEmailParams) (OikumeneaPersonEmail, error) {
+	row := q.db.QueryRow(ctx, updateEmail,
+		arg.TypeCode,
+		arg.Address,
+		arg.Provider,
+		arg.IsPrimary,
+		arg.ID,
+		arg.PersonID,
+	)
+	var i OikumeneaPersonEmail
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.TypeCode,
+		&i.Address,
+		&i.Provider,
+		&i.IsPrimary,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const updatePerson = `-- name: UpdatePerson :one
 UPDATE oikumenea.person_persons SET
   display_name     = COALESCE($1, display_name),
@@ -731,6 +1199,46 @@ func (q *Queries) UpdatePerson(ctx context.Context, arg UpdatePersonParams) (Oik
 		&i.Status,
 		&i.DeactivatedAt,
 		&i.PurgeAfter,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const updatePhone = `-- name: UpdatePhone :one
+UPDATE oikumenea.person_phones SET
+  type_code = $1, number = $2, country = $3, is_primary = $4
+WHERE id = $5 AND person_id = $6 AND deleted_at IS NULL
+RETURNING id, person_id, type_code, number, country, is_primary, created_at, updated_at, deleted_at
+`
+
+type UpdatePhoneParams struct {
+	TypeCode  string
+	Number    string
+	Country   pgtype.Text
+	IsPrimary bool
+	ID        string
+	PersonID  string
+}
+
+func (q *Queries) UpdatePhone(ctx context.Context, arg UpdatePhoneParams) (OikumeneaPersonPhone, error) {
+	row := q.db.QueryRow(ctx, updatePhone,
+		arg.TypeCode,
+		arg.Number,
+		arg.Country,
+		arg.IsPrimary,
+		arg.ID,
+		arg.PersonID,
+	)
+	var i OikumeneaPersonPhone
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.TypeCode,
+		&i.Number,
+		&i.Country,
+		&i.IsPrimary,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
