@@ -44,7 +44,32 @@ var (
 	ErrCallSignConflict    = errors.New("active call sign with this value already exists for this person")
 	ErrUnknownContactType  = errors.New("contact type does not exist")
 	ErrUnparseablePhone    = errors.New("phone number could not be parsed")
+	// D-PersonSocialChannels (M13)
+	ErrUnknownPlatform       = errors.New("platform does not exist")
+	ErrPlatformNotMessenger  = errors.New("platform is not a messenger platform")
+	ErrChannelNotOwned       = errors.New("the phone/email is not held by this person")
+	ErrMessengerLinkNotFound = errors.New("messenger link not found")
+	ErrMessengerLinkConflict = errors.New("active messenger link for this channel and platform already exists")
+	ErrSocialAccountNotFound = errors.New("social account not found")
+	ErrSocialAccountConflict = errors.New("active social account for this platform and identity already exists")
 )
+
+// Social-account attribution vocabularies (D-PersonSocialChannels): source records how the account was
+// learned, confidence weights the claim. Both are non-PII metadata on the HOLDS_ACCOUNT link.
+var (
+	validSource     = map[string]bool{"self_declared": true, "operator_verified": true, "imported": true}
+	validConfidence = map[string]bool{"confirmed": true, "probable": true, "possible": true}
+)
+
+// Platform categories (D-PersonSocialChannels): a messenger reachability platform vs a standalone
+// social-account platform.
+const (
+	CategoryMessenger = "messenger"
+	CategorySocial    = "social"
+)
+
+// DefaultConfidence is substituted when a social-account claim omits a confidence weight.
+const DefaultConfidence = "possible"
 
 // Status is the person lifecycle state (D-PersonReadScope reversibility window).
 type Status string
@@ -109,12 +134,14 @@ type Person struct {
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 
-	NameVariants []NameVariant
-	Citizenships []Citizenship
-	Residences   []Residence
-	Emails       []Email
-	Phones       []Phone
-	CallSigns    []CallSign
+	NameVariants   []NameVariant
+	Citizenships   []Citizenship
+	Residences     []Residence
+	Emails         []Email
+	Phones         []Phone
+	CallSigns      []CallSign
+	MessengerLinks []MessengerLink
+	SocialAccounts []SocialAccount
 }
 
 // Validate enforces the create-time invariants: a valid optional code, a non-empty display name, a
@@ -322,6 +349,92 @@ type ContactType struct {
 	SortOrder int
 }
 
+// Platform is a row of the instance-admin social-network / messenger catalog (person_platforms): a
+// stable code + default-locale name + category (D-PersonSocialChannels / D-Code/D-i18n). The transport
+// assembles the locale->text name map via the localization store.
+type Platform struct {
+	Code      string
+	Name      string
+	Category  string // messenger | social
+	Status    string
+	SortOrder int
+}
+
+// IsMessenger reports whether the platform may carry a messenger reachability link.
+func (p Platform) IsMessenger() bool { return p.Category == CategoryMessenger }
+
+// MessengerLink annotates an existing phone OR email with reachability on a messenger platform
+// (D-PersonSocialChannels, layer a). Exactly one of PhoneID/EmailID is set (XOR). ID == "" => insert;
+// otherwise replace that row. VerifiedAt is optional.
+type MessengerLink struct {
+	ID           string
+	PhoneID      string
+	EmailID      string
+	PlatformCode string
+	IsPrimary    bool
+	VerifiedAt   *time.Time
+}
+
+// Validate enforces the XOR channel rule and a non-empty platform code. The platform's messenger
+// category and the channel's ownership are checked in the application layer (they need the DB).
+func (m MessengerLink) Validate() error {
+	if strings.TrimSpace(m.PlatformCode) == "" {
+		return wrapInvalid("platformCode is required")
+	}
+	if (m.PhoneID != "") == (m.EmailID != "") {
+		return wrapInvalid("exactly one of phoneId or emailId is required")
+	}
+	return nil
+}
+
+// SocialAccount is a person's standalone social-network account (D-PersonSocialChannels, layer b).
+// PlatformUserID is the platform's immutable internal id (the durable key; "" when unknown); Handle is
+// the mutable current @handle (rename history kept separately). Source/Confidence weight the claim.
+// ID == "" => insert; otherwise replace that row.
+type SocialAccount struct {
+	ID                   string
+	PersonID             string
+	PlatformCode         string
+	PlatformUserID       string
+	Handle               string
+	DisplayName          string
+	ProfileURL           string
+	Language             string
+	PlatformVerified     bool
+	VerifiedByOperatorAt *time.Time
+	Source               string
+	Confidence           string
+	IsPrimary            bool
+}
+
+// Validate enforces a non-empty platform code + handle and a known source/confidence. The platform's
+// existence is checked in the application layer via the catalog.
+func (a SocialAccount) Validate() error {
+	if strings.TrimSpace(a.PlatformCode) == "" {
+		return wrapInvalid("platformCode is required")
+	}
+	if strings.TrimSpace(a.Handle) == "" {
+		return wrapInvalid("handle is required")
+	}
+	if !validSource[a.Source] {
+		return wrapInvalid("source must be one of self_declared|operator_verified|imported")
+	}
+	if !validConfidence[a.Confidence] {
+		return wrapInvalid("confidence must be one of confirmed|probable|possible")
+	}
+	return nil
+}
+
+// SocialAccountHandle is one period in a social account's @handle-rename history (D-PersonSocialChannels).
+// ValidTo == nil marks the current handle.
+type SocialAccountHandle struct {
+	ID        string
+	AccountID string
+	Handle    string
+	ValidFrom time.Time
+	ValidTo   *time.Time
+}
+
 func wrapInvalid(msg string) error { return errors.Join(ErrInvalid, errors.New(msg)) }
 
 // validEmail is a deliberately minimal shape check (exactly one @, non-empty local part, a dotted
@@ -429,4 +542,29 @@ type Repository interface {
 	// contact-kind catalogs
 	ListEmailTypes(ctx context.Context) ([]ContactType, error)
 	ListPhoneTypes(ctx context.Context) ([]ContactType, error)
+
+	// platform catalog (D-PersonSocialChannels)
+	ListPlatforms(ctx context.Context) ([]Platform, error)
+	GetPlatform(ctx context.Context, code string) (Platform, error) // ErrUnknownPlatform when missing
+
+	// messenger links (m.ID == "" => insert; otherwise replace that row)
+	PhonePersonID(ctx context.Context, phoneID string) (string, error) // ErrPhoneNotFound when missing
+	EmailPersonID(ctx context.Context, emailID string) (string, error) // ErrEmailNotFound when missing
+	UpsertMessengerLink(ctx context.Context, m MessengerLink) (MessengerLink, error)
+	ClearPrimaryMessengerLinks(ctx context.Context, personID string) error
+	DeleteMessengerLink(ctx context.Context, personID, linkID string) error
+	ListMessengerLinks(ctx context.Context, personID string) ([]MessengerLink, error)
+
+	// social accounts (Insert/Update split so the application can keep the handle history)
+	InsertSocialAccount(ctx context.Context, a SocialAccount) (SocialAccount, error)
+	UpdateSocialAccount(ctx context.Context, a SocialAccount) (SocialAccount, error)
+	GetSocialAccount(ctx context.Context, personID, accountID string) (SocialAccount, error)
+	ClearPrimarySocialAccounts(ctx context.Context, personID string) error
+	DeleteSocialAccount(ctx context.Context, personID, accountID string) error
+	ListSocialAccounts(ctx context.Context, personID string) ([]SocialAccount, error)
+
+	// social account handle history
+	InsertSocialAccountHandle(ctx context.Context, h SocialAccountHandle) (SocialAccountHandle, error)
+	CloseCurrentSocialAccountHandle(ctx context.Context, accountID string) error
+	ListSocialAccountHandles(ctx context.Context, accountID string) ([]SocialAccountHandle, error)
 }

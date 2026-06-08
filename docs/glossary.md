@@ -99,6 +99,36 @@ a required value, unique per person among active rows, `is_primary` (D-PersonCon
 naming the `kind` of a contact email/phone (D-PersonContactChannels, D-Code/D-i18n). Owned by
 [person](modules/person.md).
 
+**Platform.** Instance-admin catalog (stable `code` + translatable `name`, `category ∈
+messenger|social`) of the messengers / social networks a person may appear on (D-PersonSocialChannels).
+Owned by [person](modules/person.md).
+
+**Messenger link.** A reachability annotation attaching an existing contact **phone or email** (XOR) to
+a `messenger`-category platform — "this number is on Telegram" (D-PersonSocialChannels). Owned by
+[person](modules/person.md); erased on purge.
+
+**Social account.** A person's standalone account on a social/messenger platform, independent of any
+phone/email (D-PersonSocialChannels). Keys on the platform's **immutable `platform_user_id`** (the
+mutable `@handle` has its own rename **history**), records **profile** fields (`pii:contact`),
+distinguishes **platform verification** (blue-check) from **operator verification**, and carries
+**attribution provenance** — `source` (self_declared / operator_verified / imported) + `confidence`
+(confirmed / probable / possible) — so a claimed account is a sourced, weighted assertion. **No**
+social-graph metrics; free-text `bio`/location wait on DS-29. Owned by [person](modules/person.md);
+erased on purge.
+
+**Person↔person relationship.** A reified self-link between two **in-directory** persons
+(D-PersonRelationships), each per-type and mirroring the membership temporal-link shape:
+**partnership** (marriage/engagement, symmetric, ≤1 active per person), **kinship** (directional
+`parent_of`, siblings derived), **guardianship** (guardian→ward), **sponsorship** (godparent / academic
+advisor / military mentor), **next-of-kin** (an in-directory nomination, not a blood fact),
+**association** (associate / conflict-of-interest / no-contact), and **social link** (friend/follower,
+gated on a linked social account). Authority **never** derives from a relationship — directory data
+only. Owned by [person](modules/person.md); erased when **either** endpoint purges.
+
+**Relation type.** Instance-admin catalog (stable `code` + translatable `name` + `category`) for the
+open-ended person↔person relation labels — sponsorship / association / next-of-kin kinds
+(D-PersonRelationships, D-Code/D-i18n). Owned by [person](modules/person.md).
+
 **Account.** An *optional* login attachment to a person — at most one per person. People
 without accounts (rosters, personnel who never sign in) are first-class. The account is the
 person's **set of login points**: it may hold several external identities (e.g. Google +

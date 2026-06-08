@@ -438,6 +438,24 @@ type OikumeneaPersonEmailType struct {
 	DeletedAt pgtype.Timestamptz
 }
 
+type OikumeneaPersonMessengerLink struct {
+	// pii:none
+	ID string
+	// pii:contact
+	PhoneID pgtype.Text
+	// pii:contact
+	EmailID pgtype.Text
+	// pii:none
+	PlatformCode string
+	// pii:none
+	IsPrimary bool
+	// pii:none
+	VerifiedAt pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
+}
+
 type OikumeneaPersonNameVariant struct {
 	// pii:none
 	ID string
@@ -549,6 +567,22 @@ type OikumeneaPersonPhoneType struct {
 	DeletedAt pgtype.Timestamptz
 }
 
+type OikumeneaPersonPlatform struct {
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	Category string
+	// pii:none
+	Status string
+	// pii:none
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
 type OikumeneaPersonResidence struct {
 	// pii:none
 	ID string
@@ -562,6 +596,54 @@ type OikumeneaPersonResidence struct {
 	ValidFrom pgtype.Date
 	// pii:contact
 	ValidTo   pgtype.Date
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaPersonSocialAccount struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:none
+	PlatformCode string
+	// pii:contact
+	PlatformUserID pgtype.Text
+	// pii:contact
+	Handle string
+	// pii:contact
+	DisplayName pgtype.Text
+	// pii:contact
+	ProfileUrl pgtype.Text
+	// pii:contact
+	Language pgtype.Text
+	// pii:none
+	PlatformVerified bool
+	// pii:none
+	VerifiedByOperatorAt pgtype.Timestamptz
+	// pii:none
+	Source string
+	// pii:none
+	Confidence string
+	// pii:none
+	IsPrimary bool
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaPersonSocialAccountHandle struct {
+	// pii:none
+	ID string
+	// pii:none
+	AccountID string
+	// pii:contact
+	Handle string
+	// pii:none
+	ValidFrom pgtype.Timestamptz
+	// pii:none
+	ValidTo   pgtype.Timestamptz
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz

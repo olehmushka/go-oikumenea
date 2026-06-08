@@ -137,6 +137,12 @@ func (s *Service) GetPerson(ctx context.Context, id string) (domain.Person, erro
 	if p.CallSigns, err = repo.ListCallSigns(ctx, id); err != nil {
 		return domain.Person{}, err
 	}
+	if p.MessengerLinks, err = repo.ListMessengerLinks(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if p.SocialAccounts, err = repo.ListSocialAccounts(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
 	return p, nil
 }
 
@@ -591,6 +597,184 @@ func (s *Service) ListCallSigns(ctx context.Context, personID string) ([]domain.
 		return nil, err
 	}
 	return repo.ListCallSigns(ctx, personID)
+}
+
+// ---------------------------------------------------------------- messenger links (D-PersonSocialChannels)
+
+// UpsertMessengerLink adds/replaces a messenger reachability link over one of the person's phones or
+// emails. It verifies the channel is held by the person and that the platform is a `messenger`-category
+// platform, demoting other primaries when marked primary — all in the same transaction.
+func (s *Service) UpsertMessengerLink(ctx context.Context, personID string, m domain.MessengerLink) (domain.MessengerLink, error) {
+	if err := m.Validate(); err != nil {
+		return domain.MessengerLink{}, err
+	}
+	var out domain.MessengerLink
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		repo := s.newRepo(tx)
+		if _, err := repo.GetPerson(ctx, personID); err != nil {
+			return err
+		}
+		// Holder scope: the annotated phone/email must belong to this person.
+		var owner string
+		var err error
+		if m.PhoneID != "" {
+			owner, err = repo.PhonePersonID(ctx, m.PhoneID)
+		} else {
+			owner, err = repo.EmailPersonID(ctx, m.EmailID)
+		}
+		if err != nil {
+			return err
+		}
+		if owner != personID {
+			return domain.ErrChannelNotOwned
+		}
+		// The platform must exist and be a messenger platform (D-PersonSocialChannels).
+		plat, err := repo.GetPlatform(ctx, m.PlatformCode)
+		if err != nil {
+			return err
+		}
+		if !plat.IsMessenger() {
+			return domain.ErrPlatformNotMessenger
+		}
+		if m.IsPrimary {
+			if err := repo.ClearPrimaryMessengerLinks(ctx, personID); err != nil {
+				return err
+			}
+		}
+		created, err := repo.UpsertMessengerLink(ctx, m)
+		if err != nil {
+			return err
+		}
+		out = created
+		return s.record(ctx, tx, "person.messenger-link.upsert", personID, map[string]any{"id": personID, "messengerLinkId": created.ID})
+	})
+	return out, err
+}
+
+// DeleteMessengerLink removes a person's messenger link by id (holder-scoped).
+func (s *Service) DeleteMessengerLink(ctx context.Context, personID, linkID string) error {
+	return s.inTx(ctx, func(tx pgx.Tx) error {
+		repo := s.newRepo(tx)
+		if err := repo.DeleteMessengerLink(ctx, personID, linkID); err != nil {
+			return err
+		}
+		return s.record(ctx, tx, "person.messenger-link.delete", personID, map[string]any{"id": personID, "messengerLinkId": linkID})
+	})
+}
+
+// ListMessengerLinks lists a person's messenger links (the person must exist).
+func (s *Service) ListMessengerLinks(ctx context.Context, personID string) ([]domain.MessengerLink, error) {
+	repo := s.newRepo(s.pool)
+	if _, err := repo.GetPerson(ctx, personID); err != nil {
+		return nil, err
+	}
+	return repo.ListMessengerLinks(ctx, personID)
+}
+
+// ---------------------------------------------------------------- social accounts (D-PersonSocialChannels)
+
+// UpsertSocialAccount adds/replaces a standalone social account. The platform must exist; the @handle is
+// normalized and a profile URL derived when absent; when marked primary the person's other social
+// accounts are demoted; and the account's handle-rename history is maintained (a new period opens on
+// create and on every handle change) — all in the same transaction.
+func (s *Service) UpsertSocialAccount(ctx context.Context, a domain.SocialAccount) (domain.SocialAccount, error) {
+	a.Handle = normalizeHandle(a.Handle)
+	if a.Confidence == "" {
+		a.Confidence = domain.DefaultConfidence
+	}
+	if err := a.Validate(); err != nil {
+		return domain.SocialAccount{}, err
+	}
+	if a.ProfileURL == "" {
+		a.ProfileURL = deriveProfileURL(a.PlatformCode, a.Handle)
+	}
+	var out domain.SocialAccount
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		repo := s.newRepo(tx)
+		if _, err := repo.GetPerson(ctx, a.PersonID); err != nil {
+			return err
+		}
+		if _, err := repo.GetPlatform(ctx, a.PlatformCode); err != nil {
+			return err
+		}
+		if a.IsPrimary {
+			if err := repo.ClearPrimarySocialAccounts(ctx, a.PersonID); err != nil {
+				return err
+			}
+		}
+		var prevHandle string
+		if a.ID != "" {
+			existing, err := repo.GetSocialAccount(ctx, a.PersonID, a.ID)
+			if err != nil {
+				return err
+			}
+			prevHandle = existing.Handle
+		}
+		var saved domain.SocialAccount
+		var err error
+		if a.ID == "" {
+			saved, err = repo.InsertSocialAccount(ctx, a)
+		} else {
+			saved, err = repo.UpdateSocialAccount(ctx, a)
+		}
+		if err != nil {
+			return err
+		}
+		// Open a new handle-history period on create, or on a handle rename: close the current period
+		// and record the new handle (D-PersonSocialChannels), so a rename never breaks the link.
+		if a.ID == "" || saved.Handle != prevHandle {
+			if a.ID != "" {
+				if err := repo.CloseCurrentSocialAccountHandle(ctx, saved.ID); err != nil {
+					return err
+				}
+			}
+			if _, err := repo.InsertSocialAccountHandle(ctx, domain.SocialAccountHandle{
+				AccountID: saved.ID,
+				Handle:    saved.Handle,
+				ValidFrom: s.now(),
+			}); err != nil {
+				return err
+			}
+		}
+		out = saved
+		return s.record(ctx, tx, "person.social-account.upsert", a.PersonID, map[string]any{"id": a.PersonID, "socialAccountId": saved.ID})
+	})
+	return out, err
+}
+
+// DeleteSocialAccount removes a person's social account by id (its handle history cascades).
+func (s *Service) DeleteSocialAccount(ctx context.Context, personID, accountID string) error {
+	return s.inTx(ctx, func(tx pgx.Tx) error {
+		repo := s.newRepo(tx)
+		if err := repo.DeleteSocialAccount(ctx, personID, accountID); err != nil {
+			return err
+		}
+		return s.record(ctx, tx, "person.social-account.delete", personID, map[string]any{"id": personID, "socialAccountId": accountID})
+	})
+}
+
+// ListSocialAccounts lists a person's social accounts (the person must exist).
+func (s *Service) ListSocialAccounts(ctx context.Context, personID string) ([]domain.SocialAccount, error) {
+	repo := s.newRepo(s.pool)
+	if _, err := repo.GetPerson(ctx, personID); err != nil {
+		return nil, err
+	}
+	return repo.ListSocialAccounts(ctx, personID)
+}
+
+// ListSocialAccountHandles lists one social account's handle-rename history (holder-scoped: the account
+// must belong to the person).
+func (s *Service) ListSocialAccountHandles(ctx context.Context, personID, accountID string) ([]domain.SocialAccountHandle, error) {
+	repo := s.newRepo(s.pool)
+	if _, err := repo.GetSocialAccount(ctx, personID, accountID); err != nil {
+		return nil, err
+	}
+	return repo.ListSocialAccountHandles(ctx, accountID)
+}
+
+// ListPlatforms returns the instance-admin social/messenger platform catalog (read; no person scope).
+func (s *Service) ListPlatforms(ctx context.Context) ([]domain.Platform, error) {
+	return s.newRepo(s.pool).ListPlatforms(ctx)
 }
 
 // ListEmailTypes / ListPhoneTypes return the instance-admin contact-kind catalogs (reads; no person

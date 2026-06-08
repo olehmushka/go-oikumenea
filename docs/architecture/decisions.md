@@ -1279,6 +1279,134 @@ delivering the UI.
 
 ---
 
+### D-PersonSocialChannels — Social-network & messenger presence as catalog-typed person channels with analytics-grade attribution (extends D-PersonContactChannels)
+
+**Decision.** A person gains a **social-network / messenger presence**, modelled in two additive
+layers over the existing contact channels, plus an instance-admin platform catalog. All follow the
+[person](../modules/person.md) child-table pattern (RID PK, `person_id`/parent FK `ON DELETE CASCADE`,
+soft-delete, `set_updated_at`, all writes audited, reads scoped through the holder per
+D-PersonReadScope, erased on purge):
+
+- **`person_platforms`** — instance-admin catalog (D-Code/D-i18n: natural `code` PK, translatable
+  `name` via the [localization](../modules/localization.md) store `entity_type='platform'`, `status`,
+  `sort_order`) with **`category TEXT CHECK (category IN ('messenger','social'))`**. Seeded messengers
+  `telegram`/`whatsapp`/`signal`/`viber`; socials `instagram`/`linkedin`/`x`/`facebook`.
+- **`person_messenger_links`** *(layer a — reachability over existing channels)* — annotates an
+  existing phone **or** email with a messenger platform: an **XOR FK** (`phone_id` →`person_phones`
+  *or* `email_id` →`person_emails`, exactly one non-null via CHECK), `platform_code` →`person_platforms`
+  (write-time restricted to `category='messenger'`), `is_primary`, optional `verified_at`. `pii:contact`.
+  Ontology Link `link__reachable_on`.
+- **`person_social_accounts`** *(layer b — standalone handle, independent of any phone/email)* —
+  `person_id` →`person_persons`, `platform_code` →`person_platforms`, `is_primary`. Object
+  `PersonSocialAccount` + Link `link__holds_account`. Enriched with **four analytics-grade practices**:
+  - **Identity stability** — an immutable `platform_user_id TEXT` (the platform's internal id, the
+    durable key) alongside the **mutable** current `handle TEXT`, both `pii:contact`; one active row per
+    `(person, platform_code, platform_user_id)` when the id is known, else per
+    `(person, platform_code, lower(handle))`.
+  - **Verification** — `platform_verified BOOLEAN` (platform "blue-check") **distinct from**
+    `verified_by_operator_at TIMESTAMPTZ` (operator confirmation); both **non-PII** metadata.
+  - **Profile (stored now)** — `display_name`, derived `profile_url`, `language`, all `pii:contact`.
+  - **Attribution provenance** *(the core practice)* — `source TEXT CHECK (source IN
+    ('self_declared','operator_verified','imported'))` + `confidence TEXT CHECK (confidence IN
+    ('confirmed','probable','possible'))` on the `HOLDS_ACCOUNT` link, so a claimed account is a
+    **weighted, sourced assertion**, not a bare fact. Non-PII.
+- **`person_social_account_handles`** — handle-rename **history** (`account_id` FK, `handle`,
+  `valid_from`/`valid_to`, soft-delete; `pii:contact`) so a rename never breaks the link.
+
+**Explicitly out of scope.** **No time-series social-graph metrics** (follower/following/activity
+counts) — surveillance-adjacent and outside a personnel directory's purpose; not built, not parked.
+**Free-text `bio` + `self_declared_location`** are `pii:sensitive` and are **NOT stored** until the
+envelope-encryption seam is extended (**DS-29**) — the same gating stance as gender identity under
+D-PersonBio; documented as a future column, not created now.
+
+**Why.** A universal directory increasingly needs to record reachability on messengers and presence on
+social networks. Splitting into a phone/email-derived **reachability** layer and a **standalone account**
+layer mirrors how the data actually arrives (a number *is* a Telegram; a LinkedIn handle stands alone).
+Adopting the proven Palantir-style ontology practices — **stable id vs mutable handle + rename history**,
+**provenance + confidence on the attribution link**, and **platform-vs-operator verification** — is what
+turns "a username" into analytics-grade, queryable, weightable data. Catalog-typing the platforms keeps
+the vocabulary operator-managed and localizable. Excluding behavioural metrics and gating free-text
+profile prose behind DS-29 keeps the feature inside the project's PII discipline (D-PIITiers).
+
+**Why not** (a) one polymorphic `person_channels` table: loses typed FKs and the XOR reachability shape;
+(b) store provenance/confidence on the account Object rather than the link: the *claim* is the
+relationship, not the account; (c) collect follower/activity metrics: surveillance creep with no
+authorization purpose; (d) store `bio`/location now at `pii:contact`: understates the tier and bypasses
+the envelope rule.
+
+**Consequence.** New tables `person_platforms`, `person_messenger_links`, `person_social_accounts`,
+`person_social_account_handles` ([person](../modules/person.md)); platform names join the
+[localization](../modules/localization.md) store (`entity_type='platform'`). New person sub-resource
+endpoints (`/persons/{id}/messenger-links`, `/social-accounts`, the account's handle history) + a catalog
+read (`GET /person/platforms`), gated `person.read`/`person.update` (scoped through the holder). The
+`HOLDS_ACCOUNT` `source`/`confidence` columns are a registered analytics exception to the "provenance is
+mostly absent as a column" divergence ([ontology-mapping](../ontology-mapping.md) §4.4). All four tables
+**erased on person purge** (the purge erasure list + `DeleteAll*` extend to their `pii:contact` columns).
+No new module, no new third-party dependency. Promotes open-question **DS-41**. See
+[person](../modules/person.md), [localization](../modules/localization.md).
+
+### D-PersonRelationships — Person↔person ties as per-type reified self-links (extends D-Ontology, mirrors membership's temporal link)
+
+**Decision.** A person gains **relationships to other persons**, each modelled as a **per-type reified
+self-link** (`Person → Person`, D-Ontology `link__<type>`) with **both endpoints in-directory**
+(`person_persons` rows). Per-type tables (never one generic table, never a bare FK), each mirroring the
+`membership_memberships` temporal-link shape (RID PK, soft-delete, timestamps, `effective_from`/
+`effective_to` where a lifecycle applies, `status TEXT`+`CHECK`). All are **instance-global** (like
+Person), reads project through D-PersonReadScope, all writes audited, and when **either** endpoint person
+purges the link is erased (the `PersonPurged` subscriber extends to both endpoints):
+
+- **`person_partnerships`** — marriage **and** engagement folded into one lifecycle: a symmetric pair
+  (`CHECK (person_id_a < person_id_b)`, no self-pair), `status ∈ engaged|married|divorced|widowed|
+  annulled|dissolved`, `effective_from`/`effective_to` (NULL = ongoing); **at most one active
+  `engaged`-or-`married` row per person**. Link `link__partnered_with`.
+- **`person_kinships`** — directional `parent_of` (`parent_id → child_id`, no self-edge),
+  `status ∈ active|disestablished` + soft-delete (adoption / legal disestablishment). Siblings are
+  **derived, not stored**. Link `link__kin_parent_of` (a distinct RID from tenant's unit
+  `link__parent_of`).
+- **`person_guardianships`** — `guardian_id → ward_id`, relation label, effective interval, `status` —
+  legal guardian/dependent, **distinct from blood `parent_of`**. Link `link__guardian_of`.
+- **`person_sponsorships`** — `sponsor_id → sponsored_id`, catalog-typed relation kind (godparent /
+  academic advisor / military mentor), effective interval. Link `link__sponsor_of`.
+- **`person_next_of_kin`** — `subject_id → contact_id` (**both in-directory**), relation label +
+  priority ordering — a **nomination**, not a blood fact. External free-text next-of-kin is **out of
+  scope** (both ends must be directory persons). Link `link__next_of_kin`.
+- **`person_associations`** — symmetric `subject ↔ associate`, relation label, `kind ∈
+  associate|coi|no_contact`, provenance — conflict-of-interest declarations + prohibited-contact
+  (discipline). Link `link__associated_with`.
+- **`person_social_links`** — friend/follower, `status ∈ active|archived`. **Depends on
+  D-PersonSocialChannels**: the only accepted proof of friendship is a linked `person_social_accounts`
+  row, so this table lands **after** the social-account layer exists; other notions of "friendship" are
+  undefined for now. Link `link__social_tie`.
+
+Open-ended relation vocabularies (sponsorship kind, association kind, next-of-kin relation label) are
+**catalog-typed** via a new **`person_relation_types`** catalog (`code` + translatable `name` +
+`category`), consistent with this project favouring operator-managed catalogs over compiled CHECK lists;
+fixed lifecycle statuses (partnership, kinship) stay `TEXT`+`CHECK`.
+
+**Why.** A personnel directory across army/church/university needs family and social structure: marriage
+and kinship for next-of-kin and benefits; godparents (church) / advisors / mentors as sponsorship;
+guardianship for dependents; and — Palantir-style — a generic **association** link for COI and
+prohibited-contact tracking. Reifying each tie as its own per-type Link (with identity, attributes, and
+history) rather than a bare FK is the binding D-Ontology stance and lets each relationship carry status
+and an effective interval. Per-type tables keep each relationship's invariants explicit (canonical pair
+ordering, one active marriage, directional kinship) instead of overloading one polymorphic table.
+
+**Why not** (a) one generic `person_relationships` table with a `type` column: erases per-type
+invariants and FKs, contradicts "never reify a bare FK / never one generic table"; (b) store next-of-kin
+as free text: loses referential integrity and the directory's resolve-or-redact purge guarantee; (c)
+keep marriage and engagement as separate tables: they share the symmetric-pair + effective-interval
+lifecycle, so one `person_partnerships` table with a richer status set is the cleaner reified link.
+
+**Consequence.** New tables `person_partnerships`, `person_kinships`, `person_guardianships`,
+`person_sponsorships`, `person_next_of_kin`, `person_associations`, `person_social_links`, and the
+`person_relation_types` catalog ([person](../modules/person.md)). New per-type sub-resource endpoints
+under `/persons/{id}/`. New Link types registered in [ontology-mapping](../ontology-mapping.md) §2. The
+`PersonPurged` subscriber erases links on **either** endpoint's purge. `person_social_links` is gated on
+D-PersonSocialChannels. No new module. Promotes open-question **DS-42** (expanded). See
+[person](../modules/person.md).
+
+---
+
 ## Carried-over locks (settled earlier; restated for self-containment)
 
 These come from the high-level plan and are not re-litigated here.

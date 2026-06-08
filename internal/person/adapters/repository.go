@@ -183,6 +183,15 @@ func (r *Repository) Purge(ctx context.Context, id string) (domain.Person, error
 	if err := r.q.DeleteAllCallSigns(ctx, id); err != nil {
 		return domain.Person{}, err
 	}
+	if err := r.q.DeleteAllMessengerLinks(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if err := r.q.DeleteAllSocialAccountHandles(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if err := r.q.DeleteAllSocialAccounts(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
 	row, err := r.q.PurgePerson(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -544,7 +553,279 @@ func (r *Repository) ListPhoneTypes(ctx context.Context) ([]domain.ContactType, 
 	return out, nil
 }
 
+// ---------------------------------------------------------------- platform catalog
+
+func (r *Repository) ListPlatforms(ctx context.Context) ([]domain.Platform, error) {
+	rows, err := r.q.ListPlatforms(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Platform, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toPlatform(row))
+	}
+	return out, nil
+}
+
+func (r *Repository) GetPlatform(ctx context.Context, code string) (domain.Platform, error) {
+	row, err := r.q.GetPlatform(ctx, code)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Platform{}, domain.ErrUnknownPlatform
+		}
+		return domain.Platform{}, err
+	}
+	return toPlatform(row), nil
+}
+
+// ---------------------------------------------------------------- messenger links
+
+func (r *Repository) PhonePersonID(ctx context.Context, phoneID string) (string, error) {
+	id, err := r.q.PhonePersonID(ctx, phoneID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", domain.ErrPhoneNotFound
+		}
+		return "", err
+	}
+	return id, nil
+}
+
+func (r *Repository) EmailPersonID(ctx context.Context, emailID string) (string, error) {
+	id, err := r.q.EmailPersonID(ctx, emailID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", domain.ErrEmailNotFound
+		}
+		return "", err
+	}
+	return id, nil
+}
+
+// UpsertMessengerLink inserts a new link when m.ID is empty, otherwise replaces the named row.
+func (r *Repository) UpsertMessengerLink(ctx context.Context, m domain.MessengerLink) (domain.MessengerLink, error) {
+	if m.ID == "" {
+		row, err := r.q.InsertMessengerLink(ctx, personsql.InsertMessengerLinkParams{
+			PhoneID:      text(m.PhoneID),
+			EmailID:      text(m.EmailID),
+			PlatformCode: m.PlatformCode,
+			IsPrimary:    m.IsPrimary,
+			VerifiedAt:   ts(m.VerifiedAt),
+		})
+		if err != nil {
+			return domain.MessengerLink{}, mapWriteErr(err)
+		}
+		return toMessengerLink(row), nil
+	}
+	row, err := r.q.UpdateMessengerLink(ctx, personsql.UpdateMessengerLinkParams{
+		PhoneID:      text(m.PhoneID),
+		EmailID:      text(m.EmailID),
+		PlatformCode: m.PlatformCode,
+		IsPrimary:    m.IsPrimary,
+		VerifiedAt:   ts(m.VerifiedAt),
+		ID:           m.ID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.MessengerLink{}, domain.ErrMessengerLinkNotFound
+		}
+		return domain.MessengerLink{}, mapWriteErr(err)
+	}
+	return toMessengerLink(row), nil
+}
+
+func (r *Repository) ClearPrimaryMessengerLinks(ctx context.Context, personID string) error {
+	return r.q.ClearPrimaryMessengerLinks(ctx, personID)
+}
+
+func (r *Repository) DeleteMessengerLink(ctx context.Context, personID, linkID string) error {
+	if _, err := r.q.DeleteMessengerLink(ctx, personsql.DeleteMessengerLinkParams{ID: linkID, PersonID: personID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrMessengerLinkNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) ListMessengerLinks(ctx context.Context, personID string) ([]domain.MessengerLink, error) {
+	rows, err := r.q.ListMessengerLinks(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.MessengerLink, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toMessengerLink(row))
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------- social accounts
+
+func (r *Repository) InsertSocialAccount(ctx context.Context, a domain.SocialAccount) (domain.SocialAccount, error) {
+	row, err := r.q.InsertSocialAccount(ctx, personsql.InsertSocialAccountParams{
+		PersonID:             a.PersonID,
+		PlatformCode:         a.PlatformCode,
+		PlatformUserID:       text(a.PlatformUserID),
+		Handle:               a.Handle,
+		DisplayName:          text(a.DisplayName),
+		ProfileUrl:           text(a.ProfileURL),
+		Language:             text(a.Language),
+		PlatformVerified:     a.PlatformVerified,
+		VerifiedByOperatorAt: ts(a.VerifiedByOperatorAt),
+		Source:               a.Source,
+		Confidence:           a.Confidence,
+		IsPrimary:            a.IsPrimary,
+	})
+	if err != nil {
+		return domain.SocialAccount{}, mapWriteErr(err)
+	}
+	return toSocialAccount(row), nil
+}
+
+func (r *Repository) UpdateSocialAccount(ctx context.Context, a domain.SocialAccount) (domain.SocialAccount, error) {
+	row, err := r.q.UpdateSocialAccount(ctx, personsql.UpdateSocialAccountParams{
+		PlatformCode:         a.PlatformCode,
+		PlatformUserID:       text(a.PlatformUserID),
+		Handle:               a.Handle,
+		DisplayName:          text(a.DisplayName),
+		ProfileUrl:           text(a.ProfileURL),
+		Language:             text(a.Language),
+		PlatformVerified:     a.PlatformVerified,
+		VerifiedByOperatorAt: ts(a.VerifiedByOperatorAt),
+		Source:               a.Source,
+		Confidence:           a.Confidence,
+		IsPrimary:            a.IsPrimary,
+		ID:                   a.ID,
+		PersonID:             a.PersonID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.SocialAccount{}, domain.ErrSocialAccountNotFound
+		}
+		return domain.SocialAccount{}, mapWriteErr(err)
+	}
+	return toSocialAccount(row), nil
+}
+
+func (r *Repository) GetSocialAccount(ctx context.Context, personID, accountID string) (domain.SocialAccount, error) {
+	row, err := r.q.GetSocialAccount(ctx, personsql.GetSocialAccountParams{ID: accountID, PersonID: personID})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.SocialAccount{}, domain.ErrSocialAccountNotFound
+		}
+		return domain.SocialAccount{}, err
+	}
+	return toSocialAccount(row), nil
+}
+
+func (r *Repository) ClearPrimarySocialAccounts(ctx context.Context, personID string) error {
+	return r.q.ClearPrimarySocialAccounts(ctx, personID)
+}
+
+func (r *Repository) DeleteSocialAccount(ctx context.Context, personID, accountID string) error {
+	if _, err := r.q.DeleteSocialAccount(ctx, personsql.DeleteSocialAccountParams{ID: accountID, PersonID: personID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrSocialAccountNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) ListSocialAccounts(ctx context.Context, personID string) ([]domain.SocialAccount, error) {
+	rows, err := r.q.ListSocialAccounts(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.SocialAccount, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toSocialAccount(row))
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------- social account handle history
+
+func (r *Repository) InsertSocialAccountHandle(ctx context.Context, h domain.SocialAccountHandle) (domain.SocialAccountHandle, error) {
+	row, err := r.q.InsertSocialAccountHandle(ctx, personsql.InsertSocialAccountHandleParams{
+		AccountID: h.AccountID,
+		Handle:    h.Handle,
+		ValidFrom: pgtype.Timestamptz{Time: h.ValidFrom, Valid: true},
+		ValidTo:   ts(h.ValidTo),
+	})
+	if err != nil {
+		return domain.SocialAccountHandle{}, mapWriteErr(err)
+	}
+	return toSocialAccountHandle(row), nil
+}
+
+func (r *Repository) CloseCurrentSocialAccountHandle(ctx context.Context, accountID string) error {
+	return r.q.CloseCurrentSocialAccountHandle(ctx, accountID)
+}
+
+func (r *Repository) ListSocialAccountHandles(ctx context.Context, accountID string) ([]domain.SocialAccountHandle, error) {
+	rows, err := r.q.ListSocialAccountHandles(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.SocialAccountHandle, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toSocialAccountHandle(row))
+	}
+	return out, nil
+}
+
 // ---------------------------------------------------------------- mapping helpers
+
+func toPlatform(r personsql.OikumeneaPersonPlatform) domain.Platform {
+	return domain.Platform{
+		Code:      r.Code,
+		Name:      r.Name,
+		Category:  r.Category,
+		Status:    r.Status,
+		SortOrder: int(r.SortOrder.Int32),
+	}
+}
+
+func toMessengerLink(r personsql.OikumeneaPersonMessengerLink) domain.MessengerLink {
+	return domain.MessengerLink{
+		ID:           r.ID,
+		PhoneID:      r.PhoneID.String,
+		EmailID:      r.EmailID.String,
+		PlatformCode: r.PlatformCode,
+		IsPrimary:    r.IsPrimary,
+		VerifiedAt:   tsPtr(r.VerifiedAt),
+	}
+}
+
+func toSocialAccount(r personsql.OikumeneaPersonSocialAccount) domain.SocialAccount {
+	return domain.SocialAccount{
+		ID:                   r.ID,
+		PersonID:             r.PersonID,
+		PlatformCode:         r.PlatformCode,
+		PlatformUserID:       r.PlatformUserID.String,
+		Handle:               r.Handle,
+		DisplayName:          r.DisplayName.String,
+		ProfileURL:           r.ProfileUrl.String,
+		Language:             r.Language.String,
+		PlatformVerified:     r.PlatformVerified,
+		VerifiedByOperatorAt: tsPtr(r.VerifiedByOperatorAt),
+		Source:               r.Source,
+		Confidence:           r.Confidence,
+		IsPrimary:            r.IsPrimary,
+	}
+}
+
+func toSocialAccountHandle(r personsql.OikumeneaPersonSocialAccountHandle) domain.SocialAccountHandle {
+	return domain.SocialAccountHandle{
+		ID:        r.ID,
+		AccountID: r.AccountID,
+		Handle:    r.Handle,
+		ValidFrom: r.ValidFrom.Time,
+		ValidTo:   tsPtr(r.ValidTo),
+	}
+}
 
 func toEmail(r personsql.OikumeneaPersonEmail) domain.Email {
 	return domain.Email{
@@ -670,6 +951,10 @@ func mapWriteErr(err error) error {
 			return domain.ErrPhoneConflict
 		case strings.Contains(name, "call_sign"):
 			return domain.ErrCallSignConflict
+		case strings.Contains(name, "messenger_link"):
+			return domain.ErrMessengerLinkConflict
+		case strings.Contains(name, "social_account"):
+			return domain.ErrSocialAccountConflict
 		case strings.Contains(name, "code"):
 			return domain.ErrCodeConflict
 		}
@@ -679,6 +964,8 @@ func mapWriteErr(err error) error {
 			return domain.ErrUnknownRank
 		case strings.Contains(name, "locale"):
 			return domain.ErrUnknownLocale
+		case strings.Contains(name, "platform_code"):
+			return domain.ErrUnknownPlatform
 		case strings.Contains(name, "type_code"):
 			return domain.ErrUnknownContactType
 		case strings.Contains(name, "country"):
@@ -735,4 +1022,12 @@ func tsPtr(t pgtype.Timestamptz) *time.Time {
 	}
 	out := t.Time
 	return &out
+}
+
+// ts maps an optional instant to a nullable timestamptz column (nil => NULL).
+func ts(t *time.Time) pgtype.Timestamptz {
+	if t == nil {
+		return pgtype.Timestamptz{}
+	}
+	return pgtype.Timestamptz{Time: *t, Valid: true}
 }

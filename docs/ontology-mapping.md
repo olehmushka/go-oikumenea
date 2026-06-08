@@ -49,6 +49,10 @@ Real-world entities with identity over time → Objects.
 | `Person` | [person](modules/person.md) | optional `code` | `status` (active/deactivated/purged) + soft-delete; **crypto-erase on purge** | instance-global; CLDR structured names (patronymic in `given2`); `birthdate`, ISO-5218 `sex` |
 | `PersonEmail` / `PersonPhone` / `PersonCallSign` | [person](modules/person.md) | no | soft-delete; **erased on purge** | effective person child rows; email/phone `pii:contact`, call sign `pii:basic`; each unique per person among active; `is_primary` |
 | `PersonEmailType` / `PersonPhoneType` | [person](modules/person.md) | yes (`code`/`name`) | `status` + soft-delete | instance-admin catalogs for the contact-channel `kind` |
+| `PersonSocialAccount` | [person](modules/person.md) | no | soft-delete; **erased on purge** | standalone social handle; stable `platform_user_id` vs mutable `handle` (history in `PersonSocialAccountHandle`); `pii:contact`; `platform_verified` vs `verified_by_operator_at` (D-PersonSocialChannels) |
+| `PersonSocialAccountHandle` | [person](modules/person.md) | no | temporal (`valid_from`/`valid_to`) + soft-delete | handle-rename history so a rename never breaks links |
+| `Platform` | [person](modules/person.md) | yes (`code`/`name`) | `status` + soft-delete | instance-admin catalog of messengers/social networks; `category ∈ messenger\|social` |
+| `RelationType` | [person](modules/person.md) | yes (`code`/`name`) | `status` + soft-delete | instance-admin catalog for open-ended person↔person relation labels (`category ∈ sponsorship\|association\|next_of_kin`) |
 | `Position` | [membership](modules/membership.md) | yes (unique per unit) | `status` (active/abolished) + soft-delete | unit-owned billet; an Object that **exists while vacant** — not just a link end |
 | `Document` / `DocumentType` | [document](modules/document.md) | type has `code`/`name` | `status` + soft-delete | papers, metadata only; type is an instance-admin catalog |
 | `PersonalCode` / `PersonalCodeScheme` | [document](modules/document.md) | scheme has `code`/`name` | `status` + soft-delete; crypto-erase | value is `pii:sensitive`, **envelope-encrypted** + blind-indexed |
@@ -94,6 +98,15 @@ RID is `link__<link_type>` in lower_snake (e.g. the `PARENT_OF` row → `link__p
 | `OF_TYPE` / `OF_SCHEME` | `Document`/`PersonalCode` → catalog | [document](modules/document.md) | — | — |
 | `HOLDS_EMAIL` / `HOLDS_PHONE` / `HOLDS_CALL_SIGN` | `Person` → email/phone/call-sign | [person](modules/person.md) | `is_primary`; email `provider`, phone `country` (derived) | scoped through the holder |
 | `OF_EMAIL_TYPE` / `OF_PHONE_TYPE` | email/phone → type catalog | [person](modules/person.md) | — | — |
+| `REACHABLE_ON` | `PersonEmail`/`PersonPhone` → `Platform` | [person](modules/person.md) | XOR phone/email, `is_primary`, `verified_at` | — (messenger-category only) |
+| `HOLDS_ACCOUNT` | `Person` → `PersonSocialAccount` | [person](modules/person.md) | **`source` (self_declared/operator_verified/imported) + `confidence` (confirmed/probable/possible)** — a sourced, weighted attribution claim | `status`; scoped through the holder; see §4.4 |
+| `PARTNERED_WITH` | `Person` → `Person` | [person](modules/person.md) | symmetric (canonical pair); `status ∈ engaged\|married\|divorced\|widowed\|annulled\|dissolved` | **yes — `effective_from`/`effective_to`** |
+| `KIN_PARENT_OF` | `Person` → `Person` | [person](modules/person.md) | directional `parent_of`; `status ∈ active\|disestablished` | siblings derived, not stored |
+| `GUARDIAN_OF` | `Person` → `Person` | [person](modules/person.md) | `relation_code`, `status` | **yes — effective interval** |
+| `SPONSOR_OF` | `Person` → `Person` | [person](modules/person.md) | catalog `relation_code` (godparent/advisor/mentor) | **yes — effective interval** |
+| `NEXT_OF_KIN` | `Person` → `Person` | [person](modules/person.md) | in-directory nomination, `relation_code`, `priority` | — |
+| `ASSOCIATED_WITH` | `Person` → `Person` | [person](modules/person.md) | symmetric; `kind ∈ associate\|coi\|no_contact`, `relation_code` | — (COI / no-contact) |
+| `SOCIAL_TIE` | `Person` → `Person` | [person](modules/person.md) | `status ∈ active\|archived` | **gated on a linked `PersonSocialAccount`** (D-PersonSocialChannels) |
 | `ISSUED_BY` | `Order` → `Unit` | [order](modules/order.md) | — | anchors authz + RLS |
 | `TARGETS` | `OrderItem` → `Person`(+`Unit`/`Position`/`Rank`) | [order](modules/order.md) | `effect`, `effective_from/to` (legal metadata) | — |
 | `CAUSED_BY` (provenance) | `Membership`/rank change → `OrderItem` | [membership](modules/membership.md) / [order](modules/order.md) | `order_item_id` | the наказ that authorized the change |
@@ -173,7 +186,11 @@ go-oikumenea tracks provenance richly but **non-uniformly**: `order_item_id` on 
 single `source` field across all tables. The RID scheme partly closes this: every Object/Link/Action
 RID self-declares its `<service>` and `<environment>` of origin, and the **`action__…` RID keys each
 audit row** to the write that produced it. **Verdict:** partial gap; provenance is fully recoverable
-via the RID + in-transaction audit, so a uniform `source` column would be redundant.
+via the RID + in-transaction audit, so a uniform `source` column would be redundant. The **one
+deliberate exception** is the `HOLDS_ACCOUNT` link (D-PersonSocialChannels): a social-account
+attribution carries explicit **`source` + `confidence`** columns, because *who claimed this account and
+how sure are we* is analytics-grade data an operator filters/weights on at query time — not something to
+reconstruct from audit. This is a ratified, scoped column, not a reversal of the non-uniform stance.
 
 **4.5 Status over deletion — partial.** Ontology prefers a terminal status to deletion. go-oikumenea
 uses `deleted_at` soft-delete (reversible within a grace window — [glossary](glossary.md),

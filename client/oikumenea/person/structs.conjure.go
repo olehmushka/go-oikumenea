@@ -204,6 +204,40 @@ func (o *EmailType) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+/*
+Reachability on a messenger platform over one of the person's existing channels
+(D-PersonSocialChannels). Exactly one of phoneId/emailId is set.
+*/
+type MessengerLink struct {
+	Id string `json:"id"`
+	// The URN RID of the person's phone this link annotates; null when the link is over an email.
+	PhoneId *string `json:"phoneId,omitempty"`
+	// The URN RID of the person's email this link annotates; null when the link is over a phone.
+	EmailId *string `json:"emailId,omitempty"`
+	// The messenger platform code (category=messenger).
+	PlatformCode string `json:"platformCode"`
+	// The person's primary messenger reachability (at most one active).
+	IsPrimary bool `json:"isPrimary"`
+	// When the reachability was verified; null when unverified.
+	VerifiedAt *datetime.DateTime `json:"verifiedAt,omitempty"`
+}
+
+func (o MessengerLink) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *MessengerLink) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // A full transliterated name form for one locale (e.g. ukr native, eng Latin). Person-managed, NOT the localization store.
 type NameVariant struct {
 	Id       string `json:"id"`
@@ -296,6 +330,10 @@ type Person struct {
 	Phones []Phone `json:"phones"`
 	// The person's call signs. Populated by getPerson; empty in list responses.
 	CallSigns []CallSign `json:"callSigns"`
+	// The person's messenger reachability links. Populated by getPerson; empty in list responses.
+	MessengerLinks []MessengerLink `json:"messengerLinks"`
+	// The person's standalone social accounts. Populated by getPerson; empty in list responses.
+	SocialAccounts []SocialAccount `json:"socialAccounts"`
 }
 
 func (o Person) MarshalJSON() ([]byte, error) {
@@ -316,6 +354,12 @@ func (o Person) MarshalJSON() ([]byte, error) {
 	}
 	if o.CallSigns == nil {
 		o.CallSigns = make([]CallSign, 0)
+	}
+	if o.MessengerLinks == nil {
+		o.MessengerLinks = make([]MessengerLink, 0)
+	}
+	if o.SocialAccounts == nil {
+		o.SocialAccounts = make([]SocialAccount, 0)
 	}
 	type _tmpPerson Person
 	return safejson.Marshal(_tmpPerson(o))
@@ -344,6 +388,12 @@ func (o *Person) UnmarshalJSON(data []byte) error {
 	}
 	if rawPerson.CallSigns == nil {
 		rawPerson.CallSigns = make([]CallSign, 0)
+	}
+	if rawPerson.MessengerLinks == nil {
+		rawPerson.MessengerLinks = make([]MessengerLink, 0)
+	}
+	if rawPerson.SocialAccounts == nil {
+		rawPerson.SocialAccounts = make([]SocialAccount, 0)
 	}
 	*o = Person(rawPerson)
 	return nil
@@ -486,6 +536,56 @@ func (o *PhoneType) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// An instance-admin catalog entry naming a social network / messenger (D-PersonSocialChannels). Stable code + translatable name + category.
+type Platform struct {
+	// Stable, locale-agnostic identifier (D-Code); immutable by convention.
+	Code string `json:"code"`
+	// The translatable label as a locale -> text map (all enabled locales; D-i18n).
+	Name map[string]string `json:"name"`
+	// One of messenger | social. Only messenger platforms may carry a messenger link.
+	Category string `json:"category"`
+	// One of active | retired.
+	Status    string `json:"status"`
+	SortOrder *int   `json:"sortOrder,omitempty"`
+}
+
+func (o Platform) MarshalJSON() ([]byte, error) {
+	if o.Name == nil {
+		o.Name = make(map[string]string)
+	}
+	type _tmpPlatform Platform
+	return safejson.Marshal(_tmpPlatform(o))
+}
+
+func (o *Platform) UnmarshalJSON(data []byte) error {
+	type _tmpPlatform Platform
+	var rawPlatform _tmpPlatform
+	if err := safejson.Unmarshal(data, &rawPlatform); err != nil {
+		return err
+	}
+	if rawPlatform.Name == nil {
+		rawPlatform.Name = make(map[string]string)
+	}
+	*o = Platform(rawPlatform)
+	return nil
+}
+
+func (o Platform) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // A person's effective-dated residence in a country/region (D-Geo). Locator data (pii:contact).
 type Residence struct {
 	Id       string `json:"id"`
@@ -531,6 +631,77 @@ func (o SetRankRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *SetRankRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+A person's standalone social-network account (D-PersonSocialChannels). platformUserId is the
+platform's immutable internal id (the durable key); handle is the mutable current @handle.
+*/
+type SocialAccount struct {
+	Id       string `json:"id"`
+	PersonId string `json:"personId"`
+	// The platform code the account is on.
+	PlatformCode string `json:"platformCode"`
+	// The platform's immutable internal id (the durable key); null when unknown.
+	PlatformUserId *string `json:"platformUserId,omitempty"`
+	// The current @handle (mutable; rename history kept separately).
+	Handle      string  `json:"handle"`
+	DisplayName *string `json:"displayName,omitempty"`
+	// Profile URL; derived from platform + handle on write when not supplied.
+	ProfileUrl *string `json:"profileUrl,omitempty"`
+	Language   *string `json:"language,omitempty"`
+	// The platform "blue-check"; distinct from operator confirmation.
+	PlatformVerified bool `json:"platformVerified"`
+	// When an operator confirmed the account; null when unconfirmed.
+	VerifiedByOperatorAt *datetime.DateTime `json:"verifiedByOperatorAt,omitempty"`
+	// How the account was learned — one of self_declared | operator_verified | imported.
+	Source string `json:"source"`
+	// Weight of the claim — one of confirmed | probable | possible.
+	Confidence string `json:"confidence"`
+	// The person's primary social account (at most one active).
+	IsPrimary bool `json:"isPrimary"`
+}
+
+func (o SocialAccount) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *SocialAccount) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// One period in a social account's @handle-rename history (D-PersonSocialChannels). validTo null = current.
+type SocialAccountHandle struct {
+	Id        string            `json:"id"`
+	AccountId string            `json:"accountId"`
+	Handle    string            `json:"handle"`
+	ValidFrom datetime.DateTime `json:"validFrom"`
+	// When this handle stopped being current; null = current.
+	ValidTo *datetime.DateTime `json:"validTo,omitempty"`
+}
+
+func (o SocialAccountHandle) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *SocialAccountHandle) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -651,6 +822,36 @@ func (o *UpsertEmailRequest) UnmarshalYAML(unmarshal func(interface{}) error) er
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+/*
+Add a messenger link over one of the person's phones or emails, or replace one when id is
+supplied. Exactly one of phoneId/emailId must be set; platformCode must be a messenger platform.
+*/
+type UpsertMessengerLinkRequest struct {
+	// The URN RID of an existing messenger-link row to replace; omit to add a new row.
+	Id           *string            `json:"id,omitempty"`
+	PhoneId      *string            `json:"phoneId,omitempty"`
+	EmailId      *string            `json:"emailId,omitempty"`
+	PlatformCode string             `json:"platformCode"`
+	IsPrimary    *bool              `json:"isPrimary,omitempty"`
+	VerifiedAt   *datetime.DateTime `json:"verifiedAt,omitempty"`
+}
+
+func (o UpsertMessengerLinkRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertMessengerLinkRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // Add or replace the name variant for a locale (keyed by (person, locale)).
 type UpsertNameVariantRequest struct {
 	Locale        string  `json:"locale"`
@@ -727,6 +928,41 @@ func (o UpsertResidenceRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *UpsertResidenceRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Add a social account, or replace one when id is supplied. handle is normalized and profileUrl derived when omitted.
+type UpsertSocialAccountRequest struct {
+	// The URN RID of an existing social-account row to replace; omit to add a new row.
+	Id                   *string            `json:"id,omitempty"`
+	PlatformCode         string             `json:"platformCode"`
+	PlatformUserId       *string            `json:"platformUserId,omitempty"`
+	Handle               string             `json:"handle"`
+	DisplayName          *string            `json:"displayName,omitempty"`
+	ProfileUrl           *string            `json:"profileUrl,omitempty"`
+	Language             *string            `json:"language,omitempty"`
+	PlatformVerified     *bool              `json:"platformVerified,omitempty"`
+	VerifiedByOperatorAt *datetime.DateTime `json:"verifiedByOperatorAt,omitempty"`
+	// self_declared | operator_verified | imported.
+	Source string `json:"source"`
+	// confirmed | probable | possible; defaults to possible.
+	Confidence *string `json:"confidence,omitempty"`
+	IsPrimary  *bool   `json:"isPrimary,omitempty"`
+}
+
+func (o UpsertSocialAccountRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertSocialAccountRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

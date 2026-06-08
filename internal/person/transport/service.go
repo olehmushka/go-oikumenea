@@ -43,10 +43,11 @@ const (
 	permPurge      = string(authzdomain.PermPersonPurge)
 )
 
-// Localization entity-type keys for the translatable contact-kind catalog names (D-i18n).
+// Localization entity-type keys for the translatable contact-kind / platform catalog names (D-i18n).
 const (
 	emailTypeEntity = "email_type"
 	phoneTypeEntity = "phone_type"
+	platformEntity  = "platform"
 )
 
 // Service adapts *application.Service to the generated personapi.PersonService interface. It holds the
@@ -436,6 +437,137 @@ func (s Service) DeleteCallSign(ctx context.Context, token bearertoken.Token, pe
 	return nil
 }
 
+// ---------------------------------------------------------------- messenger links (D-PersonSocialChannels)
+
+func (s Service) ListMessengerLinks(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.MessengerLink, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	ls, err := s.app.ListMessengerLinks(ctx, personID)
+	if err != nil {
+		return nil, s.mapError(ctx, err, personID)
+	}
+	return toAPIMessengerLinks(ls), nil
+}
+
+func (s Service) UpsertMessengerLink(ctx context.Context, token bearertoken.Token, personID string, req personapi.UpsertMessengerLinkRequest) (personapi.MessengerLink, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return personapi.MessengerLink{}, err
+	}
+	created, err := s.app.UpsertMessengerLink(ctx, personID, domain.MessengerLink{
+		ID:           derefOr(req.Id, ""),
+		PhoneID:      derefOr(req.PhoneId, ""),
+		EmailID:      derefOr(req.EmailId, ""),
+		PlatformCode: req.PlatformCode,
+		IsPrimary:    derefOr(req.IsPrimary, false),
+		VerifiedAt:   timePtrFromDT(req.VerifiedAt),
+	})
+	if err != nil {
+		return personapi.MessengerLink{}, s.mapError(ctx, err, personID)
+	}
+	return toAPIMessengerLink(created), nil
+}
+
+func (s Service) DeleteMessengerLink(ctx context.Context, token bearertoken.Token, personID, messengerLinkID string) error {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return err
+	}
+	if err := s.app.DeleteMessengerLink(ctx, personID, messengerLinkID); err != nil {
+		return s.mapError(ctx, err, personID)
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------- social accounts (D-PersonSocialChannels)
+
+func (s Service) ListSocialAccounts(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.SocialAccount, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	as, err := s.app.ListSocialAccounts(ctx, personID)
+	if err != nil {
+		return nil, s.mapError(ctx, err, personID)
+	}
+	return toAPISocialAccounts(as), nil
+}
+
+func (s Service) UpsertSocialAccount(ctx context.Context, token bearertoken.Token, personID string, req personapi.UpsertSocialAccountRequest) (personapi.SocialAccount, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return personapi.SocialAccount{}, err
+	}
+	created, err := s.app.UpsertSocialAccount(ctx, domain.SocialAccount{
+		ID:                   derefOr(req.Id, ""),
+		PersonID:             personID,
+		PlatformCode:         req.PlatformCode,
+		PlatformUserID:       derefOr(req.PlatformUserId, ""),
+		Handle:               req.Handle,
+		DisplayName:          derefOr(req.DisplayName, ""),
+		ProfileURL:           derefOr(req.ProfileUrl, ""),
+		Language:             derefOr(req.Language, ""),
+		PlatformVerified:     derefOr(req.PlatformVerified, false),
+		VerifiedByOperatorAt: timePtrFromDT(req.VerifiedByOperatorAt),
+		Source:               req.Source,
+		Confidence:           derefOr(req.Confidence, ""),
+		IsPrimary:            derefOr(req.IsPrimary, false),
+	})
+	if err != nil {
+		return personapi.SocialAccount{}, s.mapError(ctx, err, personID)
+	}
+	return toAPISocialAccount(created), nil
+}
+
+func (s Service) DeleteSocialAccount(ctx context.Context, token bearertoken.Token, personID, socialAccountID string) error {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return err
+	}
+	if err := s.app.DeleteSocialAccount(ctx, personID, socialAccountID); err != nil {
+		return s.mapError(ctx, err, personID)
+	}
+	return nil
+}
+
+func (s Service) ListSocialAccountHandles(ctx context.Context, token bearertoken.Token, personID, socialAccountID string) ([]personapi.SocialAccountHandle, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	hs, err := s.app.ListSocialAccountHandles(ctx, personID, socialAccountID)
+	if err != nil {
+		return nil, s.mapError(ctx, err, personID)
+	}
+	out := make([]personapi.SocialAccountHandle, 0, len(hs))
+	for _, h := range hs {
+		out = append(out, toAPISocialAccountHandle(h))
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------- platform catalog
+
+func (s Service) ListPlatforms(ctx context.Context, token bearertoken.Token) ([]personapi.Platform, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	platforms, err := s.app.ListPlatforms(ctx)
+	if err != nil {
+		return nil, s.mapError(ctx, err, "")
+	}
+	defaults := make(map[string]string, len(platforms))
+	for _, p := range platforms {
+		defaults[p.Code] = p.Name
+	}
+	names, err := s.loc.NamesByID(ctx, platformEntity, defaults)
+	if err != nil {
+		return nil, s.mapError(ctx, err, "")
+	}
+	out := make([]personapi.Platform, 0, len(platforms))
+	for _, p := range platforms {
+		out = append(out, personapi.Platform{
+			Code: p.Code, Name: names[p.Code], Category: p.Category, Status: p.Status, SortOrder: sortOrderPtr(p.SortOrder),
+		})
+	}
+	return out, nil
+}
+
 // ---------------------------------------------------------------- contact-kind catalogs
 
 func (s Service) ListEmailTypes(ctx context.Context, token bearertoken.Token) ([]personapi.EmailType, error) {
@@ -522,6 +654,8 @@ func toAPIPerson(p domain.Person) personapi.Person {
 		Emails:         toAPIEmails(p.Emails),
 		Phones:         toAPIPhones(p.Phones),
 		CallSigns:      toAPICallSigns(p.CallSigns),
+		MessengerLinks: toAPIMessengerLinks(p.MessengerLinks),
+		SocialAccounts: toAPISocialAccounts(p.SocialAccounts),
 	}
 }
 
@@ -646,6 +780,61 @@ func toAPICallSigns(cs []domain.CallSign) []personapi.CallSign {
 	return out
 }
 
+func toAPIMessengerLink(m domain.MessengerLink) personapi.MessengerLink {
+	return personapi.MessengerLink{
+		Id:           m.ID,
+		PhoneId:      strPtrOrNil(m.PhoneID),
+		EmailId:      strPtrOrNil(m.EmailID),
+		PlatformCode: m.PlatformCode,
+		IsPrimary:    m.IsPrimary,
+		VerifiedAt:   dtPtr(m.VerifiedAt),
+	}
+}
+
+func toAPIMessengerLinks(ls []domain.MessengerLink) []personapi.MessengerLink {
+	out := make([]personapi.MessengerLink, 0, len(ls))
+	for _, m := range ls {
+		out = append(out, toAPIMessengerLink(m))
+	}
+	return out
+}
+
+func toAPISocialAccount(a domain.SocialAccount) personapi.SocialAccount {
+	return personapi.SocialAccount{
+		Id:                   a.ID,
+		PersonId:             a.PersonID,
+		PlatformCode:         a.PlatformCode,
+		PlatformUserId:       strPtrOrNil(a.PlatformUserID),
+		Handle:               a.Handle,
+		DisplayName:          strPtrOrNil(a.DisplayName),
+		ProfileUrl:           strPtrOrNil(a.ProfileURL),
+		Language:             strPtrOrNil(a.Language),
+		PlatformVerified:     a.PlatformVerified,
+		VerifiedByOperatorAt: dtPtr(a.VerifiedByOperatorAt),
+		Source:               a.Source,
+		Confidence:           a.Confidence,
+		IsPrimary:            a.IsPrimary,
+	}
+}
+
+func toAPISocialAccounts(as []domain.SocialAccount) []personapi.SocialAccount {
+	out := make([]personapi.SocialAccount, 0, len(as))
+	for _, a := range as {
+		out = append(out, toAPISocialAccount(a))
+	}
+	return out
+}
+
+func toAPISocialAccountHandle(h domain.SocialAccountHandle) personapi.SocialAccountHandle {
+	return personapi.SocialAccountHandle{
+		Id:        h.ID,
+		AccountId: h.AccountID,
+		Handle:    h.Handle,
+		ValidFrom: datetime.DateTime(h.ValidFrom),
+		ValidTo:   dtPtr(h.ValidTo),
+	}
+}
+
 // sortOrderPtr maps a catalog sort order (0 == unset by convention) to the optional API field.
 func sortOrderPtr(n int) *int {
 	if n == 0 {
@@ -682,7 +871,9 @@ func (s Service) mapError(ctx context.Context, err error, personID string) error
 		errors.Is(err, domain.ErrResidenceNotFound),
 		errors.Is(err, domain.ErrEmailNotFound),
 		errors.Is(err, domain.ErrPhoneNotFound),
-		errors.Is(err, domain.ErrCallSignNotFound):
+		errors.Is(err, domain.ErrCallSignNotFound),
+		errors.Is(err, domain.ErrMessengerLinkNotFound),
+		errors.Is(err, domain.ErrSocialAccountNotFound):
 		return personapi.NewPersonNotFound(personID)
 	case errors.Is(err, domain.ErrCodeConflict):
 		return personapi.NewPersonConflict("a person with this code already exists")
@@ -694,6 +885,16 @@ func (s Service) mapError(ctx context.Context, err error, personID string) error
 		return personapi.NewPersonConflict("an active phone with this number already exists")
 	case errors.Is(err, domain.ErrCallSignConflict):
 		return personapi.NewPersonConflict("an active call sign with this value already exists")
+	case errors.Is(err, domain.ErrMessengerLinkConflict):
+		return personapi.NewPersonConflict("an active messenger link for this channel and platform already exists")
+	case errors.Is(err, domain.ErrSocialAccountConflict):
+		return personapi.NewPersonConflict("an active social account for this platform and identity already exists")
+	case errors.Is(err, domain.ErrUnknownPlatform):
+		return personapi.NewPersonInvalid("platform does not exist")
+	case errors.Is(err, domain.ErrPlatformNotMessenger):
+		return personapi.NewPersonInvalid("platform is not a messenger platform")
+	case errors.Is(err, domain.ErrChannelNotOwned):
+		return personapi.NewPersonInvalid("the phone/email is not held by this person")
 	case errors.Is(err, domain.ErrUnknownRank):
 		return personapi.NewPersonInvalid("rank does not exist")
 	case errors.Is(err, domain.ErrUnknownContactType):
@@ -742,6 +943,15 @@ func dtPtr(t *time.Time) *datetime.DateTime {
 	}
 	d := datetime.DateTime(*t)
 	return &d
+}
+
+// timePtrFromDT maps an optional wire datetime back to a *time.Time (nil stays nil).
+func timePtrFromDT(d *datetime.DateTime) *time.Time {
+	if d == nil {
+		return nil
+	}
+	t := time.Time(*d)
+	return &t
 }
 
 // attrToBytes marshals the optional free-form attributes object to the JSONB bytes stored in the DB

@@ -40,9 +40,12 @@ migrates, and demos** on its own, so the service is runnable at every step.
 | **M10** | Order | наказ + items + event-driven effects on issue | M3–M6 (+ M0 events) |
 | **M11** | Hardening & upgrade-safety | staged RLS enablement, lint gate, CI upgrade tests, decision-explain/time-bound polish, packaging | M7–M10 |
 | **M12** | Person enrichment & expanded identity | person emails / phones / call signs; RU·BY·LATAM personal-ID schemes; per-document-type attribute schema | M5, M9 |
+| **M13** | Social & messenger channels | platform catalog; messenger reachability over phones/emails; standalone social accounts with analytics-grade attribution (stable id, provenance+confidence, verification) | M12 |
+| **M14** | Person↔person relationships | per-type reified self-links: partnership/marriage, kinship, guardianship, sponsorship, next-of-kin, association/COI, social links | M5; M13 (social links only) |
 
 M1/M2 and M3/M4 are independent and may be built in parallel. Everything after M2 assumes audit + i18n exist.
 M12 is **scoped (in progress)** — see its section below (D-PersonContactChannels, D-DocumentAttrSchema, expanded D-PersonalCodes).
+M13 and M14 are **scoped** — see their sections below (D-PersonSocialChannels, D-PersonRelationships); M13 precedes M14 because `person_social_links` requires M13's social accounts.
 
 ---
 
@@ -277,6 +280,73 @@ update `decisions.md` (new decisions for the contact model + call signs), `gloss
 
 ---
 
+## M13 — Social & messenger channels
+
+**Status: delivered** (revision `0014_person_social_channels`). Binding via **D-PersonSocialChannels** in
+[decisions.md](architecture/decisions.md) (promotes open-question DS-41). A purely additive
+[person](modules/person.md) enrichment — new catalog, new child tables, new seed rows; no breaking
+change. The `person_platforms` catalog + `person_messenger_links` / `person_social_accounts` /
+`person_social_account_handles` tables, their `PersonService` sub-resource endpoints (+ `GET
+/person/platforms`), holder-scoped reads, audited writes, and purge erasure all landed.
+
+**Goal.** Record a person's **messenger reachability** and **social-network presence** at analytics
+grade — borrowing the Palantir ontology practices that make digital-identity data queryable and
+weightable (stable id ≠ handle, provenance + confidence on the attribution, platform-vs-operator
+verification) — while staying inside the project's PII discipline.
+
+- **Delivers:**
+  - `person_platforms` — instance-admin catalog (`code`/translatable `name`, `category ∈
+    messenger|social`); seeded `telegram`/`whatsapp`/`signal`/`viber` + `instagram`/`linkedin`/`x`/
+    `facebook`; names join localization (`entity_type='platform'`).
+  - `person_messenger_links` — reachability layer: XOR FK over `person_phones`/`person_emails` + a
+    `messenger`-category platform, optional `verified_at` (Link `link__reachable_on`).
+  - `person_social_accounts` — standalone accounts: immutable `platform_user_id` + mutable `handle`,
+    `display_name`/`profile_url`/`language` (`pii:contact`), `platform_verified` vs
+    `verified_by_operator_at`, and **`source` + `confidence`** attribution on the `HOLDS_ACCOUNT` link
+    (Object `PersonSocialAccount`).
+  - `person_social_account_handles` — handle-rename history (temporal) so a rename never breaks links.
+  - Endpoints `/persons/{id}/messenger-links`, `/social-accounts` (+ account handle history) +
+    `GET /person/platforms`; all reads holder-scoped (D-PersonReadScope), writes audited, all four
+    tables erased on purge.
+- **Implements:** D-PersonSocialChannels (extends D-PersonContactChannels). See
+  [person](modules/person.md).
+- **Excluded / gated:** **no** time-series social-graph metrics (out of scope outright); free-text
+  `bio` + `self_declared_location` are `pii:sensitive` and **wait on the DS-29 envelope seam** (not
+  stored now).
+- **Exit:** attach a social account with a stable id + sourced/weighted attribution; rename the handle
+  and the history records it without breaking the link; mark messenger reachability on an existing
+  phone; purge erases all four tables.
+
+## M14 — Person↔person relationships
+
+**Status: scoped.** Binding via **D-PersonRelationships** in [decisions.md](architecture/decisions.md)
+(promotes open-question DS-42, expanded). Per-type reified self-links, all additive.
+
+**Goal.** Record family and social structure between people as **per-type reified `Person → Person`
+links** (D-Ontology), each mirroring the `membership_memberships` temporal-link shape — covering the
+army/church/university domains (kinship, marriage, godparent/advisor/mentor, guardianship, next-of-kin)
+plus a Palantir-style generic **association** link for COI / prohibited-contact.
+
+- **Delivers** (each a per-type table, instance-global, holder-scoped reads, audited writes,
+  both-endpoint purge erasure):
+  - `person_partnerships` (marriage+engagement folded; symmetric canonical pair; ≤1 active marriage/
+    engagement; `link__partnered_with`).
+  - `person_kinships` (directional `parent_of`, siblings derived; `link__kin_parent_of`).
+  - `person_guardianships` (guardian→ward, distinct from blood kin; `link__guardian_of`).
+  - `person_sponsorships` (godparent / advisor / mentor; `link__sponsor_of`).
+  - `person_next_of_kin` (in-directory nomination + priority; `link__next_of_kin`).
+  - `person_associations` (associate / COI / no-contact; `link__associated_with`).
+  - `person_social_links` (friend/follower — **lands last, gated on M13's social accounts as
+    proof-of-friendship**; `link__social_tie`).
+  - `person_relation_types` — catalog for the open-ended relation vocabularies (sponsorship/association/
+    next-of-kin labels).
+- **Implements:** D-PersonRelationships (extends D-Ontology). See [person](modules/person.md).
+- **Exit:** record a marriage with one active row per spouse; a `parent_of` kinship; an in-directory
+  next-of-kin nomination; a COI association; purging either endpoint erases the link;
+  `person_social_links` only after M13.
+
+---
+
 ## Cross-cutting threads (woven through, not separate milestones)
 
 - **Audit** (M1) and **i18n** (M2) are consumed by every later module — land them before the domain.
@@ -296,3 +366,9 @@ DS-37) waits behind it. The `pii:special` / audit-payload envelope extension sta
 The **M12** milestone (above) is now **scoped** — a person/document enrichment bundle (emails, phones,
 call signs, RU·BY·LATAM personal-ID schemes, per-document-type attribute schema). Its one newly parked
 seam is **DS-40** (phone carrier/provider lookup, needs an external service).
+
+The **M13** and **M14** milestones (above) are now **scoped** — they **promote** DS-41 (social &
+messenger channels) and DS-42 (person↔person relationships) out of the backlog into binding decisions
+(D-PersonSocialChannels, D-PersonRelationships). They add **no** new parked seams: social-graph metrics
+are excluded outright, and the only deferral (free-text social `bio`/location) rides the **existing**
+DS-29 envelope seam rather than a new entry.

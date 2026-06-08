@@ -101,6 +101,12 @@ types:
           callSigns:
             type: list<CallSign>
             docs: The person's call signs. Populated by getPerson; empty in list responses.
+          messengerLinks:
+            type: list<MessengerLink>
+            docs: The person's messenger reachability links. Populated by getPerson; empty in list responses.
+          socialAccounts:
+            type: list<SocialAccount>
+            docs: The person's standalone social accounts. Populated by getPerson; empty in list responses.
       NameVariant:
         docs: A full transliterated name form for one locale (e.g. ukr native, eng Latin). Person-managed, NOT the localization store.
         fields:
@@ -228,6 +234,89 @@ types:
             type: string
             docs: One of active | retired.
           sortOrder: optional<integer>
+      Platform:
+        docs: An instance-admin catalog entry naming a social network / messenger (D-PersonSocialChannels). Stable code + translatable name + category.
+        fields:
+          code:
+            type: string
+            docs: Stable, locale-agnostic identifier (D-Code); immutable by convention.
+          name:
+            type: map<string, string>
+            docs: The translatable label as a locale -> text map (all enabled locales; D-i18n).
+          category:
+            type: string
+            docs: One of messenger | social. Only messenger platforms may carry a messenger link.
+          status:
+            type: string
+            docs: One of active | retired.
+          sortOrder: optional<integer>
+      MessengerLink:
+        docs: |
+          Reachability on a messenger platform over one of the person's existing channels
+          (D-PersonSocialChannels). Exactly one of phoneId/emailId is set.
+        fields:
+          id: string
+          phoneId:
+            type: optional<string>
+            docs: The URN RID of the person's phone this link annotates; null when the link is over an email.
+          emailId:
+            type: optional<string>
+            docs: The URN RID of the person's email this link annotates; null when the link is over a phone.
+          platformCode:
+            type: string
+            docs: The messenger platform code (category=messenger).
+          isPrimary:
+            type: boolean
+            docs: The person's primary messenger reachability (at most one active).
+          verifiedAt:
+            type: optional<datetime>
+            docs: When the reachability was verified; null when unverified.
+      SocialAccount:
+        docs: |
+          A person's standalone social-network account (D-PersonSocialChannels). platformUserId is the
+          platform's immutable internal id (the durable key); handle is the mutable current @handle.
+        fields:
+          id: string
+          personId: string
+          platformCode:
+            type: string
+            docs: The platform code the account is on.
+          platformUserId:
+            type: optional<string>
+            docs: The platform's immutable internal id (the durable key); null when unknown.
+          handle:
+            type: string
+            docs: The current @handle (mutable; rename history kept separately).
+          displayName: optional<string>
+          profileUrl:
+            type: optional<string>
+            docs: Profile URL; derived from platform + handle on write when not supplied.
+          language: optional<string>
+          platformVerified:
+            type: boolean
+            docs: The platform "blue-check"; distinct from operator confirmation.
+          verifiedByOperatorAt:
+            type: optional<datetime>
+            docs: When an operator confirmed the account; null when unconfirmed.
+          source:
+            type: string
+            docs: How the account was learned — one of self_declared | operator_verified | imported.
+          confidence:
+            type: string
+            docs: Weight of the claim — one of confirmed | probable | possible.
+          isPrimary:
+            type: boolean
+            docs: The person's primary social account (at most one active).
+      SocialAccountHandle:
+        docs: One period in a social account's @handle-rename history (D-PersonSocialChannels). validTo null = current.
+        fields:
+          id: string
+          accountId: string
+          handle: string
+          validFrom: datetime
+          validTo:
+            type: optional<datetime>
+            docs: When this handle stopped being current; null = current.
       PersonPage:
         docs: A page of persons plus the opaque token for the next page (empty when exhausted).
         fields:
@@ -348,6 +437,40 @@ types:
             type: optional<string>
             docs: The URN RID of an existing call-sign row to replace; omit to add a new row.
           callSign: string
+          isPrimary: optional<boolean>
+      UpsertMessengerLinkRequest:
+        docs: |
+          Add a messenger link over one of the person's phones or emails, or replace one when id is
+          supplied. Exactly one of phoneId/emailId must be set; platformCode must be a messenger platform.
+        fields:
+          id:
+            type: optional<string>
+            docs: The URN RID of an existing messenger-link row to replace; omit to add a new row.
+          phoneId: optional<string>
+          emailId: optional<string>
+          platformCode: string
+          isPrimary: optional<boolean>
+          verifiedAt: optional<datetime>
+      UpsertSocialAccountRequest:
+        docs: Add a social account, or replace one when id is supplied. handle is normalized and profileUrl derived when omitted.
+        fields:
+          id:
+            type: optional<string>
+            docs: The URN RID of an existing social-account row to replace; omit to add a new row.
+          platformCode: string
+          platformUserId: optional<string>
+          handle: string
+          displayName: optional<string>
+          profileUrl: optional<string>
+          language: optional<string>
+          platformVerified: optional<boolean>
+          verifiedByOperatorAt: optional<datetime>
+          source:
+            type: string
+            docs: self_declared | operator_verified | imported.
+          confidence:
+            type: optional<string>
+            docs: confirmed | probable | possible; defaults to possible.
           isPrimary: optional<boolean>
     errors:
       PersonNotFound:
@@ -618,3 +741,78 @@ services:
         http: GET /person/phone-types
         docs: List the contact-phone type catalog (locale -> text names; D-i18n).
         returns: list<PhoneType>
+      listPlatforms:
+        http: GET /person/platforms
+        docs: List the social/messenger platform catalog (locale -> text names; D-i18n; D-PersonSocialChannels).
+        returns: list<Platform>
+      listMessengerLinks:
+        http: GET /persons/{personId}/messenger-links
+        docs: List a person's messenger reachability links.
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<MessengerLink>
+      upsertMessengerLink:
+        http: PUT /persons/{personId}/messenger-links
+        docs: |
+          Add or replace a messenger link over one of the person's phones/emails. Returns
+          Person:PersonConflict if an active link for the channel+platform exists, Person:PersonInvalid
+          for an unknown / non-messenger platform or a channel not held by the person.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertMessengerLinkRequest
+        returns: MessengerLink
+      deleteMessengerLink:
+        http: DELETE /persons/{personId}/messenger-links/{messengerLinkId}
+        docs: Remove a messenger link by id.
+        args:
+          personId:
+            type: string
+            param-type: path
+          messengerLinkId:
+            type: string
+            param-type: path
+      listSocialAccounts:
+        http: GET /persons/{personId}/social-accounts
+        docs: List a person's standalone social accounts.
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<SocialAccount>
+      upsertSocialAccount:
+        http: PUT /persons/{personId}/social-accounts
+        docs: |
+          Add or replace a social account. A handle rename is recorded in the account's handle history.
+          Returns Person:PersonConflict on a duplicate active account, Person:PersonInvalid for an
+          unknown platform or bad source/confidence.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertSocialAccountRequest
+        returns: SocialAccount
+      deleteSocialAccount:
+        http: DELETE /persons/{personId}/social-accounts/{socialAccountId}
+        docs: Remove a social account by id (its handle history cascades).
+        args:
+          personId:
+            type: string
+            param-type: path
+          socialAccountId:
+            type: string
+            param-type: path
+      listSocialAccountHandles:
+        http: GET /persons/{personId}/social-accounts/{socialAccountId}/handles
+        docs: List one social account's @handle-rename history (most recent first).
+        args:
+          personId:
+            type: string
+            param-type: path
+          socialAccountId:
+            type: string
+            param-type: path
+        returns: list<SocialAccountHandle>

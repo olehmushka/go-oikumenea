@@ -81,6 +81,30 @@ type PersonService interface {
 	ListEmailTypes(ctx context.Context, authHeader bearertoken.Token) ([]EmailType, error)
 	// List the contact-phone type catalog (locale -> text names; D-i18n).
 	ListPhoneTypes(ctx context.Context, authHeader bearertoken.Token) ([]PhoneType, error)
+	// List the social/messenger platform catalog (locale -> text names; D-i18n; D-PersonSocialChannels).
+	ListPlatforms(ctx context.Context, authHeader bearertoken.Token) ([]Platform, error)
+	// List a person's messenger reachability links.
+	ListMessengerLinks(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]MessengerLink, error)
+	/*
+	   Add or replace a messenger link over one of the person's phones/emails. Returns
+	   Person:PersonConflict if an active link for the channel+platform exists, Person:PersonInvalid
+	   for an unknown / non-messenger platform or a channel not held by the person.
+	*/
+	UpsertMessengerLink(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertMessengerLinkRequest) (MessengerLink, error)
+	// Remove a messenger link by id.
+	DeleteMessengerLink(ctx context.Context, authHeader bearertoken.Token, personIdArg string, messengerLinkIdArg string) error
+	// List a person's standalone social accounts.
+	ListSocialAccounts(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]SocialAccount, error)
+	/*
+	   Add or replace a social account. A handle rename is recorded in the account's handle history.
+	   Returns Person:PersonConflict on a duplicate active account, Person:PersonInvalid for an
+	   unknown platform or bad source/confidence.
+	*/
+	UpsertSocialAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertSocialAccountRequest) (SocialAccount, error)
+	// Remove a social account by id (its handle history cascades).
+	DeleteSocialAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string, socialAccountIdArg string) error
+	// List one social account's @handle-rename history (most recent first).
+	ListSocialAccountHandles(ctx context.Context, authHeader bearertoken.Token, personIdArg string, socialAccountIdArg string) ([]SocialAccountHandle, error)
 }
 
 // RegisterRoutesPersonService registers handlers for the PersonService endpoints with a witchcraft wrouter.
@@ -170,6 +194,30 @@ func RegisterRoutesPersonService(router wrouter.Router, impl PersonService, rout
 	}
 	if err := resource.Get("ListPhoneTypes", "/person/v1/person/phone-types", httpserver.NewJSONHandler(handler.HandleListPhoneTypes, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listPhoneTypes route")
+	}
+	if err := resource.Get("ListPlatforms", "/person/v1/person/platforms", httpserver.NewJSONHandler(handler.HandleListPlatforms, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listPlatforms route")
+	}
+	if err := resource.Get("ListMessengerLinks", "/person/v1/persons/{personId}/messenger-links", httpserver.NewJSONHandler(handler.HandleListMessengerLinks, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listMessengerLinks route")
+	}
+	if err := resource.Put("UpsertMessengerLink", "/person/v1/persons/{personId}/messenger-links", httpserver.NewJSONHandler(handler.HandleUpsertMessengerLink, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertMessengerLink route")
+	}
+	if err := resource.Delete("DeleteMessengerLink", "/person/v1/persons/{personId}/messenger-links/{messengerLinkId}", httpserver.NewJSONHandler(handler.HandleDeleteMessengerLink, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteMessengerLink route")
+	}
+	if err := resource.Get("ListSocialAccounts", "/person/v1/persons/{personId}/social-accounts", httpserver.NewJSONHandler(handler.HandleListSocialAccounts, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listSocialAccounts route")
+	}
+	if err := resource.Put("UpsertSocialAccount", "/person/v1/persons/{personId}/social-accounts", httpserver.NewJSONHandler(handler.HandleUpsertSocialAccount, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertSocialAccount route")
+	}
+	if err := resource.Delete("DeleteSocialAccount", "/person/v1/persons/{personId}/social-accounts/{socialAccountId}", httpserver.NewJSONHandler(handler.HandleDeleteSocialAccount, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteSocialAccount route")
+	}
+	if err := resource.Get("ListSocialAccountHandles", "/person/v1/persons/{personId}/social-accounts/{socialAccountId}/handles", httpserver.NewJSONHandler(handler.HandleListSocialAccountHandles, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listSocialAccountHandles route")
 	}
 	return nil
 }
@@ -777,6 +825,184 @@ func (p *personServiceHandler) HandleListPhoneTypes(rw http.ResponseWriter, req 
 		return errors.WrapWithPermissionDenied(err)
 	}
 	respArg, err := p.impl.ListPhoneTypes(req.Context(), bearertoken.Token(authHeader))
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleListPlatforms(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	respArg, err := p.impl.ListPlatforms(req.Context(), bearertoken.Token(authHeader))
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleListMessengerLinks(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.ListMessengerLinks(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpsertMessengerLink(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg UpsertMessengerLinkRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertMessengerLink(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleDeleteMessengerLink(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	messengerLinkIdArg, ok := pathParams["messengerLinkId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"messengerLinkId\" not present")
+	}
+	if err := p.impl.DeleteMessengerLink(req.Context(), bearertoken.Token(authHeader), personIdArg, messengerLinkIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (p *personServiceHandler) HandleListSocialAccounts(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.ListSocialAccounts(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpsertSocialAccount(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg UpsertSocialAccountRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertSocialAccount(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleDeleteSocialAccount(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	socialAccountIdArg, ok := pathParams["socialAccountId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"socialAccountId\" not present")
+	}
+	if err := p.impl.DeleteSocialAccount(req.Context(), bearertoken.Token(authHeader), personIdArg, socialAccountIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (p *personServiceHandler) HandleListSocialAccountHandles(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	socialAccountIdArg, ok := pathParams["socialAccountId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"socialAccountId\" not present")
+	}
+	respArg, err := p.impl.ListSocialAccountHandles(req.Context(), bearertoken.Token(authHeader), personIdArg, socialAccountIdArg)
 	if err != nil {
 		return err
 	}

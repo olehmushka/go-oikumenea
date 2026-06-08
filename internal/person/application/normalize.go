@@ -46,6 +46,33 @@ func emailProvider(address string) string {
 	return emailProviders[address[at+1:]]
 }
 
+// normalizeHandle trims a social handle and drops a single leading '@' so the stored form is canonical
+// (D-PersonSocialChannels). Case is preserved (the active-handle uniqueness index lowercases).
+func normalizeHandle(s string) string {
+	return strings.TrimPrefix(strings.TrimSpace(s), "@")
+}
+
+// profileURLTemplates maps a platform code to a handle->URL template ("%s" = the bare handle). Used to
+// derive person_social_accounts.profile_url on write when the caller supplies no explicit URL; "" (no
+// template) leaves the URL unset. Closed vocabulary by design — extend here, not via operator config.
+var profileURLTemplates = map[string]string{
+	"telegram":  "https://t.me/%s",
+	"instagram": "https://instagram.com/%s",
+	"linkedin":  "https://www.linkedin.com/in/%s",
+	"x":         "https://x.com/%s",
+	"facebook":  "https://facebook.com/%s",
+}
+
+// deriveProfileURL builds a profile URL from the platform + handle when there is a known template and
+// the handle is non-empty; otherwise "" (the column stays NULL / the caller's value is kept upstream).
+func deriveProfileURL(platformCode, handle string) string {
+	tmpl, ok := profileURLTemplates[platformCode]
+	if !ok || handle == "" {
+		return ""
+	}
+	return strings.Replace(tmpl, "%s", handle, 1)
+}
+
 // normalizePhone parses a raw phone number to E.164 and derives its ISO-3166-1 alpha-2 country
 // (D-PersonContactChannels), using github.com/nyaruka/phonenumbers (libphonenumber). The input is
 // expected in international form (leading +); a number that cannot be parsed or is not a valid number

@@ -449,6 +449,147 @@ func TestContactTypeCatalogs(t *testing.T) {
 	}
 }
 
+// TestSocialChannels exercises the M13 exit criteria (D-PersonSocialChannels): the platform catalog, a
+// messenger link over an existing phone (messenger-only + holder-scope rules), a standalone social
+// account with sourced/weighted attribution and a stable id, a handle rename recorded in history without
+// breaking the link, and purge erasing all four tables.
+func TestSocialChannels(t *testing.T) {
+	ctx := context.Background()
+	svc, pool := newService(t, 0)
+
+	p := newPerson(t, svc, "Reachable Person")
+	other := newPerson(t, svc, "Other Person")
+
+	// The platform catalog is seeded with both categories.
+	platforms, err := svc.ListPlatforms(ctx)
+	if err != nil || len(platforms) == 0 {
+		t.Fatalf("list platforms: %d err %v", len(platforms), err)
+	}
+
+	// A phone to be reachable on.
+	phone, err := svc.UpsertPhone(ctx, domain.Phone{PersonID: p.ID, TypeCode: "mobile", Number: "+380441234567"})
+	if err != nil {
+		t.Fatalf("seed phone: %v", err)
+	}
+	otherPhone, err := svc.UpsertPhone(ctx, domain.Phone{PersonID: other.ID, TypeCode: "mobile", Number: "+380441111111"})
+	if err != nil {
+		t.Fatalf("seed other phone: %v", err)
+	}
+
+	// Messenger link over the phone on a messenger platform.
+	link, err := svc.UpsertMessengerLink(ctx, p.ID, domain.MessengerLink{PhoneID: phone.ID, PlatformCode: "telegram", IsPrimary: true})
+	if err != nil {
+		t.Fatalf("upsert messenger link: %v", err)
+	}
+	if link.PhoneID != phone.ID || !link.IsPrimary {
+		t.Fatalf("messenger link not stored: %+v", link)
+	}
+	// A non-messenger (social) platform is rejected.
+	if _, err := svc.UpsertMessengerLink(ctx, p.ID, domain.MessengerLink{PhoneID: phone.ID, PlatformCode: "instagram"}); !errors.Is(err, domain.ErrPlatformNotMessenger) {
+		t.Fatalf("social platform on messenger link: want ErrPlatformNotMessenger, got %v", err)
+	}
+	// An unknown platform is rejected.
+	if _, err := svc.UpsertMessengerLink(ctx, p.ID, domain.MessengerLink{PhoneID: phone.ID, PlatformCode: "nope"}); !errors.Is(err, domain.ErrUnknownPlatform) {
+		t.Fatalf("unknown platform: want ErrUnknownPlatform, got %v", err)
+	}
+	// A channel held by another person is rejected (holder scope).
+	if _, err := svc.UpsertMessengerLink(ctx, p.ID, domain.MessengerLink{PhoneID: otherPhone.ID, PlatformCode: "signal"}); !errors.Is(err, domain.ErrChannelNotOwned) {
+		t.Fatalf("not-owned channel: want ErrChannelNotOwned, got %v", err)
+	}
+	// Both / neither channel is invalid (XOR).
+	if _, err := svc.UpsertMessengerLink(ctx, p.ID, domain.MessengerLink{PhoneID: phone.ID, EmailID: "x", PlatformCode: "telegram"}); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("both channels: want ErrInvalid, got %v", err)
+	}
+	if _, err := svc.UpsertMessengerLink(ctx, p.ID, domain.MessengerLink{PlatformCode: "telegram"}); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("no channel: want ErrInvalid, got %v", err)
+	}
+
+	// Social account with a stable id + sourced/weighted attribution; profile_url derived, confidence defaulted.
+	acct, err := svc.UpsertSocialAccount(ctx, domain.SocialAccount{
+		PersonID: p.ID, PlatformCode: "instagram", PlatformUserID: "17841400000000000",
+		Handle: "@reachable", Source: "self_declared", IsPrimary: true,
+	})
+	if err != nil {
+		t.Fatalf("upsert social account: %v", err)
+	}
+	if acct.Handle != "reachable" || acct.ProfileURL != "https://instagram.com/reachable" || acct.Confidence != "possible" {
+		t.Fatalf("social account not normalized/derived/defaulted: %+v", acct)
+	}
+	// A bad source is rejected before the DB.
+	if _, err := svc.UpsertSocialAccount(ctx, domain.SocialAccount{PersonID: p.ID, PlatformCode: "x", Handle: "h", Source: "bogus"}); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("bad source: want ErrInvalid, got %v", err)
+	}
+
+	// Exactly one handle-history period after creation, and it is current.
+	if got := countHandles(t, pool, ctx, acct.ID, true); got != 1 {
+		t.Fatalf("handle history after create: current=%d, want 1", got)
+	}
+
+	// Rename the handle: the old period closes and a new current one opens — the link (id) is unchanged.
+	renamed, err := svc.UpsertSocialAccount(ctx, domain.SocialAccount{
+		ID: acct.ID, PersonID: p.ID, PlatformCode: "instagram", PlatformUserID: "17841400000000000",
+		Handle: "renamed", Source: "self_declared",
+	})
+	if err != nil {
+		t.Fatalf("rename social account: %v", err)
+	}
+	if renamed.ID != acct.ID || renamed.Handle != "renamed" {
+		t.Fatalf("rename should keep id, change handle: %+v", renamed)
+	}
+	if total := countHandles(t, pool, ctx, acct.ID, false); total != 2 {
+		t.Fatalf("handle history after rename: total=%d, want 2", total)
+	}
+	if cur := countHandles(t, pool, ctx, acct.ID, true); cur != 1 {
+		t.Fatalf("handle history after rename: current=%d, want 1", cur)
+	}
+	handles, err := svc.ListSocialAccountHandles(ctx, p.ID, acct.ID)
+	if err != nil || len(handles) != 2 {
+		t.Fatalf("list handle history: %d err %v", len(handles), err)
+	}
+
+	// getPerson assembles the new channels.
+	got, err := svc.GetPerson(ctx, p.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if len(got.MessengerLinks) != 1 || len(got.SocialAccounts) != 1 {
+		t.Fatalf("social channels: links=%d accounts=%d", len(got.MessengerLinks), len(got.SocialAccounts))
+	}
+
+	// Purge erases all four tables (the phone cascade also removes the link; social account cascades its handles).
+	if _, err := svc.DeactivatePerson(ctx, p.ID, "x"); err != nil {
+		t.Fatalf("deactivate: %v", err)
+	}
+	if _, err := svc.PurgePerson(ctx, p.ID); err != nil {
+		t.Fatalf("purge: %v", err)
+	}
+	var links, accounts, histories int
+	if err := pool.QueryRow(ctx, `SELECT
+	  (SELECT count(*) FROM oikumenea.person_messenger_links ml LEFT JOIN oikumenea.person_phones ph ON ml.phone_id = ph.id LEFT JOIN oikumenea.person_emails em ON ml.email_id = em.id WHERE COALESCE(ph.person_id, em.person_id) = $1),
+	  (SELECT count(*) FROM oikumenea.person_social_accounts WHERE person_id = $1),
+	  (SELECT count(*) FROM oikumenea.person_social_account_handles WHERE account_id = $2)`,
+		p.ID, acct.ID).Scan(&links, &accounts, &histories); err != nil {
+		t.Fatalf("count after purge: %v", err)
+	}
+	if links != 0 || accounts != 0 || histories != 0 {
+		t.Fatalf("rows after purge: links=%d accounts=%d histories=%d, want 0/0/0", links, accounts, histories)
+	}
+}
+
+// countHandles counts a social account's handle-history rows; currentOnly restricts to the open period.
+func countHandles(t *testing.T, pool *pgxpool.Pool, ctx context.Context, accountID string, currentOnly bool) int {
+	t.Helper()
+	q := "SELECT count(*) FROM oikumenea.person_social_account_handles WHERE account_id = $1 AND deleted_at IS NULL"
+	if currentOnly {
+		q += " AND valid_to IS NULL"
+	}
+	var n int
+	if err := pool.QueryRow(ctx, q, accountID).Scan(&n); err != nil {
+		t.Fatalf("count handles: %v", err)
+	}
+	return n
+}
+
 // TestCreateAuditsInOneTx confirms a create records exactly one audit row keyed to it.
 func TestCreateAuditsInOneTx(t *testing.T) {
 	ctx := context.Background()

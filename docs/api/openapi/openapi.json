@@ -1491,6 +1491,41 @@
         ],
         "type": "object"
       },
+      "MessengerLink": {
+        "description": "Reachability on a messenger platform over one of the person's existing channels\n(D-PersonSocialChannels). Exactly one of phoneId/emailId is set.\n",
+        "properties": {
+          "emailId": {
+            "description": "The URN RID of the person's email this link annotates; null when the link is over a phone.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isPrimary": {
+            "description": "The person's primary messenger reachability (at most one active).",
+            "type": "boolean"
+          },
+          "phoneId": {
+            "description": "The URN RID of the person's phone this link annotates; null when the link is over an email.",
+            "type": "string"
+          },
+          "platformCode": {
+            "description": "The messenger platform code (category=messenger).",
+            "type": "string"
+          },
+          "verifiedAt": {
+            "description": "When the reachability was verified; null when unverified.",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "isPrimary",
+          "platformCode"
+        ],
+        "type": "object"
+      },
       "NameVariant": {
         "description": "A full transliterated name form for one locale (e.g. ukr native, eng Latin). Person-managed, NOT the localization store.",
         "properties": {
@@ -1843,6 +1878,13 @@
             "description": "The person's URN RID (carried as a plain string).",
             "type": "string"
           },
+          "messengerLinks": {
+            "description": "The person's messenger reachability links. Populated by getPerson; empty in list responses.",
+            "items": {
+              "$ref": "#/components/schemas/MessengerLink"
+            },
+            "type": "array"
+          },
           "nameVariants": {
             "description": "Locale-tagged transliterations. Populated by getPerson; empty in list responses.",
             "items": {
@@ -1881,6 +1923,13 @@
             "description": "Biological sex, ISO/IEC 5218 as text — one of not_known | male | female | not_applicable.",
             "type": "string"
           },
+          "socialAccounts": {
+            "description": "The person's standalone social accounts. Populated by getPerson; empty in list responses.",
+            "items": {
+              "$ref": "#/components/schemas/SocialAccount"
+            },
+            "type": "array"
+          },
           "status": {
             "description": "Lifecycle status — one of active | deactivated | purged.",
             "type": "string"
@@ -1911,10 +1960,12 @@
           "displayName",
           "emails",
           "id",
+          "messengerLinks",
           "nameVariants",
           "phones",
           "residences",
           "sex",
+          "socialAccounts",
           "status",
           "updatedAt"
         ],
@@ -2093,6 +2144,41 @@
           }
         },
         "required": [
+          "code",
+          "name",
+          "status"
+        ],
+        "type": "object"
+      },
+      "Platform": {
+        "description": "An instance-admin catalog entry naming a social network / messenger (D-PersonSocialChannels). Stable code + translatable name + category.",
+        "properties": {
+          "category": {
+            "description": "One of messenger | social. Only messenger platforms may carry a messenger link.",
+            "type": "string"
+          },
+          "code": {
+            "description": "Stable, locale-agnostic identifier (D-Code); immutable by convention.",
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "The translatable label as a locale -\u003e text map (all enabled locales; D-i18n).",
+            "type": "object"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "status": {
+            "description": "One of active | retired.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
           "code",
           "name",
           "status"
@@ -2477,6 +2563,101 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "SocialAccount": {
+        "description": "A person's standalone social-network account (D-PersonSocialChannels). platformUserId is the\nplatform's immutable internal id (the durable key); handle is the mutable current @handle.\n",
+        "properties": {
+          "confidence": {
+            "description": "Weight of the claim — one of confirmed | probable | possible.",
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "handle": {
+            "description": "The current @handle (mutable; rename history kept separately).",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isPrimary": {
+            "description": "The person's primary social account (at most one active).",
+            "type": "boolean"
+          },
+          "language": {
+            "type": "string"
+          },
+          "personId": {
+            "type": "string"
+          },
+          "platformCode": {
+            "description": "The platform code the account is on.",
+            "type": "string"
+          },
+          "platformUserId": {
+            "description": "The platform's immutable internal id (the durable key); null when unknown.",
+            "type": "string"
+          },
+          "platformVerified": {
+            "description": "The platform \"blue-check\"; distinct from operator confirmation.",
+            "type": "boolean"
+          },
+          "profileUrl": {
+            "description": "Profile URL; derived from platform + handle on write when not supplied.",
+            "type": "string"
+          },
+          "source": {
+            "description": "How the account was learned — one of self_declared | operator_verified | imported.",
+            "type": "string"
+          },
+          "verifiedByOperatorAt": {
+            "description": "When an operator confirmed the account; null when unconfirmed.",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confidence",
+          "handle",
+          "id",
+          "isPrimary",
+          "personId",
+          "platformCode",
+          "platformVerified",
+          "source"
+        ],
+        "type": "object"
+      },
+      "SocialAccountHandle": {
+        "description": "One period in a social account's @handle-rename history (D-PersonSocialChannels). validTo null = current.",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "handle": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "validFrom": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "validTo": {
+            "description": "When this handle stopped being current; null = current.",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "handle",
+          "id",
+          "validFrom"
+        ],
         "type": "object"
       },
       "TransitionRequest": {
@@ -3033,6 +3214,35 @@
         ],
         "type": "object"
       },
+      "UpsertMessengerLinkRequest": {
+        "description": "Add a messenger link over one of the person's phones or emails, or replace one when id is\nsupplied. Exactly one of phoneId/emailId must be set; platformCode must be a messenger platform.\n",
+        "properties": {
+          "emailId": {
+            "type": "string"
+          },
+          "id": {
+            "description": "The URN RID of an existing messenger-link row to replace; omit to add a new row.",
+            "type": "string"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          },
+          "phoneId": {
+            "type": "string"
+          },
+          "platformCode": {
+            "type": "string"
+          },
+          "verifiedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platformCode"
+        ],
+        "type": "object"
+      },
       "UpsertNameVariantRequest": {
         "description": "Add or replace the name variant for a locale (keyed by (person, locale)).",
         "properties": {
@@ -3125,6 +3335,57 @@
         "required": [
           "country",
           "validFrom"
+        ],
+        "type": "object"
+      },
+      "UpsertSocialAccountRequest": {
+        "description": "Add a social account, or replace one when id is supplied. handle is normalized and profileUrl derived when omitted.",
+        "properties": {
+          "confidence": {
+            "description": "confirmed | probable | possible; defaults to possible.",
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "handle": {
+            "type": "string"
+          },
+          "id": {
+            "description": "The URN RID of an existing social-account row to replace; omit to add a new row.",
+            "type": "string"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          },
+          "language": {
+            "type": "string"
+          },
+          "platformCode": {
+            "type": "string"
+          },
+          "platformUserId": {
+            "type": "string"
+          },
+          "platformVerified": {
+            "type": "boolean"
+          },
+          "profileUrl": {
+            "type": "string"
+          },
+          "source": {
+            "description": "self_declared | operator_verified | imported.",
+            "type": "string"
+          },
+          "verifiedByOperatorAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "handle",
+          "platformCode",
+          "source"
         ],
         "type": "object"
       },
@@ -6146,6 +6407,41 @@
         ]
       }
     },
+    "/person/v1/person/platforms": {
+      "get": {
+        "description": "List the social/messenger platform catalog (locale -\u003e text names; D-i18n; D-PersonSocialChannels).",
+        "operationId": "PersonService_listPlatforms",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Platform"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List the social/messenger platform catalog (locale -\u003e text names; D-i18n; D-PersonSocialChannels).",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
     "/person/v1/persons": {
       "get": {
         "description": "Search/list the directory, token-paginated. (The read-scope union is applied once authz lands, M7.)",
@@ -6795,6 +7091,144 @@
         ]
       }
     },
+    "/person/v1/persons/{personId}/messenger-links": {
+      "get": {
+        "description": "List a person's messenger reachability links.",
+        "operationId": "PersonService_listMessengerLinks",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MessengerLink"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List a person's messenger reachability links.",
+        "tags": [
+          "PersonService"
+        ]
+      },
+      "put": {
+        "description": "Add or replace a messenger link over one of the person's phones/emails. Returns\nPerson:PersonConflict if an active link for the channel+platform exists, Person:PersonInvalid\nfor an unknown / non-messenger platform or a channel not held by the person.\n",
+        "operationId": "PersonService_upsertMessengerLink",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertMessengerLinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessengerLink"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Add or replace a messenger link over one of the person's phones/emails. Returns",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/messenger-links/{messengerLinkId}": {
+      "delete": {
+        "description": "Remove a messenger link by id.",
+        "operationId": "PersonService_deleteMessengerLink",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "messengerLinkId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Remove a messenger link by id.",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
     "/person/v1/persons/{personId}/name-variants": {
       "put": {
         "description": "Add or replace a locale name form (transliteration). Keyed by (person, locale).",
@@ -7297,6 +7731,197 @@
           }
         },
         "summary": "Remove a residence row by id.",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/social-accounts": {
+      "get": {
+        "description": "List a person's standalone social accounts.",
+        "operationId": "PersonService_listSocialAccounts",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SocialAccount"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List a person's standalone social accounts.",
+        "tags": [
+          "PersonService"
+        ]
+      },
+      "put": {
+        "description": "Add or replace a social account. A handle rename is recorded in the account's handle history.\nReturns Person:PersonConflict on a duplicate active account, Person:PersonInvalid for an\nunknown platform or bad source/confidence.\n",
+        "operationId": "PersonService_upsertSocialAccount",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertSocialAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SocialAccount"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Add or replace a social account. A handle rename is recorded in the account's handle history.",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/social-accounts/{socialAccountId}": {
+      "delete": {
+        "description": "Remove a social account by id (its handle history cascades).",
+        "operationId": "PersonService_deleteSocialAccount",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "socialAccountId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Remove a social account by id (its handle history cascades).",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/social-accounts/{socialAccountId}/handles": {
+      "get": {
+        "description": "List one social account's @handle-rename history (most recent first).",
+        "operationId": "PersonService_listSocialAccountHandles",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "socialAccountId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SocialAccountHandle"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List one social account's @handle-rename history (most recent first).",
         "tags": [
           "PersonService"
         ]
