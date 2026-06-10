@@ -131,9 +131,19 @@ Introduced by [D-PersonContactChannels](architecture/decisions.md): `person_phon
 ## rank — [`modules/rank.md`](modules/rank.md)
 
 **DS-13 · `isSenior(a, b)` seniority helper.**
-Seniority is already well-defined as `(category.sort_order, type.sort_order, rank.sort_order)`.
+Seniority is already well-defined: within a system `(system.sort_order, category.sort_order,
+type.sort_order path, rank.sort_order)`; across systems via the standardized `grade_code` (D-RankSystems).
 - *Default* — not exposed as an API/domain function (no caller needs it).
 - *Trigger* — a caller needs seniority comparison → expose the pure domain function. `parked`
+
+**DS-43 · Non-military cross-system rank comparator.**
+The standardized-grade comparator (D-RankSystems) is **NATO STANAG 2116** (military). Academic and
+ecclesiastical deployments have no published cross-system grade, so `rank_grades`/`grade_code` are
+military-shaped and a non-military `rank_system` leaves `grade_code` `NULL` (no cross-system comparison).
+- *Default* — no comparator for non-military domains; cross-system comparison is N/A there (and rarely
+  needed, since L-SingleDomain means one domain per instance).
+- *Trigger* — a real academic/ecclesiastical deployment needs cross-institution rank equivalence →
+  introduce a domain-appropriate grade scale (a second seeded catalog or a generic ordinal). `parked`
 
 ---
 

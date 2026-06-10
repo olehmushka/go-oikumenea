@@ -12,7 +12,7 @@
 //   - base roles are immutable; a role with an instance-scope permission is rejected;
 //   - a grant write + its audit row share one transaction.
 //
-//	OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/postgres?sslmode=disable" \
+//	OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable" \
 //	  go test -tags integration ./internal/authorization/...
 package authorization_test
 
@@ -37,7 +37,7 @@ import (
 	tenantdomain "github.com/olegamysk/go-oikumenea/internal/tenant/domain"
 )
 
-const defaultTestDSN = "postgres://postgres:dev@localhost:5432/postgres?sslmode=disable"
+const defaultTestDSN = "postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable"
 
 // seedGraphsSQL mirrors tenant.Register's boot seed (the test bypasses Register).
 const seedGraphsSQL = `

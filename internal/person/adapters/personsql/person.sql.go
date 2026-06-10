@@ -138,6 +138,15 @@ func (q *Queries) DeactivatePerson(ctx context.Context, arg DeactivatePersonPara
 	return i, err
 }
 
+const deleteAllAssociations = `-- name: DeleteAllAssociations :exec
+DELETE FROM oikumenea.person_associations WHERE person_id_a = $1 OR person_id_b = $1
+`
+
+func (q *Queries) DeleteAllAssociations(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllAssociations, personID)
+	return err
+}
+
 const deleteAllCallSigns = `-- name: DeleteAllCallSigns :exec
 DELETE FROM oikumenea.person_call_signs WHERE person_id = $1
 `
@@ -167,6 +176,24 @@ func (q *Queries) DeleteAllEmails(ctx context.Context, personID string) error {
 	return err
 }
 
+const deleteAllGuardianships = `-- name: DeleteAllGuardianships :exec
+DELETE FROM oikumenea.person_guardianships WHERE guardian_id = $1 OR ward_id = $1
+`
+
+func (q *Queries) DeleteAllGuardianships(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllGuardianships, personID)
+	return err
+}
+
+const deleteAllKinships = `-- name: DeleteAllKinships :exec
+DELETE FROM oikumenea.person_kinships WHERE parent_id = $1 OR child_id = $1
+`
+
+func (q *Queries) DeleteAllKinships(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllKinships, personID)
+	return err
+}
+
 const deleteAllMessengerLinks = `-- name: DeleteAllMessengerLinks :exec
 DELETE FROM oikumenea.person_messenger_links
 WHERE phone_id IN (SELECT ph.id FROM oikumenea.person_phones ph WHERE ph.person_id = $1)
@@ -186,6 +213,24 @@ DELETE FROM oikumenea.person_name_variants WHERE person_id = $1
 
 func (q *Queries) DeleteAllNameVariants(ctx context.Context, personID string) error {
 	_, err := q.db.Exec(ctx, deleteAllNameVariants, personID)
+	return err
+}
+
+const deleteAllNextOfKin = `-- name: DeleteAllNextOfKin :exec
+DELETE FROM oikumenea.person_next_of_kin WHERE subject_id = $1 OR contact_id = $1
+`
+
+func (q *Queries) DeleteAllNextOfKin(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllNextOfKin, personID)
+	return err
+}
+
+const deleteAllPartnerships = `-- name: DeleteAllPartnerships :exec
+DELETE FROM oikumenea.person_partnerships WHERE person_id_a = $1 OR person_id_b = $1
+`
+
+func (q *Queries) DeleteAllPartnerships(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllPartnerships, personID)
 	return err
 }
 
@@ -227,6 +272,33 @@ DELETE FROM oikumenea.person_social_accounts WHERE person_id = $1
 func (q *Queries) DeleteAllSocialAccounts(ctx context.Context, personID string) error {
 	_, err := q.db.Exec(ctx, deleteAllSocialAccounts, personID)
 	return err
+}
+
+const deleteAllSponsorships = `-- name: DeleteAllSponsorships :exec
+DELETE FROM oikumenea.person_sponsorships WHERE sponsor_id = $1 OR sponsored_id = $1
+`
+
+func (q *Queries) DeleteAllSponsorships(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllSponsorships, personID)
+	return err
+}
+
+const deleteAssociation = `-- name: DeleteAssociation :one
+UPDATE oikumenea.person_associations SET deleted_at = now()
+WHERE id = $1 AND deleted_at IS NULL AND (person_id_a = $2 OR person_id_b = $2)
+RETURNING id
+`
+
+type DeleteAssociationParams struct {
+	ID       string
+	PersonID string
+}
+
+func (q *Queries) DeleteAssociation(ctx context.Context, arg DeleteAssociationParams) (string, error) {
+	row := q.db.QueryRow(ctx, deleteAssociation, arg.ID, arg.PersonID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }
 
 const deleteCallSign = `-- name: DeleteCallSign :one
@@ -284,6 +356,42 @@ func (q *Queries) DeleteEmail(ctx context.Context, arg DeleteEmailParams) (strin
 	return id, err
 }
 
+const deleteGuardianship = `-- name: DeleteGuardianship :one
+UPDATE oikumenea.person_guardianships SET deleted_at = now()
+WHERE id = $1 AND deleted_at IS NULL AND (guardian_id = $2 OR ward_id = $2)
+RETURNING id
+`
+
+type DeleteGuardianshipParams struct {
+	ID       string
+	PersonID string
+}
+
+func (q *Queries) DeleteGuardianship(ctx context.Context, arg DeleteGuardianshipParams) (string, error) {
+	row := q.db.QueryRow(ctx, deleteGuardianship, arg.ID, arg.PersonID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
+const deleteKinship = `-- name: DeleteKinship :one
+UPDATE oikumenea.person_kinships SET deleted_at = now()
+WHERE id = $1 AND deleted_at IS NULL AND (parent_id = $2 OR child_id = $2)
+RETURNING id
+`
+
+type DeleteKinshipParams struct {
+	ID       string
+	PersonID string
+}
+
+func (q *Queries) DeleteKinship(ctx context.Context, arg DeleteKinshipParams) (string, error) {
+	row := q.db.QueryRow(ctx, deleteKinship, arg.ID, arg.PersonID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const deleteMessengerLink = `-- name: DeleteMessengerLink :one
 UPDATE oikumenea.person_messenger_links ml SET deleted_at = now()
 WHERE ml.id = $1 AND ml.deleted_at IS NULL
@@ -317,6 +425,42 @@ type DeleteNameVariantParams struct {
 
 func (q *Queries) DeleteNameVariant(ctx context.Context, arg DeleteNameVariantParams) (string, error) {
 	row := q.db.QueryRow(ctx, deleteNameVariant, arg.PersonID, arg.Locale)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
+const deleteNextOfKin = `-- name: DeleteNextOfKin :one
+UPDATE oikumenea.person_next_of_kin SET deleted_at = now()
+WHERE id = $1 AND deleted_at IS NULL AND (subject_id = $2 OR contact_id = $2)
+RETURNING id
+`
+
+type DeleteNextOfKinParams struct {
+	ID       string
+	PersonID string
+}
+
+func (q *Queries) DeleteNextOfKin(ctx context.Context, arg DeleteNextOfKinParams) (string, error) {
+	row := q.db.QueryRow(ctx, deleteNextOfKin, arg.ID, arg.PersonID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
+const deletePartnership = `-- name: DeletePartnership :one
+UPDATE oikumenea.person_partnerships SET deleted_at = now()
+WHERE id = $1 AND deleted_at IS NULL AND (person_id_a = $2 OR person_id_b = $2)
+RETURNING id
+`
+
+type DeletePartnershipParams struct {
+	ID       string
+	PersonID string
+}
+
+func (q *Queries) DeletePartnership(ctx context.Context, arg DeletePartnershipParams) (string, error) {
+	row := q.db.QueryRow(ctx, deletePartnership, arg.ID, arg.PersonID)
 	var id string
 	err := row.Scan(&id)
 	return id, err
@@ -371,6 +515,24 @@ type DeleteSocialAccountParams struct {
 
 func (q *Queries) DeleteSocialAccount(ctx context.Context, arg DeleteSocialAccountParams) (string, error) {
 	row := q.db.QueryRow(ctx, deleteSocialAccount, arg.ID, arg.PersonID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
+const deleteSponsorship = `-- name: DeleteSponsorship :one
+UPDATE oikumenea.person_sponsorships SET deleted_at = now()
+WHERE id = $1 AND deleted_at IS NULL AND (sponsor_id = $2 OR sponsored_id = $2)
+RETURNING id
+`
+
+type DeleteSponsorshipParams struct {
+	ID       string
+	PersonID string
+}
+
+func (q *Queries) DeleteSponsorship(ctx context.Context, arg DeleteSponsorshipParams) (string, error) {
+	row := q.db.QueryRow(ctx, deleteSponsorship, arg.ID, arg.PersonID)
 	var id string
 	err := row.Scan(&id)
 	return id, err
@@ -481,6 +643,27 @@ func (q *Queries) GetPlatform(ctx context.Context, code string) (OikumeneaPerson
 	return i, err
 }
 
+const getRelationType = `-- name: GetRelationType :one
+SELECT code, name, category, status, sort_order, created_at, updated_at, deleted_at FROM oikumenea.person_relation_types WHERE code = $1 AND deleted_at IS NULL
+`
+
+// Resolve one relation type by code (used to validate the relation_code's category). ErrNoRows when missing.
+func (q *Queries) GetRelationType(ctx context.Context, code string) (OikumeneaPersonRelationType, error) {
+	row := q.db.QueryRow(ctx, getRelationType, code)
+	var i OikumeneaPersonRelationType
+	err := row.Scan(
+		&i.Code,
+		&i.Name,
+		&i.Category,
+		&i.Status,
+		&i.SortOrder,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const getSocialAccount = `-- name: GetSocialAccount :one
 SELECT id, person_id, platform_code, platform_user_id, handle, display_name, profile_url, language, platform_verified, verified_by_operator_at, source, confidence, is_primary, created_at, updated_at, deleted_at FROM oikumenea.person_social_accounts
 WHERE id = $1 AND person_id = $2 AND deleted_at IS NULL
@@ -508,6 +691,69 @@ func (q *Queries) GetSocialAccount(ctx context.Context, arg GetSocialAccountPara
 		&i.Source,
 		&i.Confidence,
 		&i.IsPrimary,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const hasActivePartnershipExcept = `-- name: HasActivePartnershipExcept :one
+
+SELECT EXISTS (
+  SELECT 1 FROM oikumenea.person_partnerships
+  WHERE deleted_at IS NULL AND status IN ('engaged','married') AND id <> $1
+    AND (person_id_a = $2 OR person_id_b = $2)
+) AS exists
+`
+
+type HasActivePartnershipExceptParams struct {
+	ExceptID string
+	PersonID string
+}
+
+// partnerships ----------------------------------------------------------------
+// Whether the person has any active engaged/married partnership other than except_id (the single-active
+// rule a partial-unique index cannot span both endpoint columns).
+func (q *Queries) HasActivePartnershipExcept(ctx context.Context, arg HasActivePartnershipExceptParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasActivePartnershipExcept, arg.ExceptID, arg.PersonID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const insertAssociation = `-- name: InsertAssociation :one
+
+INSERT INTO oikumenea.person_associations (person_id_a, person_id_b, relation_code, kind, status)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, person_id_a, person_id_b, relation_code, kind, status, created_at, updated_at, deleted_at
+`
+
+type InsertAssociationParams struct {
+	PersonIDA    string
+	PersonIDB    string
+	RelationCode pgtype.Text
+	Kind         string
+	Status       string
+}
+
+// associations ----------------------------------------------------------------
+func (q *Queries) InsertAssociation(ctx context.Context, arg InsertAssociationParams) (OikumeneaPersonAssociation, error) {
+	row := q.db.QueryRow(ctx, insertAssociation,
+		arg.PersonIDA,
+		arg.PersonIDB,
+		arg.RelationCode,
+		arg.Kind,
+		arg.Status,
+	)
+	var i OikumeneaPersonAssociation
+	err := row.Scan(
+		&i.ID,
+		&i.PersonIDA,
+		&i.PersonIDB,
+		&i.RelationCode,
+		&i.Kind,
+		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -586,6 +832,77 @@ func (q *Queries) InsertEmail(ctx context.Context, arg InsertEmailParams) (Oikum
 	return i, err
 }
 
+const insertGuardianship = `-- name: InsertGuardianship :one
+
+INSERT INTO oikumenea.person_guardianships (guardian_id, ward_id, relation_code, status, effective_from, effective_to)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, guardian_id, ward_id, relation_code, status, effective_from, effective_to, created_at, updated_at, deleted_at
+`
+
+type InsertGuardianshipParams struct {
+	GuardianID    string
+	WardID        string
+	RelationCode  pgtype.Text
+	Status        string
+	EffectiveFrom pgtype.Date
+	EffectiveTo   pgtype.Date
+}
+
+// guardianships ---------------------------------------------------------------
+func (q *Queries) InsertGuardianship(ctx context.Context, arg InsertGuardianshipParams) (OikumeneaPersonGuardianship, error) {
+	row := q.db.QueryRow(ctx, insertGuardianship,
+		arg.GuardianID,
+		arg.WardID,
+		arg.RelationCode,
+		arg.Status,
+		arg.EffectiveFrom,
+		arg.EffectiveTo,
+	)
+	var i OikumeneaPersonGuardianship
+	err := row.Scan(
+		&i.ID,
+		&i.GuardianID,
+		&i.WardID,
+		&i.RelationCode,
+		&i.Status,
+		&i.EffectiveFrom,
+		&i.EffectiveTo,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const insertKinship = `-- name: InsertKinship :one
+
+INSERT INTO oikumenea.person_kinships (parent_id, child_id, status)
+VALUES ($1, $2, $3)
+RETURNING id, parent_id, child_id, status, created_at, updated_at, deleted_at
+`
+
+type InsertKinshipParams struct {
+	ParentID string
+	ChildID  string
+	Status   string
+}
+
+// kinships --------------------------------------------------------------------
+func (q *Queries) InsertKinship(ctx context.Context, arg InsertKinshipParams) (OikumeneaPersonKinship, error) {
+	row := q.db.QueryRow(ctx, insertKinship, arg.ParentID, arg.ChildID, arg.Status)
+	var i OikumeneaPersonKinship
+	err := row.Scan(
+		&i.ID,
+		&i.ParentID,
+		&i.ChildID,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const insertMessengerLink = `-- name: InsertMessengerLink :one
 INSERT INTO oikumenea.person_messenger_links (phone_id, email_id, platform_code, is_primary, verified_at)
 VALUES ($1, $2, $3, $4, $5)
@@ -618,6 +935,82 @@ func (q *Queries) InsertMessengerLink(ctx context.Context, arg InsertMessengerLi
 		&i.PlatformCode,
 		&i.IsPrimary,
 		&i.VerifiedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const insertNextOfKin = `-- name: InsertNextOfKin :one
+
+INSERT INTO oikumenea.person_next_of_kin (subject_id, contact_id, relation_code, priority, status)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, subject_id, contact_id, relation_code, priority, status, created_at, updated_at, deleted_at
+`
+
+type InsertNextOfKinParams struct {
+	SubjectID    string
+	ContactID    string
+	RelationCode pgtype.Text
+	Priority     int32
+	Status       string
+}
+
+// next of kin -----------------------------------------------------------------
+func (q *Queries) InsertNextOfKin(ctx context.Context, arg InsertNextOfKinParams) (OikumeneaPersonNextOfKin, error) {
+	row := q.db.QueryRow(ctx, insertNextOfKin,
+		arg.SubjectID,
+		arg.ContactID,
+		arg.RelationCode,
+		arg.Priority,
+		arg.Status,
+	)
+	var i OikumeneaPersonNextOfKin
+	err := row.Scan(
+		&i.ID,
+		&i.SubjectID,
+		&i.ContactID,
+		&i.RelationCode,
+		&i.Priority,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const insertPartnership = `-- name: InsertPartnership :one
+INSERT INTO oikumenea.person_partnerships (person_id_a, person_id_b, status, effective_from, effective_to)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, person_id_a, person_id_b, status, effective_from, effective_to, created_at, updated_at, deleted_at
+`
+
+type InsertPartnershipParams struct {
+	PersonIDA     string
+	PersonIDB     string
+	Status        string
+	EffectiveFrom pgtype.Date
+	EffectiveTo   pgtype.Date
+}
+
+func (q *Queries) InsertPartnership(ctx context.Context, arg InsertPartnershipParams) (OikumeneaPersonPartnership, error) {
+	row := q.db.QueryRow(ctx, insertPartnership,
+		arg.PersonIDA,
+		arg.PersonIDB,
+		arg.Status,
+		arg.EffectiveFrom,
+		arg.EffectiveTo,
+	)
+	var i OikumeneaPersonPartnership
+	err := row.Scan(
+		&i.ID,
+		&i.PersonIDA,
+		&i.PersonIDB,
+		&i.Status,
+		&i.EffectiveFrom,
+		&i.EffectiveTo,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -897,6 +1290,84 @@ func (q *Queries) InsertSocialAccountHandle(ctx context.Context, arg InsertSocia
 	return i, err
 }
 
+const insertSponsorship = `-- name: InsertSponsorship :one
+
+INSERT INTO oikumenea.person_sponsorships (sponsor_id, sponsored_id, relation_code, status, effective_from, effective_to)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, sponsor_id, sponsored_id, relation_code, status, effective_from, effective_to, created_at, updated_at, deleted_at
+`
+
+type InsertSponsorshipParams struct {
+	SponsorID     string
+	SponsoredID   string
+	RelationCode  string
+	Status        string
+	EffectiveFrom pgtype.Date
+	EffectiveTo   pgtype.Date
+}
+
+// sponsorships ----------------------------------------------------------------
+func (q *Queries) InsertSponsorship(ctx context.Context, arg InsertSponsorshipParams) (OikumeneaPersonSponsorship, error) {
+	row := q.db.QueryRow(ctx, insertSponsorship,
+		arg.SponsorID,
+		arg.SponsoredID,
+		arg.RelationCode,
+		arg.Status,
+		arg.EffectiveFrom,
+		arg.EffectiveTo,
+	)
+	var i OikumeneaPersonSponsorship
+	err := row.Scan(
+		&i.ID,
+		&i.SponsorID,
+		&i.SponsoredID,
+		&i.RelationCode,
+		&i.Status,
+		&i.EffectiveFrom,
+		&i.EffectiveTo,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const listAssociations = `-- name: ListAssociations :many
+SELECT id, person_id_a, person_id_b, relation_code, kind, status, created_at, updated_at, deleted_at FROM oikumenea.person_associations
+WHERE deleted_at IS NULL AND (person_id_a = $1 OR person_id_b = $1)
+ORDER BY created_at DESC, id
+`
+
+func (q *Queries) ListAssociations(ctx context.Context, personID string) ([]OikumeneaPersonAssociation, error) {
+	rows, err := q.db.Query(ctx, listAssociations, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonAssociation
+	for rows.Next() {
+		var i OikumeneaPersonAssociation
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonIDA,
+			&i.PersonIDB,
+			&i.RelationCode,
+			&i.Kind,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCallSigns = `-- name: ListCallSigns :many
 SELECT id, person_id, call_sign, is_primary, created_at, updated_at, deleted_at FROM oikumenea.person_call_signs
 WHERE person_id = $1 AND deleted_at IS NULL ORDER BY is_primary DESC, id
@@ -1035,6 +1506,77 @@ func (q *Queries) ListEmails(ctx context.Context, personID string) ([]OikumeneaP
 	return items, nil
 }
 
+const listGuardianships = `-- name: ListGuardianships :many
+SELECT id, guardian_id, ward_id, relation_code, status, effective_from, effective_to, created_at, updated_at, deleted_at FROM oikumenea.person_guardianships
+WHERE deleted_at IS NULL AND (guardian_id = $1 OR ward_id = $1)
+ORDER BY created_at DESC, id
+`
+
+func (q *Queries) ListGuardianships(ctx context.Context, personID string) ([]OikumeneaPersonGuardianship, error) {
+	rows, err := q.db.Query(ctx, listGuardianships, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonGuardianship
+	for rows.Next() {
+		var i OikumeneaPersonGuardianship
+		if err := rows.Scan(
+			&i.ID,
+			&i.GuardianID,
+			&i.WardID,
+			&i.RelationCode,
+			&i.Status,
+			&i.EffectiveFrom,
+			&i.EffectiveTo,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listKinships = `-- name: ListKinships :many
+SELECT id, parent_id, child_id, status, created_at, updated_at, deleted_at FROM oikumenea.person_kinships
+WHERE deleted_at IS NULL AND (parent_id = $1 OR child_id = $1)
+ORDER BY created_at DESC, id
+`
+
+func (q *Queries) ListKinships(ctx context.Context, personID string) ([]OikumeneaPersonKinship, error) {
+	rows, err := q.db.Query(ctx, listKinships, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonKinship
+	for rows.Next() {
+		var i OikumeneaPersonKinship
+		if err := rows.Scan(
+			&i.ID,
+			&i.ParentID,
+			&i.ChildID,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMessengerLinks = `-- name: ListMessengerLinks :many
 SELECT ml.id, ml.phone_id, ml.email_id, ml.platform_code, ml.is_primary, ml.verified_at, ml.created_at, ml.updated_at, ml.deleted_at FROM oikumenea.person_messenger_links ml
 LEFT JOIN oikumenea.person_phones ph ON ml.phone_id = ph.id
@@ -1104,6 +1646,78 @@ func (q *Queries) ListNameVariants(ctx context.Context, personID string) ([]Oiku
 			&i.IsPrimary,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listNextOfKin = `-- name: ListNextOfKin :many
+SELECT id, subject_id, contact_id, relation_code, priority, status, created_at, updated_at, deleted_at FROM oikumenea.person_next_of_kin
+WHERE deleted_at IS NULL AND (subject_id = $1 OR contact_id = $1)
+ORDER BY priority, created_at DESC, id
+`
+
+func (q *Queries) ListNextOfKin(ctx context.Context, personID string) ([]OikumeneaPersonNextOfKin, error) {
+	rows, err := q.db.Query(ctx, listNextOfKin, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonNextOfKin
+	for rows.Next() {
+		var i OikumeneaPersonNextOfKin
+		if err := rows.Scan(
+			&i.ID,
+			&i.SubjectID,
+			&i.ContactID,
+			&i.RelationCode,
+			&i.Priority,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPartnerships = `-- name: ListPartnerships :many
+SELECT id, person_id_a, person_id_b, status, effective_from, effective_to, created_at, updated_at, deleted_at FROM oikumenea.person_partnerships
+WHERE deleted_at IS NULL AND (person_id_a = $1 OR person_id_b = $1)
+ORDER BY created_at DESC, id
+`
+
+func (q *Queries) ListPartnerships(ctx context.Context, personID string) ([]OikumeneaPersonPartnership, error) {
+	rows, err := q.db.Query(ctx, listPartnerships, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonPartnership
+	for rows.Next() {
+		var i OikumeneaPersonPartnership
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonIDA,
+			&i.PersonIDB,
+			&i.Status,
+			&i.EffectiveFrom,
+			&i.EffectiveTo,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1274,6 +1888,43 @@ func (q *Queries) ListPlatforms(ctx context.Context) ([]OikumeneaPersonPlatform,
 	return items, nil
 }
 
+const listRelationTypes = `-- name: ListRelationTypes :many
+
+
+SELECT code, name, category, status, sort_order, created_at, updated_at, deleted_at FROM oikumenea.person_relation_types WHERE deleted_at IS NULL ORDER BY sort_order, code
+`
+
+// ============================ person↔person relationships (D-PersonRelationships, M14) ============================
+// relation-type catalog ------------------------------------------------------
+func (q *Queries) ListRelationTypes(ctx context.Context) ([]OikumeneaPersonRelationType, error) {
+	rows, err := q.db.Query(ctx, listRelationTypes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonRelationType
+	for rows.Next() {
+		var i OikumeneaPersonRelationType
+		if err := rows.Scan(
+			&i.Code,
+			&i.Name,
+			&i.Category,
+			&i.Status,
+			&i.SortOrder,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listResidences = `-- name: ListResidences :many
 SELECT id, person_id, country, region, valid_from, valid_to, created_at, updated_at, deleted_at FROM oikumenea.person_residences
 WHERE person_id = $1 AND deleted_at IS NULL ORDER BY valid_from DESC, id
@@ -1371,6 +2022,43 @@ func (q *Queries) ListSocialAccounts(ctx context.Context, personID string) ([]Oi
 			&i.Source,
 			&i.Confidence,
 			&i.IsPrimary,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSponsorships = `-- name: ListSponsorships :many
+SELECT id, sponsor_id, sponsored_id, relation_code, status, effective_from, effective_to, created_at, updated_at, deleted_at FROM oikumenea.person_sponsorships
+WHERE deleted_at IS NULL AND (sponsor_id = $1 OR sponsored_id = $1)
+ORDER BY created_at DESC, id
+`
+
+func (q *Queries) ListSponsorships(ctx context.Context, personID string) ([]OikumeneaPersonSponsorship, error) {
+	rows, err := q.db.Query(ctx, listSponsorships, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonSponsorship
+	for rows.Next() {
+		var i OikumeneaPersonSponsorship
+		if err := rows.Scan(
+			&i.ID,
+			&i.SponsorID,
+			&i.SponsoredID,
+			&i.RelationCode,
+			&i.Status,
+			&i.EffectiveFrom,
+			&i.EffectiveTo,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
@@ -1525,6 +2213,47 @@ func (q *Queries) SetRank(ctx context.Context, arg SetRankParams) (OikumeneaPers
 	return i, err
 }
 
+const updateAssociation = `-- name: UpdateAssociation :one
+UPDATE oikumenea.person_associations SET
+  person_id_a = $1, person_id_b = $2, relation_code = $3,
+  kind = $4, status = $5
+WHERE id = $6 AND deleted_at IS NULL AND (person_id_a = $1 OR person_id_b = $2)
+RETURNING id, person_id_a, person_id_b, relation_code, kind, status, created_at, updated_at, deleted_at
+`
+
+type UpdateAssociationParams struct {
+	PersonIDA    string
+	PersonIDB    string
+	RelationCode pgtype.Text
+	Kind         string
+	Status       string
+	ID           string
+}
+
+func (q *Queries) UpdateAssociation(ctx context.Context, arg UpdateAssociationParams) (OikumeneaPersonAssociation, error) {
+	row := q.db.QueryRow(ctx, updateAssociation,
+		arg.PersonIDA,
+		arg.PersonIDB,
+		arg.RelationCode,
+		arg.Kind,
+		arg.Status,
+		arg.ID,
+	)
+	var i OikumeneaPersonAssociation
+	err := row.Scan(
+		&i.ID,
+		&i.PersonIDA,
+		&i.PersonIDB,
+		&i.RelationCode,
+		&i.Kind,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const updateCallSign = `-- name: UpdateCallSign :one
 UPDATE oikumenea.person_call_signs SET
   call_sign = $1, is_primary = $2
@@ -1599,6 +2328,83 @@ func (q *Queries) UpdateEmail(ctx context.Context, arg UpdateEmailParams) (Oikum
 	return i, err
 }
 
+const updateGuardianship = `-- name: UpdateGuardianship :one
+UPDATE oikumenea.person_guardianships SET
+  guardian_id = $1, ward_id = $2, relation_code = $3,
+  status = $4, effective_from = $5, effective_to = $6
+WHERE id = $7 AND deleted_at IS NULL AND (guardian_id = $1 OR ward_id = $2)
+RETURNING id, guardian_id, ward_id, relation_code, status, effective_from, effective_to, created_at, updated_at, deleted_at
+`
+
+type UpdateGuardianshipParams struct {
+	GuardianID    string
+	WardID        string
+	RelationCode  pgtype.Text
+	Status        string
+	EffectiveFrom pgtype.Date
+	EffectiveTo   pgtype.Date
+	ID            string
+}
+
+func (q *Queries) UpdateGuardianship(ctx context.Context, arg UpdateGuardianshipParams) (OikumeneaPersonGuardianship, error) {
+	row := q.db.QueryRow(ctx, updateGuardianship,
+		arg.GuardianID,
+		arg.WardID,
+		arg.RelationCode,
+		arg.Status,
+		arg.EffectiveFrom,
+		arg.EffectiveTo,
+		arg.ID,
+	)
+	var i OikumeneaPersonGuardianship
+	err := row.Scan(
+		&i.ID,
+		&i.GuardianID,
+		&i.WardID,
+		&i.RelationCode,
+		&i.Status,
+		&i.EffectiveFrom,
+		&i.EffectiveTo,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const updateKinship = `-- name: UpdateKinship :one
+UPDATE oikumenea.person_kinships SET parent_id = $1, child_id = $2, status = $3
+WHERE id = $4 AND deleted_at IS NULL AND (parent_id = $1 OR child_id = $2)
+RETURNING id, parent_id, child_id, status, created_at, updated_at, deleted_at
+`
+
+type UpdateKinshipParams struct {
+	ParentID string
+	ChildID  string
+	Status   string
+	ID       string
+}
+
+func (q *Queries) UpdateKinship(ctx context.Context, arg UpdateKinshipParams) (OikumeneaPersonKinship, error) {
+	row := q.db.QueryRow(ctx, updateKinship,
+		arg.ParentID,
+		arg.ChildID,
+		arg.Status,
+		arg.ID,
+	)
+	var i OikumeneaPersonKinship
+	err := row.Scan(
+		&i.ID,
+		&i.ParentID,
+		&i.ChildID,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const updateMessengerLink = `-- name: UpdateMessengerLink :one
 UPDATE oikumenea.person_messenger_links SET
   phone_id = $1, email_id = $2,
@@ -1633,6 +2439,88 @@ func (q *Queries) UpdateMessengerLink(ctx context.Context, arg UpdateMessengerLi
 		&i.PlatformCode,
 		&i.IsPrimary,
 		&i.VerifiedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const updateNextOfKin = `-- name: UpdateNextOfKin :one
+UPDATE oikumenea.person_next_of_kin SET
+  subject_id = $1, contact_id = $2, relation_code = $3,
+  priority = $4, status = $5
+WHERE id = $6 AND deleted_at IS NULL AND (subject_id = $1 OR contact_id = $2)
+RETURNING id, subject_id, contact_id, relation_code, priority, status, created_at, updated_at, deleted_at
+`
+
+type UpdateNextOfKinParams struct {
+	SubjectID    string
+	ContactID    string
+	RelationCode pgtype.Text
+	Priority     int32
+	Status       string
+	ID           string
+}
+
+func (q *Queries) UpdateNextOfKin(ctx context.Context, arg UpdateNextOfKinParams) (OikumeneaPersonNextOfKin, error) {
+	row := q.db.QueryRow(ctx, updateNextOfKin,
+		arg.SubjectID,
+		arg.ContactID,
+		arg.RelationCode,
+		arg.Priority,
+		arg.Status,
+		arg.ID,
+	)
+	var i OikumeneaPersonNextOfKin
+	err := row.Scan(
+		&i.ID,
+		&i.SubjectID,
+		&i.ContactID,
+		&i.RelationCode,
+		&i.Priority,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const updatePartnership = `-- name: UpdatePartnership :one
+UPDATE oikumenea.person_partnerships SET
+  person_id_a = $1, person_id_b = $2, status = $3,
+  effective_from = $4, effective_to = $5
+WHERE id = $6 AND deleted_at IS NULL AND (person_id_a = $1 OR person_id_b = $2)
+RETURNING id, person_id_a, person_id_b, status, effective_from, effective_to, created_at, updated_at, deleted_at
+`
+
+type UpdatePartnershipParams struct {
+	PersonIDA     string
+	PersonIDB     string
+	Status        string
+	EffectiveFrom pgtype.Date
+	EffectiveTo   pgtype.Date
+	ID            string
+}
+
+func (q *Queries) UpdatePartnership(ctx context.Context, arg UpdatePartnershipParams) (OikumeneaPersonPartnership, error) {
+	row := q.db.QueryRow(ctx, updatePartnership,
+		arg.PersonIDA,
+		arg.PersonIDB,
+		arg.Status,
+		arg.EffectiveFrom,
+		arg.EffectiveTo,
+		arg.ID,
+	)
+	var i OikumeneaPersonPartnership
+	err := row.Scan(
+		&i.ID,
+		&i.PersonIDA,
+		&i.PersonIDB,
+		&i.Status,
+		&i.EffectiveFrom,
+		&i.EffectiveTo,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -1866,6 +2754,50 @@ func (q *Queries) UpdateSocialAccount(ctx context.Context, arg UpdateSocialAccou
 		&i.Source,
 		&i.Confidence,
 		&i.IsPrimary,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const updateSponsorship = `-- name: UpdateSponsorship :one
+UPDATE oikumenea.person_sponsorships SET
+  sponsor_id = $1, sponsored_id = $2, relation_code = $3,
+  status = $4, effective_from = $5, effective_to = $6
+WHERE id = $7 AND deleted_at IS NULL AND (sponsor_id = $1 OR sponsored_id = $2)
+RETURNING id, sponsor_id, sponsored_id, relation_code, status, effective_from, effective_to, created_at, updated_at, deleted_at
+`
+
+type UpdateSponsorshipParams struct {
+	SponsorID     string
+	SponsoredID   string
+	RelationCode  string
+	Status        string
+	EffectiveFrom pgtype.Date
+	EffectiveTo   pgtype.Date
+	ID            string
+}
+
+func (q *Queries) UpdateSponsorship(ctx context.Context, arg UpdateSponsorshipParams) (OikumeneaPersonSponsorship, error) {
+	row := q.db.QueryRow(ctx, updateSponsorship,
+		arg.SponsorID,
+		arg.SponsoredID,
+		arg.RelationCode,
+		arg.Status,
+		arg.EffectiveFrom,
+		arg.EffectiveTo,
+		arg.ID,
+	)
+	var i OikumeneaPersonSponsorship
+	err := row.Scan(
+		&i.ID,
+		&i.SponsorID,
+		&i.SponsoredID,
+		&i.RelationCode,
+		&i.Status,
+		&i.EffectiveFrom,
+		&i.EffectiveTo,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,

@@ -13,7 +13,7 @@
 //
 // Run against a throwaway DB that has the migrations applied:
 //
-//	OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/postgres?sslmode=disable" \
+//	OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable" \
 //	  go test -tags integration ./internal/person/...
 package person_test
 
@@ -34,7 +34,7 @@ import (
 	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
 )
 
-const defaultTestDSN = "postgres://postgres:dev@localhost:5432/postgres?sslmode=disable"
+const defaultTestDSN = "postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable"
 
 func newPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
@@ -71,20 +71,25 @@ func code(t *testing.T, prefix string) string {
 func seedRank(t *testing.T, pool *pgxpool.Pool) string {
 	t.Helper()
 	ctx := context.Background()
-	var catID, typeID, rankID string
+	var sysID, catID, typeID, rankID string
 	if err := pool.QueryRow(ctx,
-		`INSERT INTO oikumenea.rank_categories (code, name, sort_order) VALUES ($1, 'Cat', 0) RETURNING id`,
-		code(t, "cat")).Scan(&catID); err != nil {
+		`INSERT INTO oikumenea.rank_systems (code, name, sort_order) VALUES ($1, 'Sys', 0) RETURNING id`,
+		code(t, "sys")).Scan(&sysID); err != nil {
+		t.Fatalf("seed system: %v", err)
+	}
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO oikumenea.rank_categories (system_id, code, name, sort_order) VALUES ($1, $2, 'Cat', 0) RETURNING id`,
+		sysID, code(t, "cat")).Scan(&catID); err != nil {
 		t.Fatalf("seed category: %v", err)
 	}
 	if err := pool.QueryRow(ctx,
-		`INSERT INTO oikumenea.rank_types (category_id, code, name, sort_order) VALUES ($1, $2, 'Typ', 0) RETURNING id`,
-		catID, code(t, "typ")).Scan(&typeID); err != nil {
+		`INSERT INTO oikumenea.rank_types (system_id, category_id, code, name, sort_order) VALUES ($1, $2, $3, 'Typ', 0) RETURNING id`,
+		sysID, catID, code(t, "typ")).Scan(&typeID); err != nil {
 		t.Fatalf("seed type: %v", err)
 	}
 	if err := pool.QueryRow(ctx,
-		`INSERT INTO oikumenea.rank_ranks (type_id, code, name, sort_order) VALUES ($1, $2, 'Rnk', 0) RETURNING id`,
-		typeID, code(t, "rnk")).Scan(&rankID); err != nil {
+		`INSERT INTO oikumenea.rank_ranks (system_id, type_id, code, name, sort_order) VALUES ($1, $2, $3, 'Rnk', 0) RETURNING id`,
+		sysID, typeID, code(t, "rnk")).Scan(&rankID); err != nil {
 		t.Fatalf("seed rank: %v", err)
 	}
 	return rankID
@@ -626,4 +631,118 @@ func contains(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+// TestPersonRelationships exercises the M14 per-type reified self-links (D-PersonRelationships):
+// canonical-pair partnerships with the single-active rule, directional kinship/sponsorship/guardianship
+// via role, next-of-kin nomination, COI association, the polymorphic
+// delete-by-id, and purge erasure on either endpoint.
+func TestPersonRelationships(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newService(t, 0)
+
+	a := newPerson(t, svc, "Alice")
+	b := newPerson(t, svc, "Bob")
+	c := newPerson(t, svc, "Carol")
+
+	if rts, err := svc.ListRelationTypes(ctx); err != nil || len(rts) == 0 {
+		t.Fatalf("list relation types: %d err %v", len(rts), err)
+	}
+
+	// Partnership: canonical pair (a<b), single active per person, self/unknown rejects.
+	part, err := svc.UpsertPartnership(ctx, a.ID, domain.Partnership{PersonIDA: a.ID, PersonIDB: b.ID, Status: "married"})
+	if err != nil {
+		t.Fatalf("partnership: %v", err)
+	}
+	lo, hi := a.ID, b.ID
+	if lo > hi {
+		lo, hi = hi, lo
+	}
+	if part.PersonIDA != lo || part.PersonIDB != hi {
+		t.Fatalf("partnership not canonical: %+v", part)
+	}
+	if _, err := svc.UpsertPartnership(ctx, a.ID, domain.Partnership{PersonIDA: a.ID, PersonIDB: c.ID, Status: "engaged"}); !errors.Is(err, domain.ErrPartnershipConflict) {
+		t.Fatalf("single active partnership: want ErrPartnershipConflict, got %v", err)
+	}
+	if _, err := svc.UpsertPartnership(ctx, a.ID, domain.Partnership{PersonIDA: a.ID, PersonIDB: a.ID, Status: "married"}); !errors.Is(err, domain.ErrSelfRelationship) {
+		t.Fatalf("self partnership: want ErrSelfRelationship, got %v", err)
+	}
+	if _, err := svc.UpsertPartnership(ctx, a.ID, domain.Partnership{PersonIDA: a.ID, PersonIDB: "urn:oikumenea:person:dev:person:missing", Status: "married"}); !errors.Is(err, domain.ErrUnknownCounterpart) {
+		t.Fatalf("unknown counterpart: want ErrUnknownCounterpart, got %v", err)
+	}
+
+	// Kinship parent_of (a is parent of c).
+	kin, err := svc.UpsertKinship(ctx, a.ID, domain.Kinship{ParentID: a.ID, ChildID: c.ID, Status: "active"})
+	if err != nil {
+		t.Fatalf("kinship: %v", err)
+	}
+	if kin.ParentID != a.ID || kin.ChildID != c.ID {
+		t.Fatalf("kinship endpoints: %+v", kin)
+	}
+
+	// Sponsorship: a category-mismatched code is rejected; a sponsorship code succeeds.
+	if _, err := svc.UpsertSponsorship(ctx, a.ID, domain.Sponsorship{SponsorID: a.ID, SponsoredID: c.ID, RelationCode: "spouse"}); !errors.Is(err, domain.ErrRelationCategory) {
+		t.Fatalf("sponsorship wrong category: want ErrRelationCategory, got %v", err)
+	}
+	if _, err := svc.UpsertSponsorship(ctx, a.ID, domain.Sponsorship{SponsorID: a.ID, SponsoredID: c.ID, RelationCode: "godparent"}); err != nil {
+		t.Fatalf("sponsorship: %v", err)
+	}
+
+	// Guardianship (a guardian of c).
+	if _, err := svc.UpsertGuardianship(ctx, a.ID, domain.Guardianship{GuardianID: a.ID, WardID: c.ID}); err != nil {
+		t.Fatalf("guardianship: %v", err)
+	}
+
+	// Next-of-kin nomination (a → b), default priority 1.
+	nk, err := svc.UpsertNextOfKin(ctx, a.ID, domain.NextOfKin{SubjectID: a.ID, ContactID: b.ID, RelationCode: "spouse"})
+	if err != nil {
+		t.Fatalf("next of kin: %v", err)
+	}
+	if nk.Priority != 1 || nk.SubjectID != a.ID {
+		t.Fatalf("next of kin: %+v", nk)
+	}
+
+	// Association (COI), symmetric.
+	if _, err := svc.UpsertAssociation(ctx, a.ID, domain.Association{PersonIDA: a.ID, PersonIDB: c.ID, Kind: "coi"}); err != nil {
+		t.Fatalf("association: %v", err)
+	}
+
+	// Lists touch either endpoint.
+	if ps, err := svc.ListPartnerships(ctx, b.ID); err != nil || len(ps) != 1 {
+		t.Fatalf("list partnerships for b: %d err %v", len(ps), err)
+	}
+	if ks, err := svc.ListKinships(ctx, c.ID); err != nil || len(ks) != 1 {
+		t.Fatalf("list kinships for c: %d err %v", len(ks), err)
+	}
+
+	// Polymorphic delete-by-id (holder-scoped); idempotent re-delete; bad RID rejected.
+	if err := svc.DeleteRelationship(ctx, a.ID, kin.ID); err != nil {
+		t.Fatalf("delete kinship: %v", err)
+	}
+	if ks, err := svc.ListKinships(ctx, a.ID); err != nil || len(ks) != 0 {
+		t.Fatalf("kinship after delete: %d err %v", len(ks), err)
+	}
+	if err := svc.DeleteRelationship(ctx, a.ID, kin.ID); !errors.Is(err, domain.ErrRelationshipNotFound) {
+		t.Fatalf("re-delete: want ErrRelationshipNotFound, got %v", err)
+	}
+	if err := svc.DeleteRelationship(ctx, a.ID, "urn:oikumenea:tenant:dev:unit:x"); !errors.Is(err, domain.ErrUnknownRelationshipKind) {
+		t.Fatalf("bad rid: want ErrUnknownRelationshipKind, got %v", err)
+	}
+
+	// Purge b erases every relationship touching b; a-c links remain.
+	if _, err := svc.DeactivatePerson(ctx, b.ID, "x"); err != nil {
+		t.Fatalf("deactivate b: %v", err)
+	}
+	if _, err := svc.PurgePerson(ctx, b.ID); err != nil {
+		t.Fatalf("purge b: %v", err)
+	}
+	if ps, err := svc.ListPartnerships(ctx, a.ID); err != nil || len(ps) != 0 {
+		t.Fatalf("partnerships for a after purging b: %d err %v", len(ps), err)
+	}
+	if nks, err := svc.ListNextOfKin(ctx, a.ID); err != nil || len(nks) != 0 {
+		t.Fatalf("next-of-kin for a after purging b: %d err %v", len(nks), err)
+	}
+	if ss, err := svc.ListSponsorships(ctx, a.ID); err != nil || len(ss) != 1 {
+		t.Fatalf("sponsorships for a after purging b: %d err %v", len(ss), err)
+	}
 }

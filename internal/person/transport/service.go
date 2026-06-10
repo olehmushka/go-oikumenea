@@ -45,9 +45,10 @@ const (
 
 // Localization entity-type keys for the translatable contact-kind / platform catalog names (D-i18n).
 const (
-	emailTypeEntity = "email_type"
-	phoneTypeEntity = "phone_type"
-	platformEntity  = "platform"
+	emailTypeEntity    = "email_type"
+	phoneTypeEntity    = "phone_type"
+	platformEntity     = "platform"
+	relationTypeEntity = "relation_type"
 )
 
 // Service adapts *application.Service to the generated personapi.PersonService interface. It holds the
@@ -541,6 +542,247 @@ func (s Service) ListSocialAccountHandles(ctx context.Context, token bearertoken
 	return out, nil
 }
 
+// ---------------------------------------------------------------- person↔person relationships (D-PersonRelationships)
+
+func (s Service) ListRelationTypes(ctx context.Context, token bearertoken.Token) ([]personapi.RelationType, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	types, err := s.app.ListRelationTypes(ctx)
+	if err != nil {
+		return nil, s.mapError(ctx, err, "")
+	}
+	defaults := make(map[string]string, len(types))
+	for _, t := range types {
+		defaults[t.Code] = t.Name
+	}
+	names, err := s.loc.NamesByID(ctx, relationTypeEntity, defaults)
+	if err != nil {
+		return nil, s.mapError(ctx, err, "")
+	}
+	out := make([]personapi.RelationType, 0, len(types))
+	for _, t := range types {
+		out = append(out, personapi.RelationType{
+			Code: t.Code, Name: names[t.Code], Category: t.Category, Status: t.Status, SortOrder: sortOrderPtr(t.SortOrder),
+		})
+	}
+	return out, nil
+}
+
+// directedEndpoints maps the path person + counterpart + role to a directional (from, to) pair, ok=false
+// for an unrecognized role.
+func directedEndpoints(personID, counterpart, role, fromRole, toRole string) (from, to string, ok bool) {
+	switch role {
+	case fromRole:
+		return personID, counterpart, true
+	case toRole:
+		return counterpart, personID, true
+	}
+	return "", "", false
+}
+
+func (s Service) ListPartnerships(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.Partnership, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	rs, err := s.app.ListPartnerships(ctx, personID)
+	if err != nil {
+		return nil, s.mapError(ctx, err, personID)
+	}
+	out := make([]personapi.Partnership, 0, len(rs))
+	for _, r := range rs {
+		out = append(out, toAPIPartnership(r))
+	}
+	return out, nil
+}
+
+func (s Service) UpsertPartnership(ctx context.Context, token bearertoken.Token, personID string, req personapi.UpsertPartnershipRequest) (personapi.Partnership, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return personapi.Partnership{}, err
+	}
+	saved, err := s.app.UpsertPartnership(ctx, personID, domain.Partnership{
+		ID:            derefOr(req.Id, ""),
+		PersonIDA:     personID,
+		PersonIDB:     req.PartnerId,
+		Status:        req.Status,
+		EffectiveFrom: derefOr(req.EffectiveFrom, ""),
+		EffectiveTo:   derefOr(req.EffectiveTo, ""),
+	})
+	if err != nil {
+		return personapi.Partnership{}, s.mapError(ctx, err, personID)
+	}
+	return toAPIPartnership(saved), nil
+}
+
+func (s Service) ListKinships(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.Kinship, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	rs, err := s.app.ListKinships(ctx, personID)
+	if err != nil {
+		return nil, s.mapError(ctx, err, personID)
+	}
+	out := make([]personapi.Kinship, 0, len(rs))
+	for _, r := range rs {
+		out = append(out, toAPIKinship(r))
+	}
+	return out, nil
+}
+
+func (s Service) UpsertKinship(ctx context.Context, token bearertoken.Token, personID string, req personapi.UpsertKinshipRequest) (personapi.Kinship, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return personapi.Kinship{}, err
+	}
+	parent, child, ok := directedEndpoints(personID, req.CounterpartId, req.Role, "parent", "child")
+	if !ok {
+		return personapi.Kinship{}, personapi.NewPersonInvalid("role must be parent or child")
+	}
+	saved, err := s.app.UpsertKinship(ctx, personID, domain.Kinship{
+		ID: derefOr(req.Id, ""), ParentID: parent, ChildID: child, Status: derefOr(req.Status, ""),
+	})
+	if err != nil {
+		return personapi.Kinship{}, s.mapError(ctx, err, personID)
+	}
+	return toAPIKinship(saved), nil
+}
+
+func (s Service) ListGuardianships(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.Guardianship, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	rs, err := s.app.ListGuardianships(ctx, personID)
+	if err != nil {
+		return nil, s.mapError(ctx, err, personID)
+	}
+	out := make([]personapi.Guardianship, 0, len(rs))
+	for _, r := range rs {
+		out = append(out, toAPIGuardianship(r))
+	}
+	return out, nil
+}
+
+func (s Service) UpsertGuardianship(ctx context.Context, token bearertoken.Token, personID string, req personapi.UpsertGuardianshipRequest) (personapi.Guardianship, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return personapi.Guardianship{}, err
+	}
+	guardian, ward, ok := directedEndpoints(personID, req.CounterpartId, req.Role, "guardian", "ward")
+	if !ok {
+		return personapi.Guardianship{}, personapi.NewPersonInvalid("role must be guardian or ward")
+	}
+	saved, err := s.app.UpsertGuardianship(ctx, personID, domain.Guardianship{
+		ID: derefOr(req.Id, ""), GuardianID: guardian, WardID: ward, RelationCode: derefOr(req.RelationCode, ""),
+		Status: derefOr(req.Status, ""), EffectiveFrom: derefOr(req.EffectiveFrom, ""), EffectiveTo: derefOr(req.EffectiveTo, ""),
+	})
+	if err != nil {
+		return personapi.Guardianship{}, s.mapError(ctx, err, personID)
+	}
+	return toAPIGuardianship(saved), nil
+}
+
+func (s Service) ListSponsorships(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.Sponsorship, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	rs, err := s.app.ListSponsorships(ctx, personID)
+	if err != nil {
+		return nil, s.mapError(ctx, err, personID)
+	}
+	out := make([]personapi.Sponsorship, 0, len(rs))
+	for _, r := range rs {
+		out = append(out, toAPISponsorship(r))
+	}
+	return out, nil
+}
+
+func (s Service) UpsertSponsorship(ctx context.Context, token bearertoken.Token, personID string, req personapi.UpsertSponsorshipRequest) (personapi.Sponsorship, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return personapi.Sponsorship{}, err
+	}
+	sponsor, sponsored, ok := directedEndpoints(personID, req.CounterpartId, req.Role, "sponsor", "sponsored")
+	if !ok {
+		return personapi.Sponsorship{}, personapi.NewPersonInvalid("role must be sponsor or sponsored")
+	}
+	saved, err := s.app.UpsertSponsorship(ctx, personID, domain.Sponsorship{
+		ID: derefOr(req.Id, ""), SponsorID: sponsor, SponsoredID: sponsored, RelationCode: req.RelationCode,
+		Status: derefOr(req.Status, ""), EffectiveFrom: derefOr(req.EffectiveFrom, ""), EffectiveTo: derefOr(req.EffectiveTo, ""),
+	})
+	if err != nil {
+		return personapi.Sponsorship{}, s.mapError(ctx, err, personID)
+	}
+	return toAPISponsorship(saved), nil
+}
+
+func (s Service) ListNextOfKin(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.NextOfKin, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	rs, err := s.app.ListNextOfKin(ctx, personID)
+	if err != nil {
+		return nil, s.mapError(ctx, err, personID)
+	}
+	out := make([]personapi.NextOfKin, 0, len(rs))
+	for _, r := range rs {
+		out = append(out, toAPINextOfKin(r))
+	}
+	return out, nil
+}
+
+func (s Service) UpsertNextOfKin(ctx context.Context, token bearertoken.Token, personID string, req personapi.UpsertNextOfKinRequest) (personapi.NextOfKin, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return personapi.NextOfKin{}, err
+	}
+	saved, err := s.app.UpsertNextOfKin(ctx, personID, domain.NextOfKin{
+		ID: derefOr(req.Id, ""), SubjectID: personID, ContactID: req.ContactId,
+		RelationCode: derefOr(req.RelationCode, ""), Priority: derefOr(req.Priority, 0), Status: derefOr(req.Status, ""),
+	})
+	if err != nil {
+		return personapi.NextOfKin{}, s.mapError(ctx, err, personID)
+	}
+	return toAPINextOfKin(saved), nil
+}
+
+func (s Service) ListAssociations(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.Association, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	rs, err := s.app.ListAssociations(ctx, personID)
+	if err != nil {
+		return nil, s.mapError(ctx, err, personID)
+	}
+	out := make([]personapi.Association, 0, len(rs))
+	for _, r := range rs {
+		out = append(out, toAPIAssociation(r))
+	}
+	return out, nil
+}
+
+func (s Service) UpsertAssociation(ctx context.Context, token bearertoken.Token, personID string, req personapi.UpsertAssociationRequest) (personapi.Association, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return personapi.Association{}, err
+	}
+	saved, err := s.app.UpsertAssociation(ctx, personID, domain.Association{
+		ID: derefOr(req.Id, ""), PersonIDA: personID, PersonIDB: req.CounterpartId,
+		RelationCode: derefOr(req.RelationCode, ""), Kind: req.Kind, Status: derefOr(req.Status, ""),
+	})
+	if err != nil {
+		return personapi.Association{}, s.mapError(ctx, err, personID)
+	}
+	return toAPIAssociation(saved), nil
+}
+
+func (s Service) DeleteRelationship(ctx context.Context, token bearertoken.Token, personID, relationshipID string) error {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return err
+	}
+	if err := s.app.DeleteRelationship(ctx, personID, relationshipID); err != nil {
+		if errors.Is(err, domain.ErrRelationshipNotFound) { // idempotent: a missing link is a no-op
+			return nil
+		}
+		return s.mapError(ctx, err, personID)
+	}
+	return nil
+}
+
 // ---------------------------------------------------------------- platform catalog
 
 func (s Service) ListPlatforms(ctx context.Context, token bearertoken.Token) ([]personapi.Platform, error) {
@@ -835,6 +1077,45 @@ func toAPISocialAccountHandle(h domain.SocialAccountHandle) personapi.SocialAcco
 	}
 }
 
+func toAPIPartnership(p domain.Partnership) personapi.Partnership {
+	return personapi.Partnership{
+		Id: p.ID, PersonIdA: p.PersonIDA, PersonIdB: p.PersonIDB, Status: p.Status,
+		EffectiveFrom: strPtrOrNil(p.EffectiveFrom), EffectiveTo: strPtrOrNil(p.EffectiveTo),
+	}
+}
+
+func toAPIKinship(k domain.Kinship) personapi.Kinship {
+	return personapi.Kinship{Id: k.ID, ParentId: k.ParentID, ChildId: k.ChildID, Status: k.Status}
+}
+
+func toAPIGuardianship(g domain.Guardianship) personapi.Guardianship {
+	return personapi.Guardianship{
+		Id: g.ID, GuardianId: g.GuardianID, WardId: g.WardID, RelationCode: strPtrOrNil(g.RelationCode),
+		Status: g.Status, EffectiveFrom: strPtrOrNil(g.EffectiveFrom), EffectiveTo: strPtrOrNil(g.EffectiveTo),
+	}
+}
+
+func toAPISponsorship(sp domain.Sponsorship) personapi.Sponsorship {
+	return personapi.Sponsorship{
+		Id: sp.ID, SponsorId: sp.SponsorID, SponsoredId: sp.SponsoredID, RelationCode: sp.RelationCode,
+		Status: sp.Status, EffectiveFrom: strPtrOrNil(sp.EffectiveFrom), EffectiveTo: strPtrOrNil(sp.EffectiveTo),
+	}
+}
+
+func toAPINextOfKin(n domain.NextOfKin) personapi.NextOfKin {
+	return personapi.NextOfKin{
+		Id: n.ID, SubjectId: n.SubjectID, ContactId: n.ContactID,
+		RelationCode: strPtrOrNil(n.RelationCode), Priority: n.Priority, Status: n.Status,
+	}
+}
+
+func toAPIAssociation(a domain.Association) personapi.Association {
+	return personapi.Association{
+		Id: a.ID, PersonIdA: a.PersonIDA, PersonIdB: a.PersonIDB,
+		RelationCode: strPtrOrNil(a.RelationCode), Kind: a.Kind, Status: a.Status,
+	}
+}
+
 // sortOrderPtr maps a catalog sort order (0 == unset by convention) to the optional API field.
 func sortOrderPtr(n int) *int {
 	if n == 0 {
@@ -873,7 +1154,8 @@ func (s Service) mapError(ctx context.Context, err error, personID string) error
 		errors.Is(err, domain.ErrPhoneNotFound),
 		errors.Is(err, domain.ErrCallSignNotFound),
 		errors.Is(err, domain.ErrMessengerLinkNotFound),
-		errors.Is(err, domain.ErrSocialAccountNotFound):
+		errors.Is(err, domain.ErrSocialAccountNotFound),
+		errors.Is(err, domain.ErrRelationshipNotFound):
 		return personapi.NewPersonNotFound(personID)
 	case errors.Is(err, domain.ErrCodeConflict):
 		return personapi.NewPersonConflict("a person with this code already exists")
@@ -889,6 +1171,20 @@ func (s Service) mapError(ctx context.Context, err error, personID string) error
 		return personapi.NewPersonConflict("an active messenger link for this channel and platform already exists")
 	case errors.Is(err, domain.ErrSocialAccountConflict):
 		return personapi.NewPersonConflict("an active social account for this platform and identity already exists")
+	case errors.Is(err, domain.ErrPartnershipConflict):
+		return personapi.NewPersonConflict("a person already has an active engaged/married partnership")
+	case errors.Is(err, domain.ErrRelationshipConflict):
+		return personapi.NewPersonConflict("an equivalent active relationship already exists")
+	case errors.Is(err, domain.ErrUnknownRelationType):
+		return personapi.NewPersonInvalid("relation type does not exist")
+	case errors.Is(err, domain.ErrRelationCategory):
+		return personapi.NewPersonInvalid("relation type is not in the expected category")
+	case errors.Is(err, domain.ErrSelfRelationship):
+		return personapi.NewPersonInvalid("a person cannot be related to themselves")
+	case errors.Is(err, domain.ErrUnknownCounterpart):
+		return personapi.NewPersonInvalid("the counterpart person does not exist")
+	case errors.Is(err, domain.ErrUnknownRelationshipKind):
+		return personapi.NewPersonInvalid("unknown relationship id")
 	case errors.Is(err, domain.ErrUnknownPlatform):
 		return personapi.NewPersonInvalid("platform does not exist")
 	case errors.Is(err, domain.ErrPlatformNotMessenger):

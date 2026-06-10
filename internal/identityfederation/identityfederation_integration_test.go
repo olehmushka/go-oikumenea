@@ -19,7 +19,7 @@
 //   - the first-admin bootstrap seeds person+account+identity+instance-admin in one transaction and is
 //     idempotent; it skips when an admin already exists and Force is false.
 //
-//     OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/postgres?sslmode=disable" \
+//     OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable" \
 //     go test -tags integration ./internal/identityfederation/...
 package identityfederation_test
 
@@ -44,7 +44,7 @@ import (
 	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
 )
 
-const defaultTestDSN = "postgres://postgres:dev@localhost:5432/postgres?sslmode=disable"
+const defaultTestDSN = "postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable"
 
 func newPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()

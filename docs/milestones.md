@@ -41,11 +41,13 @@ migrates, and demos** on its own, so the service is runnable at every step.
 | **M11** | Hardening & upgrade-safety | staged RLS enablement, lint gate, CI upgrade tests, decision-explain/time-bound polish, packaging | M7–M10 |
 | **M12** | Person enrichment & expanded identity | person emails / phones / call signs; RU·BY·LATAM personal-ID schemes; per-document-type attribute schema | M5, M9 |
 | **M13** | Social & messenger channels | platform catalog; messenger reachability over phones/emails; standalone social accounts with analytics-grade attribution (stable id, provenance+confidence, verification) | M12 |
-| **M14** | Person↔person relationships | per-type reified self-links: partnership/marriage, kinship, guardianship, sponsorship, next-of-kin, association/COI, social links | M5; M13 (social links only) |
+| **M14** | Person↔person relationships | per-type reified self-links: partnership/marriage, kinship, guardianship, sponsorship, next-of-kin, association/COI (friend/follower social-link deferred) | M5 |
+| **M15** | Rank systems, NATO grades & presets | a `rank_system` top level (multinational); standardized `grade_code` (NATO STANAG 2116) for cross-system comparability; bundled scheme presets + idempotent `/rank-scheme/import` | M4 |
 
 M1/M2 and M3/M4 are independent and may be built in parallel. Everything after M2 assumes audit + i18n exist.
 M12 is **scoped (in progress)** — see its section below (D-PersonContactChannels, D-DocumentAttrSchema, expanded D-PersonalCodes).
-M13 and M14 are **scoped** — see their sections below (D-PersonSocialChannels, D-PersonRelationships); M13 precedes M14 because `person_social_links` requires M13's social accounts.
+M13 and M14 are **delivered** — see their sections below (D-PersonSocialChannels, D-PersonRelationships). M14's scoped friend/follower `person_social_links` tie was **deferred — not built** (see decisions.md).
+M15 is **delivered** — see its section below (D-RankSystems); it is additive over M4 and refines the L-OneRankScheme lock (one registry, multiple systems).
 
 ---
 
@@ -319,8 +321,15 @@ verification) — while staying inside the project's PII discipline.
 
 ## M14 — Person↔person relationships
 
-**Status: scoped.** Binding via **D-PersonRelationships** in [decisions.md](architecture/decisions.md)
-(promotes open-question DS-42, expanded). Per-type reified self-links, all additive.
+**Status: delivered** (revision `0015_person_relationships`). Binding via **D-PersonRelationships** in
+[decisions.md](architecture/decisions.md) (promotes open-question DS-42, expanded). Per-type reified
+self-links, all additive — the `person_relation_types` catalog + **six** link tables
+(`person_partnerships`/`_kinships`/`_guardianships`/`_sponsorships`/`_next_of_kin`/`_associations`),
+their `PersonService` sub-resource endpoints (per-type `GET`/`PUT`, a polymorphic
+`DELETE /persons/{id}/relationships/{id}`, and `GET /person/relation-types`), holder-scoped reads,
+audited writes, and both-endpoint purge erasure all landed. The scoped seventh tie,
+`person_social_links` (friend/follower), was **deferred — not built** (no consumer / no authoritative
+source / redundant with `person_associations`; see decisions.md D-PersonRelationships).
 
 **Goal.** Record family and social structure between people as **per-type reified `Person → Person`
 links** (D-Ontology), each mirroring the `membership_memberships` temporal-link shape — covering the
@@ -336,14 +345,46 @@ plus a Palantir-style generic **association** link for COI / prohibited-contact.
   - `person_sponsorships` (godparent / advisor / mentor; `link__sponsor_of`).
   - `person_next_of_kin` (in-directory nomination + priority; `link__next_of_kin`).
   - `person_associations` (associate / COI / no-contact; `link__associated_with`).
-  - `person_social_links` (friend/follower — **lands last, gated on M13's social accounts as
-    proof-of-friendship**; `link__social_tie`).
   - `person_relation_types` — catalog for the open-ended relation vocabularies (sponsorship/association/
     next-of-kin labels).
+  - *(deferred — not built)* `person_social_links` (friend/follower; `link__social_tie`) — cut on review
+    (no consumer / no authoritative source / redundant with `person_associations`); see decisions.md.
 - **Implements:** D-PersonRelationships (extends D-Ontology). See [person](modules/person.md).
 - **Exit:** record a marriage with one active row per spouse; a `parent_of` kinship; an in-directory
-  next-of-kin nomination; a COI association; purging either endpoint erases the link;
-  `person_social_links` only after M13.
+  next-of-kin nomination; a COI association; purging either endpoint erases the link.
+
+## M15 — Rank systems, NATO grades & presets
+
+**Status: delivered** (folded into the rank migration `0005_rank`). Binding via **D-RankSystems** in
+[decisions.md](architecture/decisions.md) (extends D-Rank, refines L-OneRankScheme; promotes
+open-question DS-43). Additive over M4 — a new top-level table (`rank_systems`), a denormalized
+`system_id` down the tree, the seeded `rank_grades` reference catalog (NATO STANAG 2116) + `rank_ranks.grade_code`,
+the type tree, system CRUD, `GET /rank-grades`, and the idempotent `POST /rank-scheme/import` (with
+bundled `deploy/rank-presets/{us,ua}-armed-forces.json` + `nato-generic.json`) all landed; `person`
+untouched.
+
+**Goal.** Let one directory carry **multiple national rank systems at once** (a coalition with US and
+Ukrainian ranks), make ranks **comparable across systems**, and let admins **bootstrap a ladder from a
+preset** instead of hand-entering every node.
+
+- **Delivers:**
+  - `rank_systems` (new top level — national/organizational ladder, optional `country` → `geo_countries`);
+    `rank_categories.system_id` denormalized down onto `rank_types`/`rank_ranks`; the scheme becomes
+    `rank_system → rank_category → rank_type` (tree) `→ rank`.
+  - `rank_grades` — a **migration-seeded** reference catalog (NATO STANAG 2116: `OF-1..OF-10`/`OF(D)`,
+    warrant, `OR-1..OR-9`; `tier` + `ordinal`); `rank_ranks.grade_code` optional FK. Cross-system
+    **equivalence** = same grade; **seniority** = `tier` then `ordinal`; absent grade ⇒ incomparable.
+  - Endpoints: `rank_systems` CRUD, `gradeCode` on rank create/edit, `GET /rank-grades`, and an
+    idempotent **`POST /rank-scheme/import`** (code-keyed upsert, additive/non-destructive) applying a
+    bundled preset (`deploy/rank-presets/*.json`, opt-in, never auto-seeded). `GET /rank-scheme` nests
+    `systems → categories → types → ranks`.
+- **Implements:** D-RankSystems (extends D-Rank). See [rank](modules/rank.md).
+- **Excluded / parked:** non-military cross-system comparators (academic/ecclesiastical have no STANAG
+  analog → `grade_code` stays NULL there) — **DS-43**. Reparenting / moving a node between systems stays
+  an open seam.
+- **Exit:** import the `us-armed-forces` and `ua-armed-forces` presets; a person holds a rank in either
+  system; `OF-5` ranks compare equivalent across the two; re-importing a preset changes nothing
+  (idempotent); a non-military system omits grades and simply has no cross-system comparison.
 
 ---
 
@@ -367,7 +408,7 @@ The **M12** milestone (above) is now **scoped** — a person/document enrichment
 call signs, RU·BY·LATAM personal-ID schemes, per-document-type attribute schema). Its one newly parked
 seam is **DS-40** (phone carrier/provider lookup, needs an external service).
 
-The **M13** and **M14** milestones (above) are now **scoped** — they **promote** DS-41 (social &
+The **M13** and **M14** milestones (above) are now **delivered** — they **promote** DS-41 (social &
 messenger channels) and DS-42 (person↔person relationships) out of the backlog into binding decisions
 (D-PersonSocialChannels, D-PersonRelationships). They add **no** new parked seams: social-graph metrics
 are excluded outright, and the only deferral (free-text social `bio`/location) rides the **existing**

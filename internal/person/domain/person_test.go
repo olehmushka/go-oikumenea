@@ -135,3 +135,60 @@ func TestLifecycleGates(t *testing.T) {
 		t.Fatal("purged tombstone is terminal")
 	}
 }
+
+// Relationship invariants (D-PersonRelationships, M14).
+
+func TestRelationshipValidate(t *testing.T) {
+	if err := (Partnership{Status: "married"}).Validate(); err != nil {
+		t.Fatalf("valid partnership status: %v", err)
+	}
+	if err := (Partnership{Status: "dating"}).Validate(); !errors.Is(err, ErrInvalid) {
+		t.Fatal("bad partnership status should be invalid")
+	}
+	if err := (Partnership{Status: "married", EffectiveFrom: "nope"}).Validate(); !errors.Is(err, ErrInvalid) {
+		t.Fatal("bad effective date should be invalid")
+	}
+	if !(Partnership{Status: "engaged"}).IsActivePartnership() {
+		t.Fatal("engaged counts as active")
+	}
+	if (Partnership{Status: "divorced"}).IsActivePartnership() {
+		t.Fatal("divorced is not active")
+	}
+	if err := (Kinship{Status: "active"}).Validate(); err != nil {
+		t.Fatalf("valid kinship: %v", err)
+	}
+	if err := (Kinship{Status: "cousin"}).Validate(); !errors.Is(err, ErrInvalid) {
+		t.Fatal("bad kinship status should be invalid")
+	}
+	if err := (Sponsorship{Status: "active"}).Validate(); !errors.Is(err, ErrInvalid) {
+		t.Fatal("sponsorship requires a relation code")
+	}
+	if err := (Sponsorship{RelationCode: "godparent", Status: "active"}).Validate(); err != nil {
+		t.Fatalf("valid sponsorship: %v", err)
+	}
+	if err := (Association{Kind: "coi", Status: "active"}).Validate(); err != nil {
+		t.Fatalf("valid association: %v", err)
+	}
+	if err := (Association{Kind: "enemy", Status: "active"}).Validate(); !errors.Is(err, ErrInvalid) {
+		t.Fatal("bad association kind should be invalid")
+	}
+}
+
+func TestRelationLinkType(t *testing.T) {
+	cases := map[string]string{
+		"urn:oikumenea:person:dev:link__partnered_with:0190":  LinkPartnership,
+		"urn:oikumenea:person:dev:link__kin_parent_of:0190":   LinkKinship,
+		"urn:oikumenea:person:dev:link__associated_with:0190": LinkAssociation,
+	}
+	for rid, want := range cases {
+		if got := RelationLinkType(rid); got != want {
+			t.Fatalf("RelationLinkType(%q) = %q, want %q", rid, got, want)
+		}
+	}
+	for _, bad := range []string{"", "not-a-rid", "urn:oikumenea:tenant:dev:unit:0190", "urn:oikumenea:person"} {
+		if got := RelationLinkType(bad); got != "" && bad == "urn:oikumenea:tenant:dev:unit:0190" {
+			// a non-person RID must not be treated as a relationship
+			t.Fatalf("RelationLinkType(%q) = %q, want \"\"", bad, got)
+		}
+	}
+}

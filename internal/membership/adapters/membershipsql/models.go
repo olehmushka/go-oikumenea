@@ -372,6 +372,24 @@ type OikumeneaOrderOrderType struct {
 	DeletedAt pgtype.Timestamptz
 }
 
+type OikumeneaPersonAssociation struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonIDA string
+	// pii:none
+	PersonIDB string
+	// pii:none
+	RelationCode pgtype.Text
+	// pii:none
+	Kind string
+	// pii:none
+	Status    string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
 type OikumeneaPersonCallSign struct {
 	// pii:none
 	ID string
@@ -438,6 +456,40 @@ type OikumeneaPersonEmailType struct {
 	DeletedAt pgtype.Timestamptz
 }
 
+type OikumeneaPersonGuardianship struct {
+	// pii:none
+	ID string
+	// pii:none
+	GuardianID string
+	// pii:none
+	WardID string
+	// pii:none
+	RelationCode pgtype.Text
+	// pii:none
+	Status string
+	// pii:basic
+	EffectiveFrom pgtype.Date
+	// pii:basic
+	EffectiveTo pgtype.Date
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+	DeletedAt   pgtype.Timestamptz
+}
+
+type OikumeneaPersonKinship struct {
+	// pii:none
+	ID string
+	// pii:none
+	ParentID string
+	// pii:none
+	ChildID string
+	// pii:none
+	Status    string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
 type OikumeneaPersonMessengerLink struct {
 	// pii:none
 	ID string
@@ -487,6 +539,42 @@ type OikumeneaPersonNameVariant struct {
 	IsPrimary bool
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
+}
+
+type OikumeneaPersonNextOfKin struct {
+	// pii:none
+	ID string
+	// pii:none
+	SubjectID string
+	// pii:none
+	ContactID string
+	// pii:none
+	RelationCode pgtype.Text
+	// pii:none
+	Priority int32
+	// pii:none
+	Status    string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaPersonPartnership struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonIDA string
+	// pii:none
+	PersonIDB string
+	// pii:none
+	Status string
+	// pii:basic
+	EffectiveFrom pgtype.Date
+	// pii:basic
+	EffectiveTo pgtype.Date
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+	DeletedAt   pgtype.Timestamptz
 }
 
 type OikumeneaPersonPerson struct {
@@ -583,6 +671,22 @@ type OikumeneaPersonPlatform struct {
 	DeletedAt pgtype.Timestamptz
 }
 
+type OikumeneaPersonRelationType struct {
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	Category string
+	// pii:none
+	Status string
+	// pii:none
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
 type OikumeneaPersonResidence struct {
 	// pii:none
 	ID string
@@ -649,9 +753,31 @@ type OikumeneaPersonSocialAccountHandle struct {
 	DeletedAt pgtype.Timestamptz
 }
 
+type OikumeneaPersonSponsorship struct {
+	// pii:none
+	ID string
+	// pii:none
+	SponsorID string
+	// pii:none
+	SponsoredID string
+	// pii:none
+	RelationCode string
+	// pii:none
+	Status string
+	// pii:basic
+	EffectiveFrom pgtype.Date
+	// pii:basic
+	EffectiveTo pgtype.Date
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+	DeletedAt   pgtype.Timestamptz
+}
+
 type OikumeneaRankCategory struct {
 	// pii:none
 	ID string
+	// pii:none
+	SystemID string
 	// pii:none
 	Code string
 	// pii:none
@@ -663,9 +789,22 @@ type OikumeneaRankCategory struct {
 	DeletedAt pgtype.Timestamptz
 }
 
+type OikumeneaRankGrade struct {
+	// pii:none
+	Code string
+	// pii:none
+	Tier string
+	// pii:none
+	Ordinal int32
+	// pii:none
+	Name string
+}
+
 type OikumeneaRankRank struct {
 	// pii:none
 	ID string
+	// pii:none
+	SystemID string
 	// pii:none
 	TypeID string
 	// pii:none
@@ -675,7 +814,25 @@ type OikumeneaRankRank struct {
 	// pii:none
 	Abbreviation pgtype.Text
 	// pii:none
+	GradeCode pgtype.Text
+	// pii:none
 	SortOrder int32
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaRankSystem struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	SortOrder int32
+	// pii:none
+	Country   pgtype.Text
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
@@ -685,7 +842,11 @@ type OikumeneaRankType struct {
 	// pii:none
 	ID string
 	// pii:none
+	SystemID string
+	// pii:none
 	CategoryID string
+	// pii:none
+	ParentTypeID pgtype.Text
 	// pii:none
 	Code string
 	// pii:none

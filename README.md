@@ -78,9 +78,15 @@ curl -sk https://localhost:8444/status/readiness
 
 ```bash
 go test ./...                                            # unit tests
+./scripts/setup-test-db.sh                               # create + migrate the dedicated test DB (once)
 set -a; . ./.env; set +a
 go test -tags=integration ./internal/...                 # integration tests (need a migrated DB)
 ```
+
+The integration tests run against a **dedicated `oikumenea_test` database** (`$OIKUMENEA_TEST_DSN`),
+separate from the dev/operator DB (`$DATABASE_URL`), so a test run never pollutes the data the
+running server + web console read. `setup-test-db.sh` is idempotent; pass `--reset` to rebuild the
+test DB from scratch after editing a migration.
 
 ## Client SDK & API reference
 

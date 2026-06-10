@@ -58,7 +58,8 @@ Real-world entities with identity over time → Objects.
 | `PersonalCode` / `PersonalCodeScheme` | [document](modules/document.md) | scheme has `code`/`name` | `status` + soft-delete; crypto-erase | value is `pii:sensitive`, **envelope-encrypted** + blind-indexed |
 | `Order` (наказ) / `OrderType` | [order](modules/order.md) | type has `code`/`name` | `Order`: draft→issued→revoked (issued is immutable) | the legal act; `OrderType.effect` declares the downstream consequence |
 | `OrderItem` | [order](modules/order.md) | no | parent-scoped (no own `deleted_at`) | one affected person/action; the unit of effect + provenance |
-| `RankCategory` / `RankType` / `Rank` | [rank](modules/rank.md) | yes | soft-delete (RESTRICT if held) | single system-wide ordered scheme |
+| `RankSystem` / `RankCategory` / `RankType` / `Rank` | [rank](modules/rank.md) | yes | soft-delete (RESTRICT if held) | single system-wide ordered scheme, now rooted at `RankSystem` (a national/organizational ladder — multinational; D-RankSystems); types form a **tree** (`parent_type_id` self-FK — a structural containment FK like `system_id`/`category_id`/`type_id`, **not** a reified Link), ranks on leaf types; a rank carries an optional standardized `grade_code` → `RankGrade` |
+| `RankGrade` | [rank](modules/rank.md) | `code` = NATO STANAG 2116 grade (`OF-1`…`OF-10`, `OR-1`…`OR-9`, warrant) | seeded reference registry | the cross-system comparability scale (`tier`/`ordinal`); migration-seeded like `Country` (D-RankSystems / D-Geo carve-out) |
 | `Role` | [authorization](modules/authorization.md) | yes | soft-delete | `is_base` roles immutable; permissions are **code**, not rows |
 | `Assignment` | [authorization](modules/authorization.md) | no | revoke-flip + optional `expires_at` | a **reified Link** — see [§2](#2-link-types) |
 | `InstanceAdmin` | [authorization](modules/authorization.md) | no | revoke-flip | the instance-wide authority plane |
@@ -106,7 +107,7 @@ RID is `link__<link_type>` in lower_snake (e.g. the `PARENT_OF` row → `link__p
 | `SPONSOR_OF` | `Person` → `Person` | [person](modules/person.md) | catalog `relation_code` (godparent/advisor/mentor) | **yes — effective interval** |
 | `NEXT_OF_KIN` | `Person` → `Person` | [person](modules/person.md) | in-directory nomination, `relation_code`, `priority` | — |
 | `ASSOCIATED_WITH` | `Person` → `Person` | [person](modules/person.md) | symmetric; `kind ∈ associate\|coi\|no_contact`, `relation_code` | — (COI / no-contact) |
-| `SOCIAL_TIE` | `Person` → `Person` | [person](modules/person.md) | `status ∈ active\|archived` | **gated on a linked `PersonSocialAccount`** (D-PersonSocialChannels) |
+| `SOCIAL_TIE` *(deferred — not built)* | `Person` → `Person` | [person](modules/person.md) | `status ∈ active\|archived` | scoped friend/follower tie, **cut from M14** (no consumer / no source / redundant with `ASSOCIATED_WITH`); see decisions.md D-PersonRelationships |
 | `ISSUED_BY` | `Order` → `Unit` | [order](modules/order.md) | — | anchors authz + RLS |
 | `TARGETS` | `OrderItem` → `Person`(+`Unit`/`Position`/`Rank`) | [order](modules/order.md) | `effect`, `effective_from/to` (legal metadata) | — |
 | `CAUSED_BY` (provenance) | `Membership`/rank change → `OrderItem` | [membership](modules/membership.md) / [order](modules/order.md) | `order_item_id` | the наказ that authorized the change |

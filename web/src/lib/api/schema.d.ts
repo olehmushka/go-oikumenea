@@ -965,6 +965,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/person/v1/person/platforms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the social/messenger platform catalog (locale -> text names; D-i18n; D-PersonSocialChannels).
+         * @description List the social/messenger platform catalog (locale -> text names; D-i18n; D-PersonSocialChannels).
+         */
+        get: operations["PersonService_listPlatforms"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/person/v1/person/relation-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the person↔person relation-type catalog (locale -> text names; D-i18n; D-PersonRelationships).
+         * @description List the person↔person relation-type catalog (locale -> text names; D-i18n; D-PersonRelationships).
+         */
+        get: operations["PersonService_listRelationTypes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/person/v1/persons": {
         parameters: {
             query?: never;
@@ -1006,6 +1046,30 @@ export interface paths {
          * @description Update names, birthdate, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.
          */
         put: operations["PersonService_updatePerson"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/person/v1/persons/{personId}/associations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List associations (associate/COI/no-contact) touching the person.
+         * @description List associations (associate/COI/no-contact) touching the person.
+         */
+        get: operations["PersonService_listAssociations"];
+        /**
+         * Add or replace a symmetric association. Returns Person:PersonInvalid for a self-pair, unknown counterpart, wrong relation category, or bad kind.
+         * @description Add or replace a symmetric association. Returns Person:PersonInvalid for a self-pair, unknown counterpart, wrong relation category, or bad kind.
+         */
+        put: operations["PersonService_upsertAssociation"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1165,6 +1229,100 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/person/v1/persons/{personId}/guardianships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List guardianships touching the person.
+         * @description List guardianships touching the person.
+         */
+        get: operations["PersonService_listGuardianships"];
+        /**
+         * Add or replace a guardian→ward link. Returns Person:PersonInvalid for a self-edge, unknown counterpart, unknown relation code, or bad role.
+         * @description Add or replace a guardian→ward link. Returns Person:PersonInvalid for a self-edge, unknown counterpart, unknown relation code, or bad role.
+         */
+        put: operations["PersonService_upsertGuardianship"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/person/v1/persons/{personId}/kinships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List parent/child kinships touching the person.
+         * @description List parent/child kinships touching the person.
+         */
+        get: operations["PersonService_listKinships"];
+        /**
+         * Add or replace a parent→child kinship. Returns Person:PersonConflict on a duplicate active pair, Person:PersonInvalid for a self-edge, unknown counterpart, or bad role.
+         * @description Add or replace a parent→child kinship. Returns Person:PersonConflict on a duplicate active pair, Person:PersonInvalid for a self-edge, unknown counterpart, or bad role.
+         */
+        put: operations["PersonService_upsertKinship"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/person/v1/persons/{personId}/messenger-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a person's messenger reachability links.
+         * @description List a person's messenger reachability links.
+         */
+        get: operations["PersonService_listMessengerLinks"];
+        /**
+         * Add or replace a messenger link over one of the person's phones/emails. Returns
+         * @description Add or replace a messenger link over one of the person's phones/emails. Returns
+         *     Person:PersonConflict if an active link for the channel+platform exists, Person:PersonInvalid
+         *     for an unknown / non-messenger platform or a channel not held by the person.
+         */
+        put: operations["PersonService_upsertMessengerLink"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/person/v1/persons/{personId}/messenger-links/{messengerLinkId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a messenger link by id.
+         * @description Remove a messenger link by id.
+         */
+        delete: operations["PersonService_deleteMessengerLink"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/person/v1/persons/{personId}/name-variants": {
         parameters: {
             query?: never;
@@ -1200,6 +1358,56 @@ export interface paths {
          * @description Remove a name variant.
          */
         delete: operations["PersonService_deleteNameVariant"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/person/v1/persons/{personId}/next-of-kin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List next-of-kin nominations touching the person (priority-ordered).
+         * @description List next-of-kin nominations touching the person (priority-ordered).
+         */
+        get: operations["PersonService_listNextOfKin"];
+        /**
+         * Nominate or replace a next-of-kin contact for the person. Returns Person:PersonInvalid for a self-nomination, unknown contact, or wrong relation category.
+         * @description Nominate or replace a next-of-kin contact for the person. Returns Person:PersonInvalid for a self-nomination, unknown contact, or wrong relation category.
+         */
+        put: operations["PersonService_upsertNextOfKin"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/person/v1/persons/{personId}/partnerships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List partnerships (marriage/engagement) touching the person.
+         * @description List partnerships (marriage/engagement) touching the person.
+         */
+        get: operations["PersonService_listPartnerships"];
+        /**
+         * Add or replace a partnership between the person and the partner. Returns Person:PersonConflict
+         * @description Add or replace a partnership between the person and the partner. Returns Person:PersonConflict
+         *     when either person already has an active engaged/married partnership, Person:PersonInvalid for a
+         *     self-pair, unknown partner, or bad status.
+         */
+        put: operations["PersonService_upsertPartnership"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1311,6 +1519,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/person/v1/persons/{personId}/relationships/{relationshipId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove any person↔person link by id (the link type is decoded from the RID). The path person
+         * @description Remove any person↔person link by id (the link type is decoded from the RID). The path person
+         *     must be one of the link's endpoints. Idempotent.
+         */
+        delete: operations["PersonService_deleteRelationship"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/person/v1/persons/{personId}/residences": {
         parameters: {
             query?: never;
@@ -1350,6 +1579,96 @@ export interface paths {
          * @description Remove a residence row by id.
          */
         delete: operations["PersonService_deleteResidence"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/person/v1/persons/{personId}/social-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a person's standalone social accounts.
+         * @description List a person's standalone social accounts.
+         */
+        get: operations["PersonService_listSocialAccounts"];
+        /**
+         * Add or replace a social account. A handle rename is recorded in the account's handle history.
+         * @description Add or replace a social account. A handle rename is recorded in the account's handle history.
+         *     Returns Person:PersonConflict on a duplicate active account, Person:PersonInvalid for an
+         *     unknown platform or bad source/confidence.
+         */
+        put: operations["PersonService_upsertSocialAccount"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/person/v1/persons/{personId}/social-accounts/{socialAccountId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a social account by id (its handle history cascades).
+         * @description Remove a social account by id (its handle history cascades).
+         */
+        delete: operations["PersonService_deleteSocialAccount"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/person/v1/persons/{personId}/social-accounts/{socialAccountId}/handles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List one social account's @handle-rename history (most recent first).
+         * @description List one social account's @handle-rename history (most recent first).
+         */
+        get: operations["PersonService_listSocialAccountHandles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/person/v1/persons/{personId}/sponsorships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List sponsorships (godparent/advisor/mentor) touching the person.
+         * @description List sponsorships (godparent/advisor/mentor) touching the person.
+         */
+        get: operations["PersonService_listSponsorships"];
+        /**
+         * Add or replace a sponsor→sponsored link. relationCode must be a category=sponsorship code. Returns Person:PersonInvalid for a self-edge, unknown counterpart, or wrong relation category.
+         * @description Add or replace a sponsor→sponsored link. relationCode must be a category=sponsorship code. Returns Person:PersonInvalid for a self-edge, unknown counterpart, or wrong relation category.
+         */
+        put: operations["PersonService_upsertSponsorship"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1395,6 +1714,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rank/v1/rank-grades": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the standardized-grade comparator catalog (NATO STANAG 2116), ordered by tier then ordinal.
+         * @description Read the standardized-grade comparator catalog (NATO STANAG 2116), ordered by tier then ordinal.
+         */
+        get: operations["RankService_getRankGrades"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rank/v1/rank-scheme": {
         parameters: {
             query?: never;
@@ -1403,8 +1742,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Read the whole scheme (categories -> types -> ranks) in seniority order.
-         * @description Read the whole scheme (categories -> types -> ranks) in seniority order.
+         * Read the whole scheme (systems -> categories -> types -> ranks) in seniority order.
+         * @description Read the whole scheme (systems -> categories -> types -> ranks) in seniority order.
          */
         get: operations["RankService_getRankScheme"];
         put?: never;
@@ -1425,8 +1764,9 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Add a category. Returns Rank:RankCodeConflict if the code is taken among active categories.
-         * @description Add a category. Returns Rank:RankCodeConflict if the code is taken among active categories.
+         * Add a category under a system (systemId). Returns Rank:RankSystemNotFound if the system is
+         * @description Add a category under a system (systemId). Returns Rank:RankSystemNotFound if the system is
+         *     absent, or Rank:RankCodeConflict if the code is taken among the system's active categories.
          */
         post: operations["RankService_addCategory"];
         delete?: never;
@@ -1449,6 +1789,28 @@ export interface paths {
          */
         put: operations["RankService_updateCategory"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rank/v1/rank-scheme/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import a preset rank-system subtree (system -> categories -> types -> ranks) as a code-keyed
+         * @description Import a preset rank-system subtree (system -> categories -> types -> ranks) as a code-keyed
+         *     idempotent upsert in one transaction (additive; never deletes). Returns a created/updated/
+         *     skipped summary. Re-importing an unchanged preset reports all-skipped.
+         */
+        post: operations["RankService_importRankScheme"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1495,6 +1857,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rank/v1/rank-scheme/systems": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a rank system. Returns Rank:RankCodeConflict if the code is taken among active systems.
+         * @description Add a rank system. Returns Rank:RankCodeConflict if the code is taken among active systems.
+         */
+        post: operations["RankService_addSystem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rank/v1/rank-scheme/systems/{systemId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Edit/reorder a system. `code` is immutable by convention.
+         * @description Edit/reorder a system. `code` is immutable by convention.
+         */
+        put: operations["RankService_updateSystem"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rank/v1/rank-scheme/types": {
         parameters: {
             query?: never;
@@ -1505,8 +1907,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Add a type under a category. Returns Rank:RankCategoryNotFound if the parent is absent.
-         * @description Add a type under a category. Returns Rank:RankCategoryNotFound if the parent is absent.
+         * Add a type under a category (categoryId) or nested under a parent type (parentTypeId).
+         * @description Add a type under a category (categoryId) or nested under a parent type (parentTypeId).
+         *     Returns Rank:RankCategoryNotFound or Rank:RankTypeNotFound if the named parent is absent,
+         *     or Rank:RankInvalid if the parent type already holds ranks (leaf types only).
          */
         post: operations["RankService_addType"];
         delete?: never;
@@ -1546,10 +1950,10 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Soft-delete a scheme node, blocked if in use (a category with active types, a type with
-         * @description Soft-delete a scheme node, blocked if in use (a category with active types, a type with
-         *     active ranks, or — post-M5 — a rank held by a person). `level` is one of
-         *     category | type | rank.
+         * Soft-delete a scheme node, blocked if in use (a system with active categories, a category with
+         * @description Soft-delete a scheme node, blocked if in use (a system with active categories, a category with
+         *     active types, a type with active ranks or child types, or — post-M5 — a rank held by a person).
+         *     `level` is one of system | category | type | rank.
          */
         delete: operations["RankService_deleteNode"];
         options?: never;
@@ -1802,7 +2206,7 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
-        /** @description Add a category. `name` is the default-locale text; other locales are managed via LocalizationService. */
+        /** @description Add a category under a system. `name` is the default-locale text; other locales via LocalizationService. */
         AddCategoryRequest: {
             code: string;
             name: string;
@@ -1811,6 +2215,8 @@ export interface components {
              * @description Seniority ordinal; defaults to (max active sibling order + 1), i.e. appended last.
              */
             sortOrder?: number;
+            /** @description The URN RID of the owning (active) rank system. */
+            systemId: string;
         };
         /** @description Attach the path unit as a child of `parentId` within a graph. */
         AddEdgeRequest: {
@@ -1835,10 +2241,12 @@ export interface components {
             /** Format: int32 */
             sortOrder?: number;
         };
-        /** @description Add a rank under a type. */
+        /** @description Add a rank under a (leaf) type. */
         AddRankRequest: {
             abbreviation?: string;
             code: string;
+            /** @description Optional standardized cross-system grade (a GET /rank-grades code); validated on write. */
+            gradeCode?: string;
             name: string;
             /**
              * Format: int32
@@ -1848,15 +2256,33 @@ export interface components {
             /** @description The URN RID of the owning (active) type. */
             typeId: string;
         };
-        /** @description Add a type under a category. */
-        AddTypeRequest: {
-            /** @description The URN RID of the owning (active) category. */
-            categoryId: string;
+        /** @description Add a rank system (the top level). `name` is the default-locale text; other locales via LocalizationService. */
+        AddSystemRequest: {
             code: string;
+            /** @description ISO-3166 national origin (geo_countries code); omit for a supranational system (NATO/UN). */
+            country?: string;
             name: string;
             /**
              * Format: int32
-             * @description Seniority ordinal; defaults to appended last within the category.
+             * @description Order among active systems; defaults to appended last.
+             */
+            sortOrder?: number;
+        };
+        /**
+         * @description Add a type, rooted either directly under a category (categoryId) or nested under a parent
+         *     type (parentTypeId — it then inherits the parent's category). Supply exactly one; a parent
+         *     type that already holds ranks cannot gain child types (ranks live on leaf types only).
+         */
+        AddTypeRequest: {
+            /** @description The URN RID of the owning (active) category, for a root type. Omit when nesting under a parent type. */
+            categoryId?: string;
+            code: string;
+            name: string;
+            /** @description The URN RID of the owning (active) parent type, for a nested type. Omit for a root type. */
+            parentTypeId?: string;
+            /**
+             * Format: int32
+             * @description Seniority ordinal; defaults to appended last among the new type's active siblings.
              */
             sortOrder?: number;
         };
@@ -1899,6 +2325,20 @@ export interface components {
         AssignmentPage: {
             assignments: components["schemas"]["Assignment"][];
             nextPageToken?: string;
+        };
+        /** @description A symmetric association / conflict-of-interest / prohibited-contact link (D-PersonRelationships; Link link__associated_with). */
+        Association: {
+            id: string;
+            /** @description One of associate | coi | no_contact. */
+            kind: string;
+            /** @description The lower-sorting person's URN RID (canonical pair ordering). */
+            personIdA: string;
+            /** @description The higher-sorting person's URN RID. */
+            personIdB: string;
+            /** @description Optional relation-type catalog code (category=association). */
+            relationCode?: string;
+            /** @description One of active | ended. */
+            status: string;
         };
         /**
          * @description The two actor kinds (D-Audit). An instance admin is a PERSON, never a separate kind.
@@ -2318,6 +2758,72 @@ export interface components {
         GraphList: {
             graphs: components["schemas"]["Graph"][];
         };
+        /** @description A legal guardian→ward link, distinct from blood kinship (D-PersonRelationships; Link link__guardian_of). */
+        Guardianship: {
+            effectiveFrom?: string;
+            /** @description null = ongoing. */
+            effectiveTo?: string;
+            /** @description The guardian's URN RID. */
+            guardianId: string;
+            id: string;
+            /** @description Optional relation-type catalog code. */
+            relationCode?: string;
+            /** @description One of active | ended. */
+            status: string;
+            /** @description The ward's URN RID. */
+            wardId: string;
+        };
+        ImportCategory: {
+            code: string;
+            name: string;
+            /** Format: int32 */
+            sortOrder?: number;
+            types: components["schemas"]["ImportType"][];
+        };
+        ImportRank: {
+            abbreviation?: string;
+            code: string;
+            gradeCode?: string;
+            name: string;
+            /** Format: int32 */
+            sortOrder?: number;
+        };
+        /**
+         * @description A preset rank-system subtree to import (D-RankSystems): one system with its categories ->
+         *     types (a tree) -> ranks, each carrying a stable `code`. Applied as a code-keyed idempotent
+         *     upsert in one transaction (additive; never deletes).
+         */
+        ImportRankSchemeRequest: {
+            system: components["schemas"]["ImportSystem"];
+        };
+        /** @description How many scheme nodes the import created, updated, or skipped (already current). */
+        ImportRankSchemeResponse: {
+            /** Format: int32 */
+            created: number;
+            /** Format: int32 */
+            skipped: number;
+            /** Format: int32 */
+            updated: number;
+        };
+        ImportSystem: {
+            categories: components["schemas"]["ImportCategory"][];
+            code: string;
+            country?: string;
+            name: string;
+            /** Format: int32 */
+            sortOrder?: number;
+        };
+        /** @description A type node; carry EITHER children OR ranks (ranks live on leaf types only). */
+        ImportType: {
+            /** @description Nested child types; empty for a leaf type. */
+            children: components["schemas"]["ImportType"][];
+            code: string;
+            name: string;
+            /** @description Ranks on this (leaf) type; empty for a non-leaf type. */
+            ranks: components["schemas"]["ImportRank"][];
+            /** Format: int32 */
+            sortOrder?: number;
+        };
         /** @description A person on the instance-wide authority plane (the reified link__instance_admin). */
         InstanceAdmin: {
             /** Format: date-time */
@@ -2330,6 +2836,16 @@ export interface components {
             /** Format: date-time */
             revokedAt?: string;
             revokedBy?: string;
+        };
+        /** @description A directional parent→child blood/legal parentage link (D-PersonRelationships; Link link__kin_parent_of). Siblings are derived, never stored. */
+        Kinship: {
+            /** @description The child's URN RID. */
+            childId: string;
+            id: string;
+            /** @description The parent's URN RID. */
+            parentId: string;
+            /** @description One of active | disestablished. */
+            status: string;
         };
         /** @description Link a verified (issuer, subject) login point to an account. */
         LinkIdentityRequest: {
@@ -2387,6 +2903,26 @@ export interface components {
             memberships: components["schemas"]["Membership"][];
             nextPageToken?: string;
         };
+        /**
+         * @description Reachability on a messenger platform over one of the person's existing channels
+         *     (D-PersonSocialChannels). Exactly one of phoneId/emailId is set.
+         */
+        MessengerLink: {
+            /** @description The URN RID of the person's email this link annotates; null when the link is over a phone. */
+            emailId?: string;
+            id: string;
+            /** @description The person's primary messenger reachability (at most one active). */
+            isPrimary: boolean;
+            /** @description The URN RID of the person's phone this link annotates; null when the link is over an email. */
+            phoneId?: string;
+            /** @description The messenger platform code (category=messenger). */
+            platformCode: string;
+            /**
+             * Format: date-time
+             * @description When the reachability was verified; null when unverified.
+             */
+            verifiedAt?: string;
+        };
         /** @description A full transliterated name form for one locale (e.g. ukr native, eng Latin). Person-managed, NOT the localization store. */
         NameVariant: {
             credentials?: string;
@@ -2404,6 +2940,23 @@ export interface components {
             surname2?: string;
             surnamePrefix?: string;
             title?: string;
+        };
+        /** @description An in-directory next-of-kin nomination (subject→contact, both directory persons; D-PersonRelationships; Link link__next_of_kin). A nomination, not a blood fact. */
+        NextOfKin: {
+            /** @description The nominated contact's URN RID (an in-directory person). */
+            contactId: string;
+            id: string;
+            /**
+             * Format: int32
+             * @description Priority ordering of the nomination (1 = highest).
+             */
+            priority: number;
+            /** @description Optional relation-type catalog code (category=next_of_kin). */
+            relationCode?: string;
+            /** @description One of active | withdrawn. */
+            status: string;
+            /** @description The nominating person's URN RID. */
+            subjectId: string;
         };
         /** @description An order header (наказ) plus its items. Mutable while draft; locked on issue. */
         Order: {
@@ -2495,6 +3048,24 @@ export interface components {
             updatedAt: string;
         };
         /**
+         * @description A marriage or engagement between two persons (D-PersonRelationships; Link link__partnered_with).
+         *     Symmetric: stored as a canonical pair (personIdA < personIdB). At most one active engaged/married
+         *     row per person.
+         */
+        Partnership: {
+            /** @description ISO-8601 date the partnership began (YYYY-MM-DD). */
+            effectiveFrom?: string;
+            /** @description ISO-8601 date it ended (YYYY-MM-DD); null = ongoing. */
+            effectiveTo?: string;
+            id: string;
+            /** @description The lower-sorting partner's URN RID (canonical pair ordering). */
+            personIdA: string;
+            /** @description The higher-sorting partner's URN RID. */
+            personIdB: string;
+            /** @description One of engaged | married | divorced | widowed | annulled | dissolved. */
+            status: string;
+        };
+        /**
          * @description An individual personnel record. Names follow the Unicode CLDR fixed field set
          *     (D-PersonNamesCLDR): displayName is authoritative, the structured parts are advisory. There
          *     is no patronymic field — the Slavic по-батькові lives in given2. nameVariants/citizenships/
@@ -2530,6 +3101,8 @@ export interface components {
             given2?: string;
             /** @description The person's URN RID (carried as a plain string). */
             id: string;
+            /** @description The person's messenger reachability links. Populated by getPerson; empty in list responses. */
+            messengerLinks: components["schemas"]["MessengerLink"][];
             /** @description Locale-tagged transliterations. Populated by getPerson; empty in list responses. */
             nameVariants: components["schemas"]["NameVariant"][];
             /** @description The person's contact phones. Populated by getPerson; empty in list responses. */
@@ -2547,6 +3120,8 @@ export interface components {
             residences: components["schemas"]["Residence"][];
             /** @description Biological sex, ISO/IEC 5218 as text — one of not_known | male | female | not_applicable. */
             sex: string;
+            /** @description The person's standalone social accounts. Populated by getPerson; empty in list responses. */
+            socialAccounts: components["schemas"]["SocialAccount"][];
             /** @description Lifecycle status — one of active | deactivated | purged. */
             status: string;
             surname?: string;
@@ -2629,6 +3204,21 @@ export interface components {
             /** @description One of active | retired. */
             status: string;
         };
+        /** @description An instance-admin catalog entry naming a social network / messenger (D-PersonSocialChannels). Stable code + translatable name + category. */
+        Platform: {
+            /** @description One of messenger | social. Only messenger platforms may carry a messenger link. */
+            category: string;
+            /** @description Stable, locale-agnostic identifier (D-Code); immutable by convention. */
+            code: string;
+            /** @description The translatable label as a locale -> text map (all enabled locales; D-i18n). */
+            name: {
+                [key: string]: string;
+            };
+            /** Format: int32 */
+            sortOrder?: number;
+            /** @description One of active | retired. */
+            status: string;
+        };
         /**
          * @description A unit-owned billet (D-Position) — an Object that exists whether or not anyone fills it (a
          *     VACANCY is an active position with no active filling). Position grants no authority. The
@@ -2672,6 +3262,12 @@ export interface components {
             abbreviation?: string;
             /** @description Stable, locale-agnostic identifier (D-Code); unique within its type among active ranks. */
             code: string;
+            /**
+             * @description Optional standardized cross-system grade (NATO STANAG 2116; one of the GET /rank-grades
+             *     codes). Two ranks are equivalent across systems when they share a gradeCode; absent => no
+             *     cross-system comparison.
+             */
+            gradeCode?: string;
             /** @description The rank's URN RID (carried as a plain string). */
             id: string;
             /** @description locale->text display name (all enabled locales; default-locale fallback + i18n store). */
@@ -2683,12 +3279,14 @@ export interface components {
              * @description Seniority ordinal among active siblings within the type (lower = more junior).
              */
             sortOrder: number;
+            /** @description The URN RID of the owning rank system (denormalized; equals the type's system). */
+            systemId: string;
             /** @description The URN RID of the owning rank type. */
             typeId: string;
         };
-        /** @description The top level of the scheme (e.g. army, navy; or academic, administrative), ordered. */
+        /** @description A branch within a rank system (e.g. army, navy; or academic, administrative), ordered. */
         RankCategory: {
-            /** @description Stable, locale-agnostic identifier; unique among active categories. */
+            /** @description Stable, locale-agnostic identifier; unique among active categories within the system. */
             code: string;
             /** @description The category's URN RID (carried as a plain string). */
             id: string;
@@ -2698,21 +3296,69 @@ export interface components {
             };
             /**
              * Format: int32
-             * @description Seniority ordinal among active categories.
+             * @description Seniority ordinal among active categories of the system.
              */
             sortOrder: number;
+            /** @description The URN RID of the owning rank system. */
+            systemId: string;
             /** @description The category's types in seniority order. Populated by getRankScheme; empty on create/update of the category. */
             types: components["schemas"]["RankType"][];
         };
-        /** @description The whole scheme, categories -> types -> ranks, each level in seniority order. */
-        RankScheme: {
-            categories: components["schemas"]["RankCategory"][];
+        /**
+         * @description A standardized cross-system comparability node (NATO STANAG 2116): the seeded reference catalog
+         *     two ranks compare through. Equivalence = same code; seniority = tier then ordinal.
+         */
+        RankGrade: {
+            /** @description STANAG 2116 grade code (e.g. OF-5, OR-9, OF(D)). */
+            code: string;
+            /** @description Generic, nation-neutral grade label (not translatable; grades are reference data, not i18n entities). */
+            name: string;
+            /**
+             * Format: int32
+             * @description Order within the tier (junior -> senior).
+             */
+            ordinal: number;
+            /** @description One of officer | warrant | enlisted (enlisted < warrant < officer for cross-tier seniority). */
+            tier: string;
         };
-        /** @description A band within a category (e.g. officers, warrant, enlisted), ordered. */
+        /** @description The whole scheme, systems -> categories -> types -> ranks, each level in seniority order. */
+        RankScheme: {
+            systems: components["schemas"]["RankSystem"][];
+        };
+        /**
+         * @description The top level of the scheme (D-RankSystems): a national/organizational rank ladder. One scheme
+         *     may hold several at once (a coalition directory); a single-nation deployment has one.
+         */
+        RankSystem: {
+            /** @description The system's categories in seniority order. Populated by getRankScheme; empty on create/update of the system. */
+            categories: components["schemas"]["RankCategory"][];
+            /** @description Stable, locale-agnostic identifier (e.g. us-armed-forces); unique among active systems. */
+            code: string;
+            /** @description ISO-3166 national origin (geo_countries code); absent for a supranational system (NATO/UN). */
+            country?: string;
+            /** @description The system's URN RID (carried as a plain string). */
+            id: string;
+            /** @description locale->text display name. */
+            name: {
+                [key: string]: string;
+            };
+            /**
+             * Format: int32
+             * @description Order among active systems.
+             */
+            sortOrder: number;
+        };
+        /**
+         * @description A band within a category (e.g. officers, warrant, enlisted), ordered. Types form a TREE: a
+         *     type may nest under another type of the same category (parentTypeId), and ranks attach to
+         *     LEAF types only.
+         */
         RankType: {
-            /** @description The URN RID of the owning rank category. */
+            /** @description The URN RID of the owning rank category (the root category; carried on every type in the tree). */
             categoryId: string;
-            /** @description Stable, locale-agnostic identifier; unique within its category among active types. */
+            /** @description Child types in seniority order. Populated by getRankScheme; empty for a leaf type and on create/update. */
+            children: components["schemas"]["RankType"][];
+            /** @description Stable, locale-agnostic identifier; unique among active siblings (same category + parent). */
             code: string;
             /** @description The type's URN RID (carried as a plain string). */
             id: string;
@@ -2720,13 +3366,32 @@ export interface components {
             name: {
                 [key: string]: string;
             };
-            /** @description The type's ranks in seniority order. Populated by getRankScheme; empty on create/update of the type. */
+            /** @description The URN RID of the parent type; absent for a root type of the category. */
+            parentTypeId?: string;
+            /** @description The type's ranks in seniority order (leaf types only). Populated by getRankScheme; empty on create/update of the type. */
             ranks: components["schemas"]["Rank"][];
             /**
              * Format: int32
-             * @description Seniority ordinal among active siblings within the category.
+             * @description Seniority ordinal among active siblings (within the parent type, or the category for a root type).
              */
             sortOrder: number;
+            /** @description The URN RID of the owning rank system (denormalized; equals the category's system). */
+            systemId: string;
+        };
+        /** @description An instance-admin catalog entry for an open-ended person↔person relation label (D-PersonRelationships). Stable code + translatable name + category. */
+        RelationType: {
+            /** @description One of sponsorship | association | next_of_kin. */
+            category: string;
+            /** @description Stable, locale-agnostic identifier (D-Code); immutable by convention. */
+            code: string;
+            /** @description The translatable label as a locale -> text map (all enabled locales; D-i18n). */
+            name: {
+                [key: string]: string;
+            };
+            /** Format: int32 */
+            sortOrder?: number;
+            /** @description One of active | retired. */
+            status: string;
         };
         /** @description A person's effective-dated residence in a country/region (D-Geo). Locator data (pii:contact). */
         Residence: {
@@ -2790,6 +3455,65 @@ export interface components {
         SetRankRequest: {
             /** @description The URN RID of the rank to assign; omit to clear the person's rank. */
             rankId?: string;
+        };
+        /**
+         * @description A person's standalone social-network account (D-PersonSocialChannels). platformUserId is the
+         *     platform's immutable internal id (the durable key); handle is the mutable current @handle.
+         */
+        SocialAccount: {
+            /** @description Weight of the claim — one of confirmed | probable | possible. */
+            confidence: string;
+            displayName?: string;
+            /** @description The current @handle (mutable; rename history kept separately). */
+            handle: string;
+            id: string;
+            /** @description The person's primary social account (at most one active). */
+            isPrimary: boolean;
+            language?: string;
+            personId: string;
+            /** @description The platform code the account is on. */
+            platformCode: string;
+            /** @description The platform's immutable internal id (the durable key); null when unknown. */
+            platformUserId?: string;
+            /** @description The platform "blue-check"; distinct from operator confirmation. */
+            platformVerified: boolean;
+            /** @description Profile URL; derived from platform + handle on write when not supplied. */
+            profileUrl?: string;
+            /** @description How the account was learned — one of self_declared | operator_verified | imported. */
+            source: string;
+            /**
+             * Format: date-time
+             * @description When an operator confirmed the account; null when unconfirmed.
+             */
+            verifiedByOperatorAt?: string;
+        };
+        /** @description One period in a social account's @handle-rename history (D-PersonSocialChannels). validTo null = current. */
+        SocialAccountHandle: {
+            accountId: string;
+            handle: string;
+            id: string;
+            /** Format: date-time */
+            validFrom: string;
+            /**
+             * Format: date-time
+             * @description When this handle stopped being current; null = current.
+             */
+            validTo?: string;
+        };
+        /** @description A sponsor→sponsored link — godparent / academic advisor / military mentor (D-PersonRelationships; Link link__sponsor_of). */
+        Sponsorship: {
+            effectiveFrom?: string;
+            /** @description null = ongoing. */
+            effectiveTo?: string;
+            id: string;
+            /** @description Required relation-type catalog code (category=sponsorship). */
+            relationCode: string;
+            /** @description The sponsor's URN RID. */
+            sponsorId: string;
+            /** @description The sponsored person's URN RID. */
+            sponsoredId: string;
+            /** @description One of active | ended. */
+            status: string;
         };
         /** @description Transition a unit's lifecycle state (suspend/archive/restore). */
         TransitionRequest: {
@@ -2964,9 +3688,10 @@ export interface components {
             sortOrder?: number;
             title?: string;
         };
-        /** @description Edit/reorder a rank. Omitted fields are unchanged. `code` is immutable. */
+        /** @description Edit/reorder a rank. Omitted fields are unchanged. `code` is immutable; `gradeCode` cannot be cleared (open seam). */
         UpdateRankRequest: {
             abbreviation?: string;
+            gradeCode?: string;
             name?: string;
             /** Format: int32 */
             sortOrder?: number;
@@ -2977,6 +3702,13 @@ export interface components {
             name?: string;
             /** @description When present, fully replaces the permission set. Omit to leave permissions unchanged. */
             permissions?: string[];
+        };
+        /** @description Edit/reorder a system. Omitted fields are unchanged. `code` is immutable; `country` cannot be cleared (open seam). */
+        UpdateSystemRequest: {
+            country?: string;
+            name?: string;
+            /** Format: int32 */
+            sortOrder?: number;
         };
         /** @description Edit/reorder a type. Omitted fields are unchanged. `code` is immutable. */
         UpdateTypeRequest: {
@@ -2992,6 +3724,18 @@ export interface components {
             name?: string;
             unitKind?: string;
             visibility?: components["schemas"]["Visibility"];
+        };
+        /** @description Record or replace a symmetric association between the path person and counterpartId. */
+        UpsertAssociationRequest: {
+            /** @description The other person's URN RID. */
+            counterpartId: string;
+            id?: string;
+            /** @description associate | coi | no_contact. */
+            kind: string;
+            /** @description Optional relation-type code (category=association). */
+            relationCode?: string;
+            /** @description active | ended; defaults to active. */
+            status?: string;
         };
         /** @description Add a call sign, or replace one when id is supplied. The value is required and unique per person. */
         UpsertCallSignRequest: {
@@ -3017,6 +3761,43 @@ export interface components {
             isPrimary?: boolean;
             typeCode: string;
         };
+        /** @description Record or replace a guardian→ward link between the path person and counterpartId; role names the path person's side. */
+        UpsertGuardianshipRequest: {
+            /** @description The other person's URN RID. */
+            counterpartId: string;
+            effectiveFrom?: string;
+            effectiveTo?: string;
+            id?: string;
+            relationCode?: string;
+            /** @description The path person's role — guardian | ward. */
+            role: string;
+            /** @description active | ended; defaults to active. */
+            status?: string;
+        };
+        /** @description Record or replace a parent→child kinship between the path person and counterpartId; role names the path person's side. */
+        UpsertKinshipRequest: {
+            /** @description The other person's URN RID. */
+            counterpartId: string;
+            id?: string;
+            /** @description The path person's role — parent | child. */
+            role: string;
+            /** @description active | disestablished; defaults to active. */
+            status?: string;
+        };
+        /**
+         * @description Add a messenger link over one of the person's phones or emails, or replace one when id is
+         *     supplied. Exactly one of phoneId/emailId must be set; platformCode must be a messenger platform.
+         */
+        UpsertMessengerLinkRequest: {
+            emailId?: string;
+            /** @description The URN RID of an existing messenger-link row to replace; omit to add a new row. */
+            id?: string;
+            isPrimary?: boolean;
+            phoneId?: string;
+            platformCode: string;
+            /** Format: date-time */
+            verifiedAt?: string;
+        };
         /** @description Add or replace the name variant for a locale (keyed by (person, locale)). */
         UpsertNameVariantRequest: {
             credentials?: string;
@@ -3031,6 +3812,36 @@ export interface components {
             surname2?: string;
             surnamePrefix?: string;
             title?: string;
+        };
+        /** @description Nominate or replace a next-of-kin contact for the path person (the subject). contactId must be an in-directory person. */
+        UpsertNextOfKinRequest: {
+            /** @description The nominated contact's URN RID (an in-directory person). */
+            contactId: string;
+            id?: string;
+            /**
+             * Format: int32
+             * @description Priority ordering (1 = highest); defaults to 1.
+             */
+            priority?: number;
+            /** @description Optional relation-type code (category=next_of_kin). */
+            relationCode?: string;
+            /** @description active | withdrawn; defaults to active. */
+            status?: string;
+        };
+        /**
+         * @description Record or replace a partnership between the path person and partnerId. The pair is stored in
+         *     canonical order; the path person must not be the partner. At most one active engaged/married
+         *     partnership per person.
+         */
+        UpsertPartnershipRequest: {
+            effectiveFrom?: string;
+            effectiveTo?: string;
+            /** @description The URN RID of an existing partnership row to replace; omit to add a new row. */
+            id?: string;
+            /** @description The other partner's URN RID (an in-directory person). */
+            partnerId: string;
+            /** @description engaged | married | divorced | widowed | annulled | dissolved. */
+            status: string;
         };
         /** @description Add a contact phone, or replace one when id is supplied. number is E.164-normalized and country derived. */
         UpsertPhoneRequest: {
@@ -3048,6 +3859,39 @@ export interface components {
             region?: string;
             validFrom: string;
             validTo?: string;
+        };
+        /** @description Add a social account, or replace one when id is supplied. handle is normalized and profileUrl derived when omitted. */
+        UpsertSocialAccountRequest: {
+            /** @description confirmed | probable | possible; defaults to possible. */
+            confidence?: string;
+            displayName?: string;
+            handle: string;
+            /** @description The URN RID of an existing social-account row to replace; omit to add a new row. */
+            id?: string;
+            isPrimary?: boolean;
+            language?: string;
+            platformCode: string;
+            platformUserId?: string;
+            platformVerified?: boolean;
+            profileUrl?: string;
+            /** @description self_declared | operator_verified | imported. */
+            source: string;
+            /** Format: date-time */
+            verifiedByOperatorAt?: string;
+        };
+        /** @description Record or replace a sponsor→sponsored link between the path person and counterpartId; role names the path person's side. relationCode is required (category=sponsorship). */
+        UpsertSponsorshipRequest: {
+            /** @description The other person's URN RID. */
+            counterpartId: string;
+            effectiveFrom?: string;
+            effectiveTo?: string;
+            id?: string;
+            /** @description Required relation-type code (category=sponsorship). */
+            relationCode: string;
+            /** @description The path person's role — sponsor | sponsored. */
+            role: string;
+            /** @description active | ended; defaults to active. */
+            status?: string;
         };
         /** @description Binary and schema revision the running server reports. */
         VersionInfo: {
@@ -5127,6 +5971,64 @@ export interface operations {
             };
         };
     };
+    PersonService_listPlatforms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Platform"][];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    PersonService_listRelationTypes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelationType"][];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
     PersonService_listPersons: {
         parameters: {
             query?: {
@@ -5245,6 +6147,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Person"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    PersonService_listAssociations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Association"][];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    PersonService_upsertAssociation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertAssociationRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Association"];
                 };
             };
             /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
@@ -5581,6 +6549,234 @@ export interface operations {
             };
         };
     };
+    PersonService_listGuardianships: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Guardianship"][];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    PersonService_upsertGuardianship: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertGuardianshipRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Guardianship"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    PersonService_listKinships: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Kinship"][];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    PersonService_upsertKinship: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertKinshipRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Kinship"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    PersonService_listMessengerLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessengerLink"][];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    PersonService_upsertMessengerLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertMessengerLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessengerLink"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    PersonService_deleteMessengerLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+                messengerLinkId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
     PersonService_upsertNameVariant: {
         parameters: {
             query?: never;
@@ -5634,6 +6830,138 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    PersonService_listNextOfKin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NextOfKin"][];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    PersonService_upsertNextOfKin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertNextOfKinRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NextOfKin"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    PersonService_listPartnerships: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Partnership"][];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    PersonService_upsertPartnership: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertPartnershipRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Partnership"];
+                };
             };
             /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
             default: {
@@ -5839,6 +7167,36 @@ export interface operations {
             };
         };
     };
+    PersonService_deleteRelationship: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+                relationshipId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
     PersonService_listResidences: {
         parameters: {
             query?: never;
@@ -5935,6 +7293,200 @@ export interface operations {
             };
         };
     };
+    PersonService_listSocialAccounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialAccount"][];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    PersonService_upsertSocialAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertSocialAccountRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialAccount"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    PersonService_deleteSocialAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+                socialAccountId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    PersonService_listSocialAccountHandles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+                socialAccountId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialAccountHandle"][];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    PersonService_listSponsorships: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Sponsorship"][];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    PersonService_upsertSponsorship: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertSponsorshipRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Sponsorship"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
     PlatformOpsService_demoError: {
         parameters: {
             query?: never;
@@ -5978,6 +7530,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VersionInfo"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    RankService_getRankGrades: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RankGrade"][];
                 };
             };
             /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
@@ -6088,6 +7669,39 @@ export interface operations {
             };
         };
     };
+    RankService_importRankScheme: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportRankSchemeRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRankSchemeResponse"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
     RankService_addRank: {
         parameters: {
             query?: never;
@@ -6143,6 +7757,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Rank"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    RankService_addSystem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddSystemRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RankSystem"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    RankService_updateSystem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                systemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSystemRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RankSystem"];
                 };
             };
             /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
@@ -6229,7 +7911,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The scheme level to delete; one of category | type | rank. */
+                /** @description The scheme level to delete; one of system | category | type | rank. */
                 level: string;
                 nodeId: string;
             };

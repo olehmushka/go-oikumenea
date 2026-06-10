@@ -14,7 +14,7 @@
 //
 // Run against a throwaway DB that has the migrations applied (the ua-rnokpp scheme is migration-seeded):
 //
-//	OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/postgres?sslmode=disable" \
+//	OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable" \
 //	  go test -tags integration ./internal/document/...
 package document_test
 
@@ -39,7 +39,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/pkg/personalcode"
 )
 
-const defaultTestDSN = "postgres://postgres:dev@localhost:5432/postgres?sslmode=disable"
+const defaultTestDSN = "postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable"
 
 // freshRNOKPP builds a РНОКПП with a valid weighted check digit and a random 9-digit prefix, so each
 // value is unique across the shared test DB (the blind-index uniqueness is global per scheme).

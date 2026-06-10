@@ -15,7 +15,7 @@
 //
 // Run against a throwaway DB that has the migrations applied:
 //
-//	OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/postgres?sslmode=disable" \
+//	OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable" \
 //	  go test -tags integration ./internal/membership/...
 package membership_test
 
@@ -37,7 +37,7 @@ import (
 	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
 )
 
-const defaultTestDSN = "postgres://postgres:dev@localhost:5432/postgres?sslmode=disable"
+const defaultTestDSN = "postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable"
 
 func newPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
@@ -96,20 +96,25 @@ func seedPerson(t *testing.T, pool *pgxpool.Pool) string {
 func seedRank(t *testing.T, pool *pgxpool.Pool) string {
 	t.Helper()
 	ctx := context.Background()
-	var catID, typeID, rankID string
+	var sysID, catID, typeID, rankID string
 	if err := pool.QueryRow(ctx,
-		`INSERT INTO oikumenea.rank_categories (code, name, sort_order) VALUES ($1, 'Cat', 0) RETURNING id`,
-		code(t, "cat")).Scan(&catID); err != nil {
+		`INSERT INTO oikumenea.rank_systems (code, name, sort_order) VALUES ($1, 'Sys', 0) RETURNING id`,
+		code(t, "sys")).Scan(&sysID); err != nil {
+		t.Fatalf("seed system: %v", err)
+	}
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO oikumenea.rank_categories (system_id, code, name, sort_order) VALUES ($1, $2, 'Cat', 0) RETURNING id`,
+		sysID, code(t, "cat")).Scan(&catID); err != nil {
 		t.Fatalf("seed category: %v", err)
 	}
 	if err := pool.QueryRow(ctx,
-		`INSERT INTO oikumenea.rank_types (category_id, code, name, sort_order) VALUES ($1, $2, 'Typ', 0) RETURNING id`,
-		catID, code(t, "typ")).Scan(&typeID); err != nil {
+		`INSERT INTO oikumenea.rank_types (system_id, category_id, code, name, sort_order) VALUES ($1, $2, $3, 'Typ', 0) RETURNING id`,
+		sysID, catID, code(t, "typ")).Scan(&typeID); err != nil {
 		t.Fatalf("seed type: %v", err)
 	}
 	if err := pool.QueryRow(ctx,
-		`INSERT INTO oikumenea.rank_ranks (type_id, code, name, sort_order) VALUES ($1, $2, 'Rnk', 0) RETURNING id`,
-		typeID, code(t, "rnk")).Scan(&rankID); err != nil {
+		`INSERT INTO oikumenea.rank_ranks (system_id, type_id, code, name, sort_order) VALUES ($1, $2, $3, 'Rnk', 0) RETURNING id`,
+		sysID, typeID, code(t, "rnk")).Scan(&rankID); err != nil {
 		t.Fatalf("seed rank: %v", err)
 	}
 	return rankID

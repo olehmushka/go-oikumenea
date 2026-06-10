@@ -52,6 +52,15 @@ var (
 	ErrMessengerLinkConflict = errors.New("active messenger link for this channel and platform already exists")
 	ErrSocialAccountNotFound = errors.New("social account not found")
 	ErrSocialAccountConflict = errors.New("active social account for this platform and identity already exists")
+	// D-PersonRelationships (M14)
+	ErrUnknownRelationType     = errors.New("relation type does not exist")
+	ErrRelationCategory        = errors.New("relation type is not in the expected category")
+	ErrSelfRelationship        = errors.New("a person cannot be related to themselves")
+	ErrUnknownCounterpart      = errors.New("the counterpart person does not exist")
+	ErrRelationshipNotFound    = errors.New("relationship not found")
+	ErrUnknownRelationshipKind = errors.New("unknown relationship kind")
+	ErrPartnershipConflict     = errors.New("a person already has an active engaged/married partnership")
+	ErrRelationshipConflict    = errors.New("an equivalent active relationship already exists")
 )
 
 // Social-account attribution vocabularies (D-PersonSocialChannels): source records how the account was
@@ -435,6 +444,186 @@ type SocialAccountHandle struct {
 	ValidTo   *time.Time
 }
 
+// ---------------------------------------------------------------- person↔person relationships (D-PersonRelationships, M14)
+
+// Relationship link-type tokens — the entity_type segment of a relationship row's RID
+// (urn:oikumenea:person:<env>:<token>:<uuid>). The polymorphic delete decodes the token to pick the
+// table. These match the ontology-mapping §2 Link types and the migration's new_rid(...) tokens.
+const (
+	LinkPartnership  = "link__partnered_with"
+	LinkKinship      = "link__kin_parent_of"
+	LinkGuardianship = "link__guardian_of"
+	LinkSponsorship  = "link__sponsor_of"
+	LinkNextOfKin    = "link__next_of_kin"
+	LinkAssociation  = "link__associated_with"
+)
+
+// Relation-type catalog categories (D-PersonRelationships): the open-ended relation labels are scoped
+// to which link type they apply to. Fixed lifecycle statuses (partnership, kinship) do NOT use the
+// catalog.
+const (
+	RelCategorySponsorship = "sponsorship"
+	RelCategoryAssociation = "association"
+	RelCategoryNextOfKin   = "next_of_kin"
+)
+
+// Relationship status / kind vocabularies (TEXT+CHECK mirrors of the migration).
+var (
+	validPartnershipStatus  = map[string]bool{"engaged": true, "married": true, "divorced": true, "widowed": true, "annulled": true, "dissolved": true}
+	activePartnershipStatus = map[string]bool{"engaged": true, "married": true}
+	validKinshipStatus      = map[string]bool{"active": true, "disestablished": true}
+	validIntervalStatus     = map[string]bool{"active": true, "ended": true} // guardianship, sponsorship, association
+	validNextOfKinStatus    = map[string]bool{"active": true, "withdrawn": true}
+	validAssociationKind    = map[string]bool{"associate": true, "coi": true, "no_contact": true}
+)
+
+// RelationLinkType extracts the link-type token from a relationship RID, or "" if it is not shaped like
+// a composed person URN RID. Used to dispatch the polymorphic delete-by-id.
+func RelationLinkType(rid string) string {
+	parts := strings.Split(rid, ":")
+	if len(parts) < 6 || parts[0] != "urn" || parts[1] != "oikumenea" || parts[2] != "person" {
+		return ""
+	}
+	return parts[4]
+}
+
+// RelationType is a row of the instance-admin relation-label catalog (person_relation_types): a stable
+// code + default-locale name + category (D-PersonRelationships / D-Code/D-i18n). The transport assembles
+// the locale->text name map via the localization store.
+type RelationType struct {
+	Code      string
+	Name      string
+	Category  string // sponsorship | association | next_of_kin
+	Status    string
+	SortOrder int
+}
+
+// Partnership is a marriage/engagement between two persons, stored as a canonical pair
+// (PersonIDA < PersonIDB; D-PersonRelationships). ID == "" => insert; otherwise replace that row.
+type Partnership struct {
+	ID            string
+	PersonIDA     string
+	PersonIDB     string
+	Status        string
+	EffectiveFrom string // ISO date or ""
+	EffectiveTo   string
+}
+
+func (p Partnership) Validate() error {
+	if !validPartnershipStatus[p.Status] {
+		return wrapInvalid("status must be one of engaged|married|divorced|widowed|annulled|dissolved")
+	}
+	if !validDate(p.EffectiveFrom) || !validDate(p.EffectiveTo) {
+		return wrapInvalid("effectiveFrom/effectiveTo must be ISO-8601 dates")
+	}
+	return nil
+}
+
+// IsActivePartnership reports whether the status is one that counts against the single-active rule.
+func (p Partnership) IsActivePartnership() bool { return activePartnershipStatus[p.Status] }
+
+// Kinship is a directional parent→child blood/legal parentage link (D-PersonRelationships).
+type Kinship struct {
+	ID       string
+	ParentID string
+	ChildID  string
+	Status   string
+}
+
+func (k Kinship) Validate() error {
+	if !validKinshipStatus[k.Status] {
+		return wrapInvalid("status must be one of active|disestablished")
+	}
+	return nil
+}
+
+// Guardianship is a legal guardian→ward link, distinct from blood kinship (D-PersonRelationships).
+type Guardianship struct {
+	ID            string
+	GuardianID    string
+	WardID        string
+	RelationCode  string // "" when unset
+	Status        string
+	EffectiveFrom string
+	EffectiveTo   string
+}
+
+func (g Guardianship) Validate() error {
+	if !validIntervalStatus[g.Status] {
+		return wrapInvalid("status must be one of active|ended")
+	}
+	if !validDate(g.EffectiveFrom) || !validDate(g.EffectiveTo) {
+		return wrapInvalid("effectiveFrom/effectiveTo must be ISO-8601 dates")
+	}
+	return nil
+}
+
+// Sponsorship is a sponsor→sponsored link — godparent / advisor / mentor (D-PersonRelationships).
+// RelationCode is required and must reference a category=sponsorship relation type.
+type Sponsorship struct {
+	ID            string
+	SponsorID     string
+	SponsoredID   string
+	RelationCode  string
+	Status        string
+	EffectiveFrom string
+	EffectiveTo   string
+}
+
+func (s Sponsorship) Validate() error {
+	if strings.TrimSpace(s.RelationCode) == "" {
+		return wrapInvalid("relationCode is required for a sponsorship")
+	}
+	if !validIntervalStatus[s.Status] {
+		return wrapInvalid("status must be one of active|ended")
+	}
+	if !validDate(s.EffectiveFrom) || !validDate(s.EffectiveTo) {
+		return wrapInvalid("effectiveFrom/effectiveTo must be ISO-8601 dates")
+	}
+	return nil
+}
+
+// NextOfKin is an in-directory next-of-kin nomination (subject→contact; D-PersonRelationships).
+type NextOfKin struct {
+	ID           string
+	SubjectID    string
+	ContactID    string
+	RelationCode string
+	Priority     int
+	Status       string
+}
+
+func (n NextOfKin) Validate() error {
+	if !validNextOfKinStatus[n.Status] {
+		return wrapInvalid("status must be one of active|withdrawn")
+	}
+	if n.Priority < 0 {
+		return wrapInvalid("priority must be non-negative")
+	}
+	return nil
+}
+
+// Association is a symmetric association / COI / no-contact link, stored as a canonical pair
+// (PersonIDA < PersonIDB; D-PersonRelationships).
+type Association struct {
+	ID           string
+	PersonIDA    string
+	PersonIDB    string
+	RelationCode string
+	Kind         string
+	Status       string
+}
+
+func (a Association) Validate() error {
+	if !validAssociationKind[a.Kind] {
+		return wrapInvalid("kind must be one of associate|coi|no_contact")
+	}
+	if !validIntervalStatus[a.Status] {
+		return wrapInvalid("status must be one of active|ended")
+	}
+	return nil
+}
+
 func wrapInvalid(msg string) error { return errors.Join(ErrInvalid, errors.New(msg)) }
 
 // validEmail is a deliberately minimal shape check (exactly one @, non-empty local part, a dotted
@@ -567,4 +756,46 @@ type Repository interface {
 	InsertSocialAccountHandle(ctx context.Context, h SocialAccountHandle) (SocialAccountHandle, error)
 	CloseCurrentSocialAccountHandle(ctx context.Context, accountID string) error
 	ListSocialAccountHandles(ctx context.Context, accountID string) ([]SocialAccountHandle, error)
+
+	// ---- person↔person relationships (D-PersonRelationships) ----
+
+	// relation-type catalog
+	ListRelationTypes(ctx context.Context) ([]RelationType, error)
+	GetRelationType(ctx context.Context, code string) (RelationType, error) // ErrUnknownRelationType when missing
+
+	// per-type upsert (struct.ID == "" => insert; otherwise replace that row by id, scoped to an endpoint)
+	UpsertPartnership(ctx context.Context, p Partnership) (Partnership, error)
+	UpsertKinship(ctx context.Context, k Kinship) (Kinship, error)
+	UpsertGuardianship(ctx context.Context, g Guardianship) (Guardianship, error)
+	UpsertSponsorship(ctx context.Context, s Sponsorship) (Sponsorship, error)
+	UpsertNextOfKin(ctx context.Context, n NextOfKin) (NextOfKin, error)
+	UpsertAssociation(ctx context.Context, a Association) (Association, error)
+
+	// HasActivePartnershipExcept reports whether the person has any active engaged/married partnership
+	// other than exceptID (the single-active-per-person rule a partial-unique index can't span).
+	HasActivePartnershipExcept(ctx context.Context, personID, exceptID string) (bool, error)
+
+	// per-type list touching the person on EITHER endpoint
+	ListPartnerships(ctx context.Context, personID string) ([]Partnership, error)
+	ListKinships(ctx context.Context, personID string) ([]Kinship, error)
+	ListGuardianships(ctx context.Context, personID string) ([]Guardianship, error)
+	ListSponsorships(ctx context.Context, personID string) ([]Sponsorship, error)
+	ListNextOfKin(ctx context.Context, personID string) ([]NextOfKin, error)
+	ListAssociations(ctx context.Context, personID string) ([]Association, error)
+
+	// per-type soft-delete by id, scoped so the person must be an endpoint (returns ErrRelationshipNotFound)
+	DeletePartnership(ctx context.Context, personID, id string) error
+	DeleteKinship(ctx context.Context, personID, id string) error
+	DeleteGuardianship(ctx context.Context, personID, id string) error
+	DeleteSponsorship(ctx context.Context, personID, id string) error
+	DeleteNextOfKin(ctx context.Context, personID, id string) error
+	DeleteAssociation(ctx context.Context, personID, id string) error
+
+	// purge erasure — remove all relationship rows touching the person on EITHER endpoint
+	DeleteAllPartnerships(ctx context.Context, personID string) error
+	DeleteAllKinships(ctx context.Context, personID string) error
+	DeleteAllGuardianships(ctx context.Context, personID string) error
+	DeleteAllSponsorships(ctx context.Context, personID string) error
+	DeleteAllNextOfKin(ctx context.Context, personID string) error
+	DeleteAllAssociations(ctx context.Context, personID string) error
 }

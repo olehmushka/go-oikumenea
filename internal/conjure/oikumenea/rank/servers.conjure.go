@@ -22,13 +22,32 @@ The single system-wide rank scheme (L-OneRankScheme / D-Rank). Reads gate on
 in-process (D-Audit). Rank is a directory attribute and never an authorization input.
 */
 type RankService interface {
-	// Read the whole scheme (categories -> types -> ranks) in seniority order.
+	// Read the whole scheme (systems -> categories -> types -> ranks) in seniority order.
 	GetRankScheme(ctx context.Context, authHeader bearertoken.Token) (RankScheme, error)
-	// Add a category. Returns Rank:RankCodeConflict if the code is taken among active categories.
+	// Read the standardized-grade comparator catalog (NATO STANAG 2116), ordered by tier then ordinal.
+	GetRankGrades(ctx context.Context, authHeader bearertoken.Token) ([]RankGrade, error)
+	// Add a rank system. Returns Rank:RankCodeConflict if the code is taken among active systems.
+	AddSystem(ctx context.Context, authHeader bearertoken.Token, requestArg AddSystemRequest) (RankSystem, error)
+	// Edit/reorder a system. `code` is immutable by convention.
+	UpdateSystem(ctx context.Context, authHeader bearertoken.Token, systemIdArg string, requestArg UpdateSystemRequest) (RankSystem, error)
+	/*
+	   Import a preset rank-system subtree (system -> categories -> types -> ranks) as a code-keyed
+	   idempotent upsert in one transaction (additive; never deletes). Returns a created/updated/
+	   skipped summary. Re-importing an unchanged preset reports all-skipped.
+	*/
+	ImportRankScheme(ctx context.Context, authHeader bearertoken.Token, requestArg ImportRankSchemeRequest) (ImportRankSchemeResponse, error)
+	/*
+	   Add a category under a system (systemId). Returns Rank:RankSystemNotFound if the system is
+	   absent, or Rank:RankCodeConflict if the code is taken among the system's active categories.
+	*/
 	AddCategory(ctx context.Context, authHeader bearertoken.Token, requestArg AddCategoryRequest) (RankCategory, error)
 	// Edit/reorder a category. `code` is immutable by convention.
 	UpdateCategory(ctx context.Context, authHeader bearertoken.Token, categoryIdArg string, requestArg UpdateCategoryRequest) (RankCategory, error)
-	// Add a type under a category. Returns Rank:RankCategoryNotFound if the parent is absent.
+	/*
+	   Add a type under a category (categoryId) or nested under a parent type (parentTypeId).
+	   Returns Rank:RankCategoryNotFound or Rank:RankTypeNotFound if the named parent is absent,
+	   or Rank:RankInvalid if the parent type already holds ranks (leaf types only).
+	*/
 	AddType(ctx context.Context, authHeader bearertoken.Token, requestArg AddTypeRequest) (RankType, error)
 	// Edit/reorder a type. `code` is immutable.
 	UpdateType(ctx context.Context, authHeader bearertoken.Token, typeIdArg string, requestArg UpdateTypeRequest) (RankType, error)
@@ -37,9 +56,9 @@ type RankService interface {
 	// Edit/reorder a rank. `code` is immutable.
 	UpdateRank(ctx context.Context, authHeader bearertoken.Token, rankIdArg string, requestArg UpdateRankRequest) (Rank, error)
 	/*
-	   Soft-delete a scheme node, blocked if in use (a category with active types, a type with
-	   active ranks, or — post-M5 — a rank held by a person). `level` is one of
-	   category | type | rank.
+	   Soft-delete a scheme node, blocked if in use (a system with active categories, a category with
+	   active types, a type with active ranks or child types, or — post-M5 — a rank held by a person).
+	   `level` is one of system | category | type | rank.
 	*/
 	DeleteNode(ctx context.Context, authHeader bearertoken.Token, levelArg string, nodeIdArg string) error
 }
@@ -53,6 +72,18 @@ func RegisterRoutesRankService(router wrouter.Router, impl RankService, routerPa
 	resource := wresource.New("rankservice", router)
 	if err := resource.Get("GetRankScheme", "/rank/v1/rank-scheme", httpserver.NewJSONHandler(handler.HandleGetRankScheme, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getRankScheme route")
+	}
+	if err := resource.Get("GetRankGrades", "/rank/v1/rank-grades", httpserver.NewJSONHandler(handler.HandleGetRankGrades, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getRankGrades route")
+	}
+	if err := resource.Post("AddSystem", "/rank/v1/rank-scheme/systems", httpserver.NewJSONHandler(handler.HandleAddSystem, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add addSystem route")
+	}
+	if err := resource.Put("UpdateSystem", "/rank/v1/rank-scheme/systems/{systemId}", httpserver.NewJSONHandler(handler.HandleUpdateSystem, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add updateSystem route")
+	}
+	if err := resource.Post("ImportRankScheme", "/rank/v1/rank-scheme/import", httpserver.NewJSONHandler(handler.HandleImportRankScheme, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add importRankScheme route")
 	}
 	if err := resource.Post("AddCategory", "/rank/v1/rank-scheme/categories", httpserver.NewJSONHandler(handler.HandleAddCategory, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add addCategory route")
@@ -88,6 +119,78 @@ func (r *rankServiceHandler) HandleGetRankScheme(rw http.ResponseWriter, req *ht
 		return errors.WrapWithPermissionDenied(err)
 	}
 	respArg, err := r.impl.GetRankScheme(req.Context(), bearertoken.Token(authHeader))
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (r *rankServiceHandler) HandleGetRankGrades(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	respArg, err := r.impl.GetRankGrades(req.Context(), bearertoken.Token(authHeader))
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (r *rankServiceHandler) HandleAddSystem(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var requestArg AddSystemRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := r.impl.AddSystem(req.Context(), bearertoken.Token(authHeader), requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (r *rankServiceHandler) HandleUpdateSystem(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	systemIdArg, ok := pathParams["systemId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"systemId\" not present")
+	}
+	var requestArg UpdateSystemRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := r.impl.UpdateSystem(req.Context(), bearertoken.Token(authHeader), systemIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (r *rankServiceHandler) HandleImportRankScheme(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var requestArg ImportRankSchemeRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := r.impl.ImportRankScheme(req.Context(), bearertoken.Token(authHeader), requestArg)
 	if err != nil {
 		return err
 	}

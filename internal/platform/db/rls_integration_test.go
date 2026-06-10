@@ -15,7 +15,7 @@
 //
 // Run (the *superuser* DSN seeds; the test derives the restricted DSN from it by swapping the user):
 //
-//	OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/postgres?sslmode=disable" \
+//	OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable" \
 //	  go test -tags integration ./internal/platform/db/...
 package db_test
 
@@ -35,7 +35,7 @@ type rowQuerier interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
 }
 
-const defaultTestDSN = "postgres://postgres:dev@localhost:5432/postgres?sslmode=disable"
+const defaultTestDSN = "postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable"
 
 func superuserDSN() string {
 	if dsn := os.Getenv("OIKUMENEA_TEST_DSN"); dsn != "" {

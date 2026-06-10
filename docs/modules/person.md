@@ -23,10 +23,11 @@ input), the per-person `Name variant`, the contact channels `Email`/`Phone`/`Cal
 `HOLDS_EMAIL`/`HOLDS_PHONE`/`HOLDS_CALL_SIGN` (person → channel), `REACHABLE_ON` (phone/email →
 platform) and `HOLDS_ACCOUNT` (person → social account, carrying `source`/`confidence`; both
 D-PersonSocialChannels), and the **person↔person** ties `PARTNERED_WITH`/`KIN_PARENT_OF`/`GUARDIAN_OF`/
-`SPONSOR_OF`/`NEXT_OF_KIN`/`ASSOCIATED_WITH`/`SOCIAL_TIE` (D-PersonRelationships). **Actions:**
+`SPONSOR_OF`/`NEXT_OF_KIN`/`ASSOCIATED_WITH` (D-PersonRelationships; the scoped `SOCIAL_TIE` is
+**deferred — not built**). **Actions:**
 `CreatePerson`/`UpdatePerson`, `DeactivatePerson`/`PurgePerson` (crypto-erase, emits `PersonPurged`),
 `AssignRank`, citizenship/residence/variant/email/phone/call-sign/messenger-link/social-account upserts,
-and partnership/kinship/guardianship/sponsorship/next-of-kin/association/social-link upserts — audited,
+and partnership/kinship/guardianship/sponsorship/next-of-kin/association upserts — audited,
 `action__<type>` RID.
 
 - **Person** (aggregate root) — names (canonical + CLDR structured parts), bio attributes
@@ -309,11 +310,10 @@ audited on write, and **erased when either endpoint person purges**.
   `relation_code TEXT REFERENCES person_relation_types(code)` (`category='association'`);
   `kind TEXT NOT NULL CHECK (kind IN ('associate','coi','no_contact'))`; lifecycle. `pii:basic`.
 
-**`person_social_links`** (friend/follower — Link `link__social_tie`; **gated on D-PersonSocialChannels**)
-- `id` PK; symmetric `person_id_a < person_id_b` (canonical pair, CASCADE);
-  `status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','archived'))`; lifecycle. The only
-  accepted **proof** of the tie is a linked `person_social_accounts` row, so this table lands **after**
-  the social-account layer. `pii:basic`.
+**`person_social_links`** (friend/follower — Link `link__social_tie`) — **deferred, not built.** Cut from
+the M14 delivery: no consumer, no authoritative source, a hollow "proof of friendship" gate, and
+redundant with `person_associations` for the actionable COI/no-contact case. Returns only with a real
+account-level model. See [decisions.md](../architecture/decisions.md) D-PersonRelationships.
 
 Person names are **per-record data managed by the person's admins** — *not* the instance-admin
 [localization](localization.md) translation store (D-i18n). A person has one canonical
@@ -396,8 +396,6 @@ DATA-GOVERNANCE:
 | `PUT /persons/{id}/next-of-kin` | Upsert a next-of-kin nomination | `person.update` |
 | `GET /persons/{id}/associations` | List associations (associate/COI/no-contact) | `person.read` |
 | `PUT /persons/{id}/associations` | Upsert an association | `person.update` |
-| `GET /persons/{id}/social-links` | List friend/follower links | `person.read` |
-| `PUT /persons/{id}/social-links` | Upsert a social link (requires a linked social account) | `person.update` |
 | `DELETE /persons/{id}/relationships/{id}` | Remove any person↔person link by id | `person.update` |
 | `GET /person/email-types` | List the email-type catalog (locale→text names) | `person.read` |
 | `GET /person/phone-types` | List the phone-type catalog (locale→text names) | `person.read` |
@@ -418,9 +416,8 @@ Messenger links, social accounts, and all seven person↔person relationships fo
 rule** (D-PersonReadScope) — person↔person links are readable when the subject can read **either**
 endpoint — and the **same audit + purge** discipline. A social account returns its handle-rename history,
 its `platform_verified`/`verified_by_operator_at` flags, and its `source`/`confidence` attribution; the
-`platform`/`relation-type` catalog `name`s return as locale→text maps. `social-links` writes require the
-target to have a linked `person_social_accounts` row (D-PersonSocialChannels). **No** social-graph
-metrics are exposed.
+`platform`/`relation-type` catalog `name`s return as locale→text maps. **No** social-graph
+metrics are exposed, and friend/follower social ties (`person_social_links`) are **deferred** (above).
 
 Read endpoints that list people *by unit* are served by [membership](membership.md) and pass
 the shadow gate; `PersonService` directory reads are gated on `person.read` per the **read-scope
@@ -504,8 +501,9 @@ through the holder.
 - **Person↔person relationships** (D-PersonRelationships) are per-type reified self-links with **both
   endpoints in-directory**: at most **one active partnership** (`engaged`/`married`) per person; kinship
   is **directional** `parent_of` with siblings derived, never stored; next-of-kin is an **in-directory
-  nomination** (no external free-text contacts); `person_social_links` requires a linked social account
-  as proof. Authority **never** derives from any relationship (D-Rank stance) — they are directory data.
+  nomination** (no external free-text contacts). A friend/follower `person_social_links` tie was scoped
+  but **deferred — not built** (see [decisions.md](../architecture/decisions.md) D-PersonRelationships).
+  Authority **never** derives from any relationship (D-Rank stance) — they are directory data.
   Purging **either** endpoint erases the link.
 
 ## Open seams / future

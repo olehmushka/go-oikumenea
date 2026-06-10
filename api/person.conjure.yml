@@ -317,6 +317,135 @@ types:
           validTo:
             type: optional<datetime>
             docs: When this handle stopped being current; null = current.
+      RelationType:
+        docs: An instance-admin catalog entry for an open-ended person↔person relation label (D-PersonRelationships). Stable code + translatable name + category.
+        fields:
+          code:
+            type: string
+            docs: Stable, locale-agnostic identifier (D-Code); immutable by convention.
+          name:
+            type: map<string, string>
+            docs: The translatable label as a locale -> text map (all enabled locales; D-i18n).
+          category:
+            type: string
+            docs: One of sponsorship | association | next_of_kin.
+          status:
+            type: string
+            docs: One of active | retired.
+          sortOrder: optional<integer>
+      Partnership:
+        docs: |
+          A marriage or engagement between two persons (D-PersonRelationships; Link link__partnered_with).
+          Symmetric: stored as a canonical pair (personIdA < personIdB). At most one active engaged/married
+          row per person.
+        fields:
+          id: string
+          personIdA:
+            type: string
+            docs: The lower-sorting partner's URN RID (canonical pair ordering).
+          personIdB:
+            type: string
+            docs: The higher-sorting partner's URN RID.
+          status:
+            type: string
+            docs: One of engaged | married | divorced | widowed | annulled | dissolved.
+          effectiveFrom:
+            type: optional<string>
+            docs: ISO-8601 date the partnership began (YYYY-MM-DD).
+          effectiveTo:
+            type: optional<string>
+            docs: ISO-8601 date it ended (YYYY-MM-DD); null = ongoing.
+      Kinship:
+        docs: A directional parent→child blood/legal parentage link (D-PersonRelationships; Link link__kin_parent_of). Siblings are derived, never stored.
+        fields:
+          id: string
+          parentId:
+            type: string
+            docs: The parent's URN RID.
+          childId:
+            type: string
+            docs: The child's URN RID.
+          status:
+            type: string
+            docs: One of active | disestablished.
+      Guardianship:
+        docs: A legal guardian→ward link, distinct from blood kinship (D-PersonRelationships; Link link__guardian_of).
+        fields:
+          id: string
+          guardianId:
+            type: string
+            docs: The guardian's URN RID.
+          wardId:
+            type: string
+            docs: The ward's URN RID.
+          relationCode:
+            type: optional<string>
+            docs: Optional relation-type catalog code.
+          status:
+            type: string
+            docs: One of active | ended.
+          effectiveFrom: optional<string>
+          effectiveTo:
+            type: optional<string>
+            docs: null = ongoing.
+      Sponsorship:
+        docs: A sponsor→sponsored link — godparent / academic advisor / military mentor (D-PersonRelationships; Link link__sponsor_of).
+        fields:
+          id: string
+          sponsorId:
+            type: string
+            docs: The sponsor's URN RID.
+          sponsoredId:
+            type: string
+            docs: The sponsored person's URN RID.
+          relationCode:
+            type: string
+            docs: Required relation-type catalog code (category=sponsorship).
+          status:
+            type: string
+            docs: One of active | ended.
+          effectiveFrom: optional<string>
+          effectiveTo:
+            type: optional<string>
+            docs: null = ongoing.
+      NextOfKin:
+        docs: An in-directory next-of-kin nomination (subject→contact, both directory persons; D-PersonRelationships; Link link__next_of_kin). A nomination, not a blood fact.
+        fields:
+          id: string
+          subjectId:
+            type: string
+            docs: The nominating person's URN RID.
+          contactId:
+            type: string
+            docs: The nominated contact's URN RID (an in-directory person).
+          relationCode:
+            type: optional<string>
+            docs: Optional relation-type catalog code (category=next_of_kin).
+          priority:
+            type: integer
+            docs: Priority ordering of the nomination (1 = highest).
+          status:
+            type: string
+            docs: One of active | withdrawn.
+      Association:
+        docs: A symmetric association / conflict-of-interest / prohibited-contact link (D-PersonRelationships; Link link__associated_with).
+        fields:
+          id: string
+          personIdA:
+            type: string
+            docs: The lower-sorting person's URN RID (canonical pair ordering).
+          personIdB:
+            type: string
+            docs: The higher-sorting person's URN RID.
+          relationCode:
+            type: optional<string>
+            docs: Optional relation-type catalog code (category=association).
+          kind:
+            type: string
+            docs: One of associate | coi | no_contact.
+          status:
+            type: string
+            docs: One of active | ended.
       PersonPage:
         docs: A page of persons plus the opaque token for the next page (empty when exhausted).
         fields:
@@ -472,6 +601,102 @@ types:
             type: optional<string>
             docs: confirmed | probable | possible; defaults to possible.
           isPrimary: optional<boolean>
+      UpsertPartnershipRequest:
+        docs: |
+          Record or replace a partnership between the path person and partnerId. The pair is stored in
+          canonical order; the path person must not be the partner. At most one active engaged/married
+          partnership per person.
+        fields:
+          id:
+            type: optional<string>
+            docs: The URN RID of an existing partnership row to replace; omit to add a new row.
+          partnerId:
+            type: string
+            docs: The other partner's URN RID (an in-directory person).
+          status:
+            type: string
+            docs: engaged | married | divorced | widowed | annulled | dissolved.
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+      UpsertKinshipRequest:
+        docs: Record or replace a parent→child kinship between the path person and counterpartId; role names the path person's side.
+        fields:
+          id: optional<string>
+          counterpartId:
+            type: string
+            docs: The other person's URN RID.
+          role:
+            type: string
+            docs: The path person's role — parent | child.
+          status:
+            type: optional<string>
+            docs: active | disestablished; defaults to active.
+      UpsertGuardianshipRequest:
+        docs: Record or replace a guardian→ward link between the path person and counterpartId; role names the path person's side.
+        fields:
+          id: optional<string>
+          counterpartId:
+            type: string
+            docs: The other person's URN RID.
+          role:
+            type: string
+            docs: The path person's role — guardian | ward.
+          relationCode: optional<string>
+          status:
+            type: optional<string>
+            docs: active | ended; defaults to active.
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+      UpsertSponsorshipRequest:
+        docs: Record or replace a sponsor→sponsored link between the path person and counterpartId; role names the path person's side. relationCode is required (category=sponsorship).
+        fields:
+          id: optional<string>
+          counterpartId:
+            type: string
+            docs: The other person's URN RID.
+          role:
+            type: string
+            docs: The path person's role — sponsor | sponsored.
+          relationCode:
+            type: string
+            docs: Required relation-type code (category=sponsorship).
+          status:
+            type: optional<string>
+            docs: active | ended; defaults to active.
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+      UpsertNextOfKinRequest:
+        docs: Nominate or replace a next-of-kin contact for the path person (the subject). contactId must be an in-directory person.
+        fields:
+          id: optional<string>
+          contactId:
+            type: string
+            docs: The nominated contact's URN RID (an in-directory person).
+          relationCode:
+            type: optional<string>
+            docs: Optional relation-type code (category=next_of_kin).
+          priority:
+            type: optional<integer>
+            docs: Priority ordering (1 = highest); defaults to 1.
+          status:
+            type: optional<string>
+            docs: active | withdrawn; defaults to active.
+      UpsertAssociationRequest:
+        docs: Record or replace a symmetric association between the path person and counterpartId.
+        fields:
+          id: optional<string>
+          counterpartId:
+            type: string
+            docs: The other person's URN RID.
+          kind:
+            type: string
+            docs: associate | coi | no_contact.
+          relationCode:
+            type: optional<string>
+            docs: Optional relation-type code (category=association).
+          status:
+            type: optional<string>
+            docs: active | ended; defaults to active.
     errors:
       PersonNotFound:
         namespace: Person
@@ -816,3 +1041,124 @@ services:
             type: string
             param-type: path
         returns: list<SocialAccountHandle>
+      listRelationTypes:
+        http: GET /person/relation-types
+        docs: List the person↔person relation-type catalog (locale -> text names; D-i18n; D-PersonRelationships).
+        returns: list<RelationType>
+      listPartnerships:
+        http: GET /persons/{personId}/partnerships
+        docs: List partnerships (marriage/engagement) touching the person.
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<Partnership>
+      upsertPartnership:
+        http: PUT /persons/{personId}/partnerships
+        docs: |
+          Add or replace a partnership between the person and the partner. Returns Person:PersonConflict
+          when either person already has an active engaged/married partnership, Person:PersonInvalid for a
+          self-pair, unknown partner, or bad status.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertPartnershipRequest
+        returns: Partnership
+      listKinships:
+        http: GET /persons/{personId}/kinships
+        docs: List parent/child kinships touching the person.
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<Kinship>
+      upsertKinship:
+        http: PUT /persons/{personId}/kinships
+        docs: Add or replace a parent→child kinship. Returns Person:PersonConflict on a duplicate active pair, Person:PersonInvalid for a self-edge, unknown counterpart, or bad role.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertKinshipRequest
+        returns: Kinship
+      listGuardianships:
+        http: GET /persons/{personId}/guardianships
+        docs: List guardianships touching the person.
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<Guardianship>
+      upsertGuardianship:
+        http: PUT /persons/{personId}/guardianships
+        docs: Add or replace a guardian→ward link. Returns Person:PersonInvalid for a self-edge, unknown counterpart, unknown relation code, or bad role.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertGuardianshipRequest
+        returns: Guardianship
+      listSponsorships:
+        http: GET /persons/{personId}/sponsorships
+        docs: List sponsorships (godparent/advisor/mentor) touching the person.
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<Sponsorship>
+      upsertSponsorship:
+        http: PUT /persons/{personId}/sponsorships
+        docs: Add or replace a sponsor→sponsored link. relationCode must be a category=sponsorship code. Returns Person:PersonInvalid for a self-edge, unknown counterpart, or wrong relation category.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertSponsorshipRequest
+        returns: Sponsorship
+      listNextOfKin:
+        http: GET /persons/{personId}/next-of-kin
+        docs: List next-of-kin nominations touching the person (priority-ordered).
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<NextOfKin>
+      upsertNextOfKin:
+        http: PUT /persons/{personId}/next-of-kin
+        docs: Nominate or replace a next-of-kin contact for the person. Returns Person:PersonInvalid for a self-nomination, unknown contact, or wrong relation category.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertNextOfKinRequest
+        returns: NextOfKin
+      listAssociations:
+        http: GET /persons/{personId}/associations
+        docs: List associations (associate/COI/no-contact) touching the person.
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<Association>
+      upsertAssociation:
+        http: PUT /persons/{personId}/associations
+        docs: Add or replace a symmetric association. Returns Person:PersonInvalid for a self-pair, unknown counterpart, wrong relation category, or bad kind.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertAssociationRequest
+        returns: Association
+      deleteRelationship:
+        http: DELETE /persons/{personId}/relationships/{relationshipId}
+        docs: |
+          Remove any person↔person link by id (the link type is decoded from the RID). The path person
+          must be one of the link's endpoints. Idempotent.
+        args:
+          personId:
+            type: string
+            param-type: path
+          relationshipId:
+            type: string
+            param-type: path
