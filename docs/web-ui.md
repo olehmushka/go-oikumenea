@@ -66,6 +66,37 @@ lifecycle), [memberships & positions](modules/membership.md), the [rank](modules
 - Build-time: the committed [`docs/api/openapi/openapi.json`](api/openapi/openapi.json) (kept fresh
   from Conjure by `scripts/gen-openapi.sh`).
 
+## Object-centric workspace (the primary surface)
+
+The console is organised around **objects and their links**, not modules — the UI analogue of
+[D-Ontology](ontology-mapping.md). One **ontology registry** (`web/src/lib/ontology/registry.ts`)
+describes each Object/Link type once (its list/detail endpoints, table columns, properties, link
+collections, and inline actions); that single data-driven config powers every surface below, so
+adding a type is a registry entry, not new pages.
+
+- **Self-describing RID routing.** Every entity's id is a composed URN whose `entity_type` slot
+  encodes its kind (`parseRid` in `web/src/lib/ontology/rid.ts`). So *any* RID resolves to its type
+  with no server lookup — the basis for paste-a-RID navigation and the universal object view.
+- **Command palette (⌘K).** A global omnibox (`cmdk`) that navigates, runs quick actions, resolves a
+  pasted RID directly, and **searches objects**. Because the API exposes **no server-side free-text
+  search** (list endpoints take only `pageSize`/`pageToken`), search is a **client-side fan-out**:
+  one page per listable type is fetched through the BFF, cached per session, and filtered in the
+  browser. *Caveat:* this sees only the first page per type — adequate for small/medium instances; a
+  real search endpoint is a future backend decision, not a UI workaround.
+- **Object explorer** (`/explore/[type]`). A dense, filterable, sortable, **multi-selectable** table
+  with a **detail drawer** (click a row → properties + links + inline actions on the right, without
+  leaving the list) and **bulk actions** that loop existing single-entity mutations.
+- **Universal object view** (`/o/[rid]`). One page for any object: header (type/RID/title), property
+  list, and a grouped, traversable **Links panel**. It redirects to the richer bespoke editors
+  (`/persons/[id]`, `/units/[id]`, `/orders/[id]`) where those exist, and renders generically for
+  every other type.
+- **Ontology browser** (`/ontology`) and **relationship graph** (`/graph/[rid]`, `@xyflow/react`):
+  the registry as a human-facing type catalog, and a lazily-expanded node/edge graph for traversing
+  the unit DAG and a person's/​unit's links.
+
+Two small, focused libraries back this: `cmdk` (palette) and `@xyflow/react` (graph). The table,
+drawer, and object primitives are hand-rolled on the existing Tailwind classes.
+
 ## Patterns
 
 - **Locale-map fields** ([D-i18n](architecture/decisions.md)). Translatable labels arrive as
@@ -92,5 +123,9 @@ lifecycle), [memberships & positions](modules/membership.md), the [rank](modules
   from both browser and server (documented in `web/README.md`).
 - **Non-admin account provisioning.** The dev `admin` user resolves via the fixed-`sub` bootstrap
   binding; broader login requires provisioned accounts or enabling JIT ([D-JIT](architecture/decisions.md)).
-- **No design-system lock yet** — Tailwind + plain components for v1; a component-library choice is
-  deferred.
+- **Client-side fan-out search.** The palette/object search filters the **first page** of each
+  listable type in the browser (the API has no search endpoint). Fine for small/medium instances;
+  scaling it (or exact filtering) wants a server-side search endpoint — a backend decision logged in
+  [decisions.md](architecture/decisions.md), not a UI change.
+- **Design system.** Tailwind + hand-rolled primitives, plus two focused libraries — `cmdk` (command
+  palette) and `@xyflow/react` (relationship graph). No broader component-library lock.

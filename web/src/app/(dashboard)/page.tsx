@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { apiGet, ApiError } from "@/lib/api/server";
+import { apiGet } from "@/lib/api/server";
 import { Card, ErrorNotice, Mono, PageHeader } from "@/components/ui";
+import { RecentsPanel } from "@/components/ontology/RecentsPanel";
 import type { Whoami, VersionInfo } from "@/lib/api/types";
 
 export default async function OverviewPage() {
@@ -17,11 +18,11 @@ export default async function OverviewPage() {
   }
 
   const links = [
-    ["/units", "Units", "Browse the unit DAG"],
-    ["/persons", "Persons", "The personnel directory"],
-    ["/roles", "Roles & access", "Roles, assignments, admins"],
+    ["/explore/person", "Persons", "The personnel directory"],
+    ["/explore/unit", "Units", "Browse the unit DAG"],
+    ["/explore/role", "Roles", "RBAC roles"],
+    ["/ontology", "Ontology", "The type registry"],
     ["/authorize", "Authorize", "Run a PDP decision"],
-    ["/orders", "Orders", "Administrative acts"],
     ["/audit", "Audit", "Permission-sensitive log"],
   ];
 
@@ -29,7 +30,7 @@ export default async function OverviewPage() {
     <div>
       <PageHeader
         title="Overview"
-        description="Your identity and quick links into the console."
+        description="Press ⌘K anywhere to search objects, jump to a view, or paste a RID."
       />
       {error ? (
         <ErrorNotice error={error} />
@@ -65,6 +66,9 @@ export default async function OverviewPage() {
           </Card>
         </div>
       )}
+
+      <h2 className="mb-3 mt-8 text-sm font-semibold text-slate-900">Workspace</h2>
+      <RecentsPanel />
 
       <h2 className="mb-3 mt-8 text-sm font-semibold text-slate-900">Jump to</h2>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

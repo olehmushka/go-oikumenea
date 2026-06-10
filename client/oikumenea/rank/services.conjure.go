@@ -20,13 +20,32 @@ The single system-wide rank scheme (L-OneRankScheme / D-Rank). Reads gate on
 in-process (D-Audit). Rank is a directory attribute and never an authorization input.
 */
 type RankServiceClient interface {
-	// Read the whole scheme (categories -> types -> ranks) in seniority order.
+	// Read the whole scheme (systems -> categories -> types -> ranks) in seniority order.
 	GetRankScheme(ctx context.Context, authHeader bearertoken.Token) (RankScheme, error)
-	// Add a category. Returns Rank:RankCodeConflict if the code is taken among active categories.
+	// Read the standardized-grade comparator catalog (NATO STANAG 2116), ordered by tier then ordinal.
+	GetRankGrades(ctx context.Context, authHeader bearertoken.Token) ([]RankGrade, error)
+	// Add a rank system. Returns Rank:RankCodeConflict if the code is taken among active systems.
+	AddSystem(ctx context.Context, authHeader bearertoken.Token, requestArg AddSystemRequest) (RankSystem, error)
+	// Edit/reorder a system. `code` is immutable by convention.
+	UpdateSystem(ctx context.Context, authHeader bearertoken.Token, systemIdArg string, requestArg UpdateSystemRequest) (RankSystem, error)
+	/*
+	   Import a preset rank-system subtree (system -> categories -> types -> ranks) as a code-keyed
+	   idempotent upsert in one transaction (additive; never deletes). Returns a created/updated/
+	   skipped summary. Re-importing an unchanged preset reports all-skipped.
+	*/
+	ImportRankScheme(ctx context.Context, authHeader bearertoken.Token, requestArg ImportRankSchemeRequest) (ImportRankSchemeResponse, error)
+	/*
+	   Add a category under a system (systemId). Returns Rank:RankSystemNotFound if the system is
+	   absent, or Rank:RankCodeConflict if the code is taken among the system's active categories.
+	*/
 	AddCategory(ctx context.Context, authHeader bearertoken.Token, requestArg AddCategoryRequest) (RankCategory, error)
 	// Edit/reorder a category. `code` is immutable by convention.
 	UpdateCategory(ctx context.Context, authHeader bearertoken.Token, categoryIdArg string, requestArg UpdateCategoryRequest) (RankCategory, error)
-	// Add a type under a category. Returns Rank:RankCategoryNotFound if the parent is absent.
+	/*
+	   Add a type under a category (categoryId) or nested under a parent type (parentTypeId).
+	   Returns Rank:RankCategoryNotFound or Rank:RankTypeNotFound if the named parent is absent,
+	   or Rank:RankInvalid if the parent type already holds ranks (leaf types only).
+	*/
 	AddType(ctx context.Context, authHeader bearertoken.Token, requestArg AddTypeRequest) (RankType, error)
 	// Edit/reorder a type. `code` is immutable.
 	UpdateType(ctx context.Context, authHeader bearertoken.Token, typeIdArg string, requestArg UpdateTypeRequest) (RankType, error)
@@ -35,9 +54,9 @@ type RankServiceClient interface {
 	// Edit/reorder a rank. `code` is immutable.
 	UpdateRank(ctx context.Context, authHeader bearertoken.Token, rankIdArg string, requestArg UpdateRankRequest) (Rank, error)
 	/*
-	   Soft-delete a scheme node, blocked if in use (a category with active types, a type with
-	   active ranks, or — post-M5 — a rank held by a person). `level` is one of
-	   category | type | rank.
+	   Soft-delete a scheme node, blocked if in use (a system with active categories, a category with
+	   active types, a type with active ranks or child types, or — post-M5 — a rank held by a person).
+	   `level` is one of system | category | type | rank.
 	*/
 	DeleteNode(ctx context.Context, authHeader bearertoken.Token, levelArg string, nodeIdArg string) error
 }
@@ -63,6 +82,77 @@ func (c *rankServiceClient) GetRankScheme(ctx context.Context, authHeader bearer
 	}
 	if returnVal == nil {
 		return *new(RankScheme), werror.ErrorWithContextParams(ctx, "getRankScheme response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *rankServiceClient) GetRankGrades(ctx context.Context, authHeader bearertoken.Token) ([]RankGrade, error) {
+	var returnVal []RankGrade
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("GetRankGrades"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/rank/v1/rank-grades"))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "getRankGrades failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "getRankGrades response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *rankServiceClient) AddSystem(ctx context.Context, authHeader bearertoken.Token, requestArg AddSystemRequest) (RankSystem, error) {
+	var returnVal *RankSystem
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("AddSystem"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/rank/v1/rank-scheme/systems"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(RankSystem), werror.WrapWithContextParams(ctx, err, "addSystem failed")
+	}
+	if returnVal == nil {
+		return *new(RankSystem), werror.ErrorWithContextParams(ctx, "addSystem response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *rankServiceClient) UpdateSystem(ctx context.Context, authHeader bearertoken.Token, systemIdArg string, requestArg UpdateSystemRequest) (RankSystem, error) {
+	var returnVal *RankSystem
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpdateSystem"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/rank/v1/rank-scheme/systems/%s", url.PathEscape(fmt.Sprint(systemIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(RankSystem), werror.WrapWithContextParams(ctx, err, "updateSystem failed")
+	}
+	if returnVal == nil {
+		return *new(RankSystem), werror.ErrorWithContextParams(ctx, "updateSystem response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *rankServiceClient) ImportRankScheme(ctx context.Context, authHeader bearertoken.Token, requestArg ImportRankSchemeRequest) (ImportRankSchemeResponse, error) {
+	var returnVal *ImportRankSchemeResponse
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ImportRankScheme"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/rank/v1/rank-scheme/import"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(ImportRankSchemeResponse), werror.WrapWithContextParams(ctx, err, "importRankScheme failed")
+	}
+	if returnVal == nil {
+		return *new(ImportRankSchemeResponse), werror.ErrorWithContextParams(ctx, "importRankScheme response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -194,13 +284,32 @@ The single system-wide rank scheme (L-OneRankScheme / D-Rank). Reads gate on
 in-process (D-Audit). Rank is a directory attribute and never an authorization input.
 */
 type RankServiceClientWithAuth interface {
-	// Read the whole scheme (categories -> types -> ranks) in seniority order.
+	// Read the whole scheme (systems -> categories -> types -> ranks) in seniority order.
 	GetRankScheme(ctx context.Context) (RankScheme, error)
-	// Add a category. Returns Rank:RankCodeConflict if the code is taken among active categories.
+	// Read the standardized-grade comparator catalog (NATO STANAG 2116), ordered by tier then ordinal.
+	GetRankGrades(ctx context.Context) ([]RankGrade, error)
+	// Add a rank system. Returns Rank:RankCodeConflict if the code is taken among active systems.
+	AddSystem(ctx context.Context, requestArg AddSystemRequest) (RankSystem, error)
+	// Edit/reorder a system. `code` is immutable by convention.
+	UpdateSystem(ctx context.Context, systemIdArg string, requestArg UpdateSystemRequest) (RankSystem, error)
+	/*
+	   Import a preset rank-system subtree (system -> categories -> types -> ranks) as a code-keyed
+	   idempotent upsert in one transaction (additive; never deletes). Returns a created/updated/
+	   skipped summary. Re-importing an unchanged preset reports all-skipped.
+	*/
+	ImportRankScheme(ctx context.Context, requestArg ImportRankSchemeRequest) (ImportRankSchemeResponse, error)
+	/*
+	   Add a category under a system (systemId). Returns Rank:RankSystemNotFound if the system is
+	   absent, or Rank:RankCodeConflict if the code is taken among the system's active categories.
+	*/
 	AddCategory(ctx context.Context, requestArg AddCategoryRequest) (RankCategory, error)
 	// Edit/reorder a category. `code` is immutable by convention.
 	UpdateCategory(ctx context.Context, categoryIdArg string, requestArg UpdateCategoryRequest) (RankCategory, error)
-	// Add a type under a category. Returns Rank:RankCategoryNotFound if the parent is absent.
+	/*
+	   Add a type under a category (categoryId) or nested under a parent type (parentTypeId).
+	   Returns Rank:RankCategoryNotFound or Rank:RankTypeNotFound if the named parent is absent,
+	   or Rank:RankInvalid if the parent type already holds ranks (leaf types only).
+	*/
 	AddType(ctx context.Context, requestArg AddTypeRequest) (RankType, error)
 	// Edit/reorder a type. `code` is immutable.
 	UpdateType(ctx context.Context, typeIdArg string, requestArg UpdateTypeRequest) (RankType, error)
@@ -209,9 +318,9 @@ type RankServiceClientWithAuth interface {
 	// Edit/reorder a rank. `code` is immutable.
 	UpdateRank(ctx context.Context, rankIdArg string, requestArg UpdateRankRequest) (Rank, error)
 	/*
-	   Soft-delete a scheme node, blocked if in use (a category with active types, a type with
-	   active ranks, or — post-M5 — a rank held by a person). `level` is one of
-	   category | type | rank.
+	   Soft-delete a scheme node, blocked if in use (a system with active categories, a category with
+	   active types, a type with active ranks or child types, or — post-M5 — a rank held by a person).
+	   `level` is one of system | category | type | rank.
 	*/
 	DeleteNode(ctx context.Context, levelArg string, nodeIdArg string) error
 }
@@ -227,6 +336,22 @@ type rankServiceClientWithAuth struct {
 
 func (c *rankServiceClientWithAuth) GetRankScheme(ctx context.Context) (RankScheme, error) {
 	return c.client.GetRankScheme(ctx, c.authHeader)
+}
+
+func (c *rankServiceClientWithAuth) GetRankGrades(ctx context.Context) ([]RankGrade, error) {
+	return c.client.GetRankGrades(ctx, c.authHeader)
+}
+
+func (c *rankServiceClientWithAuth) AddSystem(ctx context.Context, requestArg AddSystemRequest) (RankSystem, error) {
+	return c.client.AddSystem(ctx, c.authHeader, requestArg)
+}
+
+func (c *rankServiceClientWithAuth) UpdateSystem(ctx context.Context, systemIdArg string, requestArg UpdateSystemRequest) (RankSystem, error) {
+	return c.client.UpdateSystem(ctx, c.authHeader, systemIdArg, requestArg)
+}
+
+func (c *rankServiceClientWithAuth) ImportRankScheme(ctx context.Context, requestArg ImportRankSchemeRequest) (ImportRankSchemeResponse, error) {
+	return c.client.ImportRankScheme(ctx, c.authHeader, requestArg)
 }
 
 func (c *rankServiceClientWithAuth) AddCategory(ctx context.Context, requestArg AddCategoryRequest) (RankCategory, error) {
@@ -272,6 +397,38 @@ func (c *rankServiceClientWithTokenProvider) GetRankScheme(ctx context.Context) 
 		return *new(RankScheme), err
 	}
 	return c.client.GetRankScheme(ctx, bearertoken.Token(token))
+}
+
+func (c *rankServiceClientWithTokenProvider) GetRankGrades(ctx context.Context) ([]RankGrade, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.GetRankGrades(ctx, bearertoken.Token(token))
+}
+
+func (c *rankServiceClientWithTokenProvider) AddSystem(ctx context.Context, requestArg AddSystemRequest) (RankSystem, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(RankSystem), err
+	}
+	return c.client.AddSystem(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *rankServiceClientWithTokenProvider) UpdateSystem(ctx context.Context, systemIdArg string, requestArg UpdateSystemRequest) (RankSystem, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(RankSystem), err
+	}
+	return c.client.UpdateSystem(ctx, bearertoken.Token(token), systemIdArg, requestArg)
+}
+
+func (c *rankServiceClientWithTokenProvider) ImportRankScheme(ctx context.Context, requestArg ImportRankSchemeRequest) (ImportRankSchemeResponse, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(ImportRankSchemeResponse), err
+	}
+	return c.client.ImportRankScheme(ctx, bearertoken.Token(token), requestArg)
 }
 
 func (c *rankServiceClientWithTokenProvider) AddCategory(ctx context.Context, requestArg AddCategoryRequest) (RankCategory, error) {

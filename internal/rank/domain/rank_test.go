@@ -17,7 +17,8 @@ func TestNodeValidate(t *testing.T) {
 		{"category code with space", ErrInvalid, func() error { return Category{Code: "land forces", Name: "X"}.Validate() }},
 		{"category blank name", ErrInvalid, func() error { return Category{Code: "army", Name: "  "}.Validate() }},
 		{"type ok", nil, func() error { return Type{Code: "officers", Name: "Officers", CategoryID: "c1"}.Validate() }},
-		{"type missing category", ErrInvalid, func() error { return Type{Code: "officers", Name: "Officers"}.Validate() }},
+		{"type nested ok", nil, func() error { return Type{Code: "junior", Name: "Junior", ParentTypeID: "t1"}.Validate() }},
+		{"type missing parent", ErrInvalid, func() error { return Type{Code: "officers", Name: "Officers"}.Validate() }},
 		{"rank ok", nil, func() error { return Rank{Code: "sgt", Name: "Sergeant", TypeID: "t1"}.Validate() }},
 		{"rank missing type", ErrInvalid, func() error { return Rank{Code: "sgt", Name: "Sergeant"}.Validate() }},
 	}
@@ -47,7 +48,7 @@ func TestValidCodeLength(t *testing.T) {
 }
 
 func TestValidLevel(t *testing.T) {
-	for _, l := range []Level{LevelCategory, LevelType, LevelRank} {
+	for _, l := range []Level{LevelSystem, LevelCategory, LevelType, LevelRank} {
 		if !ValidLevel(l) {
 			t.Errorf("%q should be a valid level", l)
 		}
@@ -56,5 +57,49 @@ func TestValidLevel(t *testing.T) {
 		if ValidLevel(l) {
 			t.Errorf("%q should not be a valid level", l)
 		}
+	}
+}
+
+func TestIsSenior(t *testing.T) {
+	of5a := Grade{Code: "OF-5", Tier: TierOfficer, Ordinal: 5}
+	of5b := Grade{Code: "OF-5", Tier: TierOfficer, Ordinal: 5} // same grade, another system
+	of4 := Grade{Code: "OF-4", Tier: TierOfficer, Ordinal: 4}
+	or9 := Grade{Code: "OR-9", Tier: TierEnlisted, Ordinal: 9}
+	wo1 := Grade{Code: "WO-1", Tier: TierWarrant, Ordinal: 1}
+
+	tests := []struct {
+		name         string
+		a, b         Grade
+		want, known  bool
+	}{
+		{"officer over officer by ordinal", of5a, of4, true, true},
+		{"junior officer not senior", of4, of5a, false, true},
+		{"equivalent grades not strictly senior", of5a, of5b, false, true},
+		{"officer over enlisted across tiers", of5a, or9, true, true},
+		{"warrant over enlisted across tiers", wo1, or9, true, true},
+		{"enlisted under officer", or9, of5a, false, true},
+		{"absent grade on a is unknown", Grade{}, of5a, false, false},
+		{"absent grade on b is unknown", of5a, Grade{}, false, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, known := IsSenior(tc.a, tc.b)
+			if got != tc.want || known != tc.known {
+				t.Fatalf("IsSenior(%v,%v) = (%v,%v), want (%v,%v)", tc.a, tc.b, got, known, tc.want, tc.known)
+			}
+		})
+	}
+}
+
+func TestEquivalent(t *testing.T) {
+	of5 := Grade{Code: "OF-5", Tier: TierOfficer, Ordinal: 5}
+	if !Equivalent(of5, Grade{Code: "OF-5", Tier: TierOfficer, Ordinal: 5}) {
+		t.Fatal("same grade code should be equivalent across systems")
+	}
+	if Equivalent(of5, Grade{Code: "OF-4", Tier: TierOfficer, Ordinal: 4}) {
+		t.Fatal("different grade codes should not be equivalent")
+	}
+	if Equivalent(Grade{}, Grade{}) {
+		t.Fatal("two ungraded ranks must not be equivalent")
 	}
 }

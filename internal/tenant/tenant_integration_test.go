@@ -12,7 +12,7 @@
 //
 // Run against a throwaway DB that has the migrations applied:
 //
-//	OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5544/postgres?sslmode=disable" \
+//	OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable" \
 //	  go test -tags integration ./internal/tenant/...
 package tenant_test
 
@@ -33,7 +33,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/tenant/domain"
 )
 
-const defaultTestDSN = "postgres://postgres:dev@localhost:5544/postgres?sslmode=disable"
+const defaultTestDSN = "postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable"
 
 // seedGraphsSQL mirrors tenant.Register's boot seed (the integration test builds the application
 // service directly, so it seeds the registry itself). Idempotent on the partial-unique code index.

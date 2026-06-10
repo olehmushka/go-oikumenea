@@ -1,7 +1,11 @@
-# Rank module API (M4). The single, system-wide rank scheme (L-OneRankScheme / D-Rank /
-# docs/modules/rank.md): a three-level ordered ladder rank category -> rank type -> rank, strict
-# containment. A rank is a DIRECTORY attribute describing seniority and grants NO authorization (the
-# PDP never reads it). There is exactly one scheme per deployment, edited only by the instance admin.
+# Rank module API (M4 + M15). The single, system-wide rank scheme (L-OneRankScheme / D-Rank /
+# D-RankSystems / docs/modules/rank.md): a rank system at the top (a national/organizational ladder —
+# one scheme may hold several at once for a coalition directory), a rank category within each system, a
+# TREE of rank types within each category, and ranks on the leaf types — strict containment. A rank
+# carries an optional standardized grade (NATO STANAG 2116) for CROSS-system comparability. A rank is a
+# DIRECTORY attribute describing seniority and grants NO authorization (the PDP never reads it). There is
+# exactly one scheme per deployment, edited only by the instance admin; a full system subtree can be
+# bootstrapped from an opt-in preset via POST /rank-scheme/import.
 #
 # RID-bearing fields are typed `string` (the composed URN RID): Conjure reserves `rid` as a built-in
 # primitive whose `ri.` format is NOT our `urn:oikumenea:` RID, so a type named `Rid`/`rid` cannot be
@@ -33,58 +37,142 @@ types:
           abbreviation:
             type: optional<string>
             docs: Optional short form (e.g. SGT); locale-agnostic.
+          gradeCode:
+            type: optional<string>
+            docs: |
+              Optional standardized cross-system grade (NATO STANAG 2116; one of the GET /rank-grades
+              codes). Two ranks are equivalent across systems when they share a gradeCode; absent => no
+              cross-system comparison.
           sortOrder:
             type: integer
             docs: Seniority ordinal among active siblings within the type (lower = more junior).
+          systemId:
+            type: string
+            docs: The URN RID of the owning rank system (denormalized; equals the type's system).
           typeId:
             type: string
             docs: The URN RID of the owning rank type.
       RankType:
-        docs: A band within a category (e.g. officers, warrant, enlisted), ordered.
+        docs: |
+          A band within a category (e.g. officers, warrant, enlisted), ordered. Types form a TREE: a
+          type may nest under another type of the same category (parentTypeId), and ranks attach to
+          LEAF types only.
         fields:
           id:
             type: string
             docs: The type's URN RID (carried as a plain string).
           code:
             type: string
-            docs: Stable, locale-agnostic identifier; unique within its category among active types.
+            docs: Stable, locale-agnostic identifier; unique among active siblings (same category + parent).
           name:
             type: map<string, string>
             docs: locale->text display name.
           sortOrder:
             type: integer
-            docs: Seniority ordinal among active siblings within the category.
+            docs: Seniority ordinal among active siblings (within the parent type, or the category for a root type).
+          systemId:
+            type: string
+            docs: The URN RID of the owning rank system (denormalized; equals the category's system).
           categoryId:
             type: string
-            docs: The URN RID of the owning rank category.
+            docs: The URN RID of the owning rank category (the root category; carried on every type in the tree).
+          parentTypeId:
+            type: optional<string>
+            docs: The URN RID of the parent type; absent for a root type of the category.
+          children:
+            type: list<RankType>
+            docs: Child types in seniority order. Populated by getRankScheme; empty for a leaf type and on create/update.
           ranks:
             type: list<Rank>
-            docs: The type's ranks in seniority order. Populated by getRankScheme; empty on create/update of the type.
+            docs: The type's ranks in seniority order (leaf types only). Populated by getRankScheme; empty on create/update of the type.
       RankCategory:
-        docs: The top level of the scheme (e.g. army, navy; or academic, administrative), ordered.
+        docs: A branch within a rank system (e.g. army, navy; or academic, administrative), ordered.
         fields:
           id:
             type: string
             docs: The category's URN RID (carried as a plain string).
           code:
             type: string
-            docs: Stable, locale-agnostic identifier; unique among active categories.
+            docs: Stable, locale-agnostic identifier; unique among active categories within the system.
           name:
             type: map<string, string>
             docs: locale->text display name.
           sortOrder:
             type: integer
-            docs: Seniority ordinal among active categories.
+            docs: Seniority ordinal among active categories of the system.
+          systemId:
+            type: string
+            docs: The URN RID of the owning rank system.
           types:
             type: list<RankType>
             docs: The category's types in seniority order. Populated by getRankScheme; empty on create/update of the category.
+      RankSystem:
+        docs: |
+          The top level of the scheme (D-RankSystems): a national/organizational rank ladder. One scheme
+          may hold several at once (a coalition directory); a single-nation deployment has one.
+        fields:
+          id:
+            type: string
+            docs: The system's URN RID (carried as a plain string).
+          code:
+            type: string
+            docs: Stable, locale-agnostic identifier (e.g. us-armed-forces); unique among active systems.
+          name:
+            type: map<string, string>
+            docs: locale->text display name.
+          sortOrder:
+            type: integer
+            docs: Order among active systems.
+          country:
+            type: optional<string>
+            docs: ISO-3166 national origin (geo_countries code); absent for a supranational system (NATO/UN).
+          categories:
+            type: list<RankCategory>
+            docs: The system's categories in seniority order. Populated by getRankScheme; empty on create/update of the system.
+      RankGrade:
+        docs: |
+          A standardized cross-system comparability node (NATO STANAG 2116): the seeded reference catalog
+          two ranks compare through. Equivalence = same code; seniority = tier then ordinal.
+        fields:
+          code:
+            type: string
+            docs: STANAG 2116 grade code (e.g. OF-5, OR-9, OF(D)).
+          tier:
+            type: string
+            docs: One of officer | warrant | enlisted (enlisted < warrant < officer for cross-tier seniority).
+          ordinal:
+            type: integer
+            docs: Order within the tier (junior -> senior).
+          name:
+            type: string
+            docs: Generic, nation-neutral grade label (not translatable; grades are reference data, not i18n entities).
       RankScheme:
-        docs: The whole scheme, categories -> types -> ranks, each level in seniority order.
+        docs: The whole scheme, systems -> categories -> types -> ranks, each level in seniority order.
         fields:
-          categories: list<RankCategory>
+          systems: list<RankSystem>
+      AddSystemRequest:
+        docs: Add a rank system (the top level). `name` is the default-locale text; other locales via LocalizationService.
+        fields:
+          code: string
+          name: string
+          country:
+            type: optional<string>
+            docs: ISO-3166 national origin (geo_countries code); omit for a supranational system (NATO/UN).
+          sortOrder:
+            type: optional<integer>
+            docs: Order among active systems; defaults to appended last.
+      UpdateSystemRequest:
+        docs: Edit/reorder a system. Omitted fields are unchanged. `code` is immutable; `country` cannot be cleared (open seam).
+        fields:
+          name: optional<string>
+          country: optional<string>
+          sortOrder: optional<integer>
       AddCategoryRequest:
-        docs: Add a category. `name` is the default-locale text; other locales are managed via LocalizationService.
+        docs: Add a category under a system. `name` is the default-locale text; other locales via LocalizationService.
         fields:
+          systemId:
+            type: string
+            docs: The URN RID of the owning (active) rank system.
           code: string
           name: string
           sortOrder:
@@ -96,23 +184,29 @@ types:
           name: optional<string>
           sortOrder: optional<integer>
       AddTypeRequest:
-        docs: Add a type under a category.
+        docs: |
+          Add a type, rooted either directly under a category (categoryId) or nested under a parent
+          type (parentTypeId — it then inherits the parent's category). Supply exactly one; a parent
+          type that already holds ranks cannot gain child types (ranks live on leaf types only).
         fields:
           categoryId:
-            type: string
-            docs: The URN RID of the owning (active) category.
+            type: optional<string>
+            docs: The URN RID of the owning (active) category, for a root type. Omit when nesting under a parent type.
+          parentTypeId:
+            type: optional<string>
+            docs: The URN RID of the owning (active) parent type, for a nested type. Omit for a root type.
           code: string
           name: string
           sortOrder:
             type: optional<integer>
-            docs: Seniority ordinal; defaults to appended last within the category.
+            docs: Seniority ordinal; defaults to appended last among the new type's active siblings.
       UpdateTypeRequest:
         docs: Edit/reorder a type. Omitted fields are unchanged. `code` is immutable.
         fields:
           name: optional<string>
           sortOrder: optional<integer>
       AddRankRequest:
-        docs: Add a rank under a type.
+        docs: Add a rank under a (leaf) type.
         fields:
           typeId:
             type: string
@@ -120,16 +214,70 @@ types:
           code: string
           name: string
           abbreviation: optional<string>
+          gradeCode:
+            type: optional<string>
+            docs: Optional standardized cross-system grade (a GET /rank-grades code); validated on write.
           sortOrder:
             type: optional<integer>
             docs: Seniority ordinal; defaults to appended last within the type.
       UpdateRankRequest:
-        docs: Edit/reorder a rank. Omitted fields are unchanged. `code` is immutable.
+        docs: Edit/reorder a rank. Omitted fields are unchanged. `code` is immutable; `gradeCode` cannot be cleared (open seam).
         fields:
           name: optional<string>
           abbreviation: optional<string>
+          gradeCode: optional<string>
           sortOrder: optional<integer>
+      ImportRankSchemeRequest:
+        docs: |
+          A preset rank-system subtree to import (D-RankSystems): one system with its categories ->
+          types (a tree) -> ranks, each carrying a stable `code`. Applied as a code-keyed idempotent
+          upsert in one transaction (additive; never deletes).
+        fields:
+          system: ImportSystem
+      ImportSystem:
+        fields:
+          code: string
+          name: string
+          country: optional<string>
+          sortOrder: optional<integer>
+          categories: list<ImportCategory>
+      ImportCategory:
+        fields:
+          code: string
+          name: string
+          sortOrder: optional<integer>
+          types: list<ImportType>
+      ImportType:
+        docs: A type node; carry EITHER children OR ranks (ranks live on leaf types only).
+        fields:
+          code: string
+          name: string
+          sortOrder: optional<integer>
+          children:
+            type: list<ImportType>
+            docs: Nested child types; empty for a leaf type.
+          ranks:
+            type: list<ImportRank>
+            docs: Ranks on this (leaf) type; empty for a non-leaf type.
+      ImportRank:
+        fields:
+          code: string
+          name: string
+          abbreviation: optional<string>
+          gradeCode: optional<string>
+          sortOrder: optional<integer>
+      ImportRankSchemeResponse:
+        docs: How many scheme nodes the import created, updated, or skipped (already current).
+        fields:
+          created: integer
+          updated: integer
+          skipped: integer
     errors:
+      RankSystemNotFound:
+        namespace: Rank
+        code: NOT_FOUND
+        safe-args:
+          systemId: string
       RankCategoryNotFound:
         namespace: Rank
         code: NOT_FOUND
@@ -178,11 +326,41 @@ services:
     endpoints:
       getRankScheme:
         http: GET /rank-scheme
-        docs: Read the whole scheme (categories -> types -> ranks) in seniority order.
+        docs: Read the whole scheme (systems -> categories -> types -> ranks) in seniority order.
         returns: RankScheme
+      getRankGrades:
+        http: GET /rank-grades
+        docs: Read the standardized-grade comparator catalog (NATO STANAG 2116), ordered by tier then ordinal.
+        returns: list<RankGrade>
+      addSystem:
+        http: POST /rank-scheme/systems
+        docs: Add a rank system. Returns Rank:RankCodeConflict if the code is taken among active systems.
+        args:
+          request: AddSystemRequest
+        returns: RankSystem
+      updateSystem:
+        http: PUT /rank-scheme/systems/{systemId}
+        docs: Edit/reorder a system. `code` is immutable by convention.
+        args:
+          systemId:
+            type: string
+            param-type: path
+          request: UpdateSystemRequest
+        returns: RankSystem
+      importRankScheme:
+        http: POST /rank-scheme/import
+        docs: |
+          Import a preset rank-system subtree (system -> categories -> types -> ranks) as a code-keyed
+          idempotent upsert in one transaction (additive; never deletes). Returns a created/updated/
+          skipped summary. Re-importing an unchanged preset reports all-skipped.
+        args:
+          request: ImportRankSchemeRequest
+        returns: ImportRankSchemeResponse
       addCategory:
         http: POST /rank-scheme/categories
-        docs: Add a category. Returns Rank:RankCodeConflict if the code is taken among active categories.
+        docs: |
+          Add a category under a system (systemId). Returns Rank:RankSystemNotFound if the system is
+          absent, or Rank:RankCodeConflict if the code is taken among the system's active categories.
         args:
           request: AddCategoryRequest
         returns: RankCategory
@@ -197,7 +375,10 @@ services:
         returns: RankCategory
       addType:
         http: POST /rank-scheme/types
-        docs: Add a type under a category. Returns Rank:RankCategoryNotFound if the parent is absent.
+        docs: |
+          Add a type under a category (categoryId) or nested under a parent type (parentTypeId).
+          Returns Rank:RankCategoryNotFound or Rank:RankTypeNotFound if the named parent is absent,
+          or Rank:RankInvalid if the parent type already holds ranks (leaf types only).
         args:
           request: AddTypeRequest
         returns: RankType
@@ -228,14 +409,14 @@ services:
       deleteNode:
         http: DELETE /rank-scheme/{level}/{nodeId}
         docs: |
-          Soft-delete a scheme node, blocked if in use (a category with active types, a type with
-          active ranks, or — post-M5 — a rank held by a person). `level` is one of
-          category | type | rank.
+          Soft-delete a scheme node, blocked if in use (a system with active categories, a category with
+          active types, a type with active ranks or child types, or — post-M5 — a rank held by a person).
+          `level` is one of system | category | type | rank.
         args:
           level:
             type: string
             param-type: path
-            docs: The scheme level to delete; one of category | type | rank.
+            docs: The scheme level to delete; one of system | category | type | rank.
           nodeId:
             type: string
             param-type: path

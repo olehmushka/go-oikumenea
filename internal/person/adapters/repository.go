@@ -183,6 +183,34 @@ func (r *Repository) Purge(ctx context.Context, id string) (domain.Person, error
 	if err := r.q.DeleteAllCallSigns(ctx, id); err != nil {
 		return domain.Person{}, err
 	}
+	if err := r.q.DeleteAllMessengerLinks(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if err := r.q.DeleteAllSocialAccountHandles(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if err := r.q.DeleteAllSocialAccounts(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	// person↔person relationships (D-PersonRelationships) — erased on EITHER endpoint's purge.
+	if err := r.q.DeleteAllPartnerships(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if err := r.q.DeleteAllKinships(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if err := r.q.DeleteAllGuardianships(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if err := r.q.DeleteAllSponsorships(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if err := r.q.DeleteAllNextOfKin(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if err := r.q.DeleteAllAssociations(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
 	row, err := r.q.PurgePerson(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -544,7 +572,642 @@ func (r *Repository) ListPhoneTypes(ctx context.Context) ([]domain.ContactType, 
 	return out, nil
 }
 
+// ---------------------------------------------------------------- platform catalog
+
+func (r *Repository) ListPlatforms(ctx context.Context) ([]domain.Platform, error) {
+	rows, err := r.q.ListPlatforms(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Platform, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toPlatform(row))
+	}
+	return out, nil
+}
+
+func (r *Repository) GetPlatform(ctx context.Context, code string) (domain.Platform, error) {
+	row, err := r.q.GetPlatform(ctx, code)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Platform{}, domain.ErrUnknownPlatform
+		}
+		return domain.Platform{}, err
+	}
+	return toPlatform(row), nil
+}
+
+// ---------------------------------------------------------------- messenger links
+
+func (r *Repository) PhonePersonID(ctx context.Context, phoneID string) (string, error) {
+	id, err := r.q.PhonePersonID(ctx, phoneID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", domain.ErrPhoneNotFound
+		}
+		return "", err
+	}
+	return id, nil
+}
+
+func (r *Repository) EmailPersonID(ctx context.Context, emailID string) (string, error) {
+	id, err := r.q.EmailPersonID(ctx, emailID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", domain.ErrEmailNotFound
+		}
+		return "", err
+	}
+	return id, nil
+}
+
+// UpsertMessengerLink inserts a new link when m.ID is empty, otherwise replaces the named row.
+func (r *Repository) UpsertMessengerLink(ctx context.Context, m domain.MessengerLink) (domain.MessengerLink, error) {
+	if m.ID == "" {
+		row, err := r.q.InsertMessengerLink(ctx, personsql.InsertMessengerLinkParams{
+			PhoneID:      text(m.PhoneID),
+			EmailID:      text(m.EmailID),
+			PlatformCode: m.PlatformCode,
+			IsPrimary:    m.IsPrimary,
+			VerifiedAt:   ts(m.VerifiedAt),
+		})
+		if err != nil {
+			return domain.MessengerLink{}, mapWriteErr(err)
+		}
+		return toMessengerLink(row), nil
+	}
+	row, err := r.q.UpdateMessengerLink(ctx, personsql.UpdateMessengerLinkParams{
+		PhoneID:      text(m.PhoneID),
+		EmailID:      text(m.EmailID),
+		PlatformCode: m.PlatformCode,
+		IsPrimary:    m.IsPrimary,
+		VerifiedAt:   ts(m.VerifiedAt),
+		ID:           m.ID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.MessengerLink{}, domain.ErrMessengerLinkNotFound
+		}
+		return domain.MessengerLink{}, mapWriteErr(err)
+	}
+	return toMessengerLink(row), nil
+}
+
+func (r *Repository) ClearPrimaryMessengerLinks(ctx context.Context, personID string) error {
+	return r.q.ClearPrimaryMessengerLinks(ctx, personID)
+}
+
+func (r *Repository) DeleteMessengerLink(ctx context.Context, personID, linkID string) error {
+	if _, err := r.q.DeleteMessengerLink(ctx, personsql.DeleteMessengerLinkParams{ID: linkID, PersonID: personID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrMessengerLinkNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) ListMessengerLinks(ctx context.Context, personID string) ([]domain.MessengerLink, error) {
+	rows, err := r.q.ListMessengerLinks(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.MessengerLink, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toMessengerLink(row))
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------- social accounts
+
+func (r *Repository) InsertSocialAccount(ctx context.Context, a domain.SocialAccount) (domain.SocialAccount, error) {
+	row, err := r.q.InsertSocialAccount(ctx, personsql.InsertSocialAccountParams{
+		PersonID:             a.PersonID,
+		PlatformCode:         a.PlatformCode,
+		PlatformUserID:       text(a.PlatformUserID),
+		Handle:               a.Handle,
+		DisplayName:          text(a.DisplayName),
+		ProfileUrl:           text(a.ProfileURL),
+		Language:             text(a.Language),
+		PlatformVerified:     a.PlatformVerified,
+		VerifiedByOperatorAt: ts(a.VerifiedByOperatorAt),
+		Source:               a.Source,
+		Confidence:           a.Confidence,
+		IsPrimary:            a.IsPrimary,
+	})
+	if err != nil {
+		return domain.SocialAccount{}, mapWriteErr(err)
+	}
+	return toSocialAccount(row), nil
+}
+
+func (r *Repository) UpdateSocialAccount(ctx context.Context, a domain.SocialAccount) (domain.SocialAccount, error) {
+	row, err := r.q.UpdateSocialAccount(ctx, personsql.UpdateSocialAccountParams{
+		PlatformCode:         a.PlatformCode,
+		PlatformUserID:       text(a.PlatformUserID),
+		Handle:               a.Handle,
+		DisplayName:          text(a.DisplayName),
+		ProfileUrl:           text(a.ProfileURL),
+		Language:             text(a.Language),
+		PlatformVerified:     a.PlatformVerified,
+		VerifiedByOperatorAt: ts(a.VerifiedByOperatorAt),
+		Source:               a.Source,
+		Confidence:           a.Confidence,
+		IsPrimary:            a.IsPrimary,
+		ID:                   a.ID,
+		PersonID:             a.PersonID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.SocialAccount{}, domain.ErrSocialAccountNotFound
+		}
+		return domain.SocialAccount{}, mapWriteErr(err)
+	}
+	return toSocialAccount(row), nil
+}
+
+func (r *Repository) GetSocialAccount(ctx context.Context, personID, accountID string) (domain.SocialAccount, error) {
+	row, err := r.q.GetSocialAccount(ctx, personsql.GetSocialAccountParams{ID: accountID, PersonID: personID})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.SocialAccount{}, domain.ErrSocialAccountNotFound
+		}
+		return domain.SocialAccount{}, err
+	}
+	return toSocialAccount(row), nil
+}
+
+func (r *Repository) ClearPrimarySocialAccounts(ctx context.Context, personID string) error {
+	return r.q.ClearPrimarySocialAccounts(ctx, personID)
+}
+
+func (r *Repository) DeleteSocialAccount(ctx context.Context, personID, accountID string) error {
+	if _, err := r.q.DeleteSocialAccount(ctx, personsql.DeleteSocialAccountParams{ID: accountID, PersonID: personID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrSocialAccountNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) ListSocialAccounts(ctx context.Context, personID string) ([]domain.SocialAccount, error) {
+	rows, err := r.q.ListSocialAccounts(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.SocialAccount, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toSocialAccount(row))
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------- social account handle history
+
+func (r *Repository) InsertSocialAccountHandle(ctx context.Context, h domain.SocialAccountHandle) (domain.SocialAccountHandle, error) {
+	row, err := r.q.InsertSocialAccountHandle(ctx, personsql.InsertSocialAccountHandleParams{
+		AccountID: h.AccountID,
+		Handle:    h.Handle,
+		ValidFrom: pgtype.Timestamptz{Time: h.ValidFrom, Valid: true},
+		ValidTo:   ts(h.ValidTo),
+	})
+	if err != nil {
+		return domain.SocialAccountHandle{}, mapWriteErr(err)
+	}
+	return toSocialAccountHandle(row), nil
+}
+
+func (r *Repository) CloseCurrentSocialAccountHandle(ctx context.Context, accountID string) error {
+	return r.q.CloseCurrentSocialAccountHandle(ctx, accountID)
+}
+
+func (r *Repository) ListSocialAccountHandles(ctx context.Context, accountID string) ([]domain.SocialAccountHandle, error) {
+	rows, err := r.q.ListSocialAccountHandles(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.SocialAccountHandle, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toSocialAccountHandle(row))
+	}
+	return out, nil
+}
+
 // ---------------------------------------------------------------- mapping helpers
+
+func toPlatform(r personsql.OikumeneaPersonPlatform) domain.Platform {
+	return domain.Platform{
+		Code:      r.Code,
+		Name:      r.Name,
+		Category:  r.Category,
+		Status:    r.Status,
+		SortOrder: int(r.SortOrder.Int32),
+	}
+}
+
+// ---------------------------------------------------------------- person↔person relationships (D-PersonRelationships)
+
+func (r *Repository) ListRelationTypes(ctx context.Context) ([]domain.RelationType, error) {
+	rows, err := r.q.ListRelationTypes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.RelationType, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toRelationType(row))
+	}
+	return out, nil
+}
+
+func (r *Repository) GetRelationType(ctx context.Context, code string) (domain.RelationType, error) {
+	row, err := r.q.GetRelationType(ctx, code)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.RelationType{}, domain.ErrUnknownRelationType
+		}
+		return domain.RelationType{}, err
+	}
+	return toRelationType(row), nil
+}
+
+func (r *Repository) HasActivePartnershipExcept(ctx context.Context, personID, exceptID string) (bool, error) {
+	return r.q.HasActivePartnershipExcept(ctx, personsql.HasActivePartnershipExceptParams{ExceptID: exceptID, PersonID: personID})
+}
+
+// partnerships
+func (r *Repository) UpsertPartnership(ctx context.Context, p domain.Partnership) (domain.Partnership, error) {
+	if p.ID == "" {
+		row, err := r.q.InsertPartnership(ctx, personsql.InsertPartnershipParams{
+			PersonIDA: p.PersonIDA, PersonIDB: p.PersonIDB, Status: p.Status,
+			EffectiveFrom: dateText(p.EffectiveFrom), EffectiveTo: dateText(p.EffectiveTo),
+		})
+		if err != nil {
+			return domain.Partnership{}, mapWriteErr(err)
+		}
+		return toPartnership(row), nil
+	}
+	row, err := r.q.UpdatePartnership(ctx, personsql.UpdatePartnershipParams{
+		ID: p.ID, PersonIDA: p.PersonIDA, PersonIDB: p.PersonIDB, Status: p.Status,
+		EffectiveFrom: dateText(p.EffectiveFrom), EffectiveTo: dateText(p.EffectiveTo),
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Partnership{}, domain.ErrRelationshipNotFound
+		}
+		return domain.Partnership{}, mapWriteErr(err)
+	}
+	return toPartnership(row), nil
+}
+
+func (r *Repository) ListPartnerships(ctx context.Context, personID string) ([]domain.Partnership, error) {
+	rows, err := r.q.ListPartnerships(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Partnership, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toPartnership(row))
+	}
+	return out, nil
+}
+
+func (r *Repository) DeletePartnership(ctx context.Context, personID, id string) error {
+	return relDelete(func() (string, error) {
+		return r.q.DeletePartnership(ctx, personsql.DeletePartnershipParams{ID: id, PersonID: personID})
+	})
+}
+
+func (r *Repository) DeleteAllPartnerships(ctx context.Context, personID string) error {
+	return r.q.DeleteAllPartnerships(ctx, personID)
+}
+
+// kinships
+func (r *Repository) UpsertKinship(ctx context.Context, k domain.Kinship) (domain.Kinship, error) {
+	if k.ID == "" {
+		row, err := r.q.InsertKinship(ctx, personsql.InsertKinshipParams{ParentID: k.ParentID, ChildID: k.ChildID, Status: k.Status})
+		if err != nil {
+			return domain.Kinship{}, mapWriteErr(err)
+		}
+		return toKinship(row), nil
+	}
+	row, err := r.q.UpdateKinship(ctx, personsql.UpdateKinshipParams{ID: k.ID, ParentID: k.ParentID, ChildID: k.ChildID, Status: k.Status})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Kinship{}, domain.ErrRelationshipNotFound
+		}
+		return domain.Kinship{}, mapWriteErr(err)
+	}
+	return toKinship(row), nil
+}
+
+func (r *Repository) ListKinships(ctx context.Context, personID string) ([]domain.Kinship, error) {
+	rows, err := r.q.ListKinships(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Kinship, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toKinship(row))
+	}
+	return out, nil
+}
+
+func (r *Repository) DeleteKinship(ctx context.Context, personID, id string) error {
+	return relDelete(func() (string, error) {
+		return r.q.DeleteKinship(ctx, personsql.DeleteKinshipParams{ID: id, PersonID: personID})
+	})
+}
+
+func (r *Repository) DeleteAllKinships(ctx context.Context, personID string) error {
+	return r.q.DeleteAllKinships(ctx, personID)
+}
+
+// guardianships
+func (r *Repository) UpsertGuardianship(ctx context.Context, g domain.Guardianship) (domain.Guardianship, error) {
+	if g.ID == "" {
+		row, err := r.q.InsertGuardianship(ctx, personsql.InsertGuardianshipParams{
+			GuardianID: g.GuardianID, WardID: g.WardID, RelationCode: text(g.RelationCode), Status: g.Status,
+			EffectiveFrom: dateText(g.EffectiveFrom), EffectiveTo: dateText(g.EffectiveTo),
+		})
+		if err != nil {
+			return domain.Guardianship{}, mapWriteErr(err)
+		}
+		return toGuardianship(row), nil
+	}
+	row, err := r.q.UpdateGuardianship(ctx, personsql.UpdateGuardianshipParams{
+		ID: g.ID, GuardianID: g.GuardianID, WardID: g.WardID, RelationCode: text(g.RelationCode), Status: g.Status,
+		EffectiveFrom: dateText(g.EffectiveFrom), EffectiveTo: dateText(g.EffectiveTo),
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Guardianship{}, domain.ErrRelationshipNotFound
+		}
+		return domain.Guardianship{}, mapWriteErr(err)
+	}
+	return toGuardianship(row), nil
+}
+
+func (r *Repository) ListGuardianships(ctx context.Context, personID string) ([]domain.Guardianship, error) {
+	rows, err := r.q.ListGuardianships(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Guardianship, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toGuardianship(row))
+	}
+	return out, nil
+}
+
+func (r *Repository) DeleteGuardianship(ctx context.Context, personID, id string) error {
+	return relDelete(func() (string, error) {
+		return r.q.DeleteGuardianship(ctx, personsql.DeleteGuardianshipParams{ID: id, PersonID: personID})
+	})
+}
+
+func (r *Repository) DeleteAllGuardianships(ctx context.Context, personID string) error {
+	return r.q.DeleteAllGuardianships(ctx, personID)
+}
+
+// sponsorships
+func (r *Repository) UpsertSponsorship(ctx context.Context, s domain.Sponsorship) (domain.Sponsorship, error) {
+	if s.ID == "" {
+		row, err := r.q.InsertSponsorship(ctx, personsql.InsertSponsorshipParams{
+			SponsorID: s.SponsorID, SponsoredID: s.SponsoredID, RelationCode: s.RelationCode, Status: s.Status,
+			EffectiveFrom: dateText(s.EffectiveFrom), EffectiveTo: dateText(s.EffectiveTo),
+		})
+		if err != nil {
+			return domain.Sponsorship{}, mapWriteErr(err)
+		}
+		return toSponsorship(row), nil
+	}
+	row, err := r.q.UpdateSponsorship(ctx, personsql.UpdateSponsorshipParams{
+		ID: s.ID, SponsorID: s.SponsorID, SponsoredID: s.SponsoredID, RelationCode: s.RelationCode, Status: s.Status,
+		EffectiveFrom: dateText(s.EffectiveFrom), EffectiveTo: dateText(s.EffectiveTo),
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Sponsorship{}, domain.ErrRelationshipNotFound
+		}
+		return domain.Sponsorship{}, mapWriteErr(err)
+	}
+	return toSponsorship(row), nil
+}
+
+func (r *Repository) ListSponsorships(ctx context.Context, personID string) ([]domain.Sponsorship, error) {
+	rows, err := r.q.ListSponsorships(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Sponsorship, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toSponsorship(row))
+	}
+	return out, nil
+}
+
+func (r *Repository) DeleteSponsorship(ctx context.Context, personID, id string) error {
+	return relDelete(func() (string, error) {
+		return r.q.DeleteSponsorship(ctx, personsql.DeleteSponsorshipParams{ID: id, PersonID: personID})
+	})
+}
+
+func (r *Repository) DeleteAllSponsorships(ctx context.Context, personID string) error {
+	return r.q.DeleteAllSponsorships(ctx, personID)
+}
+
+// next of kin
+func (r *Repository) UpsertNextOfKin(ctx context.Context, n domain.NextOfKin) (domain.NextOfKin, error) {
+	if n.ID == "" {
+		row, err := r.q.InsertNextOfKin(ctx, personsql.InsertNextOfKinParams{
+			SubjectID: n.SubjectID, ContactID: n.ContactID, RelationCode: text(n.RelationCode),
+			Priority: int32(n.Priority), Status: n.Status,
+		})
+		if err != nil {
+			return domain.NextOfKin{}, mapWriteErr(err)
+		}
+		return toNextOfKin(row), nil
+	}
+	row, err := r.q.UpdateNextOfKin(ctx, personsql.UpdateNextOfKinParams{
+		ID: n.ID, SubjectID: n.SubjectID, ContactID: n.ContactID, RelationCode: text(n.RelationCode),
+		Priority: int32(n.Priority), Status: n.Status,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.NextOfKin{}, domain.ErrRelationshipNotFound
+		}
+		return domain.NextOfKin{}, mapWriteErr(err)
+	}
+	return toNextOfKin(row), nil
+}
+
+func (r *Repository) ListNextOfKin(ctx context.Context, personID string) ([]domain.NextOfKin, error) {
+	rows, err := r.q.ListNextOfKin(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.NextOfKin, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toNextOfKin(row))
+	}
+	return out, nil
+}
+
+func (r *Repository) DeleteNextOfKin(ctx context.Context, personID, id string) error {
+	return relDelete(func() (string, error) {
+		return r.q.DeleteNextOfKin(ctx, personsql.DeleteNextOfKinParams{ID: id, PersonID: personID})
+	})
+}
+
+func (r *Repository) DeleteAllNextOfKin(ctx context.Context, personID string) error {
+	return r.q.DeleteAllNextOfKin(ctx, personID)
+}
+
+// associations
+func (r *Repository) UpsertAssociation(ctx context.Context, a domain.Association) (domain.Association, error) {
+	if a.ID == "" {
+		row, err := r.q.InsertAssociation(ctx, personsql.InsertAssociationParams{
+			PersonIDA: a.PersonIDA, PersonIDB: a.PersonIDB, RelationCode: text(a.RelationCode), Kind: a.Kind, Status: a.Status,
+		})
+		if err != nil {
+			return domain.Association{}, mapWriteErr(err)
+		}
+		return toAssociation(row), nil
+	}
+	row, err := r.q.UpdateAssociation(ctx, personsql.UpdateAssociationParams{
+		ID: a.ID, PersonIDA: a.PersonIDA, PersonIDB: a.PersonIDB, RelationCode: text(a.RelationCode), Kind: a.Kind, Status: a.Status,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Association{}, domain.ErrRelationshipNotFound
+		}
+		return domain.Association{}, mapWriteErr(err)
+	}
+	return toAssociation(row), nil
+}
+
+func (r *Repository) ListAssociations(ctx context.Context, personID string) ([]domain.Association, error) {
+	rows, err := r.q.ListAssociations(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Association, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toAssociation(row))
+	}
+	return out, nil
+}
+
+func (r *Repository) DeleteAssociation(ctx context.Context, personID, id string) error {
+	return relDelete(func() (string, error) {
+		return r.q.DeleteAssociation(ctx, personsql.DeleteAssociationParams{ID: id, PersonID: personID})
+	})
+}
+
+func (r *Repository) DeleteAllAssociations(ctx context.Context, personID string) error {
+	return r.q.DeleteAllAssociations(ctx, personID)
+}
+
+// relDelete maps a person-scoped soft-delete-by-id (RETURNING id) to ErrRelationshipNotFound when no
+// row matched (wrong id, already deleted, or the person is not an endpoint).
+func relDelete(del func() (string, error)) error {
+	if _, err := del(); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrRelationshipNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func toRelationType(r personsql.OikumeneaPersonRelationType) domain.RelationType {
+	return domain.RelationType{
+		Code:      r.Code,
+		Name:      r.Name,
+		Category:  r.Category,
+		Status:    r.Status,
+		SortOrder: int(r.SortOrder.Int32),
+	}
+}
+
+func toPartnership(r personsql.OikumeneaPersonPartnership) domain.Partnership {
+	return domain.Partnership{
+		ID: r.ID, PersonIDA: r.PersonIDA, PersonIDB: r.PersonIDB, Status: r.Status,
+		EffectiveFrom: dateStr(r.EffectiveFrom), EffectiveTo: dateStr(r.EffectiveTo),
+	}
+}
+
+func toKinship(r personsql.OikumeneaPersonKinship) domain.Kinship {
+	return domain.Kinship{ID: r.ID, ParentID: r.ParentID, ChildID: r.ChildID, Status: r.Status}
+}
+
+func toGuardianship(r personsql.OikumeneaPersonGuardianship) domain.Guardianship {
+	return domain.Guardianship{
+		ID: r.ID, GuardianID: r.GuardianID, WardID: r.WardID, RelationCode: r.RelationCode.String, Status: r.Status,
+		EffectiveFrom: dateStr(r.EffectiveFrom), EffectiveTo: dateStr(r.EffectiveTo),
+	}
+}
+
+func toSponsorship(r personsql.OikumeneaPersonSponsorship) domain.Sponsorship {
+	return domain.Sponsorship{
+		ID: r.ID, SponsorID: r.SponsorID, SponsoredID: r.SponsoredID, RelationCode: r.RelationCode, Status: r.Status,
+		EffectiveFrom: dateStr(r.EffectiveFrom), EffectiveTo: dateStr(r.EffectiveTo),
+	}
+}
+
+func toNextOfKin(r personsql.OikumeneaPersonNextOfKin) domain.NextOfKin {
+	return domain.NextOfKin{
+		ID: r.ID, SubjectID: r.SubjectID, ContactID: r.ContactID, RelationCode: r.RelationCode.String,
+		Priority: int(r.Priority), Status: r.Status,
+	}
+}
+
+func toAssociation(r personsql.OikumeneaPersonAssociation) domain.Association {
+	return domain.Association{
+		ID: r.ID, PersonIDA: r.PersonIDA, PersonIDB: r.PersonIDB, RelationCode: r.RelationCode.String, Kind: r.Kind, Status: r.Status,
+	}
+}
+
+func toMessengerLink(r personsql.OikumeneaPersonMessengerLink) domain.MessengerLink {
+	return domain.MessengerLink{
+		ID:           r.ID,
+		PhoneID:      r.PhoneID.String,
+		EmailID:      r.EmailID.String,
+		PlatformCode: r.PlatformCode,
+		IsPrimary:    r.IsPrimary,
+		VerifiedAt:   tsPtr(r.VerifiedAt),
+	}
+}
+
+func toSocialAccount(r personsql.OikumeneaPersonSocialAccount) domain.SocialAccount {
+	return domain.SocialAccount{
+		ID:                   r.ID,
+		PersonID:             r.PersonID,
+		PlatformCode:         r.PlatformCode,
+		PlatformUserID:       r.PlatformUserID.String,
+		Handle:               r.Handle,
+		DisplayName:          r.DisplayName.String,
+		ProfileURL:           r.ProfileUrl.String,
+		Language:             r.Language.String,
+		PlatformVerified:     r.PlatformVerified,
+		VerifiedByOperatorAt: tsPtr(r.VerifiedByOperatorAt),
+		Source:               r.Source,
+		Confidence:           r.Confidence,
+		IsPrimary:            r.IsPrimary,
+	}
+}
+
+func toSocialAccountHandle(r personsql.OikumeneaPersonSocialAccountHandle) domain.SocialAccountHandle {
+	return domain.SocialAccountHandle{
+		ID:        r.ID,
+		AccountID: r.AccountID,
+		Handle:    r.Handle,
+		ValidFrom: r.ValidFrom.Time,
+		ValidTo:   tsPtr(r.ValidTo),
+	}
+}
 
 func toEmail(r personsql.OikumeneaPersonEmail) domain.Email {
 	return domain.Email{
@@ -670,15 +1333,29 @@ func mapWriteErr(err error) error {
 			return domain.ErrPhoneConflict
 		case strings.Contains(name, "call_sign"):
 			return domain.ErrCallSignConflict
+		case strings.Contains(name, "messenger_link"):
+			return domain.ErrMessengerLinkConflict
+		case strings.Contains(name, "social_account"):
+			return domain.ErrSocialAccountConflict
+		case strings.Contains(name, "partnership"):
+			return domain.ErrPartnershipConflict
+		case strings.Contains(name, "kinship"), strings.Contains(name, "guardianship"),
+			strings.Contains(name, "sponsorship"), strings.Contains(name, "next_of_kin"),
+			strings.Contains(name, "association"):
+			return domain.ErrRelationshipConflict
 		case strings.Contains(name, "code"):
 			return domain.ErrCodeConflict
 		}
 	case "23503": // foreign_key_violation
 		switch {
+		case strings.Contains(name, "relation_code"):
+			return domain.ErrUnknownRelationType
 		case strings.Contains(name, "rank"):
 			return domain.ErrUnknownRank
 		case strings.Contains(name, "locale"):
 			return domain.ErrUnknownLocale
+		case strings.Contains(name, "platform_code"):
+			return domain.ErrUnknownPlatform
 		case strings.Contains(name, "type_code"):
 			return domain.ErrUnknownContactType
 		case strings.Contains(name, "country"):
@@ -735,4 +1412,12 @@ func tsPtr(t pgtype.Timestamptz) *time.Time {
 	}
 	out := t.Time
 	return &out
+}
+
+// ts maps an optional instant to a nullable timestamptz column (nil => NULL).
+func ts(t *time.Time) pgtype.Timestamptz {
+	if t == nil {
+		return pgtype.Timestamptz{}
+	}
+	return pgtype.Timestamptz{Time: *t, Valid: true}
 }

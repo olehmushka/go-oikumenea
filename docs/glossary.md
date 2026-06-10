@@ -99,6 +99,37 @@ a required value, unique per person among active rows, `is_primary` (D-PersonCon
 naming the `kind` of a contact email/phone (D-PersonContactChannels, D-Code/D-i18n). Owned by
 [person](modules/person.md).
 
+**Platform.** Instance-admin catalog (stable `code` + translatable `name`, `category ∈
+messenger|social`) of the messengers / social networks a person may appear on (D-PersonSocialChannels).
+Owned by [person](modules/person.md).
+
+**Messenger link.** A reachability annotation attaching an existing contact **phone or email** (XOR) to
+a `messenger`-category platform — "this number is on Telegram" (D-PersonSocialChannels). Owned by
+[person](modules/person.md); erased on purge.
+
+**Social account.** A person's standalone account on a social/messenger platform, independent of any
+phone/email (D-PersonSocialChannels). Keys on the platform's **immutable `platform_user_id`** (the
+mutable `@handle` has its own rename **history**), records **profile** fields (`pii:contact`),
+distinguishes **platform verification** (blue-check) from **operator verification**, and carries
+**attribution provenance** — `source` (self_declared / operator_verified / imported) + `confidence`
+(confirmed / probable / possible) — so a claimed account is a sourced, weighted assertion. **No**
+social-graph metrics; free-text `bio`/location wait on DS-29. Owned by [person](modules/person.md);
+erased on purge.
+
+**Person↔person relationship.** A reified self-link between two **in-directory** persons
+(D-PersonRelationships), each per-type and mirroring the membership temporal-link shape:
+**partnership** (marriage/engagement, symmetric, ≤1 active per person), **kinship** (directional
+`parent_of`, siblings derived), **guardianship** (guardian→ward), **sponsorship** (godparent / academic
+advisor / military mentor), **next-of-kin** (an in-directory nomination, not a blood fact), and
+**association** (associate / conflict-of-interest / no-contact). A **social link** (friend/follower) was
+scoped but **deferred — not built** (no consumer / no source / redundant with association; see
+decisions.md D-PersonRelationships). Authority **never** derives from a relationship — directory data
+only. Owned by [person](modules/person.md); erased when **either** endpoint purges.
+
+**Relation type.** Instance-admin catalog (stable `code` + translatable `name` + `category`) for the
+open-ended person↔person relation labels — sponsorship / association / next-of-kin kinds
+(D-PersonRelationships, D-Code/D-i18n). Owned by [person](modules/person.md).
+
 **Account.** An *optional* login attachment to a person — at most one per person. People
 without accounts (rosters, personnel who never sign in) are first-class. The account is the
 person's **set of login points**: it may hold several external identities (e.g. Google +
@@ -175,16 +206,30 @@ authoritative as themselves.
 ## Rank
 
 **Rank scheme.** The single, **system-wide** seniority ladder for the deployment, edited by
-the instance admin (never adopted per-unit). Three ordered levels:
-**rank category → rank type → rank**. Owned by the [rank](modules/rank.md) module.
+the instance admin (never adopted per-unit). Ordered levels:
+**rank system → rank category → rank type → rank**. The one scheme may hold **several rank systems**
+(multinational; D-RankSystems). Owned by the [rank](modules/rank.md) module.
 
-**Rank category.** Top of the scheme (e.g. `army`, `navy`, `marines`). Ordered.
+**Rank system.** Top of the scheme: a national/organizational rank ladder (e.g. `ua-armed-forces`,
+`us-armed-forces`, `nato`), optionally tied to a `country`. Lets one directory carry US and Ukrainian
+ranks at once (D-RankSystems). Ordered.
+
+**Rank category.** A branch within a rank system (e.g. `army`, `navy`, `marines`). Ordered.
 
 **Rank type.** A grouping within a category (e.g. `officers`, `warrant`, `enlisted`).
 Ordered, expresses the broad seniority band.
 
 **Rank.** A specific grade (e.g. `private`, `sergeant`, `colonel`). Ordered, expresses exact
-seniority. A person holds **one** rank.
+seniority **within a system**. A person holds **one** rank.
+
+**Standardized grade (NATO STANAG 2116).** A locale-agnostic grade code (`OF-1`…`OF-10`, `OR-1`…`OR-9`,
+warrant) optionally attached to a rank, drawn from the seeded `rank_grades` catalog. It is the
+**cross-system comparator**: ranks with the same grade are *equivalent* (US `OF-5` ≈ UA `OF-5`) and grade
+`tier`/`ordinal` gives cross-system seniority; absent grade ⇒ incomparable across systems (D-RankSystems).
+
+**Rank preset.** A curated, opt-in template document for one rank-system subtree
+(`system → categories → types → ranks`), bundled in-repo and applied by an idempotent, code-keyed
+`POST /rank-scheme/import` so admins don't hand-build the ladder (D-RankSystems).
 
 **Rank ≠ permission.** Rank is a **directory attribute** describing seniority. It grants no
 authorization whatsoever. Authority comes only from role assignments.
@@ -345,7 +390,7 @@ Effective permissions · Email (contact) · Email type · Envelope encryption ·
 Graph (named hierarchy) · Instance admin · Level · Link (type) · Link RID · Locale · Membership · Name (CLDR) ·
 Object (type) · Object-set · Ontology · Order ·
 Order category · Order item · Order type · PDP · PDP context · Person · Personal code ·
-Personal-code scheme · Phone (contact) · Phone type · PII tier · Position · Public/shadow · Rank · Rank category · Rank scheme ·
-Rank type · Residence · Reversibility · RID (Resource Identifier) · RLS backstop · Role · Role assignment · Scope ·
-Supported language · Translation · Transliteration · Unit · Unit graph (DAG) · Unit kind ·
+Personal-code scheme · Phone (contact) · Phone type · PII tier · Position · Public/shadow · Rank · Rank category · Rank preset ·
+Rank scheme · Rank system · Rank type · Residence · Reversibility · RID (Resource Identifier) · RLS backstop · Role · Role assignment · Scope ·
+Standardized grade (NATO STANAG 2116) · Supported language · Translation · Transliteration · Unit · Unit graph (DAG) · Unit kind ·
 Vacancy · Visibility

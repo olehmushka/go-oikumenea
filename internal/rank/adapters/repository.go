@@ -31,10 +31,119 @@ func NewRepository(conn db.DBTX) *Repository {
 // compile-time assertion that the adapter satisfies the domain port.
 var _ domain.Repository = (*Repository)(nil)
 
+// ---------------------------------------------------------------- systems
+
+func (r *Repository) InsertSystem(ctx context.Context, code, name string, sortOrder *int, country *string) (domain.System, error) {
+	row, err := r.q.InsertSystem(ctx, ranksql.InsertSystemParams{
+		Code:      code,
+		Name:      name,
+		SortOrder: int4Ptr(sortOrder),
+		Country:   textPtr(country),
+	})
+	if err != nil {
+		if isUniqueViolation(err) {
+			return domain.System{}, domain.ErrCodeConflict
+		}
+		return domain.System{}, err
+	}
+	return toSystem(row), nil
+}
+
+func (r *Repository) GetSystem(ctx context.Context, id string) (domain.System, error) {
+	row, err := r.q.GetSystem(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.System{}, domain.ErrSystemNotFound
+		}
+		return domain.System{}, err
+	}
+	return toSystem(row), nil
+}
+
+func (r *Repository) GetSystemByCode(ctx context.Context, code string) (domain.System, error) {
+	row, err := r.q.GetSystemByCode(ctx, code)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.System{}, domain.ErrSystemNotFound
+		}
+		return domain.System{}, err
+	}
+	return toSystem(row), nil
+}
+
+func (r *Repository) UpdateSystem(ctx context.Context, id string, patch domain.SystemPatch) (domain.System, error) {
+	row, err := r.q.UpdateSystem(ctx, ranksql.UpdateSystemParams{
+		ID:        id,
+		Name:      textPtr(patch.Name),
+		SortOrder: int4Ptr(patch.SortOrder),
+		Country:   textPtr(patch.Country),
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.System{}, domain.ErrSystemNotFound
+		}
+		return domain.System{}, err
+	}
+	return toSystem(row), nil
+}
+
+func (r *Repository) SoftDeleteSystem(ctx context.Context, id string) error {
+	if _, err := r.q.SoftDeleteSystem(ctx, id); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrSystemNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) ListSystems(ctx context.Context) ([]domain.System, error) {
+	rows, err := r.q.ListSystems(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.System, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toSystem(row))
+	}
+	return out, nil
+}
+
+func (r *Repository) CountActiveCategories(ctx context.Context, systemID string) (int, error) {
+	n, err := r.q.CountActiveCategoriesInSystem(ctx, systemID)
+	return int(n), err
+}
+
+// ---------------------------------------------------------------- grades
+
+func (r *Repository) ListGrades(ctx context.Context) ([]domain.Grade, error) {
+	rows, err := r.q.ListGrades(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Grade, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toGrade(row))
+	}
+	return out, nil
+}
+
+func (r *Repository) GetGradeByCode(ctx context.Context, code string) (domain.Grade, error) {
+	row, err := r.q.GetGrade(ctx, code)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Grade{}, domain.ErrGradeNotFound
+		}
+		return domain.Grade{}, err
+	}
+	return toGrade(row), nil
+}
+
 // ---------------------------------------------------------------- categories
 
-func (r *Repository) InsertCategory(ctx context.Context, code, name string, sortOrder *int) (domain.Category, error) {
+func (r *Repository) InsertCategory(ctx context.Context, systemID, code, name string, sortOrder *int) (domain.Category, error) {
 	row, err := r.q.InsertCategory(ctx, ranksql.InsertCategoryParams{
+		SystemID:  systemID,
 		Code:      code,
 		Name:      name,
 		SortOrder: int4Ptr(sortOrder),
@@ -50,6 +159,17 @@ func (r *Repository) InsertCategory(ctx context.Context, code, name string, sort
 
 func (r *Repository) GetCategory(ctx context.Context, id string) (domain.Category, error) {
 	row, err := r.q.GetCategory(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Category{}, domain.ErrCategoryNotFound
+		}
+		return domain.Category{}, err
+	}
+	return toCategory(row), nil
+}
+
+func (r *Repository) GetCategoryByCode(ctx context.Context, systemID, code string) (domain.Category, error) {
+	row, err := r.q.GetCategoryByCodeInSystem(ctx, ranksql.GetCategoryByCodeInSystemParams{SystemID: systemID, Code: code})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Category{}, domain.ErrCategoryNotFound
@@ -103,12 +223,13 @@ func (r *Repository) CountActiveTypes(ctx context.Context, categoryID string) (i
 
 // ---------------------------------------------------------------- types
 
-func (r *Repository) InsertType(ctx context.Context, categoryID, code, name string, sortOrder *int) (domain.Type, error) {
+func (r *Repository) InsertType(ctx context.Context, categoryID string, parentTypeID *string, code, name string, sortOrder *int) (domain.Type, error) {
 	row, err := r.q.InsertType(ctx, ranksql.InsertTypeParams{
-		CategoryID: categoryID,
-		Code:       code,
-		Name:       name,
-		SortOrder:  int4Ptr(sortOrder),
+		CategoryID:   categoryID,
+		ParentTypeID: textPtr(parentTypeID),
+		Code:         code,
+		Name:         name,
+		SortOrder:    int4Ptr(sortOrder),
 	})
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -121,6 +242,21 @@ func (r *Repository) InsertType(ctx context.Context, categoryID, code, name stri
 
 func (r *Repository) GetType(ctx context.Context, id string) (domain.Type, error) {
 	row, err := r.q.GetType(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Type{}, domain.ErrTypeNotFound
+		}
+		return domain.Type{}, err
+	}
+	return toType(row), nil
+}
+
+func (r *Repository) GetTypeByCode(ctx context.Context, categoryID string, parentTypeID *string, code string) (domain.Type, error) {
+	row, err := r.q.GetTypeByCodeInParent(ctx, ranksql.GetTypeByCodeInParentParams{
+		CategoryID:   categoryID,
+		ParentTypeID: textPtr(parentTypeID),
+		Code:         code,
+	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Type{}, domain.ErrTypeNotFound
@@ -172,14 +308,20 @@ func (r *Repository) CountActiveRanks(ctx context.Context, typeID string) (int, 
 	return int(n), err
 }
 
+func (r *Repository) CountActiveChildTypes(ctx context.Context, typeID string) (int, error) {
+	n, err := r.q.CountActiveChildTypes(ctx, pgtype.Text{String: typeID, Valid: true})
+	return int(n), err
+}
+
 // ---------------------------------------------------------------- ranks
 
-func (r *Repository) InsertRank(ctx context.Context, typeID, code, name string, abbreviation *string, sortOrder *int) (domain.Rank, error) {
+func (r *Repository) InsertRank(ctx context.Context, typeID, code, name string, abbreviation, gradeCode *string, sortOrder *int) (domain.Rank, error) {
 	row, err := r.q.InsertRank(ctx, ranksql.InsertRankParams{
 		TypeID:       typeID,
 		Code:         code,
 		Name:         name,
 		Abbreviation: textPtr(abbreviation),
+		GradeCode:    textPtr(gradeCode),
 		SortOrder:    int4Ptr(sortOrder),
 	})
 	if err != nil {
@@ -202,11 +344,23 @@ func (r *Repository) GetRank(ctx context.Context, id string) (domain.Rank, error
 	return toRank(row), nil
 }
 
+func (r *Repository) GetRankByCode(ctx context.Context, typeID, code string) (domain.Rank, error) {
+	row, err := r.q.GetRankByCodeInType(ctx, ranksql.GetRankByCodeInTypeParams{TypeID: typeID, Code: code})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Rank{}, domain.ErrRankNotFound
+		}
+		return domain.Rank{}, err
+	}
+	return toRank(row), nil
+}
+
 func (r *Repository) UpdateRank(ctx context.Context, id string, patch domain.RankPatch) (domain.Rank, error) {
 	row, err := r.q.UpdateRank(ctx, ranksql.UpdateRankParams{
 		ID:           id,
 		Name:         textPtr(patch.Name),
 		Abbreviation: textPtr(patch.Abbreviation),
+		GradeCode:    textPtr(patch.GradeCode),
 		SortOrder:    int4Ptr(patch.SortOrder),
 	})
 	if err != nil {
@@ -242,14 +396,26 @@ func (r *Repository) ListRanks(ctx context.Context) ([]domain.Rank, error) {
 
 // ---------------------------------------------------------------- mapping helpers
 
+func toSystem(row ranksql.OikumeneaRankSystem) domain.System {
+	return domain.System{
+		ID: row.ID, Code: row.Code, Name: row.Name, SortOrder: int(row.SortOrder),
+		Country: row.Country.String, // "" when NULL (supranational)
+	}
+}
+
+func toGrade(row ranksql.OikumeneaRankGrade) domain.Grade {
+	return domain.Grade{Code: row.Code, Tier: domain.Tier(row.Tier), Ordinal: int(row.Ordinal), Name: row.Name}
+}
+
 func toCategory(row ranksql.OikumeneaRankCategory) domain.Category {
-	return domain.Category{ID: row.ID, Code: row.Code, Name: row.Name, SortOrder: int(row.SortOrder)}
+	return domain.Category{ID: row.ID, Code: row.Code, Name: row.Name, SortOrder: int(row.SortOrder), SystemID: row.SystemID}
 }
 
 func toType(row ranksql.OikumeneaRankType) domain.Type {
 	return domain.Type{
 		ID: row.ID, Code: row.Code, Name: row.Name,
-		SortOrder: int(row.SortOrder), CategoryID: row.CategoryID,
+		SortOrder: int(row.SortOrder), SystemID: row.SystemID, CategoryID: row.CategoryID,
+		ParentTypeID: row.ParentTypeID.String, // "" when a root type (NULL)
 	}
 }
 
@@ -257,7 +423,8 @@ func toRank(row ranksql.OikumeneaRankRank) domain.Rank {
 	return domain.Rank{
 		ID: row.ID, Code: row.Code, Name: row.Name,
 		Abbreviation: row.Abbreviation.String, // "" when not valid
-		SortOrder:    int(row.SortOrder), TypeID: row.TypeID,
+		GradeCode:    row.GradeCode.String,    // "" when no standardized grade
+		SortOrder:    int(row.SortOrder), SystemID: row.SystemID, TypeID: row.TypeID,
 	}
 }
 

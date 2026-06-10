@@ -14,6 +14,8 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@xyflow/react": "^12.11.0",
+    "cmdk": "^1.1.1",
     "next": "15.5.4",
     "next-auth": "5.0.0-beta.29",
     "openapi-fetch": "^0.14.0",

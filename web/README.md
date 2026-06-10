@@ -38,6 +38,17 @@ npm run dev                       # http://localhost:8445  (runs gen:api first)
 Sign in with **admin / admin**. The dev `.env.local` sets `NODE_TLS_REJECT_UNAUTHORIZED=0`
 so the Node server trusts the API's self-signed cert — **dev only**.
 
+### Using the console
+
+It's an **object workspace** (see [`docs/web-ui.md`](../docs/web-ui.md)):
+
+- **⌘K / Ctrl-K** opens the command palette anywhere — search objects across types, jump to a view,
+  run a quick action, or paste a RID to open it directly.
+- **Explore** (sidebar) lists each object type as a filterable, sortable, multi-select table; click a
+  row for a detail **drawer** (properties, links, inline actions) without leaving the list.
+- **`/o/<rid>`** is the universal object view; **`/graph/<rid>`** is a traversable relationship graph;
+  **/ontology** browses the whole type registry.
+
 ## Run it (Docker, production-shaped)
 
 ```bash

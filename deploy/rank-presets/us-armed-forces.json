@@ -1,0 +1,83 @@
+{
+  "system": {
+    "code": "us-armed-forces",
+    "name": "US Armed Forces",
+    "country": "US",
+    "sortOrder": 0,
+    "categories": [
+      {
+        "code": "army",
+        "name": "Army",
+        "sortOrder": 0,
+        "types": [
+          {
+            "code": "enlisted",
+            "name": "Enlisted",
+            "sortOrder": 0,
+            "ranks": [
+              { "code": "e1", "name": "Private", "abbreviation": "PV1", "gradeCode": "OR-1", "sortOrder": 0 },
+              { "code": "e2", "name": "Private Second Class", "abbreviation": "PV2", "gradeCode": "OR-2", "sortOrder": 10 },
+              { "code": "e3", "name": "Private First Class", "abbreviation": "PFC", "gradeCode": "OR-3", "sortOrder": 20 },
+              { "code": "e4", "name": "Corporal", "abbreviation": "CPL", "gradeCode": "OR-4", "sortOrder": 30 },
+              { "code": "e5", "name": "Sergeant", "abbreviation": "SGT", "gradeCode": "OR-5", "sortOrder": 40 },
+              { "code": "e6", "name": "Staff Sergeant", "abbreviation": "SSG", "gradeCode": "OR-6", "sortOrder": 50 },
+              { "code": "e7", "name": "Sergeant First Class", "abbreviation": "SFC", "gradeCode": "OR-7", "sortOrder": 60 },
+              { "code": "e8", "name": "Master Sergeant", "abbreviation": "MSG", "gradeCode": "OR-8", "sortOrder": 70 },
+              { "code": "e9", "name": "Sergeant Major", "abbreviation": "SGM", "gradeCode": "OR-9", "sortOrder": 80 }
+            ]
+          },
+          {
+            "code": "warrant",
+            "name": "Warrant Officers",
+            "sortOrder": 1,
+            "ranks": [
+              { "code": "w1", "name": "Warrant Officer 1", "abbreviation": "WO1", "gradeCode": "WO-1", "sortOrder": 0 },
+              { "code": "w2", "name": "Chief Warrant Officer 2", "abbreviation": "CW2", "gradeCode": "WO-2", "sortOrder": 10 },
+              { "code": "w3", "name": "Chief Warrant Officer 3", "abbreviation": "CW3", "gradeCode": "WO-3", "sortOrder": 20 },
+              { "code": "w4", "name": "Chief Warrant Officer 4", "abbreviation": "CW4", "gradeCode": "WO-4", "sortOrder": 30 },
+              { "code": "w5", "name": "Chief Warrant Officer 5", "abbreviation": "CW5", "gradeCode": "WO-5", "sortOrder": 40 }
+            ]
+          },
+          {
+            "code": "officers",
+            "name": "Officers",
+            "sortOrder": 2,
+            "children": [
+              {
+                "code": "company-grade",
+                "name": "Company-grade Officers",
+                "sortOrder": 0,
+                "ranks": [
+                  { "code": "o1", "name": "Second Lieutenant", "abbreviation": "2LT", "gradeCode": "OF-1", "sortOrder": 0 },
+                  { "code": "o2", "name": "First Lieutenant", "abbreviation": "1LT", "gradeCode": "OF-1", "sortOrder": 10 },
+                  { "code": "o3", "name": "Captain", "abbreviation": "CPT", "gradeCode": "OF-2", "sortOrder": 20 }
+                ]
+              },
+              {
+                "code": "field-grade",
+                "name": "Field-grade Officers",
+                "sortOrder": 1,
+                "ranks": [
+                  { "code": "o4", "name": "Major", "abbreviation": "MAJ", "gradeCode": "OF-3", "sortOrder": 0 },
+                  { "code": "o5", "name": "Lieutenant Colonel", "abbreviation": "LTC", "gradeCode": "OF-4", "sortOrder": 10 },
+                  { "code": "o6", "name": "Colonel", "abbreviation": "COL", "gradeCode": "OF-5", "sortOrder": 20 }
+                ]
+              },
+              {
+                "code": "general-officers",
+                "name": "General Officers",
+                "sortOrder": 2,
+                "ranks": [
+                  { "code": "o7", "name": "Brigadier General", "abbreviation": "BG", "gradeCode": "OF-6", "sortOrder": 0 },
+                  { "code": "o8", "name": "Major General", "abbreviation": "MG", "gradeCode": "OF-7", "sortOrder": 10 },
+                  { "code": "o9", "name": "Lieutenant General", "abbreviation": "LTG", "gradeCode": "OF-8", "sortOrder": 20 },
+                  { "code": "o10", "name": "General", "abbreviation": "GEN", "gradeCode": "OF-9", "sortOrder": 30 }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "system": {
+    "code": "ua-armed-forces",
+    "name": "Збройні сили України",
+    "country": "UA",
+    "sortOrder": 1,
+    "categories": [
+      {
+        "code": "army",
+        "name": "Сухопутні війська",
+        "sortOrder": 0,
+        "types": [
+          {
+            "code": "enlisted",
+            "name": "Рядовий і сержантський склад",
+            "sortOrder": 0,
+            "ranks": [
+              { "code": "soldat", "name": "Солдат", "gradeCode": "OR-1", "sortOrder": 0 },
+              { "code": "starshyi-soldat", "name": "Старший солдат", "gradeCode": "OR-2", "sortOrder": 10 },
+              { "code": "molodshyi-serzhant", "name": "Молодший сержант", "gradeCode": "OR-5", "sortOrder": 20 },
+              { "code": "serzhant", "name": "Сержант", "gradeCode": "OR-6", "sortOrder": 30 },
+              { "code": "starshyi-serzhant", "name": "Старший сержант", "gradeCode": "OR-7", "sortOrder": 40 },
+              { "code": "holovnyi-serzhant", "name": "Головний сержант", "gradeCode": "OR-8", "sortOrder": 50 },
+              { "code": "shtab-serzhant", "name": "Штаб-сержант", "gradeCode": "OR-9", "sortOrder": 60 }
+            ]
+          },
+          {
+            "code": "officers",
+            "name": "Офіцерський склад",
+            "sortOrder": 1,
+            "ranks": [
+              { "code": "molodshyi-leitenant", "name": "Молодший лейтенант", "gradeCode": "OF-1", "sortOrder": 0 },
+              { "code": "leitenant", "name": "Лейтенант", "gradeCode": "OF-1", "sortOrder": 10 },
+              { "code": "starshyi-leitenant", "name": "Старший лейтенант", "gradeCode": "OF-2", "sortOrder": 20 },
+              { "code": "kapitan", "name": "Капітан", "gradeCode": "OF-2", "sortOrder": 30 },
+              { "code": "maior", "name": "Майор", "gradeCode": "OF-3", "sortOrder": 40 },
+              { "code": "pidpolkovnyk", "name": "Підполковник", "gradeCode": "OF-4", "sortOrder": 50 },
+              { "code": "polkovnyk", "name": "Полковник", "gradeCode": "OF-5", "sortOrder": 60 },
+              { "code": "heneral-maior", "name": "Генерал-майор", "gradeCode": "OF-6", "sortOrder": 70 },
+              { "code": "heneral-leitenant", "name": "Генерал-лейтенант", "gradeCode": "OF-7", "sortOrder": 80 },
+              { "code": "heneral", "name": "Генерал", "gradeCode": "OF-9", "sortOrder": 90 }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

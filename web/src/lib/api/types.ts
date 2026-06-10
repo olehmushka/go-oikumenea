@@ -60,6 +60,8 @@ export interface Person {
   emails?: Email[];
   phones?: Phone[];
   callSigns?: CallSign[];
+  messengerLinks?: MessengerLink[];
+  socialAccounts?: SocialAccount[];
   nameVariants?: NameVariant[];
   createdAt?: string;
   deactivatedAt?: string;
@@ -99,6 +101,107 @@ export interface CallSign {
   id: string;
   callSign: string;
   isPrimary?: boolean;
+}
+
+// ── M13: social & messenger channels ────────────────────────────────────────
+/** Instance-admin catalog of messenger/social platforms (category gates which links are allowed). */
+export interface Platform {
+  code: string;
+  name?: LocaleMap;
+  category: string; // messenger | social
+  status?: string;
+  sortOrder?: number;
+}
+/** A reachability annotation over a person's phone XOR email on a messenger platform. */
+export interface MessengerLink {
+  id: string;
+  phoneId?: string;
+  emailId?: string;
+  platformCode: string;
+  isPrimary?: boolean;
+  verifiedAt?: string;
+}
+/** A person's account on a social/messenger platform; the handle is mutable (history kept). */
+export interface SocialAccount {
+  id: string;
+  personId: string;
+  platformCode: string;
+  platformUserId?: string;
+  handle: string;
+  displayName?: string;
+  profileUrl?: string;
+  language?: string;
+  platformVerified?: boolean;
+  verifiedByOperatorAt?: string;
+  source: string; // self_declared | operator_verified | imported
+  confidence: string; // confirmed | probable | possible
+  isPrimary?: boolean;
+}
+/** A historical @handle for a social account (validTo null = current). */
+export interface SocialAccountHandle {
+  id: string;
+  accountId: string;
+  handle: string;
+  validFrom: string;
+  validTo?: string;
+}
+
+// ── M14: person↔person relationships ────────────────────────────────────────
+/** Instance-admin catalog of relation kinds (category scopes which family may reference it). */
+export interface RelationType {
+  code: string;
+  name?: LocaleMap;
+  category: string; // sponsorship | association | next_of_kin
+  status?: string;
+  sortOrder?: number;
+}
+export interface Partnership {
+  id: string;
+  personIdA: string;
+  personIdB: string;
+  status: string;
+  effectiveFrom?: string;
+  effectiveTo?: string;
+}
+export interface Kinship {
+  id: string;
+  parentId: string;
+  childId: string;
+  status: string;
+}
+export interface Guardianship {
+  id: string;
+  guardianId: string;
+  wardId: string;
+  relationCode?: string;
+  status: string;
+  effectiveFrom?: string;
+  effectiveTo?: string;
+}
+export interface Sponsorship {
+  id: string;
+  sponsorId: string;
+  sponsoredId: string;
+  relationCode: string;
+  status: string;
+  effectiveFrom?: string;
+  effectiveTo?: string;
+}
+export interface NextOfKin {
+  id: string;
+  subjectId: string;
+  contactId: string;
+  relationCode?: string;
+  priority: number;
+  status: string;
+}
+export interface Association {
+  id: string;
+  personIdA: string;
+  personIdB: string;
+  relationCode?: string;
+  kind: string; // associate | coi | no_contact
+  status: string;
 }
 export interface NameVariant {
   id: string;
@@ -142,7 +245,9 @@ export interface Rank {
   code: string;
   name?: LocaleMap;
   abbreviation?: string;
+  gradeCode?: string;
   sortOrder?: number;
+  systemId?: string;
   typeId: string;
 }
 export interface RankType {
@@ -150,7 +255,10 @@ export interface RankType {
   code: string;
   name?: LocaleMap;
   sortOrder?: number;
+  systemId?: string;
   categoryId: string;
+  parentTypeId?: string;
+  children?: RankType[];
   ranks: Rank[];
 }
 export interface RankCategory {
@@ -158,10 +266,27 @@ export interface RankCategory {
   code: string;
   name?: LocaleMap;
   sortOrder?: number;
+  systemId?: string;
   types: RankType[];
 }
-export interface RankScheme {
+/** A rank system (e.g. us-armed-forces, nato-generic): the top level of the scheme tree. */
+export interface RankSystem {
+  id: string;
+  code: string;
+  name?: LocaleMap;
+  sortOrder?: number;
+  country?: string;
   categories: RankCategory[];
+}
+export interface RankScheme {
+  systems: RankSystem[];
+}
+/** A NATO STANAG-2116 grade — reference data for cross-system rank equivalence (not translatable). */
+export interface RankGrade {
+  code: string;
+  tier: string; // officer | warrant | enlisted
+  ordinal: number;
+  name: string;
 }
 
 export interface Role {

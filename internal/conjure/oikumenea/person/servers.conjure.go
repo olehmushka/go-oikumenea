@@ -81,6 +81,65 @@ type PersonService interface {
 	ListEmailTypes(ctx context.Context, authHeader bearertoken.Token) ([]EmailType, error)
 	// List the contact-phone type catalog (locale -> text names; D-i18n).
 	ListPhoneTypes(ctx context.Context, authHeader bearertoken.Token) ([]PhoneType, error)
+	// List the social/messenger platform catalog (locale -> text names; D-i18n; D-PersonSocialChannels).
+	ListPlatforms(ctx context.Context, authHeader bearertoken.Token) ([]Platform, error)
+	// List a person's messenger reachability links.
+	ListMessengerLinks(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]MessengerLink, error)
+	/*
+	   Add or replace a messenger link over one of the person's phones/emails. Returns
+	   Person:PersonConflict if an active link for the channel+platform exists, Person:PersonInvalid
+	   for an unknown / non-messenger platform or a channel not held by the person.
+	*/
+	UpsertMessengerLink(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertMessengerLinkRequest) (MessengerLink, error)
+	// Remove a messenger link by id.
+	DeleteMessengerLink(ctx context.Context, authHeader bearertoken.Token, personIdArg string, messengerLinkIdArg string) error
+	// List a person's standalone social accounts.
+	ListSocialAccounts(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]SocialAccount, error)
+	/*
+	   Add or replace a social account. A handle rename is recorded in the account's handle history.
+	   Returns Person:PersonConflict on a duplicate active account, Person:PersonInvalid for an
+	   unknown platform or bad source/confidence.
+	*/
+	UpsertSocialAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertSocialAccountRequest) (SocialAccount, error)
+	// Remove a social account by id (its handle history cascades).
+	DeleteSocialAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string, socialAccountIdArg string) error
+	// List one social account's @handle-rename history (most recent first).
+	ListSocialAccountHandles(ctx context.Context, authHeader bearertoken.Token, personIdArg string, socialAccountIdArg string) ([]SocialAccountHandle, error)
+	// List the person↔person relation-type catalog (locale -> text names; D-i18n; D-PersonRelationships).
+	ListRelationTypes(ctx context.Context, authHeader bearertoken.Token) ([]RelationType, error)
+	// List partnerships (marriage/engagement) touching the person.
+	ListPartnerships(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Partnership, error)
+	/*
+	   Add or replace a partnership between the person and the partner. Returns Person:PersonConflict
+	   when either person already has an active engaged/married partnership, Person:PersonInvalid for a
+	   self-pair, unknown partner, or bad status.
+	*/
+	UpsertPartnership(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertPartnershipRequest) (Partnership, error)
+	// List parent/child kinships touching the person.
+	ListKinships(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Kinship, error)
+	// Add or replace a parent→child kinship. Returns Person:PersonConflict on a duplicate active pair, Person:PersonInvalid for a self-edge, unknown counterpart, or bad role.
+	UpsertKinship(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertKinshipRequest) (Kinship, error)
+	// List guardianships touching the person.
+	ListGuardianships(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Guardianship, error)
+	// Add or replace a guardian→ward link. Returns Person:PersonInvalid for a self-edge, unknown counterpart, unknown relation code, or bad role.
+	UpsertGuardianship(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertGuardianshipRequest) (Guardianship, error)
+	// List sponsorships (godparent/advisor/mentor) touching the person.
+	ListSponsorships(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Sponsorship, error)
+	// Add or replace a sponsor→sponsored link. relationCode must be a category=sponsorship code. Returns Person:PersonInvalid for a self-edge, unknown counterpart, or wrong relation category.
+	UpsertSponsorship(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertSponsorshipRequest) (Sponsorship, error)
+	// List next-of-kin nominations touching the person (priority-ordered).
+	ListNextOfKin(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]NextOfKin, error)
+	// Nominate or replace a next-of-kin contact for the person. Returns Person:PersonInvalid for a self-nomination, unknown contact, or wrong relation category.
+	UpsertNextOfKin(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertNextOfKinRequest) (NextOfKin, error)
+	// List associations (associate/COI/no-contact) touching the person.
+	ListAssociations(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Association, error)
+	// Add or replace a symmetric association. Returns Person:PersonInvalid for a self-pair, unknown counterpart, wrong relation category, or bad kind.
+	UpsertAssociation(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertAssociationRequest) (Association, error)
+	/*
+	   Remove any person↔person link by id (the link type is decoded from the RID). The path person
+	   must be one of the link's endpoints. Idempotent.
+	*/
+	DeleteRelationship(ctx context.Context, authHeader bearertoken.Token, personIdArg string, relationshipIdArg string) error
 }
 
 // RegisterRoutesPersonService registers handlers for the PersonService endpoints with a witchcraft wrouter.
@@ -170,6 +229,72 @@ func RegisterRoutesPersonService(router wrouter.Router, impl PersonService, rout
 	}
 	if err := resource.Get("ListPhoneTypes", "/person/v1/person/phone-types", httpserver.NewJSONHandler(handler.HandleListPhoneTypes, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listPhoneTypes route")
+	}
+	if err := resource.Get("ListPlatforms", "/person/v1/person/platforms", httpserver.NewJSONHandler(handler.HandleListPlatforms, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listPlatforms route")
+	}
+	if err := resource.Get("ListMessengerLinks", "/person/v1/persons/{personId}/messenger-links", httpserver.NewJSONHandler(handler.HandleListMessengerLinks, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listMessengerLinks route")
+	}
+	if err := resource.Put("UpsertMessengerLink", "/person/v1/persons/{personId}/messenger-links", httpserver.NewJSONHandler(handler.HandleUpsertMessengerLink, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertMessengerLink route")
+	}
+	if err := resource.Delete("DeleteMessengerLink", "/person/v1/persons/{personId}/messenger-links/{messengerLinkId}", httpserver.NewJSONHandler(handler.HandleDeleteMessengerLink, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteMessengerLink route")
+	}
+	if err := resource.Get("ListSocialAccounts", "/person/v1/persons/{personId}/social-accounts", httpserver.NewJSONHandler(handler.HandleListSocialAccounts, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listSocialAccounts route")
+	}
+	if err := resource.Put("UpsertSocialAccount", "/person/v1/persons/{personId}/social-accounts", httpserver.NewJSONHandler(handler.HandleUpsertSocialAccount, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertSocialAccount route")
+	}
+	if err := resource.Delete("DeleteSocialAccount", "/person/v1/persons/{personId}/social-accounts/{socialAccountId}", httpserver.NewJSONHandler(handler.HandleDeleteSocialAccount, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteSocialAccount route")
+	}
+	if err := resource.Get("ListSocialAccountHandles", "/person/v1/persons/{personId}/social-accounts/{socialAccountId}/handles", httpserver.NewJSONHandler(handler.HandleListSocialAccountHandles, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listSocialAccountHandles route")
+	}
+	if err := resource.Get("ListRelationTypes", "/person/v1/person/relation-types", httpserver.NewJSONHandler(handler.HandleListRelationTypes, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listRelationTypes route")
+	}
+	if err := resource.Get("ListPartnerships", "/person/v1/persons/{personId}/partnerships", httpserver.NewJSONHandler(handler.HandleListPartnerships, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listPartnerships route")
+	}
+	if err := resource.Put("UpsertPartnership", "/person/v1/persons/{personId}/partnerships", httpserver.NewJSONHandler(handler.HandleUpsertPartnership, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertPartnership route")
+	}
+	if err := resource.Get("ListKinships", "/person/v1/persons/{personId}/kinships", httpserver.NewJSONHandler(handler.HandleListKinships, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listKinships route")
+	}
+	if err := resource.Put("UpsertKinship", "/person/v1/persons/{personId}/kinships", httpserver.NewJSONHandler(handler.HandleUpsertKinship, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertKinship route")
+	}
+	if err := resource.Get("ListGuardianships", "/person/v1/persons/{personId}/guardianships", httpserver.NewJSONHandler(handler.HandleListGuardianships, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listGuardianships route")
+	}
+	if err := resource.Put("UpsertGuardianship", "/person/v1/persons/{personId}/guardianships", httpserver.NewJSONHandler(handler.HandleUpsertGuardianship, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertGuardianship route")
+	}
+	if err := resource.Get("ListSponsorships", "/person/v1/persons/{personId}/sponsorships", httpserver.NewJSONHandler(handler.HandleListSponsorships, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listSponsorships route")
+	}
+	if err := resource.Put("UpsertSponsorship", "/person/v1/persons/{personId}/sponsorships", httpserver.NewJSONHandler(handler.HandleUpsertSponsorship, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertSponsorship route")
+	}
+	if err := resource.Get("ListNextOfKin", "/person/v1/persons/{personId}/next-of-kin", httpserver.NewJSONHandler(handler.HandleListNextOfKin, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listNextOfKin route")
+	}
+	if err := resource.Put("UpsertNextOfKin", "/person/v1/persons/{personId}/next-of-kin", httpserver.NewJSONHandler(handler.HandleUpsertNextOfKin, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertNextOfKin route")
+	}
+	if err := resource.Get("ListAssociations", "/person/v1/persons/{personId}/associations", httpserver.NewJSONHandler(handler.HandleListAssociations, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listAssociations route")
+	}
+	if err := resource.Put("UpsertAssociation", "/person/v1/persons/{personId}/associations", httpserver.NewJSONHandler(handler.HandleUpsertAssociation, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertAssociation route")
+	}
+	if err := resource.Delete("DeleteRelationship", "/person/v1/persons/{personId}/relationships/{relationshipId}", httpserver.NewJSONHandler(handler.HandleDeleteRelationship, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteRelationship route")
 	}
 	return nil
 }
@@ -782,4 +907,495 @@ func (p *personServiceHandler) HandleListPhoneTypes(rw http.ResponseWriter, req 
 	}
 	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
 	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleListPlatforms(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	respArg, err := p.impl.ListPlatforms(req.Context(), bearertoken.Token(authHeader))
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleListMessengerLinks(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.ListMessengerLinks(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpsertMessengerLink(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg UpsertMessengerLinkRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertMessengerLink(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleDeleteMessengerLink(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	messengerLinkIdArg, ok := pathParams["messengerLinkId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"messengerLinkId\" not present")
+	}
+	if err := p.impl.DeleteMessengerLink(req.Context(), bearertoken.Token(authHeader), personIdArg, messengerLinkIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (p *personServiceHandler) HandleListSocialAccounts(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.ListSocialAccounts(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpsertSocialAccount(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg UpsertSocialAccountRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertSocialAccount(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleDeleteSocialAccount(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	socialAccountIdArg, ok := pathParams["socialAccountId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"socialAccountId\" not present")
+	}
+	if err := p.impl.DeleteSocialAccount(req.Context(), bearertoken.Token(authHeader), personIdArg, socialAccountIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (p *personServiceHandler) HandleListSocialAccountHandles(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	socialAccountIdArg, ok := pathParams["socialAccountId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"socialAccountId\" not present")
+	}
+	respArg, err := p.impl.ListSocialAccountHandles(req.Context(), bearertoken.Token(authHeader), personIdArg, socialAccountIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleListRelationTypes(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	respArg, err := p.impl.ListRelationTypes(req.Context(), bearertoken.Token(authHeader))
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleListPartnerships(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.ListPartnerships(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpsertPartnership(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg UpsertPartnershipRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertPartnership(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleListKinships(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.ListKinships(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpsertKinship(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg UpsertKinshipRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertKinship(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleListGuardianships(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.ListGuardianships(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpsertGuardianship(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg UpsertGuardianshipRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertGuardianship(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleListSponsorships(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.ListSponsorships(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpsertSponsorship(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg UpsertSponsorshipRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertSponsorship(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleListNextOfKin(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.ListNextOfKin(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpsertNextOfKin(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg UpsertNextOfKinRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertNextOfKin(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleListAssociations(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.ListAssociations(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpsertAssociation(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg UpsertAssociationRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertAssociation(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleDeleteRelationship(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	relationshipIdArg, ok := pathParams["relationshipId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"relationshipId\" not present")
+	}
+	if err := p.impl.DeleteRelationship(req.Context(), bearertoken.Token(authHeader), personIdArg, relationshipIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
 }

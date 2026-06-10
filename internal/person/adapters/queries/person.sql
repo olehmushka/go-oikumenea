@@ -266,6 +266,118 @@ SELECT * FROM oikumenea.person_email_types WHERE deleted_at IS NULL ORDER BY sor
 -- name: ListPhoneTypes :many
 SELECT * FROM oikumenea.person_phone_types WHERE deleted_at IS NULL ORDER BY sort_order, code;
 
+-- ============================ platform catalog (D-PersonSocialChannels) ============================
+
+-- name: ListPlatforms :many
+SELECT * FROM oikumenea.person_platforms WHERE deleted_at IS NULL ORDER BY sort_order, code;
+
+-- name: GetPlatform :one
+-- Resolve one platform by code (used to enforce the category='messenger' rule on a messenger link).
+SELECT * FROM oikumenea.person_platforms WHERE code = @code AND deleted_at IS NULL;
+
+-- ============================ messenger links (D-PersonSocialChannels, layer a) ============================
+
+-- name: PhonePersonID :one
+-- The owning person of a contact phone (holder-scope check for a messenger link). ErrNoRows when the
+-- phone is missing or soft-deleted.
+SELECT person_id FROM oikumenea.person_phones WHERE id = @id AND deleted_at IS NULL;
+
+-- name: EmailPersonID :one
+SELECT person_id FROM oikumenea.person_emails WHERE id = @id AND deleted_at IS NULL;
+
+-- name: InsertMessengerLink :one
+-- Exactly one of phone_id/email_id is set (XOR CHECK). platform_code's category='messenger' is enforced
+-- in the application; the FK only checks existence. The partial-unique index dedupes (channel, platform).
+INSERT INTO oikumenea.person_messenger_links (phone_id, email_id, platform_code, is_primary, verified_at)
+VALUES (sqlc.narg('phone_id'), sqlc.narg('email_id'), @platform_code, @is_primary, sqlc.narg('verified_at'))
+RETURNING *;
+
+-- name: UpdateMessengerLink :one
+UPDATE oikumenea.person_messenger_links SET
+  phone_id = sqlc.narg('phone_id'), email_id = sqlc.narg('email_id'),
+  platform_code = @platform_code, is_primary = @is_primary, verified_at = sqlc.narg('verified_at')
+WHERE id = @id AND deleted_at IS NULL
+RETURNING *;
+
+-- name: ClearPrimaryMessengerLinks :exec
+-- Demote every active primary messenger link the person reaches through any of their phones/emails.
+UPDATE oikumenea.person_messenger_links SET is_primary = false
+WHERE deleted_at IS NULL AND is_primary
+  AND (phone_id IN (SELECT ph.id FROM oikumenea.person_phones ph WHERE ph.person_id = @person_id)
+    OR email_id IN (SELECT em.id FROM oikumenea.person_emails em WHERE em.person_id = @person_id));
+
+-- name: DeleteMessengerLink :one
+-- Soft-delete a messenger link, holder-scoped: it must reach the person through its phone/email.
+UPDATE oikumenea.person_messenger_links ml SET deleted_at = now()
+WHERE ml.id = @id AND ml.deleted_at IS NULL
+  AND (ml.phone_id IN (SELECT ph.id FROM oikumenea.person_phones ph WHERE ph.person_id = @person_id)
+    OR ml.email_id IN (SELECT em.id FROM oikumenea.person_emails em WHERE em.person_id = @person_id))
+RETURNING ml.id;
+
+-- name: ListMessengerLinks :many
+-- A person's messenger links, resolved through the owning phone/email.
+SELECT ml.* FROM oikumenea.person_messenger_links ml
+LEFT JOIN oikumenea.person_phones ph ON ml.phone_id = ph.id
+LEFT JOIN oikumenea.person_emails em ON ml.email_id = em.id
+WHERE ml.deleted_at IS NULL AND COALESCE(ph.person_id, em.person_id) = @person_id
+ORDER BY ml.is_primary DESC, ml.id;
+
+-- ============================ social accounts (D-PersonSocialChannels, layer b) ============================
+
+-- name: InsertSocialAccount :one
+INSERT INTO oikumenea.person_social_accounts (
+  person_id, platform_code, platform_user_id, handle, display_name, profile_url, language,
+  platform_verified, verified_by_operator_at, source, confidence, is_primary
+) VALUES (
+  @person_id, @platform_code, sqlc.narg('platform_user_id'), @handle, sqlc.narg('display_name'),
+  sqlc.narg('profile_url'), sqlc.narg('language'), @platform_verified,
+  sqlc.narg('verified_by_operator_at'), @source, @confidence, @is_primary
+)
+RETURNING *;
+
+-- name: UpdateSocialAccount :one
+UPDATE oikumenea.person_social_accounts SET
+  platform_code = @platform_code, platform_user_id = sqlc.narg('platform_user_id'), handle = @handle,
+  display_name = sqlc.narg('display_name'), profile_url = sqlc.narg('profile_url'),
+  language = sqlc.narg('language'), platform_verified = @platform_verified,
+  verified_by_operator_at = sqlc.narg('verified_by_operator_at'), source = @source,
+  confidence = @confidence, is_primary = @is_primary
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING *;
+
+-- name: GetSocialAccount :one
+SELECT * FROM oikumenea.person_social_accounts
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL;
+
+-- name: ClearPrimarySocialAccounts :exec
+UPDATE oikumenea.person_social_accounts SET is_primary = false
+WHERE person_id = @person_id AND deleted_at IS NULL AND is_primary;
+
+-- name: DeleteSocialAccount :one
+UPDATE oikumenea.person_social_accounts SET deleted_at = now()
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING id;
+
+-- name: ListSocialAccounts :many
+SELECT * FROM oikumenea.person_social_accounts
+WHERE person_id = @person_id AND deleted_at IS NULL ORDER BY is_primary DESC, platform_code, id;
+
+-- ============================ social account handle history ============================
+
+-- name: InsertSocialAccountHandle :one
+INSERT INTO oikumenea.person_social_account_handles (account_id, handle, valid_from, valid_to)
+VALUES (@account_id, @handle, @valid_from, sqlc.narg('valid_to'))
+RETURNING *;
+
+-- name: CloseCurrentSocialAccountHandle :exec
+-- Close the open (valid_to IS NULL) handle period for an account at now() on rename.
+UPDATE oikumenea.person_social_account_handles SET valid_to = now()
+WHERE account_id = @account_id AND valid_to IS NULL AND deleted_at IS NULL;
+
+-- name: ListSocialAccountHandles :many
+SELECT * FROM oikumenea.person_social_account_handles
+WHERE account_id = @account_id AND deleted_at IS NULL ORDER BY valid_from DESC, id;
+
 -- ============================ purge erasure (extends PurgePerson) ============================
 
 -- name: DeleteAllEmails :exec
@@ -276,3 +388,200 @@ DELETE FROM oikumenea.person_phones WHERE person_id = @person_id;
 
 -- name: DeleteAllCallSigns :exec
 DELETE FROM oikumenea.person_call_signs WHERE person_id = @person_id;
+
+-- name: DeleteAllMessengerLinks :exec
+-- Erase the person's messenger links (D-PersonSocialChannels). They also CASCADE when their phone/email
+-- is hard-deleted, but this makes the purge erasure order-independent and explicit.
+DELETE FROM oikumenea.person_messenger_links
+WHERE phone_id IN (SELECT ph.id FROM oikumenea.person_phones ph WHERE ph.person_id = @person_id)
+   OR email_id IN (SELECT em.id FROM oikumenea.person_emails em WHERE em.person_id = @person_id);
+
+-- name: DeleteAllSocialAccountHandles :exec
+-- Erase the rename history of all the person's social accounts (handles also CASCADE from the account).
+DELETE FROM oikumenea.person_social_account_handles
+WHERE account_id IN (SELECT id FROM oikumenea.person_social_accounts WHERE person_id = @person_id);
+
+-- name: DeleteAllSocialAccounts :exec
+-- Erase the person's social accounts (CASCADE-deletes their handle history). The person row itself is
+-- kept as a tombstone, so these are not removed by the person delete — purge must erase them explicitly.
+DELETE FROM oikumenea.person_social_accounts WHERE person_id = @person_id;
+
+-- ============================ person↔person relationships (D-PersonRelationships, M14) ============================
+
+-- relation-type catalog ------------------------------------------------------
+
+-- name: ListRelationTypes :many
+SELECT * FROM oikumenea.person_relation_types WHERE deleted_at IS NULL ORDER BY sort_order, code;
+
+-- name: GetRelationType :one
+-- Resolve one relation type by code (used to validate the relation_code's category). ErrNoRows when missing.
+SELECT * FROM oikumenea.person_relation_types WHERE code = @code AND deleted_at IS NULL;
+
+-- partnerships ----------------------------------------------------------------
+
+-- name: HasActivePartnershipExcept :one
+-- Whether the person has any active engaged/married partnership other than except_id (the single-active
+-- rule a partial-unique index cannot span both endpoint columns).
+SELECT EXISTS (
+  SELECT 1 FROM oikumenea.person_partnerships
+  WHERE deleted_at IS NULL AND status IN ('engaged','married') AND id <> @except_id
+    AND (person_id_a = @person_id OR person_id_b = @person_id)
+) AS exists;
+
+-- name: InsertPartnership :one
+INSERT INTO oikumenea.person_partnerships (person_id_a, person_id_b, status, effective_from, effective_to)
+VALUES (@person_id_a, @person_id_b, @status, sqlc.narg('effective_from'), sqlc.narg('effective_to'))
+RETURNING *;
+
+-- name: UpdatePartnership :one
+UPDATE oikumenea.person_partnerships SET
+  person_id_a = @person_id_a, person_id_b = @person_id_b, status = @status,
+  effective_from = sqlc.narg('effective_from'), effective_to = sqlc.narg('effective_to')
+WHERE id = @id AND deleted_at IS NULL AND (person_id_a = @person_id_a OR person_id_b = @person_id_b)
+RETURNING *;
+
+-- name: ListPartnerships :many
+SELECT * FROM oikumenea.person_partnerships
+WHERE deleted_at IS NULL AND (person_id_a = @person_id OR person_id_b = @person_id)
+ORDER BY created_at DESC, id;
+
+-- name: DeletePartnership :one
+UPDATE oikumenea.person_partnerships SET deleted_at = now()
+WHERE id = @id AND deleted_at IS NULL AND (person_id_a = @person_id OR person_id_b = @person_id)
+RETURNING id;
+
+-- name: DeleteAllPartnerships :exec
+DELETE FROM oikumenea.person_partnerships WHERE person_id_a = @person_id OR person_id_b = @person_id;
+
+-- kinships --------------------------------------------------------------------
+
+-- name: InsertKinship :one
+INSERT INTO oikumenea.person_kinships (parent_id, child_id, status)
+VALUES (@parent_id, @child_id, @status)
+RETURNING *;
+
+-- name: UpdateKinship :one
+UPDATE oikumenea.person_kinships SET parent_id = @parent_id, child_id = @child_id, status = @status
+WHERE id = @id AND deleted_at IS NULL AND (parent_id = @parent_id OR child_id = @child_id)
+RETURNING *;
+
+-- name: ListKinships :many
+SELECT * FROM oikumenea.person_kinships
+WHERE deleted_at IS NULL AND (parent_id = @person_id OR child_id = @person_id)
+ORDER BY created_at DESC, id;
+
+-- name: DeleteKinship :one
+UPDATE oikumenea.person_kinships SET deleted_at = now()
+WHERE id = @id AND deleted_at IS NULL AND (parent_id = @person_id OR child_id = @person_id)
+RETURNING id;
+
+-- name: DeleteAllKinships :exec
+DELETE FROM oikumenea.person_kinships WHERE parent_id = @person_id OR child_id = @person_id;
+
+-- guardianships ---------------------------------------------------------------
+
+-- name: InsertGuardianship :one
+INSERT INTO oikumenea.person_guardianships (guardian_id, ward_id, relation_code, status, effective_from, effective_to)
+VALUES (@guardian_id, @ward_id, sqlc.narg('relation_code'), @status, sqlc.narg('effective_from'), sqlc.narg('effective_to'))
+RETURNING *;
+
+-- name: UpdateGuardianship :one
+UPDATE oikumenea.person_guardianships SET
+  guardian_id = @guardian_id, ward_id = @ward_id, relation_code = sqlc.narg('relation_code'),
+  status = @status, effective_from = sqlc.narg('effective_from'), effective_to = sqlc.narg('effective_to')
+WHERE id = @id AND deleted_at IS NULL AND (guardian_id = @guardian_id OR ward_id = @ward_id)
+RETURNING *;
+
+-- name: ListGuardianships :many
+SELECT * FROM oikumenea.person_guardianships
+WHERE deleted_at IS NULL AND (guardian_id = @person_id OR ward_id = @person_id)
+ORDER BY created_at DESC, id;
+
+-- name: DeleteGuardianship :one
+UPDATE oikumenea.person_guardianships SET deleted_at = now()
+WHERE id = @id AND deleted_at IS NULL AND (guardian_id = @person_id OR ward_id = @person_id)
+RETURNING id;
+
+-- name: DeleteAllGuardianships :exec
+DELETE FROM oikumenea.person_guardianships WHERE guardian_id = @person_id OR ward_id = @person_id;
+
+-- sponsorships ----------------------------------------------------------------
+
+-- name: InsertSponsorship :one
+INSERT INTO oikumenea.person_sponsorships (sponsor_id, sponsored_id, relation_code, status, effective_from, effective_to)
+VALUES (@sponsor_id, @sponsored_id, @relation_code, @status, sqlc.narg('effective_from'), sqlc.narg('effective_to'))
+RETURNING *;
+
+-- name: UpdateSponsorship :one
+UPDATE oikumenea.person_sponsorships SET
+  sponsor_id = @sponsor_id, sponsored_id = @sponsored_id, relation_code = @relation_code,
+  status = @status, effective_from = sqlc.narg('effective_from'), effective_to = sqlc.narg('effective_to')
+WHERE id = @id AND deleted_at IS NULL AND (sponsor_id = @sponsor_id OR sponsored_id = @sponsored_id)
+RETURNING *;
+
+-- name: ListSponsorships :many
+SELECT * FROM oikumenea.person_sponsorships
+WHERE deleted_at IS NULL AND (sponsor_id = @person_id OR sponsored_id = @person_id)
+ORDER BY created_at DESC, id;
+
+-- name: DeleteSponsorship :one
+UPDATE oikumenea.person_sponsorships SET deleted_at = now()
+WHERE id = @id AND deleted_at IS NULL AND (sponsor_id = @person_id OR sponsored_id = @person_id)
+RETURNING id;
+
+-- name: DeleteAllSponsorships :exec
+DELETE FROM oikumenea.person_sponsorships WHERE sponsor_id = @person_id OR sponsored_id = @person_id;
+
+-- next of kin -----------------------------------------------------------------
+
+-- name: InsertNextOfKin :one
+INSERT INTO oikumenea.person_next_of_kin (subject_id, contact_id, relation_code, priority, status)
+VALUES (@subject_id, @contact_id, sqlc.narg('relation_code'), @priority, @status)
+RETURNING *;
+
+-- name: UpdateNextOfKin :one
+UPDATE oikumenea.person_next_of_kin SET
+  subject_id = @subject_id, contact_id = @contact_id, relation_code = sqlc.narg('relation_code'),
+  priority = @priority, status = @status
+WHERE id = @id AND deleted_at IS NULL AND (subject_id = @subject_id OR contact_id = @contact_id)
+RETURNING *;
+
+-- name: ListNextOfKin :many
+SELECT * FROM oikumenea.person_next_of_kin
+WHERE deleted_at IS NULL AND (subject_id = @person_id OR contact_id = @person_id)
+ORDER BY priority, created_at DESC, id;
+
+-- name: DeleteNextOfKin :one
+UPDATE oikumenea.person_next_of_kin SET deleted_at = now()
+WHERE id = @id AND deleted_at IS NULL AND (subject_id = @person_id OR contact_id = @person_id)
+RETURNING id;
+
+-- name: DeleteAllNextOfKin :exec
+DELETE FROM oikumenea.person_next_of_kin WHERE subject_id = @person_id OR contact_id = @person_id;
+
+-- associations ----------------------------------------------------------------
+
+-- name: InsertAssociation :one
+INSERT INTO oikumenea.person_associations (person_id_a, person_id_b, relation_code, kind, status)
+VALUES (@person_id_a, @person_id_b, sqlc.narg('relation_code'), @kind, @status)
+RETURNING *;
+
+-- name: UpdateAssociation :one
+UPDATE oikumenea.person_associations SET
+  person_id_a = @person_id_a, person_id_b = @person_id_b, relation_code = sqlc.narg('relation_code'),
+  kind = @kind, status = @status
+WHERE id = @id AND deleted_at IS NULL AND (person_id_a = @person_id_a OR person_id_b = @person_id_b)
+RETURNING *;
+
+-- name: ListAssociations :many
+SELECT * FROM oikumenea.person_associations
+WHERE deleted_at IS NULL AND (person_id_a = @person_id OR person_id_b = @person_id)
+ORDER BY created_at DESC, id;
+
+-- name: DeleteAssociation :one
+UPDATE oikumenea.person_associations SET deleted_at = now()
+WHERE id = @id AND deleted_at IS NULL AND (person_id_a = @person_id OR person_id_b = @person_id)
+RETURNING id;
+
+-- name: DeleteAllAssociations :exec
+DELETE FROM oikumenea.person_associations WHERE person_id_a = @person_id OR person_id_b = @person_id;

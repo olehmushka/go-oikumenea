@@ -78,6 +78,65 @@ type PersonServiceClient interface {
 	ListEmailTypes(ctx context.Context, authHeader bearertoken.Token) ([]EmailType, error)
 	// List the contact-phone type catalog (locale -> text names; D-i18n).
 	ListPhoneTypes(ctx context.Context, authHeader bearertoken.Token) ([]PhoneType, error)
+	// List the social/messenger platform catalog (locale -> text names; D-i18n; D-PersonSocialChannels).
+	ListPlatforms(ctx context.Context, authHeader bearertoken.Token) ([]Platform, error)
+	// List a person's messenger reachability links.
+	ListMessengerLinks(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]MessengerLink, error)
+	/*
+	   Add or replace a messenger link over one of the person's phones/emails. Returns
+	   Person:PersonConflict if an active link for the channel+platform exists, Person:PersonInvalid
+	   for an unknown / non-messenger platform or a channel not held by the person.
+	*/
+	UpsertMessengerLink(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertMessengerLinkRequest) (MessengerLink, error)
+	// Remove a messenger link by id.
+	DeleteMessengerLink(ctx context.Context, authHeader bearertoken.Token, personIdArg string, messengerLinkIdArg string) error
+	// List a person's standalone social accounts.
+	ListSocialAccounts(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]SocialAccount, error)
+	/*
+	   Add or replace a social account. A handle rename is recorded in the account's handle history.
+	   Returns Person:PersonConflict on a duplicate active account, Person:PersonInvalid for an
+	   unknown platform or bad source/confidence.
+	*/
+	UpsertSocialAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertSocialAccountRequest) (SocialAccount, error)
+	// Remove a social account by id (its handle history cascades).
+	DeleteSocialAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string, socialAccountIdArg string) error
+	// List one social account's @handle-rename history (most recent first).
+	ListSocialAccountHandles(ctx context.Context, authHeader bearertoken.Token, personIdArg string, socialAccountIdArg string) ([]SocialAccountHandle, error)
+	// List the person↔person relation-type catalog (locale -> text names; D-i18n; D-PersonRelationships).
+	ListRelationTypes(ctx context.Context, authHeader bearertoken.Token) ([]RelationType, error)
+	// List partnerships (marriage/engagement) touching the person.
+	ListPartnerships(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Partnership, error)
+	/*
+	   Add or replace a partnership between the person and the partner. Returns Person:PersonConflict
+	   when either person already has an active engaged/married partnership, Person:PersonInvalid for a
+	   self-pair, unknown partner, or bad status.
+	*/
+	UpsertPartnership(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertPartnershipRequest) (Partnership, error)
+	// List parent/child kinships touching the person.
+	ListKinships(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Kinship, error)
+	// Add or replace a parent→child kinship. Returns Person:PersonConflict on a duplicate active pair, Person:PersonInvalid for a self-edge, unknown counterpart, or bad role.
+	UpsertKinship(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertKinshipRequest) (Kinship, error)
+	// List guardianships touching the person.
+	ListGuardianships(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Guardianship, error)
+	// Add or replace a guardian→ward link. Returns Person:PersonInvalid for a self-edge, unknown counterpart, unknown relation code, or bad role.
+	UpsertGuardianship(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertGuardianshipRequest) (Guardianship, error)
+	// List sponsorships (godparent/advisor/mentor) touching the person.
+	ListSponsorships(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Sponsorship, error)
+	// Add or replace a sponsor→sponsored link. relationCode must be a category=sponsorship code. Returns Person:PersonInvalid for a self-edge, unknown counterpart, or wrong relation category.
+	UpsertSponsorship(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertSponsorshipRequest) (Sponsorship, error)
+	// List next-of-kin nominations touching the person (priority-ordered).
+	ListNextOfKin(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]NextOfKin, error)
+	// Nominate or replace a next-of-kin contact for the person. Returns Person:PersonInvalid for a self-nomination, unknown contact, or wrong relation category.
+	UpsertNextOfKin(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertNextOfKinRequest) (NextOfKin, error)
+	// List associations (associate/COI/no-contact) touching the person.
+	ListAssociations(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Association, error)
+	// Add or replace a symmetric association. Returns Person:PersonInvalid for a self-pair, unknown counterpart, wrong relation category, or bad kind.
+	UpsertAssociation(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertAssociationRequest) (Association, error)
+	/*
+	   Remove any person↔person link by id (the link type is decoded from the RID). The path person
+	   must be one of the link's endpoints. Idempotent.
+	*/
+	DeleteRelationship(ctx context.Context, authHeader bearertoken.Token, personIdArg string, relationshipIdArg string) error
 }
 
 type personServiceClient struct {
@@ -535,6 +594,373 @@ func (c *personServiceClient) ListPhoneTypes(ctx context.Context, authHeader bea
 	return returnVal, nil
 }
 
+func (c *personServiceClient) ListPlatforms(ctx context.Context, authHeader bearertoken.Token) ([]Platform, error) {
+	var returnVal []Platform
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListPlatforms"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/person/platforms"))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listPlatforms failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listPlatforms response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) ListMessengerLinks(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]MessengerLink, error) {
+	var returnVal []MessengerLink
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListMessengerLinks"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/messenger-links", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listMessengerLinks failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listMessengerLinks response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) UpsertMessengerLink(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertMessengerLinkRequest) (MessengerLink, error) {
+	var returnVal *MessengerLink
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertMessengerLink"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/messenger-links", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(MessengerLink), werror.WrapWithContextParams(ctx, err, "upsertMessengerLink failed")
+	}
+	if returnVal == nil {
+		return *new(MessengerLink), werror.ErrorWithContextParams(ctx, "upsertMessengerLink response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) DeleteMessengerLink(ctx context.Context, authHeader bearertoken.Token, personIdArg string, messengerLinkIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeleteMessengerLink"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/messenger-links/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(messengerLinkIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deleteMessengerLink failed")
+	}
+	return nil
+}
+
+func (c *personServiceClient) ListSocialAccounts(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]SocialAccount, error) {
+	var returnVal []SocialAccount
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListSocialAccounts"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/social-accounts", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listSocialAccounts failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listSocialAccounts response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) UpsertSocialAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertSocialAccountRequest) (SocialAccount, error) {
+	var returnVal *SocialAccount
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertSocialAccount"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/social-accounts", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(SocialAccount), werror.WrapWithContextParams(ctx, err, "upsertSocialAccount failed")
+	}
+	if returnVal == nil {
+		return *new(SocialAccount), werror.ErrorWithContextParams(ctx, "upsertSocialAccount response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) DeleteSocialAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string, socialAccountIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeleteSocialAccount"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/social-accounts/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(socialAccountIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deleteSocialAccount failed")
+	}
+	return nil
+}
+
+func (c *personServiceClient) ListSocialAccountHandles(ctx context.Context, authHeader bearertoken.Token, personIdArg string, socialAccountIdArg string) ([]SocialAccountHandle, error) {
+	var returnVal []SocialAccountHandle
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListSocialAccountHandles"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/social-accounts/%s/handles", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(socialAccountIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listSocialAccountHandles failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listSocialAccountHandles response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) ListRelationTypes(ctx context.Context, authHeader bearertoken.Token) ([]RelationType, error) {
+	var returnVal []RelationType
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListRelationTypes"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/person/relation-types"))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listRelationTypes failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listRelationTypes response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) ListPartnerships(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Partnership, error) {
+	var returnVal []Partnership
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListPartnerships"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/partnerships", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listPartnerships failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listPartnerships response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) UpsertPartnership(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertPartnershipRequest) (Partnership, error) {
+	var returnVal *Partnership
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertPartnership"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/partnerships", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(Partnership), werror.WrapWithContextParams(ctx, err, "upsertPartnership failed")
+	}
+	if returnVal == nil {
+		return *new(Partnership), werror.ErrorWithContextParams(ctx, "upsertPartnership response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) ListKinships(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Kinship, error) {
+	var returnVal []Kinship
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListKinships"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/kinships", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listKinships failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listKinships response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) UpsertKinship(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertKinshipRequest) (Kinship, error) {
+	var returnVal *Kinship
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertKinship"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/kinships", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(Kinship), werror.WrapWithContextParams(ctx, err, "upsertKinship failed")
+	}
+	if returnVal == nil {
+		return *new(Kinship), werror.ErrorWithContextParams(ctx, "upsertKinship response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) ListGuardianships(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Guardianship, error) {
+	var returnVal []Guardianship
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListGuardianships"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/guardianships", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listGuardianships failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listGuardianships response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) UpsertGuardianship(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertGuardianshipRequest) (Guardianship, error) {
+	var returnVal *Guardianship
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertGuardianship"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/guardianships", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(Guardianship), werror.WrapWithContextParams(ctx, err, "upsertGuardianship failed")
+	}
+	if returnVal == nil {
+		return *new(Guardianship), werror.ErrorWithContextParams(ctx, "upsertGuardianship response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) ListSponsorships(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Sponsorship, error) {
+	var returnVal []Sponsorship
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListSponsorships"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/sponsorships", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listSponsorships failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listSponsorships response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) UpsertSponsorship(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertSponsorshipRequest) (Sponsorship, error) {
+	var returnVal *Sponsorship
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertSponsorship"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/sponsorships", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(Sponsorship), werror.WrapWithContextParams(ctx, err, "upsertSponsorship failed")
+	}
+	if returnVal == nil {
+		return *new(Sponsorship), werror.ErrorWithContextParams(ctx, "upsertSponsorship response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) ListNextOfKin(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]NextOfKin, error) {
+	var returnVal []NextOfKin
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListNextOfKin"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/next-of-kin", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listNextOfKin failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listNextOfKin response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) UpsertNextOfKin(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertNextOfKinRequest) (NextOfKin, error) {
+	var returnVal *NextOfKin
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertNextOfKin"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/next-of-kin", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(NextOfKin), werror.WrapWithContextParams(ctx, err, "upsertNextOfKin failed")
+	}
+	if returnVal == nil {
+		return *new(NextOfKin), werror.ErrorWithContextParams(ctx, "upsertNextOfKin response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) ListAssociations(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Association, error) {
+	var returnVal []Association
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListAssociations"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/associations", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listAssociations failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listAssociations response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) UpsertAssociation(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertAssociationRequest) (Association, error) {
+	var returnVal *Association
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertAssociation"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/associations", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(Association), werror.WrapWithContextParams(ctx, err, "upsertAssociation failed")
+	}
+	if returnVal == nil {
+		return *new(Association), werror.ErrorWithContextParams(ctx, "upsertAssociation response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) DeleteRelationship(ctx context.Context, authHeader bearertoken.Token, personIdArg string, relationshipIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeleteRelationship"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/relationships/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(relationshipIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deleteRelationship failed")
+	}
+	return nil
+}
+
 /*
 The personnel directory (D-PersonGlobal). Reads gate on `person.read` via the read-scope rule
 (D-PersonReadScope); writes on `person.create`/`person.update`/`person.rank.assign`/
@@ -600,6 +1026,65 @@ type PersonServiceClientWithAuth interface {
 	ListEmailTypes(ctx context.Context) ([]EmailType, error)
 	// List the contact-phone type catalog (locale -> text names; D-i18n).
 	ListPhoneTypes(ctx context.Context) ([]PhoneType, error)
+	// List the social/messenger platform catalog (locale -> text names; D-i18n; D-PersonSocialChannels).
+	ListPlatforms(ctx context.Context) ([]Platform, error)
+	// List a person's messenger reachability links.
+	ListMessengerLinks(ctx context.Context, personIdArg string) ([]MessengerLink, error)
+	/*
+	   Add or replace a messenger link over one of the person's phones/emails. Returns
+	   Person:PersonConflict if an active link for the channel+platform exists, Person:PersonInvalid
+	   for an unknown / non-messenger platform or a channel not held by the person.
+	*/
+	UpsertMessengerLink(ctx context.Context, personIdArg string, requestArg UpsertMessengerLinkRequest) (MessengerLink, error)
+	// Remove a messenger link by id.
+	DeleteMessengerLink(ctx context.Context, personIdArg string, messengerLinkIdArg string) error
+	// List a person's standalone social accounts.
+	ListSocialAccounts(ctx context.Context, personIdArg string) ([]SocialAccount, error)
+	/*
+	   Add or replace a social account. A handle rename is recorded in the account's handle history.
+	   Returns Person:PersonConflict on a duplicate active account, Person:PersonInvalid for an
+	   unknown platform or bad source/confidence.
+	*/
+	UpsertSocialAccount(ctx context.Context, personIdArg string, requestArg UpsertSocialAccountRequest) (SocialAccount, error)
+	// Remove a social account by id (its handle history cascades).
+	DeleteSocialAccount(ctx context.Context, personIdArg string, socialAccountIdArg string) error
+	// List one social account's @handle-rename history (most recent first).
+	ListSocialAccountHandles(ctx context.Context, personIdArg string, socialAccountIdArg string) ([]SocialAccountHandle, error)
+	// List the person↔person relation-type catalog (locale -> text names; D-i18n; D-PersonRelationships).
+	ListRelationTypes(ctx context.Context) ([]RelationType, error)
+	// List partnerships (marriage/engagement) touching the person.
+	ListPartnerships(ctx context.Context, personIdArg string) ([]Partnership, error)
+	/*
+	   Add or replace a partnership between the person and the partner. Returns Person:PersonConflict
+	   when either person already has an active engaged/married partnership, Person:PersonInvalid for a
+	   self-pair, unknown partner, or bad status.
+	*/
+	UpsertPartnership(ctx context.Context, personIdArg string, requestArg UpsertPartnershipRequest) (Partnership, error)
+	// List parent/child kinships touching the person.
+	ListKinships(ctx context.Context, personIdArg string) ([]Kinship, error)
+	// Add or replace a parent→child kinship. Returns Person:PersonConflict on a duplicate active pair, Person:PersonInvalid for a self-edge, unknown counterpart, or bad role.
+	UpsertKinship(ctx context.Context, personIdArg string, requestArg UpsertKinshipRequest) (Kinship, error)
+	// List guardianships touching the person.
+	ListGuardianships(ctx context.Context, personIdArg string) ([]Guardianship, error)
+	// Add or replace a guardian→ward link. Returns Person:PersonInvalid for a self-edge, unknown counterpart, unknown relation code, or bad role.
+	UpsertGuardianship(ctx context.Context, personIdArg string, requestArg UpsertGuardianshipRequest) (Guardianship, error)
+	// List sponsorships (godparent/advisor/mentor) touching the person.
+	ListSponsorships(ctx context.Context, personIdArg string) ([]Sponsorship, error)
+	// Add or replace a sponsor→sponsored link. relationCode must be a category=sponsorship code. Returns Person:PersonInvalid for a self-edge, unknown counterpart, or wrong relation category.
+	UpsertSponsorship(ctx context.Context, personIdArg string, requestArg UpsertSponsorshipRequest) (Sponsorship, error)
+	// List next-of-kin nominations touching the person (priority-ordered).
+	ListNextOfKin(ctx context.Context, personIdArg string) ([]NextOfKin, error)
+	// Nominate or replace a next-of-kin contact for the person. Returns Person:PersonInvalid for a self-nomination, unknown contact, or wrong relation category.
+	UpsertNextOfKin(ctx context.Context, personIdArg string, requestArg UpsertNextOfKinRequest) (NextOfKin, error)
+	// List associations (associate/COI/no-contact) touching the person.
+	ListAssociations(ctx context.Context, personIdArg string) ([]Association, error)
+	// Add or replace a symmetric association. Returns Person:PersonInvalid for a self-pair, unknown counterpart, wrong relation category, or bad kind.
+	UpsertAssociation(ctx context.Context, personIdArg string, requestArg UpsertAssociationRequest) (Association, error)
+	/*
+	   Remove any person↔person link by id (the link type is decoded from the RID). The path person
+	   must be one of the link's endpoints. Idempotent.
+	*/
+	DeleteRelationship(ctx context.Context, personIdArg string, relationshipIdArg string) error
 }
 
 func NewPersonServiceClientWithAuth(client PersonServiceClient, authHeader bearertoken.Token) PersonServiceClientWithAuth {
@@ -717,6 +1202,94 @@ func (c *personServiceClientWithAuth) ListEmailTypes(ctx context.Context) ([]Ema
 
 func (c *personServiceClientWithAuth) ListPhoneTypes(ctx context.Context) ([]PhoneType, error) {
 	return c.client.ListPhoneTypes(ctx, c.authHeader)
+}
+
+func (c *personServiceClientWithAuth) ListPlatforms(ctx context.Context) ([]Platform, error) {
+	return c.client.ListPlatforms(ctx, c.authHeader)
+}
+
+func (c *personServiceClientWithAuth) ListMessengerLinks(ctx context.Context, personIdArg string) ([]MessengerLink, error) {
+	return c.client.ListMessengerLinks(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertMessengerLink(ctx context.Context, personIdArg string, requestArg UpsertMessengerLinkRequest) (MessengerLink, error) {
+	return c.client.UpsertMessengerLink(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) DeleteMessengerLink(ctx context.Context, personIdArg string, messengerLinkIdArg string) error {
+	return c.client.DeleteMessengerLink(ctx, c.authHeader, personIdArg, messengerLinkIdArg)
+}
+
+func (c *personServiceClientWithAuth) ListSocialAccounts(ctx context.Context, personIdArg string) ([]SocialAccount, error) {
+	return c.client.ListSocialAccounts(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertSocialAccount(ctx context.Context, personIdArg string, requestArg UpsertSocialAccountRequest) (SocialAccount, error) {
+	return c.client.UpsertSocialAccount(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) DeleteSocialAccount(ctx context.Context, personIdArg string, socialAccountIdArg string) error {
+	return c.client.DeleteSocialAccount(ctx, c.authHeader, personIdArg, socialAccountIdArg)
+}
+
+func (c *personServiceClientWithAuth) ListSocialAccountHandles(ctx context.Context, personIdArg string, socialAccountIdArg string) ([]SocialAccountHandle, error) {
+	return c.client.ListSocialAccountHandles(ctx, c.authHeader, personIdArg, socialAccountIdArg)
+}
+
+func (c *personServiceClientWithAuth) ListRelationTypes(ctx context.Context) ([]RelationType, error) {
+	return c.client.ListRelationTypes(ctx, c.authHeader)
+}
+
+func (c *personServiceClientWithAuth) ListPartnerships(ctx context.Context, personIdArg string) ([]Partnership, error) {
+	return c.client.ListPartnerships(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertPartnership(ctx context.Context, personIdArg string, requestArg UpsertPartnershipRequest) (Partnership, error) {
+	return c.client.UpsertPartnership(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) ListKinships(ctx context.Context, personIdArg string) ([]Kinship, error) {
+	return c.client.ListKinships(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertKinship(ctx context.Context, personIdArg string, requestArg UpsertKinshipRequest) (Kinship, error) {
+	return c.client.UpsertKinship(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) ListGuardianships(ctx context.Context, personIdArg string) ([]Guardianship, error) {
+	return c.client.ListGuardianships(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertGuardianship(ctx context.Context, personIdArg string, requestArg UpsertGuardianshipRequest) (Guardianship, error) {
+	return c.client.UpsertGuardianship(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) ListSponsorships(ctx context.Context, personIdArg string) ([]Sponsorship, error) {
+	return c.client.ListSponsorships(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertSponsorship(ctx context.Context, personIdArg string, requestArg UpsertSponsorshipRequest) (Sponsorship, error) {
+	return c.client.UpsertSponsorship(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) ListNextOfKin(ctx context.Context, personIdArg string) ([]NextOfKin, error) {
+	return c.client.ListNextOfKin(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertNextOfKin(ctx context.Context, personIdArg string, requestArg UpsertNextOfKinRequest) (NextOfKin, error) {
+	return c.client.UpsertNextOfKin(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) ListAssociations(ctx context.Context, personIdArg string) ([]Association, error) {
+	return c.client.ListAssociations(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertAssociation(ctx context.Context, personIdArg string, requestArg UpsertAssociationRequest) (Association, error) {
+	return c.client.UpsertAssociation(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) DeleteRelationship(ctx context.Context, personIdArg string, relationshipIdArg string) error {
+	return c.client.DeleteRelationship(ctx, c.authHeader, personIdArg, relationshipIdArg)
 }
 
 func NewPersonServiceClientWithTokenProvider(client PersonServiceClient, tokenProvider httpclient.TokenProvider) PersonServiceClientWithAuth {
@@ -942,4 +1515,180 @@ func (c *personServiceClientWithTokenProvider) ListPhoneTypes(ctx context.Contex
 		return nil, err
 	}
 	return c.client.ListPhoneTypes(ctx, bearertoken.Token(token))
+}
+
+func (c *personServiceClientWithTokenProvider) ListPlatforms(ctx context.Context) ([]Platform, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListPlatforms(ctx, bearertoken.Token(token))
+}
+
+func (c *personServiceClientWithTokenProvider) ListMessengerLinks(ctx context.Context, personIdArg string) ([]MessengerLink, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListMessengerLinks(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertMessengerLink(ctx context.Context, personIdArg string, requestArg UpsertMessengerLinkRequest) (MessengerLink, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(MessengerLink), err
+	}
+	return c.client.UpsertMessengerLink(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) DeleteMessengerLink(ctx context.Context, personIdArg string, messengerLinkIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeleteMessengerLink(ctx, bearertoken.Token(token), personIdArg, messengerLinkIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListSocialAccounts(ctx context.Context, personIdArg string) ([]SocialAccount, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListSocialAccounts(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertSocialAccount(ctx context.Context, personIdArg string, requestArg UpsertSocialAccountRequest) (SocialAccount, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(SocialAccount), err
+	}
+	return c.client.UpsertSocialAccount(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) DeleteSocialAccount(ctx context.Context, personIdArg string, socialAccountIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeleteSocialAccount(ctx, bearertoken.Token(token), personIdArg, socialAccountIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListSocialAccountHandles(ctx context.Context, personIdArg string, socialAccountIdArg string) ([]SocialAccountHandle, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListSocialAccountHandles(ctx, bearertoken.Token(token), personIdArg, socialAccountIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListRelationTypes(ctx context.Context) ([]RelationType, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListRelationTypes(ctx, bearertoken.Token(token))
+}
+
+func (c *personServiceClientWithTokenProvider) ListPartnerships(ctx context.Context, personIdArg string) ([]Partnership, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListPartnerships(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertPartnership(ctx context.Context, personIdArg string, requestArg UpsertPartnershipRequest) (Partnership, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Partnership), err
+	}
+	return c.client.UpsertPartnership(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListKinships(ctx context.Context, personIdArg string) ([]Kinship, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListKinships(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertKinship(ctx context.Context, personIdArg string, requestArg UpsertKinshipRequest) (Kinship, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Kinship), err
+	}
+	return c.client.UpsertKinship(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListGuardianships(ctx context.Context, personIdArg string) ([]Guardianship, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListGuardianships(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertGuardianship(ctx context.Context, personIdArg string, requestArg UpsertGuardianshipRequest) (Guardianship, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Guardianship), err
+	}
+	return c.client.UpsertGuardianship(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListSponsorships(ctx context.Context, personIdArg string) ([]Sponsorship, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListSponsorships(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertSponsorship(ctx context.Context, personIdArg string, requestArg UpsertSponsorshipRequest) (Sponsorship, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Sponsorship), err
+	}
+	return c.client.UpsertSponsorship(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListNextOfKin(ctx context.Context, personIdArg string) ([]NextOfKin, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListNextOfKin(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertNextOfKin(ctx context.Context, personIdArg string, requestArg UpsertNextOfKinRequest) (NextOfKin, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(NextOfKin), err
+	}
+	return c.client.UpsertNextOfKin(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListAssociations(ctx context.Context, personIdArg string) ([]Association, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListAssociations(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertAssociation(ctx context.Context, personIdArg string, requestArg UpsertAssociationRequest) (Association, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Association), err
+	}
+	return c.client.UpsertAssociation(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) DeleteRelationship(ctx context.Context, personIdArg string, relationshipIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeleteRelationship(ctx, bearertoken.Token(token), personIdArg, relationshipIdArg)
 }

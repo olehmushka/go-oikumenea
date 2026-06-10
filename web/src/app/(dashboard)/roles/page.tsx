@@ -25,19 +25,29 @@ export default async function RolesPage({
   searchParams: Promise<{ subjectPersonId?: string; targetUnitId?: string }>;
 }) {
   const { subjectPersonId, targetUnitId } = await searchParams;
+  // Assignments are scoped reads: the API requires *exactly one* of subjectPersonId/targetUnitId,
+  // so there is no unconditional global list. Only query when one (and only one) filter is set.
+  const assignmentFilter = subjectPersonId && !targetUnitId
+    ? (["subjectPersonId", subjectPersonId] as const)
+    : targetUnitId && !subjectPersonId
+      ? (["targetUnitId", targetUnitId] as const)
+      : null;
   let roles: RolePage | null = null;
   let assignments: AssignmentPage | null = null;
   let error: unknown = null;
+  let assignmentError: unknown = null;
   try {
-    const aq = new URLSearchParams({ pageSize: "50" });
-    if (subjectPersonId) aq.set("subjectPersonId", subjectPersonId);
-    if (targetUnitId) aq.set("targetUnitId", targetUnitId);
-    [roles, assignments] = await Promise.all([
-      apiGet<RolePage>("/authorization/v1/roles", "?pageSize=100"),
-      apiGet<AssignmentPage>("/authorization/v1/assignments", `?${aq}`),
-    ]);
+    roles = await apiGet<RolePage>("/authorization/v1/roles", "?pageSize=100");
   } catch (e) {
     error = e;
+  }
+  if (assignmentFilter) {
+    try {
+      const aq = new URLSearchParams({ pageSize: "50", [assignmentFilter[0]]: assignmentFilter[1] });
+      assignments = await apiGet<AssignmentPage>("/authorization/v1/assignments", `?${aq}`);
+    } catch (e) {
+      assignmentError = e;
+    }
   }
 
   const roleById = new Map((roles?.roles ?? []).map((r) => [r.id, r]));
@@ -124,7 +134,12 @@ export default async function RolesPage({
           current={targetUnitId}
         />
       </div>
-      {assignments && assignments.assignments.length > 0 ? (
+      {assignmentError ? <ErrorNotice error={assignmentError} /> : null}
+      {!assignmentFilter ? (
+        <EmptyState>
+          Pick a subject person <em>or</em> a target unit (exactly one) to list assignments.
+        </EmptyState>
+      ) : assignments && assignments.assignments.length > 0 ? (
         <Table
           head={
             <>

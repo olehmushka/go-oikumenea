@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { auth } from "@/auth";
 import { Nav } from "@/components/Nav";
+import { CommandPalette } from "@/components/CommandPalette";
+import { SearchTrigger } from "@/components/SearchTrigger";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 import { signOutAction } from "@/lib/actions";
 import { apiGet } from "@/lib/api/server";
@@ -21,6 +23,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex min-h-screen">
+      <CommandPalette />
       <aside className="flex w-60 shrink-0 flex-col border-r border-slate-200 bg-white">
         <Link href="/" className="border-b border-slate-200 px-4 py-4">
           <div className="text-sm font-semibold text-slate-900">go-oikumenea</div>
@@ -33,7 +36,7 @@ export default async function DashboardLayout({
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-6 py-3">
-          <div className="text-sm text-slate-500">Personnel &amp; authorization</div>
+          <SearchTrigger />
           <div className="flex items-center gap-4">
             <LocaleSwitcher locales={supportedLocales} />
             <span className="text-sm text-slate-600">{name}</span>

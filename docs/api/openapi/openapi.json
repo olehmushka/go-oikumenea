@@ -47,7 +47,7 @@
         "type": "object"
       },
       "AddCategoryRequest": {
-        "description": "Add a category. `name` is the default-locale text; other locales are managed via LocalizationService.",
+        "description": "Add a category under a system. `name` is the default-locale text; other locales via LocalizationService.",
         "properties": {
           "code": {
             "type": "string"
@@ -59,11 +59,16 @@
             "description": "Seniority ordinal; defaults to (max active sibling order + 1), i.e. appended last.",
             "format": "int32",
             "type": "integer"
+          },
+          "systemId": {
+            "description": "The URN RID of the owning (active) rank system.",
+            "type": "string"
           }
         },
         "required": [
           "code",
-          "name"
+          "name",
+          "systemId"
         ],
         "type": "object"
       },
@@ -129,12 +134,16 @@
         "type": "object"
       },
       "AddRankRequest": {
-        "description": "Add a rank under a type.",
+        "description": "Add a rank under a (leaf) type.",
         "properties": {
           "abbreviation": {
             "type": "string"
           },
           "code": {
+            "type": "string"
+          },
+          "gradeCode": {
+            "description": "Optional standardized cross-system grade (a GET /rank-grades code); validated on write.",
             "type": "string"
           },
           "name": {
@@ -157,11 +166,36 @@
         ],
         "type": "object"
       },
+      "AddSystemRequest": {
+        "description": "Add a rank system (the top level). `name` is the default-locale text; other locales via LocalizationService.",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "country": {
+            "description": "ISO-3166 national origin (geo_countries code); omit for a supranational system (NATO/UN).",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "description": "Order among active systems; defaults to appended last.",
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "type": "object"
+      },
       "AddTypeRequest": {
-        "description": "Add a type under a category.",
+        "description": "Add a type, rooted either directly under a category (categoryId) or nested under a parent\ntype (parentTypeId — it then inherits the parent's category). Supply exactly one; a parent\ntype that already holds ranks cannot gain child types (ranks live on leaf types only).\n",
         "properties": {
           "categoryId": {
-            "description": "The URN RID of the owning (active) category.",
+            "description": "The URN RID of the owning (active) category, for a root type. Omit when nesting under a parent type.",
             "type": "string"
           },
           "code": {
@@ -170,14 +204,17 @@
           "name": {
             "type": "string"
           },
+          "parentTypeId": {
+            "description": "The URN RID of the owning (active) parent type, for a nested type. Omit for a root type.",
+            "type": "string"
+          },
           "sortOrder": {
-            "description": "Seniority ordinal; defaults to appended last within the category.",
+            "description": "Seniority ordinal; defaults to appended last among the new type's active siblings.",
             "format": "int32",
             "type": "integer"
           }
         },
         "required": [
-          "categoryId",
           "code",
           "name"
         ],
@@ -264,6 +301,42 @@
         },
         "required": [
           "assignments"
+        ],
+        "type": "object"
+      },
+      "Association": {
+        "description": "A symmetric association / conflict-of-interest / prohibited-contact link (D-PersonRelationships; Link link__associated_with).",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "description": "One of associate | coi | no_contact.",
+            "type": "string"
+          },
+          "personIdA": {
+            "description": "The lower-sorting person's URN RID (canonical pair ordering).",
+            "type": "string"
+          },
+          "personIdB": {
+            "description": "The higher-sorting person's URN RID.",
+            "type": "string"
+          },
+          "relationCode": {
+            "description": "Optional relation-type catalog code (category=association).",
+            "type": "string"
+          },
+          "status": {
+            "description": "One of active | ended.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "personIdA",
+          "personIdB",
+          "status"
         ],
         "type": "object"
       },
@@ -1321,6 +1394,195 @@
         ],
         "type": "object"
       },
+      "Guardianship": {
+        "description": "A legal guardian→ward link, distinct from blood kinship (D-PersonRelationships; Link link__guardian_of).",
+        "properties": {
+          "effectiveFrom": {
+            "type": "string"
+          },
+          "effectiveTo": {
+            "description": "null = ongoing.",
+            "type": "string"
+          },
+          "guardianId": {
+            "description": "The guardian's URN RID.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "relationCode": {
+            "description": "Optional relation-type catalog code.",
+            "type": "string"
+          },
+          "status": {
+            "description": "One of active | ended.",
+            "type": "string"
+          },
+          "wardId": {
+            "description": "The ward's URN RID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "guardianId",
+          "id",
+          "status",
+          "wardId"
+        ],
+        "type": "object"
+      },
+      "ImportCategory": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "types": {
+            "items": {
+              "$ref": "#/components/schemas/ImportType"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "types"
+        ],
+        "type": "object"
+      },
+      "ImportRank": {
+        "properties": {
+          "abbreviation": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "gradeCode": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "type": "object"
+      },
+      "ImportRankSchemeRequest": {
+        "description": "A preset rank-system subtree to import (D-RankSystems): one system with its categories -\u003e\ntypes (a tree) -\u003e ranks, each carrying a stable `code`. Applied as a code-keyed idempotent\nupsert in one transaction (additive; never deletes).\n",
+        "properties": {
+          "system": {
+            "$ref": "#/components/schemas/ImportSystem"
+          }
+        },
+        "required": [
+          "system"
+        ],
+        "type": "object"
+      },
+      "ImportRankSchemeResponse": {
+        "description": "How many scheme nodes the import created, updated, or skipped (already current).",
+        "properties": {
+          "created": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "skipped": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "updated": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created",
+          "skipped",
+          "updated"
+        ],
+        "type": "object"
+      },
+      "ImportSystem": {
+        "properties": {
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/ImportCategory"
+            },
+            "type": "array"
+          },
+          "code": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "categories",
+          "code",
+          "name"
+        ],
+        "type": "object"
+      },
+      "ImportType": {
+        "description": "A type node; carry EITHER children OR ranks (ranks live on leaf types only).",
+        "properties": {
+          "children": {
+            "description": "Nested child types; empty for a leaf type.",
+            "items": {
+              "$ref": "#/components/schemas/ImportType"
+            },
+            "type": "array"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ranks": {
+            "description": "Ranks on this (leaf) type; empty for a non-leaf type.",
+            "items": {
+              "$ref": "#/components/schemas/ImportRank"
+            },
+            "type": "array"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "children",
+          "code",
+          "name",
+          "ranks"
+        ],
+        "type": "object"
+      },
       "InstanceAdmin": {
         "description": "A person on the instance-wide authority plane (the reified link__instance_admin).",
         "properties": {
@@ -1351,6 +1613,33 @@
           "grantedAt",
           "id",
           "personId"
+        ],
+        "type": "object"
+      },
+      "Kinship": {
+        "description": "A directional parent→child blood/legal parentage link (D-PersonRelationships; Link link__kin_parent_of). Siblings are derived, never stored.",
+        "properties": {
+          "childId": {
+            "description": "The child's URN RID.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "parentId": {
+            "description": "The parent's URN RID.",
+            "type": "string"
+          },
+          "status": {
+            "description": "One of active | disestablished.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "childId",
+          "id",
+          "parentId",
+          "status"
         ],
         "type": "object"
       },
@@ -1491,6 +1780,41 @@
         ],
         "type": "object"
       },
+      "MessengerLink": {
+        "description": "Reachability on a messenger platform over one of the person's existing channels\n(D-PersonSocialChannels). Exactly one of phoneId/emailId is set.\n",
+        "properties": {
+          "emailId": {
+            "description": "The URN RID of the person's email this link annotates; null when the link is over a phone.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isPrimary": {
+            "description": "The person's primary messenger reachability (at most one active).",
+            "type": "boolean"
+          },
+          "phoneId": {
+            "description": "The URN RID of the person's phone this link annotates; null when the link is over an email.",
+            "type": "string"
+          },
+          "platformCode": {
+            "description": "The messenger platform code (category=messenger).",
+            "type": "string"
+          },
+          "verifiedAt": {
+            "description": "When the reachability was verified; null when unverified.",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "isPrimary",
+          "platformCode"
+        ],
+        "type": "object"
+      },
       "NameVariant": {
         "description": "A full transliterated name form for one locale (e.g. ukr native, eng Latin). Person-managed, NOT the localization store.",
         "properties": {
@@ -1544,6 +1868,43 @@
           "isPrimary",
           "locale",
           "personId"
+        ],
+        "type": "object"
+      },
+      "NextOfKin": {
+        "description": "An in-directory next-of-kin nomination (subject→contact, both directory persons; D-PersonRelationships; Link link__next_of_kin). A nomination, not a blood fact.",
+        "properties": {
+          "contactId": {
+            "description": "The nominated contact's URN RID (an in-directory person).",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "priority": {
+            "description": "Priority ordering of the nomination (1 = highest).",
+            "format": "int32",
+            "type": "integer"
+          },
+          "relationCode": {
+            "description": "Optional relation-type catalog code (category=next_of_kin).",
+            "type": "string"
+          },
+          "status": {
+            "description": "One of active | withdrawn.",
+            "type": "string"
+          },
+          "subjectId": {
+            "description": "The nominating person's URN RID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contactId",
+          "id",
+          "priority",
+          "status",
+          "subjectId"
         ],
         "type": "object"
       },
@@ -1773,6 +2134,41 @@
         ],
         "type": "object"
       },
+      "Partnership": {
+        "description": "A marriage or engagement between two persons (D-PersonRelationships; Link link__partnered_with).\nSymmetric: stored as a canonical pair (personIdA \u003c personIdB). At most one active engaged/married\nrow per person.\n",
+        "properties": {
+          "effectiveFrom": {
+            "description": "ISO-8601 date the partnership began (YYYY-MM-DD).",
+            "type": "string"
+          },
+          "effectiveTo": {
+            "description": "ISO-8601 date it ended (YYYY-MM-DD); null = ongoing.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "personIdA": {
+            "description": "The lower-sorting partner's URN RID (canonical pair ordering).",
+            "type": "string"
+          },
+          "personIdB": {
+            "description": "The higher-sorting partner's URN RID.",
+            "type": "string"
+          },
+          "status": {
+            "description": "One of engaged | married | divorced | widowed | annulled | dissolved.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "personIdA",
+          "personIdB",
+          "status"
+        ],
+        "type": "object"
+      },
       "Person": {
         "description": "An individual personnel record. Names follow the Unicode CLDR fixed field set\n(D-PersonNamesCLDR): displayName is authoritative, the structured parts are advisory. There\nis no patronymic field — the Slavic по-батькові lives in given2. nameVariants/citizenships/\nresidences are populated by getPerson and empty in list responses.\n",
         "properties": {
@@ -1843,6 +2239,13 @@
             "description": "The person's URN RID (carried as a plain string).",
             "type": "string"
           },
+          "messengerLinks": {
+            "description": "The person's messenger reachability links. Populated by getPerson; empty in list responses.",
+            "items": {
+              "$ref": "#/components/schemas/MessengerLink"
+            },
+            "type": "array"
+          },
           "nameVariants": {
             "description": "Locale-tagged transliterations. Populated by getPerson; empty in list responses.",
             "items": {
@@ -1881,6 +2284,13 @@
             "description": "Biological sex, ISO/IEC 5218 as text — one of not_known | male | female | not_applicable.",
             "type": "string"
           },
+          "socialAccounts": {
+            "description": "The person's standalone social accounts. Populated by getPerson; empty in list responses.",
+            "items": {
+              "$ref": "#/components/schemas/SocialAccount"
+            },
+            "type": "array"
+          },
           "status": {
             "description": "Lifecycle status — one of active | deactivated | purged.",
             "type": "string"
@@ -1911,10 +2321,12 @@
           "displayName",
           "emails",
           "id",
+          "messengerLinks",
           "nameVariants",
           "phones",
           "residences",
           "sex",
+          "socialAccounts",
           "status",
           "updatedAt"
         ],
@@ -2099,6 +2511,41 @@
         ],
         "type": "object"
       },
+      "Platform": {
+        "description": "An instance-admin catalog entry naming a social network / messenger (D-PersonSocialChannels). Stable code + translatable name + category.",
+        "properties": {
+          "category": {
+            "description": "One of messenger | social. Only messenger platforms may carry a messenger link.",
+            "type": "string"
+          },
+          "code": {
+            "description": "Stable, locale-agnostic identifier (D-Code); immutable by convention.",
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "The translatable label as a locale -\u003e text map (all enabled locales; D-i18n).",
+            "type": "object"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "status": {
+            "description": "One of active | retired.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "code",
+          "name",
+          "status"
+        ],
+        "type": "object"
+      },
       "Position": {
         "description": "A unit-owned billet (D-Position) — an Object that exists whether or not anyone fills it (a\nVACANCY is an active position with no active filling). Position grants no authority. The\ncurrent holder is populated by getPosition and is null in list responses.\n",
         "properties": {
@@ -2191,6 +2638,10 @@
             "description": "Stable, locale-agnostic identifier (D-Code); unique within its type among active ranks.",
             "type": "string"
           },
+          "gradeCode": {
+            "description": "Optional standardized cross-system grade (NATO STANAG 2116; one of the GET /rank-grades\ncodes). Two ranks are equivalent across systems when they share a gradeCode; absent =\u003e no\ncross-system comparison.\n",
+            "type": "string"
+          },
           "id": {
             "description": "The rank's URN RID (carried as a plain string).",
             "type": "string"
@@ -2207,6 +2658,10 @@
             "format": "int32",
             "type": "integer"
           },
+          "systemId": {
+            "description": "The URN RID of the owning rank system (denormalized; equals the type's system).",
+            "type": "string"
+          },
           "typeId": {
             "description": "The URN RID of the owning rank type.",
             "type": "string"
@@ -2217,15 +2672,16 @@
           "id",
           "name",
           "sortOrder",
+          "systemId",
           "typeId"
         ],
         "type": "object"
       },
       "RankCategory": {
-        "description": "The top level of the scheme (e.g. army, navy; or academic, administrative), ordered.",
+        "description": "A branch within a rank system (e.g. army, navy; or academic, administrative), ordered.",
         "properties": {
           "code": {
-            "description": "Stable, locale-agnostic identifier; unique among active categories.",
+            "description": "Stable, locale-agnostic identifier; unique among active categories within the system.",
             "type": "string"
           },
           "id": {
@@ -2240,9 +2696,13 @@
             "type": "object"
           },
           "sortOrder": {
-            "description": "Seniority ordinal among active categories.",
+            "description": "Seniority ordinal among active categories of the system.",
             "format": "int32",
             "type": "integer"
+          },
+          "systemId": {
+            "description": "The URN RID of the owning rank system.",
+            "type": "string"
           },
           "types": {
             "description": "The category's types in seniority order. Populated by getRankScheme; empty on create/update of the category.",
@@ -2257,34 +2717,115 @@
           "id",
           "name",
           "sortOrder",
+          "systemId",
           "types"
         ],
         "type": "object"
       },
-      "RankScheme": {
-        "description": "The whole scheme, categories -\u003e types -\u003e ranks, each level in seniority order.",
+      "RankGrade": {
+        "description": "A standardized cross-system comparability node (NATO STANAG 2116): the seeded reference catalog\ntwo ranks compare through. Equivalence = same code; seniority = tier then ordinal.\n",
         "properties": {
-          "categories": {
+          "code": {
+            "description": "STANAG 2116 grade code (e.g. OF-5, OR-9, OF(D)).",
+            "type": "string"
+          },
+          "name": {
+            "description": "Generic, nation-neutral grade label (not translatable; grades are reference data, not i18n entities).",
+            "type": "string"
+          },
+          "ordinal": {
+            "description": "Order within the tier (junior -\u003e senior).",
+            "format": "int32",
+            "type": "integer"
+          },
+          "tier": {
+            "description": "One of officer | warrant | enlisted (enlisted \u003c warrant \u003c officer for cross-tier seniority).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "ordinal",
+          "tier"
+        ],
+        "type": "object"
+      },
+      "RankScheme": {
+        "description": "The whole scheme, systems -\u003e categories -\u003e types -\u003e ranks, each level in seniority order.",
+        "properties": {
+          "systems": {
             "items": {
-              "$ref": "#/components/schemas/RankCategory"
+              "$ref": "#/components/schemas/RankSystem"
             },
             "type": "array"
           }
         },
         "required": [
-          "categories"
+          "systems"
+        ],
+        "type": "object"
+      },
+      "RankSystem": {
+        "description": "The top level of the scheme (D-RankSystems): a national/organizational rank ladder. One scheme\nmay hold several at once (a coalition directory); a single-nation deployment has one.\n",
+        "properties": {
+          "categories": {
+            "description": "The system's categories in seniority order. Populated by getRankScheme; empty on create/update of the system.",
+            "items": {
+              "$ref": "#/components/schemas/RankCategory"
+            },
+            "type": "array"
+          },
+          "code": {
+            "description": "Stable, locale-agnostic identifier (e.g. us-armed-forces); unique among active systems.",
+            "type": "string"
+          },
+          "country": {
+            "description": "ISO-3166 national origin (geo_countries code); absent for a supranational system (NATO/UN).",
+            "type": "string"
+          },
+          "id": {
+            "description": "The system's URN RID (carried as a plain string).",
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "locale-\u003etext display name.",
+            "type": "object"
+          },
+          "sortOrder": {
+            "description": "Order among active systems.",
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "categories",
+          "code",
+          "id",
+          "name",
+          "sortOrder"
         ],
         "type": "object"
       },
       "RankType": {
-        "description": "A band within a category (e.g. officers, warrant, enlisted), ordered.",
+        "description": "A band within a category (e.g. officers, warrant, enlisted), ordered. Types form a TREE: a\ntype may nest under another type of the same category (parentTypeId), and ranks attach to\nLEAF types only.\n",
         "properties": {
           "categoryId": {
-            "description": "The URN RID of the owning rank category.",
+            "description": "The URN RID of the owning rank category (the root category; carried on every type in the tree).",
             "type": "string"
           },
+          "children": {
+            "description": "Child types in seniority order. Populated by getRankScheme; empty for a leaf type and on create/update.",
+            "items": {
+              "$ref": "#/components/schemas/RankType"
+            },
+            "type": "array"
+          },
           "code": {
-            "description": "Stable, locale-agnostic identifier; unique within its category among active types.",
+            "description": "Stable, locale-agnostic identifier; unique among active siblings (same category + parent).",
             "type": "string"
           },
           "id": {
@@ -2298,26 +2839,71 @@
             "description": "locale-\u003etext display name.",
             "type": "object"
           },
+          "parentTypeId": {
+            "description": "The URN RID of the parent type; absent for a root type of the category.",
+            "type": "string"
+          },
           "ranks": {
-            "description": "The type's ranks in seniority order. Populated by getRankScheme; empty on create/update of the type.",
+            "description": "The type's ranks in seniority order (leaf types only). Populated by getRankScheme; empty on create/update of the type.",
             "items": {
               "$ref": "#/components/schemas/Rank"
             },
             "type": "array"
           },
           "sortOrder": {
-            "description": "Seniority ordinal among active siblings within the category.",
+            "description": "Seniority ordinal among active siblings (within the parent type, or the category for a root type).",
             "format": "int32",
             "type": "integer"
+          },
+          "systemId": {
+            "description": "The URN RID of the owning rank system (denormalized; equals the category's system).",
+            "type": "string"
           }
         },
         "required": [
           "categoryId",
+          "children",
           "code",
           "id",
           "name",
           "ranks",
-          "sortOrder"
+          "sortOrder",
+          "systemId"
+        ],
+        "type": "object"
+      },
+      "RelationType": {
+        "description": "An instance-admin catalog entry for an open-ended person↔person relation label (D-PersonRelationships). Stable code + translatable name + category.",
+        "properties": {
+          "category": {
+            "description": "One of sponsorship | association | next_of_kin.",
+            "type": "string"
+          },
+          "code": {
+            "description": "Stable, locale-agnostic identifier (D-Code); immutable by convention.",
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "The translatable label as a locale -\u003e text map (all enabled locales; D-i18n).",
+            "type": "object"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "status": {
+            "description": "One of active | retired.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "code",
+          "name",
+          "status"
         ],
         "type": "object"
       },
@@ -2477,6 +3063,140 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "SocialAccount": {
+        "description": "A person's standalone social-network account (D-PersonSocialChannels). platformUserId is the\nplatform's immutable internal id (the durable key); handle is the mutable current @handle.\n",
+        "properties": {
+          "confidence": {
+            "description": "Weight of the claim — one of confirmed | probable | possible.",
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "handle": {
+            "description": "The current @handle (mutable; rename history kept separately).",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isPrimary": {
+            "description": "The person's primary social account (at most one active).",
+            "type": "boolean"
+          },
+          "language": {
+            "type": "string"
+          },
+          "personId": {
+            "type": "string"
+          },
+          "platformCode": {
+            "description": "The platform code the account is on.",
+            "type": "string"
+          },
+          "platformUserId": {
+            "description": "The platform's immutable internal id (the durable key); null when unknown.",
+            "type": "string"
+          },
+          "platformVerified": {
+            "description": "The platform \"blue-check\"; distinct from operator confirmation.",
+            "type": "boolean"
+          },
+          "profileUrl": {
+            "description": "Profile URL; derived from platform + handle on write when not supplied.",
+            "type": "string"
+          },
+          "source": {
+            "description": "How the account was learned — one of self_declared | operator_verified | imported.",
+            "type": "string"
+          },
+          "verifiedByOperatorAt": {
+            "description": "When an operator confirmed the account; null when unconfirmed.",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confidence",
+          "handle",
+          "id",
+          "isPrimary",
+          "personId",
+          "platformCode",
+          "platformVerified",
+          "source"
+        ],
+        "type": "object"
+      },
+      "SocialAccountHandle": {
+        "description": "One period in a social account's @handle-rename history (D-PersonSocialChannels). validTo null = current.",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "handle": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "validFrom": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "validTo": {
+            "description": "When this handle stopped being current; null = current.",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "handle",
+          "id",
+          "validFrom"
+        ],
+        "type": "object"
+      },
+      "Sponsorship": {
+        "description": "A sponsor→sponsored link — godparent / academic advisor / military mentor (D-PersonRelationships; Link link__sponsor_of).",
+        "properties": {
+          "effectiveFrom": {
+            "type": "string"
+          },
+          "effectiveTo": {
+            "description": "null = ongoing.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "relationCode": {
+            "description": "Required relation-type catalog code (category=sponsorship).",
+            "type": "string"
+          },
+          "sponsorId": {
+            "description": "The sponsor's URN RID.",
+            "type": "string"
+          },
+          "sponsoredId": {
+            "description": "The sponsored person's URN RID.",
+            "type": "string"
+          },
+          "status": {
+            "description": "One of active | ended.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "relationCode",
+          "sponsorId",
+          "sponsoredId",
+          "status"
+        ],
         "type": "object"
       },
       "TransitionRequest": {
@@ -2899,9 +3619,12 @@
         "type": "object"
       },
       "UpdateRankRequest": {
-        "description": "Edit/reorder a rank. Omitted fields are unchanged. `code` is immutable.",
+        "description": "Edit/reorder a rank. Omitted fields are unchanged. `code` is immutable; `gradeCode` cannot be cleared (open seam).",
         "properties": {
           "abbreviation": {
+            "type": "string"
+          },
+          "gradeCode": {
             "type": "string"
           },
           "name": {
@@ -2929,6 +3652,22 @@
               "type": "string"
             },
             "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "UpdateSystemRequest": {
+        "description": "Edit/reorder a system. Omitted fields are unchanged. `code` is immutable; `country` cannot be cleared (open seam).",
+        "properties": {
+          "country": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
           }
         },
         "type": "object"
@@ -2964,6 +3703,35 @@
             "$ref": "#/components/schemas/Visibility"
           }
         },
+        "type": "object"
+      },
+      "UpsertAssociationRequest": {
+        "description": "Record or replace a symmetric association between the path person and counterpartId.",
+        "properties": {
+          "counterpartId": {
+            "description": "The other person's URN RID.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "description": "associate | coi | no_contact.",
+            "type": "string"
+          },
+          "relationCode": {
+            "description": "Optional relation-type code (category=association).",
+            "type": "string"
+          },
+          "status": {
+            "description": "active | ended; defaults to active.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "counterpartId",
+          "kind"
+        ],
         "type": "object"
       },
       "UpsertCallSignRequest": {
@@ -3033,6 +3801,94 @@
         ],
         "type": "object"
       },
+      "UpsertGuardianshipRequest": {
+        "description": "Record or replace a guardian→ward link between the path person and counterpartId; role names the path person's side.",
+        "properties": {
+          "counterpartId": {
+            "description": "The other person's URN RID.",
+            "type": "string"
+          },
+          "effectiveFrom": {
+            "type": "string"
+          },
+          "effectiveTo": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "relationCode": {
+            "type": "string"
+          },
+          "role": {
+            "description": "The path person's role — guardian | ward.",
+            "type": "string"
+          },
+          "status": {
+            "description": "active | ended; defaults to active.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "counterpartId",
+          "role"
+        ],
+        "type": "object"
+      },
+      "UpsertKinshipRequest": {
+        "description": "Record or replace a parent→child kinship between the path person and counterpartId; role names the path person's side.",
+        "properties": {
+          "counterpartId": {
+            "description": "The other person's URN RID.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "role": {
+            "description": "The path person's role — parent | child.",
+            "type": "string"
+          },
+          "status": {
+            "description": "active | disestablished; defaults to active.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "counterpartId",
+          "role"
+        ],
+        "type": "object"
+      },
+      "UpsertMessengerLinkRequest": {
+        "description": "Add a messenger link over one of the person's phones or emails, or replace one when id is\nsupplied. Exactly one of phoneId/emailId must be set; platformCode must be a messenger platform.\n",
+        "properties": {
+          "emailId": {
+            "type": "string"
+          },
+          "id": {
+            "description": "The URN RID of an existing messenger-link row to replace; omit to add a new row.",
+            "type": "string"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          },
+          "phoneId": {
+            "type": "string"
+          },
+          "platformCode": {
+            "type": "string"
+          },
+          "verifiedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platformCode"
+        ],
+        "type": "object"
+      },
       "UpsertNameVariantRequest": {
         "description": "Add or replace the name variant for a locale (keyed by (person, locale)).",
         "properties": {
@@ -3076,6 +3932,63 @@
         "required": [
           "displayName",
           "locale"
+        ],
+        "type": "object"
+      },
+      "UpsertNextOfKinRequest": {
+        "description": "Nominate or replace a next-of-kin contact for the path person (the subject). contactId must be an in-directory person.",
+        "properties": {
+          "contactId": {
+            "description": "The nominated contact's URN RID (an in-directory person).",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "priority": {
+            "description": "Priority ordering (1 = highest); defaults to 1.",
+            "format": "int32",
+            "type": "integer"
+          },
+          "relationCode": {
+            "description": "Optional relation-type code (category=next_of_kin).",
+            "type": "string"
+          },
+          "status": {
+            "description": "active | withdrawn; defaults to active.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contactId"
+        ],
+        "type": "object"
+      },
+      "UpsertPartnershipRequest": {
+        "description": "Record or replace a partnership between the path person and partnerId. The pair is stored in\ncanonical order; the path person must not be the partner. At most one active engaged/married\npartnership per person.\n",
+        "properties": {
+          "effectiveFrom": {
+            "type": "string"
+          },
+          "effectiveTo": {
+            "type": "string"
+          },
+          "id": {
+            "description": "The URN RID of an existing partnership row to replace; omit to add a new row.",
+            "type": "string"
+          },
+          "partnerId": {
+            "description": "The other partner's URN RID (an in-directory person).",
+            "type": "string"
+          },
+          "status": {
+            "description": "engaged | married | divorced | widowed | annulled | dissolved.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "partnerId",
+          "status"
         ],
         "type": "object"
       },
@@ -3125,6 +4038,93 @@
         "required": [
           "country",
           "validFrom"
+        ],
+        "type": "object"
+      },
+      "UpsertSocialAccountRequest": {
+        "description": "Add a social account, or replace one when id is supplied. handle is normalized and profileUrl derived when omitted.",
+        "properties": {
+          "confidence": {
+            "description": "confirmed | probable | possible; defaults to possible.",
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "handle": {
+            "type": "string"
+          },
+          "id": {
+            "description": "The URN RID of an existing social-account row to replace; omit to add a new row.",
+            "type": "string"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          },
+          "language": {
+            "type": "string"
+          },
+          "platformCode": {
+            "type": "string"
+          },
+          "platformUserId": {
+            "type": "string"
+          },
+          "platformVerified": {
+            "type": "boolean"
+          },
+          "profileUrl": {
+            "type": "string"
+          },
+          "source": {
+            "description": "self_declared | operator_verified | imported.",
+            "type": "string"
+          },
+          "verifiedByOperatorAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "handle",
+          "platformCode",
+          "source"
+        ],
+        "type": "object"
+      },
+      "UpsertSponsorshipRequest": {
+        "description": "Record or replace a sponsor→sponsored link between the path person and counterpartId; role names the path person's side. relationCode is required (category=sponsorship).",
+        "properties": {
+          "counterpartId": {
+            "description": "The other person's URN RID.",
+            "type": "string"
+          },
+          "effectiveFrom": {
+            "type": "string"
+          },
+          "effectiveTo": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "relationCode": {
+            "description": "Required relation-type code (category=sponsorship).",
+            "type": "string"
+          },
+          "role": {
+            "description": "The path person's role — sponsor | sponsored.",
+            "type": "string"
+          },
+          "status": {
+            "description": "active | ended; defaults to active.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "counterpartId",
+          "relationCode",
+          "role"
         ],
         "type": "object"
       },
@@ -6146,6 +7146,76 @@
         ]
       }
     },
+    "/person/v1/person/platforms": {
+      "get": {
+        "description": "List the social/messenger platform catalog (locale -\u003e text names; D-i18n; D-PersonSocialChannels).",
+        "operationId": "PersonService_listPlatforms",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Platform"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List the social/messenger platform catalog (locale -\u003e text names; D-i18n; D-PersonSocialChannels).",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/person/relation-types": {
+      "get": {
+        "description": "List the person↔person relation-type catalog (locale -\u003e text names; D-i18n; D-PersonRelationships).",
+        "operationId": "PersonService_listRelationTypes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RelationType"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List the person↔person relation-type catalog (locale -\u003e text names; D-i18n; D-PersonRelationships).",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
     "/person/v1/persons": {
       "get": {
         "description": "Search/list the directory, token-paginated. (The read-scope union is applied once authz lands, M7.)",
@@ -6324,6 +7394,101 @@
           }
         },
         "summary": "Update names, birthdate, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/associations": {
+      "get": {
+        "description": "List associations (associate/COI/no-contact) touching the person.",
+        "operationId": "PersonService_listAssociations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Association"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List associations (associate/COI/no-contact) touching the person.",
+        "tags": [
+          "PersonService"
+        ]
+      },
+      "put": {
+        "description": "Add or replace a symmetric association. Returns Person:PersonInvalid for a self-pair, unknown counterpart, wrong relation category, or bad kind.",
+        "operationId": "PersonService_upsertAssociation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertAssociationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Association"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Add or replace a symmetric association. Returns Person:PersonInvalid for a self-pair, unknown counterpart, wrong relation category, or bad kind.",
         "tags": [
           "PersonService"
         ]
@@ -6795,6 +7960,334 @@
         ]
       }
     },
+    "/person/v1/persons/{personId}/guardianships": {
+      "get": {
+        "description": "List guardianships touching the person.",
+        "operationId": "PersonService_listGuardianships",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Guardianship"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List guardianships touching the person.",
+        "tags": [
+          "PersonService"
+        ]
+      },
+      "put": {
+        "description": "Add or replace a guardian→ward link. Returns Person:PersonInvalid for a self-edge, unknown counterpart, unknown relation code, or bad role.",
+        "operationId": "PersonService_upsertGuardianship",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertGuardianshipRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Guardianship"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Add or replace a guardian→ward link. Returns Person:PersonInvalid for a self-edge, unknown counterpart, unknown relation code, or bad role.",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/kinships": {
+      "get": {
+        "description": "List parent/child kinships touching the person.",
+        "operationId": "PersonService_listKinships",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Kinship"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List parent/child kinships touching the person.",
+        "tags": [
+          "PersonService"
+        ]
+      },
+      "put": {
+        "description": "Add or replace a parent→child kinship. Returns Person:PersonConflict on a duplicate active pair, Person:PersonInvalid for a self-edge, unknown counterpart, or bad role.",
+        "operationId": "PersonService_upsertKinship",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertKinshipRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Kinship"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Add or replace a parent→child kinship. Returns Person:PersonConflict on a duplicate active pair, Person:PersonInvalid for a self-edge, unknown counterpart, or bad role.",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/messenger-links": {
+      "get": {
+        "description": "List a person's messenger reachability links.",
+        "operationId": "PersonService_listMessengerLinks",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MessengerLink"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List a person's messenger reachability links.",
+        "tags": [
+          "PersonService"
+        ]
+      },
+      "put": {
+        "description": "Add or replace a messenger link over one of the person's phones/emails. Returns\nPerson:PersonConflict if an active link for the channel+platform exists, Person:PersonInvalid\nfor an unknown / non-messenger platform or a channel not held by the person.\n",
+        "operationId": "PersonService_upsertMessengerLink",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertMessengerLinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessengerLink"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Add or replace a messenger link over one of the person's phones/emails. Returns",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/messenger-links/{messengerLinkId}": {
+      "delete": {
+        "description": "Remove a messenger link by id.",
+        "operationId": "PersonService_deleteMessengerLink",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "messengerLinkId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Remove a messenger link by id.",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
     "/person/v1/persons/{personId}/name-variants": {
       "put": {
         "description": "Add or replace a locale name form (transliteration). Keyed by (person, locale).",
@@ -6885,6 +8378,196 @@
           }
         },
         "summary": "Remove a name variant.",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/next-of-kin": {
+      "get": {
+        "description": "List next-of-kin nominations touching the person (priority-ordered).",
+        "operationId": "PersonService_listNextOfKin",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NextOfKin"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List next-of-kin nominations touching the person (priority-ordered).",
+        "tags": [
+          "PersonService"
+        ]
+      },
+      "put": {
+        "description": "Nominate or replace a next-of-kin contact for the person. Returns Person:PersonInvalid for a self-nomination, unknown contact, or wrong relation category.",
+        "operationId": "PersonService_upsertNextOfKin",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertNextOfKinRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NextOfKin"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Nominate or replace a next-of-kin contact for the person. Returns Person:PersonInvalid for a self-nomination, unknown contact, or wrong relation category.",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/partnerships": {
+      "get": {
+        "description": "List partnerships (marriage/engagement) touching the person.",
+        "operationId": "PersonService_listPartnerships",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Partnership"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List partnerships (marriage/engagement) touching the person.",
+        "tags": [
+          "PersonService"
+        ]
+      },
+      "put": {
+        "description": "Add or replace a partnership between the person and the partner. Returns Person:PersonConflict\nwhen either person already has an active engaged/married partnership, Person:PersonInvalid for a\nself-pair, unknown partner, or bad status.\n",
+        "operationId": "PersonService_upsertPartnership",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertPartnershipRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Partnership"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Add or replace a partnership between the person and the partner. Returns Person:PersonConflict",
         "tags": [
           "PersonService"
         ]
@@ -7164,6 +8847,49 @@
         ]
       }
     },
+    "/person/v1/persons/{personId}/relationships/{relationshipId}": {
+      "delete": {
+        "description": "Remove any person↔person link by id (the link type is decoded from the RID). The path person\nmust be one of the link's endpoints. Idempotent.\n",
+        "operationId": "PersonService_deleteRelationship",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "relationshipId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Remove any person↔person link by id (the link type is decoded from the RID). The path person",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
     "/person/v1/persons/{personId}/residences": {
       "get": {
         "description": "List a person's residence history.",
@@ -7302,6 +9028,292 @@
         ]
       }
     },
+    "/person/v1/persons/{personId}/social-accounts": {
+      "get": {
+        "description": "List a person's standalone social accounts.",
+        "operationId": "PersonService_listSocialAccounts",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SocialAccount"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List a person's standalone social accounts.",
+        "tags": [
+          "PersonService"
+        ]
+      },
+      "put": {
+        "description": "Add or replace a social account. A handle rename is recorded in the account's handle history.\nReturns Person:PersonConflict on a duplicate active account, Person:PersonInvalid for an\nunknown platform or bad source/confidence.\n",
+        "operationId": "PersonService_upsertSocialAccount",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertSocialAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SocialAccount"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Add or replace a social account. A handle rename is recorded in the account's handle history.",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/social-accounts/{socialAccountId}": {
+      "delete": {
+        "description": "Remove a social account by id (its handle history cascades).",
+        "operationId": "PersonService_deleteSocialAccount",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "socialAccountId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Remove a social account by id (its handle history cascades).",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/social-accounts/{socialAccountId}/handles": {
+      "get": {
+        "description": "List one social account's @handle-rename history (most recent first).",
+        "operationId": "PersonService_listSocialAccountHandles",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "socialAccountId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SocialAccountHandle"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List one social account's @handle-rename history (most recent first).",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/sponsorships": {
+      "get": {
+        "description": "List sponsorships (godparent/advisor/mentor) touching the person.",
+        "operationId": "PersonService_listSponsorships",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Sponsorship"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List sponsorships (godparent/advisor/mentor) touching the person.",
+        "tags": [
+          "PersonService"
+        ]
+      },
+      "put": {
+        "description": "Add or replace a sponsor→sponsored link. relationCode must be a category=sponsorship code. Returns Person:PersonInvalid for a self-edge, unknown counterpart, or wrong relation category.",
+        "operationId": "PersonService_upsertSponsorship",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertSponsorshipRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sponsorship"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Add or replace a sponsor→sponsored link. relationCode must be a category=sponsorship code. Returns Person:PersonInvalid for a self-edge, unknown counterpart, or wrong relation category.",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
     "/platform/v1/demo/error": {
       "get": {
         "description": "Always returns Platform:DemoError (M0 SerializableError smoke test).",
@@ -7361,9 +9373,44 @@
         ]
       }
     },
+    "/rank/v1/rank-grades": {
+      "get": {
+        "description": "Read the standardized-grade comparator catalog (NATO STANAG 2116), ordered by tier then ordinal.",
+        "operationId": "RankService_getRankGrades",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RankGrade"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Read the standardized-grade comparator catalog (NATO STANAG 2116), ordered by tier then ordinal.",
+        "tags": [
+          "RankService"
+        ]
+      }
+    },
     "/rank/v1/rank-scheme": {
       "get": {
-        "description": "Read the whole scheme (categories -\u003e types -\u003e ranks) in seniority order.",
+        "description": "Read the whole scheme (systems -\u003e categories -\u003e types -\u003e ranks) in seniority order.",
         "operationId": "RankService_getRankScheme",
         "responses": {
           "200": {
@@ -7387,7 +9434,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
-        "summary": "Read the whole scheme (categories -\u003e types -\u003e ranks) in seniority order.",
+        "summary": "Read the whole scheme (systems -\u003e categories -\u003e types -\u003e ranks) in seniority order.",
         "tags": [
           "RankService"
         ]
@@ -7395,7 +9442,7 @@
     },
     "/rank/v1/rank-scheme/categories": {
       "post": {
-        "description": "Add a category. Returns Rank:RankCodeConflict if the code is taken among active categories.",
+        "description": "Add a category under a system (systemId). Returns Rank:RankSystemNotFound if the system is\nabsent, or Rank:RankCodeConflict if the code is taken among the system's active categories.\n",
         "operationId": "RankService_addCategory",
         "requestBody": {
           "content": {
@@ -7429,7 +9476,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
-        "summary": "Add a category. Returns Rank:RankCodeConflict if the code is taken among active categories.",
+        "summary": "Add a category under a system (systemId). Returns Rank:RankSystemNotFound if the system is",
         "tags": [
           "RankService"
         ]
@@ -7482,6 +9529,48 @@
           }
         },
         "summary": "Edit/reorder a category. `code` is immutable by convention.",
+        "tags": [
+          "RankService"
+        ]
+      }
+    },
+    "/rank/v1/rank-scheme/import": {
+      "post": {
+        "description": "Import a preset rank-system subtree (system -\u003e categories -\u003e types -\u003e ranks) as a code-keyed\nidempotent upsert in one transaction (additive; never deletes). Returns a created/updated/\nskipped summary. Re-importing an unchanged preset reports all-skipped.\n",
+        "operationId": "RankService_importRankScheme",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportRankSchemeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportRankSchemeResponse"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Import a preset rank-system subtree (system -\u003e categories -\u003e types -\u003e ranks) as a code-keyed",
         "tags": [
           "RankService"
         ]
@@ -7581,9 +9670,103 @@
         ]
       }
     },
+    "/rank/v1/rank-scheme/systems": {
+      "post": {
+        "description": "Add a rank system. Returns Rank:RankCodeConflict if the code is taken among active systems.",
+        "operationId": "RankService_addSystem",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddSystemRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RankSystem"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Add a rank system. Returns Rank:RankCodeConflict if the code is taken among active systems.",
+        "tags": [
+          "RankService"
+        ]
+      }
+    },
+    "/rank/v1/rank-scheme/systems/{systemId}": {
+      "put": {
+        "description": "Edit/reorder a system. `code` is immutable by convention.",
+        "operationId": "RankService_updateSystem",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "systemId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSystemRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RankSystem"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Edit/reorder a system. `code` is immutable by convention.",
+        "tags": [
+          "RankService"
+        ]
+      }
+    },
     "/rank/v1/rank-scheme/types": {
       "post": {
-        "description": "Add a type under a category. Returns Rank:RankCategoryNotFound if the parent is absent.",
+        "description": "Add a type under a category (categoryId) or nested under a parent type (parentTypeId).\nReturns Rank:RankCategoryNotFound or Rank:RankTypeNotFound if the named parent is absent,\nor Rank:RankInvalid if the parent type already holds ranks (leaf types only).\n",
         "operationId": "RankService_addType",
         "requestBody": {
           "content": {
@@ -7617,7 +9800,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
-        "summary": "Add a type under a category. Returns Rank:RankCategoryNotFound if the parent is absent.",
+        "summary": "Add a type under a category (categoryId) or nested under a parent type (parentTypeId).",
         "tags": [
           "RankService"
         ]
@@ -7677,11 +9860,11 @@
     },
     "/rank/v1/rank-scheme/{level}/{nodeId}": {
       "delete": {
-        "description": "Soft-delete a scheme node, blocked if in use (a category with active types, a type with\nactive ranks, or — post-M5 — a rank held by a person). `level` is one of\ncategory | type | rank.\n",
+        "description": "Soft-delete a scheme node, blocked if in use (a system with active categories, a category with\nactive types, a type with active ranks or child types, or — post-M5 — a rank held by a person).\n`level` is one of system | category | type | rank.\n",
         "operationId": "RankService_deleteNode",
         "parameters": [
           {
-            "description": "The scheme level to delete; one of category | type | rank.",
+            "description": "The scheme level to delete; one of system | category | type | rank.",
             "in": "path",
             "name": "level",
             "required": true,
@@ -7713,7 +9896,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
-        "summary": "Soft-delete a scheme node, blocked if in use (a category with active types, a type with",
+        "summary": "Soft-delete a scheme node, blocked if in use (a system with active categories, a category with",
         "tags": [
           "RankService"
         ]

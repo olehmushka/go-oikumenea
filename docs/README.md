@@ -86,7 +86,7 @@ A **consumer** of the above (not a backend module), documented alongside them:
    deferred-seam list (parked items, each promotable to a milestone). Resolved seams are removed
    from it; their outcomes live in [`architecture/decisions.md`](architecture/decisions.md).
 11. [`milestones.md`](milestones.md) — the implementation roadmap: the architecture sequenced into
-   buildable, dependency-ordered milestones (M0…M11). A roadmap, not binding — `decisions.md` governs
+   buildable, dependency-ordered milestones (M0…M14). A roadmap, not binding — `decisions.md` governs
    *what*, this governs *in what order*.
 
 ## Provenance
@@ -100,5 +100,5 @@ only — do not build from it directly. What was carried over vs. dropped is rec
 ## Status
 
 Design-complete at the architecture level. **No application code exists yet.** The build
-sequence is in [`milestones.md`](milestones.md) (M0…M11, dependency-ordered). Until then, when
+sequence is in [`milestones.md`](milestones.md) (M0…M14, dependency-ordered). Until then, when
 asked to "find the code that does X", the answer is "it does not exist yet — the design is here."

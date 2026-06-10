@@ -15,7 +15,7 @@
 //
 // Run against a DB that has the migrations applied:
 //
-//	OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/postgres?sslmode=disable" \
+//	OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable" \
 //	  go test -tags integration ./internal/order/...
 package order_test
 
@@ -43,7 +43,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/pkg/events"
 )
 
-const defaultTestDSN = "postgres://postgres:dev@localhost:5432/postgres?sslmode=disable"
+const defaultTestDSN = "postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable"
 
 // env bundles the three application services wired to one bus, exactly as composition does.
 type env struct {
@@ -105,10 +105,11 @@ func seedPerson(t *testing.T, pool *pgxpool.Pool) string {
 func seedRank(t *testing.T, pool *pgxpool.Pool) string {
 	t.Helper()
 	ctx := context.Background()
-	var catID, typeID, rankID string
-	mustScan(t, pool.QueryRow(ctx, `INSERT INTO oikumenea.rank_categories (code, name, sort_order) VALUES ($1,'Cat',0) RETURNING id`, code(t, "cat")).Scan(&catID))
-	mustScan(t, pool.QueryRow(ctx, `INSERT INTO oikumenea.rank_types (category_id, code, name, sort_order) VALUES ($1,$2,'Typ',0) RETURNING id`, catID, code(t, "typ")).Scan(&typeID))
-	mustScan(t, pool.QueryRow(ctx, `INSERT INTO oikumenea.rank_ranks (type_id, code, name, sort_order) VALUES ($1,$2,'Rnk',0) RETURNING id`, typeID, code(t, "rnk")).Scan(&rankID))
+	var sysID, catID, typeID, rankID string
+	mustScan(t, pool.QueryRow(ctx, `INSERT INTO oikumenea.rank_systems (code, name, sort_order) VALUES ($1,'Sys',0) RETURNING id`, code(t, "sys")).Scan(&sysID))
+	mustScan(t, pool.QueryRow(ctx, `INSERT INTO oikumenea.rank_categories (system_id, code, name, sort_order) VALUES ($1,$2,'Cat',0) RETURNING id`, sysID, code(t, "cat")).Scan(&catID))
+	mustScan(t, pool.QueryRow(ctx, `INSERT INTO oikumenea.rank_types (system_id, category_id, code, name, sort_order) VALUES ($1,$2,$3,'Typ',0) RETURNING id`, sysID, catID, code(t, "typ")).Scan(&typeID))
+	mustScan(t, pool.QueryRow(ctx, `INSERT INTO oikumenea.rank_ranks (system_id, type_id, code, name, sort_order) VALUES ($1,$2,$3,'Rnk',0) RETURNING id`, sysID, typeID, code(t, "rnk")).Scan(&rankID))
 	return rankID
 }
 

@@ -44,3 +44,38 @@ body {
     @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
   }
 }
+
+/* ── Command palette (cmdk) ──────────────────────────────────────────────── */
+[cmdk-overlay] {
+  @apply fixed inset-0 z-40 bg-slate-900/30 backdrop-blur-sm;
+}
+.cmdk-root {
+  @apply fixed left-1/2 top-24 z-50 w-full max-w-xl -translate-x-1/2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl;
+}
+.cmdk-root [cmdk-input] {
+  @apply w-full border-b border-slate-200 px-4 py-3 text-sm outline-none placeholder:text-slate-400;
+}
+.cmdk-root [cmdk-list] {
+  @apply max-h-[22rem] overflow-y-auto p-2;
+}
+.cmdk-root [cmdk-group-heading] {
+  @apply px-2 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400;
+}
+.cmdk-root [cmdk-item] {
+  @apply flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm text-slate-700;
+}
+.cmdk-root [cmdk-item][data-selected="true"] {
+  @apply bg-indigo-50 text-indigo-700;
+}
+.cmdk-kind {
+  @apply inline-flex shrink-0 items-center rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-500;
+}
+.cmdk-mono {
+  @apply font-mono text-xs text-slate-500;
+}
+.cmdk-hint {
+  @apply ml-auto truncate pl-2 font-mono text-xs text-slate-400;
+}
+.cmdk-status {
+  @apply px-2 py-6 text-center text-sm text-slate-400;
+}

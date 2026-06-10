@@ -3,19 +3,33 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { mutate } from "@/lib/api/client";
+import { bffGet } from "@/lib/api/browser";
 import { ErrorBox } from "@/components/ErrorBox";
+import { EntitySelect } from "@/components/EntitySelect";
 import { pickLabel } from "@/lib/i18n";
 import { useLocale } from "@/lib/locale";
+import { ridTail } from "@/lib/ontology/rid";
 import type {
+  Association,
   CallSign,
   Citizenship,
   DocumentDoc,
   Email,
+  Guardianship,
+  Kinship,
   LocaleMap,
+  MessengerLink,
   NameVariant,
+  NextOfKin,
+  Partnership,
   Person,
   Phone,
+  Platform,
+  RelationType,
   Residence,
+  SocialAccount,
+  SocialAccountHandle,
+  Sponsorship,
 } from "@/lib/api/types";
 
 type CodeRow = { id: string; schemeCode?: string; status?: string };
@@ -202,10 +216,17 @@ export function SetRank({ personId, currentRankId }: { personId: string; current
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         const out: { id: string; label: string }[] = [];
-        for (const c of d?.categories ?? [])
-          for (const t of c.types ?? [])
-            for (const rk of t.ranks ?? [])
-              out.push({ id: rk.id, label: `${pickLabel(rk.name, locale) || rk.code}` });
+        // The scheme tree is system → category → type (which may nest sub-types) → rank.
+        const walkType = (t: { name?: LocaleMap; code: string; children?: unknown[]; ranks?: unknown[] }, sys: string) => {
+          for (const rk of (t.ranks as { id: string; name?: LocaleMap; code: string }[]) ?? [])
+            out.push({ id: rk.id, label: `${sys} · ${pickLabel(rk.name, locale) || rk.code}` });
+          for (const c of (t.children as typeof t[]) ?? []) walkType(c, sys);
+        };
+        for (const sysNode of d?.systems ?? []) {
+          const sysLabel = pickLabel(sysNode.name, locale) || sysNode.code;
+          for (const c of sysNode.categories ?? [])
+            for (const t of c.types ?? []) walkType(t, sysLabel);
+        }
         setRanks(out);
       })
       .catch(() => {});
@@ -625,6 +646,505 @@ export function PersonalCodeManager({
           ))}
         </select>
         <input name="value" required className="input" placeholder="identifier value" />
+        <button className="btn-ghost" disabled={busy}>
+          Add
+        </button>
+      </form>
+    </ChannelBlock>
+  );
+}
+
+/* ------------------------------------------------------------------ social & messenger (M13) */
+
+const pf = (code: string, platforms: Platform[], locale: string) =>
+  pickLabel(platforms.find((p) => p.code === code)?.name, locale) || code;
+
+/** Social accounts: platform handle + attribution (source/confidence) + verification + rename history. */
+export function SocialAccountManager({
+  personId,
+  accounts,
+  platforms,
+}: {
+  personId: string;
+  accounts?: SocialAccount[];
+  platforms: Platform[];
+}) {
+  const { locale } = useLocale();
+  const { busy, err, run } = useRun();
+  return (
+    <ChannelBlock title="Social accounts" err={err}>
+      {accounts && accounts.length ? (
+        <ul className="mt-1 space-y-1 text-sm text-slate-700">
+          {accounts.map((a) => (
+            <li key={a.id} className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="truncate">
+                  <span className="font-medium">@{a.handle}</span>
+                  {a.isPrimary ? " ★" : ""}{" "}
+                  <span className="text-slate-400">· {pf(a.platformCode, platforms, locale)}</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1 text-xs text-slate-500">
+                  <span>{a.source}</span>
+                  <span>· {a.confidence}</span>
+                  {a.platformVerified ? <span className="text-green-600">· ✓ platform</span> : null}
+                  {a.verifiedByOperatorAt ? <span className="text-green-600">· ✓ operator</span> : null}
+                  <HandleHistory personId={personId} accountId={a.id} />
+                </div>
+              </div>
+              <RowDelete
+                path={`/person/v1/persons/${personId}/social-accounts/${a.id}`}
+                confirm="Remove this social account?"
+              />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-1 text-sm text-slate-400">—</p>
+      )}
+      <form
+        className="mt-2 grid grid-cols-[8rem_1fr_8rem_auto] gap-2"
+        onSubmit={(ev) => {
+          ev.preventDefault();
+          const f = new FormData(ev.currentTarget);
+          const form = ev.currentTarget;
+          run(
+            () =>
+              mutate("PUT", `/person/v1/persons/${personId}/social-accounts`, {
+                platformCode: s(f, "platformCode"),
+                handle: s(f, "handle"),
+                source: s(f, "source"),
+                confidence: s(f, "confidence"),
+                displayName: s(f, "displayName"),
+                profileUrl: s(f, "profileUrl"),
+                platformVerified: f.get("platformVerified") === "on",
+                isPrimary: f.get("isPrimary") === "on",
+              }),
+            () => form.reset(),
+          );
+        }}
+      >
+        <select name="platformCode" required className="input" defaultValue="">
+          <option value="" disabled>
+            platform…
+          </option>
+          {platforms.map((p) => (
+            <option key={p.code} value={p.code}>
+              {pickLabel(p.name, locale) || p.code}
+            </option>
+          ))}
+        </select>
+        <input name="handle" required className="input" placeholder="handle" />
+        <select name="source" required className="input" defaultValue="self_declared">
+          <option value="self_declared">self-declared</option>
+          <option value="operator_verified">operator-verified</option>
+          <option value="imported">imported</option>
+        </select>
+        <button className="btn-ghost" disabled={busy}>
+          Add
+        </button>
+        <label className="col-span-4 flex items-center gap-3 text-xs text-slate-500">
+          <span className="inline-flex items-center gap-1">
+            <input type="checkbox" name="platformVerified" /> platform-verified
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <input type="checkbox" name="isPrimary" /> primary
+          </span>
+        </label>
+      </form>
+    </ChannelBlock>
+  );
+}
+
+/** Inline disclosure that lazy-loads a social account's @handle rename history. */
+function HandleHistory({ personId, accountId }: { personId: string; accountId: string }) {
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState<SocialAccountHandle[] | null>(null);
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next && rows === null)
+      bffGet<SocialAccountHandle[]>(`/person/v1/persons/${personId}/social-accounts/${accountId}/handles`)
+        .then(setRows)
+        .catch(() => setRows([]));
+  };
+  return (
+    <>
+      <button type="button" className="text-indigo-600 hover:underline" onClick={toggle}>
+        · {open ? "hide" : "history"}
+      </button>
+      {open ? (
+        <ul className="mt-1 w-full pl-3 text-xs text-slate-500">
+          {rows === null ? (
+            <li>loading…</li>
+          ) : rows.length === 0 ? (
+            <li>no rename history</li>
+          ) : (
+            rows.map((h) => (
+              <li key={h.id}>
+                @{h.handle} <span className="text-slate-400">{h.validFrom?.slice(0, 10)}</span>
+                {h.validTo ? ` → ${h.validTo.slice(0, 10)}` : " (current)"}
+              </li>
+            ))
+          )}
+        </ul>
+      ) : null}
+    </>
+  );
+}
+
+/** Messenger reachability: a platform link over an existing phone XOR email. */
+export function MessengerLinkManager({
+  personId,
+  links,
+  platforms,
+  emails,
+  phones,
+}: {
+  personId: string;
+  links?: MessengerLink[];
+  platforms: Platform[];
+  emails?: Email[];
+  phones?: Phone[];
+}) {
+  const { locale } = useLocale();
+  const { busy, err, run } = useRun();
+  const messengers = platforms.filter((p) => p.category === "messenger");
+  const channelLabel = (l: MessengerLink) => {
+    if (l.phoneId) return phones?.find((p) => p.id === l.phoneId)?.number ?? ridTail(l.phoneId);
+    if (l.emailId) return emails?.find((e) => e.id === l.emailId)?.address ?? ridTail(l.emailId);
+    return "—";
+  };
+  return (
+    <ChannelBlock title="Messenger links" err={err}>
+      <ItemList
+        items={links}
+        render={(l) =>
+          `${pf(l.platformCode, platforms, locale)} → ${channelLabel(l)}${l.isPrimary ? " ★" : ""}${
+            l.verifiedAt ? " ✓" : ""
+          }`
+        }
+        del={(l) => `/person/v1/persons/${personId}/messenger-links/${l.id}`}
+        delConfirm="Remove this messenger link?"
+      />
+      <form
+        className="mt-2 grid grid-cols-[8rem_1fr_auto] gap-2"
+        onSubmit={(ev) => {
+          ev.preventDefault();
+          const f = new FormData(ev.currentTarget);
+          const form = ev.currentTarget;
+          // The channel <select> encodes the kind: "phone:<id>" or "email:<id>" (XOR enforced by UI).
+          const [kind, id] = String(f.get("channel") || "").split(":");
+          run(
+            () =>
+              mutate("PUT", `/person/v1/persons/${personId}/messenger-links`, {
+                platformCode: s(f, "platformCode"),
+                phoneId: kind === "phone" ? id : undefined,
+                emailId: kind === "email" ? id : undefined,
+                isPrimary: f.get("isPrimary") === "on",
+              }),
+            () => form.reset(),
+          );
+        }}
+      >
+        <select name="platformCode" required className="input" defaultValue="">
+          <option value="" disabled>
+            messenger…
+          </option>
+          {messengers.map((p) => (
+            <option key={p.code} value={p.code}>
+              {pickLabel(p.name, locale) || p.code}
+            </option>
+          ))}
+        </select>
+        <select name="channel" required className="input" defaultValue="">
+          <option value="" disabled>
+            phone or email…
+          </option>
+          {phones && phones.length ? (
+            <optgroup label="Phones">
+              {phones.map((p) => (
+                <option key={p.id} value={`phone:${p.id}`}>
+                  {p.number}
+                </option>
+              ))}
+            </optgroup>
+          ) : null}
+          {emails && emails.length ? (
+            <optgroup label="Emails">
+              {emails.map((e) => (
+                <option key={e.id} value={`email:${e.id}`}>
+                  {e.address}
+                </option>
+              ))}
+            </optgroup>
+          ) : null}
+        </select>
+        <button className="btn-ghost" disabled={busy}>
+          Add
+        </button>
+      </form>
+    </ChannelBlock>
+  );
+}
+
+/* ------------------------------------------------------------------ relationships (M14) */
+
+// One row per relation family, sharing the ChannelBlock + EntitySelect + status pattern. Each family
+// upserts to its own collection; all share the DELETE .../relationships/{id} sink. The counterpart
+// person is picked via EntitySelect; relation-code <select>s are fed by category-filtered RelationTypes.
+type RelRow = { id: string; counterpart: string; sub: string; tone?: "green" | "amber" | "slate" };
+
+export function RelationshipManager({
+  personId,
+  partnerships,
+  kinships,
+  guardianships,
+  sponsorships,
+  nextOfKin,
+  associations,
+  relationTypes,
+}: {
+  personId: string;
+  partnerships?: Partnership[];
+  kinships?: Kinship[];
+  guardianships?: Guardianship[];
+  sponsorships?: Sponsorship[];
+  nextOfKin?: NextOfKin[];
+  associations?: Association[];
+  relationTypes: RelationType[];
+}) {
+  const other = (a: string, b: string) => (a === personId ? b : a);
+  const relTone = (st?: string) =>
+    (st ?? "").toLowerCase() === "active" || (st ?? "").toLowerCase() === "married"
+      ? "green"
+      : ["ended", "withdrawn", "disestablished", "divorced", "dissolved", "annulled"].includes(
+            (st ?? "").toLowerCase(),
+          )
+        ? "slate"
+        : "amber";
+  return (
+    <div className="space-y-1">
+      <RelFamily
+        title="Partnerships"
+        personId={personId}
+        rows={(partnerships ?? []).map((r) => ({
+          id: r.id,
+          counterpart: other(r.personIdA, r.personIdB),
+          sub: [r.status, r.effectiveFrom].filter(Boolean).join(" · "),
+          tone: relTone(r.status),
+        }))}
+        upsertPath="/partnerships"
+        counterpartField="partnerId"
+        extra={
+          <>
+            <select name="status" required className="input" defaultValue="married">
+              {["engaged", "married", "divorced", "widowed", "annulled", "dissolved"].map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+            <EffectiveDates />
+          </>
+        }
+      />
+      <RelFamily
+        title="Kinships (parent → child)"
+        personId={personId}
+        rows={(kinships ?? []).map((r) => ({
+          id: r.id,
+          counterpart: `${r.parentId === personId ? "child" : "parent"}: ${other(r.parentId, r.childId)}`,
+          sub: r.status,
+          tone: relTone(r.status),
+        }))}
+        upsertPath="/kinships"
+        counterpartField="counterpartId"
+        extra={
+          <select name="role" required className="input" defaultValue="child">
+            <option value="child">they are my child</option>
+            <option value="parent">they are my parent</option>
+          </select>
+        }
+      />
+      <RelFamily
+        title="Guardianships"
+        personId={personId}
+        rows={(guardianships ?? []).map((r) => ({
+          id: r.id,
+          counterpart: `${r.guardianId === personId ? "ward" : "guardian"}: ${other(r.guardianId, r.wardId)}`,
+          sub: [r.status, r.relationCode].filter(Boolean).join(" · "),
+          tone: relTone(r.status),
+        }))}
+        upsertPath="/guardianships"
+        counterpartField="counterpartId"
+        extra={
+          <>
+            <select name="role" required className="input" defaultValue="ward">
+              <option value="ward">they are my ward</option>
+              <option value="guardian">they are my guardian</option>
+            </select>
+            <EffectiveDates />
+          </>
+        }
+      />
+      <RelFamily
+        title="Sponsorships"
+        personId={personId}
+        rows={(sponsorships ?? []).map((r) => ({
+          id: r.id,
+          counterpart: `${r.sponsorId === personId ? "sponsored" : "sponsor"}: ${other(r.sponsorId, r.sponsoredId)}`,
+          sub: [r.status, r.relationCode].filter(Boolean).join(" · "),
+          tone: relTone(r.status),
+        }))}
+        upsertPath="/sponsorships"
+        counterpartField="counterpartId"
+        extra={
+          <>
+            <select name="role" required className="input" defaultValue="sponsored">
+              <option value="sponsored">they are sponsored by me</option>
+              <option value="sponsor">they sponsor me</option>
+            </select>
+            <RelationCodeSelect types={relationTypes} category="sponsorship" required />
+            <EffectiveDates />
+          </>
+        }
+      />
+      <RelFamily
+        title="Next of kin"
+        personId={personId}
+        rows={(nextOfKin ?? []).map((r) => ({
+          id: r.id,
+          counterpart: other(r.subjectId, r.contactId),
+          sub: [`#${r.priority}`, r.status, r.relationCode].filter(Boolean).join(" · "),
+          tone: relTone(r.status),
+        }))}
+        upsertPath="/next-of-kin"
+        counterpartField="contactId"
+        extra={
+          <>
+            <input name="priority" type="number" min={1} className="input w-16" placeholder="#" defaultValue={1} />
+            <RelationCodeSelect types={relationTypes} category="next_of_kin" />
+          </>
+        }
+      />
+      <RelFamily
+        title="Associations"
+        personId={personId}
+        rows={(associations ?? []).map((r) => ({
+          id: r.id,
+          counterpart: other(r.personIdA, r.personIdB),
+          sub: [r.kind, r.status, r.relationCode].filter(Boolean).join(" · "),
+          tone: r.kind === "no_contact" ? "slate" : relTone(r.status),
+        }))}
+        upsertPath="/associations"
+        counterpartField="counterpartId"
+        extra={
+          <>
+            <select name="kind" required className="input" defaultValue="associate">
+              <option value="associate">associate</option>
+              <option value="coi">conflict of interest</option>
+              <option value="no_contact">no contact</option>
+            </select>
+            <RelationCodeSelect types={relationTypes} category="association" />
+          </>
+        }
+      />
+    </div>
+  );
+}
+
+/** Optional effective-from/to date pair for time-bounded relationships. */
+function EffectiveDates() {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <input name="effectiveFrom" type="date" className="input w-36" title="effective from" />
+      <span className="text-xs text-slate-400">→</span>
+      <input name="effectiveTo" type="date" className="input w-36" title="effective to" />
+    </span>
+  );
+}
+
+function RelationCodeSelect({
+  types,
+  category,
+  required = false,
+}: {
+  types: RelationType[];
+  category: string;
+  required?: boolean;
+}) {
+  const { locale } = useLocale();
+  const opts = types.filter((t) => t.category === category);
+  return (
+    <select name="relationCode" required={required} className="input" defaultValue="">
+      <option value="">{required ? "relation…" : "relation (optional)"}</option>
+      {opts.map((t) => (
+        <option key={t.code} value={t.code}>
+          {pickLabel(t.name, locale) || t.code}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function RelFamily({
+  title,
+  personId,
+  rows,
+  upsertPath,
+  counterpartField,
+  extra,
+}: {
+  title: string;
+  personId: string;
+  rows: RelRow[];
+  upsertPath: string;
+  counterpartField: "partnerId" | "contactId" | "counterpartId";
+  extra: React.ReactNode;
+}) {
+  const { busy, err, run } = useRun();
+  return (
+    <ChannelBlock title={title} err={err}>
+      {rows.length ? (
+        <ul className="mt-1 space-y-0.5 text-sm text-slate-700">
+          {rows.map((r) => (
+            <li key={r.id} className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2">
+                <span className="font-mono text-xs">{r.counterpart.replace(/(urn:[^ ]+)/, (m) => ridTail(m))}</span>
+                <span className="rounded-full bg-slate-100 px-1.5 text-xs text-slate-500">{r.sub}</span>
+              </span>
+              <RowDelete
+                path={`/person/v1/persons/${personId}/relationships/${r.id}`}
+                confirm="Remove this relationship?"
+              />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-1 text-sm text-slate-400">—</p>
+      )}
+      <form
+        className="mt-2 flex flex-wrap items-end gap-2"
+        onSubmit={(ev) => {
+          ev.preventDefault();
+          const f = new FormData(ev.currentTarget);
+          const form = ev.currentTarget;
+          const counterpart = String(f.get(counterpartField) || "").trim();
+          if (!counterpart) return;
+          const body: Record<string, unknown> = { [counterpartField]: counterpart };
+          for (const k of ["status", "role", "kind", "relationCode", "effectiveFrom", "effectiveTo"]) {
+            const v = s(f, k);
+            if (v) body[k] = v;
+          }
+          const prio = s(f, "priority");
+          if (prio) body.priority = parseInt(prio, 10);
+          run(() => mutate("PUT", `/person/v1/persons/${personId}${upsertPath}`, body), () => form.reset());
+        }}
+      >
+        <div className="min-w-[14rem] flex-1">
+          <EntitySelect kind="person" name={counterpartField} required placeholder="counterpart person…" />
+        </div>
+        {extra}
         <button className="btn-ghost" disabled={busy}>
           Add
         </button>

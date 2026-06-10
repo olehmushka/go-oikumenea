@@ -116,6 +116,19 @@ unauditable.
 
 **Consequence.** `person.rank_id` → [rank](../modules/rank.md). The PDP never reads rank.
 
+**Scheme shape.** The scheme is a **rank category** at the top, a **tree of rank types** within each
+category (`rank_types.parent_type_id` self-FK; `NULL` = a root type of the category), and **ranks on
+the leaf types**. A type's `category_id` is the root category, denormalized onto every type so
+grouping, sibling code-uniqueness, and seniority need no recursive walk; codes are unique among
+siblings (same category + parent). Ranks attach to **leaf types only** (a type with child types holds
+no ranks, and vice-versa); `parent_type_id` is immutable after creation (no cycles; reparenting is an
+open seam). Earlier the type level was a flat list under the category — the tree generalizes it so
+real nested bands (e.g. *officers* → *junior/senior/general*) are first-class. **Extended by
+[D-RankSystems](#d-ranksystems--multinational-rank-systems-standardized-grade-comparability-and-scheme-presets-extends-d-rank-refines-l-onerankscheme):**
+a top **`rank_system`** level (above category) lets one registry hold several national systems (US, UA),
+ranks carry an optional standardized **`grade_code`** (NATO STANAG 2116) for cross-system comparability,
+and a `rank_system` subtree can be populated from a preset via `POST /rank-scheme/import`.
+
 ### D-Position — Position is a unit-owned billet that can be vacant
 
 **Decision.** A **position is a billet belonging to a unit** (`unit_id`), with a stable `code`,
@@ -1279,6 +1292,212 @@ delivering the UI.
 
 ---
 
+### D-PersonSocialChannels — Social-network & messenger presence as catalog-typed person channels with analytics-grade attribution (extends D-PersonContactChannels)
+
+**Decision.** A person gains a **social-network / messenger presence**, modelled in two additive
+layers over the existing contact channels, plus an instance-admin platform catalog. All follow the
+[person](../modules/person.md) child-table pattern (RID PK, `person_id`/parent FK `ON DELETE CASCADE`,
+soft-delete, `set_updated_at`, all writes audited, reads scoped through the holder per
+D-PersonReadScope, erased on purge):
+
+- **`person_platforms`** — instance-admin catalog (D-Code/D-i18n: natural `code` PK, translatable
+  `name` via the [localization](../modules/localization.md) store `entity_type='platform'`, `status`,
+  `sort_order`) with **`category TEXT CHECK (category IN ('messenger','social'))`**. Seeded messengers
+  `telegram`/`whatsapp`/`signal`/`viber`; socials `instagram`/`linkedin`/`x`/`facebook`.
+- **`person_messenger_links`** *(layer a — reachability over existing channels)* — annotates an
+  existing phone **or** email with a messenger platform: an **XOR FK** (`phone_id` →`person_phones`
+  *or* `email_id` →`person_emails`, exactly one non-null via CHECK), `platform_code` →`person_platforms`
+  (write-time restricted to `category='messenger'`), `is_primary`, optional `verified_at`. `pii:contact`.
+  Ontology Link `link__reachable_on`.
+- **`person_social_accounts`** *(layer b — standalone handle, independent of any phone/email)* —
+  `person_id` →`person_persons`, `platform_code` →`person_platforms`, `is_primary`. Object
+  `PersonSocialAccount` + Link `link__holds_account`. Enriched with **four analytics-grade practices**:
+  - **Identity stability** — an immutable `platform_user_id TEXT` (the platform's internal id, the
+    durable key) alongside the **mutable** current `handle TEXT`, both `pii:contact`; one active row per
+    `(person, platform_code, platform_user_id)` when the id is known, else per
+    `(person, platform_code, lower(handle))`.
+  - **Verification** — `platform_verified BOOLEAN` (platform "blue-check") **distinct from**
+    `verified_by_operator_at TIMESTAMPTZ` (operator confirmation); both **non-PII** metadata.
+  - **Profile (stored now)** — `display_name`, derived `profile_url`, `language`, all `pii:contact`.
+  - **Attribution provenance** *(the core practice)* — `source TEXT CHECK (source IN
+    ('self_declared','operator_verified','imported'))` + `confidence TEXT CHECK (confidence IN
+    ('confirmed','probable','possible'))` on the `HOLDS_ACCOUNT` link, so a claimed account is a
+    **weighted, sourced assertion**, not a bare fact. Non-PII.
+- **`person_social_account_handles`** — handle-rename **history** (`account_id` FK, `handle`,
+  `valid_from`/`valid_to`, soft-delete; `pii:contact`) so a rename never breaks the link.
+
+**Explicitly out of scope.** **No time-series social-graph metrics** (follower/following/activity
+counts) — surveillance-adjacent and outside a personnel directory's purpose; not built, not parked.
+**Free-text `bio` + `self_declared_location`** are `pii:sensitive` and are **NOT stored** until the
+envelope-encryption seam is extended (**DS-29**) — the same gating stance as gender identity under
+D-PersonBio; documented as a future column, not created now.
+
+**Why.** A universal directory increasingly needs to record reachability on messengers and presence on
+social networks. Splitting into a phone/email-derived **reachability** layer and a **standalone account**
+layer mirrors how the data actually arrives (a number *is* a Telegram; a LinkedIn handle stands alone).
+Adopting the proven Palantir-style ontology practices — **stable id vs mutable handle + rename history**,
+**provenance + confidence on the attribution link**, and **platform-vs-operator verification** — is what
+turns "a username" into analytics-grade, queryable, weightable data. Catalog-typing the platforms keeps
+the vocabulary operator-managed and localizable. Excluding behavioural metrics and gating free-text
+profile prose behind DS-29 keeps the feature inside the project's PII discipline (D-PIITiers).
+
+**Why not** (a) one polymorphic `person_channels` table: loses typed FKs and the XOR reachability shape;
+(b) store provenance/confidence on the account Object rather than the link: the *claim* is the
+relationship, not the account; (c) collect follower/activity metrics: surveillance creep with no
+authorization purpose; (d) store `bio`/location now at `pii:contact`: understates the tier and bypasses
+the envelope rule.
+
+**Consequence.** New tables `person_platforms`, `person_messenger_links`, `person_social_accounts`,
+`person_social_account_handles` ([person](../modules/person.md)); platform names join the
+[localization](../modules/localization.md) store (`entity_type='platform'`). New person sub-resource
+endpoints (`/persons/{id}/messenger-links`, `/social-accounts`, the account's handle history) + a catalog
+read (`GET /person/platforms`), gated `person.read`/`person.update` (scoped through the holder). The
+`HOLDS_ACCOUNT` `source`/`confidence` columns are a registered analytics exception to the "provenance is
+mostly absent as a column" divergence ([ontology-mapping](../ontology-mapping.md) §4.4). All four tables
+**erased on person purge** (the purge erasure list + `DeleteAll*` extend to their `pii:contact` columns).
+No new module, no new third-party dependency. Promotes open-question **DS-41**. See
+[person](../modules/person.md), [localization](../modules/localization.md).
+
+### D-PersonRelationships — Person↔person ties as per-type reified self-links (extends D-Ontology, mirrors membership's temporal link)
+
+**Decision.** A person gains **relationships to other persons**, each modelled as a **per-type reified
+self-link** (`Person → Person`, D-Ontology `link__<type>`) with **both endpoints in-directory**
+(`person_persons` rows). Per-type tables (never one generic table, never a bare FK), each mirroring the
+`membership_memberships` temporal-link shape (RID PK, soft-delete, timestamps, `effective_from`/
+`effective_to` where a lifecycle applies, `status TEXT`+`CHECK`). All are **instance-global** (like
+Person), reads project through D-PersonReadScope, all writes audited, and when **either** endpoint person
+purges the link is erased (the `PersonPurged` subscriber extends to both endpoints):
+
+- **`person_partnerships`** — marriage **and** engagement folded into one lifecycle: a symmetric pair
+  (`CHECK (person_id_a < person_id_b)`, no self-pair), `status ∈ engaged|married|divorced|widowed|
+  annulled|dissolved`, `effective_from`/`effective_to` (NULL = ongoing); **at most one active
+  `engaged`-or-`married` row per person**. Link `link__partnered_with`.
+- **`person_kinships`** — directional `parent_of` (`parent_id → child_id`, no self-edge),
+  `status ∈ active|disestablished` + soft-delete (adoption / legal disestablishment). Siblings are
+  **derived, not stored**. Link `link__kin_parent_of` (a distinct RID from tenant's unit
+  `link__parent_of`).
+- **`person_guardianships`** — `guardian_id → ward_id`, relation label, effective interval, `status` —
+  legal guardian/dependent, **distinct from blood `parent_of`**. Link `link__guardian_of`.
+- **`person_sponsorships`** — `sponsor_id → sponsored_id`, catalog-typed relation kind (godparent /
+  academic advisor / military mentor), effective interval. Link `link__sponsor_of`.
+- **`person_next_of_kin`** — `subject_id → contact_id` (**both in-directory**), relation label +
+  priority ordering — a **nomination**, not a blood fact. External free-text next-of-kin is **out of
+  scope** (both ends must be directory persons). Link `link__next_of_kin`.
+- **`person_associations`** — symmetric `subject ↔ associate`, relation label, `kind ∈
+  associate|coi|no_contact`, provenance — conflict-of-interest declarations + prohibited-contact
+  (discipline). Link `link__associated_with`.
+- **`person_social_links`** — friend/follower, `status ∈ active|archived`; Link `link__social_tie`.
+  **Deferred — not built (revised 2026-06-09).** On review it was cut from the M14 delivery: unlike the
+  other six it has **no consumer** (authority never derives from a relationship; no PDP rule, order
+  effect, or report reads it), **no authoritative source** (a "friendship" is not recorded from a
+  document/order/legal status, and D-PersonSocialChannels excludes social-graph integration), the
+  intended "proof of friendship" gate (each endpoint merely *has* some social account) proves nothing
+  about an actual tie, and it is **redundant with `person_associations`** for the only actionable
+  adjacency (conflict-of-interest / no-contact). For an authorization+directory service it is scope
+  creep. It may return later **only** with a real account-level model (linking the specific
+  `person_social_accounts` and/or a shared platform) plus a trustworthy source — at which point it gets
+  its own decision. The `SOCIAL_TIE` link type stays registered in
+  [ontology-mapping](../ontology-mapping.md) §2 as *deferred*.
+
+Open-ended relation vocabularies (sponsorship kind, association kind, next-of-kin relation label) are
+**catalog-typed** via a new **`person_relation_types`** catalog (`code` + translatable `name` +
+`category`), consistent with this project favouring operator-managed catalogs over compiled CHECK lists;
+fixed lifecycle statuses (partnership, kinship) stay `TEXT`+`CHECK`.
+
+**Why.** A personnel directory across army/church/university needs family and social structure: marriage
+and kinship for next-of-kin and benefits; godparents (church) / advisors / mentors as sponsorship;
+guardianship for dependents; and — Palantir-style — a generic **association** link for COI and
+prohibited-contact tracking. Reifying each tie as its own per-type Link (with identity, attributes, and
+history) rather than a bare FK is the binding D-Ontology stance and lets each relationship carry status
+and an effective interval. Per-type tables keep each relationship's invariants explicit (canonical pair
+ordering, one active marriage, directional kinship) instead of overloading one polymorphic table.
+
+**Why not** (a) one generic `person_relationships` table with a `type` column: erases per-type
+invariants and FKs, contradicts "never reify a bare FK / never one generic table"; (b) store next-of-kin
+as free text: loses referential integrity and the directory's resolve-or-redact purge guarantee; (c)
+keep marriage and engagement as separate tables: they share the symmetric-pair + effective-interval
+lifecycle, so one `person_partnerships` table with a richer status set is the cleaner reified link.
+
+**Consequence.** New tables `person_partnerships`, `person_kinships`, `person_guardianships`,
+`person_sponsorships`, `person_next_of_kin`, `person_associations`, and the `person_relation_types`
+catalog ([person](../modules/person.md)) — `person_social_links` is **deferred** (above) and **not
+built**. New per-type sub-resource endpoints under `/persons/{id}/` plus a polymorphic
+`DELETE /persons/{id}/relationships/{id}`. New Link types registered in
+[ontology-mapping](../ontology-mapping.md) §2 (`SOCIAL_TIE` marked deferred). The `PersonPurged`
+erasure path removes links on **either** endpoint's purge. No new module. Promotes open-question
+**DS-42** (expanded). See [person](../modules/person.md).
+
+### D-RankSystems — Multinational rank systems, standardized-grade comparability, and scheme presets (extends D-Rank, refines L-OneRankScheme)
+
+**Decision.** The single rank scheme gains a new **top level — the `rank_system`** — so one deployment
+can hold **several national/organizational rank systems at once** (a coalition directory carrying US and
+Ukrainian ranks together). The scheme shape becomes **`rank_system → rank_category → rank_type` (tree)
+`→ rank`**. Each rank carries an optional **standardized grade code** that makes ranks comparable
+**across** systems, and a full system subtree can be populated from a **preset** rather than entered by
+hand. Three parts:
+
+- **`rank_systems`** (new) — a national/organizational rank ladder (`ua-armed-forces`, `us-armed-forces`,
+  `nato`). RID PK, stable `code` (D-Code) + translatable `name`, `sort_order`, soft-delete; optional
+  `country` → `geo_countries` (D-Geo; `NULL` for supranational systems like NATO/UN). `rank_categories`
+  gains `system_id` (a branch — army/navy/air — *within* a system), and `system_id` is **denormalized
+  down** onto `rank_types` and `rank_ranks` exactly as `category_id` already is, so grouping, sibling
+  code-uniqueness, and seniority need no recursive walk. Sibling `code` uniqueness is scoped within the
+  system.
+- **Standardized grade (`rank_grades` + `rank_ranks.grade_code`)** — a seeded reference catalog
+  `rank_grades` is the cross-system comparability scale: **NATO STANAG 2116** (officers `OF-1..OF-10`
+  plus `OF(D)`; warrant; other ranks `OR-1..OR-9`), each row a `code` (natural-key PK), a `tier ∈
+  officer|warrant|enlisted`, and an `ordinal`. Migration-seeded (the D-Geo reference-registry carve-out,
+  natural key → no D-RIDSeeding GUC issue). A rank's optional `grade_code` FK references it. The name is
+  deliberately generic (*standardized grade*, not "NATO code"): a **non-military** deployment leaves it
+  `NULL` and simply has no cross-system comparator, honoring **L-SingleDomain** ("no org-type
+  discriminator").
+  - *Comparison semantics.* Intra-system seniority is unchanged — the structural order
+    `(system, category.sort_order, type path, rank.sort_order)`. Cross-system **equivalence** = same
+    `grade_code` (US `OF-5` ≈ UA `OF-5`). Cross-system **seniority** = `grade.tier` then `grade.ordinal`.
+    If either rank lacks a `grade_code`, the pair is **incomparable across systems** — the pure
+    `isSenior(a,b)` helper returns *unknown*, never a wrong answer.
+- **Presets (bundled templates + import).** A *preset* is a curated document for one `rank_system`
+  subtree (system → categories → types → ranks, each with `code`/`name`/`sort_order`/`grade_code`),
+  shipped in-repo as opt-in reference data (e.g. `deploy/rank-presets/{ua-armed-forces,us-armed-forces,
+  nato-generic}.json`) — **never auto-seeded** (rank stays deployment-specific). A new endpoint
+  **`POST /rank-scheme/import`** (`rank.scheme.manage`, instance-scope) applies one preset as a
+  **code-keyed, idempotent upsert in one transaction** (RIDs minted at import on the GUC-bearing pool per
+  **D-RIDSeeding**; re-import updates `name`/`sort_order`, never duplicates). It is **additive/upsert
+  only — it never deletes an in-use node**. Audited as a `rank.scheme.manage` action; returns a
+  created/updated/skipped summary.
+
+**Why.** A coalition or multinational force is real: one personnel directory holds soldiers ranked in
+different national systems, and operators need both **bootstrap without hand-entry** and **cross-national
+comparability** (who is senior; what is equivalent). The existing scheme already expressed "parallel
+ladders" as sibling `rank_categories`, but (a) a flat category list can't hold *branches within a
+nation*, and (b) the single global `sort_order` is meaningless across nations. A dedicated `rank_system`
+level plus the **NATO STANAG 2116** grade — the established real-world idiom for comparing ranks across
+nations — fixes both without inventing a bespoke ordering. Presets-as-data keep the scheme operator-owned
+while removing the tedium.
+
+**Why not** (a) *multiple independent schemes* (`person → (scheme_id, rank_id)`): would **break
+L-OneRankScheme** and still need the same grade comparator; the one-registry model already suffices.
+(b) *A pairwise rank↔rank equivalence table*: high-maintenance and subjective where a published standard
+(STANAG 2116) already exists; equivalence falls out of a shared `grade_code` for free. (c) *Auto-seed a
+default ladder*: rank is deployment-specific (army vs university); presets stay opt-in.
+
+**L-OneRankScheme is refined, not broken.** It still holds: **one** scheme registry, edited by the
+instance admin, **never adopted per unit**. "Multinational" means that one registry now contains multiple
+`rank_systems` — it does **not** mean multiple schemes or per-unit schemes. The lock's note below points
+here.
+
+**Consequence.** New table `rank_systems` and reference catalog `rank_grades`; `rank_categories` gains
+`system_id` (denormalized to `rank_types`/`rank_ranks`); `rank_ranks` gains `grade_code`
+([rank](../modules/rank.md)). New endpoints: `rank_systems` CRUD, `grade_code` on rank create/edit,
+`GET /rank-grades`, and `POST /rank-scheme/import`; `GET /rank-scheme` now nests
+`systems → categories → types → ranks`. New Objects `RankSystem` + `RankGrade` registered in
+[ontology-mapping](../ontology-mapping.md) §1 (the rank tree roots at `RankSystem`). **`person` is
+unchanged** — still one `rank_id`; a person's system is *derived* through `rank → type → category →
+system`. Additive / expand-only. Lands as the scoped **M15** ([milestones](../milestones.md)); promotes
+open-question **DS-43** (non-military cross-system comparators). See [rank](../modules/rank.md).
+
+---
+
 ## Carried-over locks (settled earlier; restated for self-containment)
 
 These come from the high-level plan and are not re-litigated here.
@@ -1293,7 +1512,9 @@ These come from the high-level plan and are not re-litigated here.
   only.
 - **L-UnitIsTenant — Tenant ≡ organizational unit.** A "tenant" is a node in the org graph.
 - **L-OneRankScheme — One system-wide rank scheme**, edited by the instance admin, never
-  adopted per unit.
+  adopted per unit. **Refined by [D-RankSystems](#d-ranksystems--multinational-rank-systems-standardized-grade-comparability-and-scheme-presets-extends-d-rank-refines-l-onerankscheme):**
+  the one registry MAY contain multiple `rank_systems` (multinational) — still one scheme,
+  instance-admin-managed, never per-unit; not multiple schemes.
 - **L-Visibility — Shadow tenants.** `visibility ∈ {public, shadow}` on units.
 - **L-OperatorDB — Operator-owned Postgres**, schema **`oikumenea`**.
 - **L-UpgradeSafe — Non-destructive, data-safe upgrades** are a first-class, tested guarantee.

@@ -7,21 +7,32 @@ import {
   DocumentManager,
   EditPerson,
   EmailManager,
+  MessengerLinkManager,
   NameVariantManager,
   PersonalCodeManager,
   PersonLifecycle,
   PhoneManager,
+  RelationshipManager,
   ResidenceManager,
   SetRank,
+  SocialAccountManager,
 } from "./PersonForms";
 import type {
+  Association,
   DocumentDoc,
   DocumentType,
+  Guardianship,
+  Kinship,
   LocaleMap,
   Membership,
+  NextOfKin,
   Order,
+  Partnership,
   PersonalCodeScheme,
   Person,
+  Platform,
+  RelationType,
+  Sponsorship,
 } from "@/lib/api/types";
 
 type ContactType = { code: string; name?: LocaleMap };
@@ -42,26 +53,58 @@ export default async function PersonDetailPage({
   let phoneTypes: ContactType[] = [];
   let docTypes: DocumentType[] = [];
   let schemes: PersonalCodeScheme[] = [];
+  let platforms: Platform[] = [];
+  let relationTypes: RelationType[] = [];
+  let partnerships: Partnership[] = [];
+  let kinships: Kinship[] = [];
+  let guardianships: Guardianship[] = [];
+  let sponsorships: Sponsorship[] = [];
+  let nextOfKin: NextOfKin[] = [];
+  let associations: Association[] = [];
   let error: unknown = null;
   try {
     person = await apiGet<Person>(`/person/v1/persons/${personId}`);
-    [documents, codes, memberships, orders, emailTypes, phoneTypes, docTypes, schemes] =
-      await Promise.all([
-        apiGet<{ documents: DocumentDoc[] }>(`/document/v1/persons/${personId}/documents`).catch(
-          () => null,
-        ),
-        apiGet<{ codes?: CodeRow[] }>(`/document/v1/persons/${personId}/personal-codes`).catch(
-          () => null,
-        ),
-        apiGet<{ memberships: Membership[] }>(
-          `/membership/v1/persons/${personId}/memberships`,
-        ).catch(() => null),
-        apiGet<{ orders: Order[] }>(`/order/v1/persons/${personId}/orders`).catch(() => null),
-        apiGet<ContactType[]>("/person/v1/person/email-types").catch(() => []),
-        apiGet<ContactType[]>("/person/v1/person/phone-types").catch(() => []),
-        apiGet<DocumentType[]>("/document/v1/document-types").catch(() => []),
-        apiGet<PersonalCodeScheme[]>("/document/v1/personal-code-schemes").catch(() => []),
-      ]);
+    [
+      documents,
+      codes,
+      memberships,
+      orders,
+      emailTypes,
+      phoneTypes,
+      docTypes,
+      schemes,
+      platforms,
+      relationTypes,
+      partnerships,
+      kinships,
+      guardianships,
+      sponsorships,
+      nextOfKin,
+      associations,
+    ] = await Promise.all([
+      apiGet<{ documents: DocumentDoc[] }>(`/document/v1/persons/${personId}/documents`).catch(
+        () => null,
+      ),
+      apiGet<{ codes?: CodeRow[] }>(`/document/v1/persons/${personId}/personal-codes`).catch(
+        () => null,
+      ),
+      apiGet<{ memberships: Membership[] }>(
+        `/membership/v1/persons/${personId}/memberships`,
+      ).catch(() => null),
+      apiGet<{ orders: Order[] }>(`/order/v1/persons/${personId}/orders`).catch(() => null),
+      apiGet<ContactType[]>("/person/v1/person/email-types").catch(() => []),
+      apiGet<ContactType[]>("/person/v1/person/phone-types").catch(() => []),
+      apiGet<DocumentType[]>("/document/v1/document-types").catch(() => []),
+      apiGet<PersonalCodeScheme[]>("/document/v1/personal-code-schemes").catch(() => []),
+      apiGet<Platform[]>("/person/v1/person/platforms").catch(() => []),
+      apiGet<RelationType[]>("/person/v1/person/relation-types").catch(() => []),
+      apiGet<Partnership[]>(`/person/v1/persons/${personId}/partnerships`).catch(() => []),
+      apiGet<Kinship[]>(`/person/v1/persons/${personId}/kinships`).catch(() => []),
+      apiGet<Guardianship[]>(`/person/v1/persons/${personId}/guardianships`).catch(() => []),
+      apiGet<Sponsorship[]>(`/person/v1/persons/${personId}/sponsorships`).catch(() => []),
+      apiGet<NextOfKin[]>(`/person/v1/persons/${personId}/next-of-kin`).catch(() => []),
+      apiGet<Association[]>(`/person/v1/persons/${personId}/associations`).catch(() => []),
+    ]);
   } catch (e) {
     error = e;
   }
@@ -125,9 +168,39 @@ export default async function PersonDetailPage({
         </Card>
 
         <Card>
+          <h2 className="text-sm font-semibold text-slate-900">Social &amp; messenger</h2>
+          <SocialAccountManager
+            personId={person.id}
+            accounts={person.socialAccounts}
+            platforms={platforms}
+          />
+          <MessengerLinkManager
+            personId={person.id}
+            links={person.messengerLinks}
+            platforms={platforms}
+            emails={person.emails}
+            phones={person.phones}
+          />
+        </Card>
+
+        <Card>
           <h2 className="text-sm font-semibold text-slate-900">Citizenship &amp; residence</h2>
           <CitizenshipManager personId={person.id} citizenships={person.citizenships} />
           <ResidenceManager personId={person.id} residences={person.residences} />
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <h2 className="text-sm font-semibold text-slate-900">Relationships</h2>
+          <RelationshipManager
+            personId={person.id}
+            partnerships={partnerships}
+            kinships={kinships}
+            guardianships={guardianships}
+            sponsorships={sponsorships}
+            nextOfKin={nextOfKin}
+            associations={associations}
+            relationTypes={relationTypes}
+          />
         </Card>
 
         <Card>

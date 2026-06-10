@@ -69,46 +69,11 @@ Introduced by [D-PersonContactChannels](architecture/decisions.md): `person_phon
   so this needs an external HLR / number-lookup service (an external-dependency seam, akin to a KMS
   backend). `parked`
 
-**DS-41 · Social-network / messenger references for contact channels.**
-Builds on [D-PersonContactChannels](architecture/decisions.md): today a person's reachability is
-email / phone / call-sign only.
-- *Default* — no record of which messengers a phone/email is reachable on, and no social-network
-  handles.
-- *Trigger* — operators want to reach or identify people via messengers / social profiles → two
-  additive, non-breaking directions: (a) a **linkage** annotating existing `person_phones` /
-  `person_emails` rows with the platforms that number/address is reachable on (phone-derived
-  messengers: Telegram / WhatsApp / Signal / Viber); (b) a **standalone** catalog-typed channel
-  child table (e.g. `person_social_accounts`, mirroring the email/phone child-table pattern) for
-  handles independent of any phone/email (social usernames — Instagram / LinkedIn / X — or a
-  Telegram @username with no phone). Platforms are catalog-typed like `person_*_types`. Direction
-  only; concrete shape and breadth decided when promoted. `person↔person` friend links (DS-42)
-  would consume this linkage as proof-of-friendship. `parked`
-
-**DS-42 · Person↔person relationships (marriage, kinship, next-of-kin, social).**
-A new relationship area in the [person](modules/person.md) module: ties *between two people*,
-modelled as **reified self-links** (`Person → Person`, D-Ontology `link__<type>`) with **both
-endpoints in-directory** `person_persons` rows. **Per-type tables** (not one generic table), each
-mirroring the `membership_memberships` temporal-link shape (soft-delete, timestamps,
-`effective_from`/`effective_to`, `status TEXT`+`CHECK`). Instance-global like Person; reads project
-through [D-PersonReadScope](architecture/decisions.md).
-- *Default* — no person↔person relationships are stored at all.
-- *Trigger* — an org needs to record family / social structure → add the per-type link tables
-  below. Each is additive, non-breaking, and can land independently:
-  - **`person_marriages`** — symmetric pair (canonical ordering `CHECK (person_id_a < person_id_b)`,
-    no self-marriage), `status ∈ married | divorced | widowed | annulled`, `effective_from`/
-    `effective_to` (NULL = ongoing); at most one active `married` row per person.
-  - **`person_kinships`** — directional `parent_of` (`parent_id → child_id`, no self-edge); siblings
-    are derivable, not stored; generally permanent (adoption / legal disestablishment are the
-    lifecycle edge cases — soft-delete or a `status`).
-  - **`person_next_of_kin`** — a person's nominated next-of-kin / emergency contact
-    (`subject_id → contact_id`, both in-directory), with a relation label + priority ordering.
-    Distinct from `person_kinships`: a *nomination*, not a blood fact. (External, non-personnel
-    next-of-kin is **out of scope for now** — both ends must be directory persons; revisit if real
-    deployments need free-text contacts.)
-  - **`person_social_links`** — friend / follower, `status ∈ active | archived`. **Blocked on
-    DS-41**: the only accepted *proof* of friendship is a linked social-network account, so this
-    table waits on that linkage. Other (non-social) notions of "friendship" are **deferred** —
-    undefined for now. `parked`
+> **DS-41** (social-network / messenger references) and **DS-42** (person↔person relationships) were
+> **promoted** to milestones **M13** and **M14** — now binding as
+> [D-PersonSocialChannels](architecture/decisions.md) and
+> [D-PersonRelationships](architecture/decisions.md), owned by [person](modules/person.md). Per the
+> ID-stability rule the numbers are **retired, not reused** (the 41/42 gap is expected).
 
 ---
 
@@ -166,9 +131,19 @@ through [D-PersonReadScope](architecture/decisions.md).
 ## rank — [`modules/rank.md`](modules/rank.md)
 
 **DS-13 · `isSenior(a, b)` seniority helper.**
-Seniority is already well-defined as `(category.sort_order, type.sort_order, rank.sort_order)`.
+Seniority is already well-defined: within a system `(system.sort_order, category.sort_order,
+type.sort_order path, rank.sort_order)`; across systems via the standardized `grade_code` (D-RankSystems).
 - *Default* — not exposed as an API/domain function (no caller needs it).
 - *Trigger* — a caller needs seniority comparison → expose the pure domain function. `parked`
+
+**DS-43 · Non-military cross-system rank comparator.**
+The standardized-grade comparator (D-RankSystems) is **NATO STANAG 2116** (military). Academic and
+ecclesiastical deployments have no published cross-system grade, so `rank_grades`/`grade_code` are
+military-shaped and a non-military `rank_system` leaves `grade_code` `NULL` (no cross-system comparison).
+- *Default* — no comparator for non-military domains; cross-system comparison is N/A there (and rarely
+  needed, since L-SingleDomain means one domain per instance).
+- *Trigger* — a real academic/ecclesiastical deployment needs cross-institution rank equivalence →
+  introduce a domain-appropriate grade scale (a second seeded catalog or a generic ordinal). `parked`
 
 ---
 

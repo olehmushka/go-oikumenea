@@ -7,10 +7,12 @@ import (
 	"github.com/palantir/pkg/safeyaml"
 )
 
-// Add a category. `name` is the default-locale text; other locales are managed via LocalizationService.
+// Add a category under a system. `name` is the default-locale text; other locales via LocalizationService.
 type AddCategoryRequest struct {
-	Code string `json:"code"`
-	Name string `json:"name"`
+	// The URN RID of the owning (active) rank system.
+	SystemId string `json:"systemId"`
+	Code     string `json:"code"`
+	Name     string `json:"name"`
 	// Seniority ordinal; defaults to (max active sibling order + 1), i.e. appended last.
 	SortOrder *int `json:"sortOrder,omitempty"`
 }
@@ -31,13 +33,15 @@ func (o *AddCategoryRequest) UnmarshalYAML(unmarshal func(interface{}) error) er
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
-// Add a rank under a type.
+// Add a rank under a (leaf) type.
 type AddRankRequest struct {
 	// The URN RID of the owning (active) type.
 	TypeId       string  `json:"typeId"`
 	Code         string  `json:"code"`
 	Name         string  `json:"name"`
 	Abbreviation *string `json:"abbreviation,omitempty"`
+	// Optional standardized cross-system grade (a GET /rank-grades code); validated on write.
+	GradeCode *string `json:"gradeCode,omitempty"`
 	// Seniority ordinal; defaults to appended last within the type.
 	SortOrder *int `json:"sortOrder,omitempty"`
 }
@@ -58,13 +62,45 @@ func (o *AddRankRequest) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
-// Add a type under a category.
+// Add a rank system (the top level). `name` is the default-locale text; other locales via LocalizationService.
+type AddSystemRequest struct {
+	Code string `json:"code"`
+	Name string `json:"name"`
+	// ISO-3166 national origin (geo_countries code); omit for a supranational system (NATO/UN).
+	Country *string `json:"country,omitempty"`
+	// Order among active systems; defaults to appended last.
+	SortOrder *int `json:"sortOrder,omitempty"`
+}
+
+func (o AddSystemRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *AddSystemRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+Add a type, rooted either directly under a category (categoryId) or nested under a parent
+type (parentTypeId — it then inherits the parent's category). Supply exactly one; a parent
+type that already holds ranks cannot gain child types (ranks live on leaf types only).
+*/
 type AddTypeRequest struct {
-	// The URN RID of the owning (active) category.
-	CategoryId string `json:"categoryId"`
-	Code       string `json:"code"`
-	Name       string `json:"name"`
-	// Seniority ordinal; defaults to appended last within the category.
+	// The URN RID of the owning (active) category, for a root type. Omit when nesting under a parent type.
+	CategoryId *string `json:"categoryId,omitempty"`
+	// The URN RID of the owning (active) parent type, for a nested type. Omit for a root type.
+	ParentTypeId *string `json:"parentTypeId,omitempty"`
+	Code         string  `json:"code"`
+	Name         string  `json:"name"`
+	// Seniority ordinal; defaults to appended last among the new type's active siblings.
 	SortOrder *int `json:"sortOrder,omitempty"`
 }
 
@@ -84,6 +120,221 @@ func (o *AddTypeRequest) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+type ImportCategory struct {
+	Code      string       `json:"code"`
+	Name      string       `json:"name"`
+	SortOrder *int         `json:"sortOrder,omitempty"`
+	Types     []ImportType `json:"types"`
+}
+
+func (o ImportCategory) MarshalJSON() ([]byte, error) {
+	if o.Types == nil {
+		o.Types = make([]ImportType, 0)
+	}
+	type _tmpImportCategory ImportCategory
+	return safejson.Marshal(_tmpImportCategory(o))
+}
+
+func (o *ImportCategory) UnmarshalJSON(data []byte) error {
+	type _tmpImportCategory ImportCategory
+	var rawImportCategory _tmpImportCategory
+	if err := safejson.Unmarshal(data, &rawImportCategory); err != nil {
+		return err
+	}
+	if rawImportCategory.Types == nil {
+		rawImportCategory.Types = make([]ImportType, 0)
+	}
+	*o = ImportCategory(rawImportCategory)
+	return nil
+}
+
+func (o ImportCategory) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ImportCategory) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type ImportRank struct {
+	Code         string  `json:"code"`
+	Name         string  `json:"name"`
+	Abbreviation *string `json:"abbreviation,omitempty"`
+	GradeCode    *string `json:"gradeCode,omitempty"`
+	SortOrder    *int    `json:"sortOrder,omitempty"`
+}
+
+func (o ImportRank) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ImportRank) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+A preset rank-system subtree to import (D-RankSystems): one system with its categories ->
+types (a tree) -> ranks, each carrying a stable `code`. Applied as a code-keyed idempotent
+upsert in one transaction (additive; never deletes).
+*/
+type ImportRankSchemeRequest struct {
+	System ImportSystem `json:"system"`
+}
+
+func (o ImportRankSchemeRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ImportRankSchemeRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// How many scheme nodes the import created, updated, or skipped (already current).
+type ImportRankSchemeResponse struct {
+	Created int `json:"created"`
+	Updated int `json:"updated"`
+	Skipped int `json:"skipped"`
+}
+
+func (o ImportRankSchemeResponse) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ImportRankSchemeResponse) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type ImportSystem struct {
+	Code       string           `json:"code"`
+	Name       string           `json:"name"`
+	Country    *string          `json:"country,omitempty"`
+	SortOrder  *int             `json:"sortOrder,omitempty"`
+	Categories []ImportCategory `json:"categories"`
+}
+
+func (o ImportSystem) MarshalJSON() ([]byte, error) {
+	if o.Categories == nil {
+		o.Categories = make([]ImportCategory, 0)
+	}
+	type _tmpImportSystem ImportSystem
+	return safejson.Marshal(_tmpImportSystem(o))
+}
+
+func (o *ImportSystem) UnmarshalJSON(data []byte) error {
+	type _tmpImportSystem ImportSystem
+	var rawImportSystem _tmpImportSystem
+	if err := safejson.Unmarshal(data, &rawImportSystem); err != nil {
+		return err
+	}
+	if rawImportSystem.Categories == nil {
+		rawImportSystem.Categories = make([]ImportCategory, 0)
+	}
+	*o = ImportSystem(rawImportSystem)
+	return nil
+}
+
+func (o ImportSystem) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ImportSystem) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// A type node; carry EITHER children OR ranks (ranks live on leaf types only).
+type ImportType struct {
+	Code      string `json:"code"`
+	Name      string `json:"name"`
+	SortOrder *int   `json:"sortOrder,omitempty"`
+	// Nested child types; empty for a leaf type.
+	Children []ImportType `json:"children"`
+	// Ranks on this (leaf) type; empty for a non-leaf type.
+	Ranks []ImportRank `json:"ranks"`
+}
+
+func (o ImportType) MarshalJSON() ([]byte, error) {
+	if o.Children == nil {
+		o.Children = make([]ImportType, 0)
+	}
+	if o.Ranks == nil {
+		o.Ranks = make([]ImportRank, 0)
+	}
+	type _tmpImportType ImportType
+	return safejson.Marshal(_tmpImportType(o))
+}
+
+func (o *ImportType) UnmarshalJSON(data []byte) error {
+	type _tmpImportType ImportType
+	var rawImportType _tmpImportType
+	if err := safejson.Unmarshal(data, &rawImportType); err != nil {
+		return err
+	}
+	if rawImportType.Children == nil {
+		rawImportType.Children = make([]ImportType, 0)
+	}
+	if rawImportType.Ranks == nil {
+		rawImportType.Ranks = make([]ImportRank, 0)
+	}
+	*o = ImportType(rawImportType)
+	return nil
+}
+
+func (o ImportType) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ImportType) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // A specific grade within a type (e.g. sergeant, associate_professor), ordered for exact seniority.
 type Rank struct {
 	// The rank's URN RID (carried as a plain string).
@@ -94,8 +345,16 @@ type Rank struct {
 	Name map[string]string `json:"name"`
 	// Optional short form (e.g. SGT); locale-agnostic.
 	Abbreviation *string `json:"abbreviation,omitempty"`
+	/*
+	   Optional standardized cross-system grade (NATO STANAG 2116; one of the GET /rank-grades
+	   codes). Two ranks are equivalent across systems when they share a gradeCode; absent => no
+	   cross-system comparison.
+	*/
+	GradeCode *string `json:"gradeCode,omitempty"`
 	// Seniority ordinal among active siblings within the type (lower = more junior).
 	SortOrder int `json:"sortOrder"`
+	// The URN RID of the owning rank system (denormalized; equals the type's system).
+	SystemId string `json:"systemId"`
 	// The URN RID of the owning rank type.
 	TypeId string `json:"typeId"`
 }
@@ -137,16 +396,18 @@ func (o *Rank) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
-// The top level of the scheme (e.g. army, navy; or academic, administrative), ordered.
+// A branch within a rank system (e.g. army, navy; or academic, administrative), ordered.
 type RankCategory struct {
 	// The category's URN RID (carried as a plain string).
 	Id string `json:"id"`
-	// Stable, locale-agnostic identifier; unique among active categories.
+	// Stable, locale-agnostic identifier; unique among active categories within the system.
 	Code string `json:"code"`
 	// locale->text display name.
 	Name map[string]string `json:"name"`
-	// Seniority ordinal among active categories.
+	// Seniority ordinal among active categories of the system.
 	SortOrder int `json:"sortOrder"`
+	// The URN RID of the owning rank system.
+	SystemId string `json:"systemId"`
 	// The category's types in seniority order. Populated by getRankScheme; empty on create/update of the category.
 	Types []RankType `json:"types"`
 }
@@ -194,14 +455,45 @@ func (o *RankCategory) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
-// The whole scheme, categories -> types -> ranks, each level in seniority order.
+/*
+A standardized cross-system comparability node (NATO STANAG 2116): the seeded reference catalog
+two ranks compare through. Equivalence = same code; seniority = tier then ordinal.
+*/
+type RankGrade struct {
+	// STANAG 2116 grade code (e.g. OF-5, OR-9, OF(D)).
+	Code string `json:"code"`
+	// One of officer | warrant | enlisted (enlisted < warrant < officer for cross-tier seniority).
+	Tier string `json:"tier"`
+	// Order within the tier (junior -> senior).
+	Ordinal int `json:"ordinal"`
+	// Generic, nation-neutral grade label (not translatable; grades are reference data, not i18n entities).
+	Name string `json:"name"`
+}
+
+func (o RankGrade) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *RankGrade) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// The whole scheme, systems -> categories -> types -> ranks, each level in seniority order.
 type RankScheme struct {
-	Categories []RankCategory `json:"categories"`
+	Systems []RankSystem `json:"systems"`
 }
 
 func (o RankScheme) MarshalJSON() ([]byte, error) {
-	if o.Categories == nil {
-		o.Categories = make([]RankCategory, 0)
+	if o.Systems == nil {
+		o.Systems = make([]RankSystem, 0)
 	}
 	type _tmpRankScheme RankScheme
 	return safejson.Marshal(_tmpRankScheme(o))
@@ -213,8 +505,8 @@ func (o *RankScheme) UnmarshalJSON(data []byte) error {
 	if err := safejson.Unmarshal(data, &rawRankScheme); err != nil {
 		return err
 	}
-	if rawRankScheme.Categories == nil {
-		rawRankScheme.Categories = make([]RankCategory, 0)
+	if rawRankScheme.Systems == nil {
+		rawRankScheme.Systems = make([]RankSystem, 0)
 	}
 	*o = RankScheme(rawRankScheme)
 	return nil
@@ -236,25 +528,100 @@ func (o *RankScheme) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
-// A band within a category (e.g. officers, warrant, enlisted), ordered.
-type RankType struct {
-	// The type's URN RID (carried as a plain string).
+/*
+The top level of the scheme (D-RankSystems): a national/organizational rank ladder. One scheme
+may hold several at once (a coalition directory); a single-nation deployment has one.
+*/
+type RankSystem struct {
+	// The system's URN RID (carried as a plain string).
 	Id string `json:"id"`
-	// Stable, locale-agnostic identifier; unique within its category among active types.
+	// Stable, locale-agnostic identifier (e.g. us-armed-forces); unique among active systems.
 	Code string `json:"code"`
 	// locale->text display name.
 	Name map[string]string `json:"name"`
-	// Seniority ordinal among active siblings within the category.
+	// Order among active systems.
 	SortOrder int `json:"sortOrder"`
-	// The URN RID of the owning rank category.
+	// ISO-3166 national origin (geo_countries code); absent for a supranational system (NATO/UN).
+	Country *string `json:"country,omitempty"`
+	// The system's categories in seniority order. Populated by getRankScheme; empty on create/update of the system.
+	Categories []RankCategory `json:"categories"`
+}
+
+func (o RankSystem) MarshalJSON() ([]byte, error) {
+	if o.Name == nil {
+		o.Name = make(map[string]string)
+	}
+	if o.Categories == nil {
+		o.Categories = make([]RankCategory, 0)
+	}
+	type _tmpRankSystem RankSystem
+	return safejson.Marshal(_tmpRankSystem(o))
+}
+
+func (o *RankSystem) UnmarshalJSON(data []byte) error {
+	type _tmpRankSystem RankSystem
+	var rawRankSystem _tmpRankSystem
+	if err := safejson.Unmarshal(data, &rawRankSystem); err != nil {
+		return err
+	}
+	if rawRankSystem.Name == nil {
+		rawRankSystem.Name = make(map[string]string)
+	}
+	if rawRankSystem.Categories == nil {
+		rawRankSystem.Categories = make([]RankCategory, 0)
+	}
+	*o = RankSystem(rawRankSystem)
+	return nil
+}
+
+func (o RankSystem) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *RankSystem) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+A band within a category (e.g. officers, warrant, enlisted), ordered. Types form a TREE: a
+type may nest under another type of the same category (parentTypeId), and ranks attach to
+LEAF types only.
+*/
+type RankType struct {
+	// The type's URN RID (carried as a plain string).
+	Id string `json:"id"`
+	// Stable, locale-agnostic identifier; unique among active siblings (same category + parent).
+	Code string `json:"code"`
+	// locale->text display name.
+	Name map[string]string `json:"name"`
+	// Seniority ordinal among active siblings (within the parent type, or the category for a root type).
+	SortOrder int `json:"sortOrder"`
+	// The URN RID of the owning rank system (denormalized; equals the category's system).
+	SystemId string `json:"systemId"`
+	// The URN RID of the owning rank category (the root category; carried on every type in the tree).
 	CategoryId string `json:"categoryId"`
-	// The type's ranks in seniority order. Populated by getRankScheme; empty on create/update of the type.
+	// The URN RID of the parent type; absent for a root type of the category.
+	ParentTypeId *string `json:"parentTypeId,omitempty"`
+	// Child types in seniority order. Populated by getRankScheme; empty for a leaf type and on create/update.
+	Children []RankType `json:"children"`
+	// The type's ranks in seniority order (leaf types only). Populated by getRankScheme; empty on create/update of the type.
 	Ranks []Rank `json:"ranks"`
 }
 
 func (o RankType) MarshalJSON() ([]byte, error) {
 	if o.Name == nil {
 		o.Name = make(map[string]string)
+	}
+	if o.Children == nil {
+		o.Children = make([]RankType, 0)
 	}
 	if o.Ranks == nil {
 		o.Ranks = make([]Rank, 0)
@@ -271,6 +638,9 @@ func (o *RankType) UnmarshalJSON(data []byte) error {
 	}
 	if rawRankType.Name == nil {
 		rawRankType.Name = make(map[string]string)
+	}
+	if rawRankType.Children == nil {
+		rawRankType.Children = make([]RankType, 0)
 	}
 	if rawRankType.Ranks == nil {
 		rawRankType.Ranks = make([]Rank, 0)
@@ -317,10 +687,11 @@ func (o *UpdateCategoryRequest) UnmarshalYAML(unmarshal func(interface{}) error)
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
-// Edit/reorder a rank. Omitted fields are unchanged. `code` is immutable.
+// Edit/reorder a rank. Omitted fields are unchanged. `code` is immutable; `gradeCode` cannot be cleared (open seam).
 type UpdateRankRequest struct {
 	Name         *string `json:"name,omitempty"`
 	Abbreviation *string `json:"abbreviation,omitempty"`
+	GradeCode    *string `json:"gradeCode,omitempty"`
 	SortOrder    *int    `json:"sortOrder,omitempty"`
 }
 
@@ -333,6 +704,29 @@ func (o UpdateRankRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *UpdateRankRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Edit/reorder a system. Omitted fields are unchanged. `code` is immutable; `country` cannot be cleared (open seam).
+type UpdateSystemRequest struct {
+	Name      *string `json:"name,omitempty"`
+	Country   *string `json:"country,omitempty"`
+	SortOrder *int    `json:"sortOrder,omitempty"`
+}
+
+func (o UpdateSystemRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpdateSystemRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

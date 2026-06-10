@@ -1,0 +1,62 @@
+{
+  "system": {
+    "code": "nato-generic",
+    "name": "NATO standardized grades",
+    "sortOrder": 9,
+    "categories": [
+      {
+        "code": "standard",
+        "name": "Standard",
+        "sortOrder": 0,
+        "types": [
+          {
+            "code": "enlisted",
+            "name": "Other Ranks",
+            "sortOrder": 0,
+            "ranks": [
+              { "code": "or-1", "name": "OR-1", "gradeCode": "OR-1", "sortOrder": 0 },
+              { "code": "or-2", "name": "OR-2", "gradeCode": "OR-2", "sortOrder": 10 },
+              { "code": "or-3", "name": "OR-3", "gradeCode": "OR-3", "sortOrder": 20 },
+              { "code": "or-4", "name": "OR-4", "gradeCode": "OR-4", "sortOrder": 30 },
+              { "code": "or-5", "name": "OR-5", "gradeCode": "OR-5", "sortOrder": 40 },
+              { "code": "or-6", "name": "OR-6", "gradeCode": "OR-6", "sortOrder": 50 },
+              { "code": "or-7", "name": "OR-7", "gradeCode": "OR-7", "sortOrder": 60 },
+              { "code": "or-8", "name": "OR-8", "gradeCode": "OR-8", "sortOrder": 70 },
+              { "code": "or-9", "name": "OR-9", "gradeCode": "OR-9", "sortOrder": 80 }
+            ]
+          },
+          {
+            "code": "warrant",
+            "name": "Warrant Officers",
+            "sortOrder": 1,
+            "ranks": [
+              { "code": "wo-1", "name": "WO-1", "gradeCode": "WO-1", "sortOrder": 0 },
+              { "code": "wo-2", "name": "WO-2", "gradeCode": "WO-2", "sortOrder": 10 },
+              { "code": "wo-3", "name": "WO-3", "gradeCode": "WO-3", "sortOrder": 20 },
+              { "code": "wo-4", "name": "WO-4", "gradeCode": "WO-4", "sortOrder": 30 },
+              { "code": "wo-5", "name": "WO-5", "gradeCode": "WO-5", "sortOrder": 40 }
+            ]
+          },
+          {
+            "code": "officers",
+            "name": "Officers",
+            "sortOrder": 2,
+            "ranks": [
+              { "code": "of-d", "name": "OF(D)", "gradeCode": "OF(D)", "sortOrder": 0 },
+              { "code": "of-1", "name": "OF-1", "gradeCode": "OF-1", "sortOrder": 10 },
+              { "code": "of-2", "name": "OF-2", "gradeCode": "OF-2", "sortOrder": 20 },
+              { "code": "of-3", "name": "OF-3", "gradeCode": "OF-3", "sortOrder": 30 },
+              { "code": "of-4", "name": "OF-4", "gradeCode": "OF-4", "sortOrder": 40 },
+              { "code": "of-5", "name": "OF-5", "gradeCode": "OF-5", "sortOrder": 50 },
+              { "code": "of-6", "name": "OF-6", "gradeCode": "OF-6", "sortOrder": 60 },
+              { "code": "of-7", "name": "OF-7", "gradeCode": "OF-7", "sortOrder": 70 },
+              { "code": "of-8", "name": "OF-8", "gradeCode": "OF-8", "sortOrder": 80 },
+              { "code": "of-9", "name": "OF-9", "gradeCode": "OF-9", "sortOrder": 90 },
+              { "code": "of-10", "name": "OF-10", "gradeCode": "OF-10", "sortOrder": 100 }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

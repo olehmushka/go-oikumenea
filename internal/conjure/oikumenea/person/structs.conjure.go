@@ -8,6 +8,37 @@ import (
 	"github.com/palantir/pkg/safeyaml"
 )
 
+// A symmetric association / conflict-of-interest / prohibited-contact link (D-PersonRelationships; Link link__associated_with).
+type Association struct {
+	Id string `json:"id"`
+	// The lower-sorting person's URN RID (canonical pair ordering).
+	PersonIdA string `json:"personIdA"`
+	// The higher-sorting person's URN RID.
+	PersonIdB string `json:"personIdB"`
+	// Optional relation-type catalog code (category=association).
+	RelationCode *string `json:"relationCode,omitempty"`
+	// One of associate | coi | no_contact.
+	Kind string `json:"kind"`
+	// One of active | ended.
+	Status string `json:"status"`
+}
+
+func (o Association) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *Association) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // A person's informal identifier / позивний (D-PersonContactChannels). pii:basic; unique per person among active.
 type CallSign struct {
 	Id       string `json:"id"`
@@ -204,6 +235,99 @@ func (o *EmailType) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// A legal guardian→ward link, distinct from blood kinship (D-PersonRelationships; Link link__guardian_of).
+type Guardianship struct {
+	Id string `json:"id"`
+	// The guardian's URN RID.
+	GuardianId string `json:"guardianId"`
+	// The ward's URN RID.
+	WardId string `json:"wardId"`
+	// Optional relation-type catalog code.
+	RelationCode *string `json:"relationCode,omitempty"`
+	// One of active | ended.
+	Status        string  `json:"status"`
+	EffectiveFrom *string `json:"effectiveFrom,omitempty"`
+	// null = ongoing.
+	EffectiveTo *string `json:"effectiveTo,omitempty"`
+}
+
+func (o Guardianship) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *Guardianship) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// A directional parent→child blood/legal parentage link (D-PersonRelationships; Link link__kin_parent_of). Siblings are derived, never stored.
+type Kinship struct {
+	Id string `json:"id"`
+	// The parent's URN RID.
+	ParentId string `json:"parentId"`
+	// The child's URN RID.
+	ChildId string `json:"childId"`
+	// One of active | disestablished.
+	Status string `json:"status"`
+}
+
+func (o Kinship) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *Kinship) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+Reachability on a messenger platform over one of the person's existing channels
+(D-PersonSocialChannels). Exactly one of phoneId/emailId is set.
+*/
+type MessengerLink struct {
+	Id string `json:"id"`
+	// The URN RID of the person's phone this link annotates; null when the link is over an email.
+	PhoneId *string `json:"phoneId,omitempty"`
+	// The URN RID of the person's email this link annotates; null when the link is over a phone.
+	EmailId *string `json:"emailId,omitempty"`
+	// The messenger platform code (category=messenger).
+	PlatformCode string `json:"platformCode"`
+	// The person's primary messenger reachability (at most one active).
+	IsPrimary bool `json:"isPrimary"`
+	// When the reachability was verified; null when unverified.
+	VerifiedAt *datetime.DateTime `json:"verifiedAt,omitempty"`
+}
+
+func (o MessengerLink) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *MessengerLink) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // A full transliterated name form for one locale (e.g. ukr native, eng Latin). Person-managed, NOT the localization store.
 type NameVariant struct {
 	Id       string `json:"id"`
@@ -232,6 +356,72 @@ func (o NameVariant) MarshalYAML() (interface{}, error) {
 }
 
 func (o *NameVariant) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// An in-directory next-of-kin nomination (subject→contact, both directory persons; D-PersonRelationships; Link link__next_of_kin). A nomination, not a blood fact.
+type NextOfKin struct {
+	Id string `json:"id"`
+	// The nominating person's URN RID.
+	SubjectId string `json:"subjectId"`
+	// The nominated contact's URN RID (an in-directory person).
+	ContactId string `json:"contactId"`
+	// Optional relation-type catalog code (category=next_of_kin).
+	RelationCode *string `json:"relationCode,omitempty"`
+	// Priority ordering of the nomination (1 = highest).
+	Priority int `json:"priority"`
+	// One of active | withdrawn.
+	Status string `json:"status"`
+}
+
+func (o NextOfKin) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *NextOfKin) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+A marriage or engagement between two persons (D-PersonRelationships; Link link__partnered_with).
+Symmetric: stored as a canonical pair (personIdA < personIdB). At most one active engaged/married
+row per person.
+*/
+type Partnership struct {
+	Id string `json:"id"`
+	// The lower-sorting partner's URN RID (canonical pair ordering).
+	PersonIdA string `json:"personIdA"`
+	// The higher-sorting partner's URN RID.
+	PersonIdB string `json:"personIdB"`
+	// One of engaged | married | divorced | widowed | annulled | dissolved.
+	Status string `json:"status"`
+	// ISO-8601 date the partnership began (YYYY-MM-DD).
+	EffectiveFrom *string `json:"effectiveFrom,omitempty"`
+	// ISO-8601 date it ended (YYYY-MM-DD); null = ongoing.
+	EffectiveTo *string `json:"effectiveTo,omitempty"`
+}
+
+func (o Partnership) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *Partnership) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -296,6 +486,10 @@ type Person struct {
 	Phones []Phone `json:"phones"`
 	// The person's call signs. Populated by getPerson; empty in list responses.
 	CallSigns []CallSign `json:"callSigns"`
+	// The person's messenger reachability links. Populated by getPerson; empty in list responses.
+	MessengerLinks []MessengerLink `json:"messengerLinks"`
+	// The person's standalone social accounts. Populated by getPerson; empty in list responses.
+	SocialAccounts []SocialAccount `json:"socialAccounts"`
 }
 
 func (o Person) MarshalJSON() ([]byte, error) {
@@ -316,6 +510,12 @@ func (o Person) MarshalJSON() ([]byte, error) {
 	}
 	if o.CallSigns == nil {
 		o.CallSigns = make([]CallSign, 0)
+	}
+	if o.MessengerLinks == nil {
+		o.MessengerLinks = make([]MessengerLink, 0)
+	}
+	if o.SocialAccounts == nil {
+		o.SocialAccounts = make([]SocialAccount, 0)
 	}
 	type _tmpPerson Person
 	return safejson.Marshal(_tmpPerson(o))
@@ -344,6 +544,12 @@ func (o *Person) UnmarshalJSON(data []byte) error {
 	}
 	if rawPerson.CallSigns == nil {
 		rawPerson.CallSigns = make([]CallSign, 0)
+	}
+	if rawPerson.MessengerLinks == nil {
+		rawPerson.MessengerLinks = make([]MessengerLink, 0)
+	}
+	if rawPerson.SocialAccounts == nil {
+		rawPerson.SocialAccounts = make([]SocialAccount, 0)
 	}
 	*o = Person(rawPerson)
 	return nil
@@ -486,6 +692,106 @@ func (o *PhoneType) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// An instance-admin catalog entry naming a social network / messenger (D-PersonSocialChannels). Stable code + translatable name + category.
+type Platform struct {
+	// Stable, locale-agnostic identifier (D-Code); immutable by convention.
+	Code string `json:"code"`
+	// The translatable label as a locale -> text map (all enabled locales; D-i18n).
+	Name map[string]string `json:"name"`
+	// One of messenger | social. Only messenger platforms may carry a messenger link.
+	Category string `json:"category"`
+	// One of active | retired.
+	Status    string `json:"status"`
+	SortOrder *int   `json:"sortOrder,omitempty"`
+}
+
+func (o Platform) MarshalJSON() ([]byte, error) {
+	if o.Name == nil {
+		o.Name = make(map[string]string)
+	}
+	type _tmpPlatform Platform
+	return safejson.Marshal(_tmpPlatform(o))
+}
+
+func (o *Platform) UnmarshalJSON(data []byte) error {
+	type _tmpPlatform Platform
+	var rawPlatform _tmpPlatform
+	if err := safejson.Unmarshal(data, &rawPlatform); err != nil {
+		return err
+	}
+	if rawPlatform.Name == nil {
+		rawPlatform.Name = make(map[string]string)
+	}
+	*o = Platform(rawPlatform)
+	return nil
+}
+
+func (o Platform) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// An instance-admin catalog entry for an open-ended person↔person relation label (D-PersonRelationships). Stable code + translatable name + category.
+type RelationType struct {
+	// Stable, locale-agnostic identifier (D-Code); immutable by convention.
+	Code string `json:"code"`
+	// The translatable label as a locale -> text map (all enabled locales; D-i18n).
+	Name map[string]string `json:"name"`
+	// One of sponsorship | association | next_of_kin.
+	Category string `json:"category"`
+	// One of active | retired.
+	Status    string `json:"status"`
+	SortOrder *int   `json:"sortOrder,omitempty"`
+}
+
+func (o RelationType) MarshalJSON() ([]byte, error) {
+	if o.Name == nil {
+		o.Name = make(map[string]string)
+	}
+	type _tmpRelationType RelationType
+	return safejson.Marshal(_tmpRelationType(o))
+}
+
+func (o *RelationType) UnmarshalJSON(data []byte) error {
+	type _tmpRelationType RelationType
+	var rawRelationType _tmpRelationType
+	if err := safejson.Unmarshal(data, &rawRelationType); err != nil {
+		return err
+	}
+	if rawRelationType.Name == nil {
+		rawRelationType.Name = make(map[string]string)
+	}
+	*o = RelationType(rawRelationType)
+	return nil
+}
+
+func (o RelationType) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *RelationType) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // A person's effective-dated residence in a country/region (D-Geo). Locator data (pii:contact).
 type Residence struct {
 	Id       string `json:"id"`
@@ -539,6 +845,109 @@ func (o *SetRankRequest) UnmarshalYAML(unmarshal func(interface{}) error) error 
 }
 
 /*
+A person's standalone social-network account (D-PersonSocialChannels). platformUserId is the
+platform's immutable internal id (the durable key); handle is the mutable current @handle.
+*/
+type SocialAccount struct {
+	Id       string `json:"id"`
+	PersonId string `json:"personId"`
+	// The platform code the account is on.
+	PlatformCode string `json:"platformCode"`
+	// The platform's immutable internal id (the durable key); null when unknown.
+	PlatformUserId *string `json:"platformUserId,omitempty"`
+	// The current @handle (mutable; rename history kept separately).
+	Handle      string  `json:"handle"`
+	DisplayName *string `json:"displayName,omitempty"`
+	// Profile URL; derived from platform + handle on write when not supplied.
+	ProfileUrl *string `json:"profileUrl,omitempty"`
+	Language   *string `json:"language,omitempty"`
+	// The platform "blue-check"; distinct from operator confirmation.
+	PlatformVerified bool `json:"platformVerified"`
+	// When an operator confirmed the account; null when unconfirmed.
+	VerifiedByOperatorAt *datetime.DateTime `json:"verifiedByOperatorAt,omitempty"`
+	// How the account was learned — one of self_declared | operator_verified | imported.
+	Source string `json:"source"`
+	// Weight of the claim — one of confirmed | probable | possible.
+	Confidence string `json:"confidence"`
+	// The person's primary social account (at most one active).
+	IsPrimary bool `json:"isPrimary"`
+}
+
+func (o SocialAccount) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *SocialAccount) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// One period in a social account's @handle-rename history (D-PersonSocialChannels). validTo null = current.
+type SocialAccountHandle struct {
+	Id        string            `json:"id"`
+	AccountId string            `json:"accountId"`
+	Handle    string            `json:"handle"`
+	ValidFrom datetime.DateTime `json:"validFrom"`
+	// When this handle stopped being current; null = current.
+	ValidTo *datetime.DateTime `json:"validTo,omitempty"`
+}
+
+func (o SocialAccountHandle) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *SocialAccountHandle) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// A sponsor→sponsored link — godparent / academic advisor / military mentor (D-PersonRelationships; Link link__sponsor_of).
+type Sponsorship struct {
+	Id string `json:"id"`
+	// The sponsor's URN RID.
+	SponsorId string `json:"sponsorId"`
+	// The sponsored person's URN RID.
+	SponsoredId string `json:"sponsoredId"`
+	// Required relation-type catalog code (category=sponsorship).
+	RelationCode string `json:"relationCode"`
+	// One of active | ended.
+	Status        string  `json:"status"`
+	EffectiveFrom *string `json:"effectiveFrom,omitempty"`
+	// null = ongoing.
+	EffectiveTo *string `json:"effectiveTo,omitempty"`
+}
+
+func (o Sponsorship) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *Sponsorship) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
 Update a person's names (canonical + CLDR parts), birthdate, sex, country_of_birth, and
 attributes. Omitted fields are unchanged; an empty string clears an optional name part.
 `code` is immutable by convention and rank is set via setRank.
@@ -569,6 +978,35 @@ func (o UpdatePersonRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *UpdatePersonRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Record or replace a symmetric association between the path person and counterpartId.
+type UpsertAssociationRequest struct {
+	Id *string `json:"id,omitempty"`
+	// The other person's URN RID.
+	CounterpartId string `json:"counterpartId"`
+	// associate | coi | no_contact.
+	Kind string `json:"kind"`
+	// Optional relation-type code (category=association).
+	RelationCode *string `json:"relationCode,omitempty"`
+	// active | ended; defaults to active.
+	Status *string `json:"status,omitempty"`
+}
+
+func (o UpsertAssociationRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertAssociationRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -651,6 +1089,93 @@ func (o *UpsertEmailRequest) UnmarshalYAML(unmarshal func(interface{}) error) er
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// Record or replace a guardian→ward link between the path person and counterpartId; role names the path person's side.
+type UpsertGuardianshipRequest struct {
+	Id *string `json:"id,omitempty"`
+	// The other person's URN RID.
+	CounterpartId string `json:"counterpartId"`
+	// The path person's role — guardian | ward.
+	Role         string  `json:"role"`
+	RelationCode *string `json:"relationCode,omitempty"`
+	// active | ended; defaults to active.
+	Status        *string `json:"status,omitempty"`
+	EffectiveFrom *string `json:"effectiveFrom,omitempty"`
+	EffectiveTo   *string `json:"effectiveTo,omitempty"`
+}
+
+func (o UpsertGuardianshipRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertGuardianshipRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Record or replace a parent→child kinship between the path person and counterpartId; role names the path person's side.
+type UpsertKinshipRequest struct {
+	Id *string `json:"id,omitempty"`
+	// The other person's URN RID.
+	CounterpartId string `json:"counterpartId"`
+	// The path person's role — parent | child.
+	Role string `json:"role"`
+	// active | disestablished; defaults to active.
+	Status *string `json:"status,omitempty"`
+}
+
+func (o UpsertKinshipRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertKinshipRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+Add a messenger link over one of the person's phones or emails, or replace one when id is
+supplied. Exactly one of phoneId/emailId must be set; platformCode must be a messenger platform.
+*/
+type UpsertMessengerLinkRequest struct {
+	// The URN RID of an existing messenger-link row to replace; omit to add a new row.
+	Id           *string            `json:"id,omitempty"`
+	PhoneId      *string            `json:"phoneId,omitempty"`
+	EmailId      *string            `json:"emailId,omitempty"`
+	PlatformCode string             `json:"platformCode"`
+	IsPrimary    *bool              `json:"isPrimary,omitempty"`
+	VerifiedAt   *datetime.DateTime `json:"verifiedAt,omitempty"`
+}
+
+func (o UpsertMessengerLinkRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertMessengerLinkRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // Add or replace the name variant for a locale (keyed by (person, locale)).
 type UpsertNameVariantRequest struct {
 	Locale        string  `json:"locale"`
@@ -676,6 +1201,67 @@ func (o UpsertNameVariantRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *UpsertNameVariantRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Nominate or replace a next-of-kin contact for the path person (the subject). contactId must be an in-directory person.
+type UpsertNextOfKinRequest struct {
+	Id *string `json:"id,omitempty"`
+	// The nominated contact's URN RID (an in-directory person).
+	ContactId string `json:"contactId"`
+	// Optional relation-type code (category=next_of_kin).
+	RelationCode *string `json:"relationCode,omitempty"`
+	// Priority ordering (1 = highest); defaults to 1.
+	Priority *int `json:"priority,omitempty"`
+	// active | withdrawn; defaults to active.
+	Status *string `json:"status,omitempty"`
+}
+
+func (o UpsertNextOfKinRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertNextOfKinRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+Record or replace a partnership between the path person and partnerId. The pair is stored in
+canonical order; the path person must not be the partner. At most one active engaged/married
+partnership per person.
+*/
+type UpsertPartnershipRequest struct {
+	// The URN RID of an existing partnership row to replace; omit to add a new row.
+	Id *string `json:"id,omitempty"`
+	// The other partner's URN RID (an in-directory person).
+	PartnerId string `json:"partnerId"`
+	// engaged | married | divorced | widowed | annulled | dissolved.
+	Status        string  `json:"status"`
+	EffectiveFrom *string `json:"effectiveFrom,omitempty"`
+	EffectiveTo   *string `json:"effectiveTo,omitempty"`
+}
+
+func (o UpsertPartnershipRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertPartnershipRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -727,6 +1313,72 @@ func (o UpsertResidenceRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *UpsertResidenceRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Add a social account, or replace one when id is supplied. handle is normalized and profileUrl derived when omitted.
+type UpsertSocialAccountRequest struct {
+	// The URN RID of an existing social-account row to replace; omit to add a new row.
+	Id                   *string            `json:"id,omitempty"`
+	PlatformCode         string             `json:"platformCode"`
+	PlatformUserId       *string            `json:"platformUserId,omitempty"`
+	Handle               string             `json:"handle"`
+	DisplayName          *string            `json:"displayName,omitempty"`
+	ProfileUrl           *string            `json:"profileUrl,omitempty"`
+	Language             *string            `json:"language,omitempty"`
+	PlatformVerified     *bool              `json:"platformVerified,omitempty"`
+	VerifiedByOperatorAt *datetime.DateTime `json:"verifiedByOperatorAt,omitempty"`
+	// self_declared | operator_verified | imported.
+	Source string `json:"source"`
+	// confirmed | probable | possible; defaults to possible.
+	Confidence *string `json:"confidence,omitempty"`
+	IsPrimary  *bool   `json:"isPrimary,omitempty"`
+}
+
+func (o UpsertSocialAccountRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertSocialAccountRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Record or replace a sponsor→sponsored link between the path person and counterpartId; role names the path person's side. relationCode is required (category=sponsorship).
+type UpsertSponsorshipRequest struct {
+	Id *string `json:"id,omitempty"`
+	// The other person's URN RID.
+	CounterpartId string `json:"counterpartId"`
+	// The path person's role — sponsor | sponsored.
+	Role string `json:"role"`
+	// Required relation-type code (category=sponsorship).
+	RelationCode string `json:"relationCode"`
+	// active | ended; defaults to active.
+	Status        *string `json:"status,omitempty"`
+	EffectiveFrom *string `json:"effectiveFrom,omitempty"`
+	EffectiveTo   *string `json:"effectiveTo,omitempty"`
+}
+
+func (o UpsertSponsorshipRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertSponsorshipRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
