@@ -1,4 +1,4 @@
--- 0008 authorization (M7) — the centerpiece: RBAC + the Policy Decision Point (PDP).
+-- 0007 authorization (M7) — the centerpiece: RBAC + the Policy Decision Point (PDP).
 --
 -- Owns the role/assignment/instance-admin DATA (docs/modules/authorization.md). The atomic
 -- PERMISSION catalog is CODE, not a table (domain/permissions.go) — a write to
@@ -151,4 +151,4 @@ COMMENT ON COLUMN oikumenea.authz_instance_admins.revoked_at IS 'pii:none';
 COMMENT ON COLUMN oikumenea.authz_instance_admins.revoked_by IS 'pii:none';
 
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
-UPDATE oikumenea.schema_version SET revision = '0008_authorization', applied_at = now() WHERE singleton;
+UPDATE oikumenea.schema_version SET revision = '0007_authorization', applied_at = now() WHERE singleton;

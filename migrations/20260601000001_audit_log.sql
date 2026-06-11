@@ -1,4 +1,4 @@
--- 0002 audit log (M1).
+-- 0001 audit log (M1).
 --
 -- The append-only Action ledger every later write commits into (D-Audit / docs/modules/audit.md).
 -- Each row records one Action and is keyed by that Action's RID (action__<type>; D-Ontology):
@@ -75,4 +75,4 @@ COMMENT ON COLUMN oikumenea.audit_log.after IS 'pii:special';
 COMMENT ON COLUMN oikumenea.audit_log.outcome IS 'pii:none';
 
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
-UPDATE oikumenea.schema_version SET revision = '0002_audit_log', applied_at = now() WHERE singleton;
+UPDATE oikumenea.schema_version SET revision = '0001_audit_log', applied_at = now() WHERE singleton;

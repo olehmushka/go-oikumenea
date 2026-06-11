@@ -113,7 +113,7 @@ RID is `link__<link_type>` in lower_snake (e.g. the `PARENT_OF` row → `link__p
 | `MEMBER_OF` / `FILLS` | `Person` → `Unit` (opt. `Position`) | [membership](modules/membership.md) | `position_id` (nullable), `order_item_id` provenance | **yes — `effective_from`/`effective_to`** + `status` |
 | `HAS_ROLE` @ scope (the **`Assignment`**) | `Person` → `Role`, scoped to `target_unit` | [authorization](modules/authorization.md) | `scope ∈ {unit,subtree}`, `graph_id`, `granted_by`, `expires_at` | grant/revoke + decision-time expiry |
 | `GRANTS` | `Role` → `Permission`(code) | [authorization](modules/authorization.md) | — | code-validated membership |
-| `HOLDS_RANK` | `Person` → `Rank` | [person](modules/person.md) | exactly one | **directory attribute — never an authz input** |
+| `HOLDS_RANK` | `Person` → `Rank` (in a `RankSystem`) | [person](modules/person.md) | `system_id` (derived) | **one per rank system** (`person_ranks`, reified); **directory attribute — never an authz input** |
 | `HAS_ACCOUNT` | `Person` → `Account` | [identity-federation](modules/identity-federation.md) | ≤1 active | — |
 | `FEDERATES` | `Account` → `ExternalIdentity` | [identity-federation](modules/identity-federation.md) | `(issuer, subject)` | identity row append-only |
 | `HOLDS_DOCUMENT` / `HOLDS_CODE` | `Person` → `Document`/`PersonalCode` | [document](modules/document.md) | — | `status`; scoped through the holder |

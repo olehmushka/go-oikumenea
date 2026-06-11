@@ -5,22 +5,95 @@
 
 ## Remediation progress (update as items land)
 
-Pick the **next `☐` item** in this list and fix it; mark it `✅` here and at its section heading when done.
+**How to use this tracker.** Fix the item named in **▶ NEXT** below — that is the only item you
+need to look at. When it's done: move its row from **To do** to **Done** (add a `*Done <date>.*`
+note), advance the **▶ NEXT** line to the new top of **To do**, and mark `✅` at the finding's
+section heading further down. **To do** is in intended fix order; re-sequence here, not in your head.
 
+### ▶ NEXT
+
+**F-013** — `attributes` JSONB `pii:special` ceiling is convention-only (Low, architecture-security/product; the `person_persons.attributes` / `document_documents.attributes` JSONB is tagged at the `pii:special` ceiling but freely writable, so "no special-category PII without the envelope" rests on prose only — either document it as an accepted convention-only control in `conventions.md`, or add a lightweight write-time reject for known special-category keys; see [§F-013](#f-013--attributes-jsonb-tagged-piispecial-ceiling-is-freely-writable-so-the-no-special-category-pii-without-the-envelope-rule-rests-on-convention)).
+
+### To do (in fix order)
+
+1. ☐ **F-013** — `attributes` JSONB `pii:special` ceiling is convention-only
+2. ☐ **F-008** — M16–M26 designed-but-unbuilt ahead of unenforced core (cost-benefit)
+3. ☐ **F-014** — composed-URN RID apparatus heavy vs realized benefit (cost-benefit)
+
+### Done
+
+- ✅ **F-012** — order auto-apply same-transaction subscriber contract **verified** (the contract was
+  already correctly wired; this closed the *unverified* flag). End-to-end trace confirmed: the bus is
+  synchronous and same-transaction (`pkg/events/events.go:60-68` — `Publish(ctx, tx, evt)` loops
+  handlers in-process, threads the caller's `tx` through unchanged, returns the first handler error);
+  order issue runs inside one `tx` and publishes on it (`order/application/service.go:204-244`, any
+  `Publish` error → `ErrEffectFailed` → rollback via the `inTx` defer); the membership/person
+  subscribers use that same `tx` (`membership/application/service.go:325-336`,
+  `person/application/service.go:317-326`); the one-holder index lives at
+  `migrations/20260601000006_membership.sql:86-89`. The existing integration test
+  `TestIssueAllOrNothingRollback` (`internal/order/order_integration_test.go:195`) already issues a
+  second appointment onto a filled billet and asserts `ErrEffectFailed`, the order stays `draft`, and
+  the prior holder is untouched; **strengthened** with a direct assertion that the rolled-back person B
+  has **zero** memberships (`ListPersonMemberships` == 0) so the test literally matches the finding's
+  "no membership row was written" checklist item. Test-only change — no production code/schema/
+  migration/decision change. `go test -tags integration ./internal/order/...` green. *Done 2026-06-11.*
+
+- ✅ **F-011** — glossary/tenant reflexive-closure coverage reworded to match the SQL. The
+  `tenant_unit_closure` data-model bullet (`tenant.md:94`) and reflexive-row note (`:96`) and the
+  glossary **Closure** entry now state that reflexive `(g, u, u, 0)` self-rows cover only units
+  **participating in that graph's edges** (an edge-less unit has no closure row in `g`), matching the
+  rebuild query's `nodes` CTE (`tenant.sql.go:492-494`, `:687-690`) and the code comment at `:512`.
+  Doc-only — no code/schema/migration; PDP unaffected (`pdp.go` handles the self case explicitly).
+  Link-checker OK. *Done 2026-06-11.*
+
+- ✅ **F-010** — migration revision numbering aligned to filename ordinals (chosen direction:
+  renumber the **revisions** to 0-index, filenames untouched). Every `schema_version` revision string
+  (and matching header comment) across all 17 migrations decremented by one — `0001_schema_bootstrap →
+  0000_schema_bootstrap` … `0017_person_date_of_death → 0016_person_date_of_death` — so "the Nth
+  migration file" and "revision N" now agree (both 0-indexed). `db.ExpectedSchemaRevision` bumped to
+  `0016_person_date_of_death`; the `UPGRADING.md` revision log, `README.md` readiness example, and the
+  `0011_rls` / `0013_person_social_channels` / `0014_person_relationships` / `0004_rank` references in
+  decisions.md / upgrade-safety.md / milestones.md all decremented. `migrations/atlas.sum` regenerated
+  (`atlas migrate hash` — file bodies changed); dev + test DBs reset and replayed
+  (`SELECT revision` → `0016_person_date_of_death`). Free now (pre-release, no deployed DBs).
+  `go build`/`go test`/`go vet` clean; link-checker OK. *Done 2026-06-11.*
+
+- ✅ **F-009** — symmetric (HS256) issuer path now guardrailed (review option a, reuse the
+  `environment` slot). New fail-closed `middleware.GuardSymmetricIssuers(issuers, environment)`
+  refuses any `hs256` issuer unless `environment ∈ {local, dev}` (empty/unknown rejects); wired into
+  the boot path in `cmd/oikumenea/main.go` ahead of `authenticator.Bind`, so a staging/prod deploy
+  with an `hs256` issuer fails to boot with a wrapped error. Covered by table-test
+  `TestGuardSymmetricIssuers`; `IssuerHS256`/`config.Issuer.Type` comments tightened; identity-
+  federation.md prose + a new Invariant document the constraint (L-AuthzOnly: no held credentials in
+  staging/prod). `go build`/`go test`/`go vet` clean. *Done 2026-06-11.*
+
+- ✅ **F-007** — acting/dual-hatted/secondment temporal model **documented** (doc-only; the schema
+  already supported it via D-TimeBoundGrants `expires_at`). The intended pattern is now stated
+  explicitly: acting authority is a **time-bound role assignment** on the unit, **not** a position
+  fill — the substantive holder's membership/billet is untouched, authority comes only from the
+  grant, and it lapses silently. New cross-cutting pattern *Acting authority via time-bound role
+  assignment* in `patterns.md`; worked example (acting CO on leave → bounded deputy grant) in
+  `authorization.md`; open-seam clarification + multi-incumbent tie-in in `membership.md`;
+  D-TimeBoundGrants amended (`**Clarified (F-007)**`); glossary terms **Acting authority** /
+  **Dual-hatting** / **Secondment**. No code/schema/migration. Link-checker: links OK. *Done 2026-06-11.*
+
+- ✅ **F-006** — one rank **per rank system** shipped (option a, schema). The single
+  `person_persons.rank_id` column is replaced by the reified `person_ranks (person_id, system_id,
+  rank_id)` link with `UNIQUE (person_id, system_id)`; `system_id` is derived from the rank in SQL.
+  Migration `0005_person.sql` reworked in place (dev-only, `atlas migrate hash` + DROP SCHEMA reset);
+  sqlc `UpsertPersonRank`/`ClearPersonRank`/`ListPersonRanks` (+ purge `DeleteAllPersonRanks`),
+  regenerated; Conjure `Person.ranks: list<PersonRank>` + `SetRankRequest{rankId?, systemId?}`,
+  regenerated server + client; domain `Person.Ranks`/`PersonRank`, application `SetPersonRank`/
+  `setRankTx` (order rank-change subscriber derives system from the rank, unchanged event), transport
+  per-system set/clear. Docs: D-Rank amended ("one rank per rank system" + university/church
+  rationale), D-RankSystems consequence, person.md / rank.md / ontology-mapping (HOLDS_RANK reified,
+  one-per-system) / glossary. *Done 2026-06-11.*
+
+- ✅ **F-005** — `date_of_death` shipped end-to-end (migration `0017`, sqlc/Conjure regen, domain/repo/transport, person.md + glossary); the M12 Migrated `✅` is now grounded. *Done 2026-06-11.*
+- ✅ **F-003** — stage board M5/M7 `verified` grounding confirmed (honest after F-001/F-002/F-004; the person transport's "NOT yet applied" admission is gone). *Done 2026-06-11.*
 - ✅ **F-001** — person directory read-scope projection enforced (D-PersonReadScope). *Done 2026-06-11.*
-- ☐ **F-002** — shadow-visibility gate has no caller *(next)*
+- ✅ **F-002** — shadow-visibility gate wired (F-002, A-lite: tenant unit reads; public-read RLS policy + app gate). *Done 2026-06-11.*
 - ✅ **F-004** — document/personal-code holder-scope reads enforced (rode F-001). *Done 2026-06-11.*
-- ☐ **F-003** — stage board M5/M7 `verified` grounding (now honest after F-001/F-004; confirm/close)
-- ☐ **F-005** — `date_of_death` decided + Migrated-✅ but absent
-- ☐ **F-006** — "exactly one rank per person" under-models university/church
-- ☐ **F-007** — no acting/dual-hatted/secondment temporal model
-- ☐ **F-008** — M16–M26 designed-but-unbuilt ahead of unenforced core (cost-benefit)
-- ☐ **F-009** — production HS256 issuer path lacks a guardrail
-- ☐ **F-010** — migration filename index off-by-one from embedded revision
-- ☐ **F-011** — glossary/tenant overstate closure reflexive coverage
-- ☐ **F-012** — order auto-apply same-transaction subscriber contract unverified
-- ☐ **F-013** — `attributes` JSONB `pii:special` ceiling is convention-only
-- ☐ **F-014** — composed-URN RID apparatus heavy vs realized benefit (cost-benefit)
 
 **F-001 + F-004 — what landed (2026-06-11):** app-layer read-scope projection only (the RLS
 reach-join was deliberately **deferred** — it would break the JIT auth path / bootstrap / order-effect
@@ -53,7 +126,7 @@ The headline result is **not** "looks good." The product's two differentiating g
 3. **F-003 (High) — The stage board is not grounded in artifacts, violating the repo's own rule.** M5 and M7 are marked **verified**, yet the code itself documents the read-scope rule as a deliberate *interim coarse gate* ("NOT yet applied"). `development-process.md` demands every `✅` be grounded in a real artifact; here the *verified* gate contradicts the implementation.
 4. **F-004 (High) — ✅ FIXED (2026-06-11) — Document reads inherit the same hole.** Documents/personal-codes are "scoped through the holder," but the holder scope (F-001) is not enforced and `document_documents` is likewise RLS-exempt, so personal-document metadata (passport numbers, issuers) is directory-wide-readable.
 5. **F-005 (Medium) — `date_of_death` is decided and milestone-listed but does not exist.** D-PersonBio's M12 amendment mandates `person_persons.date_of_death DATE`; milestones lists it as an M12 deliverable with the **Migrated gate `✅`** — but it is absent from every migration, the `person.md` data model, the glossary, the Conjure contract, and the Go code.
-6. **F-006 (Medium, product) — "Exactly one rank per person" is a poor fit for the university and church verticals.** The model forces a single global seniority ladder onto domains that routinely carry *concurrent* standings (an academic who is also an administrator; clergy whose grade is explicitly modeled elsewhere). The decision is defensible for the army but is asserted as universal without addressing the multi-track case.
+6. **F-006 (Medium, product) — ✅ FIXED (2026-06-11) — "Exactly one rank per person" is a poor fit for the university and church verticals.** Now scoped to **one rank per rank system** (reified `person_ranks` link). The model forces a single global seniority ladder onto domains that routinely carry *concurrent* standings (an academic who is also an administrator; clergy whose grade is explicitly modeled elsewhere). The decision is defensible for the army but is asserted as universal without addressing the multi-track case.
 7. **F-007 (Medium, product) — No temporal validity / acting-appointment model for assignments-as-roles, only for memberships.** Acting CO, dual-hatting, and secondment are named as target-domain realities, but the *position fill* is one-holder and the *role assignment* carries only `expires_at`, not an "acting/deputizing" relationship — the BA-level gap the brief asked about.
 8. **F-008 (Cost-benefit) — 12 designed-but-unbuilt milestones (M16–M26) of binding decisions ahead of a pre-v1 core whose two key guarantees don't work.** The decision log has grown ~3× the size of the working surface; the religion/company/vehicle/location/language verticals are fully *decided* while the authorization core is not actually enforced.
 
@@ -78,6 +151,7 @@ The headline result is **not** "looks good." The product's two differentiating g
 - **Confidence:** High
 
 ### F-002 — The shadow-visibility gate has no caller; the product differentiator is unenforced at the app layer
+- **Status:** ✅ FIXED 2026-06-11 (A-lite: wired for tenant unit reads; deeper finding + boundary below).
 - **Severity:** Critical
 - **Lens:** consistency + architecture + product
 - **Location:**
@@ -89,12 +163,14 @@ The headline result is **not** "looks good." The product's two differentiating g
 - **Recommended fix.** Decide one of two coherent stories and make code and docs agree: (a) wire `FilterVisibleUnits` into tenant/membership/order/document/person read paths as the docs specify; or (b) ratify that shadow visibility *is* the RLS reach set, demote the gate prose to "computed once as the reach set," and delete the dead `ShadowGate`/`FilterVisibleUnits` if truly unused. Given person/document are RLS-exempt, option (a) is required for those tables regardless. Blast radius: every read transport.
 - **Effort:** L
 - **Confidence:** High
+- **What landed (2026-06-11) — deeper finding + A-lite fix.** Investigation showed `visibility` had **no runtime effect at all**: every authenticated request pins an RLS connection whose `app.readable_units` = the subject's *grant-based reach* (visibility never folded in), and `tenant_units`'s reach-keyed policy dropped `public` units outside reach exactly like `shadow` ones — so public and shadow behaved identically, and the dead `ShadowGate` would have been a **no-op if naively wired** (RLS had already removed the rows it drops). Chosen resolution = **option (a), A-lite (tenant/unit scope only)**: (1) new migration `0016_tenant_units_public_read_rls` adds a permissive `FOR SELECT` policy admitting `visibility='public'` (the real behavior enabler — public units now discoverable regardless of reach; writes untouched); (2) `pep.FilterVisibleUnits` wrapper now makes `application.FilterVisibleUnits`/`ShadowGate` **live**, wired as the authoritative second pass on tenant `ListUnits`/`UnitAncestors`/`UnitDescendants` (`UnitRef` now carries `visibility`); (3) docs reconciled — patterns.md / authorization.md / tenant.md / decisions.md (L-Visibility) record the enforcement and the **A-lite boundary**: `GET /units/{id}` stays per-unit reach-gated and membership/order/person/document reads remain reach-gated (broad public discovery is a unit-read affordance only; extending it to rosters/people is a deferred seam). No change to person/document/membership/order read scope; `GetUnit` not broadened.
 
 ---
 
 ## High
 
-### F-003 — Stage board marks M5/M7 "verified" while the binding read-scope rule is admittedly unimplemented
+### F-003 — Stage board marks M5/M7 "verified" while the binding read-scope rule is admittedly unimplemented ✅
+- **Status:** ✅ CONFIRMED/CLOSED 2026-06-11. The contradiction was resolved by the F-001/F-002/F-004 fixes, not by downgrading the board. `internal/person/transport/service.go:9-15` no longer admits the rule is "NOT yet applied" — it documents the D-PersonReadScope projection (`pep.EffectiveReach` ∩ active-membership units) as live; `grep "NOT yet applied"` returns nothing. Membership unit reads (`ListMembers`) are reach-gated per unit. The M5 exit ("reads honor the (M7) read-scope rule once authz lands") and M7 exit ("person/membership read-scope rules now enforced") now match the code, so M5/M7 stay `verified` and are grounded in a real artifact. *(Residual, out of scope: `ListPersonMemberships` still uses `RequireAnywhere` — a separate read-scope seam, not this finding's contradiction.)*
 - **Severity:** High
 - **Lens:** consistency
 - **Location:** `docs/milestones.md:83` (M5 `verified`), `:85` (M7 `verified`); `docs/milestones.md:214-215` (M7 exit: "person/membership read-scope rules now enforced"); contradicted by `internal/person/transport/service.go:9-15`.
@@ -115,7 +191,8 @@ The headline result is **not** "looks good." The product's two differentiating g
 - **Effort:** M (rides F-001)
 - **Confidence:** High
 
-### F-006 — "Exactly one rank per person" under-models the university and church verticals
+### F-006 — "Exactly one rank per person" under-models the university and church verticals ✅
+- **Status:** ✅ FIXED 2026-06-11 (option a, schema): rank scoped to **one per rank system** via the reified `person_ranks` link; `person_persons.rank_id` removed. See Remediation progress (Done).
 - **Severity:** High
 - **Lens:** product (BA)
 - **Location:** `docs/architecture/decisions.md` D-Rank ("A `person` holds **one rank**"); `migrations/20260601000005_person.sql` (`rank_id` single nullable FK); `docs/modules/rank.md:13-17`.
@@ -129,7 +206,8 @@ The headline result is **not** "looks good." The product's two differentiating g
 
 ## Medium
 
-### F-005 — `date_of_death` is decided + milestone-listed (Migrated `✅`) but absent everywhere
+### F-005 — `date_of_death` is decided + milestone-listed (Migrated `✅`) but absent everywhere ✅
+- **Status:** ✅ FIXED 2026-06-11. Shipped the column end-to-end (option a), making the green Migrated gate true. New expand-only migration `migrations/20260601000016_person_date_of_death.sql` (`ADD COLUMN date_of_death date`, `pii:basic` comment, schema-version bump to `0017_person_date_of_death`, `atlas migrate hash`); `ExpectedSchemaRevision` bumped; sqlc Insert/Update/Purge carry it (regenerated); Conjure `Person`/`CreatePersonRequest`/`UpdatePersonRequest` gain `dateOfDeath: optional<string>` (regenerated); domain `Person`/`PersonPatch` + `validDate` guards; repository `dateText`/`datePtr`/`dateStr` mappings; transport create/update/toAPI. Docs: `person.md` data-model row + purge list + PUT row, `glossary.md` term. Death is a **bio attribute, not a lifecycle state** (no `status` transition). `go build ./...` clean; person tests cover set/read-back + purge-NULL.
 - **Severity:** Medium
 - **Lens:** consistency (decided-but-not-built; gate marked done)
 - **Location:** `docs/architecture/decisions.md` D-PersonBio "*Amended (M12) — `date_of_death`*"; `docs/milestones.md:42` (M12 delivers "date of death") and `:90` (M12 *Migrated* `✅`). Absent from `migrations/20260601000005_person.sql` and `…000012_person_contacts.sql` (grep count 0), from `docs/modules/person.md` (no mention), from `docs/glossary.md` (no "death" entry), from `api/person.conjure.yml`, and from `internal/person`.
@@ -139,7 +217,8 @@ The headline result is **not** "looks good." The product's two differentiating g
 - **Effort:** S
 - **Confidence:** High
 
-### F-007 — No acting/dual-hatted/secondment model; temporal validity lives only on memberships
+### F-007 — No acting/dual-hatted/secondment model; temporal validity lives only on memberships ✅
+- **Status:** ✅ FIXED 2026-06-11 (doc-only). The capability already existed (D-TimeBoundGrants activated `expires_at` and even named "acting CO during a deployment"); the gap was that the pattern was never stated or contrasted with a position fill. Landed: a named cross-cutting pattern *Acting authority via time-bound role assignment* (`patterns.md`), a worked example in `authorization.md` (substantive CO on leave → bounded deputy grant; membership untouched; silent lapse; dual-hat = concurrent grants; secondment = host-unit grant + home membership), an open-seam clarification in `membership.md` (acting is **not** a billet fill; both incumbents on one billet = the multi-incumbent seam + `acting` flag), a `**Clarified (F-007)**` amendment on D-TimeBoundGrants, and glossary terms (Acting authority / Dual-hatting / Secondment). No code/schema/migration. First-class leave/absence as a status stays the parked DS-35 seam.
 - **Severity:** Medium
 - **Lens:** product (BA)
 - **Location:** `docs/modules/membership.md` (one-holder-per-position unique index; `effective_from/to`); `docs/architecture/decisions.md` D-TimeBoundGrants (`expires_at` only); `migrations/20260601000006_membership.sql:86-93`.
@@ -149,7 +228,8 @@ The headline result is **not** "looks good." The product's two differentiating g
 - **Effort:** M
 - **Confidence:** Medium
 
-### F-009 — Production HS256 issuer path accepts an operator-supplied symmetric key with no guardrail
+### F-009 — Production HS256 issuer path accepts an operator-supplied symmetric key with no guardrail ✅
+- **Status:** ✅ FIXED 2026-06-11 (review option a — reuse the `environment` slot). `middleware.GuardSymmetricIssuers(issuers, environment)` (`internal/identityfederation/middleware/validator.go`) is a fail-closed boot guard: it returns nil only when `environment ∈ {local, dev}`, otherwise errors on the first `hs256` issuer (so empty/unknown env also rejects). Wired in `cmd/oikumenea/main.go` immediately before `authenticator.Bind`, with the existing `cleanup()` + `werror.Wrap` pattern — a staging/prod deploy carrying an `hs256` issuer now fails to boot rather than silently accepting a credential-equivalent key. Table-test `TestGuardSymmetricIssuers` covers prod/staging/empty/unknown → reject and local/dev/oidc → allow. Docs: identity-federation.md install-config prose + Invariants & safety entry; `IssuerHS256` and `config.Issuer.Type` comments tightened. No schema/migration. `go build ./...`, `go test ./internal/identityfederation/middleware/...`, `go vet` all clean.
 - **Severity:** Medium
 - **Lens:** architecture (security)
 - **Location:** `internal/identityfederation/middleware/validator.go:84-110` (`Validate` routes on the token's **unverified** `iss` to a per-issuer config; `IssuerHS256` verifies with an install-config `HMACKey`).
@@ -159,7 +239,9 @@ The headline result is **not** "looks good." The product's two differentiating g
 - **Effort:** S
 - **Confidence:** Medium
 
-### F-010 — Migration filename index is off-by-one from the schema revision it writes (a latent trap)
+### F-010 — Migration filename index is off-by-one from the schema revision it writes (a latent trap) ✅
+- **Status:** ✅ FIXED 2026-06-11. Resolved by renumbering the **revisions** to match the (0-indexed)
+  filename ordinals — see Remediation progress (Done). The evidence below records the pre-fix state.
 - **Severity:** Medium
 - **Lens:** consistency
 - **Location:** every `migrations/2026060100000N_*.sql` writes `schema_version.revision = '000(N+1)_*'` — e.g. `…000011_rls_backstop.sql:123` sets `0012_rls`; `…000012_person_contacts.sql:210` sets `0013_person_contacts`; `…000014_person_relationships.sql:313` sets `0015_person_relationships`.
@@ -173,7 +255,8 @@ The headline result is **not** "looks good." The product's two differentiating g
 
 ## Low
 
-### F-011 — Glossary/tenant overstate the closure's reflexive coverage
+### F-011 — Glossary/tenant overstate the closure's reflexive coverage ✅
+- **Status:** ✅ FIXED 2026-06-11 (doc-only reword; see Remediation progress → Done).
 - **Severity:** Low
 - **Lens:** consistency
 - **Location:** `docs/glossary.md` Closure ("`graph → ancestor → descendant`"); `docs/modules/tenant.md:94` ("`depth` … 0 = self-row for **each unit**, per graph"); vs `internal/tenant/adapters/tenantsql/tenant.sql.go:487-505` (`nodes` = units appearing in that graph's **edges** only).
@@ -183,7 +266,14 @@ The headline result is **not** "looks good." The product's two differentiating g
 - **Effort:** S
 - **Confidence:** High
 
-### F-012 — `pkg/events` "synchronous, same-transaction" subscriber contract is asserted but not visibly enforced for cross-module order auto-apply
+### F-012 — `pkg/events` "synchronous, same-transaction" subscriber contract is asserted but not visibly enforced for cross-module order auto-apply ✅
+- **Status:** ✅ VERIFIED 2026-06-11. The contract is correctly wired end-to-end (bus → order issue →
+  membership/person subscribers all share the issue `tx`; a handler error aborts `Publish`, which the
+  order wraps as `ErrEffectFailed` and rolls back). The pre-existing `TestIssueAllOrNothingRollback`
+  proves it (order stays draft, prior holder untouched), now **strengthened** with an explicit
+  assertion that the rolled-back person has zero memberships — matching this finding's checklist. No
+  restructuring needed; the bus dispatches *within* the txn, not post-commit. See Remediation progress
+  (Done) for the file/line trace.
 - **Severity:** Low
 - **Lens:** architecture (verify)
 - **Location:** `docs/architecture/decisions.md` D-OrderApply; `docs/modules/platform.md:156-158` (events bus "subscribers run synchronously within the originating transaction"); `pkg/events/events.go`.

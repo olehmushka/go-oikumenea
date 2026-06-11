@@ -172,7 +172,7 @@ ON CONFLICT (graph_id) DO UPDATE SET
 
 -- name: ListAncestors :many
 -- Ancestors of @unit_id in @graph_id (strict; excludes self), nearest first.
-SELECT u.id, u.code, u.name, c.depth
+SELECT u.id, u.code, u.name, u.visibility, c.depth
 FROM oikumenea.tenant_unit_closure c
 JOIN oikumenea.tenant_units u ON u.id = c.ancestor_id AND u.deleted_at IS NULL
 WHERE c.graph_id = @graph_id AND c.descendant_id = @unit_id AND c.depth > 0
@@ -180,7 +180,7 @@ ORDER BY c.depth, u.code;
 
 -- name: ListDescendants :many
 -- The subtree of @unit_id in @graph_id (strict; excludes self), keyset-paginated by descendant id.
-SELECT u.id, u.code, u.name, c.depth
+SELECT u.id, u.code, u.name, u.visibility, c.depth
 FROM oikumenea.tenant_unit_closure c
 JOIN oikumenea.tenant_units u ON u.id = c.descendant_id AND u.deleted_at IS NULL
 WHERE c.graph_id = @graph_id AND c.ancestor_id = @unit_id AND c.depth > 0

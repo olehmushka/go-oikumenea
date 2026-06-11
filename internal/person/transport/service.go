@@ -79,10 +79,10 @@ func (s Service) CreatePerson(ctx context.Context, token bearertoken.Token, req 
 		Name: nameFromParts(req.DisplayName, req.Title, req.Given, req.Given2, req.Surname,
 			req.SurnamePrefix, req.Surname2, req.Generation, req.Credentials, req.Preferred),
 		Birthdate:      derefOr(req.Birthdate, ""),
+		DateOfDeath:    derefOr(req.DateOfDeath, ""),
 		Sex:            domain.NormalizeSex(derefOr(req.Sex, "")),
 		CountryOfBirth: derefOr(req.CountryOfBirth, ""),
 		Attributes:     attrToBytes(req.Attributes),
-		RankID:         derefOr(req.RankId, ""),
 	})
 	if err != nil {
 		return personapi.Person{}, s.mapError(ctx, err, "")
@@ -131,6 +131,7 @@ func (s Service) UpdatePerson(ctx context.Context, token bearertoken.Token, pers
 		Credentials:    req.Credentials,
 		Preferred:      req.Preferred,
 		Birthdate:      req.Birthdate,
+		DateOfDeath:    req.DateOfDeath,
 		Sex:            normalizeSexPtr(req.Sex),
 		CountryOfBirth: req.CountryOfBirth,
 		Attributes:     attrToBytes(req.Attributes),
@@ -171,7 +172,11 @@ func (s Service) SetRank(ctx context.Context, token bearertoken.Token, personID 
 	if err := s.pep.RequireAnywhere(ctx, token, permRankAssign); err != nil {
 		return personapi.Person{}, err
 	}
-	updated, err := s.app.SetRank(ctx, personID, req.RankId)
+	// Setting derives the system from the rank; clearing (no rankId) needs the systemId to clear.
+	if req.RankId == nil && derefOr(req.SystemId, "") == "" {
+		return personapi.Person{}, personapi.NewPersonInvalid("systemId is required to clear a rank")
+	}
+	updated, err := s.app.SetPersonRank(ctx, personID, derefOr(req.SystemId, ""), req.RankId)
 	if err != nil {
 		return personapi.Person{}, s.mapError(ctx, err, personID)
 	}
@@ -906,10 +911,11 @@ func toAPIPerson(p domain.Person) personapi.Person {
 		Credentials:    strPtrOrNil(p.Credentials),
 		Preferred:      strPtrOrNil(p.Preferred),
 		Birthdate:      strPtrOrNil(p.Birthdate),
+		DateOfDeath:    strPtrOrNil(p.DateOfDeath),
 		Sex:            p.Sex,
 		CountryOfBirth: strPtrOrNil(p.CountryOfBirth),
 		Attributes:     attrFromBytes(p.Attributes),
-		RankId:         strPtrOrNil(p.RankID),
+		Ranks:          toAPIPersonRanks(p.Ranks),
 		Status:         string(p.Status),
 		DeactivatedAt:  dtPtr(p.DeactivatedAt),
 		PurgeAfter:     dtPtr(p.PurgeAfter),
@@ -924,6 +930,15 @@ func toAPIPerson(p domain.Person) personapi.Person {
 		MessengerLinks: toAPIMessengerLinks(p.MessengerLinks),
 		SocialAccounts: toAPISocialAccounts(p.SocialAccounts),
 	}
+}
+
+// toAPIPersonRanks maps the person's held ranks (one per rank system; D-Rank) to the API shape.
+func toAPIPersonRanks(rs []domain.PersonRank) []personapi.PersonRank {
+	out := make([]personapi.PersonRank, 0, len(rs))
+	for _, r := range rs {
+		out = append(out, personapi.PersonRank{SystemId: r.SystemID, RankId: r.RankID})
+	}
+	return out
 }
 
 func toAPIVariant(v domain.NameVariant) personapi.NameVariant {

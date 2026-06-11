@@ -196,7 +196,13 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 
 	// Bind the inbound-token validation middleware: the configured issuers' validator, the
 	// (issuer, subject) resolver, the person directory (JIT claim -> person.code), and the JIT flag.
-	authenticator.Bind(middleware.NewValidator(validatorConfig(install)), identitySvc, personSvc, install.IDP.JIT.Enabled, authzSvc, pool)
+	// Refuse symmetric (HS256) issuers outside local/dev before binding — fail closed (F-009).
+	vcfg := validatorConfig(install)
+	if err := middleware.GuardSymmetricIssuers(vcfg.Issuers, install.Environment); err != nil {
+		cleanup()
+		return nil, werror.Wrap(err, "reject symmetric issuer outside local/dev")
+	}
+	authenticator.Bind(middleware.NewValidator(vcfg), identitySvc, personSvc, install.IDP.JIT.Enabled, authzSvc, pool)
 
 	// First-admin bootstrap (D-Bootstrap): idempotent — skips once any instance admin exists.
 	if install.BootstrapAdmin != nil {

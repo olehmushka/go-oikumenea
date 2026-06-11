@@ -111,12 +111,11 @@ type CreatePersonRequest struct {
 	Credentials   *string `json:"credentials,omitempty"`
 	Preferred     *string `json:"preferred,omitempty"`
 	Birthdate     *string `json:"birthdate,omitempty"`
+	DateOfDeath   *string `json:"dateOfDeath,omitempty"`
 	// ISO/IEC 5218 value; defaults to not_known when omitted.
 	Sex            *string      `json:"sex,omitempty"`
 	CountryOfBirth *string      `json:"countryOfBirth,omitempty"`
 	Attributes     *interface{} `json:"attributes,omitempty"`
-	// Optional initial rank (validated against the rank scheme).
-	RankId *string `json:"rankId,omitempty"`
 }
 
 func (o CreatePersonRequest) MarshalYAML() (interface{}, error) {
@@ -459,14 +458,16 @@ type Person struct {
 	Preferred *string `json:"preferred,omitempty"`
 	// ISO-8601 calendar date of birth (YYYY-MM-DD); a day, not an instant.
 	Birthdate *string `json:"birthdate,omitempty"`
+	// ISO-8601 calendar date of death (YYYY-MM-DD); a bio attribute, not a lifecycle state — a deceased person stays an active record (D-PersonBio).
+	DateOfDeath *string `json:"dateOfDeath,omitempty"`
 	// Biological sex, ISO/IEC 5218 as text — one of not_known | male | female | not_applicable.
 	Sex string `json:"sex"`
 	// ISO-3166-1 alpha-2 country code, validated against the geo registry (D-Geo).
 	CountryOfBirth *string `json:"countryOfBirth,omitempty"`
 	// Free-form long-tail directory fields (JSONB). pii:special ceiling — no special-category data without the envelope seam.
 	Attributes *interface{} `json:"attributes,omitempty"`
-	// The URN RID of the one rank the person holds (a DIRECTORY attribute; never an authz input). Null when unranked.
-	RankId *string `json:"rankId,omitempty"`
+	// The ranks the person holds — at most one per rank system (a DIRECTORY attribute; never an authz input — D-Rank). Empty when unranked. Populated by getPerson; empty in list responses.
+	Ranks []PersonRank `json:"ranks"`
 	// Lifecycle status — one of active | deactivated | purged.
 	Status        string             `json:"status"`
 	DeactivatedAt *datetime.DateTime `json:"deactivatedAt,omitempty"`
@@ -493,6 +494,9 @@ type Person struct {
 }
 
 func (o Person) MarshalJSON() ([]byte, error) {
+	if o.Ranks == nil {
+		o.Ranks = make([]PersonRank, 0)
+	}
 	if o.NameVariants == nil {
 		o.NameVariants = make([]NameVariant, 0)
 	}
@@ -526,6 +530,9 @@ func (o *Person) UnmarshalJSON(data []byte) error {
 	var rawPerson _tmpPerson
 	if err := safejson.Unmarshal(data, &rawPerson); err != nil {
 		return err
+	}
+	if rawPerson.Ranks == nil {
+		rawPerson.Ranks = make([]PersonRank, 0)
 	}
 	if rawPerson.NameVariants == nil {
 		rawPerson.NameVariants = make([]NameVariant, 0)
@@ -607,6 +614,30 @@ func (o PersonPage) MarshalYAML() (interface{}, error) {
 }
 
 func (o *PersonPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// One rank a person holds, scoped to a rank system (the HOLDS_RANK link; one per system — D-Rank). A directory attribute, never an authz input.
+type PersonRank struct {
+	// The URN RID of the rank system (derived from the rank); clients resolve the label via RankService.
+	SystemId string `json:"systemId"`
+	// The URN RID of the rank held in that system.
+	RankId string `json:"rankId"`
+}
+
+func (o PersonRank) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *PersonRank) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -822,10 +853,16 @@ func (o *Residence) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
-// Set or clear the person's one rank. An absent rankId clears it (D-Rank).
+/*
+Set or clear the person's rank in ONE rank system (one rank per system — D-Rank). The rank's
+system is derived from the rank itself, so on set only rankId is needed; on clear, systemId
+names the system to clear.
+*/
 type SetRankRequest struct {
-	// The URN RID of the rank to assign; omit to clear the person's rank.
+	// The URN RID of the rank to assign (its rank system is derived); omit to clear the person's rank in `systemId`.
 	RankId *string `json:"rankId,omitempty"`
+	// Required only when clearing (rankId omitted) — the URN RID of the rank system to clear. Ignored when rankId is present.
+	SystemId *string `json:"systemId,omitempty"`
 }
 
 func (o SetRankRequest) MarshalYAML() (interface{}, error) {
@@ -948,9 +985,9 @@ func (o *Sponsorship) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 /*
-Update a person's names (canonical + CLDR parts), birthdate, sex, country_of_birth, and
-attributes. Omitted fields are unchanged; an empty string clears an optional name part.
-`code` is immutable by convention and rank is set via setRank.
+Update a person's names (canonical + CLDR parts), birthdate, date_of_death, sex,
+country_of_birth, and attributes. Omitted fields are unchanged; an empty string clears an
+optional name part. `code` is immutable by convention and ranks are set via setRank (per system).
 */
 type UpdatePersonRequest struct {
 	DisplayName    *string      `json:"displayName,omitempty"`
@@ -964,6 +1001,7 @@ type UpdatePersonRequest struct {
 	Credentials    *string      `json:"credentials,omitempty"`
 	Preferred      *string      `json:"preferred,omitempty"`
 	Birthdate      *string      `json:"birthdate,omitempty"`
+	DateOfDeath    *string      `json:"dateOfDeath,omitempty"`
 	Sex            *string      `json:"sex,omitempty"`
 	CountryOfBirth *string      `json:"countryOfBirth,omitempty"`
 	Attributes     *interface{} `json:"attributes,omitempty"`

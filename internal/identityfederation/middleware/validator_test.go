@@ -109,3 +109,34 @@ func TestValidatorRejects(t *testing.T) {
 		}
 	})
 }
+
+func TestGuardSymmetricIssuers(t *testing.T) {
+	hs256 := []IssuerConfig{{Issuer: testIssuer, Type: IssuerHS256, HMACKey: testKey}}
+	oidc := []IssuerConfig{{Issuer: testIssuer, Type: IssuerOIDC}}
+
+	cases := []struct {
+		name    string
+		issuers []IssuerConfig
+		env     string
+		wantErr bool
+	}{
+		{"hs256 in prod rejected", hs256, "prod", true},
+		{"hs256 in staging rejected", hs256, "staging", true},
+		{"hs256 in empty env rejected", hs256, "", true},
+		{"hs256 in unknown env rejected", hs256, "production", true},
+		{"hs256 in local allowed", hs256, "local", false},
+		{"hs256 in dev allowed", hs256, "dev", false},
+		{"oidc in prod allowed", oidc, "prod", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := GuardSymmetricIssuers(tc.issuers, tc.env)
+			if tc.wantErr && err == nil {
+				t.Fatalf("expected error for env %q with %s", tc.env, tc.name)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("unexpected error for env %q: %v", tc.env, err)
+			}
+		})
+	}
+}

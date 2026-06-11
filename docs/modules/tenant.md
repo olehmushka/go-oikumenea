@@ -91,9 +91,10 @@ per [conventions.md](../architecture/conventions.md).
 - `graph_id TEXT NOT NULL REFERENCES tenant_graphs(id)`
 - `ancestor_id TEXT NOT NULL`
 - `descendant_id TEXT NOT NULL`
-- `depth INT NOT NULL` (0 = self-row for each unit, per graph)
+- `depth INT NOT NULL` (0 = self-row for each unit **participating in the graph's edges**, per graph)
 - `PRIMARY KEY (graph_id, ancestor_id, descendant_id)`; indexed both directions
-- Includes the reflexive `(g, u, u, 0)` row so "is U in the subtree of T in graph g" is one
+- Includes a reflexive `(g, u, u, 0)` row for **every unit that participates in graph g's edges**
+  (an edge-less unit has no closure row in `g`) so "is U in the subtree of T in graph g" is one
   lookup. An edge change in graph K recomputes only K's rows in the same transaction.
 
 **`tenant_closure_status`** (derived **diagnostic overlay**, one row per graph; not append-only,
@@ -119,7 +120,7 @@ not audited — D-ClosureDriftHealth)
 | Op | Intent | Perm |
 |---|---|---|
 | `POST /units` | Create a unit | `unit.create` (instance or parent-subtree) |
-| `GET /units/{id}` | Read one unit | `unit.read` + shadow gate |
+| `GET /units/{id}` | Read one unit | `unit.read` at the unit (per-unit decision; reach required even for a `public` unit) |
 | `PUT /units/{id}` | Update name/kind/level/metadata/visibility | `unit.update` |
 | `GET /units` | List/search units (token-paginated; filterable by `level`) | `unit.read` + shadow gate |
 | `POST /units/{id}/edges` | Add a parent in a graph (body: `parentId`, `graph`) | `unit.edges.<graph>.manage` OR `unit.edges.manage` (D-EdgePerms) |

@@ -302,7 +302,7 @@ func (q *Queries) InsertUnit(ctx context.Context, arg InsertUnitParams) (Oikumen
 }
 
 const listAncestors = `-- name: ListAncestors :many
-SELECT u.id, u.code, u.name, c.depth
+SELECT u.id, u.code, u.name, u.visibility, c.depth
 FROM oikumenea.tenant_unit_closure c
 JOIN oikumenea.tenant_units u ON u.id = c.ancestor_id AND u.deleted_at IS NULL
 WHERE c.graph_id = $1 AND c.descendant_id = $2 AND c.depth > 0
@@ -315,10 +315,11 @@ type ListAncestorsParams struct {
 }
 
 type ListAncestorsRow struct {
-	ID    string
-	Code  string
-	Name  string
-	Depth int32
+	ID         string
+	Code       string
+	Name       string
+	Visibility string
+	Depth      int32
 }
 
 // Ancestors of @unit_id in @graph_id (strict; excludes self), nearest first.
@@ -335,6 +336,7 @@ func (q *Queries) ListAncestors(ctx context.Context, arg ListAncestorsParams) ([
 			&i.ID,
 			&i.Code,
 			&i.Name,
+			&i.Visibility,
 			&i.Depth,
 		); err != nil {
 			return nil, err
@@ -348,7 +350,7 @@ func (q *Queries) ListAncestors(ctx context.Context, arg ListAncestorsParams) ([
 }
 
 const listDescendants = `-- name: ListDescendants :many
-SELECT u.id, u.code, u.name, c.depth
+SELECT u.id, u.code, u.name, u.visibility, c.depth
 FROM oikumenea.tenant_unit_closure c
 JOIN oikumenea.tenant_units u ON u.id = c.descendant_id AND u.deleted_at IS NULL
 WHERE c.graph_id = $1 AND c.ancestor_id = $2 AND c.depth > 0
@@ -365,10 +367,11 @@ type ListDescendantsParams struct {
 }
 
 type ListDescendantsRow struct {
-	ID    string
-	Code  string
-	Name  string
-	Depth int32
+	ID         string
+	Code       string
+	Name       string
+	Visibility string
+	Depth      int32
 }
 
 // The subtree of @unit_id in @graph_id (strict; excludes self), keyset-paginated by descendant id.
@@ -390,6 +393,7 @@ func (q *Queries) ListDescendants(ctx context.Context, arg ListDescendantsParams
 			&i.ID,
 			&i.Code,
 			&i.Name,
+			&i.Visibility,
 			&i.Depth,
 		); err != nil {
 			return nil, err

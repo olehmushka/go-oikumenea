@@ -67,16 +67,33 @@ func code(t *testing.T, prefix string) string {
 	return prefix + "-" + uuid.NewString()[:8]
 }
 
-// seedRank inserts a category -> type -> rank chain directly and returns the rank RID.
+// seedRank inserts a fresh system -> category -> type -> rank chain and returns the rank RID.
 func seedRank(t *testing.T, pool *pgxpool.Pool) string {
 	t.Helper()
+	_, rankID := seedRankSystem(t, pool)
+	return rankID
+}
+
+// seedRankSystem inserts a fresh rank system with one category -> type -> rank chain and returns
+// (systemID, rankID) — used by the one-rank-per-system tests (D-Rank).
+func seedRankSystem(t *testing.T, pool *pgxpool.Pool) (string, string) {
+	t.Helper()
 	ctx := context.Background()
-	var sysID, catID, typeID, rankID string
+	var sysID string
 	if err := pool.QueryRow(ctx,
 		`INSERT INTO oikumenea.rank_systems (code, name, sort_order) VALUES ($1, 'Sys', 0) RETURNING id`,
 		code(t, "sys")).Scan(&sysID); err != nil {
 		t.Fatalf("seed system: %v", err)
 	}
+	return sysID, seedRankInSystem(t, pool, sysID)
+}
+
+// seedRankInSystem adds another category -> type -> rank chain under an existing rank system and
+// returns the new rank RID — used to test the same-system replace / concurrent-system cases.
+func seedRankInSystem(t *testing.T, pool *pgxpool.Pool, sysID string) string {
+	t.Helper()
+	ctx := context.Background()
+	var catID, typeID, rankID string
 	if err := pool.QueryRow(ctx,
 		`INSERT INTO oikumenea.rank_categories (system_id, code, name, sort_order) VALUES ($1, $2, 'Cat', 0) RETURNING id`,
 		sysID, code(t, "cat")).Scan(&catID); err != nil {
@@ -110,9 +127,10 @@ func TestCreateAndReadAccountless(t *testing.T) {
 	svc, _ := newService(t, 720)
 
 	created, err := svc.CreatePerson(ctx, domain.Person{
-		Name:      domain.Name{DisplayName: "Тарас Григорович Шевченко", Given: "Тарас", Given2: "Григорович", Surname: "Шевченко"},
-		Birthdate: "1990-05-02",
-		Sex:       "male",
+		Name:        domain.Name{DisplayName: "Тарас Григорович Шевченко", Given: "Тарас", Given2: "Григорович", Surname: "Шевченко"},
+		Birthdate:   "1990-05-02",
+		DateOfDeath: "2024-01-15",
+		Sex:         "male",
 	})
 	if err != nil {
 		t.Fatalf("create: %v", err)
@@ -127,8 +145,8 @@ func TestCreateAndReadAccountless(t *testing.T) {
 	if got.Given2 != "Григорович" {
 		t.Fatalf("given2 = %q, want the по-батькові", got.Given2)
 	}
-	if got.Sex != "male" || got.Birthdate != "1990-05-02" {
-		t.Fatalf("bio not round-tripped: sex=%q birthdate=%q", got.Sex, got.Birthdate)
+	if got.Sex != "male" || got.Birthdate != "1990-05-02" || got.DateOfDeath != "2024-01-15" {
+		t.Fatalf("bio not round-tripped: sex=%q birthdate=%q date_of_death=%q", got.Sex, got.Birthdate, got.DateOfDeath)
 	}
 }
 
@@ -147,30 +165,65 @@ func TestCodeUniqueAmongActive(t *testing.T) {
 	}
 }
 
-// TestRankAssignment sets and clears a rank, and rejects an unknown rank.
+// rankInSystem returns the rank a person holds in systemID, or "" if none (test helper).
+func rankInSystem(ranks []domain.PersonRank, systemID string) string {
+	for _, r := range ranks {
+		if r.SystemID == systemID {
+			return r.RankID
+		}
+	}
+	return ""
+}
+
+// TestRankAssignment exercises one rank per rank system (D-Rank): set in one system, a concurrent
+// rank in a second system, a same-system replace, a per-system clear, and an unknown rank.
 func TestRankAssignment(t *testing.T) {
 	ctx := context.Background()
 	svc, pool := newService(t, 720)
 	p := newPerson(t, svc, "Ranked Person")
-	rankID := seedRank(t, pool)
+	sys1, rank1 := seedRankSystem(t, pool)
+	sys2, rank2 := seedRankSystem(t, pool)
 
-	if _, err := svc.SetRank(ctx, p.ID, &rankID); err != nil {
-		t.Fatalf("set rank: %v", err)
+	// Set a rank in system 1 (the system is derived from the rank).
+	if _, err := svc.SetPersonRank(ctx, p.ID, "", &rank1); err != nil {
+		t.Fatalf("set rank1: %v", err)
 	}
 	got, _ := svc.GetPerson(ctx, p.ID)
-	if got.RankID != rankID {
-		t.Fatalf("rankID = %q, want %q", got.RankID, rankID)
+	if len(got.Ranks) != 1 || rankInSystem(got.Ranks, sys1) != rank1 {
+		t.Fatalf("after set rank1: ranks = %+v, want one {%s:%s}", got.Ranks, sys1, rank1)
 	}
-	// clear
-	if _, err := svc.SetRank(ctx, p.ID, nil); err != nil {
-		t.Fatalf("clear rank: %v", err)
+
+	// A concurrent rank in system 2 — both persist (the multi-track case).
+	if _, err := svc.SetPersonRank(ctx, p.ID, "", &rank2); err != nil {
+		t.Fatalf("set rank2: %v", err)
 	}
-	if got, _ := svc.GetPerson(ctx, p.ID); got.RankID != "" {
-		t.Fatalf("rankID = %q, want empty after clear", got.RankID)
+	got, _ = svc.GetPerson(ctx, p.ID)
+	if len(got.Ranks) != 2 || rankInSystem(got.Ranks, sys1) != rank1 || rankInSystem(got.Ranks, sys2) != rank2 {
+		t.Fatalf("after set rank2: ranks = %+v, want two systems", got.Ranks)
 	}
-	// unknown rank
+
+	// A second rank in system 1 REPLACES (one rank per system) — still two ranks total.
+	rank1b := seedRankInSystem(t, pool, sys1)
+	if _, err := svc.SetPersonRank(ctx, p.ID, "", &rank1b); err != nil {
+		t.Fatalf("replace rank1: %v", err)
+	}
+	got, _ = svc.GetPerson(ctx, p.ID)
+	if len(got.Ranks) != 2 || rankInSystem(got.Ranks, sys1) != rank1b {
+		t.Fatalf("after replace: ranks = %+v, want sys1 -> %s", got.Ranks, rank1b)
+	}
+
+	// Clear system 1 — system 2's rank remains.
+	if _, err := svc.SetPersonRank(ctx, p.ID, sys1, nil); err != nil {
+		t.Fatalf("clear sys1: %v", err)
+	}
+	got, _ = svc.GetPerson(ctx, p.ID)
+	if len(got.Ranks) != 1 || rankInSystem(got.Ranks, sys2) != rank2 {
+		t.Fatalf("after clear sys1: ranks = %+v, want only sys2", got.Ranks)
+	}
+
+	// Unknown rank → ErrUnknownRank.
 	bogus := "urn:oikumenea:rank:local:rank:" + uuid.NewString()
-	if _, err := svc.SetRank(ctx, p.ID, &bogus); !errors.Is(err, domain.ErrUnknownRank) {
+	if _, err := svc.SetPersonRank(ctx, p.ID, "", &bogus); !errors.Is(err, domain.ErrUnknownRank) {
 		t.Fatalf("unknown rank: want ErrUnknownRank, got %v", err)
 	}
 }
@@ -315,9 +368,11 @@ func TestPurgeGate(t *testing.T) {
 	// Zero grace: purge is allowed and erases PII.
 	svcNow, poolNow := newService(t, 0)
 	created, err := svcNow.CreatePerson(ctx, domain.Person{
-		Code: code(t, "purge"),
-		Name: domain.Name{DisplayName: "Erase Me", Given: "Erase", Surname: "Me"},
-		Sex:  "female",
+		Code:        code(t, "purge"),
+		Name:        domain.Name{DisplayName: "Erase Me", Given: "Erase", Surname: "Me"},
+		Sex:         "female",
+		Birthdate:   "1980-03-04",
+		DateOfDeath: "2024-02-02",
 	})
 	if err != nil {
 		t.Fatalf("create: %v", err)
@@ -334,6 +389,9 @@ func TestPurgeGate(t *testing.T) {
 	}
 	if purged.Status != domain.StatusPurged || purged.DisplayName != "" || purged.Given != "" || purged.Code != "" {
 		t.Fatalf("purge did not erase PII: %+v", purged)
+	}
+	if purged.Birthdate != "" || purged.DateOfDeath != "" {
+		t.Fatalf("purge did not NULL bio dates: birthdate=%q date_of_death=%q", purged.Birthdate, purged.DateOfDeath)
 	}
 	// the id tombstone remains queryable, citizenship rows are gone.
 	got, err := svcNow.GetPerson(ctx, created.ID)

@@ -1,4 +1,4 @@
--- 0005 rank (M4 + M15).
+-- 0004 rank (M4 + M15).
 --
 -- The single, system-wide rank scheme (L-OneRankScheme / D-Rank / D-RankSystems / docs/modules/rank.md):
 -- a rank SYSTEM at the top (a national/organizational ladder — one scheme may hold several at once for a
@@ -183,8 +183,8 @@ COMMENT ON COLUMN oikumenea.rank_types.name IS 'pii:none';
 COMMENT ON COLUMN oikumenea.rank_types.sort_order IS 'pii:none';
 
 -- rank_ranks: a specific grade within a type (e.g. private/corporal/sergeant), ordered for exact
--- seniority. ON DELETE RESTRICT: a type with active ranks cannot be removed; person_persons.rank_id
--- will likewise RESTRICT (M5) so a held rank cannot be deleted.
+-- seniority. ON DELETE RESTRICT: a type with active ranks cannot be removed; person_ranks.rank_id
+-- (the HOLDS_RANK link, one per rank system — D-Rank) likewise RESTRICTs so a held rank cannot be deleted.
 CREATE TABLE oikumenea.rank_ranks (
   id           text PRIMARY KEY DEFAULT oikumenea.new_rid('rank','rank'),
   system_id    text NOT NULL,              -- denormalized root system (equals the type's system_id)
@@ -220,4 +220,4 @@ COMMENT ON COLUMN oikumenea.rank_ranks.grade_code IS 'pii:none';
 COMMENT ON COLUMN oikumenea.rank_ranks.sort_order IS 'pii:none';
 
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
-UPDATE oikumenea.schema_version SET revision = '0005_rank', applied_at = now() WHERE singleton;
+UPDATE oikumenea.schema_version SET revision = '0004_rank', applied_at = now() WHERE singleton;

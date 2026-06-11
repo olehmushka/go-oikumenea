@@ -1,4 +1,4 @@
--- 0003 localization (M2).
+-- 0002 localization (M2).
 --
 -- The i18n module (D-i18n / docs/modules/localization.md): the instance-admin-managed supported-
 -- locale registry + the polymorphic translation store. Translatable `name`/title/description of
@@ -107,4 +107,4 @@ INSERT INTO oikumenea.i18n_locales (code, name, enabled, is_default, sort_order)
   ('eng', 'English',    true, false, 10);
 
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
-UPDATE oikumenea.schema_version SET revision = '0003_localization', applied_at = now() WHERE singleton;
+UPDATE oikumenea.schema_version SET revision = '0002_localization', applied_at = now() WHERE singleton;

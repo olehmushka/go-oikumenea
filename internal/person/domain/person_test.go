@@ -26,6 +26,9 @@ func TestPersonValidate(t *testing.T) {
 		{"good birthdate", func(p *Person) { p.Birthdate = "1990-05-02" }, false},
 		{"bad birthdate", func(p *Person) { p.Birthdate = "1990-13-40" }, true},
 		{"non-date birthdate", func(p *Person) { p.Birthdate = "yesterday" }, true},
+		{"good date_of_death", func(p *Person) { p.DateOfDeath = "2024-01-15" }, false},
+		{"bad date_of_death", func(p *Person) { p.DateOfDeath = "2024-13-40" }, true},
+		{"non-date date_of_death", func(p *Person) { p.DateOfDeath = "tomorrow" }, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -69,6 +72,12 @@ func TestPersonPatchValidate(t *testing.T) {
 	}
 	if err := (PersonPatch{Birthdate: &bad}).Validate(); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("bad birthdate should be invalid, got %v", err)
+	}
+	if err := (PersonPatch{DateOfDeath: &bad}).Validate(); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("bad date_of_death should be invalid, got %v", err)
+	}
+	if err := (PersonPatch{DateOfDeath: &good}).Validate(); err != nil {
+		t.Fatalf("good date_of_death patch should validate, got %v", err)
 	}
 	if err := (PersonPatch{Sex: &sexBad}).Validate(); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("bad sex should be invalid, got %v", err)

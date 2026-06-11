@@ -1,4 +1,4 @@
--- 0009 identity-federation (M8) — the external-IdP seam: optional login accounts + the verified
+-- 0008 identity-federation (M8) — the external-IdP seam: optional login accounts + the verified
 -- external identities they federate (docs/modules/identity-federation.md).
 --
 -- go-oikumenea does NOT authenticate (L-AuthzOnly): it stores no credentials and issues no tokens.
@@ -98,4 +98,4 @@ COMMENT ON COLUMN oikumenea.account_external_identities.subject IS 'pii:basic';
 COMMENT ON COLUMN oikumenea.account_external_identities.created_at IS 'pii:none';
 
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
-UPDATE oikumenea.schema_version SET revision = '0009_identity_federation', applied_at = now() WHERE singleton;
+UPDATE oikumenea.schema_version SET revision = '0008_identity_federation', applied_at = now() WHERE singleton;

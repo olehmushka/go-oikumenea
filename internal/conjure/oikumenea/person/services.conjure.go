@@ -24,11 +24,11 @@ type PersonServiceClient interface {
 	CreatePerson(ctx context.Context, authHeader bearertoken.Token, requestArg CreatePersonRequest) (Person, error)
 	// Read one person with its name variants, citizenships, and residences.
 	GetPerson(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (Person, error)
-	// Update names, birthdate, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.
+	// Update names, birthdate, date_of_death, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.
 	UpdatePerson(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpdatePersonRequest) (Person, error)
 	// Search/list the directory, token-paginated. (The read-scope union is applied once authz lands, M7.)
 	ListPersons(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string) (PersonPage, error)
-	// Set or clear the person's one rank (a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.
+	// Set or clear the person's rank in one rank system (one rank per system, a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.
 	SetRank(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg SetRankRequest) (Person, error)
 	// Begin reversible deactivation (opens the grace window before purge).
 	DeactivatePerson(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg DeactivateRequest) (Person, error)
@@ -972,11 +972,11 @@ type PersonServiceClientWithAuth interface {
 	CreatePerson(ctx context.Context, requestArg CreatePersonRequest) (Person, error)
 	// Read one person with its name variants, citizenships, and residences.
 	GetPerson(ctx context.Context, personIdArg string) (Person, error)
-	// Update names, birthdate, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.
+	// Update names, birthdate, date_of_death, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.
 	UpdatePerson(ctx context.Context, personIdArg string, requestArg UpdatePersonRequest) (Person, error)
 	// Search/list the directory, token-paginated. (The read-scope union is applied once authz lands, M7.)
 	ListPersons(ctx context.Context, pageSizeArg *int, pageTokenArg *string) (PersonPage, error)
-	// Set or clear the person's one rank (a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.
+	// Set or clear the person's rank in one rank system (one rank per system, a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.
 	SetRank(ctx context.Context, personIdArg string, requestArg SetRankRequest) (Person, error)
 	// Begin reversible deactivation (opens the grace window before purge).
 	DeactivatePerson(ctx context.Context, personIdArg string, requestArg DeactivateRequest) (Person, error)

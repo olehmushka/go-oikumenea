@@ -10,16 +10,19 @@ Owns the **personnel directory** — the core aggregate of the whole service. A 
 individual record, **instance-global** (one record per individual for the deployment, never
 per-unit; D-PersonGlobal). A person exists **independently** of any login account
 (L-AccountOptional) and of any unit membership: a roster of people who never sign in and
-belong to no unit yet is first-class. A person carries exactly **one rank** from the
-system-wide scheme — a **directory attribute, not a permission** (D-Rank).
+belong to no unit yet is first-class. A person carries at most **one rank per rank system** from the
+system-wide scheme (D-Rank, extended by D-RankSystems) — a **directory attribute, not a permission**;
+a single-system deployment still holds at most one rank, a multi-track one (university/church) may
+carry concurrent standings.
 
 ## Entities & aggregates
 
 **Ontology kinds** (D-Ontology; [registry](../ontology-mapping.md)) — **Objects:** `Person` (the core
-aggregate; holds one rank via the `HOLDS_RANK` link — a directory attribute, **never** an authz
-input), the per-person `Name variant`, the contact channels `Email`/`Phone`/`Call sign`, the standalone
+aggregate; holds one rank **per rank system** via the reified `HOLDS_RANK` link — a directory
+attribute, **never** an authz input), the per-person `Name variant`, the contact channels `Email`/`Phone`/`Call sign`, the standalone
 `Social account` (D-PersonSocialChannels), and the instance-admin `Email type`/`Phone type`/`Platform`/
-`Relation type` catalogs. **Links:** the temporal `Citizenship` and `Residence` (person → country),
+`Relation type` catalogs. **Links:** the reified `HOLDS_RANK` (person → rank, one per rank system;
+D-Rank), the temporal `Citizenship` and `Residence` (person → country),
 `HOLDS_EMAIL`/`HOLDS_PHONE`/`HOLDS_CALL_SIGN` (person → channel), `REACHABLE_ON` (phone/email →
 platform) and `HOLDS_ACCOUNT` (person → social account, carrying `source`/`confidence`; both
 D-PersonSocialChannels), and the **person↔person** ties `PARTNERED_WITH`/`KIN_PARENT_OF`/`GUARDIAN_OF`/
@@ -31,8 +34,10 @@ and partnership/kinship/guardianship/sponsorship/next-of-kin/association upserts
 `action__<type>` RID.
 
 - **Person** (aggregate root) — names (canonical + CLDR structured parts), bio attributes
-  (`birthdate`, `sex`, `country_of_birth`), structured/free attributes, status, optional `rank_id`,
-  lifecycle timestamps.
+  (`birthdate`, `date_of_death`, `sex`, `country_of_birth`), structured/free attributes, status,
+  lifecycle timestamps. Ranks are held via the `person_ranks` link (one per rank system), not a column.
+- **Person rank** (`HOLDS_RANK` link) — the rank a person holds in one rank system; at most one active
+  per `(person, system)`. `system_id` is derived from the rank. A directory attribute (D-Rank).
 - **Citizenship** — a person's nationality in a country, effective-dated; a person may hold several
   (D-Geo).
 - **Residence** — a person's effective-dated residence in a country/region (D-Geo).
@@ -57,7 +62,7 @@ and partnership/kinship/guardianship/sponsorship/next-of-kin/association upserts
 (Accounts live in [identity-federation](identity-federation.md) — at most one per person, and
 that account carries the person's login points across IdPs (e.g. Google + Keycloak);
 memberships in [membership](membership.md); rank definitions in [rank](rank.md). Person only
-*points* at a rank.)
+*points* at ranks, one per rank system.)
 
 ## Data model
 
@@ -89,6 +94,10 @@ Conventions per [conventions.md](../architecture/conventions.md).
   - `preferred TEXT` — known-as / nickname
 - `birthdate DATE` — calendar date of birth (a `DATE`, not a `TIMESTAMPTZ` — it is a day, not an
   instant); nullable. Partial/approximate (year-only) dates are an open seam — `pii:basic`
+- `date_of_death DATE` — calendar date of death (a `DATE`, not a `TIMESTAMPTZ`); nullable. A **bio
+  attribute, not a lifecycle state** — it does **not** transition `status` to
+  `deactivated`/`purged` (a deceased person stays an active directory record; D-PersonBio M12
+  amendment). Partial/approximate dates share `birthdate`'s open seam — `pii:basic`
 - `sex TEXT NOT NULL DEFAULT 'not_known' CHECK (sex IN ('not_known','male','female',
   'not_applicable'))` — **biological sex, ISO/IEC 5218** (stored as readable `TEXT` per the
   `TEXT`+`CHECK` convention, not the numeric `0/1/2/9`); **not** GDPR Art. 9 — gender *identity*
@@ -99,14 +108,24 @@ Conventions per [conventions.md](../architecture/conventions.md).
   contact, etc.); column-ize a key once it is shared/queried (escape-hatch discipline) —
   `pii:special` **(ceiling)**: a grab-bag may hold up to special-category data, so it is tagged at
   the ceiling (D-PIITiers); special-category fields must not land here without the envelope seam
-- `rank_id TEXT REFERENCES rank_ranks(id) ON DELETE RESTRICT` — one rank, nullable (a person
-  may be unranked); restrict so a rank in use cannot be deleted out from under a person
+- *(no `rank_id` column — rank is held via `person_ranks`, one per rank system; D-Rank)*
 - `status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','deactivated','purged'))`
 - `deactivated_at TIMESTAMPTZ`, `purge_after TIMESTAMPTZ` — reversibility window
 - `created_at`, `updated_at`, `deleted_at`
 
-Indexes: `rank_id`; a trigram/`citext` index on `display_name` for directory search (added when
+Indexes: a trigram/`citext` index on `display_name` for directory search (added when
 search is built); partial unique on any natural key the operator configures (none mandated).
+
+**`person_ranks`** (the reified `HOLDS_RANK` link — one rank per rank system; D-Rank / D-RankSystems)
+- `id` PK (RID entity-type token `link__holds_rank`)
+- `person_id TEXT NOT NULL REFERENCES person_persons(id) ON DELETE CASCADE`
+- `system_id TEXT NOT NULL REFERENCES rank_systems(id) ON DELETE RESTRICT` — the rank system,
+  **derived from the rank** (`rank → type → category → system`) and denormalized for uniqueness
+- `rank_id TEXT NOT NULL REFERENCES rank_ranks(id) ON DELETE RESTRICT` — restrict so a rank in use
+  cannot be deleted out from under a person
+- `created_at`, `updated_at`, `deleted_at`
+- `UNIQUE (person_id, system_id)` among active — **at most one rank per (person, system)**; all
+  columns `pii:none`
 
 **`person_name_variants`** (transliteration / alternate name forms)
 - `id` PK
@@ -123,9 +142,9 @@ search is built); partial unique on any natural key the operator configures (non
 - `created_at`, `updated_at`
 - `UNIQUE (person_id, locale)`
 
-All other columns across both tables (`id`, `rank_id`, `status`, `locale`, `is_primary`,
-lifecycle timestamps) are `pii:none` (D-PIITiers); the name parts, `birthdate`, `sex`, and
-`country_of_birth` are `pii:basic` as tiered above.
+All other columns across both tables (`id`, `status`, `locale`, `is_primary`,
+lifecycle timestamps) are `pii:none` (D-PIITiers); the name parts, `birthdate`, `date_of_death`,
+`sex`, and `country_of_birth` are `pii:basic` as tiered above.
 
 **`person_citizenships`** (effective-dated; a person may hold several — D-Geo)
 - `id` PK
@@ -330,12 +349,14 @@ DATA-GOVERNANCE:
 - Erasure is the **purge** path (below): mutable PII columns are NULLed, the `id` is kept as a
   tombstone so audit history (which references the id) stays intact. The purge erasure list covers
   **every** `pii:basic`/`pii:contact`/`pii:special` column on all person tables — including the CLDR
-  name parts, `birthdate`, `sex`, `country_of_birth` (D-PersonNamesCLDR / D-PersonBio), the rows
+  name parts, `birthdate`, `date_of_death`, `sex`, `country_of_birth` (D-PersonNamesCLDR /
+  D-PersonBio), the rows
   of `person_citizenships` and `person_residences` (D-Geo), the rows of `person_emails`,
   `person_phones`, and `person_call_signs` (D-PersonContactChannels), the rows of
   `person_messenger_links`, `person_social_accounts` (+ `person_social_account_handles`)
   (D-PersonSocialChannels), the person↔person relationship rows on **either** endpoint
-  (D-PersonRelationships), plus the JSONB `attributes`.
+  (D-PersonRelationships), plus the JSONB `attributes`. The `person_ranks` rows (`pii:none`, the
+  HOLDS_RANK link) are also removed on purge as part of the child-row cleanup.
   [document](document.md) rows for the person — including its **personal codes** (crypto-erased by
   destroying the wrapped DEK; D-CryptoProvider) — are erased by the `document` module's `PersonPurged`
   subscriber.
@@ -355,7 +376,7 @@ DATA-GOVERNANCE:
 |---|---|---|
 | `POST /persons` | Create a person (no account, no unit needed) | `person.create` |
 | `GET /persons/{id}` | Read one | `person.read` |
-| `PUT /persons/{id}` | Update names (canonical + CLDR parts), `birthdate`, `sex`, `country_of_birth`, attributes | `person.update` |
+| `PUT /persons/{id}` | Update names (canonical + CLDR parts), `birthdate`, `date_of_death`, `sex`, `country_of_birth`, attributes | `person.update` |
 | `GET /persons` | Search/list the directory (token-paginated) | `person.read` |
 | `PUT /persons/{id}/rank` | Set/clear the person's rank | `person.rank.assign` |
 | `POST /persons/{id}/deactivate` | Begin reversible deactivation (grace window) | `person.lifecycle` |
@@ -427,10 +448,10 @@ people only on the instance plane).
 
 A rank change may also be applied as the effect of a [order](order.md) `rank-change` order (the наказ
 that is its legal basis, D-Orders): on order **issue**, person **subscribes** to the order's
-`RankChangeOrdered` event and sets `rank_id` **in the issue transaction** (D-OrderApply), emitting
-`PersonRankChanged`. Because rank is a person **column**, not a row, that provenance is recorded in
-the **audit payload** — there is **no** `order_item_id` FK on the person (unlike
-[membership](membership.md), which links provenance structurally). "Which order raised this rank?" is
+`RankChangeOrdered` event and upserts the person's rank in the rank's system **in the issue
+transaction** (D-OrderApply), emitting `PersonRankChanged`. The `person_ranks` link row carries **no**
+`order_item_id` FK, so that provenance is recorded in the **audit payload** — unlike
+[membership](membership.md), which links provenance structurally. "Which order raised this rank?" is
 therefore answered via [audit](audit.md), not a person field.
 
 ## Dependencies
@@ -472,7 +493,8 @@ through the holder.
 - A person needs **no** account and **no** membership to exist. A **membership-less** person is
   reachable only on the **instance plane** for reads (no unit-scoped grant reaches them;
   D-PersonReadScope).
-- A person holds **at most one** rank; deleting a rank still in use is blocked
+- A person holds **at most one** rank **per rank system** (`UNIQUE (person_id, system_id)` among
+  active `person_ranks`); deleting a rank still in use is blocked
   (`ON DELETE RESTRICT`).
 - **Reversible lifecycle:** `active → deactivated` (sets `deactivated_at` + `purge_after`,
   reversible within grace) `→ purged` (PII NULLed, `id` retained as tombstone). Purge refuses

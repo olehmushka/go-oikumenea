@@ -73,6 +73,31 @@ Owners: [rank](../modules/rank.md), [person](../modules/person.md),
 
 ---
 
+## Acting authority via time-bound role assignment
+
+The temporal corollary of *Directory attribute vs. authorization*. **Acting command, dual-hatting,
+and secondment are modeled as a time-bound role assignment — never as a position fill.** A position
+is *establishment* (a billet); a role assignment is *authority*. So:
+
+- **Acting.** While the substantive holder is absent (e.g. on leave), grant the stand-in a role
+  assignment on the same unit with an `expires_at` (D-TimeBoundGrants). The substantive holder's
+  membership/position is **untouched** — the single-billet unique index never fights the acting
+  case, because acting is *not* a second fill. When the bound passes the grant **lapses silently**
+  (PDP decision-time; no event, no sweep); authority reverts with no edit to the billet.
+- **Dual-hatting.** Two concurrent live assignments on different units (or different roles) — the
+  union-across-graphs PDP already sums them.
+- **Secondment.** A bounded assignment on the host unit while the home-unit membership persists.
+
+Because authority comes *only* from assignments, none of these require vacating a billet, minting a
+temporary position, or branching on rank. Showing *both* substantive and acting incumbents **on the
+billet itself** is the separate multi-incumbent seam (see [membership](../modules/membership.md)),
+not this pattern.
+
+Owners: [authorization](../modules/authorization.md), [membership](../modules/membership.md). See
+[decisions.md](decisions.md) D-TimeBoundGrants.
+
+---
+
 ## Stable code vs. translatable name
 
 Every structural/catalog entity has two identifiers with different jobs: a stable,
@@ -148,11 +173,19 @@ Owners: [tenant](../modules/tenant.md), [person](../modules/person.md),
 
 ## Shadow-visibility gate
 
-A unit is `public` or `shadow`. Read paths that surface units, memberships, or people-by-unit
-must pass through a gate: a caller sees a `shadow` unit (and memberships/roster derived from
-it) only if the PDP grants them a read permission reaching that unit. `public` units are
-discoverable subject to normal read permission. The gate is applied *after* the permission
-decision, as a second filter on result sets.
+A unit is `public` or `shadow`. A caller sees a `shadow` unit (and memberships/roster derived from
+it) only if the PDP grants them a read permission reaching that unit; `public` units are discoverable
+subject to normal read permission.
+
+**Enforcement (F-002, A-lite).** This is realized as the authoritative app-layer second pass
+(`authorization.FilterVisibleUnits`, reached via `pep.FilterVisibleUnits`) on the **unit-result-set
+reads** — tenant `GET /units`, `…/ancestors`, `…/descendants` — applied *after* the permission
+decision and mirrored at the DB by a `tenant_units` public-read RLS policy. Other read surfaces
+enforce visibility through the **reach projection** rather than this explicit pass: unit-keyed tables
+(membership, order) via the reach-keyed RLS policies, and person/document via the read-scope
+projection (D-PersonReadScope). Consequently broad `public` discovery is currently a **unit-read
+affordance only** — a person/roster in a public unit is *not* broadly readable; it still needs reach.
+Extending public discovery to rosters/people is a deferred seam.
 
 Owners: [authorization](../modules/authorization.md), [tenant](../modules/tenant.md),
 [membership](../modules/membership.md), [audit](../modules/audit.md),

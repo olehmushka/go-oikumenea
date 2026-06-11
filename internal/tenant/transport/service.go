@@ -8,8 +8,14 @@
 // unit (D-EdgePerms); creating a unit and reading the graph registry use the coarse "holds anywhere"
 // form (a unit is created standalone, with no parent to scope against — root creation falls to the
 // instance admin); graph management and on-demand closure verify/rebuild are instance-scope. The
-// shadow-visibility gate on list/ancestor/descendant reads is a documented follow-up. The bearer
-// token carries the acting subject (interim: token == person RID; see internal/authorization/pep).
+// shadow-visibility gate (F-002, A-lite) is enforced on the unit-result-set reads — ListUnits,
+// UnitAncestors, UnitDescendants — as the authoritative app-layer pass (pep.FilterVisibleUnits),
+// mirrored at the DB by the tenant_units public-read RLS policy: a `public` unit is broadly
+// discoverable, a `shadow` unit appears only when the subject's *.read reaches it. GetUnit stays
+// gated by the per-unit Require(read, unitID) (no broadening); membership/order/person/document reads
+// remain reach-gated (the A-lite boundary — a public unit is discoverable in listings but its
+// roster/detail still needs reach). The bearer token carries the acting subject (interim: token ==
+// person RID; see internal/authorization/pep).
 package transport
 
 import (
@@ -114,7 +120,11 @@ func (s Service) ListUnits(ctx context.Context, token bearertoken.Token, level *
 	if err != nil {
 		return tenantapi.UnitPage{}, s.mapError(ctx, err, errCtx{})
 	}
-	units, err := s.unitsToAPI(ctx, page.Units)
+	visible, err := gateUnits(ctx, s.pep, page.Units, func(u domain.Unit) string { return u.ID }, func(u domain.Unit) bool { return u.Visibility == domain.VisibilityShadow })
+	if err != nil {
+		return tenantapi.UnitPage{}, s.mapError(ctx, err, errCtx{})
+	}
+	units, err := s.unitsToAPI(ctx, visible)
 	if err != nil {
 		return tenantapi.UnitPage{}, s.mapError(ctx, err, errCtx{})
 	}
@@ -173,6 +183,10 @@ func (s Service) UnitAncestors(ctx context.Context, token bearertoken.Token, uni
 	if err != nil {
 		return tenantapi.UnitRefList{}, s.mapError(ctx, err, errCtx{unitID: unitID, graph: derefOr(graph, domain.CommandGraphCode)})
 	}
+	refs, err = gateUnits(ctx, s.pep, refs, func(r domain.UnitRef) string { return r.ID }, func(r domain.UnitRef) bool { return r.Visibility == domain.VisibilityShadow })
+	if err != nil {
+		return tenantapi.UnitRefList{}, s.mapError(ctx, err, errCtx{unitID: unitID})
+	}
 	out, err := s.refsToAPI(ctx, refs)
 	if err != nil {
 		return tenantapi.UnitRefList{}, s.mapError(ctx, err, errCtx{unitID: unitID})
@@ -188,11 +202,49 @@ func (s Service) UnitDescendants(ctx context.Context, token bearertoken.Token, u
 	if err != nil {
 		return tenantapi.UnitRefPage{}, s.mapError(ctx, err, errCtx{unitID: unitID, graph: derefOr(graph, domain.CommandGraphCode)})
 	}
+	page.Refs, err = gateUnits(ctx, s.pep, page.Refs, func(r domain.UnitRef) string { return r.ID }, func(r domain.UnitRef) bool { return r.Visibility == domain.VisibilityShadow })
+	if err != nil {
+		return tenantapi.UnitRefPage{}, s.mapError(ctx, err, errCtx{unitID: unitID})
+	}
 	out, err := s.refsToAPI(ctx, page.Refs)
 	if err != nil {
 		return tenantapi.UnitRefPage{}, s.mapError(ctx, err, errCtx{unitID: unitID})
 	}
 	return tenantapi.UnitRefPage{Units: out, NextPageToken: tokenPtr(page.NextPageToken)}, nil
+}
+
+// gateUnits applies the shadow-visibility gate (F-002) to a slice of unit-like items as the
+// authoritative app-layer pass: it drops any `shadow` unit the request subject's *.read does not
+// reach, while `public` and reachable units pass, preserving order. `id`/`shadow` extract the unit
+// RID and its shadow flag from an item, so it serves both domain.Unit (ListUnits) and domain.UnitRef
+// (ancestors/descendants). The gate logic itself is owned by authorization (pep.FilterVisibleUnits);
+// this only adapts the result back onto the typed items the caller returns.
+func gateUnits[T any](ctx context.Context, enf *pep.Enforcer, items []T, id func(T) string, shadow func(T) bool) ([]T, error) {
+	if len(items) == 0 {
+		return items, nil
+	}
+	ids := make([]string, len(items))
+	shadowMap := make(map[string]bool, len(items))
+	for i, it := range items {
+		uid := id(it)
+		ids[i] = uid
+		shadowMap[uid] = shadow(it)
+	}
+	visible, err := enf.FilterVisibleUnits(ctx, ids, shadowMap)
+	if err != nil {
+		return nil, err
+	}
+	allowed := make(map[string]struct{}, len(visible))
+	for _, u := range visible {
+		allowed[u] = struct{}{}
+	}
+	out := make([]T, 0, len(items))
+	for _, it := range items {
+		if _, ok := allowed[id(it)]; ok {
+			out = append(out, it)
+		}
+	}
+	return out, nil
 }
 
 // ---------------------------------------------------------------- closure

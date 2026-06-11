@@ -4,8 +4,8 @@
 // never imports the adapters package directly (the repository factory is injected by module.go).
 //
 // Person is the primary PII store, so audit payloads here carry only non-PII identifiers (the id,
-// and the changed key/status) — never names or other personal data. A person holds at most one rank,
-// a directory attribute; this service never reads rank to make a decision (D-Rank).
+// and the changed key/status) — never names or other personal data. A person holds at most one rank
+// per rank system, a directory attribute; this service never reads rank to make a decision (D-Rank).
 package application
 
 import (
@@ -127,11 +127,14 @@ func (s *Service) PersonIDByCode(ctx context.Context, code string) (string, bool
 	return p.ID, true, nil
 }
 
-// GetPerson reads one person with its name variants, citizenships, and residences attached.
+// GetPerson reads one person with its ranks, name variants, citizenships, and residences attached.
 func (s *Service) GetPerson(ctx context.Context, id string) (domain.Person, error) {
 	repo := s.newRepo(s.pool)
 	p, err := repo.GetPerson(ctx, id)
 	if err != nil {
+		return domain.Person{}, err
+	}
+	if p.Ranks, err = repo.ListPersonRanks(ctx, id); err != nil {
 		return domain.Person{}, err
 	}
 	if p.NameVariants, err = repo.ListNameVariants(ctx, id); err != nil {
@@ -258,11 +261,14 @@ func (s *Service) ListVisiblePersons(ctx context.Context, reach authzdomain.Reac
 	return Page{Persons: persons}, nil
 }
 
-// SetRank sets or clears the person's one rank (a directory attribute; D-Rank) and records it.
-func (s *Service) SetRank(ctx context.Context, id string, rankID *string) (domain.Person, error) {
+// SetPersonRank sets the person's rank in one rank system, or clears it (a directory attribute;
+// D-Rank), and records it. When rankID != nil the rank's system is DERIVED from the rank (systemID is
+// ignored); when rankID == nil the active rank in systemID is cleared. The returned person carries its
+// hydrated ranks.
+func (s *Service) SetPersonRank(ctx context.Context, id, systemID string, rankID *string) (domain.Person, error) {
 	var out domain.Person
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		updated, err := s.setRankTx(ctx, tx, auditSubsystem, id, rankID, "")
+		updated, err := s.setRankTx(ctx, tx, auditSubsystem, id, systemID, rankID, "")
 		out = updated
 		return err
 	})
@@ -271,18 +277,35 @@ func (s *Service) SetRank(ctx context.Context, id string, rankID *string) (domai
 
 // setRankTx is the shared rank-set core, running on the caller's transaction and recording under
 // `subsystem`. orderItemID, when set (the order rank-change effect path), is carried into the audit
-// payload as provenance — rank is a person column, so there is no provenance FK (D-OrderApply).
-func (s *Service) setRankTx(ctx context.Context, tx pgx.Tx, subsystem, id string, rankID *string, orderItemID string) (domain.Person, error) {
-	updated, err := s.newRepo(tx).SetRank(ctx, id, rankID)
-	if err != nil {
-		return domain.Person{}, err
-	}
-	after := map[string]any{"id": id, "rankId": nil}
-	if rankID != nil {
-		after["rankId"] = *rankID
+// payload as provenance — the HOLDS_RANK link has no provenance FK (D-OrderApply). Returns the person
+// with its ranks re-hydrated.
+func (s *Service) setRankTx(ctx context.Context, tx pgx.Tx, subsystem, id, systemID string, rankID *string, orderItemID string) (domain.Person, error) {
+	repo := s.newRepo(tx)
+	after := map[string]any{"id": id}
+	if rankID != nil && *rankID != "" {
+		pr, err := repo.UpsertPersonRank(ctx, id, *rankID)
+		if err != nil {
+			return domain.Person{}, err
+		}
+		after["systemId"], after["rankId"] = pr.SystemID, pr.RankID
+	} else {
+		if systemID == "" {
+			return domain.Person{}, domain.ErrInvalid
+		}
+		if err := repo.ClearPersonRank(ctx, id, systemID); err != nil {
+			return domain.Person{}, err
+		}
+		after["systemId"], after["rankId"] = systemID, nil
 	}
 	if orderItemID != "" {
 		after["orderItemId"] = orderItemID
+	}
+	updated, err := repo.GetPerson(ctx, id)
+	if err != nil {
+		return domain.Person{}, err
+	}
+	if updated.Ranks, err = repo.ListPersonRanks(ctx, id); err != nil {
+		return domain.Person{}, err
 	}
 	return updated, s.recordWith(ctx, tx, subsystem, "person.rank.assign", id, after)
 }
@@ -297,7 +320,8 @@ func (s *Service) SubscribeOrderEvents(bus *events.Bus) {
 			return nil
 		}
 		rankID := e.RankID
-		_, err := s.setRankTx(ctx, tx, eventSubsystem, e.PersonID, &rankID, e.OrderItemID)
+		// The order rank-change effect always names a concrete rank; its system is derived in SQL.
+		_, err := s.setRankTx(ctx, tx, eventSubsystem, e.PersonID, "", &rankID, e.OrderItemID)
 		return err
 	})
 }

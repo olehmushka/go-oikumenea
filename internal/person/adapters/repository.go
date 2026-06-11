@@ -49,10 +49,10 @@ func (r *Repository) InsertPerson(ctx context.Context, p domain.Person) (domain.
 		Credentials:    text(p.Credentials),
 		Preferred:      text(p.Preferred),
 		Birthdate:      dateText(p.Birthdate),
+		DateOfDeath:    dateText(p.DateOfDeath),
 		Sex:            p.Sex,
 		CountryOfBirth: text(p.CountryOfBirth),
 		Attributes:     p.Attributes,
-		RankID:         text(p.RankID),
 	})
 	if err != nil {
 		return domain.Person{}, mapWriteErr(err)
@@ -98,6 +98,7 @@ func (r *Repository) UpdatePerson(ctx context.Context, id string, patch domain.P
 		Credentials:    textPtr(patch.Credentials),
 		Preferred:      textPtr(patch.Preferred),
 		Birthdate:      datePtr(patch.Birthdate),
+		DateOfDeath:    datePtr(patch.DateOfDeath),
 		Sex:            textPtr(patch.Sex),
 		CountryOfBirth: textPtr(patch.CountryOfBirth),
 		Attributes:     patch.Attributes,
@@ -139,15 +140,35 @@ func (r *Repository) ListPersonsByIDs(ctx context.Context, ids []string) ([]doma
 	return out, nil
 }
 
-func (r *Repository) SetRank(ctx context.Context, id string, rankID *string) (domain.Person, error) {
-	row, err := r.q.SetRank(ctx, personsql.SetRankParams{RankID: textPtr(rankID), ID: id})
+// UpsertPersonRank sets the person's rank in the system DERIVED from rankID (the query SELECTs the
+// system from rank_ranks). An unknown/soft-deleted rank produces no row → ErrUnknownRank.
+func (r *Repository) UpsertPersonRank(ctx context.Context, personID, rankID string) (domain.PersonRank, error) {
+	row, err := r.q.UpsertPersonRank(ctx, personsql.UpsertPersonRankParams{PersonID: personID, RankID: rankID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.Person{}, domain.ErrNotFound
+			return domain.PersonRank{}, domain.ErrUnknownRank
 		}
-		return domain.Person{}, mapWriteErr(err)
+		return domain.PersonRank{}, mapWriteErr(err)
 	}
-	return toPerson(row), nil
+	return domain.PersonRank{SystemID: row.SystemID, RankID: row.RankID}, nil
+}
+
+// ClearPersonRank soft-deletes the person's active rank in systemID (no-op when none is held).
+func (r *Repository) ClearPersonRank(ctx context.Context, personID, systemID string) error {
+	return r.q.ClearPersonRank(ctx, personsql.ClearPersonRankParams{PersonID: personID, SystemID: systemID})
+}
+
+// ListPersonRanks returns the person's active ranks, one per system, ordered by rank-system sort order.
+func (r *Repository) ListPersonRanks(ctx context.Context, personID string) ([]domain.PersonRank, error) {
+	rows, err := r.q.ListPersonRanks(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.PersonRank, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, domain.PersonRank{SystemID: row.SystemID, RankID: row.RankID})
+	}
+	return out, nil
 }
 
 // ---------------------------------------------------------------- lifecycle
@@ -1272,10 +1293,10 @@ func toPerson(r personsql.OikumeneaPersonPerson) domain.Person {
 			Preferred:     r.Preferred.String,
 		},
 		Birthdate:      dateStr(r.Birthdate),
+		DateOfDeath:    dateStr(r.DateOfDeath),
 		Sex:            r.Sex,
 		CountryOfBirth: r.CountryOfBirth.String,
 		Attributes:     r.Attributes,
-		RankID:         r.RankID.String,
 		Status:         domain.Status(r.Status),
 		DeactivatedAt:  tsPtr(r.DeactivatedAt),
 		PurgeAfter:     tsPtr(r.PurgeAfter),

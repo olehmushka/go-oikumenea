@@ -1,4 +1,4 @@
--- 0007 membership (M6).
+-- 0006 membership (M6).
 --
 -- People belonging to / filling billets in units (docs/modules/membership.md). Two related things:
 --   * POSITIONS (membership_positions) — a unit-owned billet (an Object that EXISTS while vacant;
@@ -112,4 +112,4 @@ COMMENT ON COLUMN oikumenea.membership_memberships.effective_from IS 'pii:basic'
 COMMENT ON COLUMN oikumenea.membership_memberships.effective_to IS 'pii:basic';
 
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
-UPDATE oikumenea.schema_version SET revision = '0007_membership', applied_at = now() WHERE singleton;
+UPDATE oikumenea.schema_version SET revision = '0006_membership', applied_at = now() WHERE singleton;

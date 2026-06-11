@@ -7,16 +7,17 @@
 -- ============================ persons ============================
 
 -- name: InsertPerson :one
--- Create a person. attributes defaults to '{}'; rank_id/country_of_birth/locale are validated by FKs.
+-- Create a person. attributes defaults to '{}'; country_of_birth/locale are validated by FKs. Rank is
+-- NOT set here — a person holds one rank per rank system via person_ranks (UpsertPersonRank, D-Rank).
 INSERT INTO oikumenea.person_persons (
   code, display_name, title, given, given2, surname, surname_prefix, surname2,
-  generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, rank_id
+  generation, credentials, preferred, birthdate, date_of_death, sex, country_of_birth, attributes
 ) VALUES (
   sqlc.narg('code'), @display_name, sqlc.narg('title'), sqlc.narg('given'), sqlc.narg('given2'),
   sqlc.narg('surname'), sqlc.narg('surname_prefix'), sqlc.narg('surname2'), sqlc.narg('generation'),
-  sqlc.narg('credentials'), sqlc.narg('preferred'), sqlc.narg('birthdate')::date, @sex,
-  sqlc.narg('country_of_birth'), COALESCE(sqlc.narg('attributes')::jsonb, '{}'::jsonb),
-  sqlc.narg('rank_id')
+  sqlc.narg('credentials'), sqlc.narg('preferred'), sqlc.narg('birthdate')::date,
+  sqlc.narg('date_of_death')::date, @sex,
+  sqlc.narg('country_of_birth'), COALESCE(sqlc.narg('attributes')::jsonb, '{}'::jsonb)
 )
 RETURNING *;
 
@@ -24,8 +25,9 @@ RETURNING *;
 SELECT * FROM oikumenea.person_persons WHERE id = @id AND deleted_at IS NULL;
 
 -- name: UpdatePerson :one
--- Partial update: a NULL narg leaves the value unchanged. country_of_birth/birthdate cannot be
--- cleared to NULL via this path (open seam). `code` is immutable; rank is set via SetRank.
+-- Partial update: a NULL narg leaves the value unchanged. country_of_birth/birthdate/date_of_death
+-- cannot be cleared to NULL via this path (open seam). `code` is immutable; rank is set via the
+-- person_ranks path (UpsertPersonRank / ClearPersonRank).
 UPDATE oikumenea.person_persons SET
   display_name     = COALESCE(sqlc.narg('display_name'), display_name),
   title            = COALESCE(sqlc.narg('title'), title),
@@ -38,6 +40,7 @@ UPDATE oikumenea.person_persons SET
   credentials      = COALESCE(sqlc.narg('credentials'), credentials),
   preferred        = COALESCE(sqlc.narg('preferred'), preferred),
   birthdate        = COALESCE(sqlc.narg('birthdate')::date, birthdate),
+  date_of_death    = COALESCE(sqlc.narg('date_of_death')::date, date_of_death),
   sex              = COALESCE(sqlc.narg('sex'), sex),
   country_of_birth = COALESCE(sqlc.narg('country_of_birth'), country_of_birth),
   attributes       = COALESCE(sqlc.narg('attributes')::jsonb, attributes)
@@ -59,11 +62,31 @@ SELECT * FROM oikumenea.person_persons
 WHERE id = ANY(@ids::text[]) AND deleted_at IS NULL
 ORDER BY id;
 
--- name: SetRank :one
--- Set or clear the person's one rank; a NULL rank_id clears it. The rank_ranks FK validates existence.
-UPDATE oikumenea.person_persons SET rank_id = sqlc.narg('rank_id')
-WHERE id = @id AND deleted_at IS NULL
+-- name: UpsertPersonRank :one
+-- Set the person's rank in ONE rank system (the HOLDS_RANK link; one rank per system — D-Rank). The
+-- system is DERIVED in SQL from the rank (rank_ranks.system_id), so the caller passes only person + rank.
+-- Selecting FROM rank_ranks means an unknown/soft-deleted rank yields NO row → the repo maps the empty
+-- result to ErrUnknownRank (no FK/not-null ambiguity). On an existing active (person, system) row the
+-- rank is replaced; a previously cleared (soft-deleted) row is left and a fresh active row inserted.
+INSERT INTO oikumenea.person_ranks (person_id, system_id, rank_id)
+SELECT @person_id, r.system_id, r.id
+FROM oikumenea.rank_ranks r
+WHERE r.id = @rank_id AND r.deleted_at IS NULL
+ON CONFLICT (person_id, system_id) WHERE deleted_at IS NULL
+  DO UPDATE SET rank_id = excluded.rank_id
 RETURNING *;
+
+-- name: ClearPersonRank :exec
+-- Clear (soft-delete) the person's active rank in one rank system. No-op when none is held there.
+UPDATE oikumenea.person_ranks SET deleted_at = now()
+WHERE person_id = @person_id AND system_id = @system_id AND deleted_at IS NULL;
+
+-- name: ListPersonRanks :many
+-- The person's active ranks, one per system, ordered by the rank system's sort_order (D-RankSystems).
+SELECT pr.* FROM oikumenea.person_ranks pr
+JOIN oikumenea.rank_systems s ON s.id = pr.system_id
+WHERE pr.person_id = @person_id AND pr.deleted_at IS NULL
+ORDER BY s.sort_order, pr.system_id;
 
 -- name: DeactivatePerson :one
 UPDATE oikumenea.person_persons
@@ -79,15 +102,18 @@ RETURNING *;
 
 -- name: PurgePerson :one
 -- Hard-erase PII: NULL every pii:basic/contact column, reset sex/attributes, keep the id tombstone.
--- Child rows are removed separately (DeleteAll*). rank_id is pii:none and left as-is.
+-- Child rows (incl. person_ranks) are removed separately (DeleteAll*).
 UPDATE oikumenea.person_persons SET
   code = NULL, display_name = '', title = NULL, given = NULL, given2 = NULL,
   surname = NULL, surname_prefix = NULL, surname2 = NULL, generation = NULL,
-  credentials = NULL, preferred = NULL, birthdate = NULL, sex = 'not_known',
+  credentials = NULL, preferred = NULL, birthdate = NULL, date_of_death = NULL, sex = 'not_known',
   country_of_birth = NULL, attributes = '{}'::jsonb,
   status = 'purged', deactivated_at = NULL, purge_after = NULL
 WHERE id = @id AND deleted_at IS NULL
 RETURNING *;
+
+-- name: DeleteAllPersonRanks :exec
+DELETE FROM oikumenea.person_ranks WHERE person_id = @person_id;
 
 -- name: DeleteAllNameVariants :exec
 DELETE FROM oikumenea.person_name_variants WHERE person_id = @person_id;

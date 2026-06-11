@@ -141,6 +141,19 @@ table (they are code); everything else is data.
 - Indexes: `(subject_person_id) WHERE revoked_at IS NULL`,
   `(target_unit_id) WHERE revoked_at IS NULL`
 
+**Acting authority (worked example).** Acting command, dual-hatting, and secondment are modeled
+here as **time-bound role assignments**, never as a position fill ([patterns.md](../architecture/patterns.md),
+*Acting authority via time-bound role assignment*; D-TimeBoundGrants). The substantive CO of
+Battalion B holds `command-role` `subtree`@B with no expiry. She goes on leave — her
+**membership/position is untouched** (leave does not vacate the billet). To cover the gap, the
+deputy gets `POST /assignments` for `command-role` `subtree`@B with `expiresAt` = the leave end:
+he now carries the full authority reaching B's subtree, with **no billet change** and no
+`Membership:PositionAlreadyFilled` (the one-holder index is a [membership](membership.md) concern,
+and acting is not a second fill). On `expiresAt` the grant lapses silently (PDP step 2); extending
+the cover is an **update** of `expires_at` on that row. **Dual-hatting** is two concurrent live
+assignments on different units (the union-across-graphs PDP sums them); **secondment** is a bounded
+assignment on the host unit while the home-unit membership persists.
+
 **`authz_instance_admins`**
 - `id` PK
 - `person_id TEXT NOT NULL REFERENCES person_persons(id) ON DELETE RESTRICT`
@@ -199,11 +212,15 @@ Key properties:
 
 ### The shadow-visibility gate
 
-For read endpoints that return units / memberships / rosters, after the permission decision the
-result set is filtered: rows belonging to a `shadow` unit are dropped unless the PDP grants a
-`*.read` reaching that unit. `public` units appear subject to normal read permission. This is a
-second pass over results, owned here and called by [tenant](tenant.md) and
-[membership](membership.md). See [patterns.md](../architecture/patterns.md).
+After the permission decision a `shadow` unit is visible only when the PDP grants a `*.read` reaching
+it, while `public` units appear subject to normal read permission. This is owned here as
+`FilterVisibleUnits` (reached via `pep.FilterVisibleUnits`) and wired as the authoritative second
+pass on [tenant](tenant.md)'s unit-result-set reads — `GET /units`, `…/ancestors`, `…/descendants`
+(F-002, A-lite), mirrored by the `tenant_units` public-read RLS policy. Other read surfaces enforce
+visibility through the reach projection instead: membership/order via the reach-keyed RLS policies,
+person/document via the read-scope projection (D-PersonReadScope) — so broad `public` discovery is a
+unit-read affordance only and does not yet extend to rosters/people. See
+[patterns.md](../architecture/patterns.md).
 
 ### RLS backstop (defense-in-depth)
 

@@ -4,8 +4,8 @@
 // (membership references a person, M6; identity-federation links an account, M8; authorization's
 // assignment subject is a person id, M7 — cross-module query path, overview.md).
 //
-// Person is the directory's core aggregate (account-optional, instance-global, holding one rank as a
-// directory attribute). It validates name-variant locales, rank, and country codes through the
+// Person is the directory's core aggregate (account-optional, instance-global, holding one rank per
+// rank system as a directory attribute). It validates name-variant locales, rank, and country codes through the
 // database FKs (i18n_locales / rank_ranks / geo_countries); the localization and rank services are
 // taken for forward use and validation symmetry.
 package person

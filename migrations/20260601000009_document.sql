@@ -1,4 +1,4 @@
--- 0010 document (M9).
+-- 0009 document (M9).
 --
 -- Person-held papers and government personal codes (docs/modules/document.md): what a person HAS,
 -- distinct from an order (an administrative act). Two parallel models split by D-Documents /
@@ -180,4 +180,4 @@ INSERT INTO oikumenea.document_personal_code_schemes (code, country_iso, generic
   ('pl-pesel',          'PL', 'national-id',     'PESEL',          NULL,                  50);
 
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
-UPDATE oikumenea.schema_version SET revision = '0010_document', applied_at = now() WHERE singleton;
+UPDATE oikumenea.schema_version SET revision = '0009_document', applied_at = now() WHERE singleton;

@@ -52,7 +52,7 @@ GUCs are reliably present; ensure the application DB role lacks `BYPASSRLS` only
 `atlas migrate lint` review must treat a policy tightening as the contract step (announced in
 `UPGRADING.md`), since a tightening that outruns the GUC plumbing is an availability regression.
 
-> **First release (revision `0012_rls`).** Because go-oikumenea has **never been released**, the GUC
+> **First release (revision `0011_rls`).** Because go-oikumenea has **never been released**, the GUC
 > wiring and the tightened policies ship **atomically in one revision** — there is no live deployment
 > for a tightening to outrun, so the (a)/(b) staging collapses on a fresh install. The staged
 > permissive→tighten rollout above applies to any **post-v1** RLS change. See

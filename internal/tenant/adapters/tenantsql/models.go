@@ -611,8 +611,6 @@ type OikumeneaPersonPerson struct {
 	// pii:special
 	Attributes []byte
 	// pii:none
-	RankID pgtype.Text
-	// pii:none
 	Status string
 	// pii:none
 	DeactivatedAt pgtype.Timestamptz
@@ -621,6 +619,8 @@ type OikumeneaPersonPerson struct {
 	CreatedAt  pgtype.Timestamptz
 	UpdatedAt  pgtype.Timestamptz
 	DeletedAt  pgtype.Timestamptz
+	// pii:basic
+	DateOfDeath pgtype.Date
 }
 
 type OikumeneaPersonPhone struct {
@@ -666,6 +666,20 @@ type OikumeneaPersonPlatform struct {
 	Status string
 	// pii:none
 	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaPersonRank struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:none
+	SystemID string
+	// pii:none
+	RankID    string
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz

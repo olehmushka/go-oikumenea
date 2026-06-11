@@ -4,8 +4,8 @@
 // no framework imports — only the standard library.
 //
 // A person is instance-global (D-PersonGlobal), account-optional (L-AccountOptional), and holds at
-// most one rank — a DIRECTORY attribute that grants no authority (D-Rank); this package never reads
-// rank to make a decision. Names follow the Unicode CLDR fixed field set (D-PersonNamesCLDR):
+// most one rank PER RANK SYSTEM via the person_ranks link (D-Rank, D-RankSystems) — a DIRECTORY
+// attribute that grants no authority; this package never reads rank to make a decision. Names follow the Unicode CLDR fixed field set (D-PersonNamesCLDR):
 // DisplayName is authoritative, the structured parts are advisory, and there is no patronymic field
 // (the Slavic по-батькові lives in Given2). Calendar dates are carried as ISO-8601 "YYYY-MM-DD"
 // strings (a day, not an instant); "" means absent.
@@ -147,16 +147,17 @@ type Person struct {
 	Code           string // "" when unset; unique among active persons
 	Name                  // embedded CLDR parts (Person.DisplayName etc.)
 	Birthdate      string // ISO-8601 date or ""
+	DateOfDeath    string // ISO-8601 date or ""; a bio attribute, not a lifecycle state (D-PersonBio)
 	Sex            string
 	CountryOfBirth string // ISO-3166-1 alpha-2 or ""
 	Attributes     []byte // raw JSON; nil/empty => "{}"
-	RankID         string // "" when unranked
 	Status         Status
 	DeactivatedAt  *time.Time
 	PurgeAfter     *time.Time
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 
+	Ranks          []PersonRank
 	NameVariants   []NameVariant
 	Citizenships   []Citizenship
 	Residences     []Residence
@@ -168,8 +169,8 @@ type Person struct {
 }
 
 // Validate enforces the create-time invariants: a valid optional code, a non-empty display name, a
-// known sex, and a parseable optional birthdate. Unknown rank/country codes are caught by the DB FKs
-// and surfaced as ErrUnknownRank / ErrUnknownCountry.
+// known sex, and parseable optional birthdate/date_of_death. Unknown rank/country codes are caught
+// by the DB FKs and surfaced as ErrUnknownRank / ErrUnknownCountry.
 func (p Person) Validate() error {
 	if p.Code != "" && !validCode(p.Code) {
 		return wrapInvalid("code must be non-empty and contain no whitespace")
@@ -185,6 +186,9 @@ func (p Person) Validate() error {
 	}
 	if !validDate(p.Birthdate) {
 		return wrapInvalid("birthdate must be an ISO-8601 date (YYYY-MM-DD)")
+	}
+	if !validDate(p.DateOfDeath) {
+		return wrapInvalid("dateOfDeath must be an ISO-8601 date (YYYY-MM-DD)")
 	}
 	return nil
 }
@@ -212,6 +216,7 @@ type PersonPatch struct {
 	Credentials    *string
 	Preferred      *string
 	Birthdate      *string
+	DateOfDeath    *string
 	Sex            *string
 	CountryOfBirth *string
 	Attributes     []byte // nil = unchanged
@@ -231,7 +236,18 @@ func (p PersonPatch) Validate() error {
 	if p.Birthdate != nil && !validDate(*p.Birthdate) {
 		return wrapInvalid("birthdate must be an ISO-8601 date (YYYY-MM-DD)")
 	}
+	if p.DateOfDeath != nil && !validDate(*p.DateOfDeath) {
+		return wrapInvalid("dateOfDeath must be an ISO-8601 date (YYYY-MM-DD)")
+	}
 	return nil
+}
+
+// PersonRank is one rank a person holds, scoped to a rank system (the reified HOLDS_RANK link; one
+// rank per system — D-Rank, extended by D-RankSystems). SystemID is derived from the rank, never
+// chosen independently. A directory attribute: this package never reads it to make a decision.
+type PersonRank struct {
+	SystemID string
+	RankID   string
 }
 
 // NameVariant is a full transliterated name form for one locale (e.g. ukr native, eng Latin) —
@@ -709,7 +725,14 @@ type Repository interface {
 	// ListPersonsByIDs loads the base person rows for a set of RIDs (the directory-list union under
 	// D-PersonReadScope resolves visible ids via memberships, then hydrates the rows here).
 	ListPersonsByIDs(ctx context.Context, ids []string) ([]Person, error)
-	SetRank(ctx context.Context, id string, rankID *string) (Person, error)
+
+	// person ranks (the HOLDS_RANK link; one rank per rank system — D-Rank).
+	// UpsertPersonRank sets the person's rank in the system DERIVED from rankID; an unknown/soft-deleted
+	// rank yields ErrUnknownRank. ClearPersonRank soft-deletes the active rank in systemID (no-op when
+	// none). ListPersonRanks returns the active ranks ordered by rank-system sort order.
+	UpsertPersonRank(ctx context.Context, personID, rankID string) (PersonRank, error)
+	ClearPersonRank(ctx context.Context, personID, systemID string) error
+	ListPersonRanks(ctx context.Context, personID string) ([]PersonRank, error)
 
 	// lifecycle
 	Deactivate(ctx context.Context, id string, purgeAfter time.Time) (Person, error)

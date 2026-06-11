@@ -56,7 +56,7 @@ type IDP struct {
 type Issuer struct {
 	Issuer   string `yaml:"issuer"`   // the `iss` value; also the OIDC discovery base URL
 	Audience string `yaml:"audience"` // expected `aud`; empty skips the check
-	Type     string `yaml:"type"`     // "oidc" (default) | "hs256" (local-dev symmetric)
+	Type     string `yaml:"type"`     // "oidc" (default) | "hs256" (local/dev symmetric; refused at boot in staging/prod)
 	HMACKey  string `yaml:"hmac-key"` // verification key for type hs256 (secret; ECV-encrypted)
 }
 

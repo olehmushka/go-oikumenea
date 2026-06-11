@@ -106,15 +106,28 @@ association only, never traversed by the PDP) is **promoted to PDP-enforced stat
 
 ### D-Rank — Rank on person; rank ≠ permission
 
-**Decision.** A `person` holds **one rank** drawn from the single system-wide scheme. **Rank is
-a directory attribute and grants no authorization** — authority comes only from role
-assignments. (Position is covered by D-Position.)
+**Decision.** A `person` holds **one rank per rank system** (D-RankSystems), drawn from the single
+system-wide scheme — so a person on a single-system deployment still holds at most one rank, while a
+multi-track deployment may carry **concurrent** standings (one per system). **Rank is a directory
+attribute and grants no authorization** — authority comes only from role assignments. (Position is
+covered by D-Position.)
 
 **Why.** Military/academic reality: rank (Sergeant, Professor) is a person's standing across the
 whole organization. Coupling it to permissions would make authorization implicit and
-unauditable.
+unauditable. **Why one-per-system (not one global rank):** the army frame ("a person's single
+standing across the whole organization") does not hold for the **university** and **church**
+verticals, where concurrent tracks are routine — an academic who is also a **Dean** (the seeded
+`academic` / `administrative` categories are parallel branches), or clergy whose standing is a
+separate ladder. A single global `rank_id` forces those into a `membership` position (conflating
+*seniority* with *billet*, the very split D-Rank/D-Position keep clean). Scoping "one rank" to "one
+rank **per rank system**" — which the D-RankSystems machinery already half-implied — lets the second
+track be a genuine rank in its own system without touching authority semantics.
 
-**Consequence.** `person.rank_id` → [rank](../modules/rank.md). The PDP never reads rank.
+**Consequence.** The HOLDS_RANK link is **reified** as `person_ranks (person_id, system_id, rank_id)`
+with `UNIQUE (person_id, system_id)` among active rows; `system_id` is derived from the rank
+(`rank → type → category → system`) and denormalized for the uniqueness check. The legacy single
+`person_persons.rank_id` column is removed. The PDP never reads rank. See [rank](../modules/rank.md),
+[person](../modules/person.md).
 
 **Scheme shape.** The scheme is a **rank category** at the top, a **tree of rank types** within each
 category (`rank_types.parent_type_id` self-FK; `NULL` = a root type of the category), and **ranks on
@@ -554,6 +567,16 @@ designed for it — activation is surfacing it, not re-architecting.
 decision-time/silent; renewal-by-update semantics. Resolves **DS-15**. See
 [authorization](../modules/authorization.md).
 
+**Clarified (F-007) — acting authority is a grant, not a position fill.** Acting command,
+dual-hatting, and secondment are modeled as a **time-bound role assignment** on the relevant unit,
+**not** as a position fill: the substantive holder's membership/position is untouched (the
+one-holder billet index never fights the acting case), authority comes only from the assignment
+(D-Rank / D-Position), and it reverts silently on lapse. First-class leave/absence as a status and
+showing both substantive + acting incumbents *on a billet* remain seams (DS-35 / multi-incumbent).
+Worked example + pattern: [patterns.md](../architecture/patterns.md) (*Acting authority via
+time-bound role assignment*), [authorization](../modules/authorization.md),
+[membership](../modules/membership.md).
+
 ### D-RLSDefenseInDepth — PDP-mirror RLS backstop (defense-in-depth)
 
 **Decision.** Postgres RLS is **enabled as a DB-level defense-in-depth backstop** that mirrors the
@@ -593,7 +616,7 @@ expand/contract (permissive-first, then tighten — see
 [upgrade-safety.md](upgrade-safety.md)); the app DB role must lack `BYPASSRLS`. Resolves **DS-17**.
 See [conventions.md](conventions.md).
 
-**Realized mechanism (M11, revision `0012_rls`).** The seam is implemented as a **per-request pinned
+**Realized mechanism (M11, revision `0011_rls`).** The seam is implemented as a **per-request pinned
 connection** rather than per-statement `SET LOCAL`, because unit-scoped reads do not all open a
 transaction: the identity-federation authenticator middleware, once it resolves the subject, calls
 `authorization.RLSStateFor` (→ `EffectiveReach`) and **pins one pooled connection** for the request
@@ -614,7 +637,7 @@ the app, not RLS, governs what is written (append-only is already enforced by `r
 
 **Enablement timing (this never-released service).** `upgrade-safety.md` stages RLS as
 permissive→tighten so a policy tightening on a **live, already-released** deployment cannot outrun the
-GUC plumbing. go-oikumenea has **never been released**: revision `0012_rls` ships the GUC wiring and
+GUC plumbing. go-oikumenea has **never been released**: revision `0011_rls` ships the GUC wiring and
 the tightened policies **atomically in one revision**, since on a fresh install there is no window in
 which the policy outruns the plumbing. The staged (permissive-first) rollout re-applies for any
 **post-v1** RLS change.
@@ -1498,9 +1521,11 @@ here.
 ([rank](../modules/rank.md)). New endpoints: `rank_systems` CRUD, `grade_code` on rank create/edit,
 `GET /rank-grades`, and `POST /rank-scheme/import`; `GET /rank-scheme` now nests
 `systems → categories → types → ranks`. New Objects `RankSystem` + `RankGrade` registered in
-[ontology-mapping](../ontology-mapping.md) §1 (the rank tree roots at `RankSystem`). **`person` is
-unchanged** — still one `rank_id`; a person's system is *derived* through `rank → type → category →
-system`. Additive / expand-only. Lands as the scoped **M15** ([milestones](../milestones.md)); promotes
+[ontology-mapping](../ontology-mapping.md) §1 (the rank tree roots at `RankSystem`). A person's
+system is *derived* through `rank → type → category → system`; **`person` now holds one rank per
+system** via the reified `person_ranks` link (see [D-Rank](#d-rank--rank-on-person-rank--permission),
+which scoped "one rank" to "one rank per rank system"). Additive / expand-only. Lands as the scoped
+**M15** ([milestones](../milestones.md)); promotes
 open-question **DS-43** (non-military cross-system comparators). See [rank](../modules/rank.md).
 
 ---
@@ -2062,7 +2087,15 @@ These come from the high-level plan and are not re-litigated here.
   adopted per unit. **Refined by [D-RankSystems](#d-ranksystems--multinational-rank-systems-standardized-grade-comparability-and-scheme-presets-extends-d-rank-refines-l-onerankscheme):**
   the one registry MAY contain multiple `rank_systems` (multinational) — still one scheme,
   instance-admin-managed, never per-unit; not multiple schemes.
-- **L-Visibility — Shadow tenants.** `visibility ∈ {public, shadow}` on units.
+- **L-Visibility — Shadow tenants.** `visibility ∈ {public, shadow}` on units. **Enforced (F-002,
+  A-lite):** on the unit-result-set reads (`GET /units`, `…/ancestors`, `…/descendants`) a `public`
+  unit is broadly discoverable while a `shadow` unit appears only when the subject's `*.read` reaches
+  it — applied as the authoritative app-layer gate (`authorization.FilterVisibleUnits`, reached via
+  `pep.FilterVisibleUnits`) and mirrored at the DB by a `tenant_units` public-read RLS policy
+  (migration `0016`). `GET /units/{id}` stays gated by the per-unit `unit.read` decision, and
+  membership/order/person/document reads remain reach-gated — i.e. broad public discovery is a
+  **unit-read affordance only**; a public unit is discoverable in listings, but its roster/detail
+  still needs reach. Extending public discovery to rosters/people is a deferred seam.
 - **L-OperatorDB — Operator-owned Postgres**, schema **`oikumenea`**.
 - **L-UpgradeSafe — Non-destructive, data-safe upgrades** are a first-class, tested guarantee.
 - **L-Conventions — Schema conventions:** `TIMESTAMPTZ`, soft-delete, `set_updated_at()` triggers,

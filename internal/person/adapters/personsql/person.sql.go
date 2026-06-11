@@ -11,6 +11,22 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearPersonRank = `-- name: ClearPersonRank :exec
+UPDATE oikumenea.person_ranks SET deleted_at = now()
+WHERE person_id = $1 AND system_id = $2 AND deleted_at IS NULL
+`
+
+type ClearPersonRankParams struct {
+	PersonID string
+	SystemID string
+}
+
+// Clear (soft-delete) the person's active rank in one rank system. No-op when none is held there.
+func (q *Queries) ClearPersonRank(ctx context.Context, arg ClearPersonRankParams) error {
+	_, err := q.db.Exec(ctx, clearPersonRank, arg.PersonID, arg.SystemID)
+	return err
+}
+
 const clearPrimaryCallSigns = `-- name: ClearPrimaryCallSigns :exec
 UPDATE oikumenea.person_call_signs SET is_primary = false
 WHERE person_id = $1 AND deleted_at IS NULL AND is_primary
@@ -99,7 +115,7 @@ const deactivatePerson = `-- name: DeactivatePerson :one
 UPDATE oikumenea.person_persons
 SET status = 'deactivated', deactivated_at = now(), purge_after = $1
 WHERE id = $2 AND deleted_at IS NULL
-RETURNING id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, rank_id, status, deactivated_at, purge_after, created_at, updated_at, deleted_at
+RETURNING id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death
 `
 
 type DeactivatePersonParams struct {
@@ -127,13 +143,13 @@ func (q *Queries) DeactivatePerson(ctx context.Context, arg DeactivatePersonPara
 		&i.Sex,
 		&i.CountryOfBirth,
 		&i.Attributes,
-		&i.RankID,
 		&i.Status,
 		&i.DeactivatedAt,
 		&i.PurgeAfter,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.DateOfDeath,
 	)
 	return i, err
 }
@@ -231,6 +247,15 @@ DELETE FROM oikumenea.person_partnerships WHERE person_id_a = $1 OR person_id_b 
 
 func (q *Queries) DeleteAllPartnerships(ctx context.Context, personID string) error {
 	_, err := q.db.Exec(ctx, deleteAllPartnerships, personID)
+	return err
+}
+
+const deleteAllPersonRanks = `-- name: DeleteAllPersonRanks :exec
+DELETE FROM oikumenea.person_ranks WHERE person_id = $1
+`
+
+func (q *Queries) DeleteAllPersonRanks(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllPersonRanks, personID)
 	return err
 }
 
@@ -550,7 +575,7 @@ func (q *Queries) EmailPersonID(ctx context.Context, id string) (string, error) 
 }
 
 const getActivePersonByCode = `-- name: GetActivePersonByCode :one
-SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, rank_id, status, deactivated_at, purge_after, created_at, updated_at, deleted_at FROM oikumenea.person_persons
+SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death FROM oikumenea.person_persons
 WHERE code = $1 AND status = 'active' AND deleted_at IS NULL
 `
 
@@ -576,19 +601,19 @@ func (q *Queries) GetActivePersonByCode(ctx context.Context, code pgtype.Text) (
 		&i.Sex,
 		&i.CountryOfBirth,
 		&i.Attributes,
-		&i.RankID,
 		&i.Status,
 		&i.DeactivatedAt,
 		&i.PurgeAfter,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.DateOfDeath,
 	)
 	return i, err
 }
 
 const getPerson = `-- name: GetPerson :one
-SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, rank_id, status, deactivated_at, purge_after, created_at, updated_at, deleted_at FROM oikumenea.person_persons WHERE id = $1 AND deleted_at IS NULL
+SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death FROM oikumenea.person_persons WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetPerson(ctx context.Context, id string) (OikumeneaPersonPerson, error) {
@@ -611,13 +636,13 @@ func (q *Queries) GetPerson(ctx context.Context, id string) (OikumeneaPersonPers
 		&i.Sex,
 		&i.CountryOfBirth,
 		&i.Attributes,
-		&i.RankID,
 		&i.Status,
 		&i.DeactivatedAt,
 		&i.PurgeAfter,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.DateOfDeath,
 	)
 	return i, err
 }
@@ -1023,15 +1048,15 @@ const insertPerson = `-- name: InsertPerson :one
 
 INSERT INTO oikumenea.person_persons (
   code, display_name, title, given, given2, surname, surname_prefix, surname2,
-  generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, rank_id
+  generation, credentials, preferred, birthdate, date_of_death, sex, country_of_birth, attributes
 ) VALUES (
   $1, $2, $3, $4, $5,
   $6, $7, $8, $9,
-  $10, $11, $12::date, $13,
-  $14, COALESCE($15::jsonb, '{}'::jsonb),
-  $16
+  $10, $11, $12::date,
+  $13::date, $14,
+  $15, COALESCE($16::jsonb, '{}'::jsonb)
 )
-RETURNING id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, rank_id, status, deactivated_at, purge_after, created_at, updated_at, deleted_at
+RETURNING id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death
 `
 
 type InsertPersonParams struct {
@@ -1047,10 +1072,10 @@ type InsertPersonParams struct {
 	Credentials    pgtype.Text
 	Preferred      pgtype.Text
 	Birthdate      pgtype.Date
+	DateOfDeath    pgtype.Date
 	Sex            string
 	CountryOfBirth pgtype.Text
 	Attributes     []byte
-	RankID         pgtype.Text
 }
 
 // Person module queries (docs/modules/person.md). The directory aggregate (person_persons), its
@@ -1059,7 +1084,8 @@ type InsertPersonParams struct {
 // PII column and hard-deletes child rows, keeping the id as a tombstone (audit history references it).
 // A NULL narg leaves the stored value unchanged on update (COALESCE); `code` is immutable.
 // ============================ persons ============================
-// Create a person. attributes defaults to '{}'; rank_id/country_of_birth/locale are validated by FKs.
+// Create a person. attributes defaults to '{}'; country_of_birth/locale are validated by FKs. Rank is
+// NOT set here — a person holds one rank per rank system via person_ranks (UpsertPersonRank, D-Rank).
 func (q *Queries) InsertPerson(ctx context.Context, arg InsertPersonParams) (OikumeneaPersonPerson, error) {
 	row := q.db.QueryRow(ctx, insertPerson,
 		arg.Code,
@@ -1074,10 +1100,10 @@ func (q *Queries) InsertPerson(ctx context.Context, arg InsertPersonParams) (Oik
 		arg.Credentials,
 		arg.Preferred,
 		arg.Birthdate,
+		arg.DateOfDeath,
 		arg.Sex,
 		arg.CountryOfBirth,
 		arg.Attributes,
-		arg.RankID,
 	)
 	var i OikumeneaPersonPerson
 	err := row.Scan(
@@ -1097,13 +1123,13 @@ func (q *Queries) InsertPerson(ctx context.Context, arg InsertPersonParams) (Oik
 		&i.Sex,
 		&i.CountryOfBirth,
 		&i.Attributes,
-		&i.RankID,
 		&i.Status,
 		&i.DeactivatedAt,
 		&i.PurgeAfter,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.DateOfDeath,
 	)
 	return i, err
 }
@@ -1729,8 +1755,44 @@ func (q *Queries) ListPartnerships(ctx context.Context, personID string) ([]Oiku
 	return items, nil
 }
 
+const listPersonRanks = `-- name: ListPersonRanks :many
+SELECT pr.id, pr.person_id, pr.system_id, pr.rank_id, pr.created_at, pr.updated_at, pr.deleted_at FROM oikumenea.person_ranks pr
+JOIN oikumenea.rank_systems s ON s.id = pr.system_id
+WHERE pr.person_id = $1 AND pr.deleted_at IS NULL
+ORDER BY s.sort_order, pr.system_id
+`
+
+// The person's active ranks, one per system, ordered by the rank system's sort_order (D-RankSystems).
+func (q *Queries) ListPersonRanks(ctx context.Context, personID string) ([]OikumeneaPersonRank, error) {
+	rows, err := q.db.Query(ctx, listPersonRanks, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonRank
+	for rows.Next() {
+		var i OikumeneaPersonRank
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.SystemID,
+			&i.RankID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPersons = `-- name: ListPersons :many
-SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, rank_id, status, deactivated_at, purge_after, created_at, updated_at, deleted_at FROM oikumenea.person_persons
+SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death FROM oikumenea.person_persons
 WHERE deleted_at IS NULL AND ($1 = '' OR id > $1)
 ORDER BY id
 LIMIT $2
@@ -1768,13 +1830,13 @@ func (q *Queries) ListPersons(ctx context.Context, arg ListPersonsParams) ([]Oik
 			&i.Sex,
 			&i.CountryOfBirth,
 			&i.Attributes,
-			&i.RankID,
 			&i.Status,
 			&i.DeactivatedAt,
 			&i.PurgeAfter,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.DateOfDeath,
 		); err != nil {
 			return nil, err
 		}
@@ -1787,7 +1849,7 @@ func (q *Queries) ListPersons(ctx context.Context, arg ListPersonsParams) ([]Oik
 }
 
 const listPersonsByIDs = `-- name: ListPersonsByIDs :many
-SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, rank_id, status, deactivated_at, purge_after, created_at, updated_at, deleted_at FROM oikumenea.person_persons
+SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death FROM oikumenea.person_persons
 WHERE id = ANY($1::text[]) AND deleted_at IS NULL
 ORDER BY id
 `
@@ -1821,13 +1883,13 @@ func (q *Queries) ListPersonsByIDs(ctx context.Context, ids []string) ([]Oikumen
 			&i.Sex,
 			&i.CountryOfBirth,
 			&i.Attributes,
-			&i.RankID,
 			&i.Status,
 			&i.DeactivatedAt,
 			&i.PurgeAfter,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.DateOfDeath,
 		); err != nil {
 			return nil, err
 		}
@@ -2145,15 +2207,15 @@ const purgePerson = `-- name: PurgePerson :one
 UPDATE oikumenea.person_persons SET
   code = NULL, display_name = '', title = NULL, given = NULL, given2 = NULL,
   surname = NULL, surname_prefix = NULL, surname2 = NULL, generation = NULL,
-  credentials = NULL, preferred = NULL, birthdate = NULL, sex = 'not_known',
+  credentials = NULL, preferred = NULL, birthdate = NULL, date_of_death = NULL, sex = 'not_known',
   country_of_birth = NULL, attributes = '{}'::jsonb,
   status = 'purged', deactivated_at = NULL, purge_after = NULL
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, rank_id, status, deactivated_at, purge_after, created_at, updated_at, deleted_at
+RETURNING id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death
 `
 
 // Hard-erase PII: NULL every pii:basic/contact column, reset sex/attributes, keep the id tombstone.
-// Child rows are removed separately (DeleteAll*). rank_id is pii:none and left as-is.
+// Child rows (incl. person_ranks) are removed separately (DeleteAll*).
 func (q *Queries) PurgePerson(ctx context.Context, id string) (OikumeneaPersonPerson, error) {
 	row := q.db.QueryRow(ctx, purgePerson, id)
 	var i OikumeneaPersonPerson
@@ -2174,13 +2236,13 @@ func (q *Queries) PurgePerson(ctx context.Context, id string) (OikumeneaPersonPe
 		&i.Sex,
 		&i.CountryOfBirth,
 		&i.Attributes,
-		&i.RankID,
 		&i.Status,
 		&i.DeactivatedAt,
 		&i.PurgeAfter,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.DateOfDeath,
 	)
 	return i, err
 }
@@ -2189,7 +2251,7 @@ const reactivatePerson = `-- name: ReactivatePerson :one
 UPDATE oikumenea.person_persons
 SET status = 'active', deactivated_at = NULL, purge_after = NULL
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, rank_id, status, deactivated_at, purge_after, created_at, updated_at, deleted_at
+RETURNING id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death
 `
 
 func (q *Queries) ReactivatePerson(ctx context.Context, id string) (OikumeneaPersonPerson, error) {
@@ -2212,56 +2274,13 @@ func (q *Queries) ReactivatePerson(ctx context.Context, id string) (OikumeneaPer
 		&i.Sex,
 		&i.CountryOfBirth,
 		&i.Attributes,
-		&i.RankID,
 		&i.Status,
 		&i.DeactivatedAt,
 		&i.PurgeAfter,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
-	)
-	return i, err
-}
-
-const setRank = `-- name: SetRank :one
-UPDATE oikumenea.person_persons SET rank_id = $1
-WHERE id = $2 AND deleted_at IS NULL
-RETURNING id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, rank_id, status, deactivated_at, purge_after, created_at, updated_at, deleted_at
-`
-
-type SetRankParams struct {
-	RankID pgtype.Text
-	ID     string
-}
-
-// Set or clear the person's one rank; a NULL rank_id clears it. The rank_ranks FK validates existence.
-func (q *Queries) SetRank(ctx context.Context, arg SetRankParams) (OikumeneaPersonPerson, error) {
-	row := q.db.QueryRow(ctx, setRank, arg.RankID, arg.ID)
-	var i OikumeneaPersonPerson
-	err := row.Scan(
-		&i.ID,
-		&i.Code,
-		&i.DisplayName,
-		&i.Title,
-		&i.Given,
-		&i.Given2,
-		&i.Surname,
-		&i.SurnamePrefix,
-		&i.Surname2,
-		&i.Generation,
-		&i.Credentials,
-		&i.Preferred,
-		&i.Birthdate,
-		&i.Sex,
-		&i.CountryOfBirth,
-		&i.Attributes,
-		&i.RankID,
-		&i.Status,
-		&i.DeactivatedAt,
-		&i.PurgeAfter,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.DeletedAt,
+		&i.DateOfDeath,
 	)
 	return i, err
 }
@@ -2594,11 +2613,12 @@ UPDATE oikumenea.person_persons SET
   credentials      = COALESCE($9, credentials),
   preferred        = COALESCE($10, preferred),
   birthdate        = COALESCE($11::date, birthdate),
-  sex              = COALESCE($12, sex),
-  country_of_birth = COALESCE($13, country_of_birth),
-  attributes       = COALESCE($14::jsonb, attributes)
-WHERE id = $15 AND deleted_at IS NULL
-RETURNING id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, rank_id, status, deactivated_at, purge_after, created_at, updated_at, deleted_at
+  date_of_death    = COALESCE($12::date, date_of_death),
+  sex              = COALESCE($13, sex),
+  country_of_birth = COALESCE($14, country_of_birth),
+  attributes       = COALESCE($15::jsonb, attributes)
+WHERE id = $16 AND deleted_at IS NULL
+RETURNING id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death
 `
 
 type UpdatePersonParams struct {
@@ -2613,14 +2633,16 @@ type UpdatePersonParams struct {
 	Credentials    pgtype.Text
 	Preferred      pgtype.Text
 	Birthdate      pgtype.Date
+	DateOfDeath    pgtype.Date
 	Sex            pgtype.Text
 	CountryOfBirth pgtype.Text
 	Attributes     []byte
 	ID             string
 }
 
-// Partial update: a NULL narg leaves the value unchanged. country_of_birth/birthdate cannot be
-// cleared to NULL via this path (open seam). `code` is immutable; rank is set via SetRank.
+// Partial update: a NULL narg leaves the value unchanged. country_of_birth/birthdate/date_of_death
+// cannot be cleared to NULL via this path (open seam). `code` is immutable; rank is set via the
+// person_ranks path (UpsertPersonRank / ClearPersonRank).
 func (q *Queries) UpdatePerson(ctx context.Context, arg UpdatePersonParams) (OikumeneaPersonPerson, error) {
 	row := q.db.QueryRow(ctx, updatePerson,
 		arg.DisplayName,
@@ -2634,6 +2656,7 @@ func (q *Queries) UpdatePerson(ctx context.Context, arg UpdatePersonParams) (Oik
 		arg.Credentials,
 		arg.Preferred,
 		arg.Birthdate,
+		arg.DateOfDeath,
 		arg.Sex,
 		arg.CountryOfBirth,
 		arg.Attributes,
@@ -2657,13 +2680,13 @@ func (q *Queries) UpdatePerson(ctx context.Context, arg UpdatePersonParams) (Oik
 		&i.Sex,
 		&i.CountryOfBirth,
 		&i.Attributes,
-		&i.RankID,
 		&i.Status,
 		&i.DeactivatedAt,
 		&i.PurgeAfter,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.DateOfDeath,
 	)
 	return i, err
 }
@@ -2975,6 +2998,41 @@ func (q *Queries) UpsertNameVariant(ctx context.Context, arg UpsertNameVariantPa
 		&i.IsPrimary,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const upsertPersonRank = `-- name: UpsertPersonRank :one
+INSERT INTO oikumenea.person_ranks (person_id, system_id, rank_id)
+SELECT $1, r.system_id, r.id
+FROM oikumenea.rank_ranks r
+WHERE r.id = $2 AND r.deleted_at IS NULL
+ON CONFLICT (person_id, system_id) WHERE deleted_at IS NULL
+  DO UPDATE SET rank_id = excluded.rank_id
+RETURNING id, person_id, system_id, rank_id, created_at, updated_at, deleted_at
+`
+
+type UpsertPersonRankParams struct {
+	PersonID string
+	RankID   string
+}
+
+// Set the person's rank in ONE rank system (the HOLDS_RANK link; one rank per system — D-Rank). The
+// system is DERIVED in SQL from the rank (rank_ranks.system_id), so the caller passes only person + rank.
+// Selecting FROM rank_ranks means an unknown/soft-deleted rank yields NO row → the repo maps the empty
+// result to ErrUnknownRank (no FK/not-null ambiguity). On an existing active (person, system) row the
+// rank is replaced; a previously cleared (soft-deleted) row is left and a fresh active row inserted.
+func (q *Queries) UpsertPersonRank(ctx context.Context, arg UpsertPersonRankParams) (OikumeneaPersonRank, error) {
+	row := q.db.QueryRow(ctx, upsertPersonRank, arg.PersonID, arg.RankID)
+	var i OikumeneaPersonRank
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.SystemID,
+		&i.RankID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }

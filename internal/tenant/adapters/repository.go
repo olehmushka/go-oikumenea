@@ -291,7 +291,7 @@ func (r *Repository) ListAncestors(ctx context.Context, graphID, unitID string) 
 	}
 	refs := make([]domain.UnitRef, 0, len(rows))
 	for _, row := range rows {
-		refs = append(refs, domain.UnitRef{ID: row.ID, Code: row.Code, Name: row.Name, Depth: int(row.Depth)})
+		refs = append(refs, domain.UnitRef{ID: row.ID, Code: row.Code, Name: row.Name, Depth: int(row.Depth), Visibility: domain.Visibility(row.Visibility)})
 	}
 	return refs, nil
 }
@@ -308,7 +308,7 @@ func (r *Repository) ListDescendants(ctx context.Context, graphID, unitID, after
 	}
 	refs := make([]domain.UnitRef, 0, len(rows))
 	for _, row := range rows {
-		refs = append(refs, domain.UnitRef{ID: row.ID, Code: row.Code, Name: row.Name, Depth: int(row.Depth)})
+		refs = append(refs, domain.UnitRef{ID: row.ID, Code: row.Code, Name: row.Name, Depth: int(row.Depth), Visibility: domain.Visibility(row.Visibility)})
 	}
 	return refs, nil
 }

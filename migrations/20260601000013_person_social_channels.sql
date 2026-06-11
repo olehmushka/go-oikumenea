@@ -1,4 +1,4 @@
--- 0014 person social & messenger channels (M13).
+-- 0013 person social & messenger channels (M13).
 --
 -- Person enrichment (docs/modules/person.md, D-PersonSocialChannels): a person's messenger
 -- reachability + social-network presence, in two additive layers over the M12 contact channels plus an
@@ -201,4 +201,4 @@ COMMENT ON COLUMN oikumenea.person_social_account_handles.valid_from IS 'pii:non
 COMMENT ON COLUMN oikumenea.person_social_account_handles.valid_to IS 'pii:none';
 
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
-UPDATE oikumenea.schema_version SET revision = '0014_person_social_channels', applied_at = now() WHERE singleton;
+UPDATE oikumenea.schema_version SET revision = '0013_person_social_channels', applied_at = now() WHERE singleton;

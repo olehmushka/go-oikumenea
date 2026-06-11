@@ -1,5 +1,5 @@
 # Person module API (M5). The personnel directory (docs/modules/person.md): the core aggregate of
-# the whole service — account-optional, instance-global, holding at most one rank. A person is the
+# the whole service — account-optional, instance-global, holding at most one rank per rank system. A person is the
 # primary PII store, so it carries a reversible deactivate -> purge (crypto-erase) lifecycle.
 #
 # RID-bearing fields are typed `string` (the composed URN RID): Conjure reserves `rid` as a built-in
@@ -9,8 +9,9 @@
 #
 # Person NAMES are per-record data managed by the person's admins (a canonical display_name plus
 # locale-tagged transliteration variants), NOT the instance-admin localization store (D-i18n) — so a
-# person's own name is returned verbatim, never as a locale->text map. The one rank a person holds is
-# returned as its `rankId`; clients resolve the label via RankService.
+# person's own name is returned verbatim, never as a locale->text map. The ranks a person holds —
+# at most one per rank system (D-Rank) — are returned as `ranks` (systemId + rankId pairs); clients
+# resolve the labels via RankService.
 #
 # Endpoints declare `auth: header` so the contract carries the bearer token from now on; reads gate
 # on `person.read`, writes on `person.create`/`person.update`/`person.rank.assign`/`person.lifecycle`/
@@ -62,6 +63,9 @@ types:
           birthdate:
             type: optional<string>
             docs: ISO-8601 calendar date of birth (YYYY-MM-DD); a day, not an instant.
+          dateOfDeath:
+            type: optional<string>
+            docs: ISO-8601 calendar date of death (YYYY-MM-DD); a bio attribute, not a lifecycle state — a deceased person stays an active record (D-PersonBio).
           sex:
             type: string
             docs: Biological sex, ISO/IEC 5218 as text — one of not_known | male | female | not_applicable.
@@ -71,9 +75,9 @@ types:
           attributes:
             type: optional<any>
             docs: Free-form long-tail directory fields (JSONB). pii:special ceiling — no special-category data without the envelope seam.
-          rankId:
-            type: optional<string>
-            docs: The URN RID of the one rank the person holds (a DIRECTORY attribute; never an authz input). Null when unranked.
+          ranks:
+            type: list<PersonRank>
+            docs: The ranks the person holds — at most one per rank system (a DIRECTORY attribute; never an authz input — D-Rank). Empty when unranked. Populated by getPerson; empty in list responses.
           status:
             type: string
             docs: Lifecycle status — one of active | deactivated | purged.
@@ -107,6 +111,15 @@ types:
           socialAccounts:
             type: list<SocialAccount>
             docs: The person's standalone social accounts. Populated by getPerson; empty in list responses.
+      PersonRank:
+        docs: One rank a person holds, scoped to a rank system (the HOLDS_RANK link; one per system — D-Rank). A directory attribute, never an authz input.
+        fields:
+          systemId:
+            type: string
+            docs: The URN RID of the rank system (derived from the rank); clients resolve the label via RankService.
+          rankId:
+            type: string
+            docs: The URN RID of the rank held in that system.
       NameVariant:
         docs: A full transliterated name form for one locale (e.g. ukr native, eng Latin). Person-managed, NOT the localization store.
         fields:
@@ -466,19 +479,17 @@ types:
           credentials: optional<string>
           preferred: optional<string>
           birthdate: optional<string>
+          dateOfDeath: optional<string>
           sex:
             type: optional<string>
             docs: ISO/IEC 5218 value; defaults to not_known when omitted.
           countryOfBirth: optional<string>
           attributes: optional<any>
-          rankId:
-            type: optional<string>
-            docs: Optional initial rank (validated against the rank scheme).
       UpdatePersonRequest:
         docs: |
-          Update a person's names (canonical + CLDR parts), birthdate, sex, country_of_birth, and
-          attributes. Omitted fields are unchanged; an empty string clears an optional name part.
-          `code` is immutable by convention and rank is set via setRank.
+          Update a person's names (canonical + CLDR parts), birthdate, date_of_death, sex,
+          country_of_birth, and attributes. Omitted fields are unchanged; an empty string clears an
+          optional name part. `code` is immutable by convention and ranks are set via setRank (per system).
         fields:
           displayName: optional<string>
           title: optional<string>
@@ -491,15 +502,22 @@ types:
           credentials: optional<string>
           preferred: optional<string>
           birthdate: optional<string>
+          dateOfDeath: optional<string>
           sex: optional<string>
           countryOfBirth: optional<string>
           attributes: optional<any>
       SetRankRequest:
-        docs: Set or clear the person's one rank. An absent rankId clears it (D-Rank).
+        docs: |
+          Set or clear the person's rank in ONE rank system (one rank per system — D-Rank). The rank's
+          system is derived from the rank itself, so on set only rankId is needed; on clear, systemId
+          names the system to clear.
         fields:
           rankId:
             type: optional<string>
-            docs: The URN RID of the rank to assign; omit to clear the person's rank.
+            docs: The URN RID of the rank to assign (its rank system is derived); omit to clear the person's rank in `systemId`.
+          systemId:
+            type: optional<string>
+            docs: Required only when clearing (rankId omitted) — the URN RID of the rank system to clear. Ignored when rankId is present.
       DeactivateRequest:
         docs: Begin reversible deactivation; opens a grace window (purgeAfter = now + the configured grace).
         fields:
@@ -749,7 +767,7 @@ services:
         returns: Person
       updatePerson:
         http: PUT /persons/{personId}
-        docs: Update names, birthdate, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.
+        docs: Update names, birthdate, date_of_death, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.
         args:
           personId:
             type: string
@@ -769,7 +787,7 @@ services:
         returns: PersonPage
       setRank:
         http: PUT /persons/{personId}/rank
-        docs: Set or clear the person's one rank (a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.
+        docs: Set or clear the person's rank in one rank system (one rank per system, a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.
         args:
           personId:
             type: string

@@ -103,10 +103,11 @@ type Edge struct {
 
 // UnitRef is a lightweight unit reference with its closure depth (ancestor/descendant listings).
 type UnitRef struct {
-	ID    string
-	Code  string
-	Name  string
-	Depth int
+	ID         string
+	Code       string
+	Name       string
+	Depth      int
+	Visibility Visibility // public/shadow, for the read-time shadow-visibility gate
 }
 
 // ClosureReport is the result of a closure verify/rebuild for one graph (D-ClosureIntegrity).

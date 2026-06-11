@@ -1,4 +1,4 @@
--- 0004 tenant (M3).
+-- 0003 tenant (M3).
 --
 -- The structural foundation: the organization as a graph of units (docs/modules/tenant.md /
 -- D-Graphs). Units are Objects; the parent->child edge is a reified Link (link__parent_of), per
@@ -193,4 +193,4 @@ COMMENT ON COLUMN oikumenea.tenant_unit_lifecycle_events.actor_person_id IS 'pii
 COMMENT ON COLUMN oikumenea.tenant_unit_lifecycle_events.request_id IS 'pii:none';
 
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
-UPDATE oikumenea.schema_version SET revision = '0004_tenant', applied_at = now() WHERE singleton;
+UPDATE oikumenea.schema_version SET revision = '0003_tenant', applied_at = now() WHERE singleton;

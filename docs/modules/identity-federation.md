@@ -91,7 +91,12 @@ Wired by [platform](platform.md) ahead of every authenticated handler:
    context. Handlers and the [authorization](authorization.md) PDP read it from there.
 
 Issuer list, JWKS URIs, audience, and clock-skew tolerance are **install config** (ECV +
-`pkg/refreshable`); JWKS is cached and refreshed on rotation.
+`pkg/refreshable`); JWKS is cached and refreshed on rotation. Production issuers are **OIDC/JWKS**
+(asymmetric). A **symmetric `hs256` issuer** (a shared HMAC key in install config) is a local/dev
+convenience so tests can mint tokens; because that key is a credential-equivalent (whoever holds it
+can mint valid tokens for any subject), the service **refuses to boot** with an `hs256` issuer
+configured unless `environment` is `local` or `dev` — fail-closed (L-AuthzOnly: the service holds
+no credentials in staging/prod).
 
 ## Conjure API surface
 
@@ -139,6 +144,9 @@ check.
   `account.identity_linking.enabled` install config (default `true`).
 - A person can exist with **no** account (roster-only) — accounts are optional.
 - Token validation failures are uniform `Unauthorized` (no oracle about which check failed).
+- **Symmetric (HS256) issuers are local/dev only.** The service refuses to boot with an `hs256`
+  issuer configured unless `environment` is `local`/`dev` (fail-closed; the symmetric key is a
+  credential-equivalent — L-AuthzOnly). Staging/prod issuers are OIDC/JWKS (asymmetric).
 
 ## Open seams / future
 

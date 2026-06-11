@@ -142,6 +142,14 @@ shadow gate. Position carries **no** authority (D-Position / D-Rank).
   still an additive config switch, so the default stays unit-scoped until an org needs it.
 - Effective-dated / temporal membership history is supported by the date columns; richer
   temporal queries are additive.
+- **Acting / dual-hatted / secondment is _not_ a position concern.** Temporary authority (acting
+  CO during a leave, dual-hatting, secondment) is modeled as a **time-bound role assignment** on
+  the unit — not a billet fill ([authorization](authorization.md); [patterns.md](../architecture/patterns.md),
+  *Acting authority via time-bound role assignment*). The substantive holder's membership stays
+  `active` and the one-holder index intentionally does **not** model the stand-in, because acting
+  authority never touches the billet. Showing **both** the substantive and the acting incumbent
+  *on the billet itself* would be the **multi-incumbent** seam above plus an `acting` flag —
+  reserved, not shipped.
 - **Order provenance.** A fill/end may cite an [order](order.md) item via `order_item_id` (the
   наказ that authorized it, D-Orders). On order **issue**, membership applies the fill/end
   automatically from the order's `AppointmentOrdered` / `RemovalOrdered` events **in the issue

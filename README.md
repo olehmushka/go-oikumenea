@@ -71,7 +71,7 @@ binary's expected revision:
 
 ```bash
 curl -sk https://localhost:8444/status/readiness
-# {"ready":true,"schemaRevision":"0006_person","expectedSchemaRevision":"0006_person"}
+# {"ready":true,"schemaRevision":"0005_person","expectedSchemaRevision":"0005_person"}
 ```
 
 ### 5. Tests

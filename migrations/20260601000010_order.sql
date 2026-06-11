@@ -1,4 +1,4 @@
--- 0011 order (M10).
+-- 0010 order (M10).
 --
 -- Administrative orders (наказ): the formal acts that are the LEGAL BASIS for a change in a person's
 -- status (docs/modules/order.md, D-Orders). Where a document records what a person HAS, an order
@@ -148,4 +148,4 @@ ALTER TABLE oikumenea.membership_memberships
   FOREIGN KEY (order_item_id) REFERENCES oikumenea.order_order_items(id) ON DELETE SET NULL;
 
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
-UPDATE oikumenea.schema_version SET revision = '0011_order', applied_at = now() WHERE singleton;
+UPDATE oikumenea.schema_version SET revision = '0010_order', applied_at = now() WHERE singleton;

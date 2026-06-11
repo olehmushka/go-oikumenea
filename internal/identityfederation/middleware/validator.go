@@ -9,6 +9,7 @@ package middleware
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -24,8 +25,25 @@ var errInvalidToken = errors.New("invalid inbound token")
 // IssuerType selects how an issuer's tokens are verified.
 const (
 	IssuerOIDC  = "oidc"  // production: OIDC discovery + JWKS (RS256/asymmetric)
-	IssuerHS256 = "hs256" // local-dev: symmetric HMAC key from install config
+	IssuerHS256 = "hs256" // local/dev only: symmetric HMAC key from install config; refused at boot elsewhere (GuardSymmetricIssuers)
 )
+
+// GuardSymmetricIssuers refuses HS256 (symmetric) issuers outside the local/dev environments. A
+// symmetric verification key is a credential-equivalent the service would then hold (anyone with
+// the install secret can mint valid tokens for any subject — contrary to L-AuthzOnly), so it is
+// permitted only where minting test tokens is the point. Fail-closed: any environment other than
+// "local"/"dev" rejects, including an empty or unknown value. Called once at boot.
+func GuardSymmetricIssuers(issuers []IssuerConfig, environment string) error {
+	if environment == "local" || environment == "dev" {
+		return nil
+	}
+	for _, ic := range issuers {
+		if ic.Type == IssuerHS256 {
+			return fmt.Errorf("issuer %q uses symmetric HS256, permitted only in local/dev (environment=%q)", ic.Issuer, environment)
+		}
+	}
+	return nil
+}
 
 // IssuerConfig describes one accepted issuer (install config — ECV).
 type IssuerConfig struct {

@@ -1,4 +1,4 @@
--- Migration 0012_rls_backstop: the PDP-mirror Row-Level-Security backstop (D-RLSDefenseInDepth).
+-- Migration 0011_rls_backstop: the PDP-mirror Row-Level-Security backstop (D-RLSDefenseInDepth).
 --
 -- RLS is enabled here as a DB-level defense-in-depth backstop that mirrors the PDP-computed read/write
 -- reach. The app-layer PDP + shadow gate remain AUTHORITATIVE; RLS only guards the forgotten-filter bug
@@ -46,9 +46,10 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA oikumenea GRANT EXECUTE ON FUNCTIONS TO oikum
 --
 -- EXEMPT (no RLS): tenant_unit_closure + tenant_closure_status (the PDP READS the closure to COMPUTE
 -- reach — a reach-keyed policy there would be circular) and tenant_graphs (instance-level catalog).
--- person_persons / document_documents / order_order_items have no unit column and are scoped by the
--- app-layer PDP through a unit-scoped parent/holder (D-PersonReadScope / D-RLSDefenseInDepth); a
--- reach-join policy for them is a noted hardening seam, not shipped.
+-- person_persons / document_documents / order_order_items (and person child tables like person_ranks,
+-- the HOLDS_RANK link) have no unit column and are scoped by the app-layer PDP through a unit-scoped
+-- parent/holder (D-PersonReadScope / D-RLSDefenseInDepth); a reach-join policy for them is a noted
+-- hardening seam, not shipped.
 
 -- tenant_units: keyed on the unit's own id.
 ALTER TABLE oikumenea.tenant_units ENABLE ROW LEVEL SECURITY;
@@ -120,4 +121,4 @@ CREATE POLICY audit_log_append ON oikumenea.audit_log FOR INSERT
   WITH CHECK (true);
 
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
-UPDATE oikumenea.schema_version SET revision = '0012_rls', applied_at = now() WHERE singleton;
+UPDATE oikumenea.schema_version SET revision = '0011_rls', applied_at = now() WHERE singleton;

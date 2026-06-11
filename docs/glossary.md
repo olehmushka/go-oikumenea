@@ -43,7 +43,9 @@ descriptive label).
 
 **Closure.** A maintained transitive-closure table, **per graph** (`graph → ancestor →
 descendant`), that lets the PDP answer "is U a descendant of T in graph g?" in one indexed lookup
-instead of walking edges. Maintained incrementally on edge change; an on-demand **verify**
+instead of walking edges. Reflexive `(g, u, u, 0)` self-rows cover only units **participating in
+that graph's edges** (an edge-less unit has no closure row in `g`). Maintained incrementally on
+edge change; an on-demand **verify**
 (drift diff) / **rebuild** (recompute from edges) operation is the integrity backstop
 against drift (D-ClosureIntegrity). Drift is also surfaced at runtime by the diagnostic
 **`closure-drift`** health reporter — fed by `verify`'s persisted `tenant_closure_status`,
@@ -64,8 +66,9 @@ are recorded as append-only events.
 record per individual for the whole deployment (not per-unit). Exists independently of any
 login account and of any unit membership. Carries a canonical `display_name` plus the
 **Unicode CLDR Person Names** structured parts (`given`, `given2`, `surname`, …; D-PersonNamesCLDR),
-bio fields (`birthdate`, `sex`, `country_of_birth`), citizenships and residences. Owned by the
-[person](modules/person.md) module.
+bio fields (`birthdate`, `date_of_death`, `sex`, `country_of_birth`), citizenships and residences.
+A `date_of_death` is a **bio attribute, not a lifecycle state** — a deceased person stays an active
+directory record (D-PersonBio). Owned by the [person](modules/person.md) module.
 
 **Name (CLDR).** Person names follow the **Unicode CLDR Person Names** fixed field set; `display_name`
 is authoritative and the structured parts are advisory (D-PersonNamesCLDR). There is **no dedicated
@@ -155,6 +158,18 @@ position is what they *do* in a specific unit. Owned by [membership](modules/mem
 **Vacancy.** A derived state: an active position with **no** active membership filling it. Not
 a stored column — the closure of "active position, unfilled".
 
+**Acting authority.** Temporary authority held while a substantive holder is absent, modeled as a
+**time-bound role assignment** (`expires_at`) on the unit — *not* a position fill or a rank change
+(D-TimeBoundGrants; [patterns.md](architecture/patterns.md), *Acting authority via time-bound role
+assignment*). The substantive holder's membership/position is untouched; the grant lapses silently
+on expiry.
+
+**Dual-hatting.** One person carrying authority over two units (or two roles) at once — two
+concurrent live role assignments; the union-across-graphs PDP sums them. Not a second position.
+
+**Secondment.** Temporary authority on a **host** unit while the person's **home-unit** membership
+persists — a bounded role assignment on the host, not a transfer or a new billet.
+
 ---
 
 ## Documents & orders
@@ -220,7 +235,9 @@ ranks at once (D-RankSystems). Ordered.
 Ordered, expresses the broad seniority band.
 
 **Rank.** A specific grade (e.g. `private`, `sergeant`, `colonel`). Ordered, expresses exact
-seniority **within a system**. A person holds **one** rank.
+seniority **within a system**. A person holds at most **one rank per rank system** (the reified
+`HOLDS_RANK` link / `person_ranks`); a single-system deployment thus holds at most one, a multi-track
+one (university/church) may hold concurrent standings (D-Rank).
 
 **Standardized grade (NATO STANAG 2116).** A locale-agnostic grade code (`OF-1`…`OF-10`, `OR-1`…`OR-9`,
 warrant) optionally attached to a rank, drawn from the seeded `rank_grades` catalog. It is the

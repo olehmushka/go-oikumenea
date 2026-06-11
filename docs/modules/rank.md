@@ -13,14 +13,15 @@ never adopted per-unit), edited only by the **instance admin** (instance-scope a
 [patterns.md](../architecture/patterns.md)). The one scheme may contain **several rank systems at once**
 so a multinational/coalition directory can carry e.g. US and Ukrainian ranks together
 ([D-RankSystems](../architecture/decisions.md)). A rank is a **directory attribute describing
-seniority and grants no authorization** (D-Rank); the PDP never reads it. A `person` points at
-one `rank` (its system is *derived* through `rank → type → category → system`).
+seniority and grants no authorization** (D-Rank); the PDP never reads it. A `person` holds at most
+one `rank` **per rank system** (via the `person_ranks` link; its system is *derived* through
+`rank → type → category → system`).
 
 ## Entities & aggregates
 
 **Ontology kinds** (D-Ontology; [registry](../ontology-mapping.md)) — four **Objects** forming the
-one ordered scheme: `Rank system`, `Rank category`, `Rank type`, `Rank` (a person holds one via the
-`HOLDS_RANK` link — never an authz input), plus the seeded reference catalog `Rank grade` (the
+one ordered scheme: `Rank system`, `Rank category`, `Rank type`, `Rank` (a person holds one per rank
+system via the reified `HOLDS_RANK` link — never an authz input), plus the seeded reference catalog `Rank grade` (the
 cross-system comparator). **Actions:** create/edit/reorder/soft-delete of scheme nodes + preset import
 (`rank.scheme.manage`) — audited, `action__<type>` RID.
 
@@ -171,8 +172,8 @@ plane, never a unit assignment). Editing the scheme is the canonical instance-ad
   seam. Because a fresh type has no children, no cycle can form.
 - **A scheme node in use cannot be hard-deleted.** A category with active types, or a type with
   active ranks or active child types, is blocked. `rank_ranks` referenced by a
-  `person_persons.rank_id` is `ON DELETE RESTRICT`; soft-delete is also blocked while
-  referenced (checked in the application).
+  `person_ranks.rank_id` (the HOLDS_RANK link) is `ON DELETE RESTRICT`; soft-delete is also blocked
+  while referenced (checked in the application).
 - **`sort_order` unique within parent** (the sibling group), contiguous after a reorder.
 - **Rank ≠ permission** — no code path consults rank to authorize ([patterns.md](../architecture/patterns.md),
   Directory attribute vs. authorization).

@@ -254,7 +254,7 @@ trivial Conjure endpoint — the chassis every module bolts onto.
 
 ## M11 — Hardening & upgrade-safety
 
-**Status: delivered** (revision `0012_rls`). RLS backstop enabled+tightened in one revision (the
+**Status: delivered** (revision `0011_rls`). RLS backstop enabled+tightened in one revision (the
 service is pre-release; see [decisions.md](architecture/decisions.md) D-RLSDefenseInDepth *Enablement
 timing*), per-request reach GUCs on a pinned connection, the non-superuser `oikumenea_app` role,
 `UPGRADING.md` revision log, CI workflows, Docker packaging, and PDP/closure benchmarks.
@@ -359,7 +359,7 @@ update `decisions.md` (new decisions for the contact model + call signs), `gloss
 
 ## M13 — Social & messenger channels
 
-**Status: delivered** (revision `0014_person_social_channels`). Binding via **D-PersonSocialChannels** in
+**Status: delivered** (revision `0013_person_social_channels`). Binding via **D-PersonSocialChannels** in
 [decisions.md](architecture/decisions.md) (promotes open-question DS-41). A purely additive
 [person](modules/person.md) enrichment — new catalog, new child tables, new seed rows; no breaking
 change. The `person_platforms` catalog + `person_messenger_links` / `person_social_accounts` /
@@ -396,7 +396,7 @@ verification) — while staying inside the project's PII discipline.
 
 ## M14 — Person↔person relationships
 
-**Status: delivered** (revision `0015_person_relationships`). Binding via **D-PersonRelationships** in
+**Status: delivered** (revision `0014_person_relationships`). Binding via **D-PersonRelationships** in
 [decisions.md](architecture/decisions.md) (promotes open-question DS-42, expanded). Per-type reified
 self-links, all additive — the `person_relation_types` catalog + **six** link tables
 (`person_partnerships`/`_kinships`/`_guardianships`/`_sponsorships`/`_next_of_kin`/`_associations`),
@@ -430,7 +430,7 @@ plus a Palantir-style generic **association** link for COI / prohibited-contact.
 
 ## M15 — Rank systems, NATO grades & presets
 
-**Status: delivered** (folded into the rank migration `0005_rank`). Binding via **D-RankSystems** in
+**Status: delivered** (folded into the rank migration `0004_rank`). Binding via **D-RankSystems** in
 [decisions.md](architecture/decisions.md) (extends D-Rank, refines L-OneRankScheme; promotes
 open-question DS-43). Additive over M4 — a new top-level table (`rank_systems`), a denormalized
 `system_id` down the tree, the seeded `rank_grades` reference catalog (NATO STANAG 2116) + `rank_ranks.grade_code`,

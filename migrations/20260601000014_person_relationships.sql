@@ -1,4 +1,4 @@
--- 0015 person↔person relationships (M14).
+-- 0014 person↔person relationships (M14).
 --
 -- Person enrichment (docs/modules/person.md, D-PersonRelationships): family and social structure
 -- between two in-directory persons, modelled as PER-TYPE reified self-links (Person → Person, D-Ontology
@@ -310,4 +310,4 @@ COMMENT ON COLUMN oikumenea.person_associations.status IS 'pii:none';
 -- (person_social_links / link__social_tie deferred — see the header note and decisions.md.)
 
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
-UPDATE oikumenea.schema_version SET revision = '0015_person_relationships', applied_at = now() WHERE singleton;
+UPDATE oikumenea.schema_version SET revision = '0014_person_relationships', applied_at = now() WHERE singleton;

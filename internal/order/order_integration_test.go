@@ -231,6 +231,14 @@ func TestIssueAllOrNothingRollback(t *testing.T) {
 	if got.Holder == nil || got.Holder.PersonID != personA {
 		t.Fatalf("holder = %+v, want person A still in place", got.Holder)
 	}
+	// And no membership row was written for person B — the failed fill rolled back cleanly.
+	pageB, err := e.mem.ListPersonMemberships(ctx, personB, 50, "")
+	if err != nil {
+		t.Fatalf("list B memberships: %v", err)
+	}
+	if len(pageB.Memberships) != 0 {
+		t.Fatalf("rolled-back order left %d memberships for person B, want 0", len(pageB.Memberships))
+	}
 }
 
 // TestRecordOnlyStandsAlone covers a record-only item: no downstream membership is written.
@@ -271,8 +279,15 @@ func TestRankChangeSetsRank(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get person: %v", err)
 	}
-	if got.RankID != rank {
-		t.Fatalf("person rank = %q, want %q", got.RankID, rank)
+	// The rank-change effect upserts the rank in its (derived) system; one rank per system (D-Rank).
+	var found bool
+	for _, r := range got.Ranks {
+		if r.RankID == rank {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("person ranks = %+v, want one holding %q", got.Ranks, rank)
 	}
 }
 

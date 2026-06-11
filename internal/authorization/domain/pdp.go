@@ -240,8 +240,9 @@ func deny(explain bool, reason string) Decision {
 // (subject to the caller's normal read permission, checked separately); a `shadow` unit passes only
 // if it is in the subject's readable reach (D-Shadow gate). Returns the allowed unit ids as a set.
 //
-// It is a pure second pass owned here and called by tenant/membership read paths. `shadow` reports,
-// per candidate unit id, whether that unit is shadow (true) or public (false).
+// It is a pure second pass owned here, reached via application.FilterVisibleUnits from tenant's
+// list/ancestors/descendants reads (F-002 A-lite). `shadow` reports, per candidate unit id, whether
+// that unit is shadow (true) or public (false).
 func ShadowGate(reach Reach, candidates []string, shadow map[string]bool) map[string]struct{} {
 	allowed := make(map[string]struct{}, len(candidates))
 	for _, u := range candidates {

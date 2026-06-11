@@ -216,9 +216,10 @@ func unitKeys(m map[string]struct{}) []string {
 	return out
 }
 
-// FilterVisibleUnits applies the shadow-visibility gate (owned here, called by tenant/membership read
-// paths): from candidates, drop shadow units the subject's *.read does not reach. `shadow` reports
-// per unit id whether it is shadow. Returns the visible subset preserving input order.
+// FilterVisibleUnits applies the shadow-visibility gate (owned here, called via pep.FilterVisibleUnits
+// by tenant's list/ancestors/descendants reads — F-002 A-lite): from candidates, drop shadow units
+// the subject's *.read does not reach. `shadow` reports per unit id whether it is shadow. Returns the
+// visible subset preserving input order.
 func (s *Service) FilterVisibleUnits(ctx context.Context, subjectPersonID string, candidates []string, shadow map[string]bool) ([]string, error) {
 	reach, err := s.EffectiveReach(ctx, subjectPersonID)
 	if err != nil {

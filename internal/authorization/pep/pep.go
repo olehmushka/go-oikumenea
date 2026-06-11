@@ -106,6 +106,16 @@ func (e *Enforcer) EffectiveReach(ctx context.Context) (domain.Reach, error) {
 	return e.svc.EffectiveReach(ctx, subject)
 }
 
+// FilterVisibleUnits applies the shadow-visibility gate (owned by authorization, patterns.md): from
+// `candidates`, drop `shadow` units the request subject's *.read does not reach; `public` units and
+// reachable units pass, preserving input order. `shadow` reports per unit id whether it is shadow.
+// Tenant's list/ancestors/descendants reads call it as the authoritative second pass after the
+// permission decision (the tenant_units public-read RLS policy is its DB-level mirror). Call sites
+// gate on RequireAnywhere/Require first, so the subject is non-empty here.
+func (e *Enforcer) FilterVisibleUnits(ctx context.Context, candidates []string, shadow map[string]bool) ([]string, error) {
+	return e.svc.FilterVisibleUnits(ctx, Subject(ctx), candidates, shadow)
+}
+
 // RequireAnywhere enforces that the token's subject can satisfy `action` at some unit (or on the
 // instance plane) — the gate for instance-global reads whose resource is not unit-keyed.
 func (e *Enforcer) RequireAnywhere(ctx context.Context, token bearertoken.Token, action string) error {

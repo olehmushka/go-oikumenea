@@ -1,4 +1,4 @@
--- 0013 person contacts + document attribute schema (M12).
+-- 0012 person contacts + document attribute schema (M12).
 --
 -- Person enrichment (docs/modules/person.md, D-PersonContactChannels): three multi-valued contact /
 -- identity channels on a person — emails, phones, call signs — each an effective child table that
@@ -207,4 +207,4 @@ INSERT INTO oikumenea.document_personal_code_schemes (code, country_iso, generic
   ('co-cedula',          'CO', 'national-id',      'Cédula de Ciudadanía', '^\d{6,10}$',                   150);
 
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
-UPDATE oikumenea.schema_version SET revision = '0013_person_contacts', applied_at = now() WHERE singleton;
+UPDATE oikumenea.schema_version SET revision = '0012_person_contacts', applied_at = now() WHERE singleton;

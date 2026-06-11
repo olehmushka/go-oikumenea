@@ -66,25 +66,33 @@ func TestRLSBackstop(t *testing.T) {
 	defer super.Close()
 
 	// Distinct ids so the test is independent of any pre-existing rows; minted via new_rid so the
-	// id RID-shape CHECK holds. Two are seeded now; two are reserved for the write-policy test.
-	var idReadable, idHidden, idWriteOK, idWriteDenied string
-	for _, p := range []*string{&idReadable, &idHidden, &idWriteOK, &idWriteDenied} {
+	// id RID-shape CHECK holds. idReadable/idHidden are seeded now (both shadow); idWrite* are reserved
+	// for the write-policy test; idPublic is a public unit for the public-read policy test (F-002).
+	var idReadable, idHidden, idWriteOK, idWriteDenied, idPublic string
+	for _, p := range []*string{&idReadable, &idHidden, &idWriteOK, &idWriteDenied, &idPublic} {
 		if err := super.QueryRow(ctx, "SELECT oikumenea.new_rid('tenant','unit')").Scan(p); err != nil {
 			t.Fatalf("mint rid: %v", err)
 		}
 	}
 	mkCode := func(s string) string { return "rls-test-" + s[len(s)-12:] }
+	// idReadable/idHidden are shadow so they are governed solely by the reach predicate (not the
+	// public-read exception); idPublic is public so it should be selectable regardless of reach.
 	for _, id := range []string{idReadable, idHidden} {
 		if _, err := super.Exec(ctx,
-			"INSERT INTO oikumenea.tenant_units (id, code, name) VALUES ($1, $2, $3)",
+			"INSERT INTO oikumenea.tenant_units (id, code, name, visibility) VALUES ($1, $2, $3, 'shadow')",
 			id, mkCode(id), "RLS test unit"); err != nil {
 			t.Fatalf("seed unit: %v", err)
 		}
 	}
+	if _, err := super.Exec(ctx,
+		"INSERT INTO oikumenea.tenant_units (id, code, name, visibility) VALUES ($1, $2, $3, 'public')",
+		idPublic, mkCode(idPublic), "RLS test public unit"); err != nil {
+		t.Fatalf("seed public unit: %v", err)
+	}
 	defer func() {
 		_, _ = super.Exec(context.Background(),
 			"DELETE FROM oikumenea.tenant_units WHERE id = ANY($1)",
-			[]string{idReadable, idHidden, idWriteOK, idWriteDenied})
+			[]string{idReadable, idHidden, idWriteOK, idWriteDenied, idPublic})
 	}()
 
 	// Restricted pool: the non-superuser role, so the policies apply.
@@ -111,6 +119,24 @@ func TestRLSBackstop(t *testing.T) {
 		}
 		if visible(ctx, t, conn, idHidden) {
 			t.Error("a unit NOT in readable_units must be hidden")
+		}
+	})
+
+	t.Run("public units are selectable regardless of reach (F-002)", func(t *testing.T) {
+		// Empty reach, not an instance admin: the reach predicate hides everything, so only the
+		// public-read policy can admit a row. The public unit must be visible; a shadow unit out of
+		// reach must stay hidden — proving the new policy is SELECT-scoped to public rows, not a
+		// blanket read.
+		conn, release, err := pdb.AcquireScoped(ctx, app, pdb.RLSState{})
+		if err != nil {
+			t.Fatalf("acquire scoped: %v", err)
+		}
+		defer release()
+		if !visible(ctx, t, conn, idPublic) {
+			t.Error("a public unit must be selectable even with empty reach")
+		}
+		if visible(ctx, t, conn, idHidden) {
+			t.Error("a shadow unit out of reach must stay hidden")
 		}
 	})
 

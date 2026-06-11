@@ -1,4 +1,4 @@
--- 0001 schema bootstrap (M0 walking skeleton).
+-- 0000 schema bootstrap (M0 walking skeleton).
 --
 -- Creates the shared `oikumenea` SQL objects every module depends on, BEFORE any module
 -- table (ordering invariant; docs/modules/platform.md). Expand-only (L-UpgradeSafe / D-Migrations).
@@ -63,7 +63,7 @@ CREATE TABLE oikumenea.schema_version (
   revision   text NOT NULL,
   applied_at timestamptz NOT NULL DEFAULT now()
 );
-INSERT INTO oikumenea.schema_version (singleton, revision) VALUES (true, '0001_schema_bootstrap');
+INSERT INTO oikumenea.schema_version (singleton, revision) VALUES (true, '0000_schema_bootstrap');
 
 -- geo_countries: seeded ISO-3166-1 alpha-2 registry (D-Geo). Natural code PK (not an RID,
 -- per D-ResourceIdentifiers carve-out). Default-locale (English) name; other locales arrive
