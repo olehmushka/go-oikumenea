@@ -42,6 +42,22 @@ func TestPersonValidate(t *testing.T) {
 	}
 }
 
+func TestNormalizeSex(t *testing.T) {
+	cases := map[string]string{
+		"0": "not_known", "1": "male", "2": "female", "9": "not_applicable",
+		" 1 ":  "male",           // surrounding whitespace tolerated
+		"male": "male",           // already canonical, passed through
+		"":     "",               // empty stays empty (defaulted upstream)
+		"7":    "7",              // unknown numeric passes through for Validate to reject
+		"robot": "robot",         // garbage passes through
+	}
+	for in, want := range cases {
+		if got := NormalizeSex(in); got != want {
+			t.Errorf("NormalizeSex(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestPersonPatchValidate(t *testing.T) {
 	empty := ""
 	bad := "not-a-date"

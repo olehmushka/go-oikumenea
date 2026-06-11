@@ -79,7 +79,7 @@ func (s Service) CreatePerson(ctx context.Context, token bearertoken.Token, req 
 		Name: nameFromParts(req.DisplayName, req.Title, req.Given, req.Given2, req.Surname,
 			req.SurnamePrefix, req.Surname2, req.Generation, req.Credentials, req.Preferred),
 		Birthdate:      derefOr(req.Birthdate, ""),
-		Sex:            derefOr(req.Sex, ""),
+		Sex:            domain.NormalizeSex(derefOr(req.Sex, "")),
 		CountryOfBirth: derefOr(req.CountryOfBirth, ""),
 		Attributes:     attrToBytes(req.Attributes),
 		RankID:         derefOr(req.RankId, ""),
@@ -131,7 +131,7 @@ func (s Service) UpdatePerson(ctx context.Context, token bearertoken.Token, pers
 		Credentials:    req.Credentials,
 		Preferred:      req.Preferred,
 		Birthdate:      req.Birthdate,
-		Sex:            req.Sex,
+		Sex:            normalizeSexPtr(req.Sex),
 		CountryOfBirth: req.CountryOfBirth,
 		Attributes:     attrToBytes(req.Attributes),
 	})
@@ -1256,6 +1256,16 @@ func derefOr[T any](p *T, fallback T) T {
 		return fallback
 	}
 	return *p
+}
+
+// normalizeSexPtr collapses an optional ISO/IEC 5218 sex value to its canonical readable text,
+// leaving nil (unchanged-in-patch) as nil.
+func normalizeSexPtr(p *string) *string {
+	if p == nil {
+		return nil
+	}
+	s := domain.NormalizeSex(*p)
+	return &s
 }
 
 func dtPtr(t *time.Time) *datetime.DateTime {

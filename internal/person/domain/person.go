@@ -93,6 +93,20 @@ const (
 // gender identity (which would be pii:special and is out of scope).
 var validSex = map[string]bool{"not_known": true, "male": true, "female": true, "not_applicable": true}
 
+// iso5218Sex maps the raw ISO/IEC 5218 numeric codes to the canonical readable-text values. Callers
+// may submit either form; NormalizeSex collapses the numeric form to text.
+var iso5218Sex = map[string]string{"0": "not_known", "1": "male", "2": "female", "9": "not_applicable"}
+
+// NormalizeSex accepts either the canonical readable text (male, female, …) or the ISO/IEC 5218
+// numeric code (0, 1, 2, 9) and returns the canonical readable text. Unrecognized input is returned
+// unchanged so Validate can reject it with a clear message.
+func NormalizeSex(sex string) string {
+	if canonical, ok := iso5218Sex[strings.TrimSpace(sex)]; ok {
+		return canonical
+	}
+	return sex
+}
+
 // CitizenshipBasis records how a citizenship was acquired (D-Geo).
 var validBasis = map[string]bool{"birth": true, "descent": true, "naturalization": true, "other": true}
 
@@ -166,6 +180,9 @@ func (p Person) Validate() error {
 	if p.Sex != "" && !validSex[p.Sex] {
 		return wrapInvalid("sex must be one of not_known|male|female|not_applicable")
 	}
+	if p.CountryOfBirth != "" && !validCountry(p.CountryOfBirth) {
+		return wrapInvalid("countryOfBirth must be a 2-letter ISO-3166-1 alpha-2 code")
+	}
 	if !validDate(p.Birthdate) {
 		return wrapInvalid("birthdate must be an ISO-8601 date (YYYY-MM-DD)")
 	}
@@ -207,6 +224,9 @@ func (p PersonPatch) Validate() error {
 	}
 	if p.Sex != nil && !validSex[*p.Sex] {
 		return wrapInvalid("sex must be one of not_known|male|female|not_applicable")
+	}
+	if p.CountryOfBirth != nil && *p.CountryOfBirth != "" && !validCountry(*p.CountryOfBirth) {
+		return wrapInvalid("countryOfBirth must be a 2-letter ISO-3166-1 alpha-2 code")
 	}
 	if p.Birthdate != nil && !validDate(*p.Birthdate) {
 		return wrapInvalid("birthdate must be an ISO-8601 date (YYYY-MM-DD)")
