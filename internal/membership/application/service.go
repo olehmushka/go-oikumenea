@@ -368,6 +368,23 @@ func (s *Service) ListPersonMemberships(ctx context.Context, personID string, pa
 	})
 }
 
+// ActiveUnitIDsForPerson returns the distinct units a person currently belongs to via active
+// memberships — the cross-module query the person/document read-scope projection intersects with the
+// reader's effective readable units (D-PersonReadScope). Runs on the request-pinned connection.
+func (s *Service) ActiveUnitIDsForPerson(ctx context.Context, personID string) ([]string, error) {
+	return s.newRepo(s.querier(ctx)).ActiveUnitIDsByPerson(ctx, personID)
+}
+
+// PersonIDsWithActiveMembershipInUnits returns the distinct persons with an active membership in any
+// of unitIDs, keyset-paginated by person RID — the cross-module query powering the directory-list
+// union (GET /persons) under D-PersonReadScope. An empty unitIDs yields no rows.
+func (s *Service) PersonIDsWithActiveMembershipInUnits(ctx context.Context, unitIDs []string, after string, limit int) ([]string, error) {
+	if len(unitIDs) == 0 {
+		return nil, nil
+	}
+	return s.newRepo(s.querier(ctx)).ActivePersonIDsInUnits(ctx, unitIDs, after, limit)
+}
+
 // ---------------------------------------------------------------- helpers
 
 // checkPositionForFill verifies a referenced position exists, is active, and belongs to the cited

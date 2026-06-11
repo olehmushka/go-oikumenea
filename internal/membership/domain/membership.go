@@ -179,4 +179,10 @@ type Repository interface {
 	ActivePlainMembership(ctx context.Context, personID, unitID string) (Membership, error)
 	ListMembersByUnit(ctx context.Context, unitID, after string, limit int) ([]Membership, error)
 	ListMembershipsByPerson(ctx context.Context, personID, after string, limit int) ([]Membership, error)
+	// ActiveUnitIDsByPerson returns the distinct units a person currently belongs to via active
+	// memberships (the person/document read-scope projection input; D-PersonReadScope).
+	ActiveUnitIDsByPerson(ctx context.Context, personID string) ([]string, error)
+	// ActivePersonIDsInUnits returns the distinct persons with an active membership in any of the
+	// given units, keyset-paginated by person RID (the directory-list union; D-PersonReadScope).
+	ActivePersonIDsInUnits(ctx context.Context, unitIDs []string, after string, limit int) ([]string, error)
 }

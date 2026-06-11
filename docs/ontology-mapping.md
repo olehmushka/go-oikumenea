@@ -67,6 +67,27 @@ Real-world entities with identity over time → Objects.
 | `Locale` / `Translation` | [localization](modules/localization.md) | locale `code` is ISO 639-3 | locale soft-delete | the translatable-`name` store |
 | `Country` | [platform](modules/platform.md) | `code` = ISO-3166-1 α2 | status | shared reference registry |
 | `AuditEntry` | [audit](modules/audit.md) | no | **append-only** (`reject_mutation()`) | not an endpoint; written in-transaction |
+| `ImportSource` / `ImportRun` *(planned, M17)* | platform | source has `code` | source soft-delete; run append-only | external source registry + lineage ledger; D-DataIngestion |
+| `Languoid` *(planned, M18)* | `language` | `code` = glottocode; nullable unique `iso639_3` | seeded reference (import) | recursive Glottolog forest, `level ∈ family\|language\|dialect`; `parent_id` strict-tree FK (not a Link); AES `status`; D-Languages |
+| `WritingSystem` / `WritingSystemScriptType` *(planned, M18)* | `language` | `code` (ISO 15924 / catalog) | seeded reference | scripts + script-type catalog |
+| `Location` *(planned, M19)* | `location` | no | soft-delete | required `GEOGRAPHY(POINT,4326)`; DB-derived MGRS/H3; structured address over `geo_countries`; D-Location |
+| `EducationInstitution` / `EducationUnit` / `EducationBuilding` / `EducationGroup` *(planned, M20)* | `education` | institution/unit `code` | soft-delete | external reference orgs; `EducationUnit` is a recursive per-institution tree (closure); D-Education |
+| `EducationPosition` *(planned, M20)* | `education` | yes (per institution/unit) | `status` + soft-delete | institution-owned billet, vacant-first (mirrors `Position`) |
+| `EducationInstitutionKind` / `EducationUnitKind` / `EducationDegreeLevel` *(planned, M20)* | `education` | yes (`code`/`name`) | `status` + soft-delete | catalogs; degree levels seeded ISCED 2011 |
+| `Company` *(planned, M21)* | `company` | `code` | soft-delete | legal entity; `legal_form` + `ownership_category` (two axes); D-Companies |
+| `CompanyPosition` *(planned, M21)* | `company` | yes (per company) | `status` + soft-delete | company-owned billet (mirrors `Position`) |
+| `CompanyLegalForm` / `CompanyRegistrationScheme` / `CompanyIndustryClass` *(planned, M21)* | `company` | yes (`code`/`name`) | `status` + soft-delete | catalogs; registration schemes mirror `PersonalCodeScheme` (LEI spine) |
+| `LocationType` *(planned, M19)* | `location` | yes (`code`/`name`) | `status` + soft-delete | optional place-purpose catalog beside `Location`; D-Location |
+| `Religion` / `TraditionFamily` / `SubTradition` *(planned, M22)* | `religion` | yes (`code`/`name`) | soft-delete | faith taxonomy catalogs (family nested under religion, sub-tradition under family); D-Religion |
+| `OrgKind` / `OrgProfile` / `OrgPolicy` *(planned, M22)* | `religion` | kind has `code`/`name` | soft-delete | org nodes **reuse `Unit`**; `OrgProfile` is per-unit faith attributes, `OrgPolicy` a data-driven eligibility rule (replaces any faith-specific doctrinal flag) |
+| `ClergyGrade` / `GradeCategory` / `OfficeType` *(planned, M23)* | `religion` | yes (`code`/`name`) | soft-delete | **per-tradition** ordered clergy catalog (no cross-tradition comparator, DS-43); offices **reuse `Position`**; D-ClergyCredential |
+| `AffiliationType` *(planned, M24)* | `religion` | yes (`code`/`name`) | soft-delete | per-tradition lay-affiliation catalog; D-ReligiousAffiliation |
+| `SiteType` / `ServiceType` *(planned, M25)* | `religion` | yes (`code`/`name`) | soft-delete | per-tradition discovery catalogs (church/mosque/synagogue/temple…; main/prayer…) |
+| `ServiceSchedule` / `Alias` *(planned, M25)* | `religion` | no | soft-delete | per-site recurring service times; search-only alternative names (never displayed) |
+| `GeoSubdivision` *(planned, M26)* | [platform](modules/platform.md) | `code` = ISO 3166-2 (`UA-32`…) | status | shared reference registry below `Country`; `parent_id` self-FK (nested), `subdivision_type`; migration-seeded like `Country`; D-GeoSubdivisions |
+| `Vehicle` *(planned, M26)* | `vehicle` | optional | soft-delete | physical vehicle; `vin` unique among active (nullable, `pii:basic`); `type_id`/`model_id`; `attributes` JSONB; D-Vehicles |
+| `VehicleBrand` / `VehicleModel` / `VehicleType` *(planned, M26)* | `vehicle` | yes (`code`/`name`) | `status` + soft-delete | brand (`country` of origin); model (`brand_id` + generation/manufacture window); type taxonomy **tree** (`parent_id` self-FK + denormalized root, no closure — the `RankType` pattern) |
+| `VehicleRegistrationNumberType` *(planned, M26)* | `vehicle` | yes (`code`/`name`) | `status` + soft-delete | plate-type catalog (regular/temporary/transit/diplomatic/military/old…) |
 
 **Non-Objects (correctly):** `Atomic permission` is **code, not data** — a closed vocabulary in Go,
 not a table ([authorization](modules/authorization.md)). `Vacancy` is a **derived predicate** (active
@@ -113,6 +134,27 @@ RID is `link__<link_type>` in lower_snake (e.g. the `PARENT_OF` row → `link__p
 | `CAUSED_BY` (provenance) | `Membership`/rank change → `OrderItem` | [membership](modules/membership.md) / [order](modules/order.md) | `order_item_id` | the наказ that authorized the change |
 | `REVOKED_BY` | `Order` → `Order` | [order](modules/order.md) | — | the revoking order (legal trail) |
 | `TRANSLATES` | `Translation` → entity (polymorphic) | [localization](modules/localization.md) | `entity_type`, `field`, `locale` | no FK; kept consistent by event subscription |
+| `LANGUAGE_SUBGROUP_OF` *(planned, M18)* | `Languoid` → `Languoid` | `language` | structural; `family_code` denormalized | strict tree, a containment FK — *not* a reified Link (closure is `ANCESTOR_OF`-style) |
+| `WRITTEN_IN` *(planned, M18)* | `Languoid` → `WritingSystem` | `language` | `is_primary` | — |
+| `SPEAKS` *(planned, M18)* | `Person` → `Languoid` (level=language) | `language`/[person](modules/person.md) | `cefr_level`, `is_native`; `pii:basic` | scoped through the holder; purge-erased |
+| `OFFICIAL_LANGUAGE` *(planned, M18)* | `Unit` → `Languoid` | `language`/[tenant](modules/tenant.md) | working/official | — |
+| `LOCALE_OF` *(planned, M18)* | `Locale` → `Languoid` | `language`/[localization](modules/localization.md) | canonical language of a locale | — |
+| `EDUCATION_UNIT_PARENT_OF` *(planned, M20)* | `EducationUnit` → `EducationUnit` | `education` | per institution; closure maintained | recursive structure tree |
+| `STUDIED_AT` *(planned, M20)* | `Person` → `EducationInstitution` (opt. unit/group) | `education` | `degree_level`, field, status, qualification; `pii:basic` | **temporal** (effective-dated); mirrors `MEMBER_OF` |
+| `RESIDED_IN_DORMITORY` *(planned, M20)* | `Person` → `EducationBuilding` | `education` | room, period; `pii:contact` | **temporal**; dedicated dorm stay; purge-erased |
+| `HOLDS_EDUCATION_POSITION` *(planned, M20)* | `Person` → `EducationPosition` | `education` | one-holder | **temporal**; mirrors `FILLS` |
+| `SPONSOR_OF` (education context) *(planned, M20)* | `Person` → `Person` | [person](modules/person.md) | optional enrollment ref + role ∈ professor/tutor/curator/advisor | **extends M14 `SPONSOR_OF`** — no new link type (D-Education) |
+| `HOLDS_COMPANY_POSITION` *(planned, M21)* | `Person` → `CompanyPosition` | `company` | one-holder | **temporal**; mirrors `FILLS` |
+| `FOUNDED` *(planned, M21)* | `Person`\|`Company` → `Company` | `company` | founder (person or company) | — |
+| `OWNS_STAKE` *(planned, M21)* | `Person`\|`Company` → `Company` | `company` | stake %; **polymorphic holder** | **temporal**; company-holder edges form the ownership DAG |
+| `BENEFICIARY_OF` *(planned, M21)* | `Person` → `Company` | `company` | ultimate %, declared-vs-computed | UBO; computed traversal is DS-47 |
+| `SUCCEEDED_BY` *(planned, M21)* | `Company` → `Company` | `company` | M&A/reorganization lineage | — |
+| `BRANCH_OF` *(planned, M21)* | `Company` → `Company` | `company` | non-independent sub-unit | distinct from a subsidiary |
+| `CLERGY_CREDENTIAL` *(planned, M23)* | `Person` → `ClergyGrade` (in an org `Unit`) | `religion` | `granted_on`, conferrer, `status ∈ active\|suspended\|revoked`, `source`/`confidence` | **temporal**; indelible where sacramental; **never an authz input** (parallels `HOLDS_RANK`) |
+| `AFFILIATED_WITH` *(planned, M24)* | `Person` → religion/tradition/community `Unit` | `religion` | `affiliation_type`, **`pii:special`** envelope-encrypted value + blind index, `source`/`confidence` | **temporal**; crypto-erased on purge; never an authz input; D-ReligiousAffiliation / D-SpecialPII |
+| `SITE_OF` *(planned, M25)* | `Unit` → `Location` | `religion` | `site_type`, `visibility`, `public_precision`, `is_primary` (one per unit) | — (shared `Location`; precision projected at read time) |
+| `MANUFACTURED_BY` *(planned, M26)* | `VehicleBrand` → `Company` | `vehicle` | manufacturer of a marque | **temporal** (`effective_from`/`effective_to`) — changes with acquisitions |
+| `REGISTERED_TO` *(planned, M26)* | `Vehicle` → `Person`\|`Company` | `vehicle` | **polymorphic owner** (person XOR company); `country` → `geo_countries`, `subdivision` → `geo_subdivisions` (plate region), `registration_number` (unique active per country), `number_type` | **temporal** + `status`; the ownership+plate record (re-registration = new row); person-owned rows `pii:basic`, holder-scoped, purge-erased; D-Vehicles |
 
 The `Assignment` is the centerpiece and deserves emphasis: an ontology would model it as a **reified
 Link** `(subject, role, target_unit, scope, graph)`. Two non-obvious semantics
@@ -138,6 +180,15 @@ ledger ([Identifier scheme](#identifier-scheme-rids)).
   `AttachDocument`/`AttachPersonalCode`, `UpsertEmail`/`UpsertPhone`/`UpsertCallSign` (+ their
   deletes), `CreateRole`, `GrantAssignment`/`RevokeAssignment`,
   `GrantInstanceAdmin`, `CreateAccount`/`LinkExternalIdentity`, rank/locale/catalog edits.
+- **Planned (M16–M26):** `ScheduleJob`/`RunJob` (M16 worker); `RunImport` over a registered mapper
+  (M17 — a bulk **code-keyed upsert** emitted as audited Actions, the ingest≠edit boundary);
+  `CreateLanguoid`/`ImportLanguageScheme`, `UpsertPersonLanguage` (M18); `CreateLocation` (M19);
+  `CreateInstitution`/`CreateEnrollment`/`RecordDormStay`/`AppointEducationPosition` (M20);
+  `CreateCompany`/`RecordShareholding`/`RecordBeneficiary`/`AppointCompanyPosition` (M21);
+  `ConferCredential`/`SuspendCredential`/`AppointClergy` (M23), `RecordAffiliation` (M24),
+  `AttachSite`/`AddServiceSchedule` (M25) — the religion vertical (D-Religion);
+  `CreateVehicle`/`RegisterVehicle`/`TransferRegistration` + `geo_subdivisions`/vehicle-catalog edits
+  (M26 — D-Vehicles / D-GeoSubdivisions).
 - **Order-driven effects (the strongest ontology fit):** `IssueOrder` is one Action whose effects are
   **emitted as domain events** (`AppointmentOrdered`, `RemovalOrdered`, `RankChangeOrdered`) that
   membership/person subscribers apply **in the same transaction**, citing `order_item_id` provenance.

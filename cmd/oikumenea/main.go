@@ -152,6 +152,9 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// Membership subscribes to order's appointment/removal effects (D-OrderApply): AppointmentOrdered
 	// fills/creates, RemovalOrdered ends — all in the issue transaction.
 	membershipSvc.SubscribeOrderEvents(bus)
+	// Person's read-scope projection (D-PersonReadScope) resolves a person's units through membership;
+	// bind that cross-module query seam now that membership exists (late-bound: person is built first).
+	personSvc.SetMembershipReader(membershipSvc)
 
 	// Order: administrative orders (наказ). On issue it PUBLISHES the effect events the membership/
 	// person subscribers above handle in the same transaction (D-OrderApply); the enforcer it holds is
@@ -178,7 +181,7 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 		cleanup()
 		return nil, werror.Wrap(err, "build envelope cipher")
 	}
-	if _, err := document.Register(info, pool, auditSvc, locSvc, enforcer, cipher, personalcode.New()); err != nil {
+	if _, err := document.Register(info, pool, auditSvc, locSvc, enforcer, cipher, personalcode.New(), personSvc); err != nil {
 		cleanup()
 		return nil, err
 	}

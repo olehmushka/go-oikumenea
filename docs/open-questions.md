@@ -23,9 +23,10 @@ scope) is **removed from this file**, and its outcome lives in
 [`decisions.md`](architecture/decisions.md) + the owning `modules/*.md`. So the numbering is
 sparse on purpose; do not "fill in" a missing number.
 
-**Dependency note.** Many entries are blocked on the same missing capability — a **background
-job/worker runtime** (**DS-25**). Anything needing a scheduler (background purges, partition
-maintenance, expiry sweeps, expiry notifications) waits behind it.
+**Dependency note.** Many entries were blocked on the same missing capability — a **background
+job/worker runtime** (**DS-25**), now **promoted to milestone M16** (D-Worker), because the M17 data-
+ingestion framework needs scheduled syncs. Building it unblocks the scheduler-dependent seams (partition
+maintenance DS-28, expiry sweeps, future-dated order effects).
 
 ---
 
@@ -51,14 +52,15 @@ is deferred.
 - *Default* — no self-service export; subject-rights erasure is the operator purge path.
 - *Trigger* — a self-service access/portability export is wanted → additive read endpoint. `parked`
 
-**DS-38 · Partial / approximate birthdate (+ gender identity).**
-Narrowed by [D-PersonBio](architecture/decisions.md): `birthdate` ships as a full `DATE` and `sex`
-is ISO/IEC 5218.
-- *Default* — full-precision `birthdate DATE`; gender *identity* is **not stored**.
-- *Trigger* — (a) records that know only year (or year-month) → an additive partial-date
-  representation; (b) gender identity, which is `pii:special` (GDPR Art. 9) and blocked until the
-  envelope seam is **extended to `pii:special`** (DS-29; the `pii:sensitive` envelope already ships
-  via D-CryptoProvider). `parked`
+**DS-38 · Partial / approximate birthdate & death date (+ gender identity).**
+Narrowed by [D-PersonBio](architecture/decisions.md): `birthdate` and `date_of_death` (M12) ship as full
+`DATE`s and `sex` is ISO/IEC 5218.
+- *Default* — full-precision `birthdate DATE` / `date_of_death DATE`; gender *identity* is **not stored**.
+- *Trigger* — (a) records that know only year (or year-month) for a birth **or death** → an additive
+  partial-date representation; (b) gender identity, which is `pii:special` (GDPR Art. 9): its **crypto
+  blocker is now lifted** by [D-SpecialPII](architecture/decisions.md) (the envelope extends to
+  `pii:special` person fields, M24), so *storing* it is an additive encrypted column — a separate parked
+  product choice, no longer gated on the envelope. `parked`
 
 **DS-40 · Phone carrier / provider lookup.**
 Introduced by [D-PersonContactChannels](architecture/decisions.md): `person_phones` derives the
@@ -144,6 +146,10 @@ military-shaped and a non-military `rank_system` leaves `grade_code` `NULL` (no 
   needed, since L-SingleDomain means one domain per instance).
 - *Trigger* — a real academic/ecclesiastical deployment needs cross-institution rank equivalence →
   introduce a domain-appropriate grade scale (a second seeded catalog or a generic ordinal). `parked`
+- *Note (religion).* Ecclesiastical clergy are now modeled **outside** the rank module
+  ([D-ClergyCredential](architecture/decisions.md), M23) as a **per-tradition** ordered
+  `religion_clergy_grades` catalog; there is intentionally **no cross-tradition comparator** (grades
+  order only within a tradition), so this seam stays parked and clergy never sets `grade_code`.
 
 ---
 
@@ -195,13 +201,17 @@ which *issuers the deployment as a whole* accepts.
 
 ## platform — [`modules/platform.md`](modules/platform.md)
 
-**DS-25 · Background job / worker runtime.** *(the common blocker — see the dependency note above.)*
-- *Default* — synchronous core only.
-- *Trigger* — any scheduled work is needed: background purges,
-  partition maintenance (DS-28), expiry sweeps, expiry notifications, and **future-dated
-  scheduled order effects** (apply an item at its `effective_from` rather than on issue — the
-  residual of [D-OrderApply](architecture/decisions.md), which applies effects synchronously on
-  issue). `parked`
+> **DS-25** (background job / worker runtime) was **promoted** to milestone **M16** — now binding as
+> [D-Worker](architecture/decisions.md), owned by [platform](modules/platform.md). The
+> scheduler-dependent residuals it enables (future-dated order effects, expiry sweeps) ride the M16
+> runtime when their own triggers fire. Per the ID-stability rule the number is **retired, not reused**.
+
+**DS-44 · Additional ingestion connectors (SQL/JDBC, object-store).**
+Introduced by [D-DataIngestion](architecture/decisions.md): the M17 framework ships an **HTTP(S)**
+(and degenerate `file`) connector; the `Connector` interface is pluggable.
+- *Default* — HTTP + file connectors only.
+- *Trigger* — a real SQL/JDBC source (a national registry DB) or an S3/MinIO object-store source is
+  needed → implement the connector behind the existing `Connector` seam (driver deps included). `parked`
 
 **DS-26 · Event bus → real broker.**
 - *Default* — in-process `pkg/events` with an outbox seam.
@@ -221,18 +231,96 @@ which *issuers the deployment as a whole* accepts.
 - *Trigger* — volume grows → range-partition by `created_at` + a cold-archive policy (needs
   DS-25). `parked`
 
-**DS-29 · PII envelope encryption — extend to `pii:special` + audit payloads.**
-The **envelope-encryption mechanism now ships** ([D-CryptoProvider](architecture/decisions.md)): the
+**DS-29 · PII envelope encryption — extend to audit payloads (person-field half resolved).**
+The **envelope-encryption mechanism ships** ([D-CryptoProvider](architecture/decisions.md)): the
 pluggable `KeyProvider` seam + `pkg/crypto` (ciphertext in DB, KEK in an external KMS, blind index,
-crypto-erase) protect **`pii:sensitive`** national-identifier values today. What remains parked is
-**extending that same mechanism** to the `pii:special` ceiling — `audit.before`/`after` and
-special-category person fields — so it still gates **gender identity under DS-38**.
-- *Default* — `pii:sensitive` (personal codes) is envelope-encrypted; `pii:special` is **not stored**
-  (the "no special-category PII without this envelope" rule), with the "no secrets, minimal PII"
-  discipline in `before`/`after`.
-- *Trigger* — special-category PII must land in audit payloads or person fields → extend the
-  D-CryptoProvider envelope to `pii:special` columns/JSONB. `parked`
+crypto-erase) protect **`pii:sensitive`** national-identifier values, and — via
+[D-SpecialPII](architecture/decisions.md) (M24) — now also **`pii:special` person/affiliation fields**
+(religious affiliation lands encrypted). The **person-field half is therefore resolved**; this seam
+**narrows to audit payloads** — `audit.before`/`after` JSONB at the `pii:special` ceiling.
+- *Default* — `pii:sensitive` and `pii:special` **person/affiliation** fields are envelope-encrypted;
+  `pii:special` data must **not** enter audit `before`/`after` payloads (the "no special-category PII in
+  audit without the envelope" rule), under the "no secrets, minimal PII" discipline.
+- *Trigger* — special-category PII must land in **audit payloads** → extend the D-CryptoProvider envelope
+  to the `audit.before`/`after` JSONB. (The gender-identity blocker in **DS-38(b)** is lifted by
+  D-SpecialPII; *storing* gender identity stays a separate parked choice.) `parked`
 
 **DS-30 · SIEM / streaming export sink.**
 - *Default* — `audit2log` + the DB table.
 - *Trigger* — external SIEM integration wanted → an additive sink behind `audit2log`. `parked`
+
+---
+
+## company — planned ([milestones.md](milestones.md) M21 · [D-Companies](architecture/decisions.md))
+
+**DS-45 · Company registry-intelligence feeds (financials, court cases, tax debt, sanctions/PEP).**
+[D-Companies](architecture/decisions.md) scopes M21 to **structural** registry data; volatile
+intelligence is excluded.
+- *Default* — no financials/litigation/tax/sanctions data; structural identity + ownership graph only.
+- *Trigger* — an operator has a real feed → model the relevant entity and ingest it via a
+  D-DataIngestion connector (these are feed-dependent and change constantly). `parked`
+
+**DS-46 · Company web / contact channels.**
+- *Default* — a company's "domain" is its **industry classification**; no web/email/phone stored.
+- *Trigger* — web presence / contact reachability wanted → contact-channel child tables mirroring the
+  person contact model (D-PersonContactChannels). `parked`
+
+**DS-47 · Ownership-graph closure & computed UBO.**
+[D-Companies](architecture/decisions.md) stores direct ownership edges + a **declared** beneficiary
+record; it does not traverse the chain.
+- *Default* — direct `company_shareholdings` edges + declared `company_beneficiaries`; no computed
+  ultimate-owner traversal.
+- *Trigger* — "who ultimately controls X" over deep chains wanted → a maintained ownership closure
+  (mirroring the tenant/language closure) + a computed-UBO derivation. `parked`
+
+---
+
+## religion — [`modules/religion.md`](modules/religion.md)
+
+> **DS-48** (Religion domain) was **promoted** to the **M22–M25** cluster — now binding as
+> [D-Religion](architecture/decisions.md), [D-ClergyCredential](architecture/decisions.md), and
+> [D-ReligiousAffiliation](architecture/decisions.md), owned by [religion](modules/religion.md). The
+> drafts' Christianity-specific concepts return **generalized to all faiths**, catalog-driven; the
+> `pii:special` belief concern is resolved by [D-SpecialPII](architecture/decisions.md) (envelope
+> extended to the special tier). Per the ID-stability rule the number is **retired, not reused**.
+
+**DS-49 · Rite-of-passage / life-cycle records.**
+Introduced by [D-ReligiousAffiliation](architecture/decisions.md): affiliation is modeled, but
+individual life-cycle observances are not.
+- *Default* — no baptism / bar-bat-mitzvah / marriage-rite / funeral records; only the affiliation tie.
+- *Trigger* — a deployment must record rites of passage → a **generic, catalog-typed** observance entity
+  (per-tradition rite catalog), `pii:special` under the D-SpecialPII envelope. `parked`
+
+**DS-50 · Location-scoped role assignments.**
+A consuming discovery app (FaithMap-style) wants per-site "campus admin" rights; today an assignment's
+scope is `unit|subtree` over a unit, not a single site/location.
+- *Default* — authority is unit-scoped (`unit|subtree`); a site inherits its org unit's scope.
+- *Trigger* — a deployment needs a role bounded to one site/location rather than the whole unit → add a
+  `scope_location_id` (or a site-scoped assignment) to the authorization model. `parked`
+
+---
+
+## vehicle — planned ([milestones.md](milestones.md) M26 · [D-Vehicles](architecture/decisions.md))
+
+**DS-51 · Full ISO-3166-2 subdivision set + residence/Location retrofit.**
+Introduced by [D-GeoSubdivisions](architecture/decisions.md): `geo_subdivisions` ships with the
+**target-country subset** migration-seeded (UA first); `person_residences.region` and
+`location_locations.admin_area_1`/`admin_area_2` stay **free-text**.
+- *Default* — UA (and other target) subdivisions only; residence/Location regions are free text.
+- *Trigger* — global coverage or structured Location addresses wanted → ingest the **full ISO-3166-2
+  set** via a D-DataIngestion connector (M17) and retrofit `person_residences.region` /
+  `location_locations.admin_area_*` to a `geo_subdivisions` FK (additive expand/contract). `parked`
+
+**DS-52 · Vehicle lifecycle / intelligence feeds.**
+[D-Vehicles](architecture/decisions.md) scopes M26 to **structural** registry data (identity, taxonomy,
+ownership/plate); volatile lifecycle data is excluded (mirrors company DS-45).
+- *Default* — no insurance/MTPL, technical-inspection, accident, theft/wanted, odometer, or telematics
+  data; structural identity + ownership/plate only.
+- *Trigger* — an operator has a real feed → model the relevant entity and ingest it via a
+  D-DataIngestion connector (these are feed-dependent and change constantly). `parked`
+
+**DS-53 · Column-ize stabilized vehicle specs.**
+The DS-6 pattern (promote `attributes` keys to columns), scoped to `vehicle_vehicles`.
+- *Default* — long-tail specs (engine/fuel/transmission/dimensions…) live in the `attributes` JSONB.
+- *Trigger* — a spec stabilizes (shared / queried) → column-ize it as a typed column with its own PII
+  tier (additive expand). `parked`

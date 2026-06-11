@@ -194,6 +194,17 @@ func (r *Repository) ListMembershipsByPerson(ctx context.Context, personID, afte
 	return membershipsFrom(rows), nil
 }
 
+func (r *Repository) ActiveUnitIDsByPerson(ctx context.Context, personID string) ([]string, error) {
+	return r.q.ActiveUnitIDsByPerson(ctx, personID)
+}
+
+func (r *Repository) ActivePersonIDsInUnits(ctx context.Context, unitIDs []string, after string, limit int) ([]string, error) {
+	if len(unitIDs) == 0 {
+		return nil, nil
+	}
+	return r.q.ActivePersonIDsInUnits(ctx, membershipsql.ActivePersonIDsInUnitsParams{UnitIds: unitIDs, After: after, Lim: int32(limit)})
+}
+
 // ---------------------------------------------------------------- mapping helpers
 
 func toPosition(r membershipsql.OikumeneaMembershipPosition) domain.Position {

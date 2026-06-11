@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
 	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
+	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
 	orderevents "github.com/olegamysk/go-oikumenea/internal/order/events"
 	"github.com/olegamysk/go-oikumenea/internal/person/domain"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
@@ -50,6 +51,15 @@ const targetPerson = "person"
 // caller's transaction for an audited write (D-Audit). Injected by module.go.
 type RepositoryFactory func(conn db.DBTX) domain.Repository
 
+// MembershipReader is the cross-module query seam the read-scope projection (D-PersonReadScope) uses
+// to resolve which units a person belongs to / which people are reachable through a unit-set. The
+// membership application service satisfies it; it is late-bound (SetMembershipReader) because
+// membership is composed after person (overview.md composition ordering).
+type MembershipReader interface {
+	ActiveUnitIDsForPerson(ctx context.Context, personID string) ([]string, error)
+	PersonIDsWithActiveMembershipInUnits(ctx context.Context, unitIDs []string, after string, limit int) ([]string, error)
+}
+
 // Service is the person application service. It owns its writes, so it holds the pool to open
 // transactions; reads run on the pool directly. graceHours supplies the deactivate->purge window.
 type Service struct {
@@ -58,13 +68,18 @@ type Service struct {
 	audit      *auditapp.Service
 	graceHours func() int
 	now        func() time.Time
+	membership MembershipReader
 }
 
 // NewService wires the service with the pool, the repository factory, the audit service, and the
-// (refreshable) purge-grace window in hours.
+// (refreshable) purge-grace window in hours. The membership reader is late-bound (SetMembershipReader).
 func NewService(pool *pgxpool.Pool, newRepo RepositoryFactory, audit *auditapp.Service, graceHours func() int) *Service {
 	return &Service{pool: pool, newRepo: newRepo, audit: audit, graceHours: graceHours, now: func() time.Time { return time.Now().UTC() }}
 }
+
+// SetMembershipReader binds the cross-module membership query seam used by the read-scope projection
+// (D-PersonReadScope). Called once at composition time, after membership is built, before serving.
+func (s *Service) SetMembershipReader(r MembershipReader) { s.membership = r }
 
 // Page is a keyset-paginated slice of the directory.
 type Page struct {
@@ -176,6 +191,69 @@ func (s *Service) ListPersons(ctx context.Context, pageSize int, pageToken strin
 	}
 	if len(persons) > size {
 		return Page{Persons: persons[:size], NextPageToken: encodeCursor(persons[size-1].ID)}, nil
+	}
+	return Page{Persons: persons}, nil
+}
+
+// ReadablePerson decides whether the request subject (carrying the precomputed effective reach) may
+// read person id under D-PersonReadScope: true iff the subject is on the instance plane (an instance
+// admin — person.read is never instance-scoped) OR the person's active-membership units intersect the
+// subject's effective readable units. A membership-less person has no units, so only an instance admin
+// sees them. Intersecting with the readable set subsumes the shadow gate (unreachable shadow units are
+// already absent from reach.Readable).
+func (s *Service) ReadablePerson(ctx context.Context, reach authzdomain.Reach, personID string) (bool, error) {
+	if reach.InstanceAdmin {
+		return true, nil
+	}
+	if s.membership == nil || len(reach.Readable) == 0 {
+		return false, nil
+	}
+	units, err := s.membership.ActiveUnitIDsForPerson(ctx, personID)
+	if err != nil {
+		return false, err
+	}
+	for _, u := range units {
+		if _, ok := reach.Readable[u]; ok {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// ListVisiblePersons returns the keyset-paginated union of people a non-instance-admin subject may
+// read (D-PersonReadScope): the directory rows whose active memberships fall in the subject's
+// effective readable units. The instance-admin case is the unrestricted ListPersons and is handled by
+// the caller. An empty readable set yields an empty page. Pagination keys on the person RID, matching
+// the membership union's ordering, so the returned rows are already in token order.
+func (s *Service) ListVisiblePersons(ctx context.Context, reach authzdomain.Reach, pageSize int, pageToken string) (Page, error) {
+	size := resolvePageSize(pageSize)
+	after, err := decodeCursor(pageToken)
+	if err != nil {
+		return Page{}, err
+	}
+	if s.membership == nil || len(reach.Readable) == 0 {
+		return Page{}, nil
+	}
+	units := make([]string, 0, len(reach.Readable))
+	for u := range reach.Readable {
+		units = append(units, u)
+	}
+	ids, err := s.membership.PersonIDsWithActiveMembershipInUnits(ctx, units, after, size+1)
+	if err != nil {
+		return Page{}, err
+	}
+	hasMore := len(ids) > size
+	if hasMore {
+		ids = ids[:size]
+	}
+	// Both the membership union and ListPersonsByIDs order ascending by person RID, so the hydrated
+	// rows are already in token order (a soft-deleted person is simply dropped, never reordered).
+	persons, err := s.newRepo(s.pool).ListPersonsByIDs(ctx, ids)
+	if err != nil {
+		return Page{}, err
+	}
+	if hasMore && len(ids) > 0 {
+		return Page{Persons: persons, NextPageToken: encodeCursor(ids[len(ids)-1])}, nil
 	}
 	return Page{Persons: persons}, nil
 }

@@ -1786,6 +1786,59 @@ func (q *Queries) ListPersons(ctx context.Context, arg ListPersonsParams) ([]Oik
 	return items, nil
 }
 
+const listPersonsByIDs = `-- name: ListPersonsByIDs :many
+SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, rank_id, status, deactivated_at, purge_after, created_at, updated_at, deleted_at FROM oikumenea.person_persons
+WHERE id = ANY($1::text[]) AND deleted_at IS NULL
+ORDER BY id
+`
+
+// Load the base person rows for a set of RIDs (the D-PersonReadScope directory-list union resolves
+// visible person ids through memberships, then hydrates the rows here). Ordered by RID so the caller
+// can re-key to its keyset order.
+func (q *Queries) ListPersonsByIDs(ctx context.Context, ids []string) ([]OikumeneaPersonPerson, error) {
+	rows, err := q.db.Query(ctx, listPersonsByIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonPerson
+	for rows.Next() {
+		var i OikumeneaPersonPerson
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.DisplayName,
+			&i.Title,
+			&i.Given,
+			&i.Given2,
+			&i.Surname,
+			&i.SurnamePrefix,
+			&i.Surname2,
+			&i.Generation,
+			&i.Credentials,
+			&i.Preferred,
+			&i.Birthdate,
+			&i.Sex,
+			&i.CountryOfBirth,
+			&i.Attributes,
+			&i.RankID,
+			&i.Status,
+			&i.DeactivatedAt,
+			&i.PurgeAfter,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPhoneTypes = `-- name: ListPhoneTypes :many
 SELECT code, name, status, sort_order, created_at, updated_at, deleted_at FROM oikumenea.person_phone_types WHERE deleted_at IS NULL ORDER BY sort_order, code
 `

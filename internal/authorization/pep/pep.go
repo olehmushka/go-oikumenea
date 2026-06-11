@@ -92,6 +92,20 @@ func firstOr(actions []string) string {
 	return actions[0]
 }
 
+// EffectiveReach returns the request subject's effective read/write unit reach (D-PersonReadScope /
+// D-RLSDefenseInDepth): the units the acting person may read/write plus the instance-admin flag. Read
+// surfaces that project an instance-global resource through the unit graph (person/document
+// read-scope) call it to intersect a candidate's active-membership units with the subject's readable
+// set. An absent subject yields an empty reach (reads nothing), never an error — the permission
+// precondition is enforced separately by RequireAnywhere.
+func (e *Enforcer) EffectiveReach(ctx context.Context) (domain.Reach, error) {
+	subject := Subject(ctx)
+	if subject == "" {
+		return domain.Reach{}, nil
+	}
+	return e.svc.EffectiveReach(ctx, subject)
+}
+
 // RequireAnywhere enforces that the token's subject can satisfy `action` at some unit (or on the
 // instance plane) — the gate for instance-global reads whose resource is not unit-keyed.
 func (e *Enforcer) RequireAnywhere(ctx context.Context, token bearertoken.Token, action string) error {

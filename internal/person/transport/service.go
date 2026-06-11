@@ -6,13 +6,13 @@
 // variants), NOT the instance localization store (D-i18n) — so unlike rank/tenant this transport
 // assembles no locale->text maps.
 //
-// Authorization (M7): each endpoint is gated via the PEP on its `person.*` permission. Because a
-// person is instance-global with no unit column, the precise read-scope rule (D-PersonReadScope —
-// intersect the reader's effective reach with the person's active-membership units, shadow-gated) is
-// NOT yet applied; the interim gate is the coarse "holds the permission anywhere (or instance admin)"
-// form. Tightening to the per-person membership projection is a documented follow-up, cleanest once
-// identity-federation (M8) supplies a validated subject. The bearer token carries the acting subject
-// (interim: token == person RID; see internal/authorization/pep).
+// Authorization: each endpoint is gated via the PEP on its `person.*` permission, and reads then
+// apply the read-scope projection (D-PersonReadScope). Because a person is instance-global with no
+// unit column, `GET /persons/{id}` and `GET /persons` intersect the subject's effective readable
+// reach (pep.EffectiveReach) with the person's active-membership units: an instance admin sees the
+// whole directory; any other reader sees only people reachable through a readable unit. A non-readable
+// person is reported as not-found so existence does not leak. The acting subject is resolved from the
+// request context by the PEP (identity-federation middleware; internal/authorization/pep).
 package transport
 
 import (
@@ -94,6 +94,20 @@ func (s Service) GetPerson(ctx context.Context, token bearertoken.Token, personI
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
 		return personapi.Person{}, err
 	}
+	// Read-scope projection (D-PersonReadScope): the holder of person.read may only read a person whose
+	// active-membership units intersect the subject's effective readable reach (or an instance admin).
+	// A non-readable person is reported as not-found, so existence does not leak.
+	reach, err := s.pep.EffectiveReach(ctx)
+	if err != nil {
+		return personapi.Person{}, s.mapError(ctx, err, personID)
+	}
+	ok, err := s.app.ReadablePerson(ctx, reach, personID)
+	if err != nil {
+		return personapi.Person{}, s.mapError(ctx, err, personID)
+	}
+	if !ok {
+		return personapi.Person{}, personapi.NewPersonNotFound(personID)
+	}
 	p, err := s.app.GetPerson(ctx, personID)
 	if err != nil {
 		return personapi.Person{}, s.mapError(ctx, err, personID)
@@ -131,7 +145,18 @@ func (s Service) ListPersons(ctx context.Context, token bearertoken.Token, pageS
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
 		return personapi.PersonPage{}, err
 	}
-	page, err := s.app.ListPersons(ctx, derefOr(pageSize, 0), derefOr(pageToken, ""))
+	// Read-scope projection (D-PersonReadScope): an instance admin sees the whole directory; any other
+	// reader sees only the union of people reachable through their effective readable units.
+	reach, err := s.pep.EffectiveReach(ctx)
+	if err != nil {
+		return personapi.PersonPage{}, s.mapError(ctx, err, "")
+	}
+	var page application.Page
+	if reach.InstanceAdmin {
+		page, err = s.app.ListPersons(ctx, derefOr(pageSize, 0), derefOr(pageToken, ""))
+	} else {
+		page, err = s.app.ListVisiblePersons(ctx, reach, derefOr(pageSize, 0), derefOr(pageToken, ""))
+	}
 	if err != nil {
 		return personapi.PersonPage{}, s.mapError(ctx, err, "")
 	}

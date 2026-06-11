@@ -51,6 +51,14 @@ WHERE deleted_at IS NULL AND (@after = '' OR id > @after)
 ORDER BY id
 LIMIT @lim;
 
+-- name: ListPersonsByIDs :many
+-- Load the base person rows for a set of RIDs (the D-PersonReadScope directory-list union resolves
+-- visible person ids through memberships, then hydrates the rows here). Ordered by RID so the caller
+-- can re-key to its keyset order.
+SELECT * FROM oikumenea.person_persons
+WHERE id = ANY(@ids::text[]) AND deleted_at IS NULL
+ORDER BY id;
+
 -- name: SetRank :one
 -- Set or clear the person's one rank; a NULL rank_id clears it. The rank_ranks FK validates existence.
 UPDATE oikumenea.person_persons SET rank_id = sqlc.narg('rank_id')

@@ -686,6 +686,9 @@ type Repository interface {
 	GetActivePersonByCode(ctx context.Context, code string) (Person, error)
 	UpdatePerson(ctx context.Context, id string, patch PersonPatch) (Person, error)
 	ListPersons(ctx context.Context, after string, limit int) ([]Person, error)
+	// ListPersonsByIDs loads the base person rows for a set of RIDs (the directory-list union under
+	// D-PersonReadScope resolves visible ids via memberships, then hydrates the rows here).
+	ListPersonsByIDs(ctx context.Context, ids []string) ([]Person, error)
 	SetRank(ctx context.Context, id string, rankID *string) (Person, error)
 
 	// lifecycle

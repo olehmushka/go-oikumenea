@@ -125,3 +125,21 @@ WHERE person_id = @person_id AND status = 'active' AND deleted_at IS NULL
   AND (@after = '' OR id > @after)
 ORDER BY id
 LIMIT @lim;
+
+-- name: ActiveUnitIDsByPerson :many
+-- The distinct units a person currently belongs to via ACTIVE memberships. The person/document
+-- read-scope projection (D-PersonReadScope) intersects this set with the reader's effective readable
+-- units to decide visibility.
+SELECT DISTINCT unit_id FROM oikumenea.membership_memberships
+WHERE person_id = @person_id AND status = 'active' AND deleted_at IS NULL
+ORDER BY unit_id;
+
+-- name: ActivePersonIDsInUnits :many
+-- The distinct persons with an ACTIVE membership in any of the given units, keyset-paginated by person
+-- RID. Powers the directory-list union (GET /persons) under D-PersonReadScope: the caller passes its
+-- effective readable unit-set and pages the reachable roster.
+SELECT DISTINCT person_id FROM oikumenea.membership_memberships
+WHERE unit_id = ANY(@unit_ids::text[]) AND status = 'active' AND deleted_at IS NULL
+  AND (@after = '' OR person_id > @after)
+ORDER BY person_id
+LIMIT @lim;

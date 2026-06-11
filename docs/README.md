@@ -1,9 +1,12 @@
 # go-oikumenea — architecture documentation
 
-> **Audience: Claude Code.** These docs describe the architecture of a system that does
-> not exist as code yet. They are written to be read by an AI agent that will later
-> implement it. Every module doc is self-contained: you can read one without reading the
-> others. When you implement, treat `architecture/decisions.md` as binding.
+> **Audience: Claude Code.** These docs describe the architecture of a system that is now
+> **under active implementation** (a modular monolith: see `internal/`, `api/`, `migrations/`,
+> `web/`). They remain the **source of truth** that the code is held to. Every module doc is
+> self-contained: you can read one without reading the others. When you implement, treat
+> `architecture/decisions.md` as binding, and follow the feature pipeline in
+> [`development-process.md`](development-process.md) — the [stage board](milestones.md#stage-board)
+> shows where each milestone sits.
 
 ## What go-oikumenea is
 
@@ -24,7 +27,9 @@ A generic, domain-agnostic **personnel & authorization service** — Keycloak-li
   first-class.
 - **Single-domain per deployment.** One running instance serves exactly one domain (army
   **or** church **or** university). There is no org-type discriminator in the data; the
-  domain is a deployment property.
+  domain is a deployment property. *(Refined for the religion vertical, D-Religion: the single
+  domain may be "religion", within which many faiths/traditions coexist as **catalog data + units
+  in graphs** — still no org-type discriminator branched on in code.)*
 - **Self-hosted, operator-owned data.** The operator supplies their own PostgreSQL and
   credentials. Schema name: **`oikumenea`**.
 - **Built on the Palantir OSS stack** (witchcraft / conjure / gödel + the observability
@@ -52,8 +57,19 @@ across graphs. That — *hierarchy + inheritance + visibility, decided by a PDP*
 | [authorization](modules/authorization.md) | RBAC + the **PDP**. Roles, code-defined permissions, scoped assignments, instance-admin. |
 | [identity-federation](modules/identity-federation.md) | The external-IdP seam: accounts, external identities, inbound OIDC/JWKS validation. |
 | [localization](modules/localization.md) | i18n: instance-admin-managed locales + the translation store for entity labels. |
-| [platform](modules/platform.md) | witchcraft bootstrap, config, observability, schema bootstrap, country registry, crypto/KMS seam, boot-time schema-version check. |
+| [platform](modules/platform.md) | witchcraft bootstrap, config, observability, schema bootstrap, country registry (+ the planned `geo_subdivisions` ISO-3166-2 registry, M26), crypto/KMS seam, boot-time schema-version check. **Planned:** background-worker runtime (M16) + the generic data-ingestion/connector framework (M17). |
 | [audit](modules/audit.md) | Append-only audit trail of permission-sensitive actions. |
+
+**Planned modules** (designed in [milestones.md](milestones.md) M16–M26 + [decisions.md](architecture/decisions.md); most module docs follow at implementation time — the **religion** and shared **location** docs already exist):
+
+| Module | Responsibility |
+|---|---|
+| `language` *(M18)* | Languages, language groups & writing systems as a Glottolog-faithful registry; person/unit/locale language ties. |
+| [location](modules/location.md) *(M19)* | A shared, standalone place entity: PostGIS coordinate + derived MGRS/H3 + structured address. Reused by education, company, and religion sites. |
+| `education` *(M20)* | Educational institutions, internal structure, buildings, and person bindings (enrollment, mentorship, groups, dorm stays, positions). |
+| `company` *(M21)* | A legal-entity registry with the ownership/affiliation graph (legal form, registration, positions, founders, shareholders, UBO). |
+| [religion](modules/religion.md) *(M22–M25)* | The **multi-faith** religion vertical: faith taxonomy (religions→traditions), organizations as tenant units in religion graphs, clergy grades/credentials, lay affiliation (`pii:special`), and discovery (sites→Location, schedules, search). Catalog-driven, no hard-coded faith vocabulary. |
+| `vehicle` *(M26)* | A vehicle registry binding people & companies to vehicles: brand/model/type taxonomy, the vehicle (VIN), a temporal brand↔Company manufacturer link, and the ownership+plate registration (polymorphic person\|company owner, plate region via the shared `geo_subdivisions` registry). |
 
 A **consumer** of the above (not a backend module), documented alongside them:
 
@@ -86,8 +102,12 @@ A **consumer** of the above (not a backend module), documented alongside them:
    deferred-seam list (parked items, each promotable to a milestone). Resolved seams are removed
    from it; their outcomes live in [`architecture/decisions.md`](architecture/decisions.md).
 11. [`milestones.md`](milestones.md) — the implementation roadmap: the architecture sequenced into
-   buildable, dependency-ordered milestones (M0…M14). A roadmap, not binding — `decisions.md` governs
-   *what*, this governs *in what order*.
+   buildable, dependency-ordered milestones (M0…M26). A roadmap, not binding — `decisions.md` governs
+   *what*, this governs *in what order*. Its **[stage board](milestones.md#stage-board)** is the
+   scannable index of where every milestone sits in the pipeline.
+12. [`development-process.md`](development-process.md) — the **feature pipeline**: the gates a feature
+   passes (idea → decided → designed → backend → migrated → ui → verified), the runbook to advance one,
+   and how the stage board is kept honest. Read it before starting or reporting on any feature.
 
 ## Provenance
 

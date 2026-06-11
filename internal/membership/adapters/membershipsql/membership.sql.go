@@ -37,6 +37,72 @@ func (q *Queries) AbolishPosition(ctx context.Context, id string) (OikumeneaMemb
 	return i, err
 }
 
+const activePersonIDsInUnits = `-- name: ActivePersonIDsInUnits :many
+SELECT DISTINCT person_id FROM oikumenea.membership_memberships
+WHERE unit_id = ANY($1::text[]) AND status = 'active' AND deleted_at IS NULL
+  AND ($2 = '' OR person_id > $2)
+ORDER BY person_id
+LIMIT $3
+`
+
+type ActivePersonIDsInUnitsParams struct {
+	UnitIds []string
+	After   interface{}
+	Lim     int32
+}
+
+// The distinct persons with an ACTIVE membership in any of the given units, keyset-paginated by person
+// RID. Powers the directory-list union (GET /persons) under D-PersonReadScope: the caller passes its
+// effective readable unit-set and pages the reachable roster.
+func (q *Queries) ActivePersonIDsInUnits(ctx context.Context, arg ActivePersonIDsInUnitsParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, activePersonIDsInUnits, arg.UnitIds, arg.After, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var person_id string
+		if err := rows.Scan(&person_id); err != nil {
+			return nil, err
+		}
+		items = append(items, person_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const activeUnitIDsByPerson = `-- name: ActiveUnitIDsByPerson :many
+SELECT DISTINCT unit_id FROM oikumenea.membership_memberships
+WHERE person_id = $1 AND status = 'active' AND deleted_at IS NULL
+ORDER BY unit_id
+`
+
+// The distinct units a person currently belongs to via ACTIVE memberships. The person/document
+// read-scope projection (D-PersonReadScope) intersects this set with the reader's effective readable
+// units to decide visibility.
+func (q *Queries) ActiveUnitIDsByPerson(ctx context.Context, personID string) ([]string, error) {
+	rows, err := q.db.Query(ctx, activeUnitIDsByPerson, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var unit_id string
+		if err := rows.Scan(&unit_id); err != nil {
+			return nil, err
+		}
+		items = append(items, unit_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const endMembership = `-- name: EndMembership :one
 UPDATE oikumenea.membership_memberships SET
   status        = 'ended',

@@ -67,7 +67,7 @@ WHERE code = 'military-id' AND attr_schema IS NULL AND deleted_at IS NULL`
 // cipher (D-CryptoProvider), and the personal-code validator registry (D-PersonalCodes), and registers
 // its routes onto the witchcraft router. It owns no resources of its own (the pool is owned by
 // platform), so there is no module-level cleanup.
-func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, loc *locapp.Service, enforcer *pep.Enforcer, cipher *crypto.Cipher, codes *personalcode.Registry) (*application.Service, error) {
+func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, loc *locapp.Service, enforcer *pep.Enforcer, cipher *crypto.Cipher, codes *personalcode.Registry, person transport.PersonReader) (*application.Service, error) {
 	if _, err := pool.Exec(context.Background(), seedDocumentTypesSQL); err != nil {
 		return nil, werror.Wrap(err, "seed document type catalog")
 	}
@@ -78,7 +78,7 @@ func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Serv
 	repoFor := func(conn db.DBTX) domain.Repository { return adapters.NewRepository(conn) }
 	svc := application.NewService(pool, repoFor, audit, cipher, codes)
 
-	if err := documentapi.RegisterRoutesDocumentService(info.Router, transport.NewService(svc, loc, enforcer)); err != nil {
+	if err := documentapi.RegisterRoutesDocumentService(info.Router, transport.NewService(svc, loc, enforcer, person)); err != nil {
 		return nil, werror.Wrap(err, "register document service routes")
 	}
 	return svc, nil

@@ -2,16 +2,22 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Repository status: design-stage, no code yet
+## Repository status: implemented through M15, design-led
 
-This repo contains **only `docs/`** — a complete architecture specification for a service that
-has **not been implemented**. There is no Go code, no `go.mod`, no build tooling. When a task
-says "find the code that does X," the honest answer is "it doesn't exist yet — the design is in
-`docs/`."
+This repo is a **modular monolith under active implementation**. Code exists: a `go.mod`, the
+`internal/<module>/` Go modules, the `api/*.conjure.yml` contracts, the versioned `migrations/`,
+and an optional Next.js console under `web/`. The foundation milestones **M0–M11** are delivered
+and the person/rank enrichment milestones **M13–M15** are delivered; **M12** is scoped/in progress;
+**M16–M26** are designed (decisions landed) but not yet built. To answer "what stage is feature X
+in?" read the **[stage board](docs/milestones.md#stage-board)** — it is the scannable index.
 
-`docs/` is the **source of truth**, and `docs/architecture/decisions.md` is **binding**: if
-future code and a decision recorded there disagree, the code is wrong. Change a decision by
-editing that file (with rationale), not by diverging in code.
+`docs/` remains the **source of truth**, and `docs/architecture/decisions.md` is **binding**: if
+code and a decision recorded there disagree, **the code is wrong**. Change a decision by editing
+that file (with rationale), not by diverging in code.
+
+**Every feature follows a fixed pipeline** — idea → decided → designed → backend → migrated → ui →
+verified. Read **`docs/development-process.md`** before starting, advancing, or reporting on any
+feature; it defines the gates and the runbook, and the stage board records each milestone's position.
 
 The docs were derived from a now-deleted FaithMap (church-discovery) source. Prose that mentions
 "drafts" / "FaithMap" is **historical provenance only** — that source is gone and is not needed;
@@ -38,6 +44,8 @@ DAG) with **public/shadow visibility** — not flat, isolated realms.
 4. `docs/ontology-mapping.md` — the binding Object/Link/Action type registry (D-Ontology).
 5. `docs/architecture/patterns.md` — cross-cutting patterns.
 6. The relevant `docs/modules/*.md` for the task.
+7. `docs/development-process.md` — the feature pipeline (gates + runbook) and how stage is tracked;
+   `docs/milestones.md` (incl. its **stage board**) for where each milestone sits.
 
 Each `docs/modules/*.md` is self-contained and follows a fixed template: **purpose → entities →
 data model → Conjure endpoint sketch → dependencies → authorization touchpoints → patterns →
@@ -105,17 +113,22 @@ Eleven modules (`docs/modules/`):
   `set_updated_at()` trigger; `reject_mutation()` guard on append-only tables; `TEXT`+`CHECK`
   enums (never native Postgres enums).
 
-## Intended toolchain (applies once code lands)
+## Toolchain
 
-No build/test/lint commands exist yet. The pinned stack (see `docs/architecture/overview.md`) is:
+The pinned stack (see `docs/architecture/overview.md`) is:
 Go + **gödel** build with `godel-conjure-plugin`; **Conjure** IDL as the API source of truth
 (`*.conjure.yml` → generated Go server interfaces/clients + OpenAPI); **witchcraft-go-server**;
 **pgx + sqlc** for DB access; **Atlas** versioned migrations; Docker + docker-compose for
 packaging. Conjure/sqlc-generated code is never hand-edited.
 
-## Working in the docs (the only task possible today)
+## Working in the repo
 
-Coherence is the analog of "tests" for this repo. After editing docs, check that relative links
+Features move through the pipeline in `docs/development-process.md` (idea → decided → designed →
+backend → migrated → ui → verified); update the **stage board** in `docs/milestones.md` for the gate
+you pass, and ground every `✅` in a real artifact (a `migrations/` file, a `web/` page, a `D-<Name>`
+block) — never from memory.
+
+Coherence is the analog of "tests" for the docs. After editing docs, check that relative links
 resolve:
 
 ```bash
@@ -134,4 +147,5 @@ PY
 
 When a doc change introduces or moves a domain entity, keep it owned by **exactly one** module
 doc, reflect the change in `decisions.md` if it is a decision, and update `glossary.md` +
-`README.md` (module map / reading order) in the same pass.
+`README.md` (module map / reading order) in the same pass. When a milestone advances a gate, update
+its `docs/milestones.md` **stage board** row in the same pass.

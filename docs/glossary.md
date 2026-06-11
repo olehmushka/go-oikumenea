@@ -380,17 +380,131 @@ the authorization model — which remains app-layer (D-NoRLS).
 **PDP context.** The resolved `(person, [account])` plus request metadata that the transport
 layer derives from a validated inbound token and passes to the PDP and to audit.
 
+**Gate.** One step in the feature pipeline (idea → decided → designed → backend → migrated → ui →
+verified); each gate has an **exit artifact** that proves it is passed (a `D-<Name>` block, a module
+doc, an `internal/` module, a `migrations/` file, a `web/` page). Defined in
+[development-process.md](development-process.md).
+
+**Stage board.** The single scannable table in [milestones.md](milestones.md#stage-board) — one row
+per `M#`, one column per *gate* — that is **authoritative for where a milestone sits**; the
+per-milestone prose carries the detail. Every `✅` is grounded in a real artifact, never memory.
+
+**TODO-N.** A raw, not-yet-weighed feature idea in `todo.md`, `## TODO-N · Title [status:
+idea]`. It is not on the stage board; once promoted to a milestone it is marked `promoted→M#` and
+then deleted. `todo.md` may legitimately not exist when nothing is pending. The parked-seam
+counterpart for *known* future seams is **DS-N** in [open-questions.md](open-questions.md).
+
+## Planned domains (M16–M26)
+
+> Vocabulary for the [milestones.md](milestones.md) M16–M26 cluster (derived from `todo.md`).
+> Designed and decision-backed ([decisions.md](architecture/decisions.md)); full module docs follow at
+> implementation time (the **religion** vertical's module doc, [religion](modules/religion.md), and the
+> shared [location](modules/location.md) doc already exist).
+
+**Background worker.** The in-process scheduler + job queue runtime (D-Worker, M16) that runs scheduled
+and queued work — connector syncs, expiry sweeps. Promotes the long-parked DS-25.
+
+**Data ingestion / connector.** The generic reference-data pipeline (D-DataIngestion, M17): a
+**connector** fetches an external source → raw staging → a per-module **mapper** transforms it → a
+**code-keyed, idempotent, non-destructive upsert** into a catalog, with `import_runs` **lineage**. The
+right-sized analog of Palantir Foundry's Data Connection → Pipeline → Ontology mapping.
+
+**Languoid.** A node in the Glottolog genealogical forest (D-Languages, M18): `level ∈ family | language
+| dialect`, keyed by its **glottocode**, optional ISO 639-3, with an AES endangerment **status**. The
+recursive `language_languoids` table; a person `SPEAKS` a `language`-level languoid (with CEFR + native).
+
+**Writing system.** An ISO 15924 script (D-Languages, M18) a languoid is `WRITTEN_IN`; classified by a
+**script type** (logographic/syllabary/alphabet/abjad/abugida/featural).
+
+**Location.** A shared, standalone place (D-Location, M19): a **required** WGS84 coordinate with
+DB-derived **MGRS** + **H3** indexes (PostGIS + h3-pg) plus a structured postal address over the country
+registry. Education buildings/dorms and company addresses reference it by FK.
+
+**Educational institution.** An external reference org (D-Education, M20) — kindergarten…academy — with a
+recursive internal **structure tree** (campus/faculty/department/chair), **buildings** (Locations), and
+person bindings: **enrollment** (`STUDIED_AT`), **mentorship** (reuses M14 sponsorship with an education
+context), **dorm stay**, and institution **positions**. Distinct from the deploying org's tenant units.
+
+**Company (legal entity).** A registered organization (D-Companies, M21): `legal_form` + orthogonal
+`ownership_category`, multi-scheme **registration** (LEI spine), industry classification, positions, and
+the **ownership/affiliation graph** — founders, shareholders (stake %), and **beneficial owner (UBO)**.
+
+**Beneficial owner (UBO).** The ultimate person behind a company through ownership layers; stored as a
+**declared** `BENEFICIARY_OF` link (computed chain-traversal is the parked DS-47).
+
+### Religion (M22–M25)
+
+> The **multi-faith** religion vertical (D-Religion, M22–M25). **All faith vocabulary is catalog-driven**
+> — every term below names a *catalog* seeded with cross-faith examples, never a hard-coded enum. Owned
+> by the [religion](modules/religion.md) module (organizations reuse [tenant](modules/tenant.md) units;
+> sites reuse [location](modules/location.md)).
+
+**Religion (faith).** The top of the faith taxonomy (D-Religion, M22) — Christianity / Islam / Judaism /
+Hinduism / Buddhism / Sikhism / Bahá'í / Shinto / traditional / … A `religion_religions` catalog row;
+many coexist in one deployment (L-SingleDomain refined — the single domain is *religion*).
+
+**Tradition family.** A branch within a religion (Catholic/Orthodox/Protestant; Sunni/Shia;
+Theravada/Mahayana/…), nested under a **Religion**. **Sub-tradition** is the optional generic level below
+it (rite / school / madhhab / sampradaya — Latin/Byzantine, Hanafi/Ja'fari, …).
+
+**Religious organization / worship community.** A religious body (denomination, jurisdiction, community,
+mosque, monastery, …) modeled as a **tenant unit** placed in the religion graphs; its faith attributes
+live in an **org profile** and its eligibility rules in a data-driven **org policy**. **Org kind** is the
+catalog naming each organizational level per faith (a descriptive `unit_kind`, never branched on).
+
+**Canonical / tradition / affiliation graph.** The three seeded religion **unit graphs**: `canonical`
+(governance tree — **authority-bearing**, the PDP cascades here), `tradition` (taxonomic placement —
+**directory-only**), `affiliation` (voluntary association DAG — **directory-only**, no admin inheritance).
+
+**Clergy grade.** A per-tradition, ordered religious-functionary rank (bishop/presbyter/deacon;
+imam/mufti/sheikh; rabbi/cantor; bhikkhu/lama; pujari/swami) — a `religion_clergy_grades` catalog;
+`ordinal` orders only *within* a tradition (no cross-tradition comparator, DS-43). **Clergy credential**
+is the reified `CLERGY_CREDENTIAL` link recording a person's standing (ordination/investiture/
+recognition) — indelible where sacramental, and **never an authz input** (parallels rank, D-Rank).
+**Clergy office** (pastor / imam-of-mosque / head-rabbi / abbot) is a [membership](modules/membership.md)
+**position** with authority from a role assignment.
+
+**Religious affiliation.** A person's lay belief tie to a religion/tradition/community — the reified
+`AFFILIATED_WITH` link, **GDPR Art. 9 `pii:special`**, envelope-encrypted + blind-indexed (D-SpecialPII),
+crypto-erased on purge. **Affiliation type** (adherent/member; catechumen/baptized/confirmed; shahada;
+bar/bat-mitzvah) is a per-tradition catalog.
+
+**Religious site.** A worship place — the reified `SITE_OF` link from an organization unit to a shared
+**Location**, typed by a per-tradition **site type** (church/mosque/synagogue/temple/gurdwara/…), with
+its own `visibility` and `public_precision`. **Public precision** is the privacy projection that coarsens
+a published coordinate to an H3 cell (`exact`→point … `city`→~9 km … `hidden`→none) at read time — the
+persecuted-community case. **Service schedule** is a site's recurring service (day/RRULE, time, IANA
+timezone, service language, **service type**, mode). **Alias** is a search-only alternative name.
+
+### Vehicle & subdivisions (M26)
+
+**Subdivision.** A seeded **ISO-3166-2** subnational division (oblast/region/raion/city) in the shared
+`geo_subdivisions` registry (D-GeoSubdivisions, M26) — `code` + translatable `name`, under a **Country**,
+optionally nested via `parent_id`. A platform-owned reference layer below `geo_countries`, the structured
+home for the vehicle plate-region (residence/Location free-text regions retrofit to it later, DS-51).
+
+**Vehicle.** A physical vehicle (D-Vehicles, M26): a `vin` (unique among active), `manufacture_date`,
+`color`, and long-tail `attributes`, typed by a **vehicle type** (a shallow taxonomy tree) and a
+**vehicle model**. A **vehicle brand** is the marque, linked to its manufacturer **Company** by the
+temporal `MANUFACTURED_BY` link.
+
+**Vehicle registration.** The ownership+plate record — the reified temporal `REGISTERED_TO` link from a
+**Vehicle** to a **polymorphic owner** (person **or** company), carrying the registration country,
+**subdivision** (plate region), plate `registration_number`, and **registration number type**
+(regular/temporary/transit/…). Re-registration is a new row (the prior closed), so the link *is* the
+ownership history; person-owned rows are `pii:basic`, holder-scoped, and purge-erased.
+
 ---
 
 ## Alphabetical index
 
-Account · Action (type) · Action RID · Append-only event log · Atomic permission · Audit log · Authority-bearing · Blind index ·
-Call sign · Citizenship · Closure · Code · Country · Document · Document attribute schema · Document type · Dormant seam ·
-Effective permissions · Email (contact) · Email type · Envelope encryption · Environment slot · Expand/contract · External identity ·
-Graph (named hierarchy) · Instance admin · Level · Link (type) · Link RID · Locale · Membership · Name (CLDR) ·
+Account · Action (type) · Action RID · Affiliation type · Append-only event log · Atomic permission · Audit log · Authority-bearing · Background worker · Beneficial owner (UBO) · Blind index ·
+Call sign · Canonical graph · Citizenship · Clergy credential · Clergy grade · Clergy office · Closure · Code · Company (legal entity) · Country · Data ingestion / connector · Document · Document attribute schema · Document type · Dormant seam ·
+Educational institution · Effective permissions · Email (contact) · Email type · Envelope encryption · Environment slot · Expand/contract · External identity ·
+Gate · Graph (named hierarchy) · Instance admin · Languoid · Level · Link (type) · Link RID · Locale · Location · Membership · Name (CLDR) ·
 Object (type) · Object-set · Ontology · Order ·
-Order category · Order item · Order type · PDP · PDP context · Person · Personal code ·
-Personal-code scheme · Phone (contact) · Phone type · PII tier · Position · Public/shadow · Rank · Rank category · Rank preset ·
-Rank scheme · Rank system · Rank type · Residence · Reversibility · RID (Resource Identifier) · RLS backstop · Role · Role assignment · Scope ·
-Standardized grade (NATO STANAG 2116) · Supported language · Translation · Transliteration · Unit · Unit graph (DAG) · Unit kind ·
-Vacancy · Visibility
+Order category · Order item · Order type · Org kind · PDP · PDP context · Person · Personal code ·
+Personal-code scheme · Phone (contact) · Phone type · PII tier · Position · Public precision · Public/shadow · Rank · Rank category · Rank preset ·
+Rank scheme · Rank system · Rank type · Religion (faith) · Religious affiliation · Religious organization · Religious site · Residence · Reversibility · RID (Resource Identifier) · RLS backstop · Role · Role assignment · Scope ·
+Service schedule · Service type · Site type · Stage board · Standardized grade (NATO STANAG 2116) · Sub-tradition · Subdivision · Supported language · TODO-N · Tradition family · Translation · Transliteration · Unit · Unit graph (DAG) · Unit kind ·
+Vacancy · Vehicle · Vehicle brand · Vehicle registration · Visibility · Writing system

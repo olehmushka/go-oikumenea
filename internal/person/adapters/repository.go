@@ -124,6 +124,21 @@ func (r *Repository) ListPersons(ctx context.Context, after string, limit int) (
 	return out, nil
 }
 
+func (r *Repository) ListPersonsByIDs(ctx context.Context, ids []string) ([]domain.Person, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	rows, err := r.q.ListPersonsByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Person, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toPerson(row))
+	}
+	return out, nil
+}
+
 func (r *Repository) SetRank(ctx context.Context, id string, rankID *string) (domain.Person, error) {
 	row, err := r.q.SetRank(ctx, personsql.SetRankParams{RankID: textPtr(rankID), ID: id})
 	if err != nil {
