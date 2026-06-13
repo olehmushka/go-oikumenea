@@ -57,8 +57,14 @@ across graphs. That — *hierarchy + inheritance + visibility, decided by a PDP*
 | [authorization](modules/authorization.md) | RBAC + the **PDP**. Roles, code-defined permissions, scoped assignments, instance-admin. |
 | [identity-federation](modules/identity-federation.md) | The external-IdP seam: accounts, external identities, inbound OIDC/JWKS validation. |
 | [localization](modules/localization.md) | i18n: instance-admin-managed locales + the translation store for entity labels. |
-| [platform](modules/platform.md) | witchcraft bootstrap, config, observability, schema bootstrap, country registry (+ the planned `geo_subdivisions` ISO-3166-2 registry, M26), crypto/KMS seam, boot-time schema-version check. **Planned:** background-worker runtime (M16) + the generic data-ingestion/connector framework (M17). |
+| [platform](modules/platform.md) | witchcraft bootstrap, config, observability, schema bootstrap, country registry (+ the planned `geo_subdivisions` ISO-3166-2 registry, M26), crypto/KMS seam, boot-time schema-version check. Hosts the generic **`POST /import/{objectType}`** upsert endpoint + the `import.manage` **service principal** the hermenea companion calls (M16). |
 | [audit](modules/audit.md) | Append-only audit trail of permission-sensitive actions. |
+
+**Companion service** (a **second binary**, not an oikumenea `internal/` module):
+
+| Service | Responsibility |
+|---|---|
+| [hermenea](modules/hermenea.md) *(M16, `cmd/hermenea`)* | Out-of-process **ingestion + scheduler**, its **own Postgres**, HTTP-only coupling: fetch (http/file connector) → raw staging → mapper → oikumenea `POST /import/{objectType}` idempotent upsert; cron + `worker_jobs` queue; `import_runs` lineage. **D-Hermenea** supersedes D-Worker and folds the M17 data-ingestion framework. |
 
 **Planned modules** (designed in [milestones.md](milestones.md) M16–M26 + [roadmap-decisions.md](architecture/roadmap-decisions.md); most module docs follow at implementation time — the **religion** and shared **location** docs already exist):
 

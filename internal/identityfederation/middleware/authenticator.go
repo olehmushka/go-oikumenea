@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"net/http"
 	"strings"
@@ -37,8 +38,14 @@ type RLSResolver interface {
 // validator + resolver once the DB pool and services exist inside the boot InitFunc — all before any
 // request is served (mirrors the PEP enforcer's bootstrap-ordering pattern).
 type Authenticator struct {
-	mu    sync.RWMutex
+	mu sync.RWMutex
+	// bound carries the JWT validator + resolver wired at boot.
 	bound *bound
+	// importToken is the runtime shared secret (HERMENEA_OIKUMENEA_TOKEN) that authenticates the
+	// hermenea import SERVICE PRINCIPAL (D-Hermenea; L-AuthzOnly amendment). Empty disables the path.
+	// It is validated by constant-time comparison — go-oikumenea stores no credential; the operator
+	// supplies it at deploy time (mirrors the bootstrap-admin pattern).
+	importToken string
 }
 
 type bound struct {
@@ -52,6 +59,21 @@ type bound struct {
 
 // NewUnbound builds an Authenticator whose validator/resolver are wired later via Bind.
 func NewUnbound() *Authenticator { return &Authenticator{} }
+
+// SetImportServiceToken sets the hermenea import service-principal shared secret (D-Hermenea). Called
+// once at boot from runtime config/env; an empty value leaves the service-principal path disabled.
+func (a *Authenticator) SetImportServiceToken(token string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.importToken = token
+}
+
+// importServiceToken returns the configured import service secret under the lock.
+func (a *Authenticator) importServiceToken() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.importToken
+}
 
 // Bind wires the validator, the (issuer, subject) resolver, the person directory (for JIT), the
 // JIT-enabled flag, the RLS-state resolver, and the pool used to pin a per-request RLS-scoped
@@ -87,6 +109,17 @@ func (a *Authenticator) Handle(rw http.ResponseWriter, r *http.Request, next htt
 		unauthorized(rw)
 		return
 	}
+
+	// Service-principal path (D-Hermenea): if the bearer equals the configured import shared secret,
+	// the caller is the hermenea importer — attach the service principal (no person, no JWT, no RLS
+	// pinning; the import endpoint writes only non-unit catalog tables) and proceed. Constant-time
+	// comparison; an empty configured token disables the path.
+	if tok := a.importServiceToken(); tok != "" && subtle.ConstantTimeCompare([]byte(raw), []byte(tok)) == 1 {
+		ctx := authn.NewContext(r.Context(), authn.Subject{Service: authn.ServiceHermeneaImporter})
+		next.ServeHTTP(rw, r.WithContext(ctx))
+		return
+	}
+
 	claims, err := b.validator.Validate(r.Context(), raw)
 	if err != nil {
 		unauthorized(rw)

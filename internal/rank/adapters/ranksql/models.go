@@ -232,6 +232,12 @@ type OikumeneaGeoCountry struct {
 	SortOrder pgtype.Int4
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
+	// pii:none
+	Source pgtype.Text
+	// pii:none
+	SourceVersion pgtype.Text
+	// pii:none
+	ImportedAt pgtype.Timestamptz
 }
 
 type OikumeneaI18nLocale struct {

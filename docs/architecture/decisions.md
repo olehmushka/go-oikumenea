@@ -1589,6 +1589,13 @@ These come from the high-level plan and are not re-litigated here.
 - **L-AuthzOnly — AuthZ + directory only.** Authentication is delegated to an external IdP.
   go-oikumenea validates inbound identities and decides authorization; it **stores no
   credentials and issues no tokens**. See [identity-federation](../modules/identity-federation.md).
+  **Amended by D-Hermenea** ([roadmap-decisions.md](roadmap-decisions.md)): one additional inbound
+  auth path exists for the **`hermenea` service principal** — a **runtime shared secret**
+  (`HERMENEA_OIKUMENEA_TOKEN`, ECV-refreshable, **never install config, never stored**) validated by
+  comparison (the bootstrap-admin pattern) that maps to a principal holding exactly `import.manage`
+  (instance scope), audited as a **`system`** actor. This is still "validates an inbound identity,
+  stores no credential, issues no token" — the secret is operator-supplied at deploy time, not
+  persisted.
 - **L-AccountOptional — Person-centric, account optional.** `person` is the core aggregate; an
   `account` is an optional attachment. People who never log in are first-class.
 - **L-SingleDomain — Single domain per deployment.** One instance = one domain (army OR church

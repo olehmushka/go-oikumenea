@@ -100,6 +100,10 @@ const (
 	PermCountryManage            Permission = "country.manage"
 	PermInstanceConfig           Permission = "instance.config"
 	PermInstanceAdminManage      Permission = "instance.admin.manage"
+	// import — the generic reference-data import endpoint (M16 / D-Hermenea). Held by the
+	// `hermenea-importer` service principal (shared-secret path) and grantable to a human instance
+	// admin; the PDP only satisfies it on the instance plane.
+	PermImportManage Permission = "import.manage"
 )
 
 // instanceScope is the set of permissions only meaningful on the instance-admin plane
@@ -120,6 +124,7 @@ var instanceScope = map[Permission]struct{}{
 	PermTranslationManage:        {},
 	PermInstanceConfig:           {},
 	PermInstanceAdminManage:      {},
+	PermImportManage:             {},
 }
 
 // catalog is the closed vocabulary — the union of every permission constant above. It is the
@@ -141,6 +146,7 @@ var catalog = func() map[Permission]struct{} {
 		PermLocaleRead, PermTranslationRead, PermLocaleManage, PermTranslationManage,
 		PermRankSchemeManage, PermGraphManage, PermClosureRebuild, PermDocumentTypeManage, PermOrderTypeManage,
 		PermPersonalCodeSchemeManage, PermCountryManage, PermInstanceConfig, PermInstanceAdminManage,
+		PermImportManage,
 	}
 	m := make(map[Permission]struct{}, len(all))
 	for _, p := range all {

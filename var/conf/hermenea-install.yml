@@ -1,0 +1,35 @@
+# Local-dev install configuration for the hermenea companion service (M16 / D-Hermenea).
+# Plaintext for local dev; ECV-encrypted in real deployments. The two shared secrets are RUNTIME env
+# vars (OIKUMENEA_HERMENEA_TOKEN, HERMENEA_OIKUMENEA_TOKEN) — NOT in this file.
+product-name: hermenea
+product-version: 0.0.0-dev
+use-console-log: true
+server:
+  address: "0.0.0.0"
+  port: 9443
+  management-port: 9444
+  context-path: ""
+
+# Hermenea's OWN PostgreSQL (separate database from oikumenea's). Apply migrations/hermenea first:
+#   set -a; . ./.env; set +a; atlas migrate apply --env hermenea
+postgres:
+  dsn: "postgres://postgres:dev@localhost:5432/hermenea?sslmode=disable"
+
+# oikumenea's public API the loader calls (POST /import/{objectType}). insecure-skip-verify accepts the
+# self-signed local-dev cert; set false against a real certificate.
+oikumenea:
+  base-url: "https://localhost:8443"
+  insecure-skip-verify: true
+
+# Declarative import sources seeded at boot (idempotent). geo-countries lands in a follow-up; until a
+# matching mapper is registered, a source's syncs fail with "no mapper" (visible in import_runs).
+sources: []
+
+# Background-runtime tunables (milliseconds; zero => documented default).
+worker:
+  poll-interval-ms: 2000
+  schedule-tick-ms: 30000
+  backoff-base-ms: 5000
+  backoff-max-ms: 300000
+  job-timeout-ms: 120000
+  stale-after-ms: 600000

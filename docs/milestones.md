@@ -43,8 +43,8 @@ migrates, and demos** on its own, so the service is runnable at every step.
 | **M13** | Social & messenger channels | platform catalog; messenger reachability over phones/emails; standalone social accounts with analytics-grade attribution (stable id, provenance+confidence, verification) | M12 |
 | **M14** | Person↔person relationships | per-type reified self-links: partnership/marriage, kinship, guardianship, sponsorship, next-of-kin, association/COI (friend/follower social-link deferred) | M5 |
 | **M15** | Rank systems, NATO grades & presets | a `rank_system` top level (multinational); standardized `grade_code` (NATO STANAG 2116) for cross-system comparability; bundled scheme presets + idempotent `/rank-scheme/import` | M4 |
-| **M16** | Background worker & scheduler | in-process cron scheduler + job queue over the `pkg/events` outbox; the runtime every scheduled sync/sweep runs on — **promotes DS-25** | M0 |
-| **M17** | Data ingestion & connector framework | source/connector registry (HTTP first cut), raw staging, mapper-registry transform→ontology, idempotent code-keyed upsert, `import_runs` lineage | M1, M16 |
+| **M16** | Hermenea — ingestion & scheduler companion (**absorbs M17**) | a **second binary** `cmd/hermenea` with its **own Postgres**, HTTP-only coupling: connector (http/file) → raw staging → mapper → oikumenea `POST /import/{objectType}` idempotent upsert; cron scheduler + `worker_jobs` queue; `import_runs` lineage; service-principal auth — **supersedes D-Worker, folds D-DataIngestion; promotes DS-25** | M0, M1 |
+| ~~**M17**~~ | ~~Data ingestion & connector framework~~ → **folded into M16** | the connector/mapper/scheduler pipeline now lives in the **hermenea** service (D-Hermenea); oikumenea keeps the generic import endpoint + per-row provenance | — |
 | **M18** | Language & writing systems | full Glottolog 5.3 languoid forest + ISO-15924 writing systems; person/unit/locale language links; first M17 consumer | M2, M5, M17 (M3 for the unit tie) |
 | **M19** | Location | standalone `location_locations`; PostGIS `GEOGRAPHY` + h3-pg, DB-derived MGRS/H3; structured address over `geo_countries` | M0 |
 | **M20** | Education | institutions + structure tree + buildings (Location); enrollments, mentorship, groups, dorm stays; institution positions | M5, M14, M19 (M17 for registries) |
@@ -60,7 +60,9 @@ M12 is **scoped (in progress)** — see its section below (D-PersonContactChanne
 M13 and M14 are **delivered** — see their sections below (D-PersonSocialChannels, D-PersonRelationships). M14's scoped friend/follower `person_social_links` tie was **deferred — not built** (see decisions.md).
 M15 is **delivered** — see its section below (D-RankSystems); it is additive over M4 and refines the L-OneRankScheme lock (one registry, multiple systems).
 
-M16–M26 are **planned** (designed, not yet built) — a domain cluster derived from `todo.md`, binding once their decisions land: **M16** (worker runtime, promotes DS-25) and **M17** (D-DataIngestion) are foundations the rest ride; **M18** (D-Languages, full Glottolog), **M19** (D-Location, PostGIS), **M20** (D-Education), **M21** (D-Companies). M16/M17 are platform-level; **M19 is a foundation reused by M20, M21, and the religion discovery milestone M25**. The **M22–M25** cluster is the **multi-faith religion vertical** (D-Religion, D-ClergyCredential, D-ReligiousAffiliation, D-SpecialPII) — it **promotes DS-48** (Religion) off the parked list and reuses the tenant graph, person/membership/order/authorization, and the shared M19 Location rather than adding new hierarchy machinery. **M26** (D-Vehicles + D-GeoSubdivisions) is the last todo item — a vehicle registry on person + M21 Company, bundling a shared `geo_subdivisions` ISO-3166-2 foundation (as M19 bundled the PostGIS bootstrap). The M16–M26 decisions live in [roadmap-decisions.md](architecture/roadmap-decisions.md) (split out of the binding `decisions.md` so it reflects the built M0–M15 surface).
+M16 is **in implementation** — **re-scoped to the `hermenea` companion service** ([D-Hermenea](architecture/roadmap-decisions.md), which **supersedes D-Worker** and **absorbs M17/D-DataIngestion**): ingestion + the job runtime move **out of process** into a second binary with its own Postgres, coupled to oikumenea **only over HTTP**. M17 is **folded into M16** (no longer a separate milestone).
+
+M18–M26 are **planned** (designed, not yet built) — a domain cluster derived from `todo.md`, binding once their decisions land: the hermenea ingestion framework (M16) is the foundation the registry-fed verticals ride; **M18** (D-Languages, full Glottolog) is its first real consumer; **M19** (D-Location, PostGIS), **M20** (D-Education), **M21** (D-Companies). **M19 is a foundation reused by M20, M21, and the religion discovery milestone M25**. The **M22–M25** cluster is the **multi-faith religion vertical** (D-Religion, D-ClergyCredential, D-ReligiousAffiliation, D-SpecialPII) — it **promotes DS-48** (Religion) off the parked list and reuses the tenant graph, person/membership/order/authorization, and the shared M19 Location rather than adding new hierarchy machinery. **M26** (D-Vehicles + D-GeoSubdivisions) is the last todo item — a vehicle registry on person + M21 Company, bundling a shared `geo_subdivisions` ISO-3166-2 foundation (as M19 bundled the PostGIS bootstrap). The M16–M26 decisions live in [roadmap-decisions.md](architecture/roadmap-decisions.md) (split out of the binding `decisions.md` so it reflects the built M0–M15 surface).
 
 ## Stage board
 
@@ -91,8 +93,8 @@ Legend: `✅` done · `🚧` in progress · `⬜` not started · `➖` not appli
 | **M13** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified |
 | **M14** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified |
 | **M15** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified |
-| **M16** | ✅ | 🚧 | ⬜ | ⬜ | ⬜ | ⬜ | decided |
-| **M17** | ✅ | 🚧 | ⬜ | ⬜ | ⬜ | ⬜ | decided |
+| **M16** | ✅ | ✅ | ✅ | ✅ | ➖ | 🚧 | backend+migrated (e2e + geo-countries connector pending) |
+| ~~**M17**~~ | — | — | — | — | — | — | folded into M16 (D-Hermenea) |
 | **M18** | ✅ | 🚧 | ⬜ | ⬜ | ⬜ | ⬜ | decided |
 | **M19** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | designed |
 | **M20** | ✅ | 🚧 | ⬜ | ⬜ | ⬜ | ⬜ | decided |
@@ -105,10 +107,13 @@ Legend: `✅` done · `🚧` in progress · `⬜` not started · `➖` not appli
 
 Notes on the planned tier (M16–M26): all have a landed `D-<Name>` decision (in
 [roadmap-decisions.md](architecture/roadmap-decisions.md)), so all are at least
-**decided**. *Designed* `✅` means a dedicated module doc exists — present for **M19**
+**decided**. **M16 is now in implementation** as the **hermenea** companion service (D-Hermenea
+supersedes D-Worker and **absorbs M17/D-DataIngestion**); its module doc
+([hermenea.md](modules/hermenea.md)) exists, so its *Designed* gate is `✅`, and its UI gate is `➖`
+(a headless companion service — no console surface). *Designed* `✅` means a dedicated module doc
+exists — present for **M16** ([hermenea.md](modules/hermenea.md)), **M19**
 ([location.md](modules/location.md)) and **M22–M25** ([religion.md](modules/religion.md)); for
-M16/M17 (folded into [platform.md](modules/platform.md)) and M18/M20/M21/M26 the module doc is still
-to be written, hence `🚧`. M15's backend is additive over the M4 rank migration
+M18/M20/M21/M26 the module doc is still to be written, hence `🚧`. M15's backend is additive over the M4 rank migration
 (`20260601000004_rank.sql`), not a separate file. M12 remains **scoped/in progress** until its exit
 criteria are met across the board.
 
@@ -465,62 +470,60 @@ preset** instead of hand-entering every node.
 
 ---
 
-## M16 — Background worker & scheduler
+## M16 — Hermenea: ingestion & scheduler companion (absorbs M17)
 
-**Status: planned.** Binding via **D-Worker** in [roadmap-decisions.md](architecture/roadmap-decisions.md), which **promotes
-open-question DS-25** (the long-parked common blocker) onto the critical path because the M17 connector
-framework needs scheduled syncs. Additive over M0 — a new runtime alongside the synchronous core, no
-breaking change.
+**Status: in implementation.** Binding via **D-Hermenea** in
+[roadmap-decisions.md](architecture/roadmap-decisions.md), which **supersedes D-Worker** (reverses
+*in-process*) and **folds D-DataIngestion (M17) into M16**. The background-job runtime + the
+reference-data pipeline are realized as a **second deployable, `hermenea`** (`cmd/hermenea`) — a
+companion ETL + scheduler beside oikumenea, with its **own PostgreSQL** and its **own Atlas
+migrations**, coupled to oikumenea **only over HTTP** (it never touches oikumenea's DB). Promotes the
+long-parked **DS-25**; greenfield for hermenea, additive/expand-only for oikumenea. See the
+[hermenea](modules/hermenea.md) module doc.
 
-**Goal.** A first-class background-job runtime: a server that can run scheduled and queued work (the
-connector syncs of M17, and — unblocked as a side effect — expiry sweeps, audit partitioning DS-28, and
-future-dated order effects) without an external broker.
+**Goal.** Ingest external reference datasets out of process — fetch → stage raw → map → load via
+oikumenea's public import API — on a cron or a push trigger, with at-least-once execution, retry/backoff,
+lineage, and hard service separation from the PDP core.
 
-- **Delivers:** an in-process **cron scheduler** + **job queue** built over the existing `pkg/events`
-  outbox, with witchcraft-managed lifecycle (graceful drain on shutdown), at-least-once execution with
-  idempotency keys, a `worker_jobs` ledger (status/attempts/last_error), retry/backoff, and a
-  job-health reporter. No external broker (DS-26 stays parked); single-process scheduling.
-- **Implements:** D-Worker (promotes DS-25). See [platform](modules/platform.md).
-- **Exit:** a scheduled job fires on its cron; a queued job runs at-least-once and is idempotent on
-  retry; in-flight jobs drain cleanly on shutdown; failures surface in the health reporter + audit.
+- **Delivers (hermenea, its own DB):**
+  - **Connectors** — a `Connector` interface (`Fetch(ctx, source) → RawBatch`); **HTTP(S)** + the
+    degenerate **`file`** connector; an `import_sources` registry (`type ∈ http|file`; `jdbc-sql`/
+    `object-store` parked **DS-44**), credentials via the crypto seam.
+  - **Raw staging** — `import_raw_batches` lands payloads verbatim (checksum, `source_version`,
+    `fetched_at`), re-mappable without re-fetch.
+  - **Mapper registry** — per object-type, raw records → a **canonical envelope** (`{objectType,
+    source, sourceVersion, license, generatedAt, records[]}`).
+  - **Scheduler + queue** — an in-process **cron scheduler** + a `worker_jobs` queue
+    (`SELECT … FOR UPDATE SKIP LOCKED`), at-least-once with **idempotency keys**, **exponential
+    backoff (per-job-type config)**, dead-letter after max attempts, witchcraft-managed **graceful
+    drain**, a **job-health reporter**; `import_runs` lineage ledger.
+  - **`POST /sync/{source}`** endpoint (the **push trigger** from an oikumenea admin action) + source/
+    run/job read endpoints (`api/hermenea.conjure.yml`).
+- **Delivers (oikumenea, additive):** the generic **`POST /import/{objectType}`** endpoint over an
+  upsert registry (code-keyed, idempotent, non-destructive, one txn, audited as a **`system`** actor);
+  **per-row provenance** (`source`/`source_version`/`imported_at`); the **`import.manage`** permission
+  + the **`hermenea-importer` service principal** (shared-secret auth path, amends L-AuthzOnly); a thin
+  push-trigger HTTP client to hermenea.
+- **Two trust directions, two runtime secrets** — `HERMENEA_OIKUMENEA_TOKEN` (import) and
+  `OIKUMENEA_HERMENEA_TOKEN` (trigger), ECV-refreshable, never stored.
+- **First consumer:** **`geo-countries`** (ISO-3166) — an existing reference catalog needing no new
+  oikumenea domain module. M15's `/rank-scheme/import` is **not** retrofitted (legacy one-off).
+- **Implements:** D-Hermenea (supersedes D-Worker, folds D-DataIngestion). See
+  [hermenea](modules/hermenea.md) + [platform](modules/platform.md).
+- **Exit:** hermenea cron fires a `geo-countries` sync; an oikumenea push (`POST /sync/geo-countries`)
+  also fires one; raw stage → map → `POST /import/geo-countries` idempotent upsert; **re-running a sync
+  changes nothing**; `import_runs` records lineage; per-row provenance is stamped; a bad/missing service
+  secret is rejected (401); a failing fetch/map surfaces in hermenea's health + an oikumenea `system`
+  audit row; in-flight jobs drain cleanly on shutdown.
 
-## M17 — Data ingestion & connector framework
+## ~~M17 — Data ingestion & connector framework~~ → folded into M16
 
-**Status: planned.** Binding via **D-DataIngestion** in [roadmap-decisions.md](architecture/roadmap-decisions.md). A
-**generic, reusable** bulk reference-data pipeline that every catalog plugs into — generalizing the
-one-off M15 rank importer (which **stays as-is**, per decision) so M18 languages, M20 education
-registries, and M21 company registries all flow through one path. Maps onto Palantir Foundry's
-ingestion stages (Data Connection → Pipeline → Ontology mapping), right-sized for a self-hosted Go
-monolith (no Spark).
-
-**Goal.** Ingest external reference datasets uniformly — fetch → stage raw → map → idempotent
-upsert into a domain catalog — with provenance/lineage and re-runnable syncs, instead of a bespoke
-importer per domain.
-
-- **Delivers:**
-  - **Sources & connectors** (Data Connection): an `import_sources` registry (type ∈
-    `http`/`file` now; `jdbc-sql`/`object-store` parked as DS-44), credentials via the M0 crypto/KMS
-    seam; a pluggable `Connector` interface in `pkg/dataimport` (`Fetch(ctx, source) → RawBatch`).
-    First connector: **HTTP(S) download** (a release artifact by URL — Zenodo/GLEIF/national
-    registries); local bundled presets are the degenerate `file` case. On-demand or scheduled
-    (`import_syncs`, cron, on the M16 worker).
-  - **Raw staging** (raw dataset): `import_raw_batches` — the fetched payload landed verbatim
-    (checksum, `source_version`, `fetched_at`), re-mappable without re-fetch.
-  - **Transform → ontology** (Pipeline + mapping): each module **registers a mapper** for its
-    importable object-types (`language-scheme`, `education-institutions`, `company-registry`, …) that
-    turns raw records → a **canonical envelope** (`{object_type, source, source_version, license,
-    generated_at, records[]}`) → a **code-keyed, idempotent, non-destructive upsert** into the domain
-    catalog (never deletes; mismatches reported), in one transaction, emitted as audited Actions
-    (preserving the bulk-ingest ≠ audited-edit boundary).
-  - **Lineage & run ledger:** `import_runs` (source, version, counts, checksum, status, errors) +
-    `(source, source_version, imported_at)` provenance on every imported row + a sync-failure health
-    reporter.
-  - A generic `POST /import/{objectType}` endpoint over the mapper registry (instance-scope,
-    `import.manage`).
-- **Implements:** D-DataIngestion. M15's `/rank-scheme/import` is **not** retrofitted (stays a legacy
-  one-off). See [platform](modules/platform.md).
-- **Exit:** register an HTTP source, run a sync, watch raw stage then map → idempotent upsert; re-running
-  a sync changes nothing; `import_runs` records lineage; a failing fetch/map surfaces in health + audit.
+**Status: folded into M16 (D-Hermenea).** The generic connector/mapper/scheduler pipeline that was M17
+now lives in the **hermenea** companion service (see M16 above); oikumenea keeps only the generic
+`POST /import/{objectType}` upsert endpoint + per-row provenance. The pipeline *shape* of
+**D-DataIngestion** (sources → raw staging → mapper → canonical envelope → idempotent upsert → lineage)
+is adopted unchanged, only **relocated** out of process. M17 is no longer a separate milestone; the id
+is retained (append-only) for provenance.
 
 ## M18 — Language & writing systems
 

@@ -14,7 +14,8 @@ The [`milestones.md`](../milestones.md) stage board sequences these; the
 [`ontology-mapping.md`](../ontology-mapping.md) registry classifies their (planned) Object/Link/Action
 kinds.
 
-Decisions here, in milestone order: **D-Worker** (M16) · **D-DataIngestion** (M17) · **D-Languages**
+Decisions here, in milestone order: **D-Worker** (M16, *superseded*) · **D-Hermenea** (M16, supersedes
+D-Worker, folds D-DataIngestion) · **D-DataIngestion** (M17→folded into M16) · **D-Languages**
 (M18) · **D-Location** (M19) · **D-Education** (M20) · **D-Companies** (M21) · **D-Religion** /
 **D-ClergyCredential** / **D-ReligiousAffiliation** / **D-SpecialPII** (M22–M25) · **D-GeoSubdivisions**
 / **D-Vehicles** (M26).
@@ -26,6 +27,14 @@ Decisions here, in milestone order: **D-Worker** (M16) · **D-DataIngestion** (M
 ---
 
 ### D-Worker — A first-class background-job runtime (promotes DS-25)
+
+> **Superseded by [D-Hermenea](#d-hermenea--an-out-of-process-ingestion--scheduler-companion-supersedes-d-worker-folds-d-dataingestion) (M16).** The
+> *need* (scheduled syncs, a job queue, at-least-once with idempotency, retry/backoff, drain, a job
+> ledger, health+audit) is unchanged and carried forward — but the *placement* is reversed: the
+> runtime is **not** in-process inside oikumenea. It lives in a **separate companion binary,
+> `hermenea`**, with its **own Postgres**, coupled to oikumenea **only over HTTP**. The single-binary
+> premise below ("keeps the self-hosted, single-binary deployment story intact") is the one part
+> intentionally dropped (rationale in D-Hermenea). The original text is retained for provenance.
 
 **Decision.** The service gains an **in-process background-job runtime** — a cron **scheduler** + a
 **job queue** built over the existing `pkg/events` outbox, with witchcraft-managed lifecycle. This
@@ -53,7 +62,68 @@ expand-only.
 
 ---
 
+### D-Hermenea — An out-of-process ingestion & scheduler companion (supersedes D-Worker, folds D-DataIngestion)
+
+**Decision.** The background-job runtime and the reference-data ingestion pipeline are realized as a
+**second deployable, `hermenea`** (`cmd/hermenea`) — a companion ETL + scheduler service beside
+`oikumenea`, with its **own PostgreSQL** and its own Atlas migrations, coupled to oikumenea **only over
+HTTP** (it never touches oikumenea's database). This **supersedes [D-Worker](#d-worker--a-first-class-background-job-runtime-promotes-ds-25)**
+(reverses *in-process*) and **collapses [D-DataIngestion](#d-dataingestion--a-generic-reference-data-ingestion--connector-framework-extends-d-ontology) (M17) into M16** (the connector
+framework moves into hermenea). The name pairs *hermenea* (interpretation — it interprets/imports the
+world) with *oikumenea*.
+
+- **What lives in hermenea** (its own DB, own ontology/RIDs): the `Connector` interface
+  (`Fetch(ctx, source) → RawBatch`; **HTTP(S)** + the degenerate **`file`** connector), `import_sources`
+  registry, `import_raw_batches` raw staging, a per-object-type **mapper registry** (raw records → the
+  canonical envelope), an in-process **cron scheduler + `worker_jobs` queue** (`SELECT … FOR UPDATE SKIP
+  LOCKED`, at-least-once with idempotency keys, **exponential backoff with per-job-type config**,
+  dead-letter after max attempts, witchcraft-managed **graceful drain**, a **job-health reporter**), and
+  the `import_runs` lineage ledger.
+- **What lives in oikumenea**: a **generic `POST /import/{objectType}`** endpoint over an upsert
+  registry — each importable object-type registers a **code-keyed, idempotent, non-destructive** upsert
+  handler run in one transaction and emitted as **audited Actions** (preserving bulk-ingest ≠
+  audited-edit); **per-row provenance** (`source`, `source_version`, `imported_at`) on imported rows; the
+  `import.manage` permission.
+- **Two trust directions, two runtime secrets** (env/ECV refreshable, never install config, never
+  stored): `HERMENEA_OIKUMENEA_TOKEN` authorizes hermenea→oikumenea **import** calls; `OIKUMENEA_HERMENEA_TOKEN`
+  authorizes oikumenea→hermenea **push triggers** (`POST /sync/{source}`). Beyond cron, an oikumenea
+  admin/console action pushes a trigger to hermenea.
+- **Service principal** — the import token maps to a `hermenea-importer` **service principal** holding
+  exactly `import.manage` (instance scope), audited as a **`system`** actor (the audit actor-shape CHECK
+  already permits `person | system`); see the **L-AuthzOnly** amendment in [decisions.md](decisions.md).
+
+**Why.** The user requires hard service separation: ingestion is failure-prone, bursty, and pulls in
+outbound network deps and parser surface that should **not** share a process or a database with the PDP.
+An out-of-process companion keeps oikumenea's core synchronous and dependency-light, makes the importer
+independently deployable/scalable/restartable, and forces a clean **HTTP-only** contract (oikumenea's
+public import API is the only coupling — the extraction-ready boundary, realized). Per-row provenance +
+idempotent re-sync + ingest≠edit (the transferable Foundry parts of D-DataIngestion) are all preserved.
+
+**Why not** (a) *In-process worker (D-Worker as written)*: couples ingestion blast radius to the PDP
+process and DB; rejected for separation. (b) *Hermenea writes oikumenea's DB directly*: breaks the
+module/service boundary and the audit/PDP invariants; the HTTP import API is the only sanctioned write
+path. (c) *Pull triggers (hermenea polls oikumenea)*: added latency + a polling endpoint for no benefit
+over a direct push; push chosen. (d) *One shared secret both directions*: distinct per-direction secrets
+limit blast radius. (e) *OIDC client-credentials for the service*: heavier IdP setup than the operator's
+runtime shared secret; the env-secret path is simpler and audited as `system`.
+
+**Consequence.** A new `cmd/hermenea` binary + `internal/hermenea/**` + `api/hermenea.conjure.yml` +
+`migrations/hermenea/` (own `atlas.sum`); oikumenea gains the import endpoint + service-principal auth +
+`import.manage` + provenance columns + a push-trigger client. **D-Worker** and **D-DataIngestion** are
+superseded/folded; **M16 absorbs M17** ([milestones](../milestones.md)). DS-25 stays promoted; **DS-44**
+(more connector types) stays parked. Additive / expand-only on oikumenea; hermenea is greenfield.
+
+---
+
 ### D-DataIngestion — A generic reference-data ingestion & connector framework (extends D-Ontology)
+
+> **Folded into [D-Hermenea](#d-hermenea--an-out-of-process-ingestion--scheduler-companion-supersedes-d-worker-folds-d-dataingestion) (M16 absorbs M17).** The pipeline
+> shape below (sources/connectors → raw staging → mapper → canonical envelope → idempotent upsert →
+> lineage) is **adopted unchanged**, but **relocated**: connectors, raw staging, the mapper registry,
+> `import_sources`/`import_raw_batches`/`import_runs` and the scheduler live in the **hermenea**
+> service's own DB — *not* `pkg/dataimport` inside oikumenea. oikumenea keeps only the generic
+> `POST /import/{objectType}` upsert endpoint + per-row provenance + `import.manage`. The original text
+> is retained for the pipeline-design rationale it still carries.
 
 **Decision.** Bulk reference-data import becomes a **generic, reusable pipeline** in
 [platform](../modules/platform.md) (`pkg/dataimport`), not a bespoke importer per domain. It mirrors

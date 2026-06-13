@@ -24,3 +24,20 @@ env "local" {
     dir = "file://migrations"
   }
 }
+
+// The hermenea companion service owns a SEPARATE database (D-Hermenea) with its own migration set.
+//   set -a; . ./.env; set +a
+//   atlas migrate hash  --env hermenea
+//   atlas migrate apply --env hermenea
+env "hermenea" {
+  // Target DB for hermenea. Override via $HERMENEA_DATABASE_URL (.env) or --url. Defaults to a
+  // local-dev `hermenea` database on the same Postgres.
+  url = getenv("HERMENEA_DATABASE_URL") != "" ? getenv("HERMENEA_DATABASE_URL") : "postgres://postgres:dev@localhost:5432/hermenea?sslmode=disable"
+
+  // Ephemeral dev database Atlas uses to analyze/lint migrations (requires Docker).
+  dev = "docker://postgres/16/dev"
+
+  migration {
+    dir = "file://migrations/hermenea"
+  }
+}

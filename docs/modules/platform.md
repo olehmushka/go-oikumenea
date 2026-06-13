@@ -173,6 +173,22 @@ Platform owns no domain endpoints. It exposes operational surfaces:
 
 These are unauthenticated by design.
 
+### Generic import endpoint (D-Hermenea / ex-D-DataIngestion)
+
+Platform also hosts the **reference-data import endpoint** the [hermenea](hermenea.md) companion calls:
+
+| Op | Intent | Perm |
+|---|---|---|
+| `POST /import/{objectType}` | Idempotent, **non-destructive, code-keyed** upsert of a **canonical envelope** into the target catalog, in one transaction, audited as a `system` actor; stamps `(source, source_version, imported_at)` provenance on each row | `import.manage` (instance) |
+
+It runs over an **upsert registry** (mirrors `pkg/events.Bus`): each importable object-type registers a
+handler at composition time — `geo-countries` is the first (M16). Authorization uses the
+**`hermenea-importer` service principal**: a **shared-secret** auth path (`HERMENEA_OIKUMENEA_TOKEN`,
+ECV-refreshable) beside the OIDC `Authenticator` resolves to a principal holding **exactly**
+`import.manage`, audited as `system` (L-AuthzOnly amendment; see [hermenea](hermenea.md)). The reverse
+push trigger (`POST /sync/{source}` on hermenea, `OIKUMENEA_HERMENEA_TOKEN`) is a thin outbound HTTP
+client wired here.
+
 ## Dependencies
 
 - **Calls:** nothing domain-side. Provides infrastructure to **every** module.
@@ -195,10 +211,12 @@ These are unauthenticated by design.
 - The `pkg/events` bus is in-process (subscribers run in the originating transaction) with an outbox
   seam; extracting a module later turns it into a real broker without domain changes
   ([overview.md](../architecture/overview.md), DS-26).
-- A background **job/worker** runtime (for scheduled purges, expiry sweeps, partition maintenance)
-  is an additive platform component; not required for the synchronous core. (A *scheduled* closure
-  rebuild is **not** among these — it was ruled out; closure repair stays on-demand and drift
-  detection is the diagnostic `closure-drift` reporter — D-ClosureDriftHealth.)
+- The background **job/worker** runtime moved **out of process** into the [hermenea](hermenea.md)
+  companion service (**D-Hermenea supersedes D-Worker**): scheduled syncs, the job queue, and the
+  `worker_jobs` ledger live in hermenea's own DB, not in oikumenea. Other DS-25 beneficiaries
+  (scheduled purges, expiry sweeps, partition maintenance) can run as hermenea jobs calling oikumenea
+  over HTTP. (A *scheduled* closure rebuild is still **not** among these — ruled out; closure repair
+  stays on-demand and drift detection is the diagnostic `closure-drift` reporter — D-ClosureDriftHealth.)
 - OpenTelemetry export is a drop-in behind the tracing seam.
 - The `KeyProvider` crypto seam (D-CryptoProvider) protects `pii:sensitive` today; extending envelope
   encryption to `pii:special` person fields and audit `before`/`after` payloads reuses the same seam

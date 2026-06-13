@@ -69,7 +69,7 @@ Real-world entities with identity over time → Objects.
 | `Locale` / `Translation` | [localization](modules/localization.md) | locale `code` is ISO 639-3 | locale soft-delete | the translatable-`name` store |
 | `Country` | [platform](modules/platform.md) | `code` = ISO-3166-1 α2 | status | shared reference registry |
 | `AuditEntry` | [audit](modules/audit.md) | no | **append-only** (`reject_mutation()`) | not an endpoint; written in-transaction |
-| `ImportSource` / `ImportRun` *(planned, M17)* | platform | source has `code` | source soft-delete; run append-only | external source registry + lineage ledger; D-DataIngestion |
+| `ImportSource` / `ImportRawBatch` / `ImportRun` / `WorkerJob` / `WorkerSchedule` *(M16, hermenea's **own** DB)* | [hermenea](modules/hermenea.md) | source/job `code`/key | source soft-delete; raw/run/job append-or-update | the companion service's ingestion + job-runtime objects — **not** oikumenea Objects; coupled to oikumenea only via the `POST /import/{objectType}` upsert (which stamps `(source, source_version, imported_at)` provenance on the target rows); D-Hermenea (supersedes D-Worker, folds D-DataIngestion) |
 | `Languoid` *(planned, M18)* | `language` | `code` = glottocode; nullable unique `iso639_3` | seeded reference (import) | recursive Glottolog forest, `level ∈ family\|language\|dialect`; `parent_id` strict-tree FK (not a Link); AES `status`; D-Languages |
 | `WritingSystem` / `WritingSystemScriptType` *(planned, M18)* | `language` | `code` (ISO 15924 / catalog) | seeded reference | scripts + script-type catalog |
 | `Location` *(planned, M19)* | `location` | no | soft-delete | required `GEOGRAPHY(POINT,4326)`; DB-derived MGRS/H3; structured address over `geo_countries`; D-Location |
@@ -184,8 +184,10 @@ ledger ([Identifier scheme](#identifier-scheme-rids)).
   `AttachDocument`/`AttachPersonalCode`, `UpsertEmail`/`UpsertPhone`/`UpsertCallSign` (+ their
   deletes), `CreateRole`, `GrantAssignment`/`RevokeAssignment`,
   `GrantInstanceAdmin`, `CreateAccount`/`LinkExternalIdentity`, rank/locale/catalog edits.
-- **Planned (M16–M26):** `ScheduleJob`/`RunJob` (M16 worker); `RunImport` over a registered mapper
-  (M17 — a bulk **code-keyed upsert** emitted as audited Actions, the ingest≠edit boundary);
+- **Planned (M16–M26):** `RunImport` (**M16, D-Hermenea**) — oikumenea's `POST /import/{objectType}`
+  applies a bulk **code-keyed upsert** in one txn, emitted as a **`system`-actor** audited Action (the
+  ingest≠edit boundary); the scheduler/queue Actions (`ScheduleJob`/`RunJob`) live in **hermenea's own**
+  ledger (`worker_jobs`/`import_runs`), not oikumenea's audit log;
   `CreateLanguoid`/`ImportLanguageScheme`, `UpsertPersonLanguage` (M18); `CreateLocation` (M19);
   `CreateInstitution`/`CreateEnrollment`/`RecordDormStay`/`AppointEducationPosition` (M20);
   `CreateCompany`/`RecordShareholding`/`RecordBeneficiary`/`AppointCompanyPosition` (M21);

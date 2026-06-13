@@ -2,14 +2,16 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Repository status: implemented through M15, design-led
+## Repository status: implemented through M15, M16 in implementation, design-led
 
-This repo is a **modular monolith under active implementation**. Code exists: a `go.mod`, the
-`internal/<module>/` Go modules, the `api/*.conjure.yml` contracts, the versioned `migrations/`,
-and an optional Next.js console under `web/`. The foundation milestones **M0–M11** are delivered
-and the person/rank enrichment milestones **M13–M15** are delivered; **M12** is scoped/in progress;
-**M16–M26** are designed (decisions landed) but not yet built. To answer "what stage is feature X
-in?" read the **[stage board](docs/milestones.md#stage-board)** — it is the scannable index.
+This repo is a **modular monolith + a companion service, under active implementation**. Code exists:
+a `go.mod`, the `internal/<module>/` Go modules, the `api/*.conjure.yml` contracts, the versioned
+`migrations/`, and an optional Next.js console under `web/`. The foundation milestones **M0–M11** are
+delivered and the person/rank enrichment milestones **M13–M15** are delivered; **M12** is
+scoped/in progress; **M16** is **in implementation** as the out-of-process **hermenea** companion
+(D-Hermenea supersedes D-Worker and absorbs M17); **M18–M26** are designed (decisions landed) but not
+yet built. To answer "what stage is feature X in?" read the
+**[stage board](docs/milestones.md#stage-board)** — it is the scannable index.
 
 `docs/` remains the **source of truth**, and `docs/architecture/decisions.md` is **binding**: if
 code and a decision recorded there disagree, **the code is wrong**. Change a decision by editing
@@ -61,8 +63,13 @@ Modular monolith, extraction-ready, on the **Palantir OSS stack** (witchcraft / 
 observability libs); this reverses the original `uber/fx` + OpenAPI choice. Hexagonal layering per
 module: `transport → application → domain → adapters` — the domain owns its interfaces and imports
 no framework. Cross-module **queries** are direct interface calls; cross-module **mutations** are
-domain events (keeps the monolith extraction-ready). Planned composition root:
-`cmd/oikumenea/main.go`.
+domain events (keeps the monolith extraction-ready). Composition root: `cmd/oikumenea/main.go`.
+
+A **second binary**, `cmd/hermenea` ([hermenea](docs/modules/hermenea.md), **M16 / D-Hermenea**), is a
+companion ingestion + scheduler service with its **own Postgres** and **own Atlas migrations**
+(`migrations/hermenea/`), coupled to oikumenea **only over HTTP** (it calls the public
+`POST /import/{objectType}` endpoint; it never touches oikumenea's DB). D-Hermenea **supersedes
+D-Worker** (in-process worker) and **folds D-DataIngestion (M17)** into M16.
 
 Eleven modules (`docs/modules/`):
 
