@@ -18,8 +18,8 @@ Ontology ↔ schema dictionary (holds for every row below, so it is stated once)
 
 | Ontology field | go-oikumenea schema (per [conventions.md](architecture/conventions.md)) |
 |---|---|
-| `__rid` | the **composed URN** primary key (`id TEXT`), `urn:oikumenea:<service>:<env>:<entity_type>:<uuid>`, via `new_rid()` (D-ResourceIdentifiers); immutable, self-describing. See [Identifier scheme](#identifier-scheme-rids) |
-| `object_type` / `link_type` | the `<entity_type>` URN slot (Links use `link__<type>`); also the table (per-module prefix `oikumenea.<module>_*`) |
+| `__rid` | the **packed UUIDv8** primary key (`id uuid`) via `new_id(service,kind,type)` (D-ResourceIdentifiers); immutable, self-describing (decodes to app/service/kind/type). See [Identifier scheme](#identifier-scheme-rids) |
+| `object_type` / `link_type` | the entity's packed **type code** (per service; kind distinguishes object vs link); also the table (per-module prefix `oikumenea.<module>_*`) |
 | `created_at` / `updated_at` | `TIMESTAMPTZ` UTC + the `set_updated_at()` trigger |
 | `status` | the entity's `status`/`state` enum (`TEXT`+`CHECK`) and/or `deleted_at` soft-delete |
 | `source` | **mostly absent as a column** — provenance lives in [order](modules/order.md) refs + the [audit](modules/audit.md) actor; see [§4.4](#4-ratified-divergences-from-the-ontology-ideal) |
@@ -30,13 +30,15 @@ Ontology ↔ schema dictionary (holds for every row below, so it is stated once)
 
 ## Identifier scheme (RIDs)
 
-Every row below is keyed by a composed URN RID (D-ResourceIdentifiers; full grammar in
-[conventions.md](architecture/conventions.md#resource-identifiers-rids)):
-`urn:oikumenea:<service>:<env>:<entity_type>:<uuid>`, where `<entity_type>` is the Object type for an
-Object, `link__<type>` for a Link, and `action__<type>` for an Action. Temporal Links additionally
-carry `valid_from`/`valid_to` (the existing `effective_from`/`effective_to`,
-`granted_at`/`revoked_at`+`expires_at` columns); the audit row recording an Action is keyed by its
-Action RID — the audit log is the action ledger.
+Every row below is keyed by a **packed UUIDv8 RID** (D-ResourceIdentifiers, amended F-014; full layout
+in [conventions.md](architecture/conventions.md#resource-identifiers-rids)): a native `uuid` whose bits
+encode *app · service · kind · type · timestamp · random*. **Kind** is object / link / action; **type**
+is a per-service numeric code held in `platform_rid_types` (mirrored in `pkg/rid`) — this table is its
+authoritative *list*, with each row's owning module = its service. The human, decomposable form is
+rendered from the bytes as `oikumenea:<service>:<kind>:<type>:<uuid>` (e.g. `oikumenea:authz:link:
+has_role:…`), never stored. Temporal Links additionally carry `valid_from`/`valid_to` (the existing
+`effective_from`/`effective_to`, `granted_at`/`revoked_at`+`expires_at` columns); the audit row
+recording an Action is keyed by its Action RID (kind=action) — the audit log is the action ledger.
 
 ## 1. Object Types
 
@@ -101,8 +103,9 @@ not a source-of-truth Object.
 
 Relationships with their own identity, attributes, or history → Links (not FK columns). go-oikumenea
 already models its load-bearing relationships as join/edge tables, so most map cleanly. Each Link's
-RID is `link__<link_type>` in lower_snake (e.g. the `PARENT_OF` row → `link__parent_of`,
-`HAS_ROLE` → `link__has_role`); temporal Links additionally carry `valid_from`/`valid_to`
+RID packs kind=link plus its per-service type code; rendered, the type token is `link__<link_type>` in
+lower_snake (e.g. the `PARENT_OF` row → `link__parent_of`, `HAS_ROLE` → `link__has_role`); temporal
+Links additionally carry `valid_from`/`valid_to`
 ([Identifier scheme](#identifier-scheme-rids)).
 
 | Link Type | From → To | Module | Carries | Temporal? |
@@ -171,7 +174,8 @@ Link** `(subject, role, target_unit, scope, graph)`. Two non-obvious semantics
 
 All writes are named, auditable Actions; the [order](modules/order.md) module + the in-process event
 bus + the [audit](modules/audit.md) log already form an Action-shaped spine. Each Action is addressable
-by an `action__<action_type>` RID (e.g. `action__issue_order`, `action__grant_assignment`), and the
+by an Action RID (kind=action; the specific action *name*, e.g. `issue_order` / `grant_assignment`,
+lives in `audit_log.action`), and the
 [audit](modules/audit.md) row that records it is keyed by that RID — so the audit log *is* the action
 ledger ([Identifier scheme](#identifier-scheme-rids)).
 
@@ -236,8 +240,8 @@ on-demand `verify`/`rebuild` + a `closure-drift` health reporter ([tenant](modul
 go-oikumenea tracks provenance richly but **non-uniformly**: `order_item_id` on changed rows,
 `created_by`/`granted_by` on some Links, and the `actor`/`subsystem` on every `AuditEntry` — but no
 single `source` field across all tables. The RID scheme partly closes this: every Object/Link/Action
-RID self-declares its `<service>` and `<environment>` of origin, and the **`action__…` RID keys each
-audit row** to the write that produced it. **Verdict:** partial gap; provenance is fully recoverable
+RID self-declares its `service` and `kind`/`type` of origin (decoded from the packed UUIDv8), and the
+**Action RID keys each audit row** to the write that produced it. **Verdict:** partial gap; provenance is fully recoverable
 via the RID + in-transaction audit, so a uniform `source` column would be redundant. The **one
 deliberate exception** is the `HOLDS_ACCOUNT` link (D-PersonSocialChannels): a social-account
 attribution carries explicit **`source` + `confidence`** columns, because *who claimed this account and

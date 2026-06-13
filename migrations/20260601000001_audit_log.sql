@@ -9,22 +9,24 @@ CREATE TABLE oikumenea.audit_log (
   -- PK = the Action RID of the write this row records (D-ResourceIdentifiers / D-Audit):
   -- self-describing and chronologically ordered via its uuid_v7() component. Supplied by the
   -- producing module's application service, not defaulted here.
-  id              text PRIMARY KEY,
+  id              uuid PRIMARY KEY,
 
   created_at      timestamptz NOT NULL DEFAULT now(),
 
   -- The two actor kinds (D-Audit). There is no super_admin kind — an instance admin is a person.
   actor_type      text NOT NULL CHECK (actor_type IN ('person','system')),
   -- The person who acted (person RID); NOT NULL for person actions, NULL for system (CHECK below).
-  actor_person_id text,
+  actor_person_id uuid,
   -- For system actions, the originating source (bootstrap, recover-admin, purge-worker,
   -- closure-rebuild, event-subscriber, …); NOT NULL for system actions, NULL otherwise (CHECK below).
   subsystem       text,
 
   action          text NOT NULL,  -- e.g. assignment.grant, unit.transition, rank.scheme.update
   target_type     text NOT NULL,  -- e.g. unit, person, role_assignment, account, graph
-  target_id       text,           -- the acted-on entity's RID (Object/Link/Action URN)
-  unit_id         text,           -- unit context where applicable (for scoped audit reads)
+  -- target_id is POLYMORPHIC: a RID uuid for RID-keyed entities OR a natural code (locale, country,
+  -- scheme) for catalog entities — so it is TEXT, not uuid (D-ResourceIdentifiers carve-out).
+  target_id       text,           -- the acted-on entity's id (RID uuid text or a natural code)
+  unit_id         uuid,           -- unit context where applicable (for scoped audit reads)
 
   request_id      text NOT NULL,  -- correlation key shared with logs/metrics/traces
 
@@ -35,8 +37,8 @@ CREATE TABLE oikumenea.audit_log (
 
   outcome         text NOT NULL DEFAULT 'success' CHECK (outcome IN ('success','denied','error')),
 
-  -- The Action RID shape: every audit key is an action__<type> RID (D-Ontology / conventions).
-  CONSTRAINT audit_log_action_rid_shape CHECK (id LIKE 'urn:oikumenea:%:action\_\_%'),
+  -- The Action RID shape: every audit key is an Action RID (rid_kind = 3; D-Ontology / conventions).
+  CONSTRAINT audit_log_action_rid_shape CHECK (oikumenea.rid_kind(id) = 3),
 
   -- Actor-shape CHECK — the two kinds, mutually exclusive (D-Audit).
   CONSTRAINT audit_log_actor_shape CHECK (

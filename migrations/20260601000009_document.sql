@@ -24,7 +24,7 @@
 -- document_document_types: the instance-admin catalog of PAPER kinds (D-Documents). RID Object with a
 -- stable, locale-agnostic `code` (immutable by convention) + a translatable default-locale `name`.
 CREATE TABLE oikumenea.document_document_types (
-  id         text PRIMARY KEY DEFAULT oikumenea.new_rid('document','document_type'),
+  id         uuid PRIMARY KEY DEFAULT oikumenea.new_id(10,1,1),  -- document / object / document_type
   code       text NOT NULL UNIQUE,               -- stable locale-agnostic identifier (D-Code)
   name       text NOT NULL,                      -- default-locale label; translatable via the i18n store
   status     text NOT NULL DEFAULT 'active' CHECK (status IN ('active','retired')),
@@ -33,7 +33,8 @@ CREATE TABLE oikumenea.document_document_types (
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,
 
-  CONSTRAINT document_document_types_rid_shape CHECK (id LIKE 'urn:oikumenea:document:%:document_type:%')
+  CONSTRAINT document_document_types_rid_shape
+    CHECK (oikumenea.rid_service(id)=10 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=1)
 );
 
 CREATE TRIGGER document_document_types_set_updated_at
@@ -52,9 +53,9 @@ COMMENT ON COLUMN oikumenea.document_document_types.sort_order IS 'pii:none';
 -- deleted_at (soft-delete of the record). person/type FKs are RESTRICT (a type in use is retired, not
 -- hard-deleted; a held paper does not vanish with a hard person delete — purge erases instead).
 CREATE TABLE oikumenea.document_documents (
-  id               text PRIMARY KEY DEFAULT oikumenea.new_rid('document','document'),
-  person_id        text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE RESTRICT,
-  type_id          text NOT NULL REFERENCES oikumenea.document_document_types(id) ON DELETE RESTRICT,
+  id               uuid PRIMARY KEY DEFAULT oikumenea.new_id(10,1,2),  -- document / object / document
+  person_id        uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE RESTRICT,
+  type_id          uuid NOT NULL REFERENCES oikumenea.document_document_types(id) ON DELETE RESTRICT,
   number           text,                          -- document number (passport no., licence no.)
   issuer           text,                          -- issuing authority (e.g. ДМС України)
   issuing_country  char(2) REFERENCES oikumenea.geo_countries(code) ON DELETE RESTRICT,  -- nullable (D-Geo)
@@ -66,7 +67,8 @@ CREATE TABLE oikumenea.document_documents (
   updated_at       timestamptz NOT NULL DEFAULT now(),
   deleted_at       timestamptz,
 
-  CONSTRAINT document_documents_rid_shape CHECK (id LIKE 'urn:oikumenea:document:%:document:%')
+  CONSTRAINT document_documents_rid_shape
+    CHECK (oikumenea.rid_service(id)=10 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=2)
 );
 
 CREATE TRIGGER document_documents_set_updated_at
@@ -130,8 +132,8 @@ COMMENT ON COLUMN oikumenea.document_personal_code_schemes.sort_order IS 'pii:no
 -- NULLABLE so person purge can CRYPTO-ERASE (drop the wrapped DEK, null the ciphertext) while keeping
 -- the row id as a tombstone; on active rows the app always sets them. Country derives from the scheme.
 CREATE TABLE oikumenea.document_personal_codes (
-  id                 text PRIMARY KEY DEFAULT oikumenea.new_rid('document','personal_code'),
-  person_id          text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE RESTRICT,
+  id                 uuid PRIMARY KEY DEFAULT oikumenea.new_id(10,1,3),  -- document / object / personal_code
+  person_id          uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE RESTRICT,
   scheme_code        text NOT NULL REFERENCES oikumenea.document_personal_code_schemes(code) ON DELETE RESTRICT,
   value_ciphertext   bytea,                       -- AEAD ciphertext of the value (NULL once crypto-erased)
   wrapped_dek        bytea,                       -- per-record DEK wrapped by the KEK (NULL once crypto-erased)
@@ -142,7 +144,8 @@ CREATE TABLE oikumenea.document_personal_codes (
   updated_at         timestamptz NOT NULL DEFAULT now(),
   deleted_at         timestamptz,
 
-  CONSTRAINT document_personal_codes_rid_shape CHECK (id LIKE 'urn:oikumenea:document:%:personal_code:%')
+  CONSTRAINT document_personal_codes_rid_shape
+    CHECK (oikumenea.rid_service(id)=10 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=3)
 );
 
 CREATE TRIGGER document_personal_codes_set_updated_at

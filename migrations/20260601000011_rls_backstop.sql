@@ -38,10 +38,11 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA oikumenea GRANT EXECUTE ON FUNCTIONS TO oikum
 -- ---------------------------------------------------------------------------------------------------
 -- Policy predicate shorthand (inlined per table; PostgreSQL has no policy macros):
 --   admin  := coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
---   read   := <col> = ANY (string_to_array(current_setting('app.readable_units', true), ','))
---   write  := <col> = ANY (string_to_array(current_setting('app.writable_units', true), ','))
+--   read   := <col> = ANY (string_to_array(nullif(current_setting('app.readable_units', true), ''), ',')::uuid[])
+--   write  := <col> = ANY (string_to_array(nullif(current_setting('app.writable_units', true), ''), ',')::uuid[])
 -- current_setting(name, true) returns NULL (not an error) when the GUC was never set on the
--- connection, so a non-pinned connection simply sees no rows rather than failing. RID unit values
+-- connection; nullif(..., '') maps the reset/empty-reach value to NULL too, so a non-pinned or
+-- empty-reach connection simply sees no rows rather than failing the ::uuid[] cast. uuid unit values
 -- contain no commas, so comma-joining is unambiguous.
 --
 -- EXEMPT (no RLS): tenant_unit_closure + tenant_closure_status (the PDP READS the closure to COMPUTE
@@ -56,56 +57,56 @@ ALTER TABLE oikumenea.tenant_units ENABLE ROW LEVEL SECURITY;
 ALTER TABLE oikumenea.tenant_units FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_units_reach ON oikumenea.tenant_units
   USING (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR id = ANY (string_to_array(current_setting('app.readable_units', true), ',')))
+         OR id = ANY (string_to_array(nullif(current_setting('app.readable_units', true), ''), ',')::uuid[]))
   WITH CHECK (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR id = ANY (string_to_array(current_setting('app.writable_units', true), ',')));
+         OR id = ANY (string_to_array(nullif(current_setting('app.writable_units', true), ''), ',')::uuid[]));
 
 -- tenant_unit_edges: visible/writable if EITHER endpoint is in reach.
 ALTER TABLE oikumenea.tenant_unit_edges ENABLE ROW LEVEL SECURITY;
 ALTER TABLE oikumenea.tenant_unit_edges FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_unit_edges_reach ON oikumenea.tenant_unit_edges
   USING (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR parent_id = ANY (string_to_array(current_setting('app.readable_units', true), ','))
-         OR child_id  = ANY (string_to_array(current_setting('app.readable_units', true), ',')))
+         OR parent_id = ANY (string_to_array(nullif(current_setting('app.readable_units', true), ''), ',')::uuid[])
+         OR child_id  = ANY (string_to_array(nullif(current_setting('app.readable_units', true), ''), ',')::uuid[]))
   WITH CHECK (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR parent_id = ANY (string_to_array(current_setting('app.writable_units', true), ','))
-         OR child_id  = ANY (string_to_array(current_setting('app.writable_units', true), ',')));
+         OR parent_id = ANY (string_to_array(nullif(current_setting('app.writable_units', true), ''), ',')::uuid[])
+         OR child_id  = ANY (string_to_array(nullif(current_setting('app.writable_units', true), ''), ',')::uuid[]));
 
 -- tenant_unit_lifecycle_events: append-only (reject_mutation guards U/D); keyed on unit_id.
 ALTER TABLE oikumenea.tenant_unit_lifecycle_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE oikumenea.tenant_unit_lifecycle_events FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_unit_lifecycle_events_reach ON oikumenea.tenant_unit_lifecycle_events
   USING (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR unit_id = ANY (string_to_array(current_setting('app.readable_units', true), ',')))
+         OR unit_id = ANY (string_to_array(nullif(current_setting('app.readable_units', true), ''), ',')::uuid[]))
   WITH CHECK (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR unit_id = ANY (string_to_array(current_setting('app.writable_units', true), ',')));
+         OR unit_id = ANY (string_to_array(nullif(current_setting('app.writable_units', true), ''), ',')::uuid[]));
 
 -- membership_positions: keyed on the owning unit_id.
 ALTER TABLE oikumenea.membership_positions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE oikumenea.membership_positions FORCE ROW LEVEL SECURITY;
 CREATE POLICY membership_positions_reach ON oikumenea.membership_positions
   USING (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR unit_id = ANY (string_to_array(current_setting('app.readable_units', true), ',')))
+         OR unit_id = ANY (string_to_array(nullif(current_setting('app.readable_units', true), ''), ',')::uuid[]))
   WITH CHECK (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR unit_id = ANY (string_to_array(current_setting('app.writable_units', true), ',')));
+         OR unit_id = ANY (string_to_array(nullif(current_setting('app.writable_units', true), ''), ',')::uuid[]));
 
 -- membership_memberships: keyed on unit_id (the unit the person belongs to / fills a billet in).
 ALTER TABLE oikumenea.membership_memberships ENABLE ROW LEVEL SECURITY;
 ALTER TABLE oikumenea.membership_memberships FORCE ROW LEVEL SECURITY;
 CREATE POLICY membership_memberships_reach ON oikumenea.membership_memberships
   USING (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR unit_id = ANY (string_to_array(current_setting('app.readable_units', true), ',')))
+         OR unit_id = ANY (string_to_array(nullif(current_setting('app.readable_units', true), ''), ',')::uuid[]))
   WITH CHECK (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR unit_id = ANY (string_to_array(current_setting('app.writable_units', true), ',')));
+         OR unit_id = ANY (string_to_array(nullif(current_setting('app.writable_units', true), ''), ',')::uuid[]));
 
 -- order_orders: keyed on issuing_unit_id (D-Orders — every order is unit-issued).
 ALTER TABLE oikumenea.order_orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE oikumenea.order_orders FORCE ROW LEVEL SECURITY;
 CREATE POLICY order_orders_reach ON oikumenea.order_orders
   USING (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR issuing_unit_id = ANY (string_to_array(current_setting('app.readable_units', true), ',')))
+         OR issuing_unit_id = ANY (string_to_array(nullif(current_setting('app.readable_units', true), ''), ',')::uuid[]))
   WITH CHECK (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR issuing_unit_id = ANY (string_to_array(current_setting('app.writable_units', true), ',')));
+         OR issuing_unit_id = ANY (string_to_array(nullif(current_setting('app.writable_units', true), ''), ',')::uuid[]));
 
 -- audit_log: a READ backstop only (the dangerous leak is reading another unit's audit history). Writes
 -- are append-only (reject_mutation guards U/D) and originate from BOTH request transactions (the
@@ -116,7 +117,7 @@ ALTER TABLE oikumenea.audit_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE oikumenea.audit_log FORCE ROW LEVEL SECURITY;
 CREATE POLICY audit_log_read ON oikumenea.audit_log FOR SELECT
   USING (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR unit_id = ANY (string_to_array(current_setting('app.readable_units', true), ',')));
+         OR unit_id = ANY (string_to_array(nullif(current_setting('app.readable_units', true), ''), ',')::uuid[]));
 CREATE POLICY audit_log_append ON oikumenea.audit_log FOR INSERT
   WITH CHECK (true);
 

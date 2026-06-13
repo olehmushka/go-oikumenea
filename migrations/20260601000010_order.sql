@@ -34,7 +34,7 @@
 -- this type (it determines the required target columns — enforced in the application — and the intent
 -- event issue emits).
 CREATE TABLE oikumenea.order_order_types (
-  id         text PRIMARY KEY DEFAULT oikumenea.new_rid('order','order_type'),
+  id         uuid PRIMARY KEY DEFAULT oikumenea.new_id(11,1,1),  -- order / object / order_type
   code       text NOT NULL UNIQUE,               -- stable locale-agnostic identifier (D-Code)
   name       text NOT NULL,                      -- default-locale label; translatable via the i18n store
   category   text NOT NULL CHECK (category IN
@@ -47,7 +47,8 @@ CREATE TABLE oikumenea.order_order_types (
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,
 
-  CONSTRAINT order_order_types_rid_shape CHECK (id LIKE 'urn:oikumenea:order:%:order_type:%')
+  CONSTRAINT order_order_types_rid_shape
+    CHECK (oikumenea.rid_service(id)=11 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=1)
 );
 
 CREATE TRIGGER order_order_types_set_updated_at
@@ -67,18 +68,19 @@ COMMENT ON COLUMN oikumenea.order_order_types.sort_order IS 'pii:none';
 -- issuing_unit_id; D-Orders, I-5). status is the draft→issued→revoked lifecycle (the only post-issue
 -- transition is issued→revoked, recording revoked_by_order_id + revoked_at).
 CREATE TABLE oikumenea.order_orders (
-  id                  text PRIMARY KEY DEFAULT oikumenea.new_rid('order','order'),
+  id                  uuid PRIMARY KEY DEFAULT oikumenea.new_id(11,1,2),  -- order / object / order
   number              text,                       -- order number (unique within issuing unit; nullable)
   issued_on           date,                       -- the order's date
-  issuing_unit_id     text NOT NULL REFERENCES oikumenea.tenant_units(id) ON DELETE RESTRICT,
+  issuing_unit_id     uuid NOT NULL REFERENCES oikumenea.tenant_units(id) ON DELETE RESTRICT,
   status              text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','issued','revoked')),
-  revoked_by_order_id text REFERENCES oikumenea.order_orders(id),  -- the later order that revoked this one
+  revoked_by_order_id uuid REFERENCES oikumenea.order_orders(id),  -- the later order that revoked this one
   revoked_at          timestamptz,
   created_at          timestamptz NOT NULL DEFAULT now(),
   updated_at          timestamptz NOT NULL DEFAULT now(),
   deleted_at          timestamptz,
 
-  CONSTRAINT order_orders_rid_shape CHECK (id LIKE 'urn:oikumenea:order:%:order:%')
+  CONSTRAINT order_orders_rid_shape
+    CHECK (oikumenea.rid_service(id)=11 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=2)
 );
 
 CREATE TRIGGER order_orders_set_updated_at
@@ -105,20 +107,21 @@ COMMENT ON COLUMN oikumenea.order_orders.status IS 'pii:none';
 -- columns are required is checked in the application against the type's `effect`. `note` is the only
 -- pii:basic field; person/unit/position/rank are pii:none id references.
 CREATE TABLE oikumenea.order_order_items (
-  id             text PRIMARY KEY DEFAULT oikumenea.new_rid('order','order_item'),
-  order_id       text NOT NULL REFERENCES oikumenea.order_orders(id) ON DELETE CASCADE,
-  type_id        text NOT NULL REFERENCES oikumenea.order_order_types(id) ON DELETE RESTRICT,
-  person_id      text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE RESTRICT,
-  unit_id        text REFERENCES oikumenea.tenant_units(id) ON DELETE RESTRICT,        -- target unit (nullable)
-  position_id    text REFERENCES oikumenea.membership_positions(id) ON DELETE RESTRICT, -- target billet (nullable)
-  rank_id        text REFERENCES oikumenea.rank_ranks(id) ON DELETE RESTRICT,           -- target rank (nullable)
+  id             uuid PRIMARY KEY DEFAULT oikumenea.new_id(11,1,3),  -- order / object / order_item
+  order_id       uuid NOT NULL REFERENCES oikumenea.order_orders(id) ON DELETE CASCADE,
+  type_id        uuid NOT NULL REFERENCES oikumenea.order_order_types(id) ON DELETE RESTRICT,
+  person_id      uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE RESTRICT,
+  unit_id        uuid REFERENCES oikumenea.tenant_units(id) ON DELETE RESTRICT,        -- target unit (nullable)
+  position_id    uuid REFERENCES oikumenea.membership_positions(id) ON DELETE RESTRICT, -- target billet (nullable)
+  rank_id        uuid REFERENCES oikumenea.rank_ranks(id) ON DELETE RESTRICT,           -- target rank (nullable)
   effective_from date,
   effective_to   date,
   note           text,                            -- free-text detail (reason, reference); minimized
   created_at     timestamptz NOT NULL DEFAULT now(),
   updated_at     timestamptz NOT NULL DEFAULT now(),
 
-  CONSTRAINT order_order_items_rid_shape CHECK (id LIKE 'urn:oikumenea:order:%:order_item:%')
+  CONSTRAINT order_order_items_rid_shape
+    CHECK (oikumenea.rid_service(id)=11 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=3)
 );
 
 CREATE TRIGGER order_order_items_set_updated_at

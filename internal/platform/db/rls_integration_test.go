@@ -58,19 +58,19 @@ func TestRLSBackstop(t *testing.T) {
 	ctx := context.Background()
 
 	// Superuser pool seeds two units (bypassing RLS) and cleans up at the end. NewPool sets the
-	// app.environment GUC every connection needs for new_rid (D-ResourceIdentifiers).
+	// app.environment GUC every connection needs for new_id (D-ResourceIdentifiers).
 	super, err := pdb.NewPool(ctx, superuserDSN(), "local")
 	if err != nil {
 		t.Skipf("no test database (set OIKUMENEA_TEST_DSN): %v", err)
 	}
 	defer super.Close()
 
-	// Distinct ids so the test is independent of any pre-existing rows; minted via new_rid so the
+	// Distinct ids so the test is independent of any pre-existing rows; minted via new_id so the
 	// id RID-shape CHECK holds. idReadable/idHidden are seeded now (both shadow); idWrite* are reserved
 	// for the write-policy test; idPublic is a public unit for the public-read policy test (F-002).
 	var idReadable, idHidden, idWriteOK, idWriteDenied, idPublic string
 	for _, p := range []*string{&idReadable, &idHidden, &idWriteOK, &idWriteDenied, &idPublic} {
-		if err := super.QueryRow(ctx, "SELECT oikumenea.new_rid('tenant','unit')").Scan(p); err != nil {
+		if err := super.QueryRow(ctx, "SELECT oikumenea.new_id(4, 1, 1)").Scan(p); err != nil {
 			t.Fatalf("mint rid: %v", err)
 		}
 	}

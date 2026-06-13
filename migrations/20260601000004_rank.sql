@@ -33,7 +33,7 @@
 -- geo_countries, D-Geo) and is NULL for a supranational system (NATO/UN). ON DELETE RESTRICT on the
 -- category->system FK keeps a system with active categories from being removed.
 CREATE TABLE oikumenea.rank_systems (
-  id         text PRIMARY KEY DEFAULT oikumenea.new_rid('rank','system'),
+  id         uuid PRIMARY KEY DEFAULT oikumenea.new_id(5,1,1),  -- rank / object / system
   code       text NOT NULL,                 -- stable, locale-agnostic; unique among active (index below)
   name       text NOT NULL,                 -- default-locale display name; translatable via i18n store
   sort_order integer NOT NULL,              -- order among active systems (app-managed)
@@ -42,7 +42,8 @@ CREATE TABLE oikumenea.rank_systems (
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,
 
-  CONSTRAINT rank_systems_rid_shape CHECK (id LIKE 'urn:oikumenea:rank:%:system:%')
+  CONSTRAINT rank_systems_rid_shape
+    CHECK (oikumenea.rid_service(id)=5 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=1)
 );
 
 CREATE TRIGGER rank_systems_set_updated_at
@@ -109,8 +110,8 @@ INSERT INTO oikumenea.rank_grades (code, tier, ordinal, name) VALUES
 -- category belongs to one rank_system (ON DELETE RESTRICT keeps a system with active categories intact);
 -- `code` is unique among active SIBLINGS within the system.
 CREATE TABLE oikumenea.rank_categories (
-  id         text PRIMARY KEY DEFAULT oikumenea.new_rid('rank','category'),
-  system_id  text NOT NULL REFERENCES oikumenea.rank_systems(id) ON DELETE RESTRICT,
+  id         uuid PRIMARY KEY DEFAULT oikumenea.new_id(5,1,2),  -- rank / object / category
+  system_id  uuid NOT NULL REFERENCES oikumenea.rank_systems(id) ON DELETE RESTRICT,
   code       text NOT NULL,                 -- stable, locale-agnostic; unique among active siblings within the system
   name       text NOT NULL,                 -- default-locale display name; translatable via i18n store
   sort_order integer NOT NULL,              -- seniority ordinal among active categories of the system (app-managed)
@@ -118,7 +119,8 @@ CREATE TABLE oikumenea.rank_categories (
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,
 
-  CONSTRAINT rank_categories_rid_shape CHECK (id LIKE 'urn:oikumenea:rank:%:category:%')
+  CONSTRAINT rank_categories_rid_shape
+    CHECK (oikumenea.rid_service(id)=5 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=2)
 );
 
 CREATE TRIGGER rank_categories_set_updated_at
@@ -144,10 +146,10 @@ COMMENT ON COLUMN oikumenea.rank_categories.sort_order IS 'pii:none';
 -- category FK and the self-FK) keeps the containment tree intact: a category with active types, or a
 -- type with active child types, cannot be removed.
 CREATE TABLE oikumenea.rank_types (
-  id             text PRIMARY KEY DEFAULT oikumenea.new_rid('rank','type'),
-  system_id      text NOT NULL,             -- denormalized root system (equals the category's system_id)
-  category_id    text NOT NULL REFERENCES oikumenea.rank_categories(id) ON DELETE RESTRICT,
-  parent_type_id text REFERENCES oikumenea.rank_types(id) ON DELETE RESTRICT, -- NULL = root type of its category
+  id             uuid PRIMARY KEY DEFAULT oikumenea.new_id(5,1,3),  -- rank / object / type
+  system_id      uuid NOT NULL,             -- denormalized root system (equals the category's system_id)
+  category_id    uuid NOT NULL REFERENCES oikumenea.rank_categories(id) ON DELETE RESTRICT,
+  parent_type_id uuid REFERENCES oikumenea.rank_types(id) ON DELETE RESTRICT, -- NULL = root type of its category
   code           text NOT NULL,             -- stable, locale-agnostic; unique among active siblings (same category + parent)
   name           text NOT NULL,             -- default-locale display name; translatable via i18n store
   sort_order     integer NOT NULL,          -- seniority ordinal among active siblings (app-managed)
@@ -155,7 +157,8 @@ CREATE TABLE oikumenea.rank_types (
   updated_at     timestamptz NOT NULL DEFAULT now(),
   deleted_at     timestamptz,
 
-  CONSTRAINT rank_types_rid_shape CHECK (id LIKE 'urn:oikumenea:rank:%:type:%'),
+  CONSTRAINT rank_types_rid_shape
+    CHECK (oikumenea.rid_service(id)=5 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=3),
   CONSTRAINT rank_types_no_self_parent CHECK (parent_type_id IS NULL OR parent_type_id <> id)
 );
 
@@ -163,12 +166,13 @@ CREATE TRIGGER rank_types_set_updated_at
   BEFORE UPDATE ON oikumenea.rank_types
   FOR EACH ROW EXECUTE FUNCTION oikumenea.set_updated_at();
 
--- `code` unique among active SIBLINGS: same category AND same parent. parent_type_id is a URN RID,
--- never '', so COALESCE(..., '') is a safe sentinel for "root of category" and keeps two roots of the
--- same category from sharing a code (NULLs would otherwise compare distinct). COALESCE is immutable,
--- so this is index-legal on any PG version.
+-- `code` unique among active SIBLINGS: same category AND same parent. parent_type_id is a RID uuid,
+-- never the nil uuid, so COALESCE(..., nil-uuid) is a safe sentinel for "root of category" and keeps
+-- two roots of the same category from sharing a code (NULLs would otherwise compare distinct).
+-- COALESCE is immutable, so this is index-legal on any PG version.
 CREATE UNIQUE INDEX rank_types_code_active_idx
-  ON oikumenea.rank_types (category_id, COALESCE(parent_type_id, ''), code) WHERE deleted_at IS NULL;
+  ON oikumenea.rank_types (category_id, COALESCE(parent_type_id, '00000000-0000-0000-0000-000000000000'::uuid), code)
+  WHERE deleted_at IS NULL;
 CREATE INDEX rank_types_category_idx
   ON oikumenea.rank_types (category_id) WHERE deleted_at IS NULL;
 CREATE INDEX rank_types_parent_idx
@@ -186,9 +190,9 @@ COMMENT ON COLUMN oikumenea.rank_types.sort_order IS 'pii:none';
 -- seniority. ON DELETE RESTRICT: a type with active ranks cannot be removed; person_ranks.rank_id
 -- (the HOLDS_RANK link, one per rank system — D-Rank) likewise RESTRICTs so a held rank cannot be deleted.
 CREATE TABLE oikumenea.rank_ranks (
-  id           text PRIMARY KEY DEFAULT oikumenea.new_rid('rank','rank'),
-  system_id    text NOT NULL,              -- denormalized root system (equals the type's system_id)
-  type_id      text NOT NULL REFERENCES oikumenea.rank_types(id) ON DELETE RESTRICT,
+  id           uuid PRIMARY KEY DEFAULT oikumenea.new_id(5,1,4),  -- rank / object / rank
+  system_id    uuid NOT NULL,              -- denormalized root system (equals the type's system_id)
+  type_id      uuid NOT NULL REFERENCES oikumenea.rank_types(id) ON DELETE RESTRICT,
   code         text NOT NULL,              -- stable, locale-agnostic; unique within type among active
   name         text NOT NULL,             -- default-locale display name; translatable via i18n store
   abbreviation text,                       -- optional short form (e.g. SGT); locale-agnostic
@@ -198,7 +202,8 @@ CREATE TABLE oikumenea.rank_ranks (
   updated_at   timestamptz NOT NULL DEFAULT now(),
   deleted_at   timestamptz,
 
-  CONSTRAINT rank_ranks_rid_shape CHECK (id LIKE 'urn:oikumenea:rank:%:rank:%')
+  CONSTRAINT rank_ranks_rid_shape
+    CHECK (oikumenea.rid_service(id)=5 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=4)
 );
 
 CREATE TRIGGER rank_ranks_set_updated_at

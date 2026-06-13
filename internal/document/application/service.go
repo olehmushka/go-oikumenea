@@ -525,29 +525,15 @@ func (s *Service) recordErase(ctx context.Context, tx pgx.Tx, personID string, d
 	})
 }
 
-// mintActionRID composes the Action RID via the same SQL generator every module uses, so the audit
-// log's action__<type> RID-shape CHECK is satisfied. The action code (e.g. "personal-code.create")
-// becomes the entity_type slot "action__personal_code_create".
+// mintActionRID mints an Action RID (document service=10, kind=action=3, generic action type=0).
+// The specific action name is recorded separately in audit_log.action (D-Audit).
 func mintActionRID(ctx context.Context, tx pgx.Tx, action string) (string, error) {
-	entityType := "action__" + sanitizeAction(action)
+	_ = action
 	var rid string
-	if err := tx.QueryRow(ctx, "SELECT oikumenea.new_rid('document', $1)", entityType).Scan(&rid); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT oikumenea.new_id(10, 3, 0)").Scan(&rid); err != nil {
 		return "", err
 	}
 	return rid, nil
-}
-
-func sanitizeAction(action string) string {
-	b := make([]byte, len(action))
-	for i := 0; i < len(action); i++ {
-		switch action[i] {
-		case '.', '-':
-			b[i] = '_'
-		default:
-			b[i] = action[i]
-		}
-	}
-	return string(b)
 }
 
 // requestID is the correlation key shared with logs/metrics/traces: the request's trace id, with a

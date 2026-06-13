@@ -80,9 +80,9 @@ INSERT INTO oikumenea.person_relation_types (code, name, category, sort_order) V
 -- application (a partial-unique index cannot span both columns). effective_to NULL = ongoing. Link
 -- link__partnered_with. Erased when either endpoint purges.
 CREATE TABLE oikumenea.person_partnerships (
-  id             text PRIMARY KEY DEFAULT oikumenea.new_rid('person','link__partnered_with'),
-  person_id_a    text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
-  person_id_b    text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
+  id             uuid PRIMARY KEY DEFAULT oikumenea.new_id(6,2,2),  -- person / link / partnered_with
+  person_id_a    uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
+  person_id_b    uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
   status         text NOT NULL CHECK (status IN ('engaged','married','divorced','widowed','annulled','dissolved')),
   effective_from date,
   effective_to   date,
@@ -90,7 +90,8 @@ CREATE TABLE oikumenea.person_partnerships (
   updated_at     timestamptz NOT NULL DEFAULT now(),
   deleted_at     timestamptz,
 
-  CONSTRAINT person_partnerships_rid_shape CHECK (id LIKE 'urn:oikumenea:person:%:link\_\_partnered_with:%'),
+  CONSTRAINT person_partnerships_rid_shape
+    CHECK (oikumenea.rid_service(id)=6 AND oikumenea.rid_kind(id)=2 AND oikumenea.rid_type(id)=2),
   CONSTRAINT person_partnerships_canonical_pair CHECK (person_id_a < person_id_b)
 );
 
@@ -119,15 +120,16 @@ COMMENT ON COLUMN oikumenea.person_partnerships.effective_to IS 'pii:basic';
 -- Siblings are DERIVED (shared parent), never stored. Distinct RID from tenant's unit link__parent_of.
 -- Link link__kin_parent_of. Erased when either endpoint purges.
 CREATE TABLE oikumenea.person_kinships (
-  id         text PRIMARY KEY DEFAULT oikumenea.new_rid('person','link__kin_parent_of'),
-  parent_id  text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
-  child_id   text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
+  id         uuid PRIMARY KEY DEFAULT oikumenea.new_id(6,2,3),  -- person / link / kin_parent_of
+  parent_id  uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
+  child_id   uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
   status     text NOT NULL DEFAULT 'active' CHECK (status IN ('active','disestablished')),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,
 
-  CONSTRAINT person_kinships_rid_shape CHECK (id LIKE 'urn:oikumenea:person:%:link\_\_kin_parent_of:%'),
+  CONSTRAINT person_kinships_rid_shape
+    CHECK (oikumenea.rid_service(id)=6 AND oikumenea.rid_kind(id)=2 AND oikumenea.rid_type(id)=3),
   CONSTRAINT person_kinships_no_self CHECK (parent_id <> child_id)
 );
 
@@ -153,9 +155,9 @@ COMMENT ON COLUMN oikumenea.person_kinships.status IS 'pii:none';
 -- relation_code is an optional catalog label. effective_to NULL = ongoing. Link link__guardian_of.
 -- Erased when either endpoint purges.
 CREATE TABLE oikumenea.person_guardianships (
-  id             text PRIMARY KEY DEFAULT oikumenea.new_rid('person','link__guardian_of'),
-  guardian_id    text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
-  ward_id        text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
+  id             uuid PRIMARY KEY DEFAULT oikumenea.new_id(6,2,4),  -- person / link / guardian_of
+  guardian_id    uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
+  ward_id        uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
   relation_code  text REFERENCES oikumenea.person_relation_types(code) ON DELETE RESTRICT,
   status         text NOT NULL DEFAULT 'active' CHECK (status IN ('active','ended')),
   effective_from date,
@@ -164,7 +166,8 @@ CREATE TABLE oikumenea.person_guardianships (
   updated_at     timestamptz NOT NULL DEFAULT now(),
   deleted_at     timestamptz,
 
-  CONSTRAINT person_guardianships_rid_shape CHECK (id LIKE 'urn:oikumenea:person:%:link\_\_guardian_of:%'),
+  CONSTRAINT person_guardianships_rid_shape
+    CHECK (oikumenea.rid_service(id)=6 AND oikumenea.rid_kind(id)=2 AND oikumenea.rid_type(id)=4),
   CONSTRAINT person_guardianships_no_self CHECK (guardian_id <> ward_id)
 );
 
@@ -194,9 +197,9 @@ COMMENT ON COLUMN oikumenea.person_guardianships.effective_to IS 'pii:basic';
 -- category='sponsorship' relation type (the category is enforced in the application). effective_to NULL =
 -- ongoing. Link link__sponsor_of. Erased when either endpoint purges.
 CREATE TABLE oikumenea.person_sponsorships (
-  id             text PRIMARY KEY DEFAULT oikumenea.new_rid('person','link__sponsor_of'),
-  sponsor_id     text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
-  sponsored_id   text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
+  id             uuid PRIMARY KEY DEFAULT oikumenea.new_id(6,2,5),  -- person / link / sponsor_of
+  sponsor_id     uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
+  sponsored_id   uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
   relation_code  text NOT NULL REFERENCES oikumenea.person_relation_types(code) ON DELETE RESTRICT,
   status         text NOT NULL DEFAULT 'active' CHECK (status IN ('active','ended')),
   effective_from date,
@@ -205,7 +208,8 @@ CREATE TABLE oikumenea.person_sponsorships (
   updated_at     timestamptz NOT NULL DEFAULT now(),
   deleted_at     timestamptz,
 
-  CONSTRAINT person_sponsorships_rid_shape CHECK (id LIKE 'urn:oikumenea:person:%:link\_\_sponsor_of:%'),
+  CONSTRAINT person_sponsorships_rid_shape
+    CHECK (oikumenea.rid_service(id)=6 AND oikumenea.rid_kind(id)=2 AND oikumenea.rid_type(id)=5),
   CONSTRAINT person_sponsorships_no_self CHECK (sponsor_id <> sponsored_id)
 );
 
@@ -236,9 +240,9 @@ COMMENT ON COLUMN oikumenea.person_sponsorships.effective_to IS 'pii:basic';
 -- directory persons). relation_code is an optional category='next_of_kin' catalog label (enforced in the
 -- application). Link link__next_of_kin. Erased when either endpoint purges.
 CREATE TABLE oikumenea.person_next_of_kin (
-  id            text PRIMARY KEY DEFAULT oikumenea.new_rid('person','link__next_of_kin'),
-  subject_id    text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
-  contact_id    text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
+  id            uuid PRIMARY KEY DEFAULT oikumenea.new_id(6,2,6),  -- person / link / next_of_kin
+  subject_id    uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
+  contact_id    uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
   relation_code text REFERENCES oikumenea.person_relation_types(code) ON DELETE RESTRICT,
   priority      int  NOT NULL DEFAULT 1,
   status        text NOT NULL DEFAULT 'active' CHECK (status IN ('active','withdrawn')),
@@ -246,7 +250,8 @@ CREATE TABLE oikumenea.person_next_of_kin (
   updated_at    timestamptz NOT NULL DEFAULT now(),
   deleted_at    timestamptz,
 
-  CONSTRAINT person_next_of_kin_rid_shape CHECK (id LIKE 'urn:oikumenea:person:%:link\_\_next_of_kin:%'),
+  CONSTRAINT person_next_of_kin_rid_shape
+    CHECK (oikumenea.rid_service(id)=6 AND oikumenea.rid_kind(id)=2 AND oikumenea.rid_type(id)=6),
   CONSTRAINT person_next_of_kin_no_self CHECK (subject_id <> contact_id)
 );
 
@@ -275,9 +280,9 @@ COMMENT ON COLUMN oikumenea.person_next_of_kin.status IS 'pii:none';
 -- (discipline). relation_code is an optional category='association' catalog label (enforced in the
 -- application). Link link__associated_with. Erased when either endpoint purges.
 CREATE TABLE oikumenea.person_associations (
-  id            text PRIMARY KEY DEFAULT oikumenea.new_rid('person','link__associated_with'),
-  person_id_a   text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
-  person_id_b   text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
+  id            uuid PRIMARY KEY DEFAULT oikumenea.new_id(6,2,7),  -- person / link / associated_with
+  person_id_a   uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
+  person_id_b   uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
   relation_code text REFERENCES oikumenea.person_relation_types(code) ON DELETE RESTRICT,
   kind          text NOT NULL CHECK (kind IN ('associate','coi','no_contact')),
   status        text NOT NULL DEFAULT 'active' CHECK (status IN ('active','ended')),
@@ -285,7 +290,8 @@ CREATE TABLE oikumenea.person_associations (
   updated_at    timestamptz NOT NULL DEFAULT now(),
   deleted_at    timestamptz,
 
-  CONSTRAINT person_associations_rid_shape CHECK (id LIKE 'urn:oikumenea:person:%:link\_\_associated_with:%'),
+  CONSTRAINT person_associations_rid_shape
+    CHECK (oikumenea.rid_service(id)=6 AND oikumenea.rid_kind(id)=2 AND oikumenea.rid_type(id)=7),
   CONSTRAINT person_associations_canonical_pair CHECK (person_id_a < person_id_b)
 );
 

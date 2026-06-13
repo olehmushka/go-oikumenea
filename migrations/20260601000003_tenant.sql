@@ -19,7 +19,7 @@
 -- `level`/`unit_kind` are DIRECTORY attributes only — never PDP inputs (tenant.md). Visibility is
 -- the read-time public/shadow gate (M7). Lifecycle: active/suspended/archived (reversible).
 CREATE TABLE oikumenea.tenant_units (
-  id          text PRIMARY KEY DEFAULT oikumenea.new_rid('tenant','unit'),
+  id          uuid PRIMARY KEY DEFAULT oikumenea.new_id(4,1,1),  -- tenant / object / unit
   code        text NOT NULL,                 -- stable, locale-agnostic; unique among active (index below)
   name        text NOT NULL,                 -- default-locale display name; translatable via i18n store
   unit_kind   text,                          -- descriptive label (e.g. battalion); never branched on
@@ -31,7 +31,8 @@ CREATE TABLE oikumenea.tenant_units (
   updated_at  timestamptz NOT NULL DEFAULT now(),
   deleted_at  timestamptz,
 
-  CONSTRAINT tenant_units_rid_shape CHECK (id LIKE 'urn:oikumenea:tenant:%:unit:%')
+  CONSTRAINT tenant_units_rid_shape
+    CHECK (oikumenea.rid_service(id)=4 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=1)
 );
 
 CREATE TRIGGER tenant_units_set_updated_at
@@ -57,7 +58,7 @@ COMMENT ON COLUMN oikumenea.tenant_units.metadata IS 'pii:none';
 -- independently a DAG over the units. `command` is the default + undeletable + locked
 -- authority-bearing; `operational` is authority-bearing. Both are seeded at boot (see header).
 CREATE TABLE oikumenea.tenant_graphs (
-  id                   text PRIMARY KEY DEFAULT oikumenea.new_rid('tenant','graph'),
+  id                   uuid PRIMARY KEY DEFAULT oikumenea.new_id(4,1,2),  -- tenant / object / graph
   code                 text NOT NULL,            -- stable, locale-agnostic (e.g. command, operational)
   name                 text NOT NULL,            -- default-locale display name; translatable via i18n store
   is_default           boolean NOT NULL DEFAULT false,  -- the graph a subtree grant uses when none is named
@@ -66,7 +67,8 @@ CREATE TABLE oikumenea.tenant_graphs (
   updated_at           timestamptz NOT NULL DEFAULT now(),
   deleted_at           timestamptz,
 
-  CONSTRAINT tenant_graphs_rid_shape CHECK (id LIKE 'urn:oikumenea:tenant:%:graph:%'),
+  CONSTRAINT tenant_graphs_rid_shape
+    CHECK (oikumenea.rid_service(id)=4 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=2),
   -- command is locked authority-bearing (tenant.md): it may never be made directory-only.
   CONSTRAINT tenant_graphs_command_authority CHECK (code <> 'command' OR is_authority_bearing)
 );
@@ -93,14 +95,15 @@ COMMENT ON COLUMN oikumenea.tenant_graphs.is_authority_bearing IS 'pii:none';
 -- detach (an edge has no independent life). Cycle prevention is enforced per graph in the
 -- application on insert (via the closure); the closure is recomputed in the same txn.
 CREATE TABLE oikumenea.tenant_unit_edges (
-  id         text PRIMARY KEY DEFAULT oikumenea.new_rid('tenant','link__parent_of'),
-  graph_id   text NOT NULL REFERENCES oikumenea.tenant_graphs(id) ON DELETE RESTRICT,
-  parent_id  text NOT NULL REFERENCES oikumenea.tenant_units(id) ON DELETE RESTRICT,
-  child_id   text NOT NULL REFERENCES oikumenea.tenant_units(id) ON DELETE RESTRICT,
+  id         uuid PRIMARY KEY DEFAULT oikumenea.new_id(4,2,1),  -- tenant / link / parent_of
+  graph_id   uuid NOT NULL REFERENCES oikumenea.tenant_graphs(id) ON DELETE RESTRICT,
+  parent_id  uuid NOT NULL REFERENCES oikumenea.tenant_units(id) ON DELETE RESTRICT,
+  child_id   uuid NOT NULL REFERENCES oikumenea.tenant_units(id) ON DELETE RESTRICT,
   created_at timestamptz NOT NULL DEFAULT now(),
-  created_by text,   -- person RID provenance (nullable; identity lands in M8)
+  created_by uuid,   -- person RID provenance (nullable; identity lands in M8)
 
-  CONSTRAINT tenant_unit_edges_rid_shape CHECK (id LIKE 'urn:oikumenea:tenant:%:link\_\_parent_of:%'),
+  CONSTRAINT tenant_unit_edges_rid_shape
+    CHECK (oikumenea.rid_service(id)=4 AND oikumenea.rid_kind(id)=2 AND oikumenea.rid_type(id)=1),
   CONSTRAINT tenant_unit_edges_no_self_loop CHECK (parent_id <> child_id),
   CONSTRAINT tenant_unit_edges_unique UNIQUE (graph_id, parent_id, child_id)
 );
@@ -120,9 +123,9 @@ COMMENT ON COLUMN oikumenea.tenant_unit_edges.created_by IS 'pii:basic';
 -- the graph's edges, so "is U in the subtree of T in graph g" is one lookup. depth = the shortest
 -- path length in a multi-parent DAG.
 CREATE TABLE oikumenea.tenant_unit_closure (
-  graph_id      text NOT NULL REFERENCES oikumenea.tenant_graphs(id) ON DELETE RESTRICT,
-  ancestor_id   text NOT NULL,
-  descendant_id text NOT NULL,
+  graph_id      uuid NOT NULL REFERENCES oikumenea.tenant_graphs(id) ON DELETE RESTRICT,
+  ancestor_id   uuid NOT NULL,
+  descendant_id uuid NOT NULL,
   depth         integer NOT NULL,
 
   PRIMARY KEY (graph_id, ancestor_id, descendant_id)
@@ -142,7 +145,7 @@ COMMENT ON COLUMN oikumenea.tenant_unit_closure.depth IS 'pii:none';
 -- append-only, NOT audited. Upserted by POST /closure/verify; read by the closure-drift health
 -- reporter (platform). Graph-level counts only, no person/unit PII.
 CREATE TABLE oikumenea.tenant_closure_status (
-  graph_id        text PRIMARY KEY REFERENCES oikumenea.tenant_graphs(id) ON DELETE CASCADE,
+  graph_id        uuid PRIMARY KEY REFERENCES oikumenea.tenant_graphs(id) ON DELETE CASCADE,
   last_checked_at timestamptz NOT NULL DEFAULT now(),
   missing_count   integer NOT NULL DEFAULT 0,   -- closure rows the recompute found missing vs stored
   extra_count     integer NOT NULL DEFAULT 0,   -- spurious stored rows the recompute did not produce
@@ -164,17 +167,17 @@ COMMENT ON COLUMN oikumenea.tenant_closure_status.sample IS 'pii:none';
 -- tenant_unit_lifecycle_events: append-only record of each unit state transition (tenant.md).
 -- Guarded by reject_mutation(); keyed by its own event RID.
 CREATE TABLE oikumenea.tenant_unit_lifecycle_events (
-  id              text PRIMARY KEY DEFAULT oikumenea.new_rid('tenant','unit_lifecycle_event'),
-  unit_id         text NOT NULL REFERENCES oikumenea.tenant_units(id) ON DELETE RESTRICT,
+  id              uuid PRIMARY KEY DEFAULT oikumenea.new_id(4,1,3),  -- tenant / object / unit_lifecycle_event
+  unit_id         uuid NOT NULL REFERENCES oikumenea.tenant_units(id) ON DELETE RESTRICT,
   from_state      text NOT NULL,
   to_state        text NOT NULL,
   reason          text,
-  actor_person_id text,           -- the person who transitioned the unit (nullable until M8)
+  actor_person_id uuid,           -- the person who transitioned the unit (nullable until M8)
   request_id      text NOT NULL,  -- correlation key shared with logs/metrics/traces/audit
   created_at      timestamptz NOT NULL DEFAULT now(),
 
   CONSTRAINT tenant_unit_lifecycle_events_rid_shape
-    CHECK (id LIKE 'urn:oikumenea:tenant:%:unit_lifecycle_event:%')
+    CHECK (oikumenea.rid_service(id)=4 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=3)
 );
 
 CREATE TRIGGER tenant_unit_lifecycle_events_reject_mutation

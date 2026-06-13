@@ -236,12 +236,26 @@ func (r recorder) record(ctx context.Context, tx pgx.Tx, service, action, target
 	})
 }
 
-// mintActionRID composes the Action RID via the shared SQL generator on the seed transaction, using
-// each entity's owning service slug so the action__<type> RID-shape CHECK is satisfied.
+// mintActionRID mints an Action RID (kind=action=3, generic action type=0) on the seed transaction,
+// keyed to the minting service so the rendered RID names its origin. The specific action name is
+// recorded separately in audit_log.action (D-Audit); only kind=action matters to the shape CHECK.
 func mintActionRID(ctx context.Context, tx pgx.Tx, service, action string) (string, error) {
+	_ = action
+	var svc int
+	switch service {
+	case "person":
+		svc = 6
+	case "account":
+		svc = 9
+	case "authz":
+		svc = 8
+	case "audit":
+		svc = 3
+	default:
+		svc = 1 // platform
+	}
 	var rid string
-	entityType := "action__" + strings.ReplaceAll(action, ".", "_")
-	if err := tx.QueryRow(ctx, "SELECT oikumenea.new_rid($1, $2)", service, entityType).Scan(&rid); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT oikumenea.new_id($1, 3, 0)", svc).Scan(&rid); err != nil {
 		return "", err
 	}
 	return rid, nil

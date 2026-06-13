@@ -276,26 +276,15 @@ func (s *Service) recordAs(ctx context.Context, tx pgx.Tx, subsystem, action, ta
 	})
 }
 
-// mintActionRID composes the Action RID via the same SQL generator every module uses, so the audit
-// log's action__<type> RID-shape CHECK is satisfied. "identity.link" -> "action__identity_link".
+// mintActionRID mints an Action RID (account service=9, kind=action=3, generic action type=0).
+// The specific action name is recorded separately in audit_log.action (D-Audit).
 func mintActionRID(ctx context.Context, tx pgx.Tx, action string) (string, error) {
+	_ = action
 	var rid string
-	if err := tx.QueryRow(ctx, "SELECT oikumenea.new_rid('account', $1)", "action__"+sanitizeAction(action)).Scan(&rid); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT oikumenea.new_id(9, 3, 0)").Scan(&rid); err != nil {
 		return "", err
 	}
 	return rid, nil
-}
-
-func sanitizeAction(action string) string {
-	b := make([]byte, len(action))
-	for i := 0; i < len(action); i++ {
-		if action[i] == '.' {
-			b[i] = '_'
-		} else {
-			b[i] = action[i]
-		}
-	}
-	return string(b)
 }
 
 // requestID is the correlation key shared with logs/metrics/traces: the request's trace id, with a

@@ -34,7 +34,7 @@ RETURNING *;
 SELECT * FROM oikumenea.tenant_units
 WHERE deleted_at IS NULL
   AND (sqlc.narg('level')::smallint IS NULL OR level = sqlc.narg('level')::smallint)
-  AND (sqlc.narg('after')::text IS NULL OR id > sqlc.narg('after')::text)
+  AND (sqlc.narg('after')::uuid IS NULL OR id > sqlc.narg('after')::uuid)
 ORDER BY id
 LIMIT @lim;
 
@@ -122,7 +122,7 @@ WITH RECURSIVE
       ON e.graph_id = @graph_id AND e.parent_id = r.descendant_id
   )
 INSERT INTO oikumenea.tenant_unit_closure (graph_id, ancestor_id, descendant_id, depth)
-SELECT @graph_id::text, ancestor_id, descendant_id, min(depth)::int
+SELECT @graph_id::uuid, ancestor_id, descendant_id, min(depth)::int
 FROM reach
 GROUP BY ancestor_id, descendant_id;
 
@@ -184,7 +184,7 @@ SELECT u.id, u.code, u.name, u.visibility, c.depth
 FROM oikumenea.tenant_unit_closure c
 JOIN oikumenea.tenant_units u ON u.id = c.descendant_id AND u.deleted_at IS NULL
 WHERE c.graph_id = @graph_id AND c.ancestor_id = @unit_id AND c.depth > 0
-  AND (sqlc.narg('after')::text IS NULL OR c.descendant_id > sqlc.narg('after')::text)
+  AND (sqlc.narg('after')::uuid IS NULL OR c.descendant_id > sqlc.narg('after')::uuid)
 ORDER BY c.descendant_id
 LIMIT @lim;
 

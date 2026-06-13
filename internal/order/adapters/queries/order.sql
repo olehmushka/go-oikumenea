@@ -77,7 +77,7 @@ RETURNING *;
 -- An issuing unit's orders (headers only), keyset-paginated by RID.
 SELECT * FROM oikumenea.order_orders
 WHERE issuing_unit_id = @issuing_unit_id AND deleted_at IS NULL
-  AND (@after = '' OR id > @after)
+  AND (@after = '' OR id::text > @after)
 ORDER BY id
 LIMIT @lim;
 
@@ -89,7 +89,7 @@ WHERE o.deleted_at IS NULL
     SELECT 1 FROM oikumenea.order_order_items i
     WHERE i.order_id = o.id AND i.person_id = @person_id
   )
-  AND (@after = '' OR o.id > @after)
+  AND (@after = '' OR o.id::text > @after)
 ORDER BY o.id
 LIMIT @lim;
 

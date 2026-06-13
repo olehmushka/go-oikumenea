@@ -240,7 +240,7 @@ func (q *Queries) GetType(ctx context.Context, id string) (OikumeneaRankType, er
 const getTypeByCodeInParent = `-- name: GetTypeByCodeInParent :one
 SELECT id, system_id, category_id, parent_type_id, code, name, sort_order, created_at, updated_at, deleted_at FROM oikumenea.rank_types
 WHERE category_id = $1
-  AND parent_type_id IS NOT DISTINCT FROM $2::text
+  AND parent_type_id IS NOT DISTINCT FROM $2::uuid
   AND code = $3 AND deleted_at IS NULL
 `
 
@@ -416,12 +416,12 @@ const insertType = `-- name: InsertType :one
 INSERT INTO oikumenea.rank_types (system_id, category_id, parent_type_id, code, name, sort_order)
 VALUES (
   (SELECT system_id FROM oikumenea.rank_categories WHERE id = $1),
-  $1, $2::text, $3, $4, COALESCE(
+  $1, $2::uuid, $3, $4, COALESCE(
   $5::int,
   (SELECT COALESCE(max(sort_order) + 1, 0)
      FROM oikumenea.rank_types
      WHERE category_id = $1
-       AND parent_type_id IS NOT DISTINCT FROM $2::text
+       AND parent_type_id IS NOT DISTINCT FROM $2::uuid
        AND deleted_at IS NULL)
 ))
 RETURNING id, system_id, category_id, parent_type_id, code, name, sort_order, created_at, updated_at, deleted_at

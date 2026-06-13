@@ -182,7 +182,7 @@ are `pii:basic`, residence columns are `pii:contact` (locator data) — D-PIITie
 - `created_at`, `updated_at`, `deleted_at`. All `pii:none`.
 
 **`person_emails`** (multi-valued contact email — D-PersonContactChannels)
-- `id` PK (`new_rid('person','email')`)
+- `id` PK (`new_id(6,1,5)`)
 - `person_id TEXT NOT NULL REFERENCES person_persons(id) ON DELETE CASCADE`
 - `type_code TEXT NOT NULL REFERENCES person_email_types(code) ON DELETE RESTRICT`
 - `address CITEXT NOT NULL` — the email address, stored lowercased — `pii:contact`
@@ -195,7 +195,7 @@ are `pii:basic`, residence columns are `pii:contact` (locator data) — D-PIITie
 - **Distinct from the login email** (`account_accounts.email`) — no FK; independent concerns.
 
 **`person_phones`** (multi-valued contact phone — D-PersonContactChannels)
-- `id` PK (`new_rid('person','phone')`)
+- `id` PK (`new_id(6,1,6)`)
 - `person_id TEXT NOT NULL REFERENCES person_persons(id) ON DELETE CASCADE`
 - `type_code TEXT NOT NULL REFERENCES person_phone_types(code) ON DELETE RESTRICT`
 - `number TEXT NOT NULL` — **E.164-normalized** via `github.com/nyaruka/phonenumbers` — `pii:contact`
@@ -208,7 +208,7 @@ are `pii:basic`, residence columns are `pii:contact` (locator data) — D-PIITie
 - Carrier/provider is **not** stored (not statically derivable; parked DS-40).
 
 **`person_call_signs`** (multi-valued informal identifier / позивний — D-PersonContactChannels)
-- `id` PK (`new_rid('person','call_sign')`)
+- `id` PK (`new_id(6,1,7)`)
 - `person_id TEXT NOT NULL REFERENCES person_persons(id) ON DELETE CASCADE`
 - `call_sign TEXT NOT NULL` — the call sign label — `pii:basic`
 - `is_primary BOOLEAN NOT NULL DEFAULT FALSE`
@@ -234,7 +234,7 @@ On all three channel tables `id`/`person_id`/`type_code`/`is_primary`/lifecycle 
   `viber` (messenger) + `instagram`/`linkedin`/`x`/`facebook` (social).
 
 **`person_messenger_links`** (reachability over an existing email/phone — Link `link__reachable_on`)
-- `id` PK (`new_rid('person','messenger_link')`)
+- `id` PK (`new_id(6,1,8)`)
 - `phone_id TEXT REFERENCES person_phones(id) ON DELETE CASCADE` — nullable
 - `email_id TEXT REFERENCES person_emails(id) ON DELETE CASCADE` — nullable
 - **XOR CHECK:** `CHECK ((phone_id IS NOT NULL) <> (email_id IS NOT NULL))` — exactly one channel.
@@ -247,7 +247,7 @@ On all three channel tables `id`/`person_id`/`type_code`/`is_primary`/lifecycle 
   channel, lifecycle `pii:none`.
 
 **`person_social_accounts`** (standalone handle — Object `PersonSocialAccount`, Link `link__holds_account`)
-- `id` PK (`new_rid('person','social_account')`)
+- `id` PK (`new_id(6,1,9)`)
 - `person_id TEXT NOT NULL REFERENCES person_persons(id) ON DELETE CASCADE`
 - `platform_code TEXT NOT NULL REFERENCES person_platforms(code) ON DELETE RESTRICT`
 - `platform_user_id TEXT` — the platform's **immutable internal id**, the durable key; nullable when
@@ -270,7 +270,7 @@ On all three channel tables `id`/`person_id`/`type_code`/`is_primary`/lifecycle 
   and wait on the envelope seam (DS-29).
 
 **`person_social_account_handles`** (handle-rename history — temporal)
-- `id` PK (`new_rid('person','social_handle')`)
+- `id` PK (`new_id(6,1,10)`)
 - `account_id TEXT NOT NULL REFERENCES person_social_accounts(id) ON DELETE CASCADE`
 - `handle TEXT NOT NULL` — `pii:contact`
 - `valid_from TIMESTAMPTZ NOT NULL`, `valid_to TIMESTAMPTZ` — NULL = current

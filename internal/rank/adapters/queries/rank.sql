@@ -105,12 +105,12 @@ FROM oikumenea.rank_types WHERE category_id = @category_id AND deleted_at IS NUL
 INSERT INTO oikumenea.rank_types (system_id, category_id, parent_type_id, code, name, sort_order)
 VALUES (
   (SELECT system_id FROM oikumenea.rank_categories WHERE id = @category_id),
-  @category_id, sqlc.narg('parent_type_id')::text, @code, @name, COALESCE(
+  @category_id, sqlc.narg('parent_type_id')::uuid, @code, @name, COALESCE(
   sqlc.narg('sort_order')::int,
   (SELECT COALESCE(max(sort_order) + 1, 0)
      FROM oikumenea.rank_types
      WHERE category_id = @category_id
-       AND parent_type_id IS NOT DISTINCT FROM sqlc.narg('parent_type_id')::text
+       AND parent_type_id IS NOT DISTINCT FROM sqlc.narg('parent_type_id')::uuid
        AND deleted_at IS NULL)
 ))
 RETURNING *;
@@ -123,7 +123,7 @@ SELECT * FROM oikumenea.rank_types WHERE id = @id AND deleted_at IS NULL;
 -- with NULL via IS NOT DISTINCT FROM.
 SELECT * FROM oikumenea.rank_types
 WHERE category_id = @category_id
-  AND parent_type_id IS NOT DISTINCT FROM sqlc.narg('parent_type_id')::text
+  AND parent_type_id IS NOT DISTINCT FROM sqlc.narg('parent_type_id')::uuid
   AND code = @code AND deleted_at IS NULL;
 
 -- name: UpdateType :one

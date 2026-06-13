@@ -10,7 +10,7 @@ import (
 func TestTokenRoundTrip(t *testing.T) {
 	want := domain.Cursor{
 		CreatedAt: time.Date(2026, 6, 1, 12, 34, 56, 789, time.UTC),
-		ID:        "urn:oikumenea:audit:local:action__test:0192f3a1-0000-7000-8000-000000000000",
+		ID:        "0192f3a1-0000-8300-8000-000000000000",
 	}
 	got, err := decodeToken(encodeToken(want))
 	if err != nil {

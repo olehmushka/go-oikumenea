@@ -727,7 +727,9 @@ const hasActivePartnershipExcept = `-- name: HasActivePartnershipExcept :one
 
 SELECT EXISTS (
   SELECT 1 FROM oikumenea.person_partnerships
-  WHERE deleted_at IS NULL AND status IN ('engaged','married') AND id <> $1
+  -- except_id is "" when inserting a new partnership (no row to exclude); compare as text so the
+  -- empty sentinel excludes nothing rather than failing the uuid cast.
+  WHERE deleted_at IS NULL AND status IN ('engaged','married') AND id::text <> $1
     AND (person_id_a = $2 OR person_id_b = $2)
 ) AS exists
 `
@@ -1793,7 +1795,7 @@ func (q *Queries) ListPersonRanks(ctx context.Context, personID string) ([]Oikum
 
 const listPersons = `-- name: ListPersons :many
 SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death FROM oikumenea.person_persons
-WHERE deleted_at IS NULL AND ($1 = '' OR id > $1)
+WHERE deleted_at IS NULL AND ($1 = '' OR id::text > $1)
 ORDER BY id
 LIMIT $2
 `
@@ -1850,7 +1852,7 @@ func (q *Queries) ListPersons(ctx context.Context, arg ListPersonsParams) ([]Oik
 
 const listPersonsByIDs = `-- name: ListPersonsByIDs :many
 SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death FROM oikumenea.person_persons
-WHERE id = ANY($1::text[]) AND deleted_at IS NULL
+WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL
 ORDER BY id
 `
 

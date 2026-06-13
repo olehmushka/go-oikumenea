@@ -44,7 +44,7 @@ RETURNING *;
 -- All active positions in a unit, keyset-paginated by RID.
 SELECT * FROM oikumenea.membership_positions
 WHERE unit_id = @unit_id AND status = 'active' AND deleted_at IS NULL
-  AND (@after = '' OR id > @after)
+  AND (@after = '' OR id::text > @after)
 ORDER BY id
 LIMIT @lim;
 
@@ -56,7 +56,7 @@ WHERE p.unit_id = @unit_id AND p.status = 'active' AND p.deleted_at IS NULL
     SELECT 1 FROM oikumenea.membership_memberships m
     WHERE m.position_id = p.id AND m.status = 'active' AND m.deleted_at IS NULL
   )
-  AND (@after = '' OR p.id > @after)
+  AND (@after = '' OR p.id::text > @after)
 ORDER BY p.id
 LIMIT @lim;
 
@@ -68,7 +68,7 @@ WHERE p.unit_id = @unit_id AND p.status = 'active' AND p.deleted_at IS NULL
     SELECT 1 FROM oikumenea.membership_memberships m
     WHERE m.position_id = p.id AND m.status = 'active' AND m.deleted_at IS NULL
   )
-  AND (@after = '' OR p.id > @after)
+  AND (@after = '' OR p.id::text > @after)
 ORDER BY p.id
 LIMIT @lim;
 
@@ -114,7 +114,7 @@ WHERE person_id = @person_id AND unit_id = @unit_id
 -- A unit's active memberships (its roster), keyset-paginated by RID.
 SELECT * FROM oikumenea.membership_memberships
 WHERE unit_id = @unit_id AND status = 'active' AND deleted_at IS NULL
-  AND (@after = '' OR id > @after)
+  AND (@after = '' OR id::text > @after)
 ORDER BY id
 LIMIT @lim;
 
@@ -122,7 +122,7 @@ LIMIT @lim;
 -- A person's active memberships across units, keyset-paginated by RID.
 SELECT * FROM oikumenea.membership_memberships
 WHERE person_id = @person_id AND status = 'active' AND deleted_at IS NULL
-  AND (@after = '' OR id > @after)
+  AND (@after = '' OR id::text > @after)
 ORDER BY id
 LIMIT @lim;
 
@@ -139,7 +139,7 @@ ORDER BY unit_id;
 -- RID. Powers the directory-list union (GET /persons) under D-PersonReadScope: the caller passes its
 -- effective readable unit-set and pages the reachable roster.
 SELECT DISTINCT person_id FROM oikumenea.membership_memberships
-WHERE unit_id = ANY(@unit_ids::text[]) AND status = 'active' AND deleted_at IS NULL
-  AND (@after = '' OR person_id > @after)
+WHERE unit_id = ANY(@unit_ids::uuid[]) AND status = 'active' AND deleted_at IS NULL
+  AND (@after = '' OR person_id::text > @after)
 ORDER BY person_id
 LIMIT @lim;

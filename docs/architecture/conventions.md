@@ -15,12 +15,12 @@ Carried over from `drafts/` (proven), adapted to the `oikumenea` schema.
   `oikumenea.tenant_*`, `oikumenea.person_*`, `oikumenea.membership_*`, `oikumenea.document_*`,
   `oikumenea.order_*`, `oikumenea.rank_*`, `oikumenea.authz_*`, `oikumenea.account_*`
   (identity-federation), `oikumenea.audit_*`.
-- **Primary keys:** composed **URN resource identifiers** (RIDs) — `id TEXT PRIMARY KEY DEFAULT
-  oikumenea.new_rid('<service>','<entity_type>')` everywhere (D-ResourceIdentifiers). See the
-  *Resource identifiers* subsection below for the grammar. `uuid_v7()` is **retained** as the RID's
-  time-ordered crypto component (so the PK still appends in insert order); both `uuid_v7()` and
-  `new_rid()` are created by the [platform](../modules/platform.md) schema bootstrap. Foreign keys
-  follow the PK type (`TEXT`).
+- **Primary keys:** packed **UUIDv8 resource identifiers** (RIDs) — `id uuid PRIMARY KEY DEFAULT
+  oikumenea.new_id('<service>','<kind>','<type>')` everywhere (D-ResourceIdentifiers, amended F-014).
+  See the *Resource identifiers* subsection below for the byte layout. The RID is time-ordered (bytes
+  0–5 are the unix-ms timestamp), so the PK still appends in insert order; `new_id()` + the `rid_*`
+  decoders are created by the [platform](../modules/platform.md) schema bootstrap. Foreign keys follow
+  the PK type (`uuid`).
 - **Timestamps:** `TIMESTAMPTZ`, stored in UTC. Never naive `timestamp`.
 - **Every mutable table** has `created_at TIMESTAMPTZ NOT NULL DEFAULT now()` and
   `updated_at TIMESTAMPTZ NOT NULL DEFAULT now()`, with a `BEFORE UPDATE` trigger calling
@@ -43,42 +43,35 @@ Carried over from `drafts/` (proven), adapted to the `oikumenea` schema.
 
 ### Resource identifiers (RIDs)
 
-Every Object, Link, and Action is keyed by a **composed, self-describing URN** (D-ResourceIdentifiers):
+Every Object, Link, and Action is keyed by a **native `uuid` (UUIDv8)** that packs a decomposable,
+self-describing key — *app · service · kind · type · timestamp · random* (D-ResourceIdentifiers,
+amended F-014). Byte layout (0-indexed): byte 6 = version 8 (hi nibble) · kind (lo nibble, 1=object
+2=link 3=action); byte 7 = app (1); byte 8 = variant (hi 2b) · service code (lo 6b); byte 9 + hi
+nibble of byte 10 = a 12-bit **per-service** type code; the rest is the random/time component.
 
-```
-urn:oikumenea:<service>:<environment>:<entity_type>:<uuid>
-```
-
-- `<service>` — the owning module (the table-prefix name: `tenant`, `person`, `membership`,
-  `document`, `order`, `rank`, `authz`, `account`, `i18n`, `audit`, `platform`).
-- `<environment>` — `prod`|`staging`|`dev`|`local`, from install config via
-  `current_setting('app.environment')`; constant per database (L-SingleDomain).
-- `<entity_type>` — for an **Object**, its type (`unit`, `person`, `role-assignment`, …); for a
-  **Link**, `link__<link_type>` (e.g. `link__has_role`, `link__parent_of`); for an **Action**,
-  `action__<action_type>` (e.g. `action__issue_order`).
-- `<uuid>` — a `uuid_v7()` (time-ordered), lowercase.
+- `service` / `type` are numeric codes in the seeded `oikumenea.platform_rid_services` /
+  `platform_rid_types` registries (migration 0000), mirrored in `pkg/rid` (boot-asserted equal). The
+  human form `oikumenea:<service>:<kind>:<type>:<uuid>` is **rendered from the bytes** by `pkg/rid`,
+  never stored; Go carries the **canonical uuid text** (sqlc maps `uuid`→`string` / nullable
+  `uuid`→`pgtype.Text`).
 
 ```sql
--- generator (platform bootstrap)
-CREATE FUNCTION oikumenea.new_rid(service text, entity_type text) RETURNS text
-  LANGUAGE sql VOLATILE AS $$
-    SELECT 'urn:oikumenea:' || service || ':' || current_setting('app.environment')
-        || ':' || entity_type || ':' || oikumenea.uuid_v7()::text $$;
-
--- per-table usage + cheap shape guard
-id TEXT PRIMARY KEY DEFAULT oikumenea.new_rid('tenant','unit'),
-CONSTRAINT unit_rid_shape CHECK (id LIKE 'urn:oikumenea:tenant:%:unit:%')
+-- generator (platform bootstrap) — packs UUIDv8; reads NO GUC
+id uuid PRIMARY KEY DEFAULT oikumenea.new_id(4, 1, 1),   -- service=tenant, kind=object, type=unit
+CONSTRAINT unit_rid_shape
+  CHECK (oikumenea.rid_service(id)=4 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=1)
 ```
 
-- **B-tree locality is preserved:** within a `(service, env, entity_type)` prefix only the trailing
-  `uuid_v7()` varies, so inserts still append in time order.
-- **Temporal Links** never encode validity in the RID (RIDs are immutable). A time-bounded Link
-  carries `valid_from`/`valid_to` (NULL `valid_to` = active); existing temporal columns
-  (`effective_from`/`effective_to`, `granted_at`/`revoked_at`+`expires_at`) **are** that pair.
-- **Action RID = the `audit_log` row key** (the audit log is the action ledger; D-Audit).
+- **B-tree locality is preserved:** bytes 0–5 are the unix-ms timestamp, so uuid order == insert order
+  (and == lowercase-canonical-text order, which keyset cursors rely on).
+- **Temporal Links** never encode validity in the RID (immutable); validity lives in
+  `effective_from`/`effective_to`, `granted_at`/`revoked_at`+`expires_at`.
+- **Action RID = the `audit_log` row key** (kind=action; the action *name* is `audit_log.action`).
+- **Polymorphic id columns are `text`, not `uuid`:** `audit_log.target_id` and
+  `i18n_translations.entity_id` hold *either* a RID uuid text *or* a natural code (locale, country,
+  scheme); `actor_person_id`/`unit_id` (always RIDs) are `uuid`.
 - **RID vs `code`:** the RID is the *machine resource handle*; the entity **`code`** stays the stable,
   locale-agnostic *business* key (D-Code). Both coexist.
-- **Reserved seam:** `urn:oikumenea:<service>:<env>:object-set:<uuid>` for named object collections.
 
 ### Ontology modeling (Object / Link / Action)
 
@@ -121,10 +114,17 @@ Fixed 5-tier vocabulary (`pii:sensitive` added by D-CryptoProvider):
   DEK + `key_ref` + a keyed `value_blind_index` for lookup; the KEK lives in an external KMS. It
   sits between `pii:contact` and `pii:special` in handling strictness and is kept distinct from
   `pii:special` (different legal regime; the envelope-at-rest obligation attaches here specifically).
-- **JSONB grab-bags** (`person.attributes`, `audit.before`/`after`) are tagged at their **ceiling**
-  (`pii:special`) with a note: special-category data must **not** be placed there without the
-  envelope-encryption seam ([open-questions](../open-questions.md) DS-29 for audit; the
-  `pii:sensitive` envelope under D-CryptoProvider ships, the `pii:special` extension stays parked).
+- **JSONB grab-bags** (`person.attributes`, `document.attributes`, `audit.before`/`after`) are
+  tagged at their **ceiling** (`pii:special`) with a note: special-category data must **not** be
+  placed there without the envelope-encryption seam ([open-questions](../open-questions.md) DS-29 for
+  audit; the `pii:sensitive` envelope under D-CryptoProvider ships, the `pii:special` extension stays
+  parked). **This ceiling is a classification marker only — a convention-only control, not a
+  write-time guard.** Nothing in the write path rejects special-category keys today (the `document`
+  `attr_schema` validator constrains *shape* for typed document types, not Art. 9 content, and
+  `person.attributes` is unvalidated free-form), so "must not land here without the envelope seam" is
+  an **accepted residual risk** (governance convention), not an enforced guarantee. Adding a
+  write-time reject is deliberately out of scope until the `pii:special` envelope seam ships
+  (F-013).
 - **Secrets** (the dormant `account.password_hash`) are marked `secret` — a separate axis, **not**
   a `pii:` tier.
 - This static classification is the companion to the two runtime PII controls: `werror.UnsafeParam`
@@ -293,10 +293,10 @@ See [decisions.md](decisions.md) D-NoRLS + D-RLSDefenseInDepth.
 |---|---|---|
 | Schema | `oikumenea` | `oikumenea.tenant_units` |
 | Table | `<module>_<plural>` | `oikumenea.authz_role_assignments` |
-| PK (RID) | `id TEXT DEFAULT oikumenea.new_rid('<svc>','<type>')` | `urn:oikumenea:tenant:prod:unit:0192f3a1-…` |
-| Link RID | `link__<link_type>` in the entity-type slot | `urn:oikumenea:authz:prod:link__has_role:0192…` |
-| Action RID | `action__<action_type>` in the entity-type slot | `urn:oikumenea:order:prod:action__issue_order:0192…` |
-| Conjure ID type | `Rid` string alias (URN format) | — |
+| PK (RID) | `id uuid DEFAULT oikumenea.new_id(<svc>,<kind>,<type>)` | `0192f3a1-…` → `oikumenea:tenant:object:unit:0192f3a1-…` |
+| Link RID | kind=link in the packed bits | rendered `oikumenea:authz:link:has_role:…` |
+| Action RID | kind=action in the packed bits | rendered `oikumenea:order:action:…` |
+| Conjure ID type | `Rid` string alias (canonical uuid text) | — |
 | Stable code | `code TEXT NOT NULL UNIQUE` (locale-agnostic, external ref) | `unit.code = "1-bn"` |
 | Localized label | `name` (default-locale fallback) + i18n store | response: `{ukr, eng}` |
 | Conjure service | `<Module>Service` | `MembershipService` |

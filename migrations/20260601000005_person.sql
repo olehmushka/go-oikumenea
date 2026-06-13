@@ -22,7 +22,7 @@
 
 -- person_persons: the aggregate root — one record per individual, account-optional, instance-global.
 CREATE TABLE oikumenea.person_persons (
-  id               text PRIMARY KEY DEFAULT oikumenea.new_rid('person','person'),
+  id               uuid PRIMARY KEY DEFAULT oikumenea.new_id(6,1,1),  -- person / object / person
   code             text,                          -- OPTIONAL stable, locale-agnostic external id (personnel/service number); unique among active
   display_name     text NOT NULL,                 -- the canonical full name form; authoritative for search/display
 
@@ -54,7 +54,8 @@ CREATE TABLE oikumenea.person_persons (
   updated_at       timestamptz NOT NULL DEFAULT now(),
   deleted_at       timestamptz,
 
-  CONSTRAINT person_persons_rid_shape CHECK (id LIKE 'urn:oikumenea:person:%:person:%')
+  CONSTRAINT person_persons_rid_shape
+    CHECK (oikumenea.rid_service(id)=6 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=1)
 );
 
 CREATE TRIGGER person_persons_set_updated_at
@@ -91,15 +92,16 @@ COMMENT ON COLUMN oikumenea.person_persons.purge_after IS 'pii:none';
 -- rank/system cannot be deleted; CASCADE on person delete. As a reified Link the RID entity_type token
 -- is link__holds_rank (D-Ontology).
 CREATE TABLE oikumenea.person_ranks (
-  id         text PRIMARY KEY DEFAULT oikumenea.new_rid('person','link__holds_rank'),
-  person_id  text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
-  system_id  text NOT NULL REFERENCES oikumenea.rank_systems(id) ON DELETE RESTRICT,  -- denormalized from the rank
-  rank_id    text NOT NULL REFERENCES oikumenea.rank_ranks(id) ON DELETE RESTRICT,
+  id         uuid PRIMARY KEY DEFAULT oikumenea.new_id(6,2,1),  -- person / link / holds_rank
+  person_id  uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
+  system_id  uuid NOT NULL REFERENCES oikumenea.rank_systems(id) ON DELETE RESTRICT,  -- denormalized from the rank
+  rank_id    uuid NOT NULL REFERENCES oikumenea.rank_ranks(id) ON DELETE RESTRICT,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,
 
-  CONSTRAINT person_ranks_rid_shape CHECK (id LIKE 'urn:oikumenea:person:%:link__holds_rank:%')
+  CONSTRAINT person_ranks_rid_shape
+    CHECK (oikumenea.rid_service(id)=6 AND oikumenea.rid_kind(id)=2 AND oikumenea.rid_type(id)=1)
 );
 
 CREATE TRIGGER person_ranks_set_updated_at
@@ -123,8 +125,8 @@ COMMENT ON COLUMN oikumenea.person_ranks.rank_id IS 'pii:none';
 -- Latin). A variant is a FULL name form, so it carries the same CLDR structured parts. CASCADE on
 -- person delete; locale FK to the i18n registry. UNIQUE (person_id, locale).
 CREATE TABLE oikumenea.person_name_variants (
-  id             text PRIMARY KEY DEFAULT oikumenea.new_rid('person','name_variant'),
-  person_id      text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
+  id             uuid PRIMARY KEY DEFAULT oikumenea.new_id(6,1,2),  -- person / object / name_variant
+  person_id      uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
   locale         text NOT NULL REFERENCES oikumenea.i18n_locales(code) ON UPDATE RESTRICT,
   display_name   text NOT NULL,
   title          text,
@@ -140,7 +142,8 @@ CREATE TABLE oikumenea.person_name_variants (
   created_at     timestamptz NOT NULL DEFAULT now(),
   updated_at     timestamptz NOT NULL DEFAULT now(),
 
-  CONSTRAINT person_name_variants_rid_shape CHECK (id LIKE 'urn:oikumenea:person:%:name_variant:%'),
+  CONSTRAINT person_name_variants_rid_shape
+    CHECK (oikumenea.rid_service(id)=6 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=2),
   CONSTRAINT person_name_variants_person_locale_uniq UNIQUE (person_id, locale)
 );
 
@@ -168,8 +171,8 @@ COMMENT ON COLUMN oikumenea.person_name_variants.is_primary IS 'pii:none';
 -- person_citizenships: effective-dated nationality; a person may hold several (D-Geo). One ACTIVE
 -- citizenship per (person, country). is_primary marks at most one. CASCADE on person delete.
 CREATE TABLE oikumenea.person_citizenships (
-  id          text PRIMARY KEY DEFAULT oikumenea.new_rid('person','citizenship'),
-  person_id   text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
+  id          uuid PRIMARY KEY DEFAULT oikumenea.new_id(6,1,3),  -- person / object / citizenship
+  person_id   uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
   country     char(2) NOT NULL REFERENCES oikumenea.geo_countries(code) ON DELETE RESTRICT,
   basis       text NOT NULL DEFAULT 'other'
                 CHECK (basis IN ('birth','descent','naturalization','other')),
@@ -180,7 +183,8 @@ CREATE TABLE oikumenea.person_citizenships (
   updated_at  timestamptz NOT NULL DEFAULT now(),
   deleted_at  timestamptz,
 
-  CONSTRAINT person_citizenships_rid_shape CHECK (id LIKE 'urn:oikumenea:person:%:citizenship:%')
+  CONSTRAINT person_citizenships_rid_shape
+    CHECK (oikumenea.rid_service(id)=6 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=3)
 );
 
 CREATE TRIGGER person_citizenships_set_updated_at
@@ -203,8 +207,8 @@ COMMENT ON COLUMN oikumenea.person_citizenships.is_primary IS 'pii:none';
 -- person_residences: effective-dated residence history (D-Geo). Locator data → pii:contact.
 -- CASCADE on person delete.
 CREATE TABLE oikumenea.person_residences (
-  id         text PRIMARY KEY DEFAULT oikumenea.new_rid('person','residence'),
-  person_id  text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
+  id         uuid PRIMARY KEY DEFAULT oikumenea.new_id(6,1,4),  -- person / object / residence
+  person_id  uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
   country    char(2) NOT NULL REFERENCES oikumenea.geo_countries(code) ON DELETE RESTRICT,
   region     text,                               -- optional sub-national region / locality (free text)
   valid_from date NOT NULL,
@@ -213,7 +217,8 @@ CREATE TABLE oikumenea.person_residences (
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,
 
-  CONSTRAINT person_residences_rid_shape CHECK (id LIKE 'urn:oikumenea:person:%:residence:%')
+  CONSTRAINT person_residences_rid_shape
+    CHECK (oikumenea.rid_service(id)=6 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=4)
 );
 
 CREATE TRIGGER person_residences_set_updated_at

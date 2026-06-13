@@ -30,12 +30,11 @@ import (
 )
 
 // seedOrderTypesSQL idempotently seeds a representative order-type catalog (the five UA-army families,
-// D-Orders). The RID PKs default via new_rid(), which reads the per-connection app.environment GUC —
-// set by db.NewPool but NOT by atlas's migration connection — so these RID-keyed reference rows are
-// inserted at BOOT here, on the GUC-bearing pool, not in the migration (D-RIDSeeding). ON CONFLICT on
-// the unique code makes this safe on every boot. The instance admin adds more (or retires these) via
-// the API. The effect mapping drives which target columns an item must carry and which intent event
-// issue emits.
+// D-Orders). The RID PKs default via new_id() (D-ResourceIdentifiers), which reads no GUC, so this
+// could equally seed in the migration (D-RIDSeeding relaxed, F-014); it stays a boot seed for
+// consistency. ON CONFLICT on the unique code makes this safe on every boot. The instance admin adds
+// more (or retires these) via the API. The effect mapping drives which target columns an item must
+// carry and which intent event issue emits.
 const seedOrderTypesSQL = `
 INSERT INTO oikumenea.order_order_types (code, name, category, effect, sort_order) VALUES
   ('arrival',          'Arrival / enrollment',  'personnel-list',       'membership-start',   0),

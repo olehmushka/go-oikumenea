@@ -7,9 +7,9 @@ types:
   definitions:
     default-package: oikumenea.platform
     objects:
-      # The composed URN resource identifier (D-ResourceIdentifiers). Every Object/Link/Action
-      # reference carries the full RID, never a bare uuid. Defined here so the alias exists from
-      # M0; domain modules reuse it.
+      # The resource identifier (D-ResourceIdentifiers, amended F-014): a packed UUIDv8 carried on the
+      # wire as its canonical uuid text. Typed `string` because Conjure reserves the `rid` primitive
+      # for its own `ri.` format. Defined here so the alias exists from M0; domain modules reuse it.
       Rid:
         alias: string
       VersionInfo:

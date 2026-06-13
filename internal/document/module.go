@@ -30,10 +30,10 @@ import (
 )
 
 // seedDocumentTypesSQL idempotently seeds a representative PAPER-type catalog (D-Documents). The RID PKs
-// default via new_rid(), which reads the per-connection app.environment GUC — set by db.NewPool but NOT
-// by atlas's migration connection — so these RID-keyed reference rows are inserted at BOOT here, on the
-// GUC-bearing pool, not in the migration (D-RIDSeeding). ON CONFLICT on the unique code makes this safe
-// on every boot. The instance admin adds more (and may retire these) via the API.
+// default via new_id() (D-ResourceIdentifiers), which reads no GUC, so this could equally seed in the
+// migration (D-RIDSeeding relaxed, F-014); it stays a boot seed for consistency. ON CONFLICT on the
+// unique code makes this safe on every boot. The instance admin adds more (and may retire these) via
+// the API.
 const seedDocumentTypesSQL = `
 INSERT INTO oikumenea.document_document_types (code, name, sort_order) VALUES
   ('passport',         'Passport',                0),

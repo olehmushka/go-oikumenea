@@ -24,7 +24,7 @@
 -- translatable via the i18n store (M2). Base roles (is_base) are seeded and immutable by instance
 -- admins.
 CREATE TABLE oikumenea.authz_roles (
-  id          text PRIMARY KEY DEFAULT oikumenea.new_rid('authz','role'),
+  id          uuid PRIMARY KEY DEFAULT oikumenea.new_id(8,1,1),  -- authz / object / role
   code        text NOT NULL,                 -- stable, locale-agnostic; unique among active rows
   name        text NOT NULL,                 -- default-locale label; translatable via the i18n store
   description text,                           -- default-locale label; translatable via the i18n store
@@ -33,7 +33,8 @@ CREATE TABLE oikumenea.authz_roles (
   updated_at  timestamptz NOT NULL DEFAULT now(),
   deleted_at  timestamptz,
 
-  CONSTRAINT authz_roles_rid_shape CHECK (id LIKE 'urn:oikumenea:authz:%:role:%')
+  CONSTRAINT authz_roles_rid_shape
+    CHECK (oikumenea.rid_service(id)=8 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=1)
 );
 
 CREATE TRIGGER authz_roles_set_updated_at
@@ -55,7 +56,7 @@ COMMENT ON COLUMN oikumenea.authz_roles.is_base IS 'pii:none';
 -- GRANTS link, carrying no identity/attributes/history — stays a composite-PK row, not a reified
 -- Link). `permission_code` is validated against the code catalog at write time in the application.
 CREATE TABLE oikumenea.authz_role_permissions (
-  role_id         text NOT NULL REFERENCES oikumenea.authz_roles(id) ON DELETE CASCADE,
+  role_id         uuid NOT NULL REFERENCES oikumenea.authz_roles(id) ON DELETE CASCADE,
   permission_code text NOT NULL,             -- validated against domain/permissions.go at write time
   PRIMARY KEY (role_id, permission_code)
 );
@@ -69,22 +70,23 @@ COMMENT ON COLUMN oikumenea.authz_role_permissions.permission_code IS 'pii:none'
 -- graph_id names the hierarchy a `subtree` grant cascades over and is NULL iff scope='unit'
 -- (a `unit` grant is graph-independent). target_unit is independent of where the subject sits.
 CREATE TABLE oikumenea.authz_role_assignments (
-  id                text PRIMARY KEY DEFAULT oikumenea.new_rid('authz','link__has_role'),
-  subject_person_id text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE RESTRICT,
-  role_id           text NOT NULL REFERENCES oikumenea.authz_roles(id)   ON DELETE RESTRICT,
-  target_unit_id    text NOT NULL REFERENCES oikumenea.tenant_units(id)  ON DELETE RESTRICT,
+  id                uuid PRIMARY KEY DEFAULT oikumenea.new_id(8,2,1),  -- authz / link / has_role
+  subject_person_id uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE RESTRICT,
+  role_id           uuid NOT NULL REFERENCES oikumenea.authz_roles(id)   ON DELETE RESTRICT,
+  target_unit_id    uuid NOT NULL REFERENCES oikumenea.tenant_units(id)  ON DELETE RESTRICT,
   scope             text NOT NULL CHECK (scope IN ('unit','subtree')),
   -- graph_id: the hierarchy a subtree grant cascades over (D-Graphs). NULL iff scope='unit'.
-  graph_id          text REFERENCES oikumenea.tenant_graphs(id) ON DELETE RESTRICT,
-  granted_by        text REFERENCES oikumenea.person_persons(id) ON DELETE SET NULL, -- NULL for bootstrap (D-Bootstrap)
+  graph_id          uuid REFERENCES oikumenea.tenant_graphs(id) ON DELETE RESTRICT,
+  granted_by        uuid REFERENCES oikumenea.person_persons(id) ON DELETE SET NULL, -- NULL for bootstrap (D-Bootstrap)
   granted_at        timestamptz NOT NULL DEFAULT now(),
   revoked_at        timestamptz,             -- reversible flip; never deleted (history for audit)
-  revoked_by        text REFERENCES oikumenea.person_persons(id) ON DELETE SET NULL,
+  revoked_by        uuid REFERENCES oikumenea.person_persons(id) ON DELETE SET NULL,
   expires_at        timestamptz,             -- optional time bound; evaluated at decision time, silent lapse
   created_at        timestamptz NOT NULL DEFAULT now(),
   updated_at        timestamptz NOT NULL DEFAULT now(),
 
-  CONSTRAINT authz_role_assignments_rid_shape CHECK (id LIKE 'urn:oikumenea:authz:%:link\_\_has_role:%'),
+  CONSTRAINT authz_role_assignments_rid_shape
+    CHECK (oikumenea.rid_service(id)=8 AND oikumenea.rid_kind(id)=2 AND oikumenea.rid_type(id)=1),
   -- NULL iff scope='unit' — a subtree grant always names its graph; a unit grant never does.
   CONSTRAINT authz_role_assignments_graph_scope CHECK ((scope = 'subtree') = (graph_id IS NOT NULL))
 );
@@ -123,16 +125,17 @@ COMMENT ON COLUMN oikumenea.authz_role_assignments.expires_at IS 'pii:none';
 -- install bootstrap grant (no granter exists yet — D-Bootstrap; origin lives in the bootstrap audit
 -- row). Reversible (revoked_at flip), never deleted.
 CREATE TABLE oikumenea.authz_instance_admins (
-  id         text PRIMARY KEY DEFAULT oikumenea.new_rid('authz','link__instance_admin'),
-  person_id  text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE RESTRICT,
-  granted_by text REFERENCES oikumenea.person_persons(id) ON DELETE SET NULL, -- NULL for bootstrap
+  id         uuid PRIMARY KEY DEFAULT oikumenea.new_id(8,2,2),  -- authz / link / instance_admin
+  person_id  uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE RESTRICT,
+  granted_by uuid REFERENCES oikumenea.person_persons(id) ON DELETE SET NULL, -- NULL for bootstrap
   granted_at timestamptz NOT NULL DEFAULT now(),
   revoked_at timestamptz,
-  revoked_by text REFERENCES oikumenea.person_persons(id) ON DELETE SET NULL,
+  revoked_by uuid REFERENCES oikumenea.person_persons(id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
 
-  CONSTRAINT authz_instance_admins_rid_shape CHECK (id LIKE 'urn:oikumenea:authz:%:link\_\_instance_admin:%')
+  CONSTRAINT authz_instance_admins_rid_shape
+    CHECK (oikumenea.rid_service(id)=8 AND oikumenea.rid_kind(id)=2 AND oikumenea.rid_type(id)=2)
 );
 
 CREATE TRIGGER authz_instance_admins_set_updated_at

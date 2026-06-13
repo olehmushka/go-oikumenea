@@ -23,12 +23,11 @@ import (
 )
 
 // seedGraphsSQL idempotently seeds the graph registry (D-Graphs): command (default + undeletable +
-// locked authority-bearing) and operational (authority-bearing). The RID PKs default via new_rid(),
-// which reads the per-connection app.environment GUC — set by db.NewPool but NOT by atlas's
-// migration connection — so RID-keyed seed rows are inserted at BOOT here, on the GUC-bearing pool,
-// rather than in the migration. ON CONFLICT on the partial-unique code index makes this safe to run
-// on every boot (and after the operator changes the default). See docs/architecture/decisions.md
-// (boot-time idempotent seeding of RID-keyed reference rows). Precedent for M7 base-roles / M8.
+// locked authority-bearing) and operational (authority-bearing). The RID PKs default via new_id()
+// (D-ResourceIdentifiers), which reads no GUC, so this could equally seed in the migration
+// (D-RIDSeeding relaxed, F-014); it stays a boot seed for consistency with the code-derived base-role
+// (M7) and first-admin (M8) seeds. ON CONFLICT on the partial-unique code index makes it safe on
+// every boot (and after the operator changes the default).
 const seedGraphsSQL = `
 INSERT INTO oikumenea.tenant_graphs (code, name, is_default, is_authority_bearing) VALUES
   ('command',     'Command',     true,  true),

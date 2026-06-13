@@ -549,27 +549,16 @@ func (s *Service) record(ctx context.Context, tx pgx.Tx, action, targetType, tar
 	})
 }
 
-// mintActionRID composes the Action RID via the shared SQL generator so the audit log's
-// action__<type> RID-shape CHECK is satisfied. "role.create" -> entity-type "action__role_create".
+// mintActionRID mints an Action RID (authz service=8, kind=action=3, generic action type=0) via the
+// shared SQL generator, so the audit log's rid_kind=3 shape CHECK is satisfied. The specific action
+// name is recorded separately in audit_log.action (D-Audit), so the RID need not encode it.
 func mintActionRID(ctx context.Context, tx pgx.Tx, action string) (string, error) {
-	entityType := "action__" + sanitizeAction(action)
+	_ = action
 	var rid string
-	if err := tx.QueryRow(ctx, "SELECT oikumenea.new_rid('authz', $1)", entityType).Scan(&rid); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT oikumenea.new_id(8, 3, 0)").Scan(&rid); err != nil {
 		return "", err
 	}
 	return rid, nil
-}
-
-func sanitizeAction(action string) string {
-	b := make([]byte, len(action))
-	for i := 0; i < len(action); i++ {
-		if action[i] == '.' {
-			b[i] = '_'
-		} else {
-			b[i] = action[i]
-		}
-	}
-	return string(b)
 }
 
 // requestID is the correlation key shared with logs/metrics/traces: the request's trace id, with a

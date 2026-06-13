@@ -13,7 +13,9 @@ in?" read the **[stage board](docs/milestones.md#stage-board)** — it is the sc
 
 `docs/` remains the **source of truth**, and `docs/architecture/decisions.md` is **binding**: if
 code and a decision recorded there disagree, **the code is wrong**. Change a decision by editing
-that file (with rationale), not by diverging in code.
+that file (with rationale), not by diverging in code. The **planned-tier (M16–M26)** decisions —
+decided/designed but not yet built — live in `docs/architecture/roadmap-decisions.md` (binding
+against code once their milestone enters implementation).
 
 **Every feature follows a fixed pipeline** — idea → decided → designed → backend → migrated → ui →
 verified. Read **`docs/development-process.md`** before starting, advancing, or reporting on any
@@ -39,7 +41,8 @@ DAG) with **public/shadow visibility** — not flat, isolated realms.
 `docs/README.md` is the entry point and gives the canonical reading order. In short:
 
 1. `docs/glossary.md` — domain vocabulary (the module docs assume these terms).
-2. `docs/architecture/decisions.md` — the binding decisions + carried-over locks.
+2. `docs/architecture/decisions.md` — the binding decisions (M0–M15) + carried-over locks;
+   `docs/architecture/roadmap-decisions.md` for the planned-tier (M16–M26) decisions.
 3. `docs/architecture/conventions.md` — schema / Go-witchcraft / Conjure / API conventions.
 4. `docs/ontology-mapping.md` — the binding Object/Link/Action type registry (D-Ontology).
 5. `docs/architecture/patterns.md` — cross-cutting patterns.

@@ -393,7 +393,7 @@ SELECT id, subject_person_id, role_id, target_unit_id, scope, graph_id,
        granted_by, granted_at, revoked_at, revoked_by, expires_at, created_at, updated_at
 FROM oikumenea.authz_role_assignments
 WHERE subject_person_id = $1 AND revoked_at IS NULL
-  AND ($2::text = '' OR id > $2::text)
+  AND ($2::text = '' OR id::text > $2::text)
 ORDER BY id
 LIMIT $3
 `
@@ -443,7 +443,7 @@ SELECT id, subject_person_id, role_id, target_unit_id, scope, graph_id,
        granted_by, granted_at, revoked_at, revoked_by, expires_at, created_at, updated_at
 FROM oikumenea.authz_role_assignments
 WHERE target_unit_id = $1 AND revoked_at IS NULL
-  AND ($2::text = '' OR id > $2::text)
+  AND ($2::text = '' OR id::text > $2::text)
 ORDER BY id
 LIMIT $3
 `
@@ -492,7 +492,7 @@ const listRoles = `-- name: ListRoles :many
 SELECT id, code, name, description, is_base, created_at, updated_at
 FROM oikumenea.authz_roles
 WHERE deleted_at IS NULL
-  AND ($1::text = '' OR id > $1::text)
+  AND ($1::text = '' OR id::text > $1::text)
 ORDER BY id
 LIMIT $2
 `

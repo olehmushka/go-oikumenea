@@ -110,7 +110,7 @@ All other columns (`id`, `person_id`, `type_id`, `status`, `sort_order`, lifecyc
 - `created_at`, `updated_at`, `deleted_at`
 
 **`document_personal_codes`** (person-held national identifiers; value encrypted — D-CryptoProvider)
-- `id` PK (RID — `new_rid('document','personal_code')`)
+- `id` PK (RID — `new_id(10,1,3)`)
 - `person_id TEXT NOT NULL REFERENCES person_persons(id) ON DELETE RESTRICT` — the holder
 - `scheme_code TEXT NOT NULL REFERENCES document_personal_code_schemes(code) ON DELETE RESTRICT` — which
   scheme (FK to the scheme's natural `code` PK); the code's **country derives from `scheme.country_iso`**

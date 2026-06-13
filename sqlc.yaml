@@ -14,6 +14,17 @@ sql:
         sql_package: pgx/v5
         emit_methods_with_db_argument: false
         emit_exact_table_names: false
+        # RID columns are native uuid (D-ResourceIdentifiers) but the Go layer keeps string ids
+        # (canonical uuid text); pgx scans/encodes uuid<->string and uuid<->pgtype.Text natively, so
+        # these overrides keep generated types identical to the prior text era (string / pgtype.Text).
+        overrides:
+          - db_type: "uuid"
+            go_type: "string"
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              import: "github.com/jackc/pgx/v5/pgtype"
+              type: "Text"
   - engine: postgresql
     schema: migrations
     queries: internal/localization/adapters/queries
@@ -24,6 +35,17 @@ sql:
         sql_package: pgx/v5
         emit_methods_with_db_argument: false
         emit_exact_table_names: false
+        # RID columns are native uuid (D-ResourceIdentifiers) but the Go layer keeps string ids
+        # (canonical uuid text); pgx scans/encodes uuid<->string and uuid<->pgtype.Text natively, so
+        # these overrides keep generated types identical to the prior text era (string / pgtype.Text).
+        overrides:
+          - db_type: "uuid"
+            go_type: "string"
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              import: "github.com/jackc/pgx/v5/pgtype"
+              type: "Text"
   - engine: postgresql
     schema: migrations
     queries: internal/tenant/adapters/queries
@@ -34,6 +56,17 @@ sql:
         sql_package: pgx/v5
         emit_methods_with_db_argument: false
         emit_exact_table_names: false
+        # RID columns are native uuid (D-ResourceIdentifiers) but the Go layer keeps string ids
+        # (canonical uuid text); pgx scans/encodes uuid<->string and uuid<->pgtype.Text natively, so
+        # these overrides keep generated types identical to the prior text era (string / pgtype.Text).
+        overrides:
+          - db_type: "uuid"
+            go_type: "string"
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              import: "github.com/jackc/pgx/v5/pgtype"
+              type: "Text"
   - engine: postgresql
     schema: migrations
     queries: internal/rank/adapters/queries
@@ -44,6 +77,17 @@ sql:
         sql_package: pgx/v5
         emit_methods_with_db_argument: false
         emit_exact_table_names: false
+        # RID columns are native uuid (D-ResourceIdentifiers) but the Go layer keeps string ids
+        # (canonical uuid text); pgx scans/encodes uuid<->string and uuid<->pgtype.Text natively, so
+        # these overrides keep generated types identical to the prior text era (string / pgtype.Text).
+        overrides:
+          - db_type: "uuid"
+            go_type: "string"
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              import: "github.com/jackc/pgx/v5/pgtype"
+              type: "Text"
   - engine: postgresql
     schema: migrations
     queries: internal/person/adapters/queries
@@ -54,6 +98,17 @@ sql:
         sql_package: pgx/v5
         emit_methods_with_db_argument: false
         emit_exact_table_names: false
+        # RID columns are native uuid (D-ResourceIdentifiers) but the Go layer keeps string ids
+        # (canonical uuid text); pgx scans/encodes uuid<->string and uuid<->pgtype.Text natively, so
+        # these overrides keep generated types identical to the prior text era (string / pgtype.Text).
+        overrides:
+          - db_type: "uuid"
+            go_type: "string"
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              import: "github.com/jackc/pgx/v5/pgtype"
+              type: "Text"
   - engine: postgresql
     schema: migrations
     queries: internal/membership/adapters/queries
@@ -64,6 +119,17 @@ sql:
         sql_package: pgx/v5
         emit_methods_with_db_argument: false
         emit_exact_table_names: false
+        # RID columns are native uuid (D-ResourceIdentifiers) but the Go layer keeps string ids
+        # (canonical uuid text); pgx scans/encodes uuid<->string and uuid<->pgtype.Text natively, so
+        # these overrides keep generated types identical to the prior text era (string / pgtype.Text).
+        overrides:
+          - db_type: "uuid"
+            go_type: "string"
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              import: "github.com/jackc/pgx/v5/pgtype"
+              type: "Text"
   - engine: postgresql
     schema: migrations
     queries: internal/authorization/adapters/queries
@@ -74,6 +140,17 @@ sql:
         sql_package: pgx/v5
         emit_methods_with_db_argument: false
         emit_exact_table_names: false
+        # RID columns are native uuid (D-ResourceIdentifiers) but the Go layer keeps string ids
+        # (canonical uuid text); pgx scans/encodes uuid<->string and uuid<->pgtype.Text natively, so
+        # these overrides keep generated types identical to the prior text era (string / pgtype.Text).
+        overrides:
+          - db_type: "uuid"
+            go_type: "string"
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              import: "github.com/jackc/pgx/v5/pgtype"
+              type: "Text"
   - engine: postgresql
     schema: migrations
     queries: internal/identityfederation/adapters/queries
@@ -84,6 +161,17 @@ sql:
         sql_package: pgx/v5
         emit_methods_with_db_argument: false
         emit_exact_table_names: false
+        # RID columns are native uuid (D-ResourceIdentifiers) but the Go layer keeps string ids
+        # (canonical uuid text); pgx scans/encodes uuid<->string and uuid<->pgtype.Text natively, so
+        # these overrides keep generated types identical to the prior text era (string / pgtype.Text).
+        overrides:
+          - db_type: "uuid"
+            go_type: "string"
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              import: "github.com/jackc/pgx/v5/pgtype"
+              type: "Text"
   - engine: postgresql
     schema: migrations
     queries: internal/document/adapters/queries
@@ -94,6 +182,17 @@ sql:
         sql_package: pgx/v5
         emit_methods_with_db_argument: false
         emit_exact_table_names: false
+        # RID columns are native uuid (D-ResourceIdentifiers) but the Go layer keeps string ids
+        # (canonical uuid text); pgx scans/encodes uuid<->string and uuid<->pgtype.Text natively, so
+        # these overrides keep generated types identical to the prior text era (string / pgtype.Text).
+        overrides:
+          - db_type: "uuid"
+            go_type: "string"
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              import: "github.com/jackc/pgx/v5/pgtype"
+              type: "Text"
   - engine: postgresql
     schema: migrations
     queries: internal/order/adapters/queries
@@ -104,3 +203,14 @@ sql:
         sql_package: pgx/v5
         emit_methods_with_db_argument: false
         emit_exact_table_names: false
+        # RID columns are native uuid (D-ResourceIdentifiers) but the Go layer keeps string ids
+        # (canonical uuid text); pgx scans/encodes uuid<->string and uuid<->pgtype.Text natively, so
+        # these overrides keep generated types identical to the prior text era (string / pgtype.Text).
+        overrides:
+          - db_type: "uuid"
+            go_type: "string"
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              import: "github.com/jackc/pgx/v5/pgtype"
+              type: "Text"

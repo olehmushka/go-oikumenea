@@ -5,13 +5,14 @@ import (
 	"testing"
 )
 
-const validActionRID = "urn:oikumenea:audit:local:action__grant:0192f3a1-0000-7000-8000-000000000000"
+// validActionRID is a native UUIDv8 whose packed kind nibble is 3 (action) — byte 6 = 0x83.
+const validActionRID = "0192f3a1-0000-8300-8000-000000000000"
 
 func validPerson() Entry {
 	return Entry{
 		ID:            validActionRID,
 		ActorType:     ActorPerson,
-		ActorPersonID: "urn:oikumenea:person:local:person:abc",
+		ActorPersonID: "0192f3a1-0000-8101-8601-000000000000", // person RID (any non-empty value)
 		Action:        "assignment.grant",
 		TargetType:    "role_assignment",
 		RequestID:     "req-1",
@@ -34,7 +35,7 @@ func TestValidateAcceptsWellFormedActors(t *testing.T) {
 
 func TestValidateRejectsBadEntries(t *testing.T) {
 	cases := map[string]func(*Entry){
-		"non-action RID":        func(e *Entry) { e.ID = "urn:oikumenea:audit:local:auditentry:x" },
+		"non-action RID":        func(e *Entry) { e.ID = "0192f3a1-0000-8100-8000-000000000000" }, // kind=1 (object)
 		"person without id":     func(e *Entry) { e.ActorPersonID = "" },
 		"person with subsystem": func(e *Entry) { e.Subsystem = "bootstrap" },
 		"missing action":        func(e *Entry) { e.Action = "" },

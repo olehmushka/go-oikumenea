@@ -26,8 +26,8 @@
 -- NEVER stored while auth is delegated; the dormant credential columns are CHECK-enforced NULL until a
 -- future "become a full IdP" pivot ships (additive, not a rewrite — patterns.md Dormant seam).
 CREATE TABLE oikumenea.account_accounts (
-  id              text PRIMARY KEY DEFAULT oikumenea.new_rid('account','account'),
-  person_id       text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE RESTRICT,
+  id              uuid PRIMARY KEY DEFAULT oikumenea.new_id(9,1,1),  -- account / object / account
+  person_id       uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE RESTRICT,
   email           citext,                         -- optional, as asserted by the IdP; unique among active when set
   status          text NOT NULL DEFAULT 'active' CHECK (status IN ('active','disabled')),
   -- Dormant seam (always NULL while auth is delegated — L-AuthzOnly). password_hash is `secret`
@@ -38,7 +38,8 @@ CREATE TABLE oikumenea.account_accounts (
   updated_at      timestamptz NOT NULL DEFAULT now(),
   deleted_at      timestamptz,
 
-  CONSTRAINT account_accounts_rid_shape CHECK (id LIKE 'urn:oikumenea:account:%:account:%'),
+  CONSTRAINT account_accounts_rid_shape
+    CHECK (oikumenea.rid_service(id)=9 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=1),
   -- Dormant credential columns stay NULL until the full-IdP pivot ships (then this CHECK is dropped).
   CONSTRAINT account_accounts_dormant_credentials CHECK (password_hash IS NULL AND mfa_enrolled_at IS NULL)
 );
@@ -69,13 +70,14 @@ COMMENT ON COLUMN oikumenea.account_accounts.mfa_enrolled_at IS 'pii:none';
 -- access/refresh tokens are never persisted. The row is immutable once created (an UPDATE guard); an
 -- unlink is a hard DELETE (there is no deleted_at — the FEDERATES link either exists or is removed).
 CREATE TABLE oikumenea.account_external_identities (
-  id         text PRIMARY KEY DEFAULT oikumenea.new_rid('account','external_identity'),
-  account_id text NOT NULL REFERENCES oikumenea.account_accounts(id) ON DELETE CASCADE,
+  id         uuid PRIMARY KEY DEFAULT oikumenea.new_id(9,1,2),  -- account / object / external_identity
+  account_id uuid NOT NULL REFERENCES oikumenea.account_accounts(id) ON DELETE CASCADE,
   issuer     text NOT NULL,                       -- the IdP `iss`
   subject    text NOT NULL,                       -- the IdP `sub` (pseudonymous identifier)
   created_at timestamptz NOT NULL DEFAULT now(),
 
-  CONSTRAINT account_external_identities_rid_shape CHECK (id LIKE 'urn:oikumenea:account:%:external_identity:%')
+  CONSTRAINT account_external_identities_rid_shape
+    CHECK (oikumenea.rid_service(id)=9 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=2)
 );
 
 -- Immutable once created: block UPDATE (an identity's (issuer, subject, account) never changes) while

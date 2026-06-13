@@ -11,8 +11,10 @@ import (
 	werror "github.com/palantir/witchcraft-go-error"
 )
 
-// NewPool constructs the pgx pool against the operator DSN. Every pooled connection has the
-// app.environment GUC set so oikumenea.new_rid() can compose RIDs (D-ResourceIdentifiers).
+// NewPool constructs the pgx pool against the operator DSN. Every pooled connection still has the
+// app.environment GUC set, but it is now VESTIGIAL: the packed-UUIDv8 oikumenea.new_id() reads no GUC
+// (D-ResourceIdentifiers, amended F-014). The GUC is retained for config visibility / a future
+// consumer; nothing in SQL reads it.
 //
 // The per-transaction RLS GUC seam (app.person_id / app.is_instance_admin / app.readable_units /
 // app.writable_units — D-RLSDefenseInDepth) is deferred to the M0 follow-up; it layers onto this

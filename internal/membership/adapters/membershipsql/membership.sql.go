@@ -39,8 +39,8 @@ func (q *Queries) AbolishPosition(ctx context.Context, id string) (OikumeneaMemb
 
 const activePersonIDsInUnits = `-- name: ActivePersonIDsInUnits :many
 SELECT DISTINCT person_id FROM oikumenea.membership_memberships
-WHERE unit_id = ANY($1::text[]) AND status = 'active' AND deleted_at IS NULL
-  AND ($2 = '' OR person_id > $2)
+WHERE unit_id = ANY($1::uuid[]) AND status = 'active' AND deleted_at IS NULL
+  AND ($2 = '' OR person_id::text > $2)
 ORDER BY person_id
 LIMIT $3
 `
@@ -350,7 +350,7 @@ WHERE p.unit_id = $1 AND p.status = 'active' AND p.deleted_at IS NULL
     SELECT 1 FROM oikumenea.membership_memberships m
     WHERE m.position_id = p.id AND m.status = 'active' AND m.deleted_at IS NULL
   )
-  AND ($2 = '' OR p.id > $2)
+  AND ($2 = '' OR p.id::text > $2)
 ORDER BY p.id
 LIMIT $3
 `
@@ -396,7 +396,7 @@ func (q *Queries) ListFilledPositionsByUnit(ctx context.Context, arg ListFilledP
 const listMembersByUnit = `-- name: ListMembersByUnit :many
 SELECT id, person_id, unit_id, position_id, order_item_id, status, effective_from, effective_to, created_at, updated_at, deleted_at FROM oikumenea.membership_memberships
 WHERE unit_id = $1 AND status = 'active' AND deleted_at IS NULL
-  AND ($2 = '' OR id > $2)
+  AND ($2 = '' OR id::text > $2)
 ORDER BY id
 LIMIT $3
 `
@@ -443,7 +443,7 @@ func (q *Queries) ListMembersByUnit(ctx context.Context, arg ListMembersByUnitPa
 const listMembershipsByPerson = `-- name: ListMembershipsByPerson :many
 SELECT id, person_id, unit_id, position_id, order_item_id, status, effective_from, effective_to, created_at, updated_at, deleted_at FROM oikumenea.membership_memberships
 WHERE person_id = $1 AND status = 'active' AND deleted_at IS NULL
-  AND ($2 = '' OR id > $2)
+  AND ($2 = '' OR id::text > $2)
 ORDER BY id
 LIMIT $3
 `
@@ -490,7 +490,7 @@ func (q *Queries) ListMembershipsByPerson(ctx context.Context, arg ListMembershi
 const listPositionsByUnit = `-- name: ListPositionsByUnit :many
 SELECT id, unit_id, code, title, required_rank_id, status, sort_order, created_at, updated_at, deleted_at FROM oikumenea.membership_positions
 WHERE unit_id = $1 AND status = 'active' AND deleted_at IS NULL
-  AND ($2 = '' OR id > $2)
+  AND ($2 = '' OR id::text > $2)
 ORDER BY id
 LIMIT $3
 `
@@ -540,7 +540,7 @@ WHERE p.unit_id = $1 AND p.status = 'active' AND p.deleted_at IS NULL
     SELECT 1 FROM oikumenea.membership_memberships m
     WHERE m.position_id = p.id AND m.status = 'active' AND m.deleted_at IS NULL
   )
-  AND ($2 = '' OR p.id > $2)
+  AND ($2 = '' OR p.id::text > $2)
 ORDER BY p.id
 LIMIT $3
 `

@@ -50,7 +50,7 @@ RETURNING *;
 -- name: ListPersons :many
 -- Keyset pagination over the time-ordered RID (an empty cursor starts at the beginning).
 SELECT * FROM oikumenea.person_persons
-WHERE deleted_at IS NULL AND (@after = '' OR id > @after)
+WHERE deleted_at IS NULL AND (@after = '' OR id::text > @after)
 ORDER BY id
 LIMIT @lim;
 
@@ -59,7 +59,7 @@ LIMIT @lim;
 -- visible person ids through memberships, then hydrates the rows here). Ordered by RID so the caller
 -- can re-key to its keyset order.
 SELECT * FROM oikumenea.person_persons
-WHERE id = ANY(@ids::text[]) AND deleted_at IS NULL
+WHERE id = ANY(@ids::uuid[]) AND deleted_at IS NULL
 ORDER BY id;
 
 -- name: UpsertPersonRank :one
@@ -458,7 +458,9 @@ SELECT * FROM oikumenea.person_relation_types WHERE code = @code AND deleted_at 
 -- rule a partial-unique index cannot span both endpoint columns).
 SELECT EXISTS (
   SELECT 1 FROM oikumenea.person_partnerships
-  WHERE deleted_at IS NULL AND status IN ('engaged','married') AND id <> @except_id
+  -- except_id is "" when inserting a new partnership (no row to exclude); compare as text so the
+  -- empty sentinel excludes nothing rather than failing the uuid cast.
+  WHERE deleted_at IS NULL AND status IN ('engaged','married') AND id::text <> @except_id
     AND (person_id_a = @person_id OR person_id_b = @person_id)
 ) AS exists;
 

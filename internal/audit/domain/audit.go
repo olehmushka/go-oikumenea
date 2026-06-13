@@ -7,6 +7,7 @@ package domain
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -62,7 +63,7 @@ type Entry struct {
 // RID, the mutually-exclusive actor shape, the required fields, and a known outcome.
 func (e Entry) Validate() error {
 	if !isActionRID(e.ID) {
-		return wrap("id must be an action__<type> RID")
+		return wrap("id must be an Action RID (kind=action)")
 	}
 	if e.Action == "" || e.TargetType == "" || e.RequestID == "" {
 		return wrap("action, targetType, and requestId are required")
@@ -89,11 +90,20 @@ func (e Entry) Validate() error {
 
 func wrap(msg string) error { return errors.Join(ErrInvalidEntry, errors.New(msg)) }
 
-// isActionRID mirrors the audit_log_action_rid_shape CHECK: urn:oikumenea:<svc>:<env>:action__<t>:<uuid>.
+// isActionRID mirrors the audit_log_action_rid_shape CHECK: the RID is a native UUIDv8 whose packed
+// kind nibble is 3 (action) — D-ResourceIdentifiers. Pure stdlib (no pkg/rid) to keep this domain
+// package stdlib-only.
 func isActionRID(id string) bool {
-	parts := strings.Split(id, ":")
-	return len(parts) == 6 && parts[0] == "urn" && parts[1] == "oikumenea" &&
-		strings.HasPrefix(parts[4], "action__")
+	hexOnly := strings.ReplaceAll(id, "-", "")
+	if len(hexOnly) != 32 {
+		return false
+	}
+	raw, err := hex.DecodeString(hexOnly)
+	if err != nil {
+		return false
+	}
+	const kindAction = 3
+	return int(raw[6]&0x0f) == kindAction
 }
 
 // Cursor is the keyset position for newest-first pagination over (created_at, id).

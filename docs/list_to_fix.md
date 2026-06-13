@@ -12,15 +12,61 @@ section heading further down. **To do** is in intended fix order; re-sequence he
 
 ### ▶ NEXT
 
-**F-013** — `attributes` JSONB `pii:special` ceiling is convention-only (Low, architecture-security/product; the `person_persons.attributes` / `document_documents.attributes` JSONB is tagged at the `pii:special` ceiling but freely writable, so "no special-category PII without the envelope" rests on prose only — either document it as an accepted convention-only control in `conventions.md`, or add a lightweight write-time reject for known special-category keys; see [§F-013](#f-013--attributes-jsonb-tagged-piispecial-ceiling-is-freely-writable-so-the-no-special-category-pii-without-the-envelope-rule-rests-on-convention)).
+**None — all tracked findings (F-001 … F-014) are resolved.** Re-run an adversarial review to surface
+the next batch.
 
 ### To do (in fix order)
 
-1. ☐ **F-013** — `attributes` JSONB `pii:special` ceiling is convention-only
-2. ☐ **F-008** — M16–M26 designed-but-unbuilt ahead of unenforced core (cost-benefit)
-3. ☐ **F-014** — composed-URN RID apparatus heavy vs realized benefit (cost-benefit)
+_(empty)_
 
 ### Done
+
+- ✅ **F-014** — composed-URN RID **replaced by a packed native UUIDv8** (the user-chosen third option:
+  not "keep the URN" nor "plain uuid", but a decomposable 16-byte key). A UUIDv8 (RFC 9562 §5.8) packs
+  *app · service · kind · type · timestamp · random*; `oikumenea.new_id(service,kind,type)` mints it and
+  `rid_app/service/kind/type()` decode it (migration `0000`), backed by the seeded
+  `platform_rid_services` (11) + `platform_rid_types` (per-service codes) registries, mirrored in a new
+  **`pkg/rid`** (render `oikumenea:<service>:<kind>:<type>:<uuid>` + decode + boot-asserted equality).
+  Every PK/FK across all 17 migrations went `text`→`uuid` (defaults `new_rid('svc','type')`→
+  `new_id(s,k,t)`, shape CHECKs `LIKE 'urn:…'`→`rid_*`); RLS GUC arrays reverted `text[]`→`uuid[]`. The
+  **sqlc `uuid`→`string` / nullable→`pgtype.Text` override** keeps every repo type identical (pgx
+  scans/encodes uuid↔string natively — verified), so Go carries canonical uuid text and the domain/
+  transport/Conjure layers are unchanged; the web decodes the bytes for type routing (`rid.ts`). The 10
+  `mintActionRID` helpers + dispatch (`person.RelationLinkType`, `audit.isActionRID`) decode kind/type
+  from the bytes instead of splitting the URN (domain layers stay stdlib-only). **D-RIDSeeding relaxed**
+  (F-014): `new_id` reads no GUC, so RID rows may seed in migrations; the `app.environment` GUC is now
+  vestigial. `audit_log.target_id` / `i18n_translations.entity_id` stay `text` (polymorphic over RID
+  uuid *and* natural codes). Binding docs updated (D-ResourceIdentifiers rewritten with a preserved
+  historical-URN note, D-RIDSeeding relaxed, conventions.md + ontology-mapping.md). `go build`/`vet`,
+  full unit + `-tags integration` suite, and `pkg/rid` round-trip all green; dev+test DBs reset & replay
+  all 17 migrations clean; `atlas migrate hash` refreshed. *Done 2026-06-13.*
+
+- ✅ **F-008** — planned-tier (M16–M26) decisions **extracted out of binding `decisions.md`** into a
+  new `docs/architecture/roadmap-decisions.md` (doc-reorg; the finding's "consider moving the
+  long-horizon verticals' detail out of the binding file" path — *sequencing/hygiene, no deletion*).
+  Note the finding's *urgency* premise was already stale: F-001/F-002/F-003/F-004 are fixed, so the
+  core's two headline guarantees are enforced — this close is pure binding-doc hygiene, not a
+  core-rescue. The 12 contiguous decision blocks (D-Worker … D-Vehicles) moved verbatim; `decisions.md`
+  now carries a pointer subsection + an updated preamble and reflects only the built/in-progress
+  surface (M0–M15). Cross-refs repointed: the ~11 "Binding via **D-X**" links in `milestones.md`
+  (M16–M26) + its planned-tier prose notes, the moved-decision links in `open-questions.md`, the
+  `README.md` planned-modules line + reading-order #4, and `CLAUDE.md`. Three now-cross-file anchors
+  inside the moved block (D-CryptoProvider, D-WebUI, geo_countries→D-Geo — all *kept*) repointed to
+  `decisions.md#…`. Doc-only; no code/schema/migration/Conjure change; stage board untouched.
+  Link-checker OK; `grep '^### D-' roadmap-decisions.md` = 12, none left in `decisions.md`.
+  *Done 2026-06-11.*
+
+- ✅ **F-013** — `attributes` JSONB `pii:special` ceiling documented as a **convention-only control**
+  (doc-only; the honest framing the finding offers — no write-time guard added). The binding docs
+  now state plainly that the `pii:special` tag on `person.attributes` / `document.attributes` /
+  `audit.before`/`after` is a **classification marker only**, not a write-time gate: nothing in the
+  write path rejects Art. 9 keys (the `document` `attr_schema` validator checks *shape* for typed
+  document types, not special-category *content*; `person.attributes` is unvalidated free-form), so
+  "no special-category PII without the envelope seam" is an **accepted residual risk**, and adding a
+  reject is out of scope until the `pii:special` envelope seam (DS-29 family) ships. Landed in
+  `conventions.md` (PII grab-bag bullet reworded) and `decisions.md` (D-PIITiers `**Clarified
+  (F-013)**` note); `glossary.md` already framed the tier as a classification and needed no change.
+  No code/schema/migration/Conjure change. Link-checker OK. *Done 2026-06-11.*
 
 - ✅ **F-012** — order auto-apply same-transaction subscriber contract **verified** (the contract was
   already correctly wired; this closed the *unverified* flag). End-to-end trace confirmed: the bus is
@@ -283,7 +329,8 @@ The headline result is **not** "looks good." The product's two differentiating g
 - **Effort:** M
 - **Confidence:** Speculative
 
-### F-013 — `attributes` JSONB tagged `pii:special` (ceiling) is freely writable, so the "no special-category PII without the envelope" rule rests on convention
+### F-013 — `attributes` JSONB tagged `pii:special` (ceiling) is freely writable, so the "no special-category PII without the envelope" rule rests on convention ✅
+- **Status:** ✅ FIXED 2026-06-11 (doc-only — accepted convention-only framing; no write-time guard). The `pii:special` JSONB ceiling is now documented in the binding docs as a **classification marker only**, an accepted residual risk rather than an enforced control. See Remediation progress → Done for what landed.
 - **Severity:** Low
 - **Lens:** architecture (security) + product
 - **Location:** `migrations/20260601000005_person.sql:43,83` (`attributes jsonb … COMMENT 'pii:special'`); `docs/architecture/conventions.md` PII section; D-PIITiers.
@@ -297,7 +344,8 @@ The headline result is **not** "looks good." The product's two differentiating g
 
 ## Overengineering / cost-benefit (not bugs)
 
-### F-008 — 12 fully-decided, unbuilt verticals (M16–M26) sit ahead of a core whose guarantees don't work
+### F-008 — 12 fully-decided, unbuilt verticals (M16–M26) sit ahead of a core whose guarantees don't work ✅
+- **Status:** ✅ FIXED 2026-06-11 (doc-reorg). The 12 planned-tier decision blocks were extracted from binding `decisions.md` into `docs/architecture/roadmap-decisions.md`, so the binding file reflects the built/in-progress surface (M0–M15). Note the *urgency* premise is stale — F-001/F-002/F-003/F-004 are fixed, so this is binding-doc hygiene, not a core rescue. No deletion, no code change. See Remediation progress → Done.
 - **Severity:** Cost-benefit
 - **Lens:** overengineering
 - **Location:** `docs/architecture/decisions.md` (D-Worker, D-DataIngestion, D-Languages, D-Location, D-Education, D-Companies, D-Religion + D-ClergyCredential + D-ReligiousAffiliation + D-SpecialPII, D-GeoSubdivisions, D-Vehicles); `docs/milestones.md` stage board rows M16–M26 (all `decided`/`designed`, none built).
@@ -307,7 +355,10 @@ The headline result is **not** "looks good." The product's two differentiating g
 - **Effort:** M (doc reorganization) / 0 (if just deferring)
 - **Confidence:** Medium
 
-### F-014 — The composed-URN RID apparatus is heavy relative to its realized benefit
+### F-014 — The composed-URN RID apparatus is heavy relative to its realized benefit ✅
+- **Status:** ✅ FIXED 2026-06-13 — replaced with a packed native UUIDv8 (decomposable: app/service/
+  kind/type + timestamp + random; `new_id()` + `rid_*` decoders + `pkg/rid`); D-RIDSeeding relaxed (no
+  GUC). See Remediation progress → Done for the full landing.
 - **Severity:** Cost-benefit
 - **Lens:** overengineering
 - **Location:** `docs/architecture/decisions.md` D-ResourceIdentifiers, D-RIDSeeding; `migrations/20260601000000_schema_bootstrap.sql:34-40` (`new_rid`); every table's `…_rid_shape CHECK`.

@@ -89,18 +89,18 @@ func (q *Queries) InsertAuditEntry(ctx context.Context, arg InsertAuditEntryPara
 
 const queryAuditLog = `-- name: QueryAuditLog :many
 SELECT id, created_at, actor_type, actor_person_id, subsystem, action, target_type, target_id, unit_id, request_id, before, after, outcome FROM oikumenea.audit_log
-WHERE ($1::text IS NULL OR actor_person_id = $1)
+WHERE ($1::uuid IS NULL OR actor_person_id = $1::uuid)
   AND ($2::text     IS NULL OR actor_type      = $2)
   AND ($3::text    IS NULL OR target_type     = $3)
   AND ($4::text      IS NULL OR target_id       = $4)
-  AND ($5::text        IS NULL OR unit_id         = $5)
+  AND ($5::uuid        IS NULL OR unit_id         = $5::uuid)
   AND ($6::text         IS NULL OR action          = $6)
   AND ($7::text        IS NULL OR outcome         = $7)
   AND ($8::timestamptz   IS NULL OR created_at      >= $8)
   AND ($9::timestamptz   IS NULL OR created_at      <= $9)
   AND (
-    $10::text IS NULL
-    OR (created_at, id) < ($11::timestamptz, $10::text)
+    $10::uuid IS NULL
+    OR (created_at, id) < ($11::timestamptz, $10::uuid)
   )
 ORDER BY created_at DESC, id DESC
 LIMIT $12

@@ -238,12 +238,12 @@ func TestUnknownReferences(t *testing.T) {
 	svc, pool := newService(t)
 	unitID := seedUnit(t, pool)
 	person := seedPerson(t, pool)
-	bogus := "urn:oikumenea:tenant:local:unit:" + uuid.NewString()
+	bogus := uuid.NewString()
 
 	if _, err := svc.CreateMembership(ctx, domain.Membership{PersonID: person, UnitID: bogus}); !errors.Is(err, domain.ErrUnknownUnit) {
 		t.Fatalf("unknown unit: want ErrUnknownUnit, got %v", err)
 	}
-	bogusPerson := "urn:oikumenea:person:local:person:" + uuid.NewString()
+	bogusPerson := uuid.NewString()
 	if _, err := svc.CreateMembership(ctx, domain.Membership{PersonID: bogusPerson, UnitID: unitID}); !errors.Is(err, domain.ErrUnknownPerson) {
 		t.Fatalf("unknown person: want ErrUnknownPerson, got %v", err)
 	}

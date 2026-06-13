@@ -13,6 +13,7 @@ package domain
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"strings"
 	"time"
@@ -482,17 +483,24 @@ type SocialAccountHandle struct {
 
 // ---------------------------------------------------------------- person↔person relationships (D-PersonRelationships, M14)
 
-// Relationship link-type tokens — the entity_type segment of a relationship row's RID
-// (urn:oikumenea:person:<env>:<token>:<uuid>). The polymorphic delete decodes the token to pick the
-// table. These match the ontology-mapping §2 Link types and the migration's new_rid(...) tokens.
+// Relationship link-type tokens — the bare link type names the polymorphic delete dispatches on,
+// decoded from a relationship RID's packed type code (D-ResourceIdentifiers). These match the
+// person-service Link type codes in the migration's new_id(6, 2, <code>) defaults / pkg/rid registry.
 const (
-	LinkPartnership  = "link__partnered_with"
-	LinkKinship      = "link__kin_parent_of"
-	LinkGuardianship = "link__guardian_of"
-	LinkSponsorship  = "link__sponsor_of"
-	LinkNextOfKin    = "link__next_of_kin"
-	LinkAssociation  = "link__associated_with"
+	LinkPartnership  = "partnered_with"  // person link type code 2
+	LinkKinship      = "kin_parent_of"   // 3
+	LinkGuardianship = "guardian_of"     // 4
+	LinkSponsorship  = "sponsor_of"      // 5
+	LinkNextOfKin    = "next_of_kin"     // 6
+	LinkAssociation  = "associated_with" // 7
 )
+
+// personLinkTypeByCode maps the packed type code of a person Link RID to its bare token. Kept here
+// (not via pkg/rid) so this domain package stays stdlib-only (hexagonal purity).
+var personLinkTypeByCode = map[int]string{
+	2: LinkPartnership, 3: LinkKinship, 4: LinkGuardianship,
+	5: LinkSponsorship, 6: LinkNextOfKin, 7: LinkAssociation,
+}
 
 // Relation-type catalog categories (D-PersonRelationships): the open-ended relation labels are scoped
 // to which link type they apply to. Fixed lifecycle statuses (partnership, kinship) do NOT use the
@@ -513,14 +521,35 @@ var (
 	validAssociationKind    = map[string]bool{"associate": true, "coi": true, "no_contact": true}
 )
 
-// RelationLinkType extracts the link-type token from a relationship RID, or "" if it is not shaped like
-// a composed person URN RID. Used to dispatch the polymorphic delete-by-id.
+// RelationLinkType decodes the link-type token from a relationship RID (a native UUIDv8 carrying the
+// packed service/kind/type — D-ResourceIdentifiers), or "" if it is not a person Link RID. Used to
+// dispatch the polymorphic delete-by-id. Pure stdlib (no pkg/rid) to keep the domain layer stdlib-only.
 func RelationLinkType(rid string) string {
-	parts := strings.Split(rid, ":")
-	if len(parts) < 6 || parts[0] != "urn" || parts[1] != "oikumenea" || parts[2] != "person" {
+	b, ok := decodeRIDBytes(rid)
+	if !ok {
 		return ""
 	}
-	return parts[4]
+	const svcPerson, kindLink = 6, 2
+	if int(b[8]&0x3f) != svcPerson || int(b[6]&0x0f) != kindLink {
+		return ""
+	}
+	typeCode := int(b[9]) | (int(b[10]>>4) << 8)
+	return personLinkTypeByCode[typeCode]
+}
+
+// decodeRIDBytes parses a canonical uuid text RID into its 16 raw bytes (stdlib only).
+func decodeRIDBytes(rid string) ([16]byte, bool) {
+	hexOnly := strings.ReplaceAll(rid, "-", "")
+	if len(hexOnly) != 32 {
+		return [16]byte{}, false
+	}
+	raw, err := hex.DecodeString(hexOnly)
+	if err != nil {
+		return [16]byte{}, false
+	}
+	var b [16]byte
+	copy(b[:], raw)
+	return b, true
 }
 
 // RelationType is a row of the instance-admin relation-label catalog (person_relation_types): a stable

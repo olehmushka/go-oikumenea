@@ -58,7 +58,7 @@ Narrowed by [D-PersonBio](architecture/decisions.md): `birthdate` and `date_of_d
 - *Default* — full-precision `birthdate DATE` / `date_of_death DATE`; gender *identity* is **not stored**.
 - *Trigger* — (a) records that know only year (or year-month) for a birth **or death** → an additive
   partial-date representation; (b) gender identity, which is `pii:special` (GDPR Art. 9): its **crypto
-  blocker is now lifted** by [D-SpecialPII](architecture/decisions.md) (the envelope extends to
+  blocker is now lifted** by [D-SpecialPII](architecture/roadmap-decisions.md) (the envelope extends to
   `pii:special` person fields, M24), so *storing* it is an additive encrypted column — a separate parked
   product choice, no longer gated on the envelope. `parked`
 
@@ -147,7 +147,7 @@ military-shaped and a non-military `rank_system` leaves `grade_code` `NULL` (no 
 - *Trigger* — a real academic/ecclesiastical deployment needs cross-institution rank equivalence →
   introduce a domain-appropriate grade scale (a second seeded catalog or a generic ordinal). `parked`
 - *Note (religion).* Ecclesiastical clergy are now modeled **outside** the rank module
-  ([D-ClergyCredential](architecture/decisions.md), M23) as a **per-tradition** ordered
+  ([D-ClergyCredential](architecture/roadmap-decisions.md), M23) as a **per-tradition** ordered
   `religion_clergy_grades` catalog; there is intentionally **no cross-tradition comparator** (grades
   order only within a tradition), so this seam stays parked and clergy never sets `grade_code`.
 
@@ -202,12 +202,12 @@ which *issuers the deployment as a whole* accepts.
 ## platform — [`modules/platform.md`](modules/platform.md)
 
 > **DS-25** (background job / worker runtime) was **promoted** to milestone **M16** — now binding as
-> [D-Worker](architecture/decisions.md), owned by [platform](modules/platform.md). The
+> [D-Worker](architecture/roadmap-decisions.md), owned by [platform](modules/platform.md). The
 > scheduler-dependent residuals it enables (future-dated order effects, expiry sweeps) ride the M16
 > runtime when their own triggers fire. Per the ID-stability rule the number is **retired, not reused**.
 
 **DS-44 · Additional ingestion connectors (SQL/JDBC, object-store).**
-Introduced by [D-DataIngestion](architecture/decisions.md): the M17 framework ships an **HTTP(S)**
+Introduced by [D-DataIngestion](architecture/roadmap-decisions.md): the M17 framework ships an **HTTP(S)**
 (and degenerate `file`) connector; the `Connector` interface is pluggable.
 - *Default* — HTTP + file connectors only.
 - *Trigger* — a real SQL/JDBC source (a national registry DB) or an S3/MinIO object-store source is
@@ -235,7 +235,7 @@ Introduced by [D-DataIngestion](architecture/decisions.md): the M17 framework sh
 The **envelope-encryption mechanism ships** ([D-CryptoProvider](architecture/decisions.md)): the
 pluggable `KeyProvider` seam + `pkg/crypto` (ciphertext in DB, KEK in an external KMS, blind index,
 crypto-erase) protect **`pii:sensitive`** national-identifier values, and — via
-[D-SpecialPII](architecture/decisions.md) (M24) — now also **`pii:special` person/affiliation fields**
+[D-SpecialPII](architecture/roadmap-decisions.md) (M24) — now also **`pii:special` person/affiliation fields**
 (religious affiliation lands encrypted). The **person-field half is therefore resolved**; this seam
 **narrows to audit payloads** — `audit.before`/`after` JSONB at the `pii:special` ceiling.
 - *Default* — `pii:sensitive` and `pii:special` **person/affiliation** fields are envelope-encrypted;
@@ -251,10 +251,10 @@ crypto-erase) protect **`pii:sensitive`** national-identifier values, and — vi
 
 ---
 
-## company — planned ([milestones.md](milestones.md) M21 · [D-Companies](architecture/decisions.md))
+## company — planned ([milestones.md](milestones.md) M21 · [D-Companies](architecture/roadmap-decisions.md))
 
 **DS-45 · Company registry-intelligence feeds (financials, court cases, tax debt, sanctions/PEP).**
-[D-Companies](architecture/decisions.md) scopes M21 to **structural** registry data; volatile
+[D-Companies](architecture/roadmap-decisions.md) scopes M21 to **structural** registry data; volatile
 intelligence is excluded.
 - *Default* — no financials/litigation/tax/sanctions data; structural identity + ownership graph only.
 - *Trigger* — an operator has a real feed → model the relevant entity and ingest it via a
@@ -266,7 +266,7 @@ intelligence is excluded.
   person contact model (D-PersonContactChannels). `parked`
 
 **DS-47 · Ownership-graph closure & computed UBO.**
-[D-Companies](architecture/decisions.md) stores direct ownership edges + a **declared** beneficiary
+[D-Companies](architecture/roadmap-decisions.md) stores direct ownership edges + a **declared** beneficiary
 record; it does not traverse the chain.
 - *Default* — direct `company_shareholdings` edges + declared `company_beneficiaries`; no computed
   ultimate-owner traversal.
@@ -278,14 +278,14 @@ record; it does not traverse the chain.
 ## religion — [`modules/religion.md`](modules/religion.md)
 
 > **DS-48** (Religion domain) was **promoted** to the **M22–M25** cluster — now binding as
-> [D-Religion](architecture/decisions.md), [D-ClergyCredential](architecture/decisions.md), and
-> [D-ReligiousAffiliation](architecture/decisions.md), owned by [religion](modules/religion.md). The
+> [D-Religion](architecture/roadmap-decisions.md), [D-ClergyCredential](architecture/roadmap-decisions.md), and
+> [D-ReligiousAffiliation](architecture/roadmap-decisions.md), owned by [religion](modules/religion.md). The
 > drafts' Christianity-specific concepts return **generalized to all faiths**, catalog-driven; the
-> `pii:special` belief concern is resolved by [D-SpecialPII](architecture/decisions.md) (envelope
+> `pii:special` belief concern is resolved by [D-SpecialPII](architecture/roadmap-decisions.md) (envelope
 > extended to the special tier). Per the ID-stability rule the number is **retired, not reused**.
 
 **DS-49 · Rite-of-passage / life-cycle records.**
-Introduced by [D-ReligiousAffiliation](architecture/decisions.md): affiliation is modeled, but
+Introduced by [D-ReligiousAffiliation](architecture/roadmap-decisions.md): affiliation is modeled, but
 individual life-cycle observances are not.
 - *Default* — no baptism / bar-bat-mitzvah / marriage-rite / funeral records; only the affiliation tie.
 - *Trigger* — a deployment must record rites of passage → a **generic, catalog-typed** observance entity
@@ -300,10 +300,10 @@ scope is `unit|subtree` over a unit, not a single site/location.
 
 ---
 
-## vehicle — planned ([milestones.md](milestones.md) M26 · [D-Vehicles](architecture/decisions.md))
+## vehicle — planned ([milestones.md](milestones.md) M26 · [D-Vehicles](architecture/roadmap-decisions.md))
 
 **DS-51 · Full ISO-3166-2 subdivision set + residence/Location retrofit.**
-Introduced by [D-GeoSubdivisions](architecture/decisions.md): `geo_subdivisions` ships with the
+Introduced by [D-GeoSubdivisions](architecture/roadmap-decisions.md): `geo_subdivisions` ships with the
 **target-country subset** migration-seeded (UA first); `person_residences.region` and
 `location_locations.admin_area_1`/`admin_area_2` stay **free-text**.
 - *Default* — UA (and other target) subdivisions only; residence/Location regions are free text.
@@ -312,7 +312,7 @@ Introduced by [D-GeoSubdivisions](architecture/decisions.md): `geo_subdivisions`
   `location_locations.admin_area_*` to a `geo_subdivisions` FK (additive expand/contract). `parked`
 
 **DS-52 · Vehicle lifecycle / intelligence feeds.**
-[D-Vehicles](architecture/decisions.md) scopes M26 to **structural** registry data (identity, taxonomy,
+[D-Vehicles](architecture/roadmap-decisions.md) scopes M26 to **structural** registry data (identity, taxonomy,
 ownership/plate); volatile lifecycle data is excluded (mirrors company DS-45).
 - *Default* — no insurance/MTPL, technical-inspection, accident, theft/wanted, odometer, or telematics
   data; structural identity + ownership/plate only.

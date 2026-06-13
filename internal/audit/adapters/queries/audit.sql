@@ -23,18 +23,18 @@ SELECT * FROM oikumenea.audit_log WHERE id = @id;
 -- type). Ordered newest-first by the (created_at, id) cursor. A NULL filter matches everything.
 -- page_limit is fetched as N+1 by the caller to detect a further page.
 SELECT * FROM oikumenea.audit_log
-WHERE (sqlc.narg('actor_person_id')::text IS NULL OR actor_person_id = sqlc.narg('actor_person_id'))
+WHERE (sqlc.narg('actor_person_id')::uuid IS NULL OR actor_person_id = sqlc.narg('actor_person_id')::uuid)
   AND (sqlc.narg('actor_type')::text     IS NULL OR actor_type      = sqlc.narg('actor_type'))
   AND (sqlc.narg('target_type')::text    IS NULL OR target_type     = sqlc.narg('target_type'))
   AND (sqlc.narg('target_id')::text      IS NULL OR target_id       = sqlc.narg('target_id'))
-  AND (sqlc.narg('unit_id')::text        IS NULL OR unit_id         = sqlc.narg('unit_id'))
+  AND (sqlc.narg('unit_id')::uuid        IS NULL OR unit_id         = sqlc.narg('unit_id')::uuid)
   AND (sqlc.narg('action')::text         IS NULL OR action          = sqlc.narg('action'))
   AND (sqlc.narg('outcome')::text        IS NULL OR outcome         = sqlc.narg('outcome'))
   AND (sqlc.narg('since')::timestamptz   IS NULL OR created_at      >= sqlc.narg('since'))
   AND (sqlc.narg('until')::timestamptz   IS NULL OR created_at      <= sqlc.narg('until'))
   AND (
-    sqlc.narg('cursor_id')::text IS NULL
-    OR (created_at, id) < (sqlc.narg('cursor_created_at')::timestamptz, sqlc.narg('cursor_id')::text)
+    sqlc.narg('cursor_id')::uuid IS NULL
+    OR (created_at, id) < (sqlc.narg('cursor_created_at')::timestamptz, sqlc.narg('cursor_id')::uuid)
   )
 ORDER BY created_at DESC, id DESC
 LIMIT sqlc.arg('page_limit');

@@ -200,19 +200,26 @@ func TestRelationshipValidate(t *testing.T) {
 }
 
 func TestRelationLinkType(t *testing.T) {
+	// Native UUIDv8 RIDs: byte6 low nibble = kind (2=link), byte8 low 6 bits = service (6=person),
+	// byte9 = type-code low 8 bits. partnered_with=2, kin_parent_of=3, associated_with=7.
 	cases := map[string]string{
-		"urn:oikumenea:person:dev:link__partnered_with:0190":  LinkPartnership,
-		"urn:oikumenea:person:dev:link__kin_parent_of:0190":   LinkKinship,
-		"urn:oikumenea:person:dev:link__associated_with:0190": LinkAssociation,
+		"00000000-0000-8201-8602-000000000000": LinkPartnership,  // person/link/type 2
+		"00000000-0000-8201-8603-000000000000": LinkKinship,      // type 3
+		"00000000-0000-8201-8607-000000000000": LinkAssociation,  // type 7
 	}
 	for rid, want := range cases {
 		if got := RelationLinkType(rid); got != want {
 			t.Fatalf("RelationLinkType(%q) = %q, want %q", rid, got, want)
 		}
 	}
-	for _, bad := range []string{"", "not-a-rid", "urn:oikumenea:tenant:dev:unit:0190", "urn:oikumenea:person"} {
-		if got := RelationLinkType(bad); got != "" && bad == "urn:oikumenea:tenant:dev:unit:0190" {
-			// a non-person RID must not be treated as a relationship
+	// Non-person-link RIDs must not be treated as relationships.
+	for _, bad := range []string{
+		"",
+		"not-a-rid",
+		"00000000-0000-8101-8401-000000000000", // tenant/object/unit (service 4, kind 1)
+		"00000000-0000-8101-8601-000000000000", // person/object (kind 1, not link)
+	} {
+		if got := RelationLinkType(bad); got != "" {
 			t.Fatalf("RelationLinkType(%q) = %q, want \"\"", bad, got)
 		}
 	}

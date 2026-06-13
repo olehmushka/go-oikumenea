@@ -132,7 +132,7 @@ func TestTranslationsRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newService(t)
 
-	entityID := "urn:oikumenea:tenant:local:unit:" + uuid.NewString()
+	entityID := uuid.NewString()
 	in := []domain.Translation{
 		{EntityType: "unit", EntityID: entityID, Field: "name", Locale: "ukr", Text: "Перша бригада"},
 		{EntityType: "unit", EntityID: entityID, Field: "name", Locale: "eng", Text: "First Brigade"},
@@ -167,7 +167,7 @@ func TestUpsertRejectsUnknownLocale(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newService(t)
 
-	entityID := "urn:oikumenea:tenant:local:unit:" + uuid.NewString()
+	entityID := uuid.NewString()
 	_, err := svc.UpsertTranslations(ctx, "unit", entityID, []domain.Translation{
 		{EntityType: "unit", EntityID: entityID, Field: "name", Locale: "zzz", Text: "x"},
 	})

@@ -23,18 +23,19 @@
 -- default-locale fallback (translations in the i18n store, M2). required_rank_id is the
 -- establishment expectation — ADVISORY, never enforced against any filler's rank.
 CREATE TABLE oikumenea.membership_positions (
-  id               text PRIMARY KEY DEFAULT oikumenea.new_rid('membership','position'),
-  unit_id          text NOT NULL REFERENCES oikumenea.tenant_units(id) ON DELETE RESTRICT,  -- the owning unit
+  id               uuid PRIMARY KEY DEFAULT oikumenea.new_id(7,1,1),  -- membership / object / position
+  unit_id          uuid NOT NULL REFERENCES oikumenea.tenant_units(id) ON DELETE RESTRICT,  -- the owning unit
   code             text NOT NULL,                 -- stable, locale-agnostic; unique within the unit among active
   title            text NOT NULL,                 -- default-locale title; translatable via the i18n store
-  required_rank_id text REFERENCES oikumenea.rank_ranks(id) ON DELETE RESTRICT,  -- optional, advisory establishment rank
+  required_rank_id uuid REFERENCES oikumenea.rank_ranks(id) ON DELETE RESTRICT,  -- optional, advisory establishment rank
   status           text NOT NULL DEFAULT 'active' CHECK (status IN ('active','abolished')),
   sort_order       integer,                       -- app-managed display order within the unit
   created_at       timestamptz NOT NULL DEFAULT now(),
   updated_at       timestamptz NOT NULL DEFAULT now(),
   deleted_at       timestamptz,
 
-  CONSTRAINT membership_positions_rid_shape CHECK (id LIKE 'urn:oikumenea:membership:%:position:%')
+  CONSTRAINT membership_positions_rid_shape
+    CHECK (oikumenea.rid_service(id)=7 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=1)
 );
 
 CREATE TRIGGER membership_positions_set_updated_at
@@ -61,14 +62,14 @@ COMMENT ON COLUMN oikumenea.membership_positions.sort_order IS 'pii:none';
 -- belong to the same unit (checked in the application). Reversible: end flips status + sets
 -- effective_to rather than deleting; ending a filling VACATES the billet.
 CREATE TABLE oikumenea.membership_memberships (
-  id             text PRIMARY KEY DEFAULT oikumenea.new_rid('membership','link__member_of'),
-  person_id      text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE RESTRICT,
-  unit_id        text NOT NULL REFERENCES oikumenea.tenant_units(id) ON DELETE RESTRICT,
-  position_id    text REFERENCES oikumenea.membership_positions(id) ON DELETE RESTRICT,  -- NULL = plain belonging
+  id             uuid PRIMARY KEY DEFAULT oikumenea.new_id(7,2,1),  -- membership / link / member_of
+  person_id      uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE RESTRICT,
+  unit_id        uuid NOT NULL REFERENCES oikumenea.tenant_units(id) ON DELETE RESTRICT,
+  position_id    uuid REFERENCES oikumenea.membership_positions(id) ON DELETE RESTRICT,  -- NULL = plain belonging
   -- order_item_id: provenance pointer to the order (наказ) item this fill/belonging cites as its
   -- legal basis (D-Orders). The order module is M10, so the FK (-> order_order_items, ON DELETE SET
   -- NULL) is added then; today it is a free-standing nullable RID column (open seam).
-  order_item_id  text,
+  order_item_id  uuid,
   status         text NOT NULL DEFAULT 'active' CHECK (status IN ('active','ended')),
   effective_from timestamptz NOT NULL DEFAULT now(),
   effective_to   timestamptz,
@@ -76,7 +77,8 @@ CREATE TABLE oikumenea.membership_memberships (
   updated_at     timestamptz NOT NULL DEFAULT now(),
   deleted_at     timestamptz,
 
-  CONSTRAINT membership_memberships_rid_shape CHECK (id LIKE 'urn:oikumenea:membership:%:link\_\_member_of:%')
+  CONSTRAINT membership_memberships_rid_shape
+    CHECK (oikumenea.rid_service(id)=7 AND oikumenea.rid_kind(id)=2 AND oikumenea.rid_type(id)=1)
 );
 
 CREATE TRIGGER membership_memberships_set_updated_at

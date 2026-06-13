@@ -178,16 +178,16 @@ func TestStrictContainment(t *testing.T) {
 	ctx := context.Background()
 	svc, _, _ := newService(t)
 
-	_, err := svc.AddType(ctx, "urn:oikumenea:rank:local:category:"+uuid.NewString(), nil, code(t, "x"), "X", nil)
+	_, err := svc.AddType(ctx, uuid.NewString(), nil, code(t, "x"), "X", nil)
 	if !errors.Is(err, domain.ErrCategoryNotFound) {
 		t.Fatalf("type under missing category: want ErrCategoryNotFound, got %v", err)
 	}
-	missingParent := "urn:oikumenea:rank:local:type:" + uuid.NewString()
+	missingParent := uuid.NewString()
 	_, err = svc.AddType(ctx, "", &missingParent, code(t, "x"), "X", nil)
 	if !errors.Is(err, domain.ErrTypeNotFound) {
 		t.Fatalf("type under missing parent type: want ErrTypeNotFound, got %v", err)
 	}
-	_, err = svc.AddRank(ctx, "urn:oikumenea:rank:local:type:"+uuid.NewString(), code(t, "y"), "Y", nil, nil, nil)
+	_, err = svc.AddRank(ctx, uuid.NewString(), code(t, "y"), "Y", nil, nil, nil)
 	if !errors.Is(err, domain.ErrTypeNotFound) {
 		t.Fatalf("rank under missing type: want ErrTypeNotFound, got %v", err)
 	}

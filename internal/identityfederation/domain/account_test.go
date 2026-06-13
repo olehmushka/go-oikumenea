@@ -6,7 +6,7 @@ import (
 )
 
 func TestAccountValidate(t *testing.T) {
-	if err := (Account{PersonID: "urn:oikumenea:person:local:person:1"}).Validate(); err != nil {
+	if err := (Account{PersonID: "0192f3a1-0000-8101-8601-000000000000"}).Validate(); err != nil {
 		t.Fatalf("valid account rejected: %v", err)
 	}
 	if err := (Account{}).Validate(); !errors.Is(err, ErrAccountInvalid) {

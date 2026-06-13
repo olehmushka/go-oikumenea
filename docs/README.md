@@ -60,7 +60,7 @@ across graphs. That — *hierarchy + inheritance + visibility, decided by a PDP*
 | [platform](modules/platform.md) | witchcraft bootstrap, config, observability, schema bootstrap, country registry (+ the planned `geo_subdivisions` ISO-3166-2 registry, M26), crypto/KMS seam, boot-time schema-version check. **Planned:** background-worker runtime (M16) + the generic data-ingestion/connector framework (M17). |
 | [audit](modules/audit.md) | Append-only audit trail of permission-sensitive actions. |
 
-**Planned modules** (designed in [milestones.md](milestones.md) M16–M26 + [decisions.md](architecture/decisions.md); most module docs follow at implementation time — the **religion** and shared **location** docs already exist):
+**Planned modules** (designed in [milestones.md](milestones.md) M16–M26 + [roadmap-decisions.md](architecture/roadmap-decisions.md); most module docs follow at implementation time — the **religion** and shared **location** docs already exist):
 
 | Module | Responsibility |
 |---|---|
@@ -84,8 +84,11 @@ A **consumer** of the above (not a backend module), documented alongside them:
    module docs assume these terms.
 3. [`architecture/overview.md`](architecture/overview.md) — the Palantir stack, the
    modular-monolith / hexagonal layering, the conceptual domain model, the PDP request path.
-4. [`architecture/decisions.md`](architecture/decisions.md) — the binding decisions
-   (what is locked and why). If code and a decision disagree, the code is wrong.
+4. [`architecture/decisions.md`](architecture/decisions.md) — the binding decisions for the built /
+   in-progress surface (M0–M15): what is locked and why. If code and a decision disagree, the code is
+   wrong. The **planned-tier (M16–M26)** decisions live in
+   [`architecture/roadmap-decisions.md`](architecture/roadmap-decisions.md) (decided/designed, not yet
+   built; binding once their milestone enters implementation).
 5. [`architecture/conventions.md`](architecture/conventions.md) — schema, Go/witchcraft,
    Conjure, and API conventions that every module follows.
 6. [`ontology-mapping.md`](ontology-mapping.md) — the **binding Object / Link / Action registry**

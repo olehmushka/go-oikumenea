@@ -34,7 +34,7 @@ WHERE code = @code AND deleted_at IS NULL;
 SELECT id, code, name, description, is_base, created_at, updated_at
 FROM oikumenea.authz_roles
 WHERE deleted_at IS NULL
-  AND (sqlc.arg('after')::text = '' OR id > sqlc.arg('after')::text)
+  AND (sqlc.arg('after')::text = '' OR id::text > sqlc.arg('after')::text)
 ORDER BY id
 LIMIT @lim;
 
@@ -100,7 +100,7 @@ SELECT id, subject_person_id, role_id, target_unit_id, scope, graph_id,
        granted_by, granted_at, revoked_at, revoked_by, expires_at, created_at, updated_at
 FROM oikumenea.authz_role_assignments
 WHERE subject_person_id = @subject_person_id AND revoked_at IS NULL
-  AND (sqlc.arg('after')::text = '' OR id > sqlc.arg('after')::text)
+  AND (sqlc.arg('after')::text = '' OR id::text > sqlc.arg('after')::text)
 ORDER BY id
 LIMIT @lim;
 
@@ -109,7 +109,7 @@ SELECT id, subject_person_id, role_id, target_unit_id, scope, graph_id,
        granted_by, granted_at, revoked_at, revoked_by, expires_at, created_at, updated_at
 FROM oikumenea.authz_role_assignments
 WHERE target_unit_id = @target_unit_id AND revoked_at IS NULL
-  AND (sqlc.arg('after')::text = '' OR id > sqlc.arg('after')::text)
+  AND (sqlc.arg('after')::text = '' OR id::text > sqlc.arg('after')::text)
 ORDER BY id
 LIMIT @lim;
 

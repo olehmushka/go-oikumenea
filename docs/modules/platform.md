@@ -58,9 +58,10 @@ layers.
 Creates the shared objects all modules rely on (see [conventions.md](../architecture/conventions.md)):
 
 - the **`oikumenea` schema** and the `citext` extension;
-- `oikumenea.uuid_v7()` — time-ordered UUID generator; the crypto component inside every RID;
-- `oikumenea.new_rid(service, entity_type)` — composes the URN **RID** (`urn:oikumenea:…`) used as
-  every PK default (D-ResourceIdentifiers), wrapping `uuid_v7()` with `current_setting('app.environment')`;
+- `oikumenea.uuid_v7()` — time-ordered UUID helper;
+- `oikumenea.new_id(service, kind, type)` — mints the packed **UUIDv8 RID** used as every PK default
+  (D-ResourceIdentifiers, amended F-014); reads no GUC. Paired with the `rid_app/service/kind/type()`
+  decoders and the seeded `platform_rid_services` / `platform_rid_types` registries;
 - `oikumenea.set_updated_at()` — `BEFORE UPDATE` trigger function for `updated_at`;
 - `oikumenea.reject_mutation()` — `BEFORE UPDATE OR DELETE` guard for append-only tables;
 - `oikumenea.schema_version` — the single-row table recording the applied schema revision;

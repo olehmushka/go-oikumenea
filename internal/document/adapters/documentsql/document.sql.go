@@ -363,7 +363,7 @@ func (q *Queries) ListDocumentTypes(ctx context.Context) ([]OikumeneaDocumentDoc
 const listDocumentsByPerson = `-- name: ListDocumentsByPerson :many
 SELECT id, person_id, type_id, number, issuer, issuing_country, issued_on, expires_on, attributes, status, created_at, updated_at, deleted_at FROM oikumenea.document_documents
 WHERE person_id = $1 AND deleted_at IS NULL
-  AND ($2 = '' OR id > $2)
+  AND ($2 = '' OR id::text > $2)
 ORDER BY id
 LIMIT $3
 `

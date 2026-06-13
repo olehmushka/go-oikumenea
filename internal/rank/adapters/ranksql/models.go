@@ -787,6 +787,22 @@ type OikumeneaPersonSponsorship struct {
 	DeletedAt   pgtype.Timestamptz
 }
 
+type OikumeneaPlatformRidService struct {
+	// pii:none
+	Code int16
+	// pii:none
+	Module    string
+	CreatedAt pgtype.Timestamptz
+}
+
+type OikumeneaPlatformRidType struct {
+	ServiceCode int16
+	Kind        int16
+	TypeCode    int16
+	// pii:none
+	TypeName string
+}
+
 type OikumeneaRankCategory struct {
 	// pii:none
 	ID string

@@ -67,7 +67,7 @@ WHERE id = @id AND deleted_at IS NULL;
 -- name: ListDocumentsByPerson :many
 SELECT * FROM oikumenea.document_documents
 WHERE person_id = @person_id AND deleted_at IS NULL
-  AND (@after = '' OR id > @after)
+  AND (@after = '' OR id::text > @after)
 ORDER BY id
 LIMIT @lim;
 

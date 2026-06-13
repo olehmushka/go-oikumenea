@@ -354,7 +354,7 @@ SELECT u.id, u.code, u.name, u.visibility, c.depth
 FROM oikumenea.tenant_unit_closure c
 JOIN oikumenea.tenant_units u ON u.id = c.descendant_id AND u.deleted_at IS NULL
 WHERE c.graph_id = $1 AND c.ancestor_id = $2 AND c.depth > 0
-  AND ($3::text IS NULL OR c.descendant_id > $3::text)
+  AND ($3::uuid IS NULL OR c.descendant_id > $3::uuid)
 ORDER BY c.descendant_id
 LIMIT $4
 `
@@ -443,7 +443,7 @@ const listUnits = `-- name: ListUnits :many
 SELECT id, code, name, unit_kind, level, visibility, state, metadata, created_at, updated_at, deleted_at FROM oikumenea.tenant_units
 WHERE deleted_at IS NULL
   AND ($1::smallint IS NULL OR level = $1::smallint)
-  AND ($2::text IS NULL OR id > $2::text)
+  AND ($2::uuid IS NULL OR id > $2::uuid)
 ORDER BY id
 LIMIT $3
 `
@@ -503,7 +503,7 @@ WITH RECURSIVE
       ON e.graph_id = $1 AND e.parent_id = r.descendant_id
   )
 INSERT INTO oikumenea.tenant_unit_closure (graph_id, ancestor_id, descendant_id, depth)
-SELECT $1::text, ancestor_id, descendant_id, min(depth)::int
+SELECT $1::uuid, ancestor_id, descendant_id, min(depth)::int
 FROM reach
 GROUP BY ancestor_id, descendant_id
 `

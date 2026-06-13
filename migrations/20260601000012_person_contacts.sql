@@ -89,8 +89,8 @@ INSERT INTO oikumenea.person_phone_types (code, name, sort_order) VALUES
 -- One ACTIVE row per (person, address); is_primary marks at most one active. CASCADE on person delete;
 -- erased on purge. pii:contact. DISTINCT from the login email — no FK to account_accounts.
 CREATE TABLE oikumenea.person_emails (
-  id         text PRIMARY KEY DEFAULT oikumenea.new_rid('person','email'),
-  person_id  text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
+  id         uuid PRIMARY KEY DEFAULT oikumenea.new_id(6,1,5),  -- person / object / email
+  person_id  uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
   type_code  text NOT NULL REFERENCES oikumenea.person_email_types(code) ON DELETE RESTRICT,
   address    citext NOT NULL,
   provider   text,                                -- derived on write; NULL when no mapping
@@ -99,7 +99,8 @@ CREATE TABLE oikumenea.person_emails (
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,
 
-  CONSTRAINT person_emails_rid_shape CHECK (id LIKE 'urn:oikumenea:person:%:email:%')
+  CONSTRAINT person_emails_rid_shape
+    CHECK (oikumenea.rid_service(id)=6 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=5)
 );
 
 CREATE TRIGGER person_emails_set_updated_at
@@ -123,8 +124,8 @@ COMMENT ON COLUMN oikumenea.person_emails.is_primary IS 'pii:none';
 -- geo registry. Carrier/provider is NOT stored (not statically derivable — DS-40). One ACTIVE row per
 -- (person, number); is_primary marks at most one active. CASCADE on person delete; erased on purge.
 CREATE TABLE oikumenea.person_phones (
-  id         text PRIMARY KEY DEFAULT oikumenea.new_rid('person','phone'),
-  person_id  text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
+  id         uuid PRIMARY KEY DEFAULT oikumenea.new_id(6,1,6),  -- person / object / phone
+  person_id  uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
   type_code  text NOT NULL REFERENCES oikumenea.person_phone_types(code) ON DELETE RESTRICT,
   number     text NOT NULL,                       -- E.164-normalized
   country    char(2) REFERENCES oikumenea.geo_countries(code) ON DELETE RESTRICT,  -- derived; nullable
@@ -133,7 +134,8 @@ CREATE TABLE oikumenea.person_phones (
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,
 
-  CONSTRAINT person_phones_rid_shape CHECK (id LIKE 'urn:oikumenea:person:%:phone:%')
+  CONSTRAINT person_phones_rid_shape
+    CHECK (oikumenea.rid_service(id)=6 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=6)
 );
 
 CREATE TRIGGER person_phones_set_updated_at
@@ -156,15 +158,16 @@ COMMENT ON COLUMN oikumenea.person_phones.is_primary IS 'pii:none';
 -- NOT NULL, pii:basic, and UNIQUE per person among active rows. is_primary marks at most one active.
 -- CASCADE on person delete; erased on purge.
 CREATE TABLE oikumenea.person_call_signs (
-  id         text PRIMARY KEY DEFAULT oikumenea.new_rid('person','call_sign'),
-  person_id  text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
+  id         uuid PRIMARY KEY DEFAULT oikumenea.new_id(6,1,7),  -- person / object / call_sign
+  person_id  uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
   call_sign  text NOT NULL,
   is_primary boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,
 
-  CONSTRAINT person_call_signs_rid_shape CHECK (id LIKE 'urn:oikumenea:person:%:call_sign:%')
+  CONSTRAINT person_call_signs_rid_shape
+    CHECK (oikumenea.rid_service(id)=6 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=7)
 );
 
 CREATE TRIGGER person_call_signs_set_updated_at

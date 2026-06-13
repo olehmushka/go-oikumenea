@@ -75,9 +75,9 @@ INSERT INTO oikumenea.person_platforms (code, name, category, sort_order) VALUES
 -- category='messenger' platform (enforced in the application + domain; the FK only checks existence).
 -- One active link per (phone_id, platform_code) / (email_id, platform_code). Erased on person purge.
 CREATE TABLE oikumenea.person_messenger_links (
-  id            text PRIMARY KEY DEFAULT oikumenea.new_rid('person','messenger_link'),
-  phone_id      text REFERENCES oikumenea.person_phones(id) ON DELETE CASCADE,
-  email_id      text REFERENCES oikumenea.person_emails(id) ON DELETE CASCADE,
+  id            uuid PRIMARY KEY DEFAULT oikumenea.new_id(6,1,8),  -- person / object / messenger_link
+  phone_id      uuid REFERENCES oikumenea.person_phones(id) ON DELETE CASCADE,
+  email_id      uuid REFERENCES oikumenea.person_emails(id) ON DELETE CASCADE,
   platform_code text NOT NULL REFERENCES oikumenea.person_platforms(code) ON DELETE RESTRICT,
   is_primary    boolean NOT NULL DEFAULT false,
   verified_at   timestamptz,
@@ -85,7 +85,8 @@ CREATE TABLE oikumenea.person_messenger_links (
   updated_at    timestamptz NOT NULL DEFAULT now(),
   deleted_at    timestamptz,
 
-  CONSTRAINT person_messenger_links_rid_shape CHECK (id LIKE 'urn:oikumenea:person:%:messenger_link:%'),
+  CONSTRAINT person_messenger_links_rid_shape
+    CHECK (oikumenea.rid_service(id)=6 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=8),
   CONSTRAINT person_messenger_links_channel_xor CHECK ((phone_id IS NOT NULL) <> (email_id IS NOT NULL))
 );
 
@@ -120,8 +121,8 @@ COMMENT ON COLUMN oikumenea.person_messenger_links.verified_at IS 'pii:none';
 --
 -- DS-29-gated (NOT created here): free-text bio + self_declared_location (pii:sensitive).
 CREATE TABLE oikumenea.person_social_accounts (
-  id                      text PRIMARY KEY DEFAULT oikumenea.new_rid('person','social_account'),
-  person_id               text NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
+  id                      uuid PRIMARY KEY DEFAULT oikumenea.new_id(6,1,9),  -- person / object / social_account
+  person_id               uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
   platform_code           text NOT NULL REFERENCES oikumenea.person_platforms(code) ON DELETE RESTRICT,
   platform_user_id        text,                                 -- immutable durable key; null when unknown
   handle                  text NOT NULL,                        -- mutable current @handle
@@ -137,7 +138,8 @@ CREATE TABLE oikumenea.person_social_accounts (
   updated_at              timestamptz NOT NULL DEFAULT now(),
   deleted_at              timestamptz,
 
-  CONSTRAINT person_social_accounts_rid_shape CHECK (id LIKE 'urn:oikumenea:person:%:social_account:%')
+  CONSTRAINT person_social_accounts_rid_shape
+    CHECK (oikumenea.rid_service(id)=6 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=9)
 );
 
 CREATE TRIGGER person_social_accounts_set_updated_at
@@ -175,8 +177,8 @@ COMMENT ON COLUMN oikumenea.person_social_accounts.is_primary IS 'pii:none';
 -- so a rename never breaks the account link. valid_to IS NULL marks the current handle. CASCADE when the
 -- account is hard-deleted; erased on person purge (via the account cascade + explicit DeleteAll).
 CREATE TABLE oikumenea.person_social_account_handles (
-  id         text PRIMARY KEY DEFAULT oikumenea.new_rid('person','social_handle'),
-  account_id text NOT NULL REFERENCES oikumenea.person_social_accounts(id) ON DELETE CASCADE,
+  id         uuid PRIMARY KEY DEFAULT oikumenea.new_id(6,1,10),  -- person / object / social_handle
+  account_id uuid NOT NULL REFERENCES oikumenea.person_social_accounts(id) ON DELETE CASCADE,
   handle     text NOT NULL,
   valid_from timestamptz NOT NULL,
   valid_to   timestamptz,
@@ -184,7 +186,8 @@ CREATE TABLE oikumenea.person_social_account_handles (
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,
 
-  CONSTRAINT person_social_account_handles_rid_shape CHECK (id LIKE 'urn:oikumenea:person:%:social_handle:%')
+  CONSTRAINT person_social_account_handles_rid_shape
+    CHECK (oikumenea.rid_service(id)=6 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=10)
 );
 
 CREATE TRIGGER person_social_account_handles_set_updated_at

@@ -49,7 +49,7 @@ func newService(t *testing.T) (*application.Service, *pgxpool.Pool) {
 func mintActionRID(t *testing.T, ctx context.Context, pool *pgxpool.Pool) string {
 	t.Helper()
 	var rid string
-	if err := pool.QueryRow(ctx, "SELECT oikumenea.new_rid('audit', 'action__test')").Scan(&rid); err != nil {
+	if err := pool.QueryRow(ctx, "SELECT oikumenea.new_id(3, 3, 0)").Scan(&rid); err != nil {
 		t.Fatalf("mint action rid: %v", err)
 	}
 	return rid
@@ -72,7 +72,7 @@ func personEntry(id, personID string) domain.Entry {
 func TestRecordSharesTransactionFate(t *testing.T) {
 	ctx := context.Background()
 	svc, pool := newService(t)
-	personID := "urn:oikumenea:person:local:person:" + uuid.NewString()
+	personID := uuid.NewString()
 
 	// Rolled-back transaction: the entry must NOT be readable afterward.
 	rolledBackID := mintActionRID(t, ctx, pool)
@@ -123,7 +123,7 @@ func TestRecordSharesTransactionFate(t *testing.T) {
 func TestQueryPaginates(t *testing.T) {
 	ctx := context.Background()
 	svc, pool := newService(t)
-	personID := "urn:oikumenea:person:local:person:" + uuid.NewString()
+	personID := uuid.NewString()
 
 	const total = 5
 	want := make(map[string]bool, total)
@@ -183,7 +183,7 @@ func TestQueryPaginates(t *testing.T) {
 func TestRecordRejectsInvalidEntry(t *testing.T) {
 	ctx := context.Background()
 	svc, pool := newService(t)
-	bad := personEntry(mintActionRID(t, ctx, pool), "urn:oikumenea:person:local:person:"+uuid.NewString())
+	bad := personEntry(mintActionRID(t, ctx, pool), uuid.NewString())
 	bad.Subsystem = "bootstrap" // person + subsystem is the forbidden shape
 	if err := svc.Record(ctx, pool, bad); err == nil {
 		t.Fatal("expected validation error for person actor with subsystem")

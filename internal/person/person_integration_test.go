@@ -222,7 +222,7 @@ func TestRankAssignment(t *testing.T) {
 	}
 
 	// Unknown rank → ErrUnknownRank.
-	bogus := "urn:oikumenea:rank:local:rank:" + uuid.NewString()
+	bogus := uuid.NewString()
 	if _, err := svc.SetPersonRank(ctx, p.ID, "", &bogus); !errors.Is(err, domain.ErrUnknownRank) {
 		t.Fatalf("unknown rank: want ErrUnknownRank, got %v", err)
 	}
@@ -725,7 +725,7 @@ func TestPersonRelationships(t *testing.T) {
 	if _, err := svc.UpsertPartnership(ctx, a.ID, domain.Partnership{PersonIDA: a.ID, PersonIDB: a.ID, Status: "married"}); !errors.Is(err, domain.ErrSelfRelationship) {
 		t.Fatalf("self partnership: want ErrSelfRelationship, got %v", err)
 	}
-	if _, err := svc.UpsertPartnership(ctx, a.ID, domain.Partnership{PersonIDA: a.ID, PersonIDB: "urn:oikumenea:person:dev:person:missing", Status: "married"}); !errors.Is(err, domain.ErrUnknownCounterpart) {
+	if _, err := svc.UpsertPartnership(ctx, a.ID, domain.Partnership{PersonIDA: a.ID, PersonIDB: "00000000-0000-8101-8601-000000000000", Status: "married"}); !errors.Is(err, domain.ErrUnknownCounterpart) {
 		t.Fatalf("unknown counterpart: want ErrUnknownCounterpart, got %v", err)
 	}
 
@@ -783,7 +783,7 @@ func TestPersonRelationships(t *testing.T) {
 	if err := svc.DeleteRelationship(ctx, a.ID, kin.ID); !errors.Is(err, domain.ErrRelationshipNotFound) {
 		t.Fatalf("re-delete: want ErrRelationshipNotFound, got %v", err)
 	}
-	if err := svc.DeleteRelationship(ctx, a.ID, "urn:oikumenea:tenant:dev:unit:x"); !errors.Is(err, domain.ErrUnknownRelationshipKind) {
+	if err := svc.DeleteRelationship(ctx, a.ID, "00000000-0000-8101-8401-000000000000"); !errors.Is(err, domain.ErrUnknownRelationshipKind) {
 		t.Fatalf("bad rid: want ErrUnknownRelationshipKind, got %v", err)
 	}
 

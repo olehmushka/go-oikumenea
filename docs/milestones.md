@@ -60,7 +60,7 @@ M12 is **scoped (in progress)** — see its section below (D-PersonContactChanne
 M13 and M14 are **delivered** — see their sections below (D-PersonSocialChannels, D-PersonRelationships). M14's scoped friend/follower `person_social_links` tie was **deferred — not built** (see decisions.md).
 M15 is **delivered** — see its section below (D-RankSystems); it is additive over M4 and refines the L-OneRankScheme lock (one registry, multiple systems).
 
-M16–M26 are **planned** (designed, not yet built) — a domain cluster derived from `todo.md`, binding once their decisions land: **M16** (worker runtime, promotes DS-25) and **M17** (D-DataIngestion) are foundations the rest ride; **M18** (D-Languages, full Glottolog), **M19** (D-Location, PostGIS), **M20** (D-Education), **M21** (D-Companies). M16/M17 are platform-level; **M19 is a foundation reused by M20, M21, and the religion discovery milestone M25**. The **M22–M25** cluster is the **multi-faith religion vertical** (D-Religion, D-ClergyCredential, D-ReligiousAffiliation, D-SpecialPII) — it **promotes DS-48** (Religion) off the parked list and reuses the tenant graph, person/membership/order/authorization, and the shared M19 Location rather than adding new hierarchy machinery. **M26** (D-Vehicles + D-GeoSubdivisions) is the last todo item — a vehicle registry on person + M21 Company, bundling a shared `geo_subdivisions` ISO-3166-2 foundation (as M19 bundled the PostGIS bootstrap).
+M16–M26 are **planned** (designed, not yet built) — a domain cluster derived from `todo.md`, binding once their decisions land: **M16** (worker runtime, promotes DS-25) and **M17** (D-DataIngestion) are foundations the rest ride; **M18** (D-Languages, full Glottolog), **M19** (D-Location, PostGIS), **M20** (D-Education), **M21** (D-Companies). M16/M17 are platform-level; **M19 is a foundation reused by M20, M21, and the religion discovery milestone M25**. The **M22–M25** cluster is the **multi-faith religion vertical** (D-Religion, D-ClergyCredential, D-ReligiousAffiliation, D-SpecialPII) — it **promotes DS-48** (Religion) off the parked list and reuses the tenant graph, person/membership/order/authorization, and the shared M19 Location rather than adding new hierarchy machinery. **M26** (D-Vehicles + D-GeoSubdivisions) is the last todo item — a vehicle registry on person + M21 Company, bundling a shared `geo_subdivisions` ISO-3166-2 foundation (as M19 bundled the PostGIS bootstrap). The M16–M26 decisions live in [roadmap-decisions.md](architecture/roadmap-decisions.md) (split out of the binding `decisions.md` so it reflects the built M0–M15 surface).
 
 ## Stage board
 
@@ -103,7 +103,8 @@ Legend: `✅` done · `🚧` in progress · `⬜` not started · `➖` not appli
 | **M25** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | designed |
 | **M26** | ✅ | 🚧 | ⬜ | ⬜ | ⬜ | ⬜ | decided |
 
-Notes on the planned tier (M16–M26): all have a landed `D-<Name>` decision, so all are at least
+Notes on the planned tier (M16–M26): all have a landed `D-<Name>` decision (in
+[roadmap-decisions.md](architecture/roadmap-decisions.md)), so all are at least
 **decided**. *Designed* `✅` means a dedicated module doc exists — present for **M19**
 ([location.md](modules/location.md)) and **M22–M25** ([religion.md](modules/religion.md)); for
 M16/M17 (folded into [platform.md](modules/platform.md)) and M18/M20/M21/M26 the module doc is still
@@ -122,13 +123,14 @@ trivial Conjure endpoint — the chassis every module bolts onto.
   config (`pkg/refreshable`); observability (`svc1log`/`req2log`, `pkg/metrics`, tracing, health
   reporters incl. the **schema-version readiness gate**); the pgx pool + sqlc plumbing + per-txn RLS
   GUC seam; the gödel/`godel-conjure-plugin` build.
-- **Schema bootstrap migration:** the `oikumenea` schema + `citext`; `uuid_v7()`, **`new_rid()`**,
-  `set_updated_at()`, `reject_mutation()`; `schema_version`; the seeded **`geo_countries`** ISO-3166
-  registry (D-Geo).
+- **Schema bootstrap migration:** the `oikumenea` schema + `citext`; `uuid_v7()`, **`new_id()`** + the
+  `rid_*` decoders + the `platform_rid_services`/`platform_rid_types` registries (D-ResourceIdentifiers,
+  amended F-014), `set_updated_at()`, `reject_mutation()`; `schema_version`; the seeded
+  **`geo_countries`** ISO-3166 registry (D-Geo).
 - **`pkg/` kernel:** `id`, `errors` (werror↔Conjure mapping), `pagination`, **`events`** (in-process
   bus + outbox seam), `locale`, `config`, **`crypto`** (`KeyProvider` + `pkg/crypto`, `local-dev`
   backend; D-CryptoProvider), `personalcode` registry (D-PersonalCodes).
-- **Implements:** D-Stack, D-Conjure, D-ResourceIdentifiers, D-ResourceIdentifiers's `new_rid()`,
+- **Implements:** D-Stack, D-Conjure, D-ResourceIdentifiers (packed UUIDv8 `new_id()`),
   L-UpgradeSafe scaffolding. See [platform](modules/platform.md).
 - **Exit:** `serve` boots; migrations apply cleanly and re-apply idempotently; `/status/readiness`
   goes green only on a known schema; one demo endpoint returns a `SerializableError` correctly.
@@ -465,7 +467,7 @@ preset** instead of hand-entering every node.
 
 ## M16 — Background worker & scheduler
 
-**Status: planned.** Binding via **D-Worker** in [decisions.md](architecture/decisions.md), which **promotes
+**Status: planned.** Binding via **D-Worker** in [roadmap-decisions.md](architecture/roadmap-decisions.md), which **promotes
 open-question DS-25** (the long-parked common blocker) onto the critical path because the M17 connector
 framework needs scheduled syncs. Additive over M0 — a new runtime alongside the synchronous core, no
 breaking change.
@@ -484,7 +486,7 @@ future-dated order effects) without an external broker.
 
 ## M17 — Data ingestion & connector framework
 
-**Status: planned.** Binding via **D-DataIngestion** in [decisions.md](architecture/decisions.md). A
+**Status: planned.** Binding via **D-DataIngestion** in [roadmap-decisions.md](architecture/roadmap-decisions.md). A
 **generic, reusable** bulk reference-data pipeline that every catalog plugs into — generalizing the
 one-off M15 rank importer (which **stays as-is**, per decision) so M18 languages, M20 education
 registries, and M21 company registries all flow through one path. Maps onto Palantir Foundry's
@@ -522,7 +524,7 @@ importer per domain.
 
 ## M18 — Language & writing systems
 
-**Status: planned.** Binding via **D-Languages** in [decisions.md](architecture/decisions.md). The
+**Status: planned.** Binding via **D-Languages** in [roadmap-decisions.md](architecture/roadmap-decisions.md). The
 **first real consumer of M17** — proves the framework end-to-end via a Glottolog-CLDF HTTP connector.
 The Glottolog dataset rides the M17 connector, so it adds **no** parked seam of its own. Additive over
 person/localization; the unit tie adds a tenant dependency.
@@ -559,7 +561,7 @@ queryable, linkable dimension.
 
 ## M19 — Location
 
-**Status: planned.** Binding via **D-Location** in [decisions.md](architecture/decisions.md). A new
+**Status: planned.** Binding via **D-Location** in [roadmap-decisions.md](architecture/roadmap-decisions.md). A new
 shared **standalone** entity that M20 (education buildings/dorms) and M21 (company addresses) reference
 by FK. Re-adopts geography/PostGIS/H3 — explicitly noted as *dropped from `drafts/`* in decisions.md,
 now reversed here with rationale.
@@ -584,7 +586,7 @@ plus a structured postal address over the existing country registry, so anything
 
 ## M20 — Education
 
-**Status: planned.** Binding via **D-Education** in [decisions.md](architecture/decisions.md). A new
+**Status: planned.** Binding via **D-Education** in [roadmap-decisions.md](architecture/roadmap-decisions.md). A new
 module over person + the M19 Location foundation. Institutions are modeled as **external reference
 entities** (where a person studied/taught), **independent of companies** (no shared org foundation, per
 decision) and distinct from the deploying org's tenant units.
@@ -619,7 +621,7 @@ studied where/when, under whom, in which group/department, and where they lived.
 
 ## M21 — Companies
 
-**Status: planned.** Binding via **D-Companies** in [decisions.md](architecture/decisions.md). A new
+**Status: planned.** Binding via **D-Companies** in [roadmap-decisions.md](architecture/roadmap-decisions.md). A new
 legal-entity registry over person + the M19 Location foundation — **independent of education** (per
 decision). Scoped to **structural** registry data (identity + affiliation + ownership graph) for
 analysis and linking; volatile intelligence (financials/court/tax/sanctions) is parked.
@@ -660,7 +662,7 @@ queryable graph.
 
 ## M22 — Religion core (multi-faith taxonomy & organization structure)
 
-**Status: planned.** Binding via **D-Religion** in [decisions.md](architecture/decisions.md), which
+**Status: planned.** Binding via **D-Religion** in [roadmap-decisions.md](architecture/roadmap-decisions.md), which
 **reverses the `drafts/` religion drop** (re-adopted multi-faith, like D-Location re-adopted geography)
 and **refines L-SingleDomain** (the single domain may be *religion*, holding many religions/traditions
 as catalog data + units in graphs — no org-type discriminator in code). The first milestone of the
@@ -697,7 +699,7 @@ vocabulary**.
 
 ## M23 — Clergy grades & credentials
 
-**Status: planned.** Binding via **D-ClergyCredential** in [decisions.md](architecture/decisions.md).
+**Status: planned.** Binding via **D-ClergyCredential** in [roadmap-decisions.md](architecture/roadmap-decisions.md).
 Clergy standing is religion-native (**not** the `rank` ladder) and faith-agnostic. Builds on M22 +
 reuses [membership](modules/membership.md) positions, [authorization](modules/authorization.md), and
 [order](modules/order.md).
@@ -727,7 +729,7 @@ reuses [membership](modules/membership.md) positions, [authorization](modules/au
 ## M24 — Religious affiliation & belief (`pii:special`)
 
 **Status: planned.** Binding via **D-ReligiousAffiliation** + **D-SpecialPII** in
-[decisions.md](architecture/decisions.md). The first feature to **store GDPR Art. 9 data**, so it
+[roadmap-decisions.md](architecture/roadmap-decisions.md). The first feature to **store GDPR Art. 9 data**, so it
 **extends the D-CryptoProvider envelope to `pii:special`** (resolving the person-field half of DS-29).
 Builds on M22 + the M0 crypto seam.
 
@@ -754,7 +756,7 @@ Builds on M22 + the M0 crypto seam.
 ## M25 — Religious discovery (sites, schedules, search)
 
 **Status: planned.** Binding via **D-Religion** (discovery surface) in
-[decisions.md](architecture/decisions.md). The discovery substrate over religious structure + the shared
+[roadmap-decisions.md](architecture/roadmap-decisions.md). The discovery substrate over religious structure + the shared
 **M19 Location** (PostGIS/H3), source-of-truth in go-oikumenea; a FaithMap-style app consumes it. Builds
 on M22 + [M19 Location](#m19--location).
 
@@ -788,7 +790,7 @@ names — with privacy-preserving spatial search, while the CMS/rendering stays 
 ## M26 — Vehicles (+ subnational subdivisions foundation)
 
 **Status: planned.** Binding via **D-Vehicles** + **D-GeoSubdivisions** in
-[decisions.md](architecture/decisions.md). The **last `todo.md` item** — a vehicle registry
+[roadmap-decisions.md](architecture/roadmap-decisions.md). The **last `todo.md` item** — a vehicle registry
 that binds people **and** companies to vehicles in one queryable graph, bundling a shared
 `geo_subdivisions` ISO-3166-2 foundation (exactly as M19 bundled the PostGIS/h3 bootstrap with
 Location). Additive over person + the M21 Company registry.

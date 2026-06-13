@@ -2,9 +2,10 @@
 --
 -- Creates the shared `oikumenea` SQL objects every module depends on, BEFORE any module
 -- table (ordering invariant; docs/modules/platform.md). Expand-only (L-UpgradeSafe / D-Migrations).
--- Owns: schema + extensions, uuid_v7(), new_rid() (D-ResourceIdentifiers), set_updated_at(),
--- reject_mutation(), the single-row schema_version marker, and the seeded ISO-3166-1 alpha-2
--- geo_countries registry (D-Geo).
+-- Owns: schema + extensions, uuid_v7(), new_id() + rid_* decoders (D-ResourceIdentifiers),
+-- the platform_rid_services / platform_rid_types registries, set_updated_at(), reject_mutation(),
+-- the single-row schema_version marker, and the seeded ISO-3166-1 alpha-2 geo_countries registry
+-- (D-Geo).
 
 CREATE SCHEMA IF NOT EXISTS oikumenea;
 
@@ -31,13 +32,52 @@ BEGIN
 END;
 $$;
 
--- new_rid(): composes the self-describing URN RID used as every PK default
--- (D-ResourceIdentifiers). <environment> comes from the per-session app.environment GUC.
-CREATE OR REPLACE FUNCTION oikumenea.new_rid(service text, entity_type text) RETURNS text
-  LANGUAGE sql VOLATILE AS $$
-    SELECT 'urn:oikumenea:' || service || ':' || current_setting('app.environment')
-        || ':' || entity_type || ':' || oikumenea.uuid_v7()::text
+-- new_id(): the RID generator (D-ResourceIdentifiers). A native UUIDv8 (RFC 9562 §5.8) that
+-- bit-packs a decomposable, self-describing key — app | service | kind | type | timestamp | random
+-- — into 16 bytes. Decoders below read the fields back out; the human string form
+-- (oikumenea:<service>:<kind>:<type>:<uuid>) is rendered at the API boundary, never stored.
+-- Reads no GUC (app/service/type are caller-supplied codes), so migrations may seed RID rows directly.
+--
+-- Byte layout (0-indexed, big-endian):
+--   0..5  unix-ms timestamp        (b-tree insert locality, like uuid_v7)
+--   6     0x8<<4 version | kind     (4-bit version=8 high nibble, kind 1..3 low nibble)
+--   7     app                       (oikumenea = 1)
+--   8     0b10<<6 variant | service (RFC variant high 2 bits, service 0..63 low 6 bits)
+--   9     type low 8 bits
+--   10    type high 4 bits<<4 | random low nibble
+--   11..15 random
+CREATE OR REPLACE FUNCTION oikumenea.new_id(service int, kind int, type_code int) RETURNS uuid
+  LANGUAGE plpgsql VOLATILE PARALLEL SAFE AS $$
+DECLARE
+  unix_ts_ms bigint;
+  b bytea;
+BEGIN
+  IF service < 0 OR service > 63   THEN RAISE EXCEPTION 'rid service out of range (0..63): %', service; END IF;
+  IF kind < 1 OR kind > 3          THEN RAISE EXCEPTION 'rid kind out of range (1..3): %', kind; END IF;
+  IF type_code < 0 OR type_code > 4095 THEN RAISE EXCEPTION 'rid type out of range (0..4095): %', type_code; END IF;
+  unix_ts_ms := floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
+  b := gen_random_bytes(16);
+  b := overlay(b PLACING substring(int8send(unix_ts_ms) FROM 3 FOR 6) FROM 1 FOR 6);  -- bytes 0..5
+  b := set_byte(b, 6, 128 | (kind & 15));                                             -- version 8 | kind
+  b := set_byte(b, 7, 1);                                                             -- app = oikumenea
+  b := set_byte(b, 8, 128 | (service & 63));                                          -- variant | service
+  b := set_byte(b, 9, type_code & 255);                                               -- type low 8
+  b := set_byte(b, 10, (((type_code >> 8) & 15) << 4) | (get_byte(b, 10) & 15));       -- type high 4 | rand
+  RETURN encode(b, 'hex')::uuid;
+END;
 $$;
+
+-- rid_* decoders: read the packed fields back out of a RID. IMMUTABLE so they can be used in the
+-- per-table shape CHECKs (the structural guard that replaces the old `id LIKE 'urn:…'`).
+CREATE OR REPLACE FUNCTION oikumenea.rid_app(id uuid) RETURNS int
+  LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$ SELECT get_byte(uuid_send(id), 7) $$;
+CREATE OR REPLACE FUNCTION oikumenea.rid_service(id uuid) RETURNS int
+  LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$ SELECT get_byte(uuid_send(id), 8) & 63 $$;
+CREATE OR REPLACE FUNCTION oikumenea.rid_kind(id uuid) RETURNS int
+  LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$ SELECT get_byte(uuid_send(id), 6) & 15 $$;
+CREATE OR REPLACE FUNCTION oikumenea.rid_type(id uuid) RETURNS int
+  LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+    SELECT get_byte(uuid_send(id), 9) | (((get_byte(uuid_send(id), 10) >> 4) & 15) << 8) $$;
 
 -- set_updated_at(): BEFORE UPDATE trigger keeping updated_at current.
 CREATE OR REPLACE FUNCTION oikumenea.set_updated_at() RETURNS trigger
@@ -64,6 +104,62 @@ CREATE TABLE oikumenea.schema_version (
   applied_at timestamptz NOT NULL DEFAULT now()
 );
 INSERT INTO oikumenea.schema_version (singleton, revision) VALUES (true, '0000_schema_bootstrap');
+
+-- RID registries (D-ResourceIdentifiers). The numeric service + per-module type codes that new_id()
+-- packs and the rid_* decoders read. Natural-key reference tables (no RID PK → seeded directly in
+-- this migration). `pkg/rid` mirrors these in Go and asserts equality at boot so the two cannot drift.
+-- The authoritative *list* of types is docs/ontology-mapping.md; the numeric codes are assigned here.
+CREATE TABLE oikumenea.platform_rid_services (
+  code       smallint PRIMARY KEY CHECK (code BETWEEN 0 AND 63),
+  module     text NOT NULL UNIQUE,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+COMMENT ON COLUMN oikumenea.platform_rid_services.code IS 'pii:none';
+COMMENT ON COLUMN oikumenea.platform_rid_services.module IS 'pii:none';
+INSERT INTO oikumenea.platform_rid_services (code, module) VALUES
+  (1,'platform'),(2,'i18n'),(3,'audit'),(4,'tenant'),(5,'rank'),(6,'person'),
+  (7,'membership'),(8,'authz'),(9,'account'),(10,'document'),(11,'order');
+
+-- kind: 1 = object, 2 = link, 3 = action. type_code is per (service, kind). Action RIDs use the
+-- generic type_code 0 ('action') — the specific action name lives in audit_log.action, so the RID
+-- only needs to encode kind=action (D-Audit).
+CREATE TABLE oikumenea.platform_rid_types (
+  service_code smallint NOT NULL REFERENCES oikumenea.platform_rid_services(code),
+  kind         smallint NOT NULL CHECK (kind BETWEEN 1 AND 3),
+  type_code    smallint NOT NULL CHECK (type_code BETWEEN 0 AND 4095),
+  type_name    text NOT NULL,
+  PRIMARY KEY (service_code, kind, type_code),
+  UNIQUE (service_code, kind, type_name)
+);
+COMMENT ON COLUMN oikumenea.platform_rid_types.type_name IS 'pii:none';
+INSERT INTO oikumenea.platform_rid_types (service_code, kind, type_code, type_name) VALUES
+  -- i18n
+  (2,1,1,'translation'),
+  -- tenant
+  (4,1,1,'unit'),(4,1,2,'graph'),(4,1,3,'unit_lifecycle_event'),
+  (4,2,1,'parent_of'),
+  -- rank
+  (5,1,1,'system'),(5,1,2,'category'),(5,1,3,'type'),(5,1,4,'rank'),
+  -- person objects
+  (6,1,1,'person'),(6,1,2,'name_variant'),(6,1,3,'citizenship'),(6,1,4,'residence'),
+  (6,1,5,'email'),(6,1,6,'phone'),(6,1,7,'call_sign'),(6,1,8,'messenger_link'),
+  (6,1,9,'social_account'),(6,1,10,'social_handle'),
+  -- person links
+  (6,2,1,'holds_rank'),(6,2,2,'partnered_with'),(6,2,3,'kin_parent_of'),
+  (6,2,4,'guardian_of'),(6,2,5,'sponsor_of'),(6,2,6,'next_of_kin'),(6,2,7,'associated_with'),
+  -- membership
+  (7,1,1,'position'),(7,2,1,'member_of'),
+  -- authz
+  (8,1,1,'role'),(8,2,1,'has_role'),(8,2,2,'instance_admin'),
+  -- account
+  (9,1,1,'account'),(9,1,2,'external_identity'),
+  -- document
+  (10,1,1,'document_type'),(10,1,2,'document'),(10,1,3,'personal_code'),
+  -- order
+  (11,1,1,'order_type'),(11,1,2,'order'),(11,1,3,'order_item'),
+  -- generic action type (kind=3) for every service that mints audit actions
+  (1,3,0,'action'),(2,3,0,'action'),(4,3,0,'action'),(5,3,0,'action'),(6,3,0,'action'),
+  (7,3,0,'action'),(8,3,0,'action'),(9,3,0,'action'),(10,3,0,'action'),(11,3,0,'action');
 
 -- geo_countries: seeded ISO-3166-1 alpha-2 registry (D-Geo). Natural code PK (not an RID,
 -- per D-ResourceIdentifiers carve-out). Default-locale (English) name; other locales arrive

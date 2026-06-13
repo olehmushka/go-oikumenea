@@ -313,7 +313,7 @@ WHERE o.deleted_at IS NULL
     SELECT 1 FROM oikumenea.order_order_items i
     WHERE i.order_id = o.id AND i.person_id = $1
   )
-  AND ($2 = '' OR o.id > $2)
+  AND ($2 = '' OR o.id::text > $2)
 ORDER BY o.id
 LIMIT $3
 `
@@ -359,7 +359,7 @@ func (q *Queries) ListOrdersByPerson(ctx context.Context, arg ListOrdersByPerson
 const listOrdersByUnit = `-- name: ListOrdersByUnit :many
 SELECT id, number, issued_on, issuing_unit_id, status, revoked_by_order_id, revoked_at, created_at, updated_at, deleted_at FROM oikumenea.order_orders
 WHERE issuing_unit_id = $1 AND deleted_at IS NULL
-  AND ($2 = '' OR id > $2)
+  AND ($2 = '' OR id::text > $2)
 ORDER BY id
 LIMIT $3
 `

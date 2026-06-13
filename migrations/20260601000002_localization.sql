@@ -72,8 +72,10 @@ CREATE CONSTRAINT TRIGGER i18n_locales_enforce_default
 -- module's delete/retire event once those producers + the events bus land (open seam). `locale`
 -- references the registry by code.
 CREATE TABLE oikumenea.i18n_translations (
-  id          text PRIMARY KEY DEFAULT oikumenea.new_rid('i18n','translation'),
+  id          uuid PRIMARY KEY DEFAULT oikumenea.new_id(2,1,1),  -- i18n / object / translation
   entity_type text NOT NULL,   -- e.g. unit, graph, rank_category, rank, position, role, country
+  -- entity_id is POLYMORPHIC over RID-keyed (uuid) AND natural-key (country code, etc.) entities, so
+  -- it is TEXT (a RID uuid text or a natural code); no FK — see localization.md.
   entity_id   text NOT NULL,   -- the owning entity's id (polymorphic; no FK — see localization.md)
   field       text NOT NULL,   -- the translatable field key: name, title, description
   locale      text NOT NULL REFERENCES oikumenea.i18n_locales(code) ON UPDATE RESTRICT,
@@ -81,7 +83,8 @@ CREATE TABLE oikumenea.i18n_translations (
   created_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now(),
 
-  CONSTRAINT i18n_translations_rid_shape CHECK (id LIKE 'urn:oikumenea:i18n:%:translation:%'),
+  CONSTRAINT i18n_translations_rid_shape
+    CHECK (oikumenea.rid_service(id)=2 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=1),
   CONSTRAINT i18n_translations_unique UNIQUE (entity_type, entity_id, field, locale)
 );
 
