@@ -56,7 +56,7 @@ migrates, and demos** on its own, so the service is runnable at every step.
 | **M26** | Vehicles (+ subnational subdivisions) | shared `geo_subdivisions` ISO-3166-2 registry; vehicle brand/model/type taxonomy + the vehicle object (VIN); temporal brand↔Company manufacturer link; the ownership+plate registration link (polymorphic person\|company owner, plate region) | M5, M21 |
 
 M1/M2 and M3/M4 are independent and may be built in parallel. Everything after M2 assumes audit + i18n exist.
-M12 is **scoped (in progress)** — see its section below (D-PersonContactChannels, D-DocumentAttrSchema, expanded D-PersonalCodes).
+M12 is **verified** — see its section below (D-PersonContactChannels, D-DocumentAttrSchema, expanded D-PersonalCodes, D-PersonBio amendment); additive person/document enrichments, proven end-to-end (integration suites + a live HTTP demo on the running server).
 M13 and M14 are **delivered** — see their sections below (D-PersonSocialChannels, D-PersonRelationships). M14's scoped friend/follower `person_social_links` tie was **deferred — not built** (see decisions.md).
 M15 is **delivered** — see its section below (D-RankSystems); it is additive over M4 and refines the L-OneRankScheme lock (one registry, multiple systems).
 
@@ -89,7 +89,7 @@ Legend: `✅` done · `🚧` in progress · `⬜` not started · `➖` not appli
 | **M9** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified |
 | **M10** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified |
 | **M11** | ✅ | ✅ | ✅ | ✅ | ➖ | ✅ | verified |
-| **M12** | ✅ | ✅ | ✅ | ✅ | ✅ | 🚧 | verifying (scoped/in progress) |
+| **M12** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified |
 | **M13** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified |
 | **M14** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified |
 | **M15** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified |
@@ -114,8 +114,13 @@ supersedes D-Worker and **absorbs M17/D-DataIngestion**); its module doc
 exists — present for **M16** ([hermenea.md](modules/hermenea.md)), **M19**
 ([location.md](modules/location.md)) and **M22–M25** ([religion.md](modules/religion.md)); for
 M18/M20/M21/M26 the module doc is still to be written, hence `🚧`. M15's backend is additive over the M4 rank migration
-(`20260601000004_rank.sql`), not a separate file. M12 remains **scoped/in progress** until its exit
-criteria are met across the board.
+(`20260601000004_rank.sql`), not a separate file. M12 is now **verified**: its exit criteria are met
+across the board — grounded in migrations `0012_person_contacts` + `0016_person_date_of_death`, the
+`person`/`document` integration suites (`TestContactChannels`, `TestContactTypeCatalogs`,
+`TestPurgeGate`, `TestDocumentAttrSchema`, `TestPersonalCodeValidationAndUniqueness`), the
+`PersonForms.tsx` console managers, and a live HTTP demo against the running server (email
+provider-derivation, phone E.164 + country-derivation, call-sign uniqueness `409`, `date_of_death`
+round-trip).
 
 ---
 
@@ -278,11 +283,17 @@ timing*), per-request reach GUCs on a pinned connection, the non-superuser `oiku
 
 ## M12 — Person enrichment & expanded identity
 
-**Status: scoped (in progress).** The open questions are resolved (see *Resolved scope* below) and
-the work is binding via **D-PersonContactChannels** + **D-DocumentAttrSchema** (and the expanded
-**D-PersonalCodes** scheme set) in [decisions.md](architecture/decisions.md); the only newly parked
-seam is **DS-40** (phone carrier lookup). A bundle of additive person/document enrichments — expand-only
-(new child tables, a new nullable column, new seed rows, new compiled validators).
+**Status: verified.** The open questions are resolved (see *Resolved scope* below) and the work is
+binding via **D-PersonContactChannels** + **D-DocumentAttrSchema** (and the expanded **D-PersonalCodes**
+scheme set, plus the **D-PersonBio** amendment for `date_of_death`) in
+[decisions.md](architecture/decisions.md); the only newly parked seam is **DS-40** (phone carrier
+lookup). A bundle of additive person/document enrichments — expand-only (new child tables, a new
+nullable column, new seed rows, new compiled validators) — shipped end-to-end (migrations
+`0012_person_contacts` + `0016_person_date_of_death`, the `person`/`document` integration suites, the
+`PersonForms.tsx` console managers) and proven against the running server: a person carries
+provider-derived emails, E.164 phones with a derived country, and uniquely-named call signs (duplicate
+→ `409`), plus a round-tripping `date_of_death`; a document write is validated against its type's
+`attr_schema`; and the expanded national codes validate via their compiled/regex schemes.
 
 **Goal.** Richer contact + identity data on a person: structured emails, phone numbers, call signs, a
 wider set of national personal-ID schemes, a per-document-type attribute schema for military papers, and
@@ -361,6 +372,12 @@ Items A/B/E follow the existing effective-dated child-table pattern, and the per
 list must be extended to cover their `pii:contact`/`pii:basic` columns (D-PIITiers). When scoped,
 update `decisions.md` (new decisions for the contact model + call signs), `glossary.md`,
 `ontology-mapping.md` (new Link/Object kinds), and allocate DS-40+ in `open-questions.md`.
+
+- **Exit:** a person carries multiple contact emails (with a derived `provider`), E.164 phones (with a
+  derived country), and uniquely-named call signs, plus a `date_of_death` that round-trips and is NULLed
+  on purge; a document write is rejected when its `attributes` violate the type's `attr_schema`
+  (`military-id`); an `ru-inn` / `br-cpf` personal code validates via its compiled checksum and a
+  regex-only scheme (`ar-dni`) accept-warns; purging the person erases the three contact tables.
 
 ---
 
