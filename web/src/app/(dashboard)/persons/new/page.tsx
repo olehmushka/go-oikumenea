@@ -5,6 +5,7 @@ import { useState } from "react";
 import { mutate } from "@/lib/api/client";
 import { PageHeader } from "@/components/ui";
 import { ErrorBox } from "@/components/ErrorBox";
+import { CountrySelect } from "@/components/CountrySelect";
 
 export default function NewPersonPage() {
   const router = useRouter();
@@ -79,8 +80,8 @@ export default function NewPersonPage() {
             </select>
           </div>
           <div>
-            <label className="label">Country of birth (ISO-3166)</label>
-            <input name="countryOfBirth" className="input" placeholder="UKR" />
+            <label className="label">Country of birth</label>
+            <CountrySelect name="countryOfBirth" />
           </div>
         </div>
         <div className="flex gap-2">

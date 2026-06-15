@@ -19,6 +19,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
 	"github.com/olegamysk/go-oikumenea/internal/dataimport"
 	"github.com/olegamysk/go-oikumenea/internal/document"
+	"github.com/olegamysk/go-oikumenea/internal/geo"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation/bootstrap"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation/middleware"
@@ -191,6 +192,13 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// hermenea companion calls to load reference data (it never touches this DB). Idempotent,
 	// non-destructive, audited as a `system` actor; the enforcer it holds is bound by authorization.
 	if _, err := dataimport.Register(info, pool, auditSvc, enforcer); err != nil {
+		cleanup()
+		return nil, err
+	}
+
+	// Geo (M16 / D-Geo): read-only GET /geo/countries lookup so clients resolve a country to its RID
+	// (countries are RID-keyed; person/document/rank reference them by RID).
+	if _, err := geo.Register(info, pool, enforcer); err != nil {
 		cleanup()
 		return nil, err
 	}

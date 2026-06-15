@@ -65,13 +65,27 @@ Creates the shared objects all modules rely on (see [conventions.md](../architec
 - `oikumenea.set_updated_at()` — `BEFORE UPDATE` trigger function for `updated_at`;
 - `oikumenea.reject_mutation()` — `BEFORE UPDATE OR DELETE` guard for append-only tables;
 - `oikumenea.schema_version` — the single-row table recording the applied schema revision;
-- **`geo_countries`** *(the one ontology **Object** platform owns — D-Ontology; natural `code` PK,
-  not an RID)* — the seeded **ISO-3166-1 alpha-2 country registry** (D-Geo): `code CHAR(2)`
-  PK, default-locale `name` (translatable via the [localization](localization.md) store,
-  `entity_type='country'`), `status`, `sort_order`. A shared reference table (like `uuid_v7()`) FK'd
-  by [person](person.md) (`country_of_birth`, citizenships, residences) and
-  [document](document.md) (paper `issuing_country`, personal-code scheme `country_iso`). Seeded from
-  ISO-3166 and instance-admin-extensible (`country.manage`) for historical/edge-case entities.
+- **`geo_countries`** *(an ontology **Object** of the **location** service — RID-keyed, F-014; defined
+  in the bootstrap migration but owned by [location](location.md))* — the seeded **ISO-3166-1 alpha-2
+  country registry** (D-Geo): `id uuid` RID PK (`new_id(12,1,1)`), `code CHAR(2) NOT NULL UNIQUE` (the
+  external lookup key), default-locale `name` (translatable via the [localization](localization.md)
+  store, `entity_type='country'`), `status`, `sort_order`. A shared reference table FK'd **by `id`** by
+  [person](person.md) (`country_of_birth_id`, citizenships, residences, phones) and
+  [document](document.md) (paper `issuing_country_id`, personal-code scheme `country_id`) and
+  [rank](rank.md) (`rank_systems.country_id`). Clients resolve a code → RID via `GET /geo/countries`
+  (location `GeoService`, `country.read`). Seeded from ISO-3166 and instance-admin-extensible
+  (`country.manage`). **WOF-enriched** (D-GeoPlaces): additive `wof_id` + PostGIS
+  `geom`/`centroid`/`bbox` + `iso_a3`/`numeric_code`, mirrored from the country's `geo_places` record.
+- **`geo_places`** *(location-service Object — RID-keyed, F-014; D-GeoPlaces)* — the **Who's-On-First
+  administrative gazetteer** (country/region/county/locality): `id uuid` RID PK (`new_id(12,1,2)`),
+  `wof_id BIGINT NOT NULL UNIQUE` (the WOF concordance/import key), `placetype`, `parent_id uuid`
+  self-FK → `geo_places(id)` (tree), denormalized `country_id` → `geo_countries(id)`, translatable
+  `name` (`entity_type='geo_place'`), `population`, `hierarchy`/`concordances` JSONB, `status`,
+  **PostGIS** `geom`/`centroid`/`bbox` (GeoJSON via `ST_AsGeoJSON`), and
+  `(source, source_version, imported_at)` provenance. Loaded over `POST /import/geo-places` by the
+  hermenea `wof-sqlite` connector, which streams natural keys and resolves `wof_id`/`code → id` in SQL.
+  **Supersedes** the planned ISO-3166-2 `geo_subdivisions` (D-GeoSubdivisions). PostGIS is enabled in
+  the bootstrap migration (pulled forward from D-Location/M19).
 
 Later migrations **enable RLS** on unit-scoped tables and create the PDP-mirror policies keyed on
 the `app.*` GUCs (D-RLSDefenseInDepth), staged permissive-first then tightened

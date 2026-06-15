@@ -24,6 +24,12 @@ var (
 // object-type (an existing reference catalog needing no new domain module).
 const ObjectTypeGeoCountries = "geo-countries"
 
+// ObjectTypeGeoPlaces is the routing key for the Who's-On-First administrative gazetteer
+// (D-GeoPlaces) — the country/region/county/locality tree loaded by the hermenea `wof-sqlite`
+// connector. Distinct from geo-countries: a place is keyed by its WOF id, carries geometry, and a
+// placetype=country record additionally enriches the matching geo_countries row.
+const ObjectTypeGeoPlaces = "geo-places"
+
 // Record is one object-type-specific record decoded from the canonical envelope (a JSON object). The
 // registered handler interprets its own shape.
 type Record = map[string]any
@@ -50,4 +56,35 @@ type GeoCountryStore interface {
 	GetName(ctx context.Context, code string) (name string, found bool, err error)
 	Insert(ctx context.Context, code, name string, prov Provenance) error
 	UpdateImport(ctx context.Context, code, name string, prov Provenance) error
+}
+
+// GeoPlace is one Who's-On-First gazetteer record decoded from a canonical-envelope record. Optional
+// fields use pointers / empty-string for "absent" (the adapter maps them to NULL). GeometryJSON is the
+// GeoJSON geometry as raw text (written via ST_GeomFromGeoJSON; "" = no shape). Hierarchy/Concordances
+// are raw JSON bytes (nil = absent) landed verbatim in jsonb columns.
+type GeoPlace struct {
+	WofID        int64
+	Placetype    string // country | region | county | locality
+	ParentID     *int64
+	CountryCode  string // denormalized wof:country (ISO alpha-2; "" if absent)
+	Name         string
+	Population   *int64
+	Hierarchy    []byte
+	Concordances []byte
+	Status       string // active | retired (retired = WOF mz:is_current=0 / superseded)
+	GeometryJSON string
+	ISOA3        string // country only, from concordances ("" if absent)
+	NumericCode  string // country only, from concordances ("" if absent)
+}
+
+// GeoPlaceStore is the port the geo-places upsert handler drives (D-GeoPlaces). Idempotency is keyed on
+// source_version: GetVersion returns the row's stored source edition so the handler skips when it
+// matches the incoming one, updates when it differs, and inserts when absent — never deletes. A
+// placetype=country place additionally enriches the matching geo_countries row (wof_id + geometry) via
+// EnrichCountry. Adapters implement it over the caller's transaction.
+type GeoPlaceStore interface {
+	GetVersion(ctx context.Context, wofID int64) (sourceVersion string, found bool, err error)
+	Insert(ctx context.Context, p GeoPlace, prov Provenance) error
+	UpdateImport(ctx context.Context, p GeoPlace, prov Provenance) error
+	EnrichCountry(ctx context.Context, p GeoPlace, prov Provenance) error
 }

@@ -36,12 +36,13 @@ hermenea's DB: `Import source`, `Import raw batch`, `Import run`, `Worker job`; 
 the import endpoint, carrying `(source, source_version, imported_at)` **provenance** and audited there
 as `system`-actor Actions.
 
-- **Import source** — a registered external dataset: `type ∈ {http, file}` (DS-44 parks
+- **Import source** — a registered external dataset: `type ∈ {http, file, wof-sqlite}` (DS-44 parks
   `jdbc-sql`/`object-store`), a connector-specific locator (URL or bundled path), an `object_type`
-  (which oikumenea import target it feeds, e.g. `geo-countries`), optional credentials (via the M0
+  (which oikumenea import target it feeds, e.g. `geo-places`), optional credentials (via the M0
   crypto seam), and an optional cron schedule.
 - **Import raw batch** — one fetched payload landed **verbatim** (checksum, `source_version`,
-  `fetched_at`), re-mappable without re-fetch.
+  `fetched_at`), re-mappable without re-fetch. A large **streamed** source (the `wof-sqlite` path,
+  D-GeoPlaces) records a `staged_path` file reference instead of inline `payload` bytes.
 - **Import run** — the lineage ledger for one map+load: source, version, record counts
   (created/updated/skipped), checksum, status, errors.
 - **Worker job** — one unit of queued work (`fetch`, `map`, `load`, or a composite `sync`):
@@ -57,16 +58,18 @@ registry tables). The queue/ledger tables are **append-or-update operational** t
 
 **`hermenea.import_sources`**
 - `id` PK (RID), `code TEXT NOT NULL UNIQUE`, `name TEXT NOT NULL`
-- `connector_type TEXT NOT NULL CHECK (connector_type IN ('http','file'))`
-- `object_type TEXT NOT NULL` — the oikumenea import target (e.g. `geo-countries`)
-- `locator TEXT NOT NULL` — URL (http) or bundled path (file)
+- `connector_type TEXT NOT NULL CHECK (connector_type IN ('http','file','wof-sqlite'))`
+- `object_type TEXT NOT NULL` — the oikumenea import target (e.g. `geo-places`)
+- `locator TEXT NOT NULL` — URL (http / wof-sqlite `.db.bz2`) or bundled path (file)
 - `cron TEXT` — optional cron spec; `NULL` = trigger-only
 - `enabled BOOLEAN NOT NULL DEFAULT TRUE`
 - `credentials_ref TEXT` — optional crypto-seam reference; timestamps + `deleted_at`
 
 **`hermenea.import_raw_batches`**
 - `id` PK (RID), `source_id TEXT NOT NULL REFERENCES import_sources(id) ON DELETE RESTRICT`
-- `source_version TEXT`, `checksum TEXT NOT NULL`, `payload BYTEA NOT NULL` (or a blob ref)
+- `source_version TEXT`, `checksum TEXT NOT NULL`
+- `payload BYTEA` (inline body, small http/file sources) **xor** `staged_path TEXT` (on-disk file
+  reference for large streamed sources — the `wof-sqlite` path); a CHECK requires one to be present
 - `fetched_at TIMESTAMPTZ NOT NULL`; `created_at`
 
 **`hermenea.import_runs`**
@@ -147,9 +150,15 @@ stamped from the envelope on each upsert (D-DataIngestion lineage, retained unde
 
 - **Connector seam** — `Connector.Fetch(ctx, source) → RawBatch`; HTTP(S) + the degenerate `file`
   connector. New source types (DS-44) are new `Connector` implementations, not new call sites.
+- **Streaming connector + paged mapper** (D-GeoPlaces) — for sources too large for a single in-memory
+  batch, a `StreamingConnector.Stage(...) → StagedSource` lands the body to disk (the `wof-sqlite`
+  connector fetches a `.db.bz2`, bzip2-decompresses, stages a temp SQLite file), and a
+  `PagedMapper.MapPaged(staged, emit)` walks it **parent-first** emitting bounded pages, each loaded as
+  its own canonical envelope (one `import_runs` row aggregates the page counts). The 16 MiB cap and the
+  in-memory `Fetch`/`Map` path are untouched for small http/file sources.
 - **Mapper registry** — per `object_type`, mirrors the oikumenea upsert registry (which mirrors
-  `pkg/events.Bus`): raw records → canonical envelope. Adding an import target = registering a mapper
-  (hermenea) + an upsert handler (oikumenea); no framework change.
+  `pkg/events.Bus`): raw records → canonical envelope (or paged via `RegisterPagedMapper`). Adding an
+  import target = registering a mapper (hermenea) + an upsert handler (oikumenea); no framework change.
 - **Idempotent re-sync** — code-keyed upsert; re-running a sync over unchanged data is a no-op
   (created/updated/skipped reported). Ingest ≠ audited edit: a bulk import is one `system` Action, not
   N user edits.
@@ -172,8 +181,19 @@ stamped from the envelope on each upsert (D-DataIngestion lineage, retained unde
 ## Open seams / future
 
 - **More connector types** (`jdbc-sql`, `object-store`) — **DS-44**, new `Connector` impls.
-- **First real consumer** of the framework is **M18** (Glottolog languages) over the HTTP connector;
-  M16 ships **`geo-countries`** as the proving consumer (an existing reference catalog).
+- **First real connector** is the **Who's-On-First geo gazetteer** (M16, D-GeoPlaces): the `wof-sqlite`
+  streaming connector + the `geo-places` paged mapper load country/region/county/locality globally
+  (rolled out per country, Ukraine first). `geo-countries` (ISO-3166) is the simpler proving consumer —
+  an in-memory `geocountries.Mapper` over the degenerate `file` connector, fed by the bundled
+  `deploy/geo-presets/iso-3166.json` source (seeded in `var/conf/hermenea-install.yml`), verified
+  end-to-end in compose. **M18** (Glottolog languages) is the next over the HTTP connector.
+- **WOF out-of-distribution parents (resolved).** WOF parents some places to an ancestor outside the
+  per-country dist — e.g. **Crimea** carries a `country_id` not present in the Ukraine admin dist, which
+  failed the whole region page on `geo_places.parent_id` RESTRICT (SQLSTATE 23503). The paged mapper now
+  tracks the `wof_id`s it has emitted and **omits a `parentId` whose target isn't in the imported set**,
+  so such a place lands top-level (NULL parent) rather than aborting the page; its own descendants still
+  attach beneath it. The full UA gazetteer (35k places) loads end-to-end; oikumenea keeps the RESTRICT FK
+  as defence in depth.
 - **Multi-process / leader election** — out of scope; hermenea is single-process (the broker question
   stays **DS-26**).
 - **Other DS-25 beneficiaries** (audit-retention partitioning DS-28, future-dated order effects, expiry

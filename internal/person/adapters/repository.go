@@ -51,7 +51,7 @@ func (r *Repository) InsertPerson(ctx context.Context, p domain.Person) (domain.
 		Birthdate:      dateText(p.Birthdate),
 		DateOfDeath:    dateText(p.DateOfDeath),
 		Sex:            p.Sex,
-		CountryOfBirth: text(p.CountryOfBirth),
+		CountryOfBirthID: text(p.CountryOfBirth),
 		Attributes:     p.Attributes,
 	})
 	if err != nil {
@@ -100,7 +100,7 @@ func (r *Repository) UpdatePerson(ctx context.Context, id string, patch domain.P
 		Birthdate:      datePtr(patch.Birthdate),
 		DateOfDeath:    datePtr(patch.DateOfDeath),
 		Sex:            textPtr(patch.Sex),
-		CountryOfBirth: textPtr(patch.CountryOfBirth),
+		CountryOfBirthID: textPtr(patch.CountryOfBirth),
 		Attributes:     patch.Attributes,
 		ID:             id,
 	})
@@ -312,7 +312,7 @@ func (r *Repository) ListNameVariants(ctx context.Context, personID string) ([]d
 func (r *Repository) UpsertCitizenship(ctx context.Context, c domain.Citizenship) (domain.Citizenship, error) {
 	row, err := r.q.UpsertCitizenship(ctx, personsql.UpsertCitizenshipParams{
 		PersonID:   c.PersonID,
-		Country:    c.Country,
+		CountryID:  c.Country,
 		Basis:      c.Basis,
 		AcquiredOn: dateText(c.AcquiredOn),
 		LostOn:     dateText(c.LostOn),
@@ -329,7 +329,7 @@ func (r *Repository) ClearPrimaryCitizenships(ctx context.Context, personID stri
 }
 
 func (r *Repository) DeleteCitizenship(ctx context.Context, personID, country string) error {
-	if _, err := r.q.DeleteCitizenship(ctx, personsql.DeleteCitizenshipParams{PersonID: personID, Country: country}); err != nil {
+	if _, err := r.q.DeleteCitizenship(ctx, personsql.DeleteCitizenshipParams{PersonID: personID, CountryID: country}); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.ErrCitizenshipNotFound
 		}
@@ -357,7 +357,7 @@ func (r *Repository) UpsertResidence(ctx context.Context, res domain.Residence) 
 	if res.ID == "" {
 		row, err := r.q.InsertResidence(ctx, personsql.InsertResidenceParams{
 			PersonID:  res.PersonID,
-			Country:   res.Country,
+			CountryID: res.Country,
 			Region:    text(res.Region),
 			ValidFrom: dateText(res.ValidFrom),
 			ValidTo:   dateText(res.ValidTo),
@@ -368,7 +368,7 @@ func (r *Repository) UpsertResidence(ctx context.Context, res domain.Residence) 
 		return toResidence(row), nil
 	}
 	row, err := r.q.UpdateResidence(ctx, personsql.UpdateResidenceParams{
-		Country:   res.Country,
+		CountryID: res.Country,
 		Region:    text(res.Region),
 		ValidFrom: dateText(res.ValidFrom),
 		ValidTo:   dateText(res.ValidTo),
@@ -475,7 +475,7 @@ func (r *Repository) UpsertPhone(ctx context.Context, p domain.Phone) (domain.Ph
 			PersonID:  p.PersonID,
 			TypeCode:  p.TypeCode,
 			Number:    p.Number,
-			Country:   text(p.Country),
+			CountryCode: text(p.Country),
 			IsPrimary: p.IsPrimary,
 		})
 		if err != nil {
@@ -486,7 +486,7 @@ func (r *Repository) UpsertPhone(ctx context.Context, p domain.Phone) (domain.Ph
 	row, err := r.q.UpdatePhone(ctx, personsql.UpdatePhoneParams{
 		TypeCode:  p.TypeCode,
 		Number:    p.Number,
-		Country:   text(p.Country),
+		CountryCode: text(p.Country),
 		IsPrimary: p.IsPrimary,
 		ID:        p.ID,
 		PersonID:  p.PersonID,
@@ -1262,7 +1262,7 @@ func toPhone(r personsql.OikumeneaPersonPhone) domain.Phone {
 		PersonID:  r.PersonID,
 		TypeCode:  r.TypeCode,
 		Number:    r.Number,
-		Country:   r.Country.String,
+		Country:   r.CountryID.String,
 		IsPrimary: r.IsPrimary,
 	}
 }
@@ -1295,7 +1295,7 @@ func toPerson(r personsql.OikumeneaPersonPerson) domain.Person {
 		Birthdate:      dateStr(r.Birthdate),
 		DateOfDeath:    dateStr(r.DateOfDeath),
 		Sex:            r.Sex,
-		CountryOfBirth: r.CountryOfBirth.String,
+		CountryOfBirth: r.CountryOfBirthID.String,
 		Attributes:     r.Attributes,
 		Status:         domain.Status(r.Status),
 		DeactivatedAt:  tsPtr(r.DeactivatedAt),
@@ -1330,7 +1330,7 @@ func toCitizenship(r personsql.OikumeneaPersonCitizenship) domain.Citizenship {
 	return domain.Citizenship{
 		ID:         r.ID,
 		PersonID:   r.PersonID,
-		Country:    r.Country,
+		Country:    r.CountryID,
 		Basis:      r.Basis,
 		AcquiredOn: dateStr(r.AcquiredOn),
 		LostOn:     dateStr(r.LostOn),
@@ -1342,7 +1342,7 @@ func toResidence(r personsql.OikumeneaPersonResidence) domain.Residence {
 	return domain.Residence{
 		ID:        r.ID,
 		PersonID:  r.PersonID,
-		Country:   r.Country,
+		Country:   r.CountryID,
 		Region:    r.Region.String,
 		ValidFrom: dateStr(r.ValidFrom),
 		ValidTo:   dateStr(r.ValidTo),

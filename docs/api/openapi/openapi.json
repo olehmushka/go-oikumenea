@@ -173,7 +173,7 @@
             "type": "string"
           },
           "country": {
-            "description": "ISO-3166 national origin (geo_countries code); omit for a supranational system (NATO/UN).",
+            "description": "Country RID of the national origin (resolve via GET /geo/countries); omit for a supranational system (NATO/UN).",
             "type": "string"
           },
           "name": {
@@ -552,6 +552,42 @@
         ],
         "type": "object"
       },
+      "CanonicalEnvelope": {
+        "description": "The interchange document hermenea produces and oikumenea upserts. `objectType` must equal the\npath object-type. `records` are object-type-specific JSON objects the registered handler reads.\n",
+        "properties": {
+          "generatedAt": {
+            "description": "ISO-8601 timestamp the upstream snapshot was generated (lineage only).",
+            "type": "string"
+          },
+          "license": {
+            "description": "License/attribution string carried for lineage (not persisted per-row).",
+            "type": "string"
+          },
+          "objectType": {
+            "description": "The importable object-type key (e.g. geo-countries); must match the path parameter.",
+            "type": "string"
+          },
+          "records": {
+            "description": "The object-type-specific records to upsert; each is a JSON object.",
+            "items": {},
+            "type": "array"
+          },
+          "source": {
+            "description": "Stable source identifier (e.g. iso-3166) — stamped as row provenance.",
+            "type": "string"
+          },
+          "sourceVersion": {
+            "description": "The source's version/edition (e.g. 2024) — stamped as row provenance.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "objectType",
+          "records",
+          "source"
+        ],
+        "type": "object"
+      },
       "Citizenship": {
         "description": "A person's effective-dated nationality in a country (D-Geo). A person may hold several; at most one active per country.",
         "properties": {
@@ -564,7 +600,7 @@
             "type": "string"
           },
           "country": {
-            "description": "ISO-3166-1 alpha-2 country code (geo registry).",
+            "description": "Country RID (resolve via GET /geo/countries).",
             "type": "string"
           },
           "id": {
@@ -662,6 +698,49 @@
         },
         "required": [
           "instanceAdmin"
+        ],
+        "type": "object"
+      },
+      "Country": {
+        "description": "A country in the ISO-3166-1 registry. `id` is the RID (the reference key); `code` is the stable ISO-3166-1 alpha-2 lookup code; `name` is the default-locale (English) name.",
+        "properties": {
+          "code": {
+            "description": "ISO-3166-1 alpha-2 code (e.g. UA, PL); the stable, locale-agnostic lookup key.",
+            "type": "string"
+          },
+          "id": {
+            "description": "The country's RID (location service); what person/document/rank reference.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Default-locale (English) display name; other locales arrive via the i18n store.",
+            "type": "string"
+          },
+          "status": {
+            "description": "active | retired.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "id",
+          "name",
+          "status"
+        ],
+        "type": "object"
+      },
+      "CountryList": {
+        "description": "The countries, in display order.",
+        "properties": {
+          "countries": {
+            "items": {
+              "$ref": "#/components/schemas/Country"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "countries"
         ],
         "type": "object"
       },
@@ -838,6 +917,9 @@
           "credentials": {
             "type": "string"
           },
+          "dateOfDeath": {
+            "type": "string"
+          },
           "displayName": {
             "type": "string"
           },
@@ -851,10 +933,6 @@
             "type": "string"
           },
           "preferred": {
-            "type": "string"
-          },
-          "rankId": {
-            "description": "Optional initial rank (validated against the rank scheme).",
             "type": "string"
           },
           "sex": {
@@ -1047,7 +1125,7 @@
             "type": "string"
           },
           "issuingCountry": {
-            "description": "ISO-3166-1 alpha-2 code of the issuing country (geo registry); lets one person hold same-type papers from several countries.",
+            "description": "Country RID of the issuing country (resolve via GET /geo/countries); lets one person hold same-type papers from several countries.",
             "type": "string"
           },
           "number": {
@@ -1518,6 +1596,124 @@
         ],
         "type": "object"
       },
+      "ImportResult": {
+        "description": "The per-object-type outcome of one idempotent upsert.",
+        "properties": {
+          "created": {
+            "description": "Rows newly inserted.",
+            "format": "int32",
+            "type": "integer"
+          },
+          "objectType": {
+            "type": "string"
+          },
+          "skipped": {
+            "description": "Rows already up to date (idempotent no-ops).",
+            "format": "int32",
+            "type": "integer"
+          },
+          "updated": {
+            "description": "Existing rows whose values changed.",
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created",
+          "objectType",
+          "skipped",
+          "updated"
+        ],
+        "type": "object"
+      },
+      "ImportRun": {
+        "description": "One map+load lineage record.",
+        "properties": {
+          "created": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "error": {
+            "type": "string"
+          },
+          "finishedAt": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "skipped": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "sourceCode": {
+            "type": "string"
+          },
+          "sourceVersion": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string"
+          },
+          "status": {
+            "description": "running | succeeded | failed.",
+            "type": "string"
+          },
+          "updated": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created",
+          "id",
+          "skipped",
+          "sourceCode",
+          "startedAt",
+          "status",
+          "updated"
+        ],
+        "type": "object"
+      },
+      "ImportSource": {
+        "description": "A registered external dataset hermenea can sync into oikumenea.",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "connectorType": {
+            "description": "http | file.",
+            "type": "string"
+          },
+          "cron": {
+            "description": "Cron spec; absent means trigger-only.",
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "locator": {
+            "description": "URL (http) or bundled path (file).",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "objectType": {
+            "description": "The oikumenea import target (e.g. geo-countries).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "connectorType",
+          "enabled",
+          "locator",
+          "name",
+          "objectType"
+        ],
+        "type": "object"
+      },
       "ImportSystem": {
         "properties": {
           "categories": {
@@ -1613,6 +1809,22 @@
           "grantedAt",
           "id",
           "personId"
+        ],
+        "type": "object"
+      },
+      "JobRef": {
+        "description": "A reference to an enqueued worker job (the result of a sync trigger).",
+        "properties": {
+          "jobId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId",
+          "status"
         ],
         "type": "object"
       },
@@ -2198,7 +2410,7 @@
             "type": "string"
           },
           "countryOfBirth": {
-            "description": "ISO-3166-1 alpha-2 country code, validated against the geo registry (D-Geo).",
+            "description": "Country RID (resolve via GET /geo/countries), validated against the geo registry (D-Geo).",
             "type": "string"
           },
           "createdAt": {
@@ -2207,6 +2419,10 @@
           },
           "credentials": {
             "description": "Post-nominal credentials (PhD, MD).",
+            "type": "string"
+          },
+          "dateOfDeath": {
+            "description": "ISO-8601 calendar date of death (YYYY-MM-DD); a bio attribute, not a lifecycle state — a deceased person stays an active record (D-PersonBio).",
             "type": "string"
           },
           "deactivatedAt": {
@@ -2269,9 +2485,12 @@
             "format": "date-time",
             "type": "string"
           },
-          "rankId": {
-            "description": "The URN RID of the one rank the person holds (a DIRECTORY attribute; never an authz input). Null when unranked.",
-            "type": "string"
+          "ranks": {
+            "description": "The ranks the person holds — at most one per rank system (a DIRECTORY attribute; never an authz input — D-Rank). Empty when unranked. Populated by getPerson; empty in list responses.",
+            "items": {
+              "$ref": "#/components/schemas/PersonRank"
+            },
+            "type": "array"
           },
           "residences": {
             "description": "The person's residence history. Populated by getPerson; empty in list responses.",
@@ -2324,6 +2543,7 @@
           "messengerLinks",
           "nameVariants",
           "phones",
+          "ranks",
           "residences",
           "sex",
           "socialAccounts",
@@ -2347,6 +2567,24 @@
         },
         "required": [
           "persons"
+        ],
+        "type": "object"
+      },
+      "PersonRank": {
+        "description": "One rank a person holds, scoped to a rank system (the HOLDS_RANK link; one per system — D-Rank). A directory attribute, never an authz input.",
+        "properties": {
+          "rankId": {
+            "description": "The URN RID of the rank held in that system.",
+            "type": "string"
+          },
+          "systemId": {
+            "description": "The URN RID of the rank system (derived from the rank); clients resolve the label via RankService.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rankId",
+          "systemId"
         ],
         "type": "object"
       },
@@ -2401,7 +2639,7 @@
             "type": "string"
           },
           "countryIso": {
-            "description": "ISO-3166-1 alpha-2 code of the scheme's country (geo registry).",
+            "description": "Country RID of the scheme's country (resolve via GET /geo/countries; the field name is retained for compatibility).",
             "type": "string"
           },
           "createdAt": {
@@ -2450,7 +2688,7 @@
         "description": "A person's contact phone (D-PersonContactChannels). number is E.164-normalized; country is derived. pii:contact.",
         "properties": {
           "country": {
-            "description": "ISO-3166-1 alpha-2 country code derived from the number; null when underivable.",
+            "description": "Country RID derived from the number (resolve codes via GET /geo/countries); null when underivable.",
             "type": "string"
           },
           "id": {
@@ -2781,7 +3019,7 @@
             "type": "string"
           },
           "country": {
-            "description": "ISO-3166 national origin (geo_countries code); absent for a supranational system (NATO/UN).",
+            "description": "Country RID of the national origin (resolve via GET /geo/countries); absent for a supranational system (NATO/UN).",
             "type": "string"
           },
           "id": {
@@ -2911,7 +3149,7 @@
         "description": "A person's effective-dated residence in a country/region (D-Geo). Locator data (pii:contact).",
         "properties": {
           "country": {
-            "description": "ISO-3166-1 alpha-2 country code (geo registry).",
+            "description": "Country RID (resolve via GET /geo/countries).",
             "type": "string"
           },
           "id": {
@@ -3056,10 +3294,14 @@
         "type": "object"
       },
       "SetRankRequest": {
-        "description": "Set or clear the person's one rank. An absent rankId clears it (D-Rank).",
+        "description": "Set or clear the person's rank in ONE rank system (one rank per system — D-Rank). The rank's\nsystem is derived from the rank itself, so on set only rankId is needed; on clear, systemId\nnames the system to clear.\n",
         "properties": {
           "rankId": {
-            "description": "The URN RID of the rank to assign; omit to clear the person's rank.",
+            "description": "The URN RID of the rank to assign (its rank system is derived); omit to clear the person's rank in `systemId`.",
+            "type": "string"
+          },
+          "systemId": {
+            "description": "Required only when clearing (rankId omitted) — the URN RID of the rank system to clear. Ignored when rankId is present.",
             "type": "string"
           }
         },
@@ -3519,7 +3761,7 @@
         "type": "object"
       },
       "UpdatePersonRequest": {
-        "description": "Update a person's names (canonical + CLDR parts), birthdate, sex, country_of_birth, and\nattributes. Omitted fields are unchanged; an empty string clears an optional name part.\n`code` is immutable by convention and rank is set via setRank.\n",
+        "description": "Update a person's names (canonical + CLDR parts), birthdate, date_of_death, sex,\ncountry_of_birth, and attributes. Omitted fields are unchanged; an empty string clears an\noptional name part. `code` is immutable by convention and ranks are set via setRank (per system).\n",
         "properties": {
           "attributes": {},
           "birthdate": {
@@ -3529,6 +3771,9 @@
             "type": "string"
           },
           "credentials": {
+            "type": "string"
+          },
+          "dateOfDeath": {
             "type": "string"
           },
           "displayName": {
@@ -4170,6 +4415,47 @@
         },
         "required": [
           "personId"
+        ],
+        "type": "object"
+      },
+      "WorkerJob": {
+        "description": "One unit of queued work in hermenea's runtime.",
+        "properties": {
+          "attempts": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "jobType": {
+            "type": "string"
+          },
+          "lastError": {
+            "type": "string"
+          },
+          "maxAttempts": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "runAfter": {
+            "type": "string"
+          },
+          "sourceCode": {
+            "type": "string"
+          },
+          "status": {
+            "description": "queued | running | succeeded | failed | dead.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attempts",
+          "id",
+          "jobType",
+          "maxAttempts",
+          "runAfter",
+          "status"
         ],
         "type": "object"
       }
@@ -5143,7 +5429,7 @@
     },
     "/document/v1/personal-code-schemes": {
       "get": {
-        "description": "List the scheme catalog, optionally filtered by country and/or generic category.",
+        "description": "List the scheme catalog, optionally filtered by country RID (GET /geo/countries) and/or generic category.",
         "operationId": "DocumentService_listPersonalCodeSchemes",
         "parameters": [
           {
@@ -5188,7 +5474,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
-        "summary": "List the scheme catalog, optionally filtered by country and/or generic category.",
+        "summary": "List the scheme catalog, optionally filtered by country RID (GET /geo/countries) and/or generic category.",
         "tags": [
           "DocumentService"
         ]
@@ -5575,6 +5861,185 @@
         ]
       }
     },
+    "/geo/v1/countries": {
+      "get": {
+        "description": "List the active countries in display order (sort_order, then code).",
+        "operationId": "GeoService_listCountries",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CountryList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List the active countries in display order (sort_order, then code).",
+        "tags": [
+          "GeoService"
+        ]
+      }
+    },
+    "/hermenea/v1/jobs": {
+      "get": {
+        "description": "List worker jobs (most recent first).",
+        "operationId": "HermeneaService_listJobs",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WorkerJob"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List worker jobs (most recent first).",
+        "tags": [
+          "HermeneaService"
+        ]
+      }
+    },
+    "/hermenea/v1/runs": {
+      "get": {
+        "description": "List import-run lineage (most recent first).",
+        "operationId": "HermeneaService_listRuns",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ImportRun"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List import-run lineage (most recent first).",
+        "tags": [
+          "HermeneaService"
+        ]
+      }
+    },
+    "/hermenea/v1/sources": {
+      "get": {
+        "description": "List the registered import sources.",
+        "operationId": "HermeneaService_listSources",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ImportSource"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List the registered import sources.",
+        "tags": [
+          "HermeneaService"
+        ]
+      }
+    },
+    "/hermenea/v1/sync/{source}": {
+      "post": {
+        "description": "Enqueue a sync job for a registered source (the push trigger from oikumenea).",
+        "operationId": "HermeneaService_triggerSync",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobRef"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Enqueue a sync job for a registered source (the push trigger from oikumenea).",
+        "tags": [
+          "HermeneaService"
+        ]
+      }
+    },
     "/identity/v1/accounts": {
       "post": {
         "description": "Create an account for a person, optionally linking its first identity. Gates on\n`person.update`. Returns Account:AccountConflict if the person already has an active\naccount, Identity:IdentityConflict if the initial (issuer, subject) is already linked.\n",
@@ -5825,6 +6290,59 @@
         "summary": "Resolve the caller's own PDP context (person + account) from the validated inbound token.",
         "tags": [
           "IdentityFederationService"
+        ]
+      }
+    },
+    "/import/v1/import/{objectType}": {
+      "post": {
+        "description": "Idempotently upsert a canonical envelope into the {objectType} catalog.",
+        "operationId": "ImportService_importObjects",
+        "parameters": [
+          {
+            "description": "The importable object-type (routing key).",
+            "in": "path",
+            "name": "objectType",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CanonicalEnvelope"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResult"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Idempotently upsert a canonical envelope into the {objectType} catalog.",
+        "tags": [
+          "ImportService"
         ]
       }
     },
@@ -7349,7 +7867,7 @@
         ]
       },
       "put": {
-        "description": "Update names, birthdate, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.",
+        "description": "Update names, birthdate, date_of_death, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.",
         "operationId": "PersonService_updatePerson",
         "parameters": [
           {
@@ -7393,7 +7911,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
-        "summary": "Update names, birthdate, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.",
+        "summary": "Update names, birthdate, date_of_death, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.",
         "tags": [
           "PersonService"
         ]
@@ -7729,7 +8247,7 @@
     },
     "/person/v1/persons/{personId}/citizenships/{country}": {
       "delete": {
-        "description": "Remove a citizenship by country code.",
+        "description": "Remove a citizenship by country RID.",
         "operationId": "PersonService_deleteCitizenship",
         "parameters": [
           {
@@ -7764,7 +8282,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
-        "summary": "Remove a citizenship by country code.",
+        "summary": "Remove a citizenship by country RID.",
         "tags": [
           "PersonService"
         ]
@@ -8755,7 +9273,7 @@
     },
     "/person/v1/persons/{personId}/rank": {
       "put": {
-        "description": "Set or clear the person's one rank (a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.",
+        "description": "Set or clear the person's rank in one rank system (one rank per system, a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.",
         "operationId": "PersonService_setRank",
         "parameters": [
           {
@@ -8799,7 +9317,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
-        "summary": "Set or clear the person's one rank (a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.",
+        "summary": "Set or clear the person's rank in one rank system (one rank per system, a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.",
         "tags": [
           "PersonService"
         ]

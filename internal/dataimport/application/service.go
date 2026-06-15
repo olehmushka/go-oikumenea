@@ -34,6 +34,9 @@ type Handler func(ctx context.Context, tx pgx.Tx, records []domain.Record, prov 
 // module.go so the application never imports adapters (mirrors rank's RepositoryFactory).
 type StoreFactory func(conn db.DBTX) domain.GeoCountryStore
 
+// GeoPlaceStoreFactory binds the geo-places store port to the caller's tx (D-GeoPlaces).
+type GeoPlaceStoreFactory func(conn db.DBTX) domain.GeoPlaceStore
+
 // Envelope is the application-level canonical envelope (the transport maps the Conjure type onto it).
 type Envelope struct {
 	ObjectType    string
@@ -137,6 +140,133 @@ func geoFields(rec domain.Record) (code, name string, err error) {
 		return "", "", domain.ErrInvalidRecord
 	}
 	return code, name, nil
+}
+
+// GeoPlacesHandler builds the geo-places upsert handler (D-GeoPlaces). Idempotency is keyed on
+// source_version: a place is inserted when absent, updated when the incoming edition differs from the
+// stored one, and skipped otherwise — never deleted. A placetype=country record additionally enriches
+// the matching geo_countries row (wof_id + geometry) in place. Records MUST arrive parent-first
+// (country → region → county → locality): the parent_id FK is RESTRICT, so a forward reference fails
+// the whole transaction loudly (the connector's paged mapper guarantees this ordering).
+func GeoPlacesHandler(newStore GeoPlaceStoreFactory) Handler {
+	return func(ctx context.Context, tx pgx.Tx, records []domain.Record, prov domain.Provenance) (domain.Summary, error) {
+		store := newStore(tx)
+		var sum domain.Summary
+		for _, rec := range records {
+			p, err := geoPlaceFields(rec)
+			if err != nil {
+				return domain.Summary{}, err
+			}
+			ver, found, err := store.GetVersion(ctx, p.WofID)
+			if err != nil {
+				return domain.Summary{}, err
+			}
+			switch {
+			case !found:
+				if err := store.Insert(ctx, p, prov); err != nil {
+					return domain.Summary{}, err
+				}
+				sum.Created++
+			case ver != prov.SourceVersion:
+				if err := store.UpdateImport(ctx, p, prov); err != nil {
+					return domain.Summary{}, err
+				}
+				sum.Updated++
+			default:
+				sum.Skipped++
+				continue // unchanged edition: nothing to re-enrich
+			}
+			if p.Placetype == "country" && p.CountryCode != "" {
+				if err := store.EnrichCountry(ctx, p, prov); err != nil {
+					return domain.Summary{}, err
+				}
+			}
+		}
+		return sum, nil
+	}
+}
+
+// geoPlaceFields decodes a Who's-On-First record. wofId/name/placetype are required (placetype must be
+// one of the four admin types); optional ids/population fold to NULL when absent; geometry is
+// re-marshalled to GeoJSON text; hierarchy/concordances are landed as raw JSON; isCurrent=false maps to
+// status=retired (non-destructive — WOF supersession is a status flip, not a delete).
+func geoPlaceFields(rec domain.Record) (domain.GeoPlace, error) {
+	p := domain.GeoPlace{
+		WofID:     recInt64(rec["wofId"]),
+		Placetype: strings.TrimSpace(recStr(rec["placetype"])),
+		Name:      strings.TrimSpace(recStr(rec["name"])),
+	}
+	if p.WofID == 0 || p.Name == "" || !validPlacetype(p.Placetype) {
+		return domain.GeoPlace{}, domain.ErrInvalidRecord
+	}
+	p.CountryCode = strings.ToUpper(strings.TrimSpace(recStr(rec["countryCode"])))
+	p.ParentID = recOptInt64(rec["parentId"])
+	p.Population = recOptInt64(rec["population"])
+	p.Status = "active"
+	if cur, ok := rec["isCurrent"].(bool); ok && !cur {
+		p.Status = "retired"
+	}
+	if g := rec["geometry"]; g != nil {
+		b, err := json.Marshal(g)
+		if err != nil {
+			return domain.GeoPlace{}, domain.ErrInvalidRecord
+		}
+		p.GeometryJSON = string(b)
+	}
+	p.Hierarchy = rawJSON(rec["hierarchy"])
+	p.Concordances = rawJSON(rec["concordances"])
+	p.ISOA3 = strings.ToUpper(strings.TrimSpace(recStr(rec["isoA3"])))
+	p.NumericCode = strings.TrimSpace(recStr(rec["numericCode"]))
+	return p, nil
+}
+
+func validPlacetype(s string) bool {
+	switch s {
+	case "country", "region", "county", "locality":
+		return true
+	}
+	return false
+}
+
+func recStr(v any) string { s, _ := v.(string); return s }
+
+// recInt64 reads a JSON number (decoded as float64) as int64; WOF ids fit exactly within float64's
+// 53-bit mantissa.
+func recInt64(v any) int64 {
+	switch n := v.(type) {
+	case float64:
+		return int64(n)
+	case int64:
+		return n
+	case int:
+		return int64(n)
+	case json.Number:
+		i, _ := n.Int64()
+		return i
+	}
+	return 0
+}
+
+// recOptInt64 returns nil for an absent/null field, else the parsed int64 (0 is treated as absent by
+// the NULLIF in the queries — neither a WOF id nor a population is ever a real 0).
+func recOptInt64(v any) *int64 {
+	if v == nil {
+		return nil
+	}
+	i := recInt64(v)
+	return &i
+}
+
+// rawJSON re-marshals a nested object to raw JSON bytes for a jsonb column (nil = absent → NULL).
+func rawJSON(v any) []byte {
+	if v == nil {
+		return nil
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	return b
 }
 
 // inTx runs fn in a transaction, committing on success and rolling back on any error (so a failing

@@ -68,3 +68,87 @@ func (r *GeoCountryRepo) UpdateImport(ctx context.Context, code, name string, pr
 func text(s string) pgtype.Text { return pgtype.Text{String: s, Valid: s != ""} }
 
 func ts(t time.Time) pgtype.Timestamptz { return pgtype.Timestamptz{Time: t, Valid: !t.IsZero()} }
+
+// GeoPlaceRepo is the pgx/sqlc-backed implementation of domain.GeoPlaceStore (D-GeoPlaces), bound to a
+// single db.DBTX (the caller's transaction so the upsert + audit row commit together — D-Audit).
+type GeoPlaceRepo struct {
+	q *dataimportsql.Queries
+}
+
+// NewGeoPlaceRepo binds a geo-places store to the given command surface.
+func NewGeoPlaceRepo(conn db.DBTX) *GeoPlaceRepo {
+	return &GeoPlaceRepo{q: dataimportsql.New(conn)}
+}
+
+// compile-time assertion that the adapter satisfies the domain port.
+var _ domain.GeoPlaceStore = (*GeoPlaceRepo)(nil)
+
+// GetVersion returns the place's stored source_version (the idempotency key) and whether the row
+// exists. A NULL stored version reads back as "" (always treated as stale, so it re-imports).
+func (r *GeoPlaceRepo) GetVersion(ctx context.Context, wofID int64) (string, bool, error) {
+	v, err := r.q.GetGeoPlaceVersion(ctx, wofID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return v.String, true, nil
+}
+
+// Insert adds a gazetteer row; geometry is materialized from GeoJSON, provenance stamped.
+func (r *GeoPlaceRepo) Insert(ctx context.Context, p domain.GeoPlace, prov domain.Provenance) error {
+	return r.q.InsertGeoPlaceImport(ctx, dataimportsql.InsertGeoPlaceImportParams{
+		WofID:         p.WofID,
+		Placetype:     p.Placetype,
+		ParentID:      deref(p.ParentID),
+		CountryCode:   p.CountryCode,
+		Name:          p.Name,
+		Population:    deref(p.Population),
+		Hierarchy:     p.Hierarchy,
+		Concordances:  p.Concordances,
+		Status:        p.Status,
+		Geometry:      p.GeometryJSON,
+		Source:        prov.Source,
+		SourceVersion: prov.SourceVersion,
+		ImportedAt:    ts(prov.ImportedAt),
+	})
+}
+
+// UpdateImport rewrites a gazetteer row (called when the source edition changed).
+func (r *GeoPlaceRepo) UpdateImport(ctx context.Context, p domain.GeoPlace, prov domain.Provenance) error {
+	return r.q.UpdateGeoPlaceImport(ctx, dataimportsql.UpdateGeoPlaceImportParams{
+		WofID:         p.WofID,
+		Placetype:     p.Placetype,
+		ParentID:      deref(p.ParentID),
+		CountryCode:   p.CountryCode,
+		Name:          p.Name,
+		Population:    deref(p.Population),
+		Hierarchy:     p.Hierarchy,
+		Concordances:  p.Concordances,
+		Status:        p.Status,
+		Geometry:      p.GeometryJSON,
+		Source:        prov.Source,
+		SourceVersion: prov.SourceVersion,
+		ImportedAt:    ts(prov.ImportedAt),
+	})
+}
+
+// EnrichCountry mirrors a country place's wof_id + geometry onto its geo_countries row (D-GeoPlaces).
+func (r *GeoPlaceRepo) EnrichCountry(ctx context.Context, p domain.GeoPlace, _ domain.Provenance) error {
+	return r.q.EnrichGeoCountryFromWOF(ctx, dataimportsql.EnrichGeoCountryFromWOFParams{
+		Code:        p.CountryCode,
+		WofID:       p.WofID,
+		Geometry:    p.GeometryJSON,
+		IsoA3:       p.ISOA3,
+		NumericCode: p.NumericCode,
+	})
+}
+
+// deref returns the pointed-to int64 or 0 (the absent sentinel the queries fold to NULL via NULLIF).
+func deref(p *int64) int64 {
+	if p == nil {
+		return 0
+	}
+	return *p
+}

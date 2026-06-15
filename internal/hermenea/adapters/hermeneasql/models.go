@@ -14,6 +14,7 @@ type HermeneaImportRawBatch struct {
 	SourceVersion pgtype.Text
 	Checksum      string
 	Payload       []byte
+	StagedPath    pgtype.Text
 	FetchedAt     pgtype.Timestamptz
 	CreatedAt     pgtype.Timestamptz
 }

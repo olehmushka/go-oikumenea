@@ -115,7 +115,7 @@ const deactivatePerson = `-- name: DeactivatePerson :one
 UPDATE oikumenea.person_persons
 SET status = 'deactivated', deactivated_at = now(), purge_after = $1
 WHERE id = $2 AND deleted_at IS NULL
-RETURNING id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death
+RETURNING id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth_id, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death
 `
 
 type DeactivatePersonParams struct {
@@ -141,7 +141,7 @@ func (q *Queries) DeactivatePerson(ctx context.Context, arg DeactivatePersonPara
 		&i.Preferred,
 		&i.Birthdate,
 		&i.Sex,
-		&i.CountryOfBirth,
+		&i.CountryOfBirthID,
 		&i.Attributes,
 		&i.Status,
 		&i.DeactivatedAt,
@@ -346,18 +346,18 @@ func (q *Queries) DeleteCallSign(ctx context.Context, arg DeleteCallSignParams) 
 
 const deleteCitizenship = `-- name: DeleteCitizenship :one
 UPDATE oikumenea.person_citizenships SET deleted_at = now()
-WHERE person_id = $1 AND country = $2 AND deleted_at IS NULL
+WHERE person_id = $1 AND country_id = $2 AND deleted_at IS NULL
 RETURNING id
 `
 
 type DeleteCitizenshipParams struct {
-	PersonID string
-	Country  string
+	PersonID  string
+	CountryID string
 }
 
 // Soft-delete the active citizenship for a country.
 func (q *Queries) DeleteCitizenship(ctx context.Context, arg DeleteCitizenshipParams) (string, error) {
-	row := q.db.QueryRow(ctx, deleteCitizenship, arg.PersonID, arg.Country)
+	row := q.db.QueryRow(ctx, deleteCitizenship, arg.PersonID, arg.CountryID)
 	var id string
 	err := row.Scan(&id)
 	return id, err
@@ -575,7 +575,7 @@ func (q *Queries) EmailPersonID(ctx context.Context, id string) (string, error) 
 }
 
 const getActivePersonByCode = `-- name: GetActivePersonByCode :one
-SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death FROM oikumenea.person_persons
+SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth_id, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death FROM oikumenea.person_persons
 WHERE code = $1 AND status = 'active' AND deleted_at IS NULL
 `
 
@@ -599,7 +599,7 @@ func (q *Queries) GetActivePersonByCode(ctx context.Context, code pgtype.Text) (
 		&i.Preferred,
 		&i.Birthdate,
 		&i.Sex,
-		&i.CountryOfBirth,
+		&i.CountryOfBirthID,
 		&i.Attributes,
 		&i.Status,
 		&i.DeactivatedAt,
@@ -613,7 +613,7 @@ func (q *Queries) GetActivePersonByCode(ctx context.Context, code pgtype.Text) (
 }
 
 const getPerson = `-- name: GetPerson :one
-SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death FROM oikumenea.person_persons WHERE id = $1 AND deleted_at IS NULL
+SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth_id, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death FROM oikumenea.person_persons WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetPerson(ctx context.Context, id string) (OikumeneaPersonPerson, error) {
@@ -634,7 +634,7 @@ func (q *Queries) GetPerson(ctx context.Context, id string) (OikumeneaPersonPers
 		&i.Preferred,
 		&i.Birthdate,
 		&i.Sex,
-		&i.CountryOfBirth,
+		&i.CountryOfBirthID,
 		&i.Attributes,
 		&i.Status,
 		&i.DeactivatedAt,
@@ -1050,7 +1050,7 @@ const insertPerson = `-- name: InsertPerson :one
 
 INSERT INTO oikumenea.person_persons (
   code, display_name, title, given, given2, surname, surname_prefix, surname2,
-  generation, credentials, preferred, birthdate, date_of_death, sex, country_of_birth, attributes
+  generation, credentials, preferred, birthdate, date_of_death, sex, country_of_birth_id, attributes
 ) VALUES (
   $1, $2, $3, $4, $5,
   $6, $7, $8, $9,
@@ -1058,26 +1058,26 @@ INSERT INTO oikumenea.person_persons (
   $13::date, $14,
   $15, COALESCE($16::jsonb, '{}'::jsonb)
 )
-RETURNING id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death
+RETURNING id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth_id, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death
 `
 
 type InsertPersonParams struct {
-	Code           pgtype.Text
-	DisplayName    string
-	Title          pgtype.Text
-	Given          pgtype.Text
-	Given2         pgtype.Text
-	Surname        pgtype.Text
-	SurnamePrefix  pgtype.Text
-	Surname2       pgtype.Text
-	Generation     pgtype.Text
-	Credentials    pgtype.Text
-	Preferred      pgtype.Text
-	Birthdate      pgtype.Date
-	DateOfDeath    pgtype.Date
-	Sex            string
-	CountryOfBirth pgtype.Text
-	Attributes     []byte
+	Code             pgtype.Text
+	DisplayName      string
+	Title            pgtype.Text
+	Given            pgtype.Text
+	Given2           pgtype.Text
+	Surname          pgtype.Text
+	SurnamePrefix    pgtype.Text
+	Surname2         pgtype.Text
+	Generation       pgtype.Text
+	Credentials      pgtype.Text
+	Preferred        pgtype.Text
+	Birthdate        pgtype.Date
+	DateOfDeath      pgtype.Date
+	Sex              string
+	CountryOfBirthID pgtype.Text
+	Attributes       []byte
 }
 
 // Person module queries (docs/modules/person.md). The directory aggregate (person_persons), its
@@ -1104,7 +1104,7 @@ func (q *Queries) InsertPerson(ctx context.Context, arg InsertPersonParams) (Oik
 		arg.Birthdate,
 		arg.DateOfDeath,
 		arg.Sex,
-		arg.CountryOfBirth,
+		arg.CountryOfBirthID,
 		arg.Attributes,
 	)
 	var i OikumeneaPersonPerson
@@ -1123,7 +1123,7 @@ func (q *Queries) InsertPerson(ctx context.Context, arg InsertPersonParams) (Oik
 		&i.Preferred,
 		&i.Birthdate,
 		&i.Sex,
-		&i.CountryOfBirth,
+		&i.CountryOfBirthID,
 		&i.Attributes,
 		&i.Status,
 		&i.DeactivatedAt,
@@ -1138,28 +1138,33 @@ func (q *Queries) InsertPerson(ctx context.Context, arg InsertPersonParams) (Oik
 
 const insertPhone = `-- name: InsertPhone :one
 
-INSERT INTO oikumenea.person_phones (person_id, type_code, number, country, is_primary)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, person_id, type_code, number, country, is_primary, created_at, updated_at, deleted_at
+INSERT INTO oikumenea.person_phones (person_id, type_code, number, country_id, is_primary)
+VALUES ($1, $2, $3,
+        (SELECT gc.id FROM oikumenea.geo_countries gc WHERE gc.code = NULLIF($4::text, '')),
+        $5)
+RETURNING id, person_id, type_code, number, country_id, is_primary, created_at, updated_at, deleted_at
 `
 
 type InsertPhoneParams struct {
-	PersonID  string
-	TypeCode  string
-	Number    string
-	Country   pgtype.Text
-	IsPrimary bool
+	PersonID    string
+	TypeCode    string
+	Number      string
+	CountryCode pgtype.Text
+	IsPrimary   bool
 }
 
 // ============================ phones (D-PersonContactChannels) ============================
 // number is E.164-normalized and country derived in the application before insert. The
 // person_phone_types FK validates type_code; geo_countries FK validates the derived country.
+// The phone's country is DERIVED from the number (libphonenumber, application layer) as an ISO-3166-1
+// alpha-2 code, then resolved to the country's RID here (the geo registry is RID-keyed); an absent /
+// unresolvable region folds to NULL.
 func (q *Queries) InsertPhone(ctx context.Context, arg InsertPhoneParams) (OikumeneaPersonPhone, error) {
 	row := q.db.QueryRow(ctx, insertPhone,
 		arg.PersonID,
 		arg.TypeCode,
 		arg.Number,
-		arg.Country,
+		arg.CountryCode,
 		arg.IsPrimary,
 	)
 	var i OikumeneaPersonPhone
@@ -1168,7 +1173,7 @@ func (q *Queries) InsertPhone(ctx context.Context, arg InsertPhoneParams) (Oikum
 		&i.PersonID,
 		&i.TypeCode,
 		&i.Number,
-		&i.Country,
+		&i.CountryID,
 		&i.IsPrimary,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -1179,14 +1184,14 @@ func (q *Queries) InsertPhone(ctx context.Context, arg InsertPhoneParams) (Oikum
 
 const insertResidence = `-- name: InsertResidence :one
 
-INSERT INTO oikumenea.person_residences (person_id, country, region, valid_from, valid_to)
+INSERT INTO oikumenea.person_residences (person_id, country_id, region, valid_from, valid_to)
 VALUES ($1, $2, $3, $4::date, $5::date)
-RETURNING id, person_id, country, region, valid_from, valid_to, created_at, updated_at, deleted_at
+RETURNING id, person_id, country_id, region, valid_from, valid_to, created_at, updated_at, deleted_at
 `
 
 type InsertResidenceParams struct {
 	PersonID  string
-	Country   string
+	CountryID string
 	Region    pgtype.Text
 	ValidFrom pgtype.Date
 	ValidTo   pgtype.Date
@@ -1196,7 +1201,7 @@ type InsertResidenceParams struct {
 func (q *Queries) InsertResidence(ctx context.Context, arg InsertResidenceParams) (OikumeneaPersonResidence, error) {
 	row := q.db.QueryRow(ctx, insertResidence,
 		arg.PersonID,
-		arg.Country,
+		arg.CountryID,
 		arg.Region,
 		arg.ValidFrom,
 		arg.ValidTo,
@@ -1205,7 +1210,7 @@ func (q *Queries) InsertResidence(ctx context.Context, arg InsertResidenceParams
 	err := row.Scan(
 		&i.ID,
 		&i.PersonID,
-		&i.Country,
+		&i.CountryID,
 		&i.Region,
 		&i.ValidFrom,
 		&i.ValidTo,
@@ -1430,8 +1435,8 @@ func (q *Queries) ListCallSigns(ctx context.Context, personID string) ([]Oikumen
 }
 
 const listCitizenships = `-- name: ListCitizenships :many
-SELECT id, person_id, country, basis, acquired_on, lost_on, is_primary, created_at, updated_at, deleted_at FROM oikumenea.person_citizenships
-WHERE person_id = $1 AND deleted_at IS NULL ORDER BY country
+SELECT id, person_id, country_id, basis, acquired_on, lost_on, is_primary, created_at, updated_at, deleted_at FROM oikumenea.person_citizenships
+WHERE person_id = $1 AND deleted_at IS NULL ORDER BY country_id
 `
 
 func (q *Queries) ListCitizenships(ctx context.Context, personID string) ([]OikumeneaPersonCitizenship, error) {
@@ -1446,7 +1451,7 @@ func (q *Queries) ListCitizenships(ctx context.Context, personID string) ([]Oiku
 		if err := rows.Scan(
 			&i.ID,
 			&i.PersonID,
-			&i.Country,
+			&i.CountryID,
 			&i.Basis,
 			&i.AcquiredOn,
 			&i.LostOn,
@@ -1794,7 +1799,7 @@ func (q *Queries) ListPersonRanks(ctx context.Context, personID string) ([]Oikum
 }
 
 const listPersons = `-- name: ListPersons :many
-SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death FROM oikumenea.person_persons
+SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth_id, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death FROM oikumenea.person_persons
 WHERE deleted_at IS NULL AND ($1 = '' OR id::text > $1)
 ORDER BY id
 LIMIT $2
@@ -1830,7 +1835,7 @@ func (q *Queries) ListPersons(ctx context.Context, arg ListPersonsParams) ([]Oik
 			&i.Preferred,
 			&i.Birthdate,
 			&i.Sex,
-			&i.CountryOfBirth,
+			&i.CountryOfBirthID,
 			&i.Attributes,
 			&i.Status,
 			&i.DeactivatedAt,
@@ -1851,7 +1856,7 @@ func (q *Queries) ListPersons(ctx context.Context, arg ListPersonsParams) ([]Oik
 }
 
 const listPersonsByIDs = `-- name: ListPersonsByIDs :many
-SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death FROM oikumenea.person_persons
+SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth_id, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death FROM oikumenea.person_persons
 WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL
 ORDER BY id
 `
@@ -1883,7 +1888,7 @@ func (q *Queries) ListPersonsByIDs(ctx context.Context, ids []string) ([]Oikumen
 			&i.Preferred,
 			&i.Birthdate,
 			&i.Sex,
-			&i.CountryOfBirth,
+			&i.CountryOfBirthID,
 			&i.Attributes,
 			&i.Status,
 			&i.DeactivatedAt,
@@ -1936,7 +1941,7 @@ func (q *Queries) ListPhoneTypes(ctx context.Context) ([]OikumeneaPersonPhoneTyp
 }
 
 const listPhones = `-- name: ListPhones :many
-SELECT id, person_id, type_code, number, country, is_primary, created_at, updated_at, deleted_at FROM oikumenea.person_phones
+SELECT id, person_id, type_code, number, country_id, is_primary, created_at, updated_at, deleted_at FROM oikumenea.person_phones
 WHERE person_id = $1 AND deleted_at IS NULL ORDER BY is_primary DESC, number
 `
 
@@ -1954,7 +1959,7 @@ func (q *Queries) ListPhones(ctx context.Context, personID string) ([]OikumeneaP
 			&i.PersonID,
 			&i.TypeCode,
 			&i.Number,
-			&i.Country,
+			&i.CountryID,
 			&i.IsPrimary,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -2043,7 +2048,7 @@ func (q *Queries) ListRelationTypes(ctx context.Context) ([]OikumeneaPersonRelat
 }
 
 const listResidences = `-- name: ListResidences :many
-SELECT id, person_id, country, region, valid_from, valid_to, created_at, updated_at, deleted_at FROM oikumenea.person_residences
+SELECT id, person_id, country_id, region, valid_from, valid_to, created_at, updated_at, deleted_at FROM oikumenea.person_residences
 WHERE person_id = $1 AND deleted_at IS NULL ORDER BY valid_from DESC, id
 `
 
@@ -2059,7 +2064,7 @@ func (q *Queries) ListResidences(ctx context.Context, personID string) ([]Oikume
 		if err := rows.Scan(
 			&i.ID,
 			&i.PersonID,
-			&i.Country,
+			&i.CountryID,
 			&i.Region,
 			&i.ValidFrom,
 			&i.ValidTo,
@@ -2210,10 +2215,10 @@ UPDATE oikumenea.person_persons SET
   code = NULL, display_name = '', title = NULL, given = NULL, given2 = NULL,
   surname = NULL, surname_prefix = NULL, surname2 = NULL, generation = NULL,
   credentials = NULL, preferred = NULL, birthdate = NULL, date_of_death = NULL, sex = 'not_known',
-  country_of_birth = NULL, attributes = '{}'::jsonb,
+  country_of_birth_id = NULL, attributes = '{}'::jsonb,
   status = 'purged', deactivated_at = NULL, purge_after = NULL
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death
+RETURNING id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth_id, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death
 `
 
 // Hard-erase PII: NULL every pii:basic/contact column, reset sex/attributes, keep the id tombstone.
@@ -2236,7 +2241,7 @@ func (q *Queries) PurgePerson(ctx context.Context, id string) (OikumeneaPersonPe
 		&i.Preferred,
 		&i.Birthdate,
 		&i.Sex,
-		&i.CountryOfBirth,
+		&i.CountryOfBirthID,
 		&i.Attributes,
 		&i.Status,
 		&i.DeactivatedAt,
@@ -2253,7 +2258,7 @@ const reactivatePerson = `-- name: ReactivatePerson :one
 UPDATE oikumenea.person_persons
 SET status = 'active', deactivated_at = NULL, purge_after = NULL
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death
+RETURNING id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth_id, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death
 `
 
 func (q *Queries) ReactivatePerson(ctx context.Context, id string) (OikumeneaPersonPerson, error) {
@@ -2274,7 +2279,7 @@ func (q *Queries) ReactivatePerson(ctx context.Context, id string) (OikumeneaPer
 		&i.Preferred,
 		&i.Birthdate,
 		&i.Sex,
-		&i.CountryOfBirth,
+		&i.CountryOfBirthID,
 		&i.Attributes,
 		&i.Status,
 		&i.DeactivatedAt,
@@ -2617,29 +2622,29 @@ UPDATE oikumenea.person_persons SET
   birthdate        = COALESCE($11::date, birthdate),
   date_of_death    = COALESCE($12::date, date_of_death),
   sex              = COALESCE($13, sex),
-  country_of_birth = COALESCE($14, country_of_birth),
+  country_of_birth_id = COALESCE($14, country_of_birth_id),
   attributes       = COALESCE($15::jsonb, attributes)
 WHERE id = $16 AND deleted_at IS NULL
-RETURNING id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death
+RETURNING id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth_id, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death
 `
 
 type UpdatePersonParams struct {
-	DisplayName    pgtype.Text
-	Title          pgtype.Text
-	Given          pgtype.Text
-	Given2         pgtype.Text
-	Surname        pgtype.Text
-	SurnamePrefix  pgtype.Text
-	Surname2       pgtype.Text
-	Generation     pgtype.Text
-	Credentials    pgtype.Text
-	Preferred      pgtype.Text
-	Birthdate      pgtype.Date
-	DateOfDeath    pgtype.Date
-	Sex            pgtype.Text
-	CountryOfBirth pgtype.Text
-	Attributes     []byte
-	ID             string
+	DisplayName      pgtype.Text
+	Title            pgtype.Text
+	Given            pgtype.Text
+	Given2           pgtype.Text
+	Surname          pgtype.Text
+	SurnamePrefix    pgtype.Text
+	Surname2         pgtype.Text
+	Generation       pgtype.Text
+	Credentials      pgtype.Text
+	Preferred        pgtype.Text
+	Birthdate        pgtype.Date
+	DateOfDeath      pgtype.Date
+	Sex              pgtype.Text
+	CountryOfBirthID pgtype.Text
+	Attributes       []byte
+	ID               string
 }
 
 // Partial update: a NULL narg leaves the value unchanged. country_of_birth/birthdate/date_of_death
@@ -2660,7 +2665,7 @@ func (q *Queries) UpdatePerson(ctx context.Context, arg UpdatePersonParams) (Oik
 		arg.Birthdate,
 		arg.DateOfDeath,
 		arg.Sex,
-		arg.CountryOfBirth,
+		arg.CountryOfBirthID,
 		arg.Attributes,
 		arg.ID,
 	)
@@ -2680,7 +2685,7 @@ func (q *Queries) UpdatePerson(ctx context.Context, arg UpdatePersonParams) (Oik
 		&i.Preferred,
 		&i.Birthdate,
 		&i.Sex,
-		&i.CountryOfBirth,
+		&i.CountryOfBirthID,
 		&i.Attributes,
 		&i.Status,
 		&i.DeactivatedAt,
@@ -2695,25 +2700,27 @@ func (q *Queries) UpdatePerson(ctx context.Context, arg UpdatePersonParams) (Oik
 
 const updatePhone = `-- name: UpdatePhone :one
 UPDATE oikumenea.person_phones SET
-  type_code = $1, number = $2, country = $3, is_primary = $4
-WHERE id = $5 AND person_id = $6 AND deleted_at IS NULL
-RETURNING id, person_id, type_code, number, country, is_primary, created_at, updated_at, deleted_at
+  type_code = $1, number = $2,
+  country_id = (SELECT gc.id FROM oikumenea.geo_countries gc WHERE gc.code = NULLIF($3::text, '')),
+  is_primary = $4
+WHERE person_phones.id = $5 AND person_id = $6 AND deleted_at IS NULL
+RETURNING id, person_id, type_code, number, country_id, is_primary, created_at, updated_at, deleted_at
 `
 
 type UpdatePhoneParams struct {
-	TypeCode  string
-	Number    string
-	Country   pgtype.Text
-	IsPrimary bool
-	ID        string
-	PersonID  string
+	TypeCode    string
+	Number      string
+	CountryCode pgtype.Text
+	IsPrimary   bool
+	ID          string
+	PersonID    string
 }
 
 func (q *Queries) UpdatePhone(ctx context.Context, arg UpdatePhoneParams) (OikumeneaPersonPhone, error) {
 	row := q.db.QueryRow(ctx, updatePhone,
 		arg.TypeCode,
 		arg.Number,
-		arg.Country,
+		arg.CountryCode,
 		arg.IsPrimary,
 		arg.ID,
 		arg.PersonID,
@@ -2724,7 +2731,7 @@ func (q *Queries) UpdatePhone(ctx context.Context, arg UpdatePhoneParams) (Oikum
 		&i.PersonID,
 		&i.TypeCode,
 		&i.Number,
-		&i.Country,
+		&i.CountryID,
 		&i.IsPrimary,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -2735,14 +2742,14 @@ func (q *Queries) UpdatePhone(ctx context.Context, arg UpdatePhoneParams) (Oikum
 
 const updateResidence = `-- name: UpdateResidence :one
 UPDATE oikumenea.person_residences SET
-  country = $1, region = $2,
+  country_id = $1, region = $2,
   valid_from = $3::date, valid_to = $4::date
 WHERE id = $5 AND person_id = $6 AND deleted_at IS NULL
-RETURNING id, person_id, country, region, valid_from, valid_to, created_at, updated_at, deleted_at
+RETURNING id, person_id, country_id, region, valid_from, valid_to, created_at, updated_at, deleted_at
 `
 
 type UpdateResidenceParams struct {
-	Country   string
+	CountryID string
 	Region    pgtype.Text
 	ValidFrom pgtype.Date
 	ValidTo   pgtype.Date
@@ -2752,7 +2759,7 @@ type UpdateResidenceParams struct {
 
 func (q *Queries) UpdateResidence(ctx context.Context, arg UpdateResidenceParams) (OikumeneaPersonResidence, error) {
 	row := q.db.QueryRow(ctx, updateResidence,
-		arg.Country,
+		arg.CountryID,
 		arg.Region,
 		arg.ValidFrom,
 		arg.ValidTo,
@@ -2763,7 +2770,7 @@ func (q *Queries) UpdateResidence(ctx context.Context, arg UpdateResidenceParams
 	err := row.Scan(
 		&i.ID,
 		&i.PersonID,
-		&i.Country,
+		&i.CountryID,
 		&i.Region,
 		&i.ValidFrom,
 		&i.ValidTo,
@@ -2885,17 +2892,17 @@ func (q *Queries) UpdateSponsorship(ctx context.Context, arg UpdateSponsorshipPa
 
 const upsertCitizenship = `-- name: UpsertCitizenship :one
 
-INSERT INTO oikumenea.person_citizenships (person_id, country, basis, acquired_on, lost_on, is_primary)
+INSERT INTO oikumenea.person_citizenships (person_id, country_id, basis, acquired_on, lost_on, is_primary)
 VALUES ($1, $2, $3, $4::date, $5::date, $6)
-ON CONFLICT (person_id, country) WHERE lost_on IS NULL AND deleted_at IS NULL DO UPDATE SET
+ON CONFLICT (person_id, country_id) WHERE lost_on IS NULL AND deleted_at IS NULL DO UPDATE SET
   basis = excluded.basis, acquired_on = excluded.acquired_on, lost_on = excluded.lost_on,
   is_primary = excluded.is_primary
-RETURNING id, person_id, country, basis, acquired_on, lost_on, is_primary, created_at, updated_at, deleted_at
+RETURNING id, person_id, country_id, basis, acquired_on, lost_on, is_primary, created_at, updated_at, deleted_at
 `
 
 type UpsertCitizenshipParams struct {
 	PersonID   string
-	Country    string
+	CountryID  string
 	Basis      string
 	AcquiredOn pgtype.Date
 	LostOn     pgtype.Date
@@ -2908,7 +2915,7 @@ type UpsertCitizenshipParams struct {
 func (q *Queries) UpsertCitizenship(ctx context.Context, arg UpsertCitizenshipParams) (OikumeneaPersonCitizenship, error) {
 	row := q.db.QueryRow(ctx, upsertCitizenship,
 		arg.PersonID,
-		arg.Country,
+		arg.CountryID,
 		arg.Basis,
 		arg.AcquiredOn,
 		arg.LostOn,
@@ -2918,7 +2925,7 @@ func (q *Queries) UpsertCitizenship(ctx context.Context, arg UpsertCitizenshipPa
 	err := row.Scan(
 		&i.ID,
 		&i.PersonID,
-		&i.Country,
+		&i.CountryID,
 		&i.Basis,
 		&i.AcquiredOn,
 		&i.LostOn,

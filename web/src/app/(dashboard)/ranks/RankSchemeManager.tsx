@@ -7,6 +7,7 @@ import { ErrorBox } from "@/components/ErrorBox";
 import { ActionButton } from "@/components/ActionButton";
 import { pickLabel } from "@/lib/i18n";
 import { useLocale } from "@/lib/locale";
+import { CountrySelect, useCountryMap } from "@/components/CountrySelect";
 import type { RankCategory, RankGrade, RankScheme, RankSystem, RankType } from "@/lib/api/types";
 
 type Ordered = { id: string; sortOrder?: number };
@@ -14,7 +15,7 @@ type Option = { value: string; label: string };
 type Field = {
   name: string;
   placeholder: string;
-  type?: "text" | "number";
+  type?: "text" | "number" | "country";
   value?: string;
   options?: Option[]; // when present, renders a <select> (e.g. the STANAG grade picker)
 };
@@ -281,6 +282,7 @@ export function RankSchemeManager({ scheme, grades }: { scheme: RankScheme; grad
   };
 
   const systems = scheme.systems.slice().sort(byOrder);
+  const countryCode = useCountryMap();
 
   return (
     <div className="space-y-4">
@@ -296,7 +298,7 @@ export function RankSchemeManager({ scheme, grades }: { scheme: RankScheme; grad
                 <NodeEdit
                   fields={[
                     { name: "name", placeholder: "name", value: pickLabel(sys.name, locale) },
-                    { name: "country", placeholder: "country", value: sys.country ?? "" },
+                    { name: "country", placeholder: "country", type: "country", value: sys.country ?? "" },
                     { name: "sortOrder", placeholder: "priority", type: "number", value: numStr(sys.sortOrder) },
                   ]}
                   onSave={(b) => run(() => mutate("PUT", sysPath, b), () => setEditing(null))}
@@ -309,7 +311,7 @@ export function RankSchemeManager({ scheme, grades }: { scheme: RankScheme; grad
                   {pickLabel(sys.name, locale) || sys.code}{" "}
                   <span className="font-mono text-xs text-slate-400">{sys.code}</span>
                   {sys.country ? (
-                    <span className="rounded bg-slate-100 px-1.5 text-xs text-slate-500">{sys.country}</span>
+                    <span className="rounded bg-slate-100 px-1.5 text-xs text-slate-500">{countryCode(sys.country) || sys.country}</span>
                   ) : (
                     <span className="rounded bg-slate-100 px-1.5 text-xs text-slate-500">supranational</span>
                   )}
@@ -361,7 +363,7 @@ export function RankSchemeManager({ scheme, grades }: { scheme: RankScheme; grad
           fields={[
             { name: "code", placeholder: "code" },
             { name: "name", placeholder: "name" },
-            { name: "country", placeholder: "country (opt.)" },
+            { name: "country", placeholder: "country (opt.)", type: "country" },
             { name: "sortOrder", placeholder: "priority", type: "number" },
           ]}
           label="Add system"
@@ -535,6 +537,8 @@ function EditToggle({
 }
 
 function FieldInput({ fld }: { fld: Field }) {
+  if (fld.type === "country")
+    return <CountrySelect name={fld.name} defaultValue={fld.value} />;
   if (fld.options)
     return (
       <select
@@ -632,7 +636,9 @@ function AddInline({
       }}
     >
       {fields.map((fld, i) =>
-        fld.options ? (
+        fld.type === "country" ? (
+          <CountrySelect key={fld.name} name={fld.name} />
+        ) : fld.options ? (
           <select
             key={fld.name}
             name={fld.name}

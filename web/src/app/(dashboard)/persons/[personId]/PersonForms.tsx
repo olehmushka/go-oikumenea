@@ -6,6 +6,7 @@ import { mutate } from "@/lib/api/client";
 import { bffGet } from "@/lib/api/browser";
 import { ErrorBox } from "@/components/ErrorBox";
 import { EntitySelect } from "@/components/EntitySelect";
+import { CountrySelect, useCountryMap } from "@/components/CountrySelect";
 import { pickLabel } from "@/lib/i18n";
 import { useLocale } from "@/lib/locale";
 import { ridTail } from "@/lib/ontology/rid";
@@ -141,7 +142,7 @@ export function EditPerson({ person }: { person: Person }) {
         </div>
         <div>
           <label className="label">Country of birth</label>
-          <input name="countryOfBirth" className="input" defaultValue={person.countryOfBirth} />
+          <CountrySelect name="countryOfBirth" defaultValue={person.countryOfBirth} />
         </div>
       </div>
       <div className="flex gap-2">
@@ -413,11 +414,12 @@ export function CitizenshipManager({
   citizenships?: Citizenship[];
 }) {
   const { busy, err, run } = useRun();
+  const countryCode = useCountryMap();
   return (
     <ChannelBlock title="Citizenships" err={err}>
       <ItemList
         items={citizenships}
-        render={(c) => `${c.country}${c.isPrimary ? " (primary)" : ""}${c.basis ? ` · ${c.basis}` : ""}`}
+        render={(c) => `${countryCode(c.country) || c.country}${c.isPrimary ? " (primary)" : ""}${c.basis ? ` · ${c.basis}` : ""}`}
         del={(c) => `/person/v1/persons/${personId}/citizenships/${c.country}`}
         delConfirm="Remove this citizenship?"
       />
@@ -438,7 +440,7 @@ export function CitizenshipManager({
           );
         }}
       >
-        <input name="country" required className="input" placeholder="UKR" />
+        <CountrySelect name="country" required includeEmpty={false} />
         <select name="basis" className="input" defaultValue="">
           <option value="">basis…</option>
           <option value="birth">birth</option>
@@ -462,11 +464,12 @@ export function ResidenceManager({
   residences?: Residence[];
 }) {
   const { busy, err, run } = useRun();
+  const countryCode = useCountryMap();
   return (
     <ChannelBlock title="Residences" err={err}>
       <ItemList
         items={residences}
-        render={(r) => [r.country, r.region].filter(Boolean).join(" / ")}
+        render={(r) => [countryCode(r.country) || r.country, r.region].filter(Boolean).join(" / ")}
         del={(r) => `/person/v1/persons/${personId}/residences/${r.id}`}
         delConfirm="Remove this residence?"
       />
@@ -487,7 +490,7 @@ export function ResidenceManager({
           );
         }}
       >
-        <input name="country" required className="input" placeholder="UKR" />
+        <CountrySelect name="country" required includeEmpty={false} />
         <input name="region" className="input" placeholder="region (optional)" />
         <input name="validFrom" type="date" className="input" />
         <button className="btn-ghost" disabled={busy}>
@@ -555,11 +558,12 @@ export function DocumentManager({
 }) {
   const { locale } = useLocale();
   const { busy, err, run } = useRun();
+  const countryCode = useCountryMap();
   return (
     <ChannelBlock title="Documents" err={err}>
       <ItemList
         items={documents}
-        render={(d) => `${d.number ?? d.id.slice(-8)} · ${d.issuingCountry ?? ""} · ${d.status ?? ""}`}
+        render={(d) => `${d.number ?? d.id.slice(-8)} · ${countryCode(d.issuingCountry) || d.issuingCountry || ""} · ${d.status ?? ""}`}
         del={(d) => `/document/v1/documents/${d.id}`}
         delConfirm="Delete this document?"
       />
@@ -591,7 +595,7 @@ export function DocumentManager({
           ))}
         </select>
         <input name="number" className="input" placeholder="number" />
-        <input name="issuingCountry" className="input" placeholder="UKR" />
+        <CountrySelect name="issuingCountry" />
         <button className="btn-ghost" disabled={busy}>
           Add
         </button>

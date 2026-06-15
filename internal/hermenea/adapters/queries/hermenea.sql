@@ -93,6 +93,12 @@ INSERT INTO hermenea.import_raw_batches (source_id, source_version, checksum, pa
 VALUES ($1, $2, $3, $4, now())
 RETURNING id;
 
+-- name: InsertRawBatchRef :one
+-- A large streamed source staged on disk (D-GeoPlaces): the body is a file reference, not inline bytes.
+INSERT INTO hermenea.import_raw_batches (source_id, source_version, checksum, staged_path, fetched_at)
+VALUES ($1, $2, $3, $4, now())
+RETURNING id;
+
 -- ============================ runs ============================
 
 -- name: StartRun :one

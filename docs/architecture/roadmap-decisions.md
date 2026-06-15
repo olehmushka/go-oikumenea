@@ -15,10 +15,11 @@ The [`milestones.md`](../milestones.md) stage board sequences these; the
 kinds.
 
 Decisions here, in milestone order: **D-Worker** (M16, *superseded*) · **D-Hermenea** (M16, supersedes
-D-Worker, folds D-DataIngestion) · **D-DataIngestion** (M17→folded into M16) · **D-Languages**
+D-Worker, folds D-DataIngestion) · **D-GeoPlaces** (M16, WOF gazetteer + first connector, supersedes
+D-GeoSubdivisions, pulls PostGIS forward) · **D-DataIngestion** (M17→folded into M16) · **D-Languages**
 (M18) · **D-Location** (M19) · **D-Education** (M20) · **D-Companies** (M21) · **D-Religion** /
 **D-ClergyCredential** / **D-ReligiousAffiliation** / **D-SpecialPII** (M22–M25) · **D-GeoSubdivisions**
-/ **D-Vehicles** (M26).
+(*superseded by D-GeoPlaces*) / **D-Vehicles** (M26).
 
 > Cross-references into the **core** decisions (D-CryptoProvider, D-WebUI, D-Geo, D-Rank, D-Ontology,
 > D-PersonReadScope, …) point at [`decisions.md`](decisions.md); references among the planned-tier
@@ -530,7 +531,82 @@ identity), though *storing* gender identity stays a separate parked choice. See
 
 ---
 
-### D-GeoSubdivisions — Seeded ISO-3166-2 subnational-division registry (extends D-Geo)
+### D-GeoPlaces — Who's-On-First administrative gazetteer (`geo_places`), the first hermenea connector (extends D-Geo, supersedes D-GeoSubdivisions, pulls PostGIS forward)
+
+**Decision.** Geography gains a **full administrative gazetteer** sourced from **Who's-On-First (WOF)**,
+loaded by hermenea's **first real connector** (M16, D-Hermenea). A new shared platform table
+**`geo_places`** holds the four WOF admin placetypes — **country / region / county / locality**
+(city·town·village; WOF has no town/village split — that is a `population` property, not a placetype) —
+as a single tree: an `id uuid` **RID PK** under the **`location` service (code 12)** — minted by
+`new_id(12,1,2)` with a `rid_*` shape `CHECK` like every other Object (F-014; *amended from the
+original `wof_id BIGINT` PK*) — with `wof_id BIGINT NOT NULL UNIQUE` retained as the stable WOF
+import/concordance key; `placetype TEXT`+`CHECK`; `parent_id uuid` self-FK → `geo_places(id)`
+(a structural containment edge derived from `wof:hierarchy` to the nearest imported ancestor, the
+`rank_types` pattern — **not** a reified Link); denormalized `country_id uuid` → `geo_countries(id)`;
+default-locale `name` (other locales via the i18n store, `entity_type='geo_place'`); `population`;
+`hierarchy`/`concordances` JSONB; `status` (`active`/`retired`, the latter mirroring WOF
+`mz:is_current=0`/supersession — **non-destructive**); the `(source, source_version, imported_at)`
+provenance trio; and **PostGIS** geometry — `geom GEOMETRY(Geometry,4326)` (full shape) + DB-derived
+`centroid`/`bbox`, served as GeoJSON via `ST_AsGeoJSON`, GIST-indexed. The existing **`geo_countries`
+is enriched in place** (additive `wof_id` + geometry + `iso_a3`/`numeric_code`), and a
+`placetype=country` WOF record mirrors its geometry onto the country row in the same import
+transaction. Coverage is **global** (all four placetypes worldwide), rolled out **per country** (one
+`wof-geo-<iso>` source each, cron-staggered, Ukraine first).
+
+**Amendment (M16 — geo becomes RID-keyed, full RID end-to-end).** `geo_countries` left the
+natural-key carve-out: it gained an `id uuid` **RID PK** (`new_id(12,1,1)`, location service 12) with
+`code CHAR(2)` demoted to `NOT NULL UNIQUE` (the canonical external **lookup** key). **All 8 country
+FK consumers** — `person.country_of_birth`, `person_citizenships`/`person_residences`/`person_phones`,
+`document_documents.issuing_country`, `document_personal_code_schemes`, `rank_systems`, and
+`geo_places` — repoint to `geo_countries(id)` (the columns become `*_id uuid`). The **country RID
+flows end-to-end** through domain → Conjure → web (ISO `code` is lookup-only). Because country entry
+was free-text ISO with no countries endpoint, a read-only **`GeoService` (`GET /geo/countries`,
+`country.read`)** returns `{id, code, name, status}` so clients resolve a code to its RID and populate
+pickers. Ingestion is unchanged on the wire — the WOF/ISO importer still streams natural keys and
+resolves `wof_id`/`code → id` in SQL on upsert (an unresolvable non-zero parent/country trips the FK
+loudly, preserving the parent-first RESTRICT guarantee); the phone country is derived as an ISO code
+and likewise resolved in SQL; the rank **preset import** resolves its ISO country code to the RID
+before insert.
+
+**Pipeline / ingestion.** WOF ships as per-country "combined" SQLite admin DBs (`.db.bz2`), not a JSON
+API, and a single country's geometry far exceeds the 16 MiB in-memory batch cap. So M16 adds: a new
+**`wof-sqlite` StreamingConnector** (fetch `.db.bz2` → bzip2-decompress → stage to a temp file, never
+in-memory/BYTEA) and a **paged-mapper seam** (`PagedMapper`) that walks the SQLite **parent-first**
+(country→region→county→locality) emitting bounded pages, each loaded as its own canonical envelope via
+`POST /import/geo-places`; `import_runs` aggregates the counts. Idempotency is keyed on `source_version`
+(re-import of the same WOF edition skips; a newer one updates; never deletes). Hermenea stays
+PostGIS-agnostic — it ships GeoJSON **text**; only oikumenea materializes geometry.
+
+**Why.** A real gazetteer with shapes + parentage is the "better information for relations & graphs"
+the registry verticals need; WOF is an open, ID-stable, concordance-rich global admin source. Keeping
+`geo_countries` as the ISO-keyed FK anchor (enriched, not re-keyed) preserves every existing consumer
+while giving countries WOF geometry. A WOF tree subsumes ISO-3166-2 subdivisions **and** reaches down to
+localities, which ISO-3166-2 cannot. Pulling **PostGIS forward** from D-Location (M19) is required to
+store/query the shapes now; M19 reuses the same stack.
+
+**Why not** (a) *Keep the ISO-3166-2 `geo_subdivisions` plan (D-GeoSubdivisions)*: ISO-3166-2 has no
+codes for cities/villages and no geometry — WOF is strictly richer, so D-GeoSubdivisions is
+**superseded**. (b) *Full WOF replacement (re-key `geo_countries` onto WOF ids)*: breaks binding D-Geo
+and 8 FKs — rejected. (c) *JSONB GeoJSON instead of PostGIS*: dead-weight, unqueryable — rejected.
+(d) *Single planet SQLite in one batch*: multi-GB, no failure isolation — per-country streaming +
+paging chosen instead.
+
+**Consequence.** New `geo_places` table + enriched `geo_countries` (folded into the bootstrap migration,
+PostGIS extension added); new import object-type `geo-places` + handler in `dataimport`; hermenea gains
+the `wof-sqlite` connector, the `PagedMapper` seam, a file-staged raw batch (`staged_path`), and the
+`geo-places` mapper; new reference Object `GeoPlace` in [ontology-mapping](../ontology-mapping.md).
+**Supersedes D-GeoSubdivisions**; **D-Vehicles**' plate-region FK `subdivision_id` → `geo_places`
+(placetype=region). Global locality coverage is millions of rows + GBs of geometry — a long, staggered
+backfill, not a single sync. Lands in **M16** ([milestones](../milestones.md)). Additive / expand-only.
+
+---
+
+### D-GeoSubdivisions — Seeded ISO-3166-2 subnational-division registry (extends D-Geo) — **SUPERSEDED by D-GeoPlaces**
+
+> **Superseded (M16).** Replaced by **D-GeoPlaces** (the WOF `geo_places` gazetteer), which covers
+> region/county/locality with codes, geometry, and parentage that ISO-3166-2 cannot. The original
+> design is retained below for provenance; `geo_subdivisions` is **not built**, and D-Vehicles'
+> `subdivision_id` now targets `geo_places`.
 
 **Decision.** Geography gains a **second seeded reference layer below the country**: a new shared table
 **`geo_subdivisions`**, owned/seeded by [platform](../modules/platform.md) exactly like

@@ -206,6 +206,15 @@ func (s *Service) upsertSystem(ctx context.Context, repo domain.Repository, ps P
 	if !validCodeName(ps.Code, ps.Name) {
 		return "", domain.ErrInvalid
 	}
+	// Presets carry the country as an ISO-3166-1 alpha-2 code; resolve it to the country's RID
+	// (countries are RID-keyed, F-014) so the rest of the upsert compares/stores RIDs.
+	if ps.Country != nil && *ps.Country != "" {
+		cid, err := repo.CountryIDByCode(ctx, *ps.Country)
+		if err != nil {
+			return "", err
+		}
+		ps.Country = &cid
+	}
 	existing, err := repo.GetSystemByCode(ctx, ps.Code)
 	if errors.Is(err, domain.ErrSystemNotFound) {
 		created, err := repo.InsertSystem(ctx, ps.Code, ps.Name, ps.SortOrder, ps.Country)

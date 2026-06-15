@@ -12,13 +12,22 @@
 #   psql "$DATABASE_URL" -c "CREATE ROLE oikumenea LOGIN PASSWORD 'dev' IN ROLE oikumenea_app;"
 #   ./godelw build && out/build/oikumenea/unspecified/linux-amd64/oikumenea serve
 #
+# Hermenea companion (M16 / D-Hermenea) runs from the host too, against its OWN database on this same
+# Postgres (it never touches oikumenea's DB):
+#   psql "$DATABASE_URL" -c "CREATE DATABASE hermenea;"          # one-time
+#   atlas migrate apply --env hermenea                          # apply migrations/hermenea
+#   OIKUMENEA_HERMENEA_TOKEN=dev-trigger HERMENEA_OIKUMENEA_TOKEN=dev-import \
+#     go run ./cmd/hermenea                                     # reads var/conf/hermenea-install.yml
+#
 # Keycloak auto-imports deploy/keycloak/realm-oikumenea.json (realm `oikumenea`, client `oikumenea`,
 # user admin/admin). The token issuer is http://localhost:8080/realms/oikumenea — the same URL the
 # host uses to mint tokens and the host-run app uses for OIDC discovery (no hostname juggling). See
 # deploy/keycloak/README.md for the full manual end-to-end recipe.
 services:
   postgres:
-    image: postgres:16
+    # PostGIS-enabled (D-GeoPlaces): the bootstrap migration runs `CREATE EXTENSION postgis` for the
+    # WOF gazetteer. A drop-in superset of the stock postgres:16 image.
+    image: postgis/postgis:16-3.4
     environment:
       POSTGRES_PASSWORD: dev
       POSTGRES_DB: postgres

@@ -123,7 +123,7 @@ type Document struct {
 	Number *string `json:"number,omitempty"`
 	// Issuing authority (e.g. ДМС України). pii:basic.
 	Issuer *string `json:"issuer,omitempty"`
-	// ISO-3166-1 alpha-2 code of the issuing country (geo registry); lets one person hold same-type papers from several countries.
+	// Country RID of the issuing country (resolve via GET /geo/countries); lets one person hold same-type papers from several countries.
 	IssuingCountry *string `json:"issuingCountry,omitempty"`
 	// ISO-8601 date the document was issued.
 	IssuedOn *string `json:"issuedOn,omitempty"`
@@ -290,7 +290,7 @@ func (o *PersonalCode) UnmarshalYAML(unmarshal func(interface{}) error) error {
 type PersonalCodeScheme struct {
 	// The scheme id (D-Code); the natural key. Immutable by convention.
 	Code string `json:"code"`
-	// ISO-3166-1 alpha-2 code of the scheme's country (geo registry).
+	// Country RID of the scheme's country (resolve via GET /geo/countries; the field name is retained for compatibility).
 	CountryIso *string `json:"countryIso,omitempty"`
 	// Semantic grouping — one of tax-id | national-id | social-insurance | health-insurance | residence-permit | other.
 	GenericCategory string `json:"genericCategory"`

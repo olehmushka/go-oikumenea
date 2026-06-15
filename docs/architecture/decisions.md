@@ -1118,13 +1118,16 @@ big-endian) — emitted by `oikumenea.new_id()` and read by the `rid_*` decoders
   `effective_from`/`effective_to`, `granted_at`/`revoked_at`(+`expires_at`).
 - **Action RID = the natural key of the `audit_log` row** that records it (D-Audit).
 - **Polymorphic id columns stay `TEXT`.** `audit_log.target_id` and `i18n_translations.entity_id`
-  reference *either* a RID uuid *or* a natural-key code (locale, country, scheme), so they are `text`
+  reference *either* a RID uuid *or* a natural-key code (locale, scheme), so they are `text`
   (a RID's canonical uuid text or a bare code), not `uuid`. `actor_person_id`/`unit_id` (always RIDs)
   are `uuid`.
 - **Scope.** Tables keyed by `id` adopt the uuid RID. Pre-existing **natural-key catalog tables**
-  (`geo_countries.code`, `document_personal_code_schemes.code`, `i18n_locales.code`,
-  `person_*_types.code`, `person_platforms.code`, `person_relation_types.code`, `rank_grades.code`) and
-  **composite-key** join/closure tables keep their keys (D-Geo / D-PersonalCodes / D-Code unchanged).
+  (`document_personal_code_schemes.code`, `i18n_locales.code`, `person_*_types.code`,
+  `person_platforms.code`, `person_relation_types.code`, `rank_grades.code`) and **composite-key**
+  join/closure tables keep their keys (D-PersonalCodes / D-Code unchanged). *(Amended M16: the geo
+  registry left this carve-out — `geo_countries` and `geo_places` are now RID-keyed under the new
+  `location` service (code 12), with ISO `code` / `wof_id` retained as `UNIQUE` lookup/concordance
+  keys and every country FK repointed to `geo_countries(id)`; see roadmap-decisions D-Geo / D-GeoPlaces.)*
 
 **Why.** A self-hosted instance is one app, one environment, one database (L-SingleDomain), so the
 URN's `<service>`/`<environment>` segments encoded values that never vary across the rows of a DB —

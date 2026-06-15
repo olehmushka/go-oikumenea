@@ -165,6 +165,15 @@ func (r *Repository) InsertRawBatch(ctx context.Context, sourceID, sourceVersion
 	})
 }
 
+func (r *Repository) InsertRawBatchRef(ctx context.Context, sourceID, sourceVersion, checksum, stagedPath string) (string, error) {
+	return r.q.InsertRawBatchRef(ctx, hermeneasql.InsertRawBatchRefParams{
+		SourceID:      sourceID,
+		SourceVersion: text(sourceVersion),
+		Checksum:      checksum,
+		StagedPath:    text(stagedPath),
+	})
+}
+
 func (r *Repository) StartRun(ctx context.Context, sourceID, rawBatchID, sourceVersion string) (string, error) {
 	return r.q.StartRun(ctx, hermeneasql.StartRunParams{
 		SourceID:      sourceID,

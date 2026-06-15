@@ -67,7 +67,7 @@ Conventions per [conventions.md](../architecture/conventions.md).
   identifying personal data). *(Government personal codes — РНОКПП, SSN — are no longer stored here;
   they live in `document_personal_codes` below, encrypted.)*
 - `issuer TEXT` — issuing authority (e.g. "ДМС України") — `pii:basic`
-- `issuing_country CHAR(2) REFERENCES geo_countries(code) ON DELETE RESTRICT` — the country that
+- `issuing_country_id uuid REFERENCES geo_countries(id) ON DELETE RESTRICT` — the issuing-country RID (F-014); the country that
   issued this paper; nullable. Lets one person hold several same-type papers from different countries
   (e.g. a UA **and** a PL passport) — D-Geo / D-PersonalCodes — `pii:none`
 - `issued_on DATE`, `expires_on DATE` — validity window (a `DATE`, not an instant) — `pii:none`
@@ -97,7 +97,7 @@ All other columns (`id`, `person_id`, `type_id`, `status`, `sort_order`, lifecyc
   registry FK'd by code, **not** an RID-keyed runtime entity, so it can be seeded in the migration).
   Immutable by convention. Seeded with a representative set (`ua-rnokpp`, `ua-unzr`, `us-ssn`,
   `de-steuer-id`, `it-codice-fiscale`, `pl-pesel`, …); the instance admin adds more — `pii:none`
-- `country_iso CHAR(2) REFERENCES geo_countries(code) ON DELETE RESTRICT` — the scheme's issuing
+- `country_id uuid REFERENCES geo_countries(id) ON DELETE RESTRICT` — the scheme's country RID (F-014); the scheme's issuing
   country (NOT NULL for national schemes) — `pii:none`
 - `generic_category TEXT NOT NULL CHECK (generic_category IN ('tax-id','national-id',
   'social-insurance','health-insurance','residence-permit','other'))` — the **semantic grouping**

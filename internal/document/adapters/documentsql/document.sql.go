@@ -42,7 +42,7 @@ func (q *Queries) ErasePersonDocuments(ctx context.Context, personID string) (in
 }
 
 const getDocument = `-- name: GetDocument :one
-SELECT id, person_id, type_id, number, issuer, issuing_country, issued_on, expires_on, attributes, status, created_at, updated_at, deleted_at FROM oikumenea.document_documents WHERE id = $1 AND deleted_at IS NULL
+SELECT id, person_id, type_id, number, issuer, issuing_country_id, issued_on, expires_on, attributes, status, created_at, updated_at, deleted_at FROM oikumenea.document_documents WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetDocument(ctx context.Context, id string) (OikumeneaDocumentDocument, error) {
@@ -54,7 +54,7 @@ func (q *Queries) GetDocument(ctx context.Context, id string) (OikumeneaDocument
 		&i.TypeID,
 		&i.Number,
 		&i.Issuer,
-		&i.IssuingCountry,
+		&i.IssuingCountryID,
 		&i.IssuedOn,
 		&i.ExpiresOn,
 		&i.Attributes,
@@ -111,7 +111,7 @@ func (q *Queries) GetPersonalCode(ctx context.Context, id string) (OikumeneaDocu
 }
 
 const getScheme = `-- name: GetScheme :one
-SELECT code, country_iso, generic_category, name, validation_regex, status, sort_order, created_at, updated_at, deleted_at FROM oikumenea.document_personal_code_schemes WHERE code = $1 AND deleted_at IS NULL
+SELECT code, country_id, generic_category, name, validation_regex, status, sort_order, created_at, updated_at, deleted_at FROM oikumenea.document_personal_code_schemes WHERE code = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetScheme(ctx context.Context, code string) (OikumeneaDocumentPersonalCodeScheme, error) {
@@ -119,7 +119,7 @@ func (q *Queries) GetScheme(ctx context.Context, code string) (OikumeneaDocument
 	var i OikumeneaDocumentPersonalCodeScheme
 	err := row.Scan(
 		&i.Code,
-		&i.CountryIso,
+		&i.CountryID,
 		&i.GenericCategory,
 		&i.Name,
 		&i.ValidationRegex,
@@ -135,24 +135,24 @@ func (q *Queries) GetScheme(ctx context.Context, code string) (OikumeneaDocument
 const insertDocument = `-- name: InsertDocument :one
 
 INSERT INTO oikumenea.document_documents (
-  person_id, type_id, number, issuer, issuing_country, issued_on, expires_on, attributes
+  person_id, type_id, number, issuer, issuing_country_id, issued_on, expires_on, attributes
 ) VALUES (
   $1, $2, $3, $4, $5,
   $6::date, $7::date,
   COALESCE($8::jsonb, '{}')
 )
-RETURNING id, person_id, type_id, number, issuer, issuing_country, issued_on, expires_on, attributes, status, created_at, updated_at, deleted_at
+RETURNING id, person_id, type_id, number, issuer, issuing_country_id, issued_on, expires_on, attributes, status, created_at, updated_at, deleted_at
 `
 
 type InsertDocumentParams struct {
-	PersonID       string
-	TypeID         string
-	Number         pgtype.Text
-	Issuer         pgtype.Text
-	IssuingCountry pgtype.Text
-	IssuedOn       pgtype.Date
-	ExpiresOn      pgtype.Date
-	Attributes     []byte
+	PersonID         string
+	TypeID           string
+	Number           pgtype.Text
+	Issuer           pgtype.Text
+	IssuingCountryID pgtype.Text
+	IssuedOn         pgtype.Date
+	ExpiresOn        pgtype.Date
+	Attributes       []byte
 }
 
 // ============================ documents (papers) ============================
@@ -162,7 +162,7 @@ func (q *Queries) InsertDocument(ctx context.Context, arg InsertDocumentParams) 
 		arg.TypeID,
 		arg.Number,
 		arg.Issuer,
-		arg.IssuingCountry,
+		arg.IssuingCountryID,
 		arg.IssuedOn,
 		arg.ExpiresOn,
 		arg.Attributes,
@@ -174,7 +174,7 @@ func (q *Queries) InsertDocument(ctx context.Context, arg InsertDocumentParams) 
 		&i.TypeID,
 		&i.Number,
 		&i.Issuer,
-		&i.IssuingCountry,
+		&i.IssuingCountryID,
 		&i.IssuedOn,
 		&i.ExpiresOn,
 		&i.Attributes,
@@ -281,17 +281,17 @@ func (q *Queries) InsertPersonalCode(ctx context.Context, arg InsertPersonalCode
 const insertScheme = `-- name: InsertScheme :one
 
 INSERT INTO oikumenea.document_personal_code_schemes (
-  code, country_iso, generic_category, name, validation_regex, sort_order
+  code, country_id, generic_category, name, validation_regex, sort_order
 ) VALUES (
   $1, $2, $3, $4, $5,
   $6
 )
-RETURNING code, country_iso, generic_category, name, validation_regex, status, sort_order, created_at, updated_at, deleted_at
+RETURNING code, country_id, generic_category, name, validation_regex, status, sort_order, created_at, updated_at, deleted_at
 `
 
 type InsertSchemeParams struct {
 	Code            string
-	CountryIso      pgtype.Text
+	CountryID       pgtype.Text
 	GenericCategory string
 	Name            string
 	ValidationRegex pgtype.Text
@@ -302,7 +302,7 @@ type InsertSchemeParams struct {
 func (q *Queries) InsertScheme(ctx context.Context, arg InsertSchemeParams) (OikumeneaDocumentPersonalCodeScheme, error) {
 	row := q.db.QueryRow(ctx, insertScheme,
 		arg.Code,
-		arg.CountryIso,
+		arg.CountryID,
 		arg.GenericCategory,
 		arg.Name,
 		arg.ValidationRegex,
@@ -311,7 +311,7 @@ func (q *Queries) InsertScheme(ctx context.Context, arg InsertSchemeParams) (Oik
 	var i OikumeneaDocumentPersonalCodeScheme
 	err := row.Scan(
 		&i.Code,
-		&i.CountryIso,
+		&i.CountryID,
 		&i.GenericCategory,
 		&i.Name,
 		&i.ValidationRegex,
@@ -361,7 +361,7 @@ func (q *Queries) ListDocumentTypes(ctx context.Context) ([]OikumeneaDocumentDoc
 }
 
 const listDocumentsByPerson = `-- name: ListDocumentsByPerson :many
-SELECT id, person_id, type_id, number, issuer, issuing_country, issued_on, expires_on, attributes, status, created_at, updated_at, deleted_at FROM oikumenea.document_documents
+SELECT id, person_id, type_id, number, issuer, issuing_country_id, issued_on, expires_on, attributes, status, created_at, updated_at, deleted_at FROM oikumenea.document_documents
 WHERE person_id = $1 AND deleted_at IS NULL
   AND ($2 = '' OR id::text > $2)
 ORDER BY id
@@ -389,7 +389,7 @@ func (q *Queries) ListDocumentsByPerson(ctx context.Context, arg ListDocumentsBy
 			&i.TypeID,
 			&i.Number,
 			&i.Issuer,
-			&i.IssuingCountry,
+			&i.IssuingCountryID,
 			&i.IssuedOn,
 			&i.ExpiresOn,
 			&i.Attributes,
@@ -447,9 +447,9 @@ func (q *Queries) ListPersonalCodesByPerson(ctx context.Context, personID string
 }
 
 const listSchemes = `-- name: ListSchemes :many
-SELECT code, country_iso, generic_category, name, validation_regex, status, sort_order, created_at, updated_at, deleted_at FROM oikumenea.document_personal_code_schemes
+SELECT code, country_id, generic_category, name, validation_regex, status, sort_order, created_at, updated_at, deleted_at FROM oikumenea.document_personal_code_schemes
 WHERE deleted_at IS NULL
-  AND ($1 = '' OR country_iso::text = $1)
+  AND ($1 = '' OR country_id::text = $1)
   AND ($2 = '' OR generic_category = $2)
 ORDER BY sort_order NULLS LAST, code
 `
@@ -470,7 +470,7 @@ func (q *Queries) ListSchemes(ctx context.Context, arg ListSchemesParams) ([]Oik
 		var i OikumeneaDocumentPersonalCodeScheme
 		if err := rows.Scan(
 			&i.Code,
-			&i.CountryIso,
+			&i.CountryID,
 			&i.GenericCategory,
 			&i.Name,
 			&i.ValidationRegex,
@@ -520,24 +520,24 @@ const updateDocument = `-- name: UpdateDocument :one
 UPDATE oikumenea.document_documents SET
   number          = COALESCE($1, number),
   issuer          = COALESCE($2, issuer),
-  issuing_country = COALESCE($3, issuing_country),
+  issuing_country_id = COALESCE($3, issuing_country_id),
   issued_on       = COALESCE($4::date, issued_on),
   expires_on      = COALESCE($5::date, expires_on),
   attributes      = COALESCE($6::jsonb, attributes),
   status          = COALESCE($7, status)
 WHERE id = $8 AND deleted_at IS NULL
-RETURNING id, person_id, type_id, number, issuer, issuing_country, issued_on, expires_on, attributes, status, created_at, updated_at, deleted_at
+RETURNING id, person_id, type_id, number, issuer, issuing_country_id, issued_on, expires_on, attributes, status, created_at, updated_at, deleted_at
 `
 
 type UpdateDocumentParams struct {
-	Number         pgtype.Text
-	Issuer         pgtype.Text
-	IssuingCountry pgtype.Text
-	IssuedOn       pgtype.Date
-	ExpiresOn      pgtype.Date
-	Attributes     []byte
-	Status         pgtype.Text
-	ID             string
+	Number           pgtype.Text
+	Issuer           pgtype.Text
+	IssuingCountryID pgtype.Text
+	IssuedOn         pgtype.Date
+	ExpiresOn        pgtype.Date
+	Attributes       []byte
+	Status           pgtype.Text
+	ID               string
 }
 
 // Partial update: a NULL narg leaves the value unchanged. Clearing number/issuer/issuing_country to
@@ -546,7 +546,7 @@ func (q *Queries) UpdateDocument(ctx context.Context, arg UpdateDocumentParams) 
 	row := q.db.QueryRow(ctx, updateDocument,
 		arg.Number,
 		arg.Issuer,
-		arg.IssuingCountry,
+		arg.IssuingCountryID,
 		arg.IssuedOn,
 		arg.ExpiresOn,
 		arg.Attributes,
@@ -560,7 +560,7 @@ func (q *Queries) UpdateDocument(ctx context.Context, arg UpdateDocumentParams) 
 		&i.TypeID,
 		&i.Number,
 		&i.Issuer,
-		&i.IssuingCountry,
+		&i.IssuingCountryID,
 		&i.IssuedOn,
 		&i.ExpiresOn,
 		&i.Attributes,
@@ -664,18 +664,18 @@ func (q *Queries) UpdatePersonalCode(ctx context.Context, arg UpdatePersonalCode
 
 const updateScheme = `-- name: UpdateScheme :one
 UPDATE oikumenea.document_personal_code_schemes SET
-  country_iso      = COALESCE($1, country_iso),
+  country_id       = COALESCE($1, country_id),
   generic_category = COALESCE($2, generic_category),
   name             = COALESCE($3, name),
   validation_regex = COALESCE($4, validation_regex),
   status           = COALESCE($5, status),
   sort_order       = COALESCE($6, sort_order)
 WHERE code = $7 AND deleted_at IS NULL
-RETURNING code, country_iso, generic_category, name, validation_regex, status, sort_order, created_at, updated_at, deleted_at
+RETURNING code, country_id, generic_category, name, validation_regex, status, sort_order, created_at, updated_at, deleted_at
 `
 
 type UpdateSchemeParams struct {
-	CountryIso      pgtype.Text
+	CountryID       pgtype.Text
 	GenericCategory pgtype.Text
 	Name            pgtype.Text
 	ValidationRegex pgtype.Text
@@ -686,7 +686,7 @@ type UpdateSchemeParams struct {
 
 func (q *Queries) UpdateScheme(ctx context.Context, arg UpdateSchemeParams) (OikumeneaDocumentPersonalCodeScheme, error) {
 	row := q.db.QueryRow(ctx, updateScheme,
-		arg.CountryIso,
+		arg.CountryID,
 		arg.GenericCategory,
 		arg.Name,
 		arg.ValidationRegex,
@@ -697,7 +697,7 @@ func (q *Queries) UpdateScheme(ctx context.Context, arg UpdateSchemeParams) (Oik
 	var i OikumeneaDocumentPersonalCodeScheme
 	err := row.Scan(
 		&i.Code,
-		&i.CountryIso,
+		&i.CountryID,
 		&i.GenericCategory,
 		&i.Name,
 		&i.ValidationRegex,

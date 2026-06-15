@@ -14,22 +14,35 @@ import (
 )
 
 // Service orchestrates ingestion over the store (hermenea's DB), the connector registry, the per
-// object-type mapper registry, and the loader (oikumenea's import endpoint).
+// object-type mapper registries (in-memory + paged), and the loader (oikumenea's import endpoint).
 type Service struct {
-	store      domain.Store
-	connectors map[string]domain.Connector
-	mappers    map[string]domain.Mapper
-	loader     domain.Loader
+	store        domain.Store
+	connectors   map[string]domain.Connector
+	mappers      map[string]domain.Mapper
+	pagedMappers map[string]domain.PagedMapper
+	loader       domain.Loader
 }
 
 // NewService wires the service with its store, connector registry, and loader. Mappers are registered
-// per object-type at composition time (RegisterMapper).
+// per object-type at composition time (RegisterMapper / RegisterPagedMapper).
 func NewService(store domain.Store, connectors map[string]domain.Connector, loader domain.Loader) *Service {
-	return &Service{store: store, connectors: connectors, mappers: map[string]domain.Mapper{}, loader: loader}
+	return &Service{
+		store:        store,
+		connectors:   connectors,
+		mappers:      map[string]domain.Mapper{},
+		pagedMappers: map[string]domain.PagedMapper{},
+		loader:       loader,
+	}
 }
 
-// RegisterMapper registers the raw→records mapper for an object-type (composition-time wiring).
+// RegisterMapper registers the in-memory raw→records mapper for an object-type (composition-time).
 func (s *Service) RegisterMapper(objectType string, m domain.Mapper) { s.mappers[objectType] = m }
+
+// RegisterPagedMapper registers the paged mapper for an object-type (used when the source's connector
+// is a StreamingConnector — the wof-sqlite / geo-places path, D-GeoPlaces).
+func (s *Service) RegisterPagedMapper(objectType string, m domain.PagedMapper) {
+	s.pagedMappers[objectType] = m
+}
 
 // SeedSource upserts a configured source and (when it carries a cron) its schedule. Idempotent.
 func (s *Service) SeedSource(ctx context.Context, src domain.Source) error {
@@ -129,6 +142,17 @@ func (s *Service) ProcessJob(ctx context.Context, job domain.Job) error {
 	if !ok {
 		return fmt.Errorf("%w: %s", domain.ErrNoConnector, src.ConnectorType)
 	}
+
+	// Streaming connectors (wof-sqlite, D-GeoPlaces) take the paged path: the payload is too large for
+	// a single in-memory batch, so the source is staged to disk and loaded one bounded page at a time.
+	if sc, ok := conn.(domain.StreamingConnector); ok {
+		pm, ok := s.pagedMappers[src.ObjectType]
+		if !ok {
+			return fmt.Errorf("%w: %s (paged)", domain.ErrNoMapper, src.ObjectType)
+		}
+		return s.processStreaming(ctx, src, sc, pm)
+	}
+
 	mapper, ok := s.mappers[src.ObjectType]
 	if !ok {
 		return fmt.Errorf("%w: %s", domain.ErrNoMapper, src.ObjectType)
@@ -158,4 +182,46 @@ func (s *Service) ProcessJob(ctx context.Context, job domain.Job) error {
 		return fmt.Errorf("load %s: %w", src.Code, err)
 	}
 	return s.store.FinishRun(ctx, runID, domain.RunSucceeded, sum.Created, sum.Updated, sum.Skipped, "")
+}
+
+// processStreaming runs the paged pipeline for a StreamingConnector source (D-GeoPlaces): stage the
+// source to disk, record a file-referenced raw batch, then load each parent-first page as its own
+// canonical envelope, aggregating the upsert counts into one import_run. A page-load error fails the
+// run (the worker retries/backs off); the staged file is always removed.
+func (s *Service) processStreaming(ctx context.Context, src domain.Source, sc domain.StreamingConnector, pm domain.PagedMapper) error {
+	staged, err := sc.Stage(ctx, src)
+	if err != nil {
+		return fmt.Errorf("stage %s: %w", src.Code, err)
+	}
+	if staged.Cleanup != nil {
+		defer staged.Cleanup()
+	}
+	rawID, err := s.store.InsertRawBatchRef(ctx, src.ID, staged.SourceVersion, staged.Checksum, staged.Path)
+	if err != nil {
+		return err
+	}
+	runID, err := s.store.StartRun(ctx, src.ID, rawID, staged.SourceVersion)
+	if err != nil {
+		return err
+	}
+
+	var agg domain.ImportSummary
+	loadErr := pm.MapPaged(ctx, staged, func(records []map[string]any) error {
+		if len(records) == 0 {
+			return nil
+		}
+		sum, err := s.loader.Load(ctx, src.ObjectType, src.Code, staged.SourceVersion, records)
+		if err != nil {
+			return err
+		}
+		agg.Created += sum.Created
+		agg.Updated += sum.Updated
+		agg.Skipped += sum.Skipped
+		return nil
+	})
+	if loadErr != nil {
+		_ = s.store.FinishRun(ctx, runID, domain.RunFailed, agg.Created, agg.Updated, agg.Skipped, loadErr.Error())
+		return fmt.Errorf("stream %s: %w", src.Code, loadErr)
+	}
+	return s.store.FinishRun(ctx, runID, domain.RunSucceeded, agg.Created, agg.Updated, agg.Skipped, "")
 }

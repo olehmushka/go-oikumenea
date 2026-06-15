@@ -71,7 +71,7 @@ types:
             docs: Biological sex, ISO/IEC 5218 as text — one of not_known | male | female | not_applicable.
           countryOfBirth:
             type: optional<string>
-            docs: ISO-3166-1 alpha-2 country code, validated against the geo registry (D-Geo).
+            docs: Country RID (resolve via GET /geo/countries), validated against the geo registry (D-Geo).
           attributes:
             type: optional<any>
             docs: Free-form long-tail directory fields (JSONB). pii:special ceiling — no special-category data without the envelope seam.
@@ -146,7 +146,7 @@ types:
           personId: string
           country:
             type: string
-            docs: ISO-3166-1 alpha-2 country code (geo registry).
+            docs: Country RID (resolve via GET /geo/countries).
           basis:
             type: string
             docs: How the citizenship was acquired — one of birth | descent | naturalization | other.
@@ -166,7 +166,7 @@ types:
           personId: string
           country:
             type: string
-            docs: ISO-3166-1 alpha-2 country code (geo registry).
+            docs: Country RID (resolve via GET /geo/countries).
           region:
             type: optional<string>
             docs: Optional sub-national region / locality (free text).
@@ -206,7 +206,7 @@ types:
             docs: The phone number, E.164-normalized on write.
           country:
             type: optional<string>
-            docs: ISO-3166-1 alpha-2 country code derived from the number; null when underivable.
+            docs: Country RID derived from the number (resolve codes via GET /geo/countries); null when underivable.
           isPrimary:
             type: boolean
             docs: The person's primary phone (at most one active).
@@ -860,7 +860,7 @@ services:
         returns: Citizenship
       deleteCitizenship:
         http: DELETE /persons/{personId}/citizenships/{country}
-        docs: Remove a citizenship by country code.
+        docs: Remove a citizenship by country RID.
         args:
           personId:
             type: string

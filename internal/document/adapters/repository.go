@@ -97,8 +97,8 @@ func (r *Repository) InsertDocument(ctx context.Context, d domain.Document) (dom
 		PersonID:       d.PersonID,
 		TypeID:         d.TypeID,
 		Number:         text(d.Number),
-		Issuer:         text(d.Issuer),
-		IssuingCountry: text(d.IssuingCountry),
+		Issuer:           text(d.Issuer),
+		IssuingCountryID: text(d.IssuingCountry),
 		IssuedOn:       dateText(d.IssuedOn),
 		ExpiresOn:      dateText(d.ExpiresOn),
 		Attributes:     d.Attributes,
@@ -123,8 +123,8 @@ func (r *Repository) GetDocument(ctx context.Context, id string) (domain.Documen
 func (r *Repository) UpdateDocument(ctx context.Context, id string, patch domain.DocumentPatch) (domain.Document, error) {
 	row, err := r.q.UpdateDocument(ctx, documentsql.UpdateDocumentParams{
 		Number:         textPtr(patch.Number),
-		Issuer:         textPtr(patch.Issuer),
-		IssuingCountry: textPtr(patch.IssuingCountry),
+		Issuer:           textPtr(patch.Issuer),
+		IssuingCountryID: textPtr(patch.IssuingCountry),
 		IssuedOn:       datePtr(patch.IssuedOn),
 		ExpiresOn:      datePtr(patch.ExpiresOn),
 		Attributes:     rawPtr(patch.Attributes),
@@ -174,7 +174,7 @@ func (r *Repository) ErasePersonDocuments(ctx context.Context, personID string) 
 func (r *Repository) InsertScheme(ctx context.Context, s domain.PersonalCodeScheme) (domain.PersonalCodeScheme, error) {
 	row, err := r.q.InsertScheme(ctx, documentsql.InsertSchemeParams{
 		Code:            s.Code,
-		CountryIso:      text(s.CountryISO),
+		CountryID:       text(s.CountryISO),
 		GenericCategory: s.GenericCategory,
 		Name:            s.Name,
 		ValidationRegex: text(s.ValidationRegex),
@@ -199,7 +199,7 @@ func (r *Repository) GetScheme(ctx context.Context, code string) (domain.Persona
 
 func (r *Repository) UpdateScheme(ctx context.Context, code string, patch domain.PersonalCodeSchemePatch) (domain.PersonalCodeScheme, error) {
 	row, err := r.q.UpdateScheme(ctx, documentsql.UpdateSchemeParams{
-		CountryIso:      textPtr(patch.CountryISO),
+		CountryID:       textPtr(patch.CountryISO),
 		GenericCategory: textPtr(patch.GenericCategory),
 		Name:            textPtr(patch.Name),
 		ValidationRegex: textPtr(patch.ValidationRegex),
@@ -331,7 +331,7 @@ func toDocument(r documentsql.OikumeneaDocumentDocument) domain.Document {
 		TypeID:         r.TypeID,
 		Number:         r.Number.String,
 		Issuer:         r.Issuer.String,
-		IssuingCountry: r.IssuingCountry.String,
+		IssuingCountry: r.IssuingCountryID.String,
 		IssuedOn:       dateStr(r.IssuedOn),
 		ExpiresOn:      dateStr(r.ExpiresOn),
 		Attributes:     r.Attributes,
@@ -344,7 +344,7 @@ func toDocument(r documentsql.OikumeneaDocumentDocument) domain.Document {
 func toScheme(r documentsql.OikumeneaDocumentPersonalCodeScheme) domain.PersonalCodeScheme {
 	return domain.PersonalCodeScheme{
 		Code:            r.Code,
-		CountryISO:      r.CountryIso.String,
+		CountryISO:      r.CountryID.String,
 		GenericCategory: r.GenericCategory,
 		Name:            r.Name,
 		ValidationRegex: r.ValidationRegex.String,

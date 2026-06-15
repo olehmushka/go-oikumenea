@@ -8,9 +8,11 @@ This repo is a **modular monolith + a companion service, under active implementa
 a `go.mod`, the `internal/<module>/` Go modules, the `api/*.conjure.yml` contracts, the versioned
 `migrations/`, and an optional Next.js console under `web/`. The foundation milestones **M0–M11** are
 delivered and the person/rank enrichment milestones **M13–M15** are delivered; **M12** is
-scoped/in progress; **M16** is **in implementation** as the out-of-process **hermenea** companion
-(D-Hermenea supersedes D-Worker and absorbs M17); **M18–M26** are designed (decisions landed) but not
-yet built. To answer "what stage is feature X in?" read the
+scoped/in progress; **M16** is **verified** as the out-of-process **hermenea** companion
+(D-Hermenea supersedes D-Worker and absorbs M17) — the geo-countries pipeline and the full WOF Ukraine
+`geo-places` backfill (35k places + `geo_countries` enrichment + idempotent re-run) are proven
+end-to-end in a real `docker compose` cross-service run; **M18–M26** are designed (decisions landed) but
+not yet built. To answer "what stage is feature X in?" read the
 **[stage board](docs/milestones.md#stage-board)** — it is the scannable index.
 
 `docs/` remains the **source of truth**, and `docs/architecture/decisions.md` is **binding**: if

@@ -147,7 +147,7 @@ type OikumeneaDocumentDocument struct {
 	// pii:basic
 	Issuer pgtype.Text
 	// pii:none
-	IssuingCountry pgtype.Text
+	IssuingCountryID pgtype.Text
 	// pii:none
 	IssuedOn pgtype.Date
 	// pii:none
@@ -205,7 +205,7 @@ type OikumeneaDocumentPersonalCodeScheme struct {
 	// pii:none
 	Code string
 	// pii:none
-	CountryIso pgtype.Text
+	CountryID pgtype.Text
 	// pii:none
 	GenericCategory string
 	// pii:none
@@ -223,6 +223,8 @@ type OikumeneaDocumentPersonalCodeScheme struct {
 
 type OikumeneaGeoCountry struct {
 	// pii:none
+	ID string
+	// pii:none
 	Code string
 	// pii:none
 	Name string
@@ -230,6 +232,18 @@ type OikumeneaGeoCountry struct {
 	Status string
 	// pii:none
 	SortOrder pgtype.Int4
+	// pii:none
+	WofID pgtype.Int8
+	// pii:none
+	IsoA3 pgtype.Text
+	// pii:none
+	NumericCode pgtype.Text
+	// pii:none
+	Geom interface{}
+	// pii:none
+	Centroid interface{}
+	// pii:none
+	Bbox      interface{}
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	// pii:none
@@ -238,6 +252,43 @@ type OikumeneaGeoCountry struct {
 	SourceVersion pgtype.Text
 	// pii:none
 	ImportedAt pgtype.Timestamptz
+}
+
+type OikumeneaGeoPlace struct {
+	// pii:none
+	ID string
+	// pii:none
+	WofID int64
+	// pii:none
+	Placetype string
+	// pii:none
+	ParentID pgtype.Text
+	// pii:none
+	CountryID pgtype.Text
+	// pii:none
+	Name string
+	// pii:none
+	Population pgtype.Int8
+	// pii:none
+	Hierarchy []byte
+	// pii:none
+	Concordances []byte
+	// pii:none
+	Status string
+	// pii:none
+	Geom interface{}
+	// pii:none
+	Centroid interface{}
+	// pii:none
+	Bbox interface{}
+	// pii:none
+	Source pgtype.Text
+	// pii:none
+	SourceVersion pgtype.Text
+	// pii:none
+	ImportedAt pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
 }
 
 type OikumeneaI18nLocale struct {
@@ -416,7 +467,7 @@ type OikumeneaPersonCitizenship struct {
 	// pii:none
 	PersonID string
 	// pii:basic
-	Country string
+	CountryID string
 	// pii:basic
 	Basis string
 	// pii:basic
@@ -613,7 +664,7 @@ type OikumeneaPersonPerson struct {
 	// pii:basic
 	Sex string
 	// pii:basic
-	CountryOfBirth pgtype.Text
+	CountryOfBirthID pgtype.Text
 	// pii:special
 	Attributes []byte
 	// pii:none
@@ -639,7 +690,7 @@ type OikumeneaPersonPhone struct {
 	// pii:contact
 	Number string
 	// pii:contact
-	Country pgtype.Text
+	CountryID pgtype.Text
 	// pii:none
 	IsPrimary bool
 	CreatedAt pgtype.Timestamptz
@@ -713,7 +764,7 @@ type OikumeneaPersonResidence struct {
 	// pii:none
 	PersonID string
 	// pii:contact
-	Country string
+	CountryID string
 	// pii:contact
 	Region pgtype.Text
 	// pii:contact
@@ -868,7 +919,7 @@ type OikumeneaRankSystem struct {
 	// pii:none
 	SortOrder int32
 	// pii:none
-	Country   pgtype.Text
+	CountryID pgtype.Text
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz

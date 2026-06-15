@@ -125,7 +125,7 @@ types:
             docs: Order among active systems.
           country:
             type: optional<string>
-            docs: ISO-3166 national origin (geo_countries code); absent for a supranational system (NATO/UN).
+            docs: Country RID of the national origin (resolve via GET /geo/countries); absent for a supranational system (NATO/UN).
           categories:
             type: list<RankCategory>
             docs: The system's categories in seniority order. Populated by getRankScheme; empty on create/update of the system.
@@ -157,7 +157,7 @@ types:
           name: string
           country:
             type: optional<string>
-            docs: ISO-3166 national origin (geo_countries code); omit for a supranational system (NATO/UN).
+            docs: Country RID of the national origin (resolve via GET /geo/countries); omit for a supranational system (NATO/UN).
           sortOrder:
             type: optional<integer>
             docs: Order among active systems; defaults to appended last.

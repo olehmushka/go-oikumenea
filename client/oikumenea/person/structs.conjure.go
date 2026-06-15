@@ -69,7 +69,7 @@ func (o *CallSign) UnmarshalYAML(unmarshal func(interface{}) error) error {
 type Citizenship struct {
 	Id       string `json:"id"`
 	PersonId string `json:"personId"`
-	// ISO-3166-1 alpha-2 country code (geo registry).
+	// Country RID (resolve via GET /geo/countries).
 	Country string `json:"country"`
 	// How the citizenship was acquired — one of birth | descent | naturalization | other.
 	Basis string `json:"basis"`
@@ -462,7 +462,7 @@ type Person struct {
 	DateOfDeath *string `json:"dateOfDeath,omitempty"`
 	// Biological sex, ISO/IEC 5218 as text — one of not_known | male | female | not_applicable.
 	Sex string `json:"sex"`
-	// ISO-3166-1 alpha-2 country code, validated against the geo registry (D-Geo).
+	// Country RID (resolve via GET /geo/countries), validated against the geo registry (D-Geo).
 	CountryOfBirth *string `json:"countryOfBirth,omitempty"`
 	// Free-form long-tail directory fields (JSONB). pii:special ceiling — no special-category data without the envelope seam.
 	Attributes *interface{} `json:"attributes,omitempty"`
@@ -653,7 +653,7 @@ type Phone struct {
 	TypeCode string `json:"typeCode"`
 	// The phone number, E.164-normalized on write.
 	Number string `json:"number"`
-	// ISO-3166-1 alpha-2 country code derived from the number; null when underivable.
+	// Country RID derived from the number (resolve codes via GET /geo/countries); null when underivable.
 	Country *string `json:"country,omitempty"`
 	// The person's primary phone (at most one active).
 	IsPrimary bool `json:"isPrimary"`
@@ -827,7 +827,7 @@ func (o *RelationType) UnmarshalYAML(unmarshal func(interface{}) error) error {
 type Residence struct {
 	Id       string `json:"id"`
 	PersonId string `json:"personId"`
-	// ISO-3166-1 alpha-2 country code (geo registry).
+	// Country RID (resolve via GET /geo/countries).
 	Country string `json:"country"`
 	// Optional sub-national region / locality (free text).
 	Region *string `json:"region,omitempty"`

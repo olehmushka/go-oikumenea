@@ -24,6 +24,7 @@ var serviceNames = map[int]string{
 	SvcAccount:    "account",
 	SvcDocument:   "document",
 	SvcOrder:      "order",
+	SvcLocation:   "location",
 }
 
 type typeKey struct {
@@ -83,6 +84,9 @@ var typeNames = map[typeKey]string{
 	{SvcOrder, int(KindObject), 1}: "order_type",
 	{SvcOrder, int(KindObject), 2}: "order",
 	{SvcOrder, int(KindObject), 3}: "order_item",
+	// location
+	{SvcLocation, int(KindObject), 1}: "country",
+	{SvcLocation, int(KindObject), 2}: "geo_place",
 }
 
 // Bare person link-type names (the dispatch tokens), derived from the registry above.

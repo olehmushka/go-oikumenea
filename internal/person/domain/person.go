@@ -17,6 +17,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/olegamysk/go-oikumenea/pkg/rid"
 )
 
 // ISODate is the layout person calendar-date fields (birthdate, citizenship/residence windows) are
@@ -183,7 +185,7 @@ func (p Person) Validate() error {
 		return wrapInvalid("sex must be one of not_known|male|female|not_applicable")
 	}
 	if p.CountryOfBirth != "" && !validCountry(p.CountryOfBirth) {
-		return wrapInvalid("countryOfBirth must be a 2-letter ISO-3166-1 alpha-2 code")
+		return wrapInvalid("countryOfBirth must be a country RID (resolve via GET /geo/countries)")
 	}
 	if !validDate(p.Birthdate) {
 		return wrapInvalid("birthdate must be an ISO-8601 date (YYYY-MM-DD)")
@@ -232,7 +234,7 @@ func (p PersonPatch) Validate() error {
 		return wrapInvalid("sex must be one of not_known|male|female|not_applicable")
 	}
 	if p.CountryOfBirth != nil && *p.CountryOfBirth != "" && !validCountry(*p.CountryOfBirth) {
-		return wrapInvalid("countryOfBirth must be a 2-letter ISO-3166-1 alpha-2 code")
+		return wrapInvalid("countryOfBirth must be a country RID (resolve via GET /geo/countries)")
 	}
 	if p.Birthdate != nil && !validDate(*p.Birthdate) {
 		return wrapInvalid("birthdate must be an ISO-8601 date (YYYY-MM-DD)")
@@ -284,7 +286,7 @@ type Citizenship struct {
 // Validate enforces a 2-letter country code, a known basis, and parseable optional dates.
 func (c Citizenship) Validate() error {
 	if !validCountry(c.Country) {
-		return wrapInvalid("country must be a 2-letter ISO-3166-1 code")
+		return wrapInvalid("country must be a country RID (resolve via GET /geo/countries)")
 	}
 	if c.Basis != "" && !validBasis[c.Basis] {
 		return wrapInvalid("basis must be one of birth|descent|naturalization|other")
@@ -309,7 +311,7 @@ type Residence struct {
 // valid_to).
 func (r Residence) Validate() error {
 	if !validCountry(r.Country) {
-		return wrapInvalid("country must be a 2-letter ISO-3166-1 code")
+		return wrapInvalid("country must be a country RID (resolve via GET /geo/countries)")
 	}
 	if r.ValidFrom == "" || !validDate(r.ValidFrom) {
 		return wrapInvalid("validFrom is required and must be an ISO-8601 date (YYYY-MM-DD)")
@@ -717,17 +719,11 @@ func validCode(code string) bool {
 	})
 }
 
-// validCountry checks the ISO-3166-1 alpha-2 shape (existence is enforced by the geo FK).
+// validCountry checks the value is a country RID (the geo registry is now RID-keyed, F-014; clients
+// resolve an ISO code to its RID via GET /geo/countries). Existence is enforced by the geo FK and
+// surfaced as ErrUnknownCountry.
 func validCountry(c string) bool {
-	if len(c) != 2 {
-		return false
-	}
-	for _, r := range c {
-		if r < 'A' || r > 'Z' {
-			return false
-		}
-	}
-	return true
+	return rid.IsRID(c)
 }
 
 // validDate reports whether s is empty (absent) or a valid ISO-8601 calendar date.

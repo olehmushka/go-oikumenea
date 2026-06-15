@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { mutate } from "@/lib/api/client";
 import { ErrorBox } from "@/components/ErrorBox";
 import { Localized } from "@/components/Localized";
+import { CountrySelect, useCountryMap } from "@/components/CountrySelect";
 import type { DocumentType, PersonalCodeScheme } from "@/lib/api/types";
 
 function useRun() {
@@ -113,6 +114,7 @@ export function DocTypeManager({ types }: { types: DocumentType[] }) {
 export function SchemeManager({ schemes }: { schemes: PersonalCodeScheme[] }) {
   const { busy, err, run } = useRun();
   const [editing, setEditing] = useState<string | null>(null);
+  const countryCode = useCountryMap();
   return (
     <div className="space-y-2">
       {err ? <ErrorBox error={err} /> : null}
@@ -157,7 +159,7 @@ export function SchemeManager({ schemes }: { schemes: PersonalCodeScheme[] }) {
               <span className="font-mono text-xs text-slate-400">{s.code}</span>
             </div>
             <span className="flex items-center gap-3">
-              {s.country ? <span className="text-xs text-slate-400">{s.country}</span> : null}
+              {s.country ? <span className="text-xs text-slate-400">{countryCode(s.country) || s.country}</span> : null}
               <span className="text-xs text-slate-400">{s.status}</span>
               <button
                 type="button"
@@ -191,7 +193,7 @@ export function SchemeManager({ schemes }: { schemes: PersonalCodeScheme[] }) {
         <input name="code" required className="input" placeholder="code (e.g. ua-rnokpp)" />
         <input name="name" required className="input" placeholder="name" />
         <input name="genericCategory" required className="input" placeholder="category (e.g. tax-id)" />
-        <input name="countryIso" className="input" placeholder="country ISO (optional)" />
+        <CountrySelect name="countryIso" />
         <button className="btn-ghost col-span-2" disabled={busy}>
           Add scheme
         </button>

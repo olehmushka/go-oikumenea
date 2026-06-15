@@ -31,6 +31,12 @@ func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Serv
 		func(conn db.DBTX) domain.GeoCountryStore { return adapters.NewGeoCountryRepo(conn) },
 	))
 
+	// geo-places: the Who's-On-First administrative gazetteer (D-GeoPlaces) — the first real connector's
+	// load target. A placetype=country record also enriches the geo_countries row in the same tx.
+	svc.Register(domain.ObjectTypeGeoPlaces, application.GeoPlacesHandler(
+		func(conn db.DBTX) domain.GeoPlaceStore { return adapters.NewGeoPlaceRepo(conn) },
+	))
+
 	if err := dataimportapi.RegisterRoutesImportService(info.Router, transport.NewService(svc, enforcer)); err != nil {
 		return nil, werror.Wrap(err, "register import service routes")
 	}

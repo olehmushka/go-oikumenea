@@ -48,7 +48,7 @@ type PersonServiceClient interface {
 	ListCitizenships(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Citizenship, error)
 	// Add or replace the active citizenship for a country. Returns Person:PersonInvalid for an unknown country.
 	UpsertCitizenship(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertCitizenshipRequest) (Citizenship, error)
-	// Remove a citizenship by country code.
+	// Remove a citizenship by country RID.
 	DeleteCitizenship(ctx context.Context, authHeader bearertoken.Token, personIdArg string, countryArg string) error
 	// List a person's residence history.
 	ListResidences(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Residence, error)
@@ -996,7 +996,7 @@ type PersonServiceClientWithAuth interface {
 	ListCitizenships(ctx context.Context, personIdArg string) ([]Citizenship, error)
 	// Add or replace the active citizenship for a country. Returns Person:PersonInvalid for an unknown country.
 	UpsertCitizenship(ctx context.Context, personIdArg string, requestArg UpsertCitizenshipRequest) (Citizenship, error)
-	// Remove a citizenship by country code.
+	// Remove a citizenship by country RID.
 	DeleteCitizenship(ctx context.Context, personIdArg string, countryArg string) error
 	// List a person's residence history.
 	ListResidences(ctx context.Context, personIdArg string) ([]Residence, error)

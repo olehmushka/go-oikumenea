@@ -300,8 +300,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List the scheme catalog, optionally filtered by country and/or generic category.
-         * @description List the scheme catalog, optionally filtered by country and/or generic category.
+         * List the scheme catalog, optionally filtered by country RID (GET /geo/countries) and/or generic category.
+         * @description List the scheme catalog, optionally filtered by country RID (GET /geo/countries) and/or generic category.
          */
         get: operations["DocumentService_listPersonalCodeSchemes"];
         put?: never;
@@ -404,6 +404,106 @@ export interface paths {
          *     Document:PersonalCodeDuplicate.
          */
         post: operations["DocumentService_attachPersonalCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/geo/v1/countries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the active countries in display order (sort_order, then code).
+         * @description List the active countries in display order (sort_order, then code).
+         */
+        get: operations["GeoService_listCountries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hermenea/v1/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List worker jobs (most recent first).
+         * @description List worker jobs (most recent first).
+         */
+        get: operations["HermeneaService_listJobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hermenea/v1/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List import-run lineage (most recent first).
+         * @description List import-run lineage (most recent first).
+         */
+        get: operations["HermeneaService_listRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hermenea/v1/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the registered import sources.
+         * @description List the registered import sources.
+         */
+        get: operations["HermeneaService_listSources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hermenea/v1/sync/{source}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enqueue a sync job for a registered source (the push trigger from oikumenea).
+         * @description Enqueue a sync job for a registered source (the push trigger from oikumenea).
+         */
+        post: operations["HermeneaService_triggerSync"];
         delete?: never;
         options?: never;
         head?: never;
@@ -528,6 +628,26 @@ export interface paths {
         get: operations["IdentityFederationService_whoami"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/import/v1/import/{objectType}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Idempotently upsert a canonical envelope into the {objectType} catalog.
+         * @description Idempotently upsert a canonical envelope into the {objectType} catalog.
+         */
+        post: operations["ImportService_importObjects"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1042,8 +1162,8 @@ export interface paths {
          */
         get: operations["PersonService_getPerson"];
         /**
-         * Update names, birthdate, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.
-         * @description Update names, birthdate, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.
+         * Update names, birthdate, date_of_death, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.
+         * @description Update names, birthdate, date_of_death, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.
          */
         put: operations["PersonService_updatePerson"];
         post?: never;
@@ -1156,8 +1276,8 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Remove a citizenship by country code.
-         * @description Remove a citizenship by country code.
+         * Remove a citizenship by country RID.
+         * @description Remove a citizenship by country RID.
          */
         delete: operations["PersonService_deleteCitizenship"];
         options?: never;
@@ -1488,8 +1608,8 @@ export interface paths {
         };
         get?: never;
         /**
-         * Set or clear the person's one rank (a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.
-         * @description Set or clear the person's one rank (a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.
+         * Set or clear the person's rank in one rank system (one rank per system, a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.
+         * @description Set or clear the person's rank in one rank system (one rank per system, a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.
          */
         put: operations["PersonService_setRank"];
         post?: never;
@@ -2259,7 +2379,7 @@ export interface components {
         /** @description Add a rank system (the top level). `name` is the default-locale text; other locales via LocalizationService. */
         AddSystemRequest: {
             code: string;
-            /** @description ISO-3166 national origin (geo_countries code); omit for a supranational system (NATO/UN). */
+            /** @description Country RID of the national origin (resolve via GET /geo/countries); omit for a supranational system (NATO/UN). */
             country?: string;
             name: string;
             /**
@@ -2417,13 +2537,31 @@ export interface components {
             isPrimary: boolean;
             personId: string;
         };
+        /**
+         * @description The interchange document hermenea produces and oikumenea upserts. `objectType` must equal the
+         *     path object-type. `records` are object-type-specific JSON objects the registered handler reads.
+         */
+        CanonicalEnvelope: {
+            /** @description ISO-8601 timestamp the upstream snapshot was generated (lineage only). */
+            generatedAt?: string;
+            /** @description License/attribution string carried for lineage (not persisted per-row). */
+            license?: string;
+            /** @description The importable object-type key (e.g. geo-countries); must match the path parameter. */
+            objectType: string;
+            /** @description The object-type-specific records to upsert; each is a JSON object. */
+            records: unknown[];
+            /** @description Stable source identifier (e.g. iso-3166) — stamped as row provenance. */
+            source: string;
+            /** @description The source's version/edition (e.g. 2024) — stamped as row provenance. */
+            sourceVersion?: string;
+        };
         /** @description A person's effective-dated nationality in a country (D-Geo). A person may hold several; at most one active per country. */
         Citizenship: {
             /** @description ISO-8601 date the citizenship was acquired. */
             acquiredOn?: string;
             /** @description How the citizenship was acquired — one of birth | descent | naturalization | other. */
             basis: string;
-            /** @description ISO-3166-1 alpha-2 country code (geo registry). */
+            /** @description Country RID (resolve via GET /geo/countries). */
             country: string;
             id: string;
             /** @description The person's primary nationality (at most one active). */
@@ -2462,6 +2600,21 @@ export interface components {
             roleCode?: string;
             scope?: string;
             targetUnitId?: string;
+        };
+        /** @description A country in the ISO-3166-1 registry. `id` is the RID (the reference key); `code` is the stable ISO-3166-1 alpha-2 lookup code; `name` is the default-locale (English) name. */
+        Country: {
+            /** @description ISO-3166-1 alpha-2 code (e.g. UA, PL); the stable, locale-agnostic lookup key. */
+            code: string;
+            /** @description The country's RID (location service); what person/document/rank reference. */
+            id: string;
+            /** @description Default-locale (English) display name; other locales arrive via the i18n store. */
+            name: string;
+            /** @description active | retired. */
+            status: string;
+        };
+        /** @description The countries, in display order. */
+        CountryList: {
+            countries: components["schemas"]["Country"][];
         };
         /**
          * @description Create an account for a person, optionally linking its first external identity in the same
@@ -2534,13 +2687,12 @@ export interface components {
             code?: string;
             countryOfBirth?: string;
             credentials?: string;
+            dateOfDeath?: string;
             displayName: string;
             generation?: string;
             given?: string;
             given2?: string;
             preferred?: string;
-            /** @description Optional initial rank (validated against the rank scheme). */
-            rankId?: string;
             /** @description ISO/IEC 5218 value; defaults to not_known when omitted. */
             sex?: string;
             surname?: string;
@@ -2612,7 +2764,7 @@ export interface components {
             issuedOn?: string;
             /** @description Issuing authority (e.g. ДМС України). pii:basic. */
             issuer?: string;
-            /** @description ISO-3166-1 alpha-2 code of the issuing country (geo registry); lets one person hold same-type papers from several countries. */
+            /** @description Country RID of the issuing country (resolve via GET /geo/countries); lets one person hold same-type papers from several countries. */
             issuingCountry?: string;
             /** @description The document number (passport no., licence no.). pii:basic. */
             number?: string;
@@ -2805,6 +2957,56 @@ export interface components {
             /** Format: int32 */
             updated: number;
         };
+        /** @description The per-object-type outcome of one idempotent upsert. */
+        ImportResult: {
+            /**
+             * Format: int32
+             * @description Rows newly inserted.
+             */
+            created: number;
+            objectType: string;
+            /**
+             * Format: int32
+             * @description Rows already up to date (idempotent no-ops).
+             */
+            skipped: number;
+            /**
+             * Format: int32
+             * @description Existing rows whose values changed.
+             */
+            updated: number;
+        };
+        /** @description One map+load lineage record. */
+        ImportRun: {
+            /** Format: int32 */
+            created: number;
+            error?: string;
+            finishedAt?: string;
+            id: string;
+            /** Format: int32 */
+            skipped: number;
+            sourceCode: string;
+            sourceVersion?: string;
+            startedAt: string;
+            /** @description running | succeeded | failed. */
+            status: string;
+            /** Format: int32 */
+            updated: number;
+        };
+        /** @description A registered external dataset hermenea can sync into oikumenea. */
+        ImportSource: {
+            code: string;
+            /** @description http | file. */
+            connectorType: string;
+            /** @description Cron spec; absent means trigger-only. */
+            cron?: string;
+            enabled: boolean;
+            /** @description URL (http) or bundled path (file). */
+            locator: string;
+            name: string;
+            /** @description The oikumenea import target (e.g. geo-countries). */
+            objectType: string;
+        };
         ImportSystem: {
             categories: components["schemas"]["ImportCategory"][];
             code: string;
@@ -2836,6 +3038,11 @@ export interface components {
             /** Format: date-time */
             revokedAt?: string;
             revokedBy?: string;
+        };
+        /** @description A reference to an enqueued worker job (the result of a sync trigger). */
+        JobRef: {
+            jobId: string;
+            status: string;
         };
         /** @description A directional parent→child blood/legal parentage link (D-PersonRelationships; Link link__kin_parent_of). Siblings are derived, never stored. */
         Kinship: {
@@ -3082,12 +3289,14 @@ export interface components {
             citizenships: components["schemas"]["Citizenship"][];
             /** @description Optional stable, locale-agnostic external id (e.g. personnel/service number); unique among active persons. */
             code?: string;
-            /** @description ISO-3166-1 alpha-2 country code, validated against the geo registry (D-Geo). */
+            /** @description Country RID (resolve via GET /geo/countries), validated against the geo registry (D-Geo). */
             countryOfBirth?: string;
             /** Format: date-time */
             createdAt: string;
             /** @description Post-nominal credentials (PhD, MD). */
             credentials?: string;
+            /** @description ISO-8601 calendar date of death (YYYY-MM-DD); a bio attribute, not a lifecycle state — a deceased person stays an active record (D-PersonBio). */
+            dateOfDeath?: string;
             /** Format: date-time */
             deactivatedAt?: string;
             /** @description The canonical full name form; authoritative for search/display. */
@@ -3114,8 +3323,8 @@ export interface components {
              * @description End of the reversibility window; purge is refused before it.
              */
             purgeAfter?: string;
-            /** @description The URN RID of the one rank the person holds (a DIRECTORY attribute; never an authz input). Null when unranked. */
-            rankId?: string;
+            /** @description The ranks the person holds — at most one per rank system (a DIRECTORY attribute; never an authz input — D-Rank). Empty when unranked. Populated by getPerson; empty in list responses. */
+            ranks: components["schemas"]["PersonRank"][];
             /** @description The person's residence history. Populated by getPerson; empty in list responses. */
             residences: components["schemas"]["Residence"][];
             /** @description Biological sex, ISO/IEC 5218 as text — one of not_known | male | female | not_applicable. */
@@ -3138,6 +3347,13 @@ export interface components {
             nextPageToken?: string;
             persons: components["schemas"]["Person"][];
         };
+        /** @description One rank a person holds, scoped to a rank system (the HOLDS_RANK link; one per system — D-Rank). A directory attribute, never an authz input. */
+        PersonRank: {
+            /** @description The URN RID of the rank held in that system. */
+            rankId: string;
+            /** @description The URN RID of the rank system (derived from the rank); clients resolve the label via RankService. */
+            systemId: string;
+        };
         /** @description A person-held government identifier of some scheme. Its value is pii:sensitive — stored encrypted, returned decrypted here. */
         PersonalCode: {
             /** Format: date-time */
@@ -3159,7 +3375,7 @@ export interface components {
         PersonalCodeScheme: {
             /** @description The scheme id (D-Code); the natural key. Immutable by convention. */
             code: string;
-            /** @description ISO-3166-1 alpha-2 code of the scheme's country (geo registry). */
+            /** @description Country RID of the scheme's country (resolve via GET /geo/countries; the field name is retained for compatibility). */
             countryIso?: string;
             /** Format: date-time */
             createdAt: string;
@@ -3180,7 +3396,7 @@ export interface components {
         };
         /** @description A person's contact phone (D-PersonContactChannels). number is E.164-normalized; country is derived. pii:contact. */
         Phone: {
-            /** @description ISO-3166-1 alpha-2 country code derived from the number; null when underivable. */
+            /** @description Country RID derived from the number (resolve codes via GET /geo/countries); null when underivable. */
             country?: string;
             id: string;
             /** @description The person's primary phone (at most one active). */
@@ -3334,7 +3550,7 @@ export interface components {
             categories: components["schemas"]["RankCategory"][];
             /** @description Stable, locale-agnostic identifier (e.g. us-armed-forces); unique among active systems. */
             code: string;
-            /** @description ISO-3166 national origin (geo_countries code); absent for a supranational system (NATO/UN). */
+            /** @description Country RID of the national origin (resolve via GET /geo/countries); absent for a supranational system (NATO/UN). */
             country?: string;
             /** @description The system's URN RID (carried as a plain string). */
             id: string;
@@ -3395,7 +3611,7 @@ export interface components {
         };
         /** @description A person's effective-dated residence in a country/region (D-Geo). Locator data (pii:contact). */
         Residence: {
-            /** @description ISO-3166-1 alpha-2 country code (geo registry). */
+            /** @description Country RID (resolve via GET /geo/countries). */
             country: string;
             id: string;
             personId: string;
@@ -3451,10 +3667,16 @@ export interface components {
                 [key: string]: unknown;
             };
         };
-        /** @description Set or clear the person's one rank. An absent rankId clears it (D-Rank). */
+        /**
+         * @description Set or clear the person's rank in ONE rank system (one rank per system — D-Rank). The rank's
+         *     system is derived from the rank itself, so on set only rankId is needed; on clear, systemId
+         *     names the system to clear.
+         */
         SetRankRequest: {
-            /** @description The URN RID of the rank to assign; omit to clear the person's rank. */
+            /** @description The URN RID of the rank to assign (its rank system is derived); omit to clear the person's rank in `systemId`. */
             rankId?: string;
+            /** @description Required only when clearing (rankId omitted) — the URN RID of the rank system to clear. Ignored when rankId is present. */
+            systemId?: string;
         };
         /**
          * @description A person's standalone social-network account (D-PersonSocialChannels). platformUserId is the
@@ -3645,15 +3867,16 @@ export interface components {
             status?: string;
         };
         /**
-         * @description Update a person's names (canonical + CLDR parts), birthdate, sex, country_of_birth, and
-         *     attributes. Omitted fields are unchanged; an empty string clears an optional name part.
-         *     `code` is immutable by convention and rank is set via setRank.
+         * @description Update a person's names (canonical + CLDR parts), birthdate, date_of_death, sex,
+         *     country_of_birth, and attributes. Omitted fields are unchanged; an empty string clears an
+         *     optional name part. `code` is immutable by convention and ranks are set via setRank (per system).
          */
         UpdatePersonRequest: {
             attributes?: unknown;
             birthdate?: string;
             countryOfBirth?: string;
             credentials?: string;
+            dateOfDeath?: string;
             displayName?: string;
             generation?: string;
             given?: string;
@@ -3914,6 +4137,20 @@ export interface components {
             email?: string;
             /** @description The URN RID of the resolved person (the PDP subject). */
             personId: string;
+        };
+        /** @description One unit of queued work in hermenea's runtime. */
+        WorkerJob: {
+            /** Format: int32 */
+            attempts: number;
+            id: string;
+            jobType: string;
+            lastError?: string;
+            /** Format: int32 */
+            maxAttempts: number;
+            runAfter: string;
+            sourceCode?: string;
+            /** @description queued | running | succeeded | failed | dead. */
+            status: string;
         };
     };
     responses: never;
@@ -4875,6 +5112,153 @@ export interface operations {
             };
         };
     };
+    GeoService_listCountries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CountryList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    HermeneaService_listJobs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerJob"][];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    HermeneaService_listRuns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRun"][];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    HermeneaService_listSources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportSource"][];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    HermeneaService_triggerSync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRef"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
     IdentityFederationService_createAccount: {
         parameters: {
             query?: never;
@@ -5051,6 +5435,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Whoami"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    ImportService_importObjects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The importable object-type (routing key). */
+                objectType: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CanonicalEnvelope"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
                 };
             };
             /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */

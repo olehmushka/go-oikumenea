@@ -30,7 +30,7 @@ CREATE TABLE hermenea.import_sources (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   code            text NOT NULL UNIQUE,
   name            text NOT NULL,
-  connector_type  text NOT NULL CHECK (connector_type IN ('http','file')),
+  connector_type  text NOT NULL CHECK (connector_type IN ('http','file','wof-sqlite')),
   object_type     text NOT NULL,
   locator         text NOT NULL,
   cron            text,
@@ -45,14 +45,18 @@ CREATE TRIGGER import_sources_set_updated_at
   FOR EACH ROW EXECUTE FUNCTION hermenea.set_updated_at();
 
 -- ============================ import_raw_batches ============================
+-- payload holds small in-memory batches (http/file); staged_path references a transient on-disk file
+-- for large streamed sources (wof-sqlite, D-GeoPlaces). Exactly one is set per batch.
 CREATE TABLE hermenea.import_raw_batches (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   source_id      uuid NOT NULL REFERENCES hermenea.import_sources(id) ON DELETE RESTRICT,
   source_version text,
   checksum       text NOT NULL,
-  payload        bytea NOT NULL,
+  payload        bytea,
+  staged_path    text,
   fetched_at     timestamptz NOT NULL DEFAULT now(),
-  created_at     timestamptz NOT NULL DEFAULT now()
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT import_raw_batches_body_present CHECK (payload IS NOT NULL OR staged_path IS NOT NULL)
 );
 CREATE INDEX import_raw_batches_source_idx ON hermenea.import_raw_batches (source_id, fetched_at DESC);
 

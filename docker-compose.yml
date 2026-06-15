@@ -1,16 +1,24 @@
-# Production-shaped packaging for go-oikumenea (M11). Brings up Postgres, applies migrations as the
-# owner/superuser, provisions the non-superuser application login role, then starts the server (which
-# connects as that role so the RLS backstop is in force — D-RLSDefenseInDepth).
+# Production-shaped packaging for go-oikumenea (M11 + M16). Brings up Postgres, applies migrations as
+# the owner/superuser, provisions the non-superuser application login role, then starts the server
+# (which connects as that role so the RLS backstop is in force — D-RLSDefenseInDepth). It also brings
+# up the hermenea companion (M16 / D-Hermenea): its OWN `hermenea` database (separate migration set),
+# coupled to oikumenea only over HTTP (POST /import/{objectType}).
 #
 #   docker compose up --build
-#   curl -k https://localhost:8444/status/readiness
+#   curl -k https://localhost:8444/status/readiness    # oikumenea
+#   curl -k https://localhost:9444/status/readiness    # hermenea
+#   # trigger the bundled, network-free geo-countries sync (operator push):
+#   curl -k -X POST https://localhost:9443/sync/geo-countries-iso3166 \
+#     -H "Authorization: Bearer dev-oikumenea-trigger-token-change-me"
 #
 # This is a runnable reference, not a hardened deployment: every secret here is an INSECURE local
 # default (DB passwords, signing/crypto keys, bootstrap admin). Replace them (and supply ECV-encrypted
 # config) for any real deployment. The operator owns the database (L-OperatorDB).
 services:
   postgres:
-    image: postgres:16
+    # PostGIS-enabled (D-GeoPlaces): the bootstrap migration runs `CREATE EXTENSION postgis` for the
+    # WOF gazetteer. A drop-in superset of the stock postgres:16 image.
+    image: postgis/postgis:16-3.4
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres
@@ -23,14 +31,16 @@ services:
       retries: 10
 
   # Apply versioned migrations as the owner/superuser (migrations create the role + RLS policies and
-  # must not be subject to them). Runs once, to completion.
+  # must not be subject to them). Runs once, to completion. `--allow-dirty`: the postgis/postgis image
+  # seeds `tiger`/`topology` schemas into this DB at init (D-GeoPlaces needs PostGIS), so atlas would
+  # otherwise refuse the non-empty database; those schemas don't intersect oikumenea.* and are inert.
   migrate:
     image: arigaio/atlas:latest
     depends_on:
       postgres:
         condition: service_healthy
     command: >-
-      migrate apply
+      migrate apply --allow-dirty
       --url "postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable"
       --dir "file:///migrations"
     volumes:
@@ -60,9 +70,66 @@ services:
         condition: service_completed_successfully
     volumes:
       - ./deploy/install.docker.yml:/app/var/conf/install.yml:ro
+    environment:
+      # The hermenea import service-principal shared secret (D-Hermenea): a bearer matching this
+      # authenticates the `hermenea-importer` principal (exactly import.manage) on POST /import/{type}.
+      # hermenea presents the SAME secret outbound. INSECURE local default — replace for any real use.
+      HERMENEA_OIKUMENEA_TOKEN: "dev-hermenea-importer-token-change-me"
     ports:
       - "8443:8443"
       - "8444:8444"
+
+  # Create hermenea's SEPARATE database (D-Hermenea) on the same Postgres instance. CREATE DATABASE is
+  # not IF-NOT-EXISTS, so gate on the catalog. Idempotent; runs once after Postgres is healthy.
+  init-hermenea-db:
+    image: postgres:16
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        psql "postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable" -v ON_ERROR_STOP=1 -tc \
+          "SELECT 1 FROM pg_database WHERE datname='hermenea'" | grep -q 1 || \
+        psql "postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable" -v ON_ERROR_STOP=1 -c \
+          "CREATE DATABASE hermenea;"
+
+  # Apply hermenea's own migration set (migrations/hermenea) to its database. Runs once, to completion.
+  migrate-hermenea:
+    image: arigaio/atlas:latest
+    depends_on:
+      init-hermenea-db:
+        condition: service_completed_successfully
+    command: >-
+      migrate apply
+      --url "postgres://postgres:postgres@postgres:5432/hermenea?sslmode=disable"
+      --dir "file:///migrations"
+    volumes:
+      - ./migrations/hermenea:/migrations:ro
+
+  # The hermenea companion ingestion + scheduler service (M16 / D-Hermenea). Built from the dedicated
+  # Dockerfile.hermenea; couples to oikumenea ONLY over HTTP (the loader posts to https://app:8443).
+  hermenea:
+    build:
+      context: .
+      dockerfile: Dockerfile.hermenea
+    command: ["serve"]
+    depends_on:
+      migrate-hermenea:
+        condition: service_completed_successfully
+      app:
+        condition: service_started
+    volumes:
+      - ./deploy/hermenea-install.docker.yml:/app/var/conf/hermenea-install.yml:ro
+    environment:
+      # Two trust directions, two secrets (D-Hermenea). HERMENEA_OIKUMENEA_TOKEN authorizes hermenea's
+      # outbound import calls (must match the app's value above); OIKUMENEA_HERMENEA_TOKEN authenticates
+      # inbound push triggers to hermenea's /sync. INSECURE local defaults — replace for any real use.
+      HERMENEA_OIKUMENEA_TOKEN: "dev-hermenea-importer-token-change-me"
+      OIKUMENEA_HERMENEA_TOKEN: "dev-oikumenea-trigger-token-change-me"
+    ports:
+      - "9443:9443"
+      - "9444:9444"
 
   # OPTIONAL admin console (D-WebUI). Opt-in only: it starts only with `--profile ui`, so a
   # default `docker compose up` is unchanged (no 8445). It is a pure API consumer (BFF) — the

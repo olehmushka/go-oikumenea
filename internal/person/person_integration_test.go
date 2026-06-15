@@ -121,6 +121,29 @@ func newPerson(t *testing.T, svc *application.Service, display string) domain.Pe
 	return p
 }
 
+// countryRID resolves a seeded ISO-3166-1 alpha-2 code to its geo_countries RID. Countries are
+// RID-keyed (F-014); person references them by RID, so tests resolve the code at setup.
+func countryRID(t *testing.T, pool *pgxpool.Pool, code string) string {
+	t.Helper()
+	var id string
+	if err := pool.QueryRow(context.Background(),
+		"SELECT id FROM oikumenea.geo_countries WHERE code = $1", code).Scan(&id); err != nil {
+		t.Fatalf("country %s: %v", code, err)
+	}
+	return id
+}
+
+// unknownCountryRID mints a syntactically valid but nonexistent country RID, so a write trips the
+// geo FK (ErrUnknownCountry) rather than failing shape validation.
+func unknownCountryRID(t *testing.T, pool *pgxpool.Pool) string {
+	t.Helper()
+	var id string
+	if err := pool.QueryRow(context.Background(), "SELECT oikumenea.new_id(12,1,1)").Scan(&id); err != nil {
+		t.Fatalf("mint unknown country rid: %v", err)
+	}
+	return id
+}
+
 // TestCreateAndReadAccountless creates a person with no account/unit and reads it back.
 func TestCreateAndReadAccountless(t *testing.T) {
 	ctx := context.Background()
@@ -231,13 +254,14 @@ func TestRankAssignment(t *testing.T) {
 // TestCitizenships holds several citizenships with one active per country and a single primary.
 func TestCitizenships(t *testing.T) {
 	ctx := context.Background()
-	svc, _ := newService(t, 720)
+	svc, pool := newService(t, 720)
+	ua, pl := countryRID(t, pool, "UA"), countryRID(t, pool, "PL")
 	p := newPerson(t, svc, "Multi National")
 
-	if _, err := svc.UpsertCitizenship(ctx, domain.Citizenship{PersonID: p.ID, Country: "UA", Basis: "birth", IsPrimary: true}); err != nil {
+	if _, err := svc.UpsertCitizenship(ctx, domain.Citizenship{PersonID: p.ID, Country: ua, Basis: "birth", IsPrimary: true}); err != nil {
 		t.Fatalf("add UA: %v", err)
 	}
-	if _, err := svc.UpsertCitizenship(ctx, domain.Citizenship{PersonID: p.ID, Country: "PL", Basis: "naturalization", IsPrimary: true}); err != nil {
+	if _, err := svc.UpsertCitizenship(ctx, domain.Citizenship{PersonID: p.ID, Country: pl, Basis: "naturalization", IsPrimary: true}); err != nil {
 		t.Fatalf("add PL: %v", err)
 	}
 	cs, err := svc.ListCitizenships(ctx, p.ID)
@@ -257,18 +281,18 @@ func TestCitizenships(t *testing.T) {
 		t.Fatalf("primary citizenships = %d, want exactly 1", primaries)
 	}
 	// re-upsert UA: still one active UA row (no duplicate).
-	if _, err := svc.UpsertCitizenship(ctx, domain.Citizenship{PersonID: p.ID, Country: "UA", Basis: "birth"}); err != nil {
+	if _, err := svc.UpsertCitizenship(ctx, domain.Citizenship{PersonID: p.ID, Country: ua, Basis: "birth"}); err != nil {
 		t.Fatalf("re-upsert UA: %v", err)
 	}
 	if cs, _ := svc.ListCitizenships(ctx, p.ID); len(cs) != 2 {
 		t.Fatalf("after re-upsert, citizenships = %d, want 2", len(cs))
 	}
 	// unknown country.
-	if _, err := svc.UpsertCitizenship(ctx, domain.Citizenship{PersonID: p.ID, Country: "ZZ", Basis: "other"}); !errors.Is(err, domain.ErrUnknownCountry) {
+	if _, err := svc.UpsertCitizenship(ctx, domain.Citizenship{PersonID: p.ID, Country: unknownCountryRID(t, pool), Basis: "other"}); !errors.Is(err, domain.ErrUnknownCountry) {
 		t.Fatalf("unknown country: want ErrUnknownCountry, got %v", err)
 	}
 	// remove PL.
-	if err := svc.DeleteCitizenship(ctx, p.ID, "PL"); err != nil {
+	if err := svc.DeleteCitizenship(ctx, p.ID, pl); err != nil {
 		t.Fatalf("delete PL: %v", err)
 	}
 	if cs, _ := svc.ListCitizenships(ctx, p.ID); len(cs) != 1 {
@@ -305,22 +329,23 @@ func TestNameVariants(t *testing.T) {
 // TestResidences adds and replaces a residence row, rejecting an unknown country.
 func TestResidences(t *testing.T) {
 	ctx := context.Background()
-	svc, _ := newService(t, 720)
+	svc, pool := newService(t, 720)
+	pl := countryRID(t, pool, "PL")
 	p := newPerson(t, svc, "Resident")
 
-	created, err := svc.UpsertResidence(ctx, domain.Residence{PersonID: p.ID, Country: "PL", Region: "Mazowieckie", ValidFrom: "2021-09-01"})
+	created, err := svc.UpsertResidence(ctx, domain.Residence{PersonID: p.ID, Country: pl, Region: "Mazowieckie", ValidFrom: "2021-09-01"})
 	if err != nil {
 		t.Fatalf("add residence: %v", err)
 	}
 	// replace by id.
-	if _, err := svc.UpsertResidence(ctx, domain.Residence{ID: created.ID, PersonID: p.ID, Country: "PL", Region: "Krakow", ValidFrom: "2021-09-01", ValidTo: "2023-01-01"}); err != nil {
+	if _, err := svc.UpsertResidence(ctx, domain.Residence{ID: created.ID, PersonID: p.ID, Country: pl, Region: "Krakow", ValidFrom: "2021-09-01", ValidTo: "2023-01-01"}); err != nil {
 		t.Fatalf("replace residence: %v", err)
 	}
 	rs, _ := svc.ListResidences(ctx, p.ID)
 	if len(rs) != 1 || rs[0].Region != "Krakow" || rs[0].ValidTo != "2023-01-01" {
 		t.Fatalf("residences = %+v, want one replaced row", rs)
 	}
-	if _, err := svc.UpsertResidence(ctx, domain.Residence{PersonID: p.ID, Country: "ZZ", ValidFrom: "2020-01-01"}); !errors.Is(err, domain.ErrUnknownCountry) {
+	if _, err := svc.UpsertResidence(ctx, domain.Residence{PersonID: p.ID, Country: unknownCountryRID(t, pool), ValidFrom: "2020-01-01"}); !errors.Is(err, domain.ErrUnknownCountry) {
 		t.Fatalf("unknown country: want ErrUnknownCountry, got %v", err)
 	}
 }
@@ -377,7 +402,7 @@ func TestPurgeGate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if _, err := svcNow.UpsertCitizenship(ctx, domain.Citizenship{PersonID: created.ID, Country: "UA", Basis: "birth"}); err != nil {
+	if _, err := svcNow.UpsertCitizenship(ctx, domain.Citizenship{PersonID: created.ID, Country: countryRID(t, poolNow, "UA"), Basis: "birth"}); err != nil {
 		t.Fatalf("add citizenship: %v", err)
 	}
 	if _, err := svcNow.DeactivatePerson(ctx, created.ID, "x"); err != nil {
@@ -448,7 +473,7 @@ func TestContactChannels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("upsert phone: %v", err)
 	}
-	if phone.Number != "+380441234567" || phone.Country != "UA" {
+	if phone.Number != "+380441234567" || phone.Country != countryRID(t, pool, "UA") {
 		t.Fatalf("phone not normalized/derived: %+v", phone)
 	}
 	if _, err := svc.UpsertPhone(ctx, domain.Phone{PersonID: p.ID, TypeCode: "mobile", Number: "garbage"}); !errors.Is(err, domain.ErrUnparseablePhone) {

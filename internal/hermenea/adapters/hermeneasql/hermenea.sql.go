@@ -188,6 +188,32 @@ func (q *Queries) InsertRawBatch(ctx context.Context, arg InsertRawBatchParams) 
 	return id, err
 }
 
+const insertRawBatchRef = `-- name: InsertRawBatchRef :one
+INSERT INTO hermenea.import_raw_batches (source_id, source_version, checksum, staged_path, fetched_at)
+VALUES ($1, $2, $3, $4, now())
+RETURNING id
+`
+
+type InsertRawBatchRefParams struct {
+	SourceID      string
+	SourceVersion pgtype.Text
+	Checksum      string
+	StagedPath    pgtype.Text
+}
+
+// A large streamed source staged on disk (D-GeoPlaces): the body is a file reference, not inline bytes.
+func (q *Queries) InsertRawBatchRef(ctx context.Context, arg InsertRawBatchRefParams) (string, error) {
+	row := q.db.QueryRow(ctx, insertRawBatchRef,
+		arg.SourceID,
+		arg.SourceVersion,
+		arg.Checksum,
+		arg.StagedPath,
+	)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const listEnabledSchedules = `-- name: ListEnabledSchedules :many
 SELECT sch.id, sch.source_id, sch.cron, sch.last_enqueued_at, src.code AS source_code
 FROM hermenea.worker_schedules sch

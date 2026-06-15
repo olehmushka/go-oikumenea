@@ -1,0 +1,46 @@
+# Geo module API (M16 / D-Geo / D-GeoPlaces). A read-only lookup over the location service's
+# geo_countries registry so clients can resolve a country to its RID (countries are now RID-keyed,
+# F-014 / D-ResourceIdentifiers; the ISO-3166-1 alpha-2 `code` is a stable lookup key, not the PK).
+# Person/document/rank now reference a country by its RID, so their UIs populate pickers from here.
+#
+# RID-bearing fields are typed `string` (the canonical uuid RID): Conjure reserves `rid` as a
+# built-in primitive whose `ri.` format is NOT our RID, so a type named `Rid`/`rid` cannot be used.
+# Generated Go lands in internal/conjure and is never hand-edited. Writes to the registry happen via
+# the hermenea import pipeline (geo-countries / WOF), not here; this service is read-only.
+types:
+  definitions:
+    default-package: oikumenea.geo
+    objects:
+      Country:
+        docs: A country in the ISO-3166-1 registry. `id` is the RID (the reference key); `code` is the stable ISO-3166-1 alpha-2 lookup code; `name` is the default-locale (English) name.
+        fields:
+          id:
+            type: string
+            docs: The country's RID (location service); what person/document/rank reference.
+          code:
+            type: string
+            docs: ISO-3166-1 alpha-2 code (e.g. UA, PL); the stable, locale-agnostic lookup key.
+          name:
+            type: string
+            docs: Default-locale (English) display name; other locales arrive via the i18n store.
+          status:
+            type: string
+            docs: active | retired.
+      CountryList:
+        docs: The countries, in display order.
+        fields:
+          countries: list<Country>
+services:
+  GeoService:
+    name: Geo Service
+    package: oikumenea.geo
+    base-path: /geo/v1
+    default-auth: header
+    docs: |
+      Read-only lookup over the country registry so clients can resolve a country to its RID. Reads
+      are gated by `country.read` once authorization (M7) is enforced.
+    endpoints:
+      listCountries:
+        http: GET /countries
+        docs: List the active countries in display order (sort_order, then code).
+        returns: CountryList

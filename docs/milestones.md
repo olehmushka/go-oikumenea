@@ -43,7 +43,7 @@ migrates, and demos** on its own, so the service is runnable at every step.
 | **M13** | Social & messenger channels | platform catalog; messenger reachability over phones/emails; standalone social accounts with analytics-grade attribution (stable id, provenance+confidence, verification) | M12 |
 | **M14** | Person↔person relationships | per-type reified self-links: partnership/marriage, kinship, guardianship, sponsorship, next-of-kin, association/COI (friend/follower social-link deferred) | M5 |
 | **M15** | Rank systems, NATO grades & presets | a `rank_system` top level (multinational); standardized `grade_code` (NATO STANAG 2116) for cross-system comparability; bundled scheme presets + idempotent `/rank-scheme/import` | M4 |
-| **M16** | Hermenea — ingestion & scheduler companion (**absorbs M17**) | a **second binary** `cmd/hermenea` with its **own Postgres**, HTTP-only coupling: connector (http/file) → raw staging → mapper → oikumenea `POST /import/{objectType}` idempotent upsert; cron scheduler + `worker_jobs` queue; `import_runs` lineage; service-principal auth — **supersedes D-Worker, folds D-DataIngestion; promotes DS-25** | M0, M1 |
+| **M16** | Hermenea — ingestion & scheduler companion (**absorbs M17**) | a **second binary** `cmd/hermenea` with its **own Postgres**, HTTP-only coupling: connector (http/file/**wof-sqlite**) → raw staging → mapper (incl. a **paged** mapper) → oikumenea `POST /import/{objectType}` idempotent upsert; cron scheduler + `worker_jobs` queue; `import_runs` lineage; service-principal auth. First real connector = the **Who's-On-First geo gazetteer** (`geo_places` + PostGIS, **D-GeoPlaces**, supersedes D-GeoSubdivisions) — **supersedes D-Worker, folds D-DataIngestion; promotes DS-25** | M0, M1 |
 | ~~**M17**~~ | ~~Data ingestion & connector framework~~ → **folded into M16** | the connector/mapper/scheduler pipeline now lives in the **hermenea** service (D-Hermenea); oikumenea keeps the generic import endpoint + per-row provenance | — |
 | **M18** | Language & writing systems | full Glottolog 5.3 languoid forest + ISO-15924 writing systems; person/unit/locale language links; first M17 consumer | M2, M5, M17 (M3 for the unit tie) |
 | **M19** | Location | standalone `location_locations`; PostGIS `GEOGRAPHY` + h3-pg, DB-derived MGRS/H3; structured address over `geo_countries` | M0 |
@@ -60,9 +60,9 @@ M12 is **scoped (in progress)** — see its section below (D-PersonContactChanne
 M13 and M14 are **delivered** — see their sections below (D-PersonSocialChannels, D-PersonRelationships). M14's scoped friend/follower `person_social_links` tie was **deferred — not built** (see decisions.md).
 M15 is **delivered** — see its section below (D-RankSystems); it is additive over M4 and refines the L-OneRankScheme lock (one registry, multiple systems).
 
-M16 is **in implementation** — **re-scoped to the `hermenea` companion service** ([D-Hermenea](architecture/roadmap-decisions.md), which **supersedes D-Worker** and **absorbs M17/D-DataIngestion**): ingestion + the job runtime move **out of process** into a second binary with its own Postgres, coupled to oikumenea **only over HTTP**. M17 is **folded into M16** (no longer a separate milestone).
+M16 is **verified** — **re-scoped to the `hermenea` companion service** ([D-Hermenea](architecture/roadmap-decisions.md), which **supersedes D-Worker** and **absorbs M17/D-DataIngestion**): ingestion + the job runtime move **out of process** into a second binary with its own Postgres, coupled to oikumenea **only over HTTP**. M17 is **folded into M16** (no longer a separate milestone). Verified end-to-end (fixture tests both sides + a real `docker compose` cross-service run): the geo-countries pipeline and the **full WOF Ukraine `geo-places` backfill** (35k places, country→region→county→locality, with `geo_countries` enrichment + idempotent re-run); the disputed-territory parent-resolution edge (Crimea) is fixed in the WOF mapper.
 
-M18–M26 are **planned** (designed, not yet built) — a domain cluster derived from `todo.md`, binding once their decisions land: the hermenea ingestion framework (M16) is the foundation the registry-fed verticals ride; **M18** (D-Languages, full Glottolog) is its first real consumer; **M19** (D-Location, PostGIS), **M20** (D-Education), **M21** (D-Companies). **M19 is a foundation reused by M20, M21, and the religion discovery milestone M25**. The **M22–M25** cluster is the **multi-faith religion vertical** (D-Religion, D-ClergyCredential, D-ReligiousAffiliation, D-SpecialPII) — it **promotes DS-48** (Religion) off the parked list and reuses the tenant graph, person/membership/order/authorization, and the shared M19 Location rather than adding new hierarchy machinery. **M26** (D-Vehicles + D-GeoSubdivisions) is the last todo item — a vehicle registry on person + M21 Company, bundling a shared `geo_subdivisions` ISO-3166-2 foundation (as M19 bundled the PostGIS bootstrap). The M16–M26 decisions live in [roadmap-decisions.md](architecture/roadmap-decisions.md) (split out of the binding `decisions.md` so it reflects the built M0–M15 surface).
+M18–M26 are **planned** (designed, not yet built) — a domain cluster derived from `todo.md`, binding once their decisions land: the hermenea ingestion framework (M16) is the foundation the registry-fed verticals ride; **M18** (D-Languages, full Glottolog) is its first real consumer; **M19** (D-Location, PostGIS), **M20** (D-Education), **M21** (D-Companies). **M19 is a foundation reused by M20, M21, and the religion discovery milestone M25**. The **M22–M25** cluster is the **multi-faith religion vertical** (D-Religion, D-ClergyCredential, D-ReligiousAffiliation, D-SpecialPII) — it **promotes DS-48** (Religion) off the parked list and reuses the tenant graph, person/membership/order/authorization, and the shared M19 Location rather than adding new hierarchy machinery. **M26** (D-Vehicles) is the last todo item — a vehicle registry on person + M21 Company; its plate-region FK targets the WOF `geo_places` gazetteer (D-GeoPlaces, built in M16 — which superseded the originally-planned D-GeoSubdivisions and pulled the PostGIS bootstrap forward). The M16–M26 decisions live in [roadmap-decisions.md](architecture/roadmap-decisions.md) (split out of the binding `decisions.md` so it reflects the built M0–M15 surface).
 
 ## Stage board
 
@@ -93,7 +93,7 @@ Legend: `✅` done · `🚧` in progress · `⬜` not started · `➖` not appli
 | **M13** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified |
 | **M14** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified |
 | **M15** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified |
-| **M16** | ✅ | ✅ | ✅ | ✅ | ➖ | 🚧 | backend+migrated (e2e + geo-countries connector pending) |
+| **M16** | ✅ | ✅ | ✅ | ✅ | ➖ | ✅ | verified (geo-countries + full WOF Ukraine geo-places backfill, 35k places, e2e in compose) |
 | ~~**M17**~~ | — | — | — | — | — | — | folded into M16 (D-Hermenea) |
 | **M18** | ✅ | 🚧 | ⬜ | ⬜ | ⬜ | ⬜ | decided |
 | **M19** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | designed |
@@ -107,7 +107,7 @@ Legend: `✅` done · `🚧` in progress · `⬜` not started · `➖` not appli
 
 Notes on the planned tier (M16–M26): all have a landed `D-<Name>` decision (in
 [roadmap-decisions.md](architecture/roadmap-decisions.md)), so all are at least
-**decided**. **M16 is now in implementation** as the **hermenea** companion service (D-Hermenea
+**decided**. **M16 is verified** as the **hermenea** companion service (D-Hermenea
 supersedes D-Worker and **absorbs M17/D-DataIngestion**); its module doc
 ([hermenea.md](modules/hermenea.md)) exists, so its *Designed* gate is `✅`, and its UI gate is `➖`
 (a headless companion service — no console surface). *Designed* `✅` means a dedicated module doc
@@ -472,7 +472,7 @@ preset** instead of hand-entering every node.
 
 ## M16 — Hermenea: ingestion & scheduler companion (absorbs M17)
 
-**Status: in implementation.** Binding via **D-Hermenea** in
+**Status: verified.** Binding via **D-Hermenea** in
 [roadmap-decisions.md](architecture/roadmap-decisions.md), which **supersedes D-Worker** (reverses
 *in-process*) and **folds D-DataIngestion (M17) into M16**. The background-job runtime + the
 reference-data pipeline are realized as a **second deployable, `hermenea`** (`cmd/hermenea`) — a
@@ -515,6 +515,28 @@ lineage, and hard service separation from the PDP core.
   changes nothing**; `import_runs` records lineage; per-row provenance is stamped; a bad/missing service
   secret is rejected (401); a failing fetch/map surfaces in hermenea's health + an oikumenea `system`
   audit row; in-flight jobs drain cleanly on shutdown.
+- **Verification (delivered).** Fixture-based integration tests cover both sides — `dataimport`
+  (`internal/dataimport/dataimport_integration_test.go`: geo-countries create/skip/update idempotency,
+  per-row provenance, one `system` audit Action per import, geo-places parent-first upsert + country
+  enrichment + RESTRICT) and `hermenea`
+  (`internal/hermenea/hermenea_integration_test.go`: trigger dedup, fetch→map→load(stub)→`import_runs`
+  lineage, loader-failure → failed run) against dedicated test DBs (`scripts/setup-test-db.sh` now
+  provisions `hermenea_test`); the WOF paged mapper is covered against a generated SQLite fixture
+  (`internal/hermenea/wof/mappaged_test.go`). A full `docker compose up` ran the **real** cross-service
+  pipeline: the bundled `geo-countries-iso3166` `file` source loaded over HTTP (idempotent re-run =
+  all-skipped; bad trigger secret → 401; an early load failure retried with exponential backoff in
+  `import_runs`), and the **real** `wof-geo-ua` source downloaded + bzip2-decompressed + staged the
+  62 MB WOF Ukraine dist, then loaded the **full Ukraine gazetteer** into `geo_places` (**35,072 places**
+  — 1 country / 25 regions / 782 counties / 34,264 localities) and **enriched `geo_countries.UA`**
+  (`wof_id`/`geom`/`iso_a3`); a re-trigger over the loaded data was an idempotent no-op (all-skipped).
+- **WOF parent resolution (resolved).** The first UA run surfaced a disputed-territory quirk — WOF
+  parents **Crimea** to a `country_id` outside the Ukraine dist, so its hierarchy-derived `parent_id`
+  was absent and the whole region page failed on `geo_places_parent_id_fkey` (SQLSTATE 23503). Fixed in
+  the `geo-places` paged mapper ([wof/mapper.go](../internal/hermenea/wof/mapper.go)): it now tracks the
+  `wof_id`s it has emitted and **drops a `parentId` whose target isn't in the imported set** (the place
+  lands top-level / NULL parent), keeping oikumenea's `parent_id` RESTRICT FK strict as defence in depth.
+  Verified: Crimea loads as a top-level region, its 17 counties still attach beneath it, and normal
+  regions keep their country parent.
 
 ## ~~M17 — Data ingestion & connector framework~~ → folded into M16
 

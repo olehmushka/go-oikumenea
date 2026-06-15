@@ -48,7 +48,7 @@ type DocumentServiceClient interface {
 	UpdatePersonalCode(ctx context.Context, authHeader bearertoken.Token, codeIdArg string, requestArg UpdatePersonalCodeRequest) (PersonalCode, error)
 	// Soft-delete a personal code.
 	DeletePersonalCode(ctx context.Context, authHeader bearertoken.Token, codeIdArg string) error
-	// List the scheme catalog, optionally filtered by country and/or generic category.
+	// List the scheme catalog, optionally filtered by country RID (GET /geo/countries) and/or generic category.
 	ListPersonalCodeSchemes(ctx context.Context, authHeader bearertoken.Token, countryArg *string, categoryArg *string) ([]PersonalCodeScheme, error)
 	// Add a scheme (instance-scope). Returns Document:PersonalCodeSchemeConflict if the code is taken.
 	CreatePersonalCodeScheme(ctx context.Context, authHeader bearertoken.Token, requestArg CreatePersonalCodeSchemeRequest) (PersonalCodeScheme, error)
@@ -368,7 +368,7 @@ type DocumentServiceClientWithAuth interface {
 	UpdatePersonalCode(ctx context.Context, codeIdArg string, requestArg UpdatePersonalCodeRequest) (PersonalCode, error)
 	// Soft-delete a personal code.
 	DeletePersonalCode(ctx context.Context, codeIdArg string) error
-	// List the scheme catalog, optionally filtered by country and/or generic category.
+	// List the scheme catalog, optionally filtered by country RID (GET /geo/countries) and/or generic category.
 	ListPersonalCodeSchemes(ctx context.Context, countryArg *string, categoryArg *string) ([]PersonalCodeScheme, error)
 	// Add a scheme (instance-scope). Returns Document:PersonalCodeSchemeConflict if the code is taken.
 	CreatePersonalCodeScheme(ctx context.Context, requestArg CreatePersonalCodeSchemeRequest) (PersonalCodeScheme, error)

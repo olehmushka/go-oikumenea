@@ -35,9 +35,9 @@ ORDER BY sort_order NULLS LAST, code;
 
 -- name: InsertDocument :one
 INSERT INTO oikumenea.document_documents (
-  person_id, type_id, number, issuer, issuing_country, issued_on, expires_on, attributes
+  person_id, type_id, number, issuer, issuing_country_id, issued_on, expires_on, attributes
 ) VALUES (
-  @person_id, @type_id, sqlc.narg('number'), sqlc.narg('issuer'), sqlc.narg('issuing_country'),
+  @person_id, @type_id, sqlc.narg('number'), sqlc.narg('issuer'), sqlc.narg('issuing_country_id'),
   sqlc.narg('issued_on')::date, sqlc.narg('expires_on')::date,
   COALESCE(sqlc.narg('attributes')::jsonb, '{}')
 )
@@ -52,7 +52,7 @@ SELECT * FROM oikumenea.document_documents WHERE id = @id AND deleted_at IS NULL
 UPDATE oikumenea.document_documents SET
   number          = COALESCE(sqlc.narg('number'), number),
   issuer          = COALESCE(sqlc.narg('issuer'), issuer),
-  issuing_country = COALESCE(sqlc.narg('issuing_country'), issuing_country),
+  issuing_country_id = COALESCE(sqlc.narg('issuing_country_id'), issuing_country_id),
   issued_on       = COALESCE(sqlc.narg('issued_on')::date, issued_on),
   expires_on      = COALESCE(sqlc.narg('expires_on')::date, expires_on),
   attributes      = COALESCE(sqlc.narg('attributes')::jsonb, attributes),
@@ -81,9 +81,9 @@ WHERE person_id = @person_id AND deleted_at IS NULL;
 
 -- name: InsertScheme :one
 INSERT INTO oikumenea.document_personal_code_schemes (
-  code, country_iso, generic_category, name, validation_regex, sort_order
+  code, country_id, generic_category, name, validation_regex, sort_order
 ) VALUES (
-  @code, sqlc.narg('country_iso'), @generic_category, @name, sqlc.narg('validation_regex'),
+  @code, sqlc.narg('country_id'), @generic_category, @name, sqlc.narg('validation_regex'),
   sqlc.narg('sort_order')
 )
 RETURNING *;
@@ -93,7 +93,7 @@ SELECT * FROM oikumenea.document_personal_code_schemes WHERE code = @code AND de
 
 -- name: UpdateScheme :one
 UPDATE oikumenea.document_personal_code_schemes SET
-  country_iso      = COALESCE(sqlc.narg('country_iso'), country_iso),
+  country_id       = COALESCE(sqlc.narg('country_id'), country_id),
   generic_category = COALESCE(sqlc.narg('generic_category'), generic_category),
   name             = COALESCE(sqlc.narg('name'), name),
   validation_regex = COALESCE(sqlc.narg('validation_regex'), validation_regex),
@@ -105,7 +105,7 @@ RETURNING *;
 -- name: ListSchemes :many
 SELECT * FROM oikumenea.document_personal_code_schemes
 WHERE deleted_at IS NULL
-  AND (@country = '' OR country_iso::text = @country)
+  AND (@country = '' OR country_id::text = @country)
   AND (@category = '' OR generic_category = @category)
 ORDER BY sort_order NULLS LAST, code;
 

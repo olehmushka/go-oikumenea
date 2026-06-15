@@ -1,8 +1,8 @@
 // Package hermenea is the composition seam for the hermenea companion service (M16 / D-Hermenea): it
 // wires the store (its own DB), the connector registry, the loader (oikumenea's import endpoint), the
 // application service, and the background runtime, then registers the HermeneaService routes. The
-// per-object-type mappers are registered here too (geo-countries lands in a follow-up). Register
-// returns a cleanup that drains the runtime and closes the pool.
+// per-object-type mappers are registered here too (geo-countries in-memory + geo-places paged).
+// Register returns a cleanup that drains the runtime and closes the pool.
 package hermenea
 
 import (
@@ -10,15 +10,17 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	hermeneaapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/hermenea"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/adapters"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/application"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/config"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/connector"
-	hermeneaapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/hermenea"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
+	"github.com/olegamysk/go-oikumenea/internal/hermenea/geocountries"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/loader"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/runtime"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/transport"
+	"github.com/olegamysk/go-oikumenea/internal/hermenea/wof"
 	werror "github.com/palantir/witchcraft-go-error"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
 )
@@ -36,8 +38,14 @@ func Register(ctx context.Context, info witchcraft.InitInfo, pool *pgxpool.Pool,
 
 	svc := application.NewService(store, connector.Default(), ld)
 
-	// Per-object-type mappers are registered here. geo-countries lands in a follow-up; until a mapper
-	// exists for a source's object-type, its sync jobs fail with ErrNoMapper (visible in import_runs).
+	// Per-object-type mappers are registered here. Until a mapper exists for a source's object-type, its
+	// sync jobs fail with ErrNoMapper (visible in import_runs).
+	//   - geo-countries: the simplest, network-free proving consumer (in-memory Mapper over the `file`/
+	//     `http` connector) — the milestone's named first consumer.
+	//   - geo-places: the first real connector mapper (D-GeoPlaces) — a paged mapper driven by the
+	//     wof-sqlite StreamingConnector.
+	svc.RegisterMapper(geocountries.ObjectType, geocountries.Mapper{})
+	svc.RegisterPagedMapper(wof.ObjectTypeGeoPlaces, wof.GeoPlacesMapper{})
 
 	// Seed declaratively-configured sources (idempotent upsert + schedule).
 	for _, cs := range cfg.Sources {

@@ -84,6 +84,9 @@ const (
 	// graph (D-Graphs)
 	PermGraphRead Permission = "graph.read"
 
+	// geo (D-Geo) — read the RID-keyed country registry so clients can resolve a country to its RID.
+	PermCountryRead Permission = "country.read"
+
 	// i18n
 	PermLocaleRead        Permission = "locale.read"
 	PermTranslationRead   Permission = "translation.read"
@@ -143,6 +146,7 @@ var catalog = func() map[Permission]struct{} {
 		PermAuditRead,
 		PermRankSchemeRead,
 		PermGraphRead,
+		PermCountryRead,
 		PermLocaleRead, PermTranslationRead, PermLocaleManage, PermTranslationManage,
 		PermRankSchemeManage, PermGraphManage, PermClosureRebuild, PermDocumentTypeManage, PermOrderTypeManage,
 		PermPersonalCodeSchemeManage, PermCountryManage, PermInstanceConfig, PermInstanceAdminManage,
@@ -204,7 +208,7 @@ var readerPerms = []Permission{
 	PermUnitRead, PermPersonRead, PermMembershipRead, PermPositionRead,
 	PermDocumentRead, PermPersonalCodeRead, PermOrderRead,
 	PermRoleRead, PermAssignmentRead,
-	PermRankSchemeRead, PermGraphRead,
+	PermRankSchemeRead, PermGraphRead, PermCountryRead,
 	PermDocumentTypeRead, PermPersonalCodeSchemeRead, PermOrderTypeRead,
 	PermLocaleRead, PermTranslationRead,
 }

@@ -17,8 +17,9 @@ env "local" {
   // Target DB for `migrate apply`. Override via $DATABASE_URL (.env) or --url.
   url = local.db_url
 
-  // Ephemeral dev database Atlas uses to analyze/lint migrations (requires Docker).
-  dev = "docker://postgres/16/dev"
+  // Ephemeral dev database Atlas uses to analyze/lint migrations (requires Docker). PostGIS-enabled
+  // image: the bootstrap migration `CREATE EXTENSION postgis` for the WOF gazetteer (D-GeoPlaces).
+  dev = "docker://postgis/postgis/16-3.4/dev"
 
   migration {
     dir = "file://migrations"

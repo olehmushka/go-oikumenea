@@ -29,7 +29,7 @@
 -- ============================ contact-kind catalogs ============================
 
 -- person_email_types: instance-admin catalog of contact-email kinds (D-Code/D-i18n). Natural `code` PK
--- (carve-out, like document_personal_code_schemes / geo_countries). name is the default-locale label;
+-- (carve-out, like document_personal_code_schemes / i18n_locales). name is the default-locale label;
 -- other locales live in the localization store (entity_type='email_type').
 CREATE TABLE oikumenea.person_email_types (
   code       text PRIMARY KEY,
@@ -128,7 +128,7 @@ CREATE TABLE oikumenea.person_phones (
   person_id  uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
   type_code  text NOT NULL REFERENCES oikumenea.person_phone_types(code) ON DELETE RESTRICT,
   number     text NOT NULL,                       -- E.164-normalized
-  country    char(2) REFERENCES oikumenea.geo_countries(code) ON DELETE RESTRICT,  -- derived; nullable
+  country_id uuid REFERENCES oikumenea.geo_countries(id) ON DELETE RESTRICT,  -- derived; nullable; ISO code resolved in SQL
   is_primary boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -151,7 +151,7 @@ COMMENT ON COLUMN oikumenea.person_phones.id IS 'pii:none';
 COMMENT ON COLUMN oikumenea.person_phones.person_id IS 'pii:none';
 COMMENT ON COLUMN oikumenea.person_phones.type_code IS 'pii:none';
 COMMENT ON COLUMN oikumenea.person_phones.number IS 'pii:contact';
-COMMENT ON COLUMN oikumenea.person_phones.country IS 'pii:contact';
+COMMENT ON COLUMN oikumenea.person_phones.country_id IS 'pii:contact';
 COMMENT ON COLUMN oikumenea.person_phones.is_primary IS 'pii:none';
 
 -- person_call_signs: multi-valued informal identifier / позивний (D-PersonContactChannels). call_sign is
@@ -197,8 +197,10 @@ COMMENT ON COLUMN oikumenea.document_document_types.attr_schema IS 'pii:none';
 -- pkg/personalcode checksum validator carry NO regex (the validator is authoritative); regex-only
 -- schemes (ar-dni, co-cedula, by-personal-number) carry a fallback. country_iso values are all in the
 -- 0001 geo registry.
-INSERT INTO oikumenea.document_personal_code_schemes (code, country_iso, generic_category, name, validation_regex, sort_order) VALUES
-  ('ru-inn',             'RU', 'tax-id',           'ИНН',             NULL,                                  60),
+INSERT INTO oikumenea.document_personal_code_schemes (code, country_id, generic_category, name, validation_regex, sort_order)
+SELECT v.code, c.id, v.generic_category, v.name, v.validation_regex, v.sort_order
+FROM (VALUES
+  ('ru-inn',             'RU', 'tax-id',           'ИНН',             NULL::text,                            60),
   ('ru-snils',           'RU', 'social-insurance', 'СНИЛС',           NULL,                                  70),
   ('by-personal-number', 'BY', 'national-id',      'Асабовы нумар',   '^\d{7}[A-Za-z]\d{3}[A-Za-z]{2}\d$',   80),
   ('br-cpf',             'BR', 'tax-id',           'CPF',             NULL,                                  90),
@@ -207,7 +209,9 @@ INSERT INTO oikumenea.document_personal_code_schemes (code, country_iso, generic
   ('mx-curp',            'MX', 'national-id',      'CURP',            NULL,                                 120),
   ('mx-rfc',             'MX', 'tax-id',           'RFC',             NULL,                                 130),
   ('cl-rut',             'CL', 'national-id',      'RUT',             NULL,                                 140),
-  ('co-cedula',          'CO', 'national-id',      'Cédula de Ciudadanía', '^\d{6,10}$',                   150);
+  ('co-cedula',          'CO', 'national-id',      'Cédula de Ciudadanía', '^\d{6,10}$',                   150)
+) AS v(code, country_iso, generic_category, name, validation_regex, sort_order)
+JOIN oikumenea.geo_countries c ON c.code = v.country_iso;
 
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
 UPDATE oikumenea.schema_version SET revision = '0012_person_contacts', applied_at = now() WHERE singleton;

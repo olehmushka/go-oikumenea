@@ -16,6 +16,10 @@ import (
 const (
 	ConnectorHTTP = "http"
 	ConnectorFile = "file"
+	// ConnectorWOFSQLite stages a Who's-On-First SQLite distribution (a .db.bz2 over HTTP) to local
+	// disk for the paged geo-places pipeline (D-GeoPlaces). It is a StreamingConnector: the payload is
+	// gigabytes of geometry, so it never lands in memory or the raw-batch BYTEA column.
+	ConnectorWOFSQLite = "wof-sqlite"
 )
 
 // Job types in the queue.
@@ -122,6 +126,33 @@ type Mapper interface {
 	Map(raw RawBatch) (records []map[string]any, err error)
 }
 
+// StagedSource is a large source landed to a local file rather than in memory (the wof-sqlite path).
+// Path is a temp file the pipeline removes via Cleanup once the run finishes.
+type StagedSource struct {
+	Path          string
+	SourceVersion string
+	Checksum      string
+	Cleanup       func()
+}
+
+// StreamingConnector stages a large source to disk instead of returning its bytes. A connector that
+// implements it is driven by the paged pipeline (its Connector.Fetch is never called). This is how the
+// gigabyte-scale WOF gazetteer is ingested without a 16 MiB in-memory batch (D-GeoPlaces).
+type StreamingConnector interface {
+	Stage(ctx context.Context, src Source) (StagedSource, error)
+}
+
+// PageFunc receives one page of canonical records (each page is loaded as its own canonical envelope).
+// Returning an error aborts the run (the worker then retries/backs off).
+type PageFunc func(records []map[string]any) error
+
+// PagedMapper reads a staged source and emits canonical records in bounded, parent-first pages — the
+// total set never lives in memory at once. Registered per object-type (RegisterPagedMapper) and used
+// only when the source's connector is a StreamingConnector.
+type PagedMapper interface {
+	MapPaged(ctx context.Context, staged StagedSource, emit PageFunc) error
+}
+
 // Loader pushes a canonical envelope to oikumenea's import endpoint over HTTP (the only oikumenea
 // coupling).
 type Loader interface {
@@ -145,6 +176,9 @@ type Store interface {
 	UnhealthyJobs(ctx context.Context) (int, error)
 	RequeueStaleRunning(ctx context.Context, lockedBefore time.Time) error
 	InsertRawBatch(ctx context.Context, sourceID, sourceVersion, checksum string, payload []byte) (string, error)
+	// InsertRawBatchRef stages a large fetched source by file reference (staged_path) instead of inline
+	// bytes — the streaming/paged path (D-GeoPlaces). The file itself is transient (removed after the run).
+	InsertRawBatchRef(ctx context.Context, sourceID, sourceVersion, checksum, stagedPath string) (string, error)
 	StartRun(ctx context.Context, sourceID, rawBatchID, sourceVersion string) (string, error)
 	FinishRun(ctx context.Context, id, status string, created, updated, skipped int, errMsg string) error
 	ListRuns(ctx context.Context, limit int) ([]Run, error)

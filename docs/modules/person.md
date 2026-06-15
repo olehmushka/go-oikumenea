@@ -102,7 +102,7 @@ Conventions per [conventions.md](../architecture/conventions.md).
   'not_applicable'))` — **biological sex, ISO/IEC 5218** (stored as readable `TEXT` per the
   `TEXT`+`CHECK` convention, not the numeric `0/1/2/9`); **not** GDPR Art. 9 — gender *identity*
   (which would be `pii:special`) is out of scope (D-PersonBio) — `pii:basic`
-- `country_of_birth CHAR(2) REFERENCES geo_countries(code) ON DELETE RESTRICT` — nullable; the
+- `country_of_birth_id uuid REFERENCES geo_countries(id) ON DELETE RESTRICT` — nullable; the country RID (F-014); the
   person's country of birth (D-Geo) — `pii:basic`
 - `attributes JSONB NOT NULL DEFAULT '{}'` — the long-tail directory fields (service number,
   contact, etc.); column-ize a key once it is shared/queried (escape-hatch discipline) —
@@ -149,7 +149,7 @@ lifecycle timestamps) are `pii:none` (D-PIITiers); the name parts, `birthdate`, 
 **`person_citizenships`** (effective-dated; a person may hold several — D-Geo)
 - `id` PK
 - `person_id TEXT NOT NULL REFERENCES person_persons(id) ON DELETE CASCADE`
-- `country CHAR(2) NOT NULL REFERENCES geo_countries(code) ON DELETE RESTRICT` — `pii:basic`
+- `country_id uuid NOT NULL REFERENCES geo_countries(id) ON DELETE RESTRICT` — the country RID (F-014); `pii:basic`
 - `basis TEXT NOT NULL DEFAULT 'other' CHECK (basis IN ('birth','descent','naturalization','other'))`
   — how the citizenship was acquired
 - `acquired_on DATE`, `lost_on DATE` — effective window (nullable) — `pii:basic`
@@ -162,7 +162,7 @@ lifecycle timestamps) are `pii:none` (D-PIITiers); the name parts, `birthdate`, 
 **`person_residences`** (effective-dated residence history — D-Geo)
 - `id` PK
 - `person_id TEXT NOT NULL REFERENCES person_persons(id) ON DELETE CASCADE`
-- `country CHAR(2) NOT NULL REFERENCES geo_countries(code) ON DELETE RESTRICT` — `pii:contact`
+- `country_id uuid NOT NULL REFERENCES geo_countries(id) ON DELETE RESTRICT` — the country RID (F-014); `pii:contact`
 - `region TEXT` — optional sub-national region / locality — `pii:contact`
 - `valid_from DATE NOT NULL`, `valid_to DATE` — effective window (`valid_to` NULL = current) —
   `pii:contact`
@@ -199,7 +199,7 @@ are `pii:basic`, residence columns are `pii:contact` (locator data) — D-PIITie
 - `person_id TEXT NOT NULL REFERENCES person_persons(id) ON DELETE CASCADE`
 - `type_code TEXT NOT NULL REFERENCES person_phone_types(code) ON DELETE RESTRICT`
 - `number TEXT NOT NULL` — **E.164-normalized** via `github.com/nyaruka/phonenumbers` — `pii:contact`
-- `country CHAR(2) REFERENCES geo_countries(code) ON DELETE RESTRICT` — **derived** from the number;
+- `country_id uuid REFERENCES geo_countries(id) ON DELETE RESTRICT` — the country RID (F-014), **derived** from the number (the ISO code is resolved to its RID in SQL);
   nullable when underivable — `pii:contact`
 - `is_primary BOOLEAN NOT NULL DEFAULT FALSE`
 - `created_at`, `updated_at`, `deleted_at`

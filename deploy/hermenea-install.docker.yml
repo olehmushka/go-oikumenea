@@ -1,0 +1,51 @@
+# Install config for the hermenea companion in the docker-compose stack. Mounted over
+# /app/var/conf/hermenea-install.yml in the hermenea container. The DSN points at the compose
+# `postgres` service's SEPARATE `hermenea` database (D-Hermenea); the loader calls oikumenea's public
+# API at the in-network `app` service. INSECURE local defaults — replace for any real deployment, and
+# supply the two shared secrets (HERMENEA_OIKUMENEA_TOKEN / OIKUMENEA_HERMENEA_TOKEN) as ECV-encrypted
+# runtime env, never in this file.
+product-name: hermenea
+product-version: 0.0.0-dev
+use-console-log: true
+server:
+  address: "0.0.0.0"
+  port: 9443
+  management-port: 9444
+  context-path: ""
+
+# Hermenea's OWN database (separate from oikumenea's), created + migrated by the migrate-hermenea step.
+postgres:
+  dsn: "postgres://postgres:postgres@postgres:5432/hermenea?sslmode=disable"
+
+# oikumenea's public API the loader posts to (POST /import/{objectType}). The app serves self-signed
+# TLS in this stack, so skip verification (dev only).
+oikumenea:
+  base-url: "https://app:8443"
+  insecure-skip-verify: true
+
+# Declarative import sources seeded at boot (idempotent). The bundled ISO-3166 file source proves the
+# pipeline network-free; the WOF Ukraine source is present but disabled (a large download — enable it
+# and raise worker.job-timeout-ms for a real geo-places backfill).
+sources:
+  - code: geo-countries-iso3166
+    name: "ISO-3166 countries (bundled)"
+    connector-type: file
+    object-type: geo-countries
+    locator: "deploy/geo-presets/iso-3166.json"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-ua
+    name: "Who's On First — Ukraine (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-ua-latest.db.bz2"
+    cron: "@weekly"
+    enabled: false
+
+worker:
+  poll-interval-ms: 2000
+  schedule-tick-ms: 30000
+  backoff-base-ms: 5000
+  backoff-max-ms: 300000
+  job-timeout-ms: 120000
+  stale-after-ms: 600000

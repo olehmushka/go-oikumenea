@@ -15,6 +15,7 @@ import (
 // (partial-unique codes, RESTRICT FKs) enforce the same shapes as a backstop.
 var (
 	ErrSystemNotFound   = errors.New("rank system not found")
+	ErrUnknownCountry   = errors.New("country does not exist")
 	ErrCategoryNotFound = errors.New("rank category not found")
 	ErrTypeNotFound     = errors.New("rank type not found")
 	ErrRankNotFound     = errors.New("rank not found")
@@ -234,6 +235,10 @@ type Repository interface {
 	SoftDeleteSystem(ctx context.Context, id string) error
 	ListSystems(ctx context.Context) ([]System, error)
 	CountActiveCategories(ctx context.Context, systemID string) (int, error)
+	// CountryIDByCode resolves an ISO-3166-1 alpha-2 code to its geo_countries RID (countries are
+	// RID-keyed; a system references a country by RID). Returns ErrUnknownCountry when absent. Used to
+	// translate preset country codes on import.
+	CountryIDByCode(ctx context.Context, code string) (string, error)
 
 	// grades — the seeded standardized-grade reference catalog (read-only).
 	ListGrades(ctx context.Context) ([]Grade, error)

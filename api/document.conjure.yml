@@ -64,7 +64,7 @@ types:
             docs: Issuing authority (e.g. ДМС України). pii:basic.
           issuingCountry:
             type: optional<string>
-            docs: ISO-3166-1 alpha-2 code of the issuing country (geo registry); lets one person hold same-type papers from several countries.
+            docs: Country RID of the issuing country (resolve via GET /geo/countries); lets one person hold same-type papers from several countries.
           issuedOn:
             type: optional<string>
             docs: ISO-8601 date the document was issued.
@@ -92,7 +92,7 @@ types:
             docs: The scheme id (D-Code); the natural key. Immutable by convention.
           countryIso:
             type: optional<string>
-            docs: ISO-3166-1 alpha-2 code of the scheme's country (geo registry).
+            docs: Country RID of the scheme's country (resolve via GET /geo/countries; the field name is retained for compatibility).
           genericCategory:
             type: string
             docs: Semantic grouping — one of tax-id | national-id | social-insurance | health-insurance | residence-permit | other.
@@ -375,7 +375,7 @@ services:
             param-type: path
       listPersonalCodeSchemes:
         http: GET /personal-code-schemes
-        docs: List the scheme catalog, optionally filtered by country and/or generic category.
+        docs: List the scheme catalog, optionally filtered by country RID (GET /geo/countries) and/or generic category.
         args:
           country:
             type: optional<string>
