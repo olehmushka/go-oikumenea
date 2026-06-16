@@ -22,6 +22,7 @@ const APP = 1;
 const SERVICE_NAMES: Record<number, string> = {
   1: "platform", 2: "i18n", 3: "audit", 4: "tenant", 5: "rank", 6: "person",
   7: "membership", 8: "authz", 9: "account", 10: "document", 11: "order",
+  12: "geo", 13: "language",
 };
 
 // Token by `${service}/${kind}/${typeCode}` — kind 1=object, 2=link, 3=action. Mirrors the SQL
@@ -41,6 +42,9 @@ const TYPE_TOKENS: Record<string, string> = {
   "9/1/1": "account", "9/1/2": "external_identity",
   "10/1/1": "document_type", "10/1/2": "document", "10/1/3": "personal_code",
   "11/1/1": "order_type", "11/1/2": "order", "11/1/3": "order_item",
+  "13/1/1": "languoid", "13/1/2": "writing_system", "13/1/3": "writing_system_script_type",
+  "13/2/1": "link__written_in",
+  "6/2/8": "link__speaks", "4/2/2": "link__unit_language", "2/2/1": "link__locale_language",
 };
 
 interface Decoded {

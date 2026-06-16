@@ -90,30 +90,50 @@ func TestPersonPatchValidate(t *testing.T) {
 	}
 }
 
+// validCountryRID is a hand-built, well-formed country RID (location service=12, object, type=country,
+// UUIDv8 version 8, app 1) — countries are RID-keyed (F-014), so Country fields now carry a RID.
+const validCountryRID = "01020304-0506-8101-8c01-000000000000"
+
 func TestCitizenshipValidate(t *testing.T) {
-	if err := (Citizenship{Country: "UA", Basis: "birth"}).Validate(); err != nil {
+	if err := (Citizenship{Country: validCountryRID, Basis: "birth"}).Validate(); err != nil {
 		t.Fatalf("valid citizenship: %v", err)
 	}
-	if err := (Citizenship{Country: "ukr", Basis: "birth"}).Validate(); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("3-letter country should be invalid, got %v", err)
+	if err := (Citizenship{Country: "UA", Basis: "birth"}).Validate(); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("non-RID country should be invalid, got %v", err)
 	}
-	if err := (Citizenship{Country: "UA", Basis: "gift"}).Validate(); !errors.Is(err, ErrInvalid) {
+	if err := (Citizenship{Country: validCountryRID, Basis: "gift"}).Validate(); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("unknown basis should be invalid, got %v", err)
 	}
-	if err := (Citizenship{Country: "UA", Basis: "other", AcquiredOn: "bad"}).Validate(); !errors.Is(err, ErrInvalid) {
+	if err := (Citizenship{Country: validCountryRID, Basis: "other", AcquiredOn: "bad"}).Validate(); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("bad acquiredOn should be invalid, got %v", err)
 	}
 }
 
 func TestResidenceValidate(t *testing.T) {
-	if err := (Residence{Country: "PL", ValidFrom: "2021-09-01"}).Validate(); err != nil {
+	if err := (Residence{Country: validCountryRID, ValidFrom: "2021-09-01"}).Validate(); err != nil {
 		t.Fatalf("valid residence: %v", err)
 	}
-	if err := (Residence{Country: "PL"}).Validate(); !errors.Is(err, ErrInvalid) {
+	if err := (Residence{Country: validCountryRID}).Validate(); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("missing validFrom should be invalid, got %v", err)
 	}
-	if err := (Residence{Country: "PL", ValidFrom: "2021-09-01", ValidTo: "nope"}).Validate(); !errors.Is(err, ErrInvalid) {
+	if err := (Residence{Country: validCountryRID, ValidFrom: "2021-09-01", ValidTo: "nope"}).Validate(); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("bad validTo should be invalid, got %v", err)
+	}
+}
+
+func TestPersonLanguageValidate(t *testing.T) {
+	valid := "00000000-0000-0000-0000-000000000001"
+	if err := (PersonLanguage{LanguageID: valid, CEFRLevel: "B2", IsNative: true}).Validate(); err != nil {
+		t.Fatalf("valid person language: %v", err)
+	}
+	if err := (PersonLanguage{LanguageID: valid}).Validate(); err != nil {
+		t.Fatalf("empty cefr is allowed: %v", err)
+	}
+	if err := (PersonLanguage{}).Validate(); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("missing languageId should be invalid, got %v", err)
+	}
+	if err := (PersonLanguage{LanguageID: valid, CEFRLevel: "Z9"}).Validate(); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("bad cefr should be invalid, got %v", err)
 	}
 }
 

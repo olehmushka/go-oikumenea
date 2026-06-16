@@ -147,7 +147,7 @@ type OikumeneaDocumentDocument struct {
 	// pii:basic
 	Issuer pgtype.Text
 	// pii:none
-	IssuingCountry pgtype.Text
+	IssuingCountryID pgtype.Text
 	// pii:none
 	IssuedOn pgtype.Date
 	// pii:none
@@ -205,7 +205,7 @@ type OikumeneaDocumentPersonalCodeScheme struct {
 	// pii:none
 	Code string
 	// pii:none
-	CountryIso pgtype.Text
+	CountryID pgtype.Text
 	// pii:none
 	GenericCategory string
 	// pii:none
@@ -223,6 +223,8 @@ type OikumeneaDocumentPersonalCodeScheme struct {
 
 type OikumeneaGeoCountry struct {
 	// pii:none
+	ID string
+	// pii:none
 	Code string
 	// pii:none
 	Name string
@@ -230,8 +232,63 @@ type OikumeneaGeoCountry struct {
 	Status string
 	// pii:none
 	SortOrder pgtype.Int4
+	// pii:none
+	WofID pgtype.Int8
+	// pii:none
+	IsoA3 pgtype.Text
+	// pii:none
+	NumericCode pgtype.Text
+	// pii:none
+	Geom interface{}
+	// pii:none
+	Centroid interface{}
+	// pii:none
+	Bbox      interface{}
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
+	// pii:none
+	Source pgtype.Text
+	// pii:none
+	SourceVersion pgtype.Text
+	// pii:none
+	ImportedAt pgtype.Timestamptz
+}
+
+type OikumeneaGeoPlace struct {
+	// pii:none
+	ID string
+	// pii:none
+	WofID int64
+	// pii:none
+	Placetype string
+	// pii:none
+	ParentID pgtype.Text
+	// pii:none
+	CountryID pgtype.Text
+	// pii:none
+	Name string
+	// pii:none
+	Population pgtype.Int8
+	// pii:none
+	Hierarchy []byte
+	// pii:none
+	Concordances []byte
+	// pii:none
+	Status string
+	// pii:none
+	Geom interface{}
+	// pii:none
+	Centroid interface{}
+	// pii:none
+	Bbox interface{}
+	// pii:none
+	Source pgtype.Text
+	// pii:none
+	SourceVersion pgtype.Text
+	// pii:none
+	ImportedAt pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
 }
 
 type OikumeneaI18nLocale struct {
@@ -250,6 +307,17 @@ type OikumeneaI18nLocale struct {
 	DeletedAt pgtype.Timestamptz
 }
 
+type OikumeneaI18nLocaleLanguage struct {
+	// pii:none
+	ID string
+	// pii:none
+	Locale string
+	// pii:none
+	LanguageID string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+}
+
 type OikumeneaI18nTranslation struct {
 	// pii:none
 	ID string
@@ -265,6 +333,109 @@ type OikumeneaI18nTranslation struct {
 	Text      string
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
+}
+
+type OikumeneaLanguageLanguoid struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Level string
+	// pii:none
+	Name string
+	// pii:none
+	ParentID pgtype.Text
+	// pii:none
+	FamilyCode pgtype.Text
+	// pii:none
+	Iso6393 pgtype.Text
+	// pii:none
+	Macroarea pgtype.Text
+	// pii:none
+	Latitude pgtype.Float8
+	// pii:none
+	Longitude pgtype.Float8
+	// pii:none
+	Status           string
+	GlottologVersion pgtype.Text
+	Source           pgtype.Text
+	SourceVersion    pgtype.Text
+	ImportedAt       pgtype.Timestamptz
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+}
+
+type OikumeneaLanguageLanguoidClosure struct {
+	// pii:none
+	AncestorID string
+	// pii:none
+	DescendantID string
+	// pii:none
+	Depth int32
+}
+
+type OikumeneaLanguageLanguoidCountry struct {
+	// pii:none
+	LanguoidID string
+	// pii:none
+	CountryID string
+}
+
+type OikumeneaLanguageWritingSystem struct {
+	// pii:none
+	ID string
+	// pii:none
+	LanguoidID string
+	// pii:none
+	WritingSystemID string
+	// pii:none
+	IsPrimary     bool
+	Source        pgtype.Text
+	SourceVersion pgtype.Text
+	ImportedAt    pgtype.Timestamptz
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+}
+
+type OikumeneaLocationLocation struct {
+	// pii:none
+	ID string
+	// pii:none
+	Geom interface{}
+	// pii:none
+	Mgrs    pgtype.Text
+	H3Res5  pgtype.Text
+	H3Res7  pgtype.Text
+	H3Res9  pgtype.Text
+	H3Res11 pgtype.Text
+	// pii:none
+	CountryID   string
+	AdminArea1  pgtype.Text
+	AdminArea2  pgtype.Text
+	Locality    pgtype.Text
+	Street      pgtype.Text
+	HouseNumber pgtype.Text
+	PostalCode  pgtype.Text
+	// pii:none
+	RawAddress pgtype.Text
+	TypeID     pgtype.Text
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
+}
+
+type OikumeneaLocationLocationType struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name      string
+	Status    string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
 }
 
 type OikumeneaMembershipMembership struct {
@@ -410,7 +581,7 @@ type OikumeneaPersonCitizenship struct {
 	// pii:none
 	PersonID string
 	// pii:basic
-	Country string
+	CountryID string
 	// pii:basic
 	Basis string
 	// pii:basic
@@ -485,6 +656,24 @@ type OikumeneaPersonKinship struct {
 	ChildID string
 	// pii:none
 	Status    string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaPersonLanguage struct {
+	// pii:none
+	ID string
+	// pii:basic
+	PersonID string
+	// pii:basic
+	LanguageID string
+	// pii:none
+	LanguageLevel string
+	// pii:basic
+	CefrLevel pgtype.Text
+	// pii:basic
+	IsNative  bool
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
@@ -607,7 +796,7 @@ type OikumeneaPersonPerson struct {
 	// pii:basic
 	Sex string
 	// pii:basic
-	CountryOfBirth pgtype.Text
+	CountryOfBirthID pgtype.Text
 	// pii:special
 	Attributes []byte
 	// pii:none
@@ -633,7 +822,7 @@ type OikumeneaPersonPhone struct {
 	// pii:contact
 	Number string
 	// pii:contact
-	Country pgtype.Text
+	CountryID pgtype.Text
 	// pii:none
 	IsPrimary bool
 	CreatedAt pgtype.Timestamptz
@@ -707,7 +896,7 @@ type OikumeneaPersonResidence struct {
 	// pii:none
 	PersonID string
 	// pii:contact
-	Country string
+	CountryID string
 	// pii:contact
 	Region pgtype.Text
 	// pii:contact
@@ -862,7 +1051,7 @@ type OikumeneaRankSystem struct {
 	// pii:none
 	SortOrder int32
 	// pii:none
-	Country   pgtype.Text
+	CountryID pgtype.Text
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
@@ -972,6 +1161,20 @@ type OikumeneaTenantUnitEdge struct {
 	CreatedBy pgtype.Text
 }
 
+type OikumeneaTenantUnitLanguage struct {
+	// pii:none
+	ID string
+	// pii:none
+	UnitID string
+	// pii:none
+	LanguageID string
+	// pii:none
+	IsOfficial bool
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
+}
+
 type OikumeneaTenantUnitLifecycleEvent struct {
 	// pii:none
 	ID string
@@ -988,4 +1191,29 @@ type OikumeneaTenantUnitLifecycleEvent struct {
 	// pii:none
 	RequestID string
 	CreatedAt pgtype.Timestamptz
+}
+
+type OikumeneaWritingSystem struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	ScriptType pgtype.Text
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+}
+
+type OikumeneaWritingSystemScriptType struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name      string
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
 }

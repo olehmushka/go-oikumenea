@@ -40,7 +40,7 @@ CREATE TABLE oikumenea.person_persons (
   birthdate        date,                          -- calendar day of birth (a DATE, not an instant); nullable
   sex              text NOT NULL DEFAULT 'not_known'
                      CHECK (sex IN ('not_known','male','female','not_applicable')),  -- biological sex, ISO/IEC 5218
-  country_of_birth char(2) REFERENCES oikumenea.geo_countries(code) ON DELETE RESTRICT,  -- nullable (D-Geo)
+  country_of_birth_id uuid REFERENCES oikumenea.geo_countries(id) ON DELETE RESTRICT,  -- nullable (D-Geo); ISO code resolved in SQL
   attributes       jsonb NOT NULL DEFAULT '{}',   -- long-tail directory fields; pii:special CEILING (grab-bag)
 
   -- rank is NOT a column: a person holds one rank PER RANK SYSTEM via the person_ranks link below (D-Rank).
@@ -79,7 +79,7 @@ COMMENT ON COLUMN oikumenea.person_persons.credentials IS 'pii:basic';
 COMMENT ON COLUMN oikumenea.person_persons.preferred IS 'pii:basic';
 COMMENT ON COLUMN oikumenea.person_persons.birthdate IS 'pii:basic';
 COMMENT ON COLUMN oikumenea.person_persons.sex IS 'pii:basic';
-COMMENT ON COLUMN oikumenea.person_persons.country_of_birth IS 'pii:basic';
+COMMENT ON COLUMN oikumenea.person_persons.country_of_birth_id IS 'pii:basic';
 COMMENT ON COLUMN oikumenea.person_persons.attributes IS 'pii:special';
 COMMENT ON COLUMN oikumenea.person_persons.status IS 'pii:none';
 COMMENT ON COLUMN oikumenea.person_persons.deactivated_at IS 'pii:none';
@@ -173,7 +173,7 @@ COMMENT ON COLUMN oikumenea.person_name_variants.is_primary IS 'pii:none';
 CREATE TABLE oikumenea.person_citizenships (
   id          uuid PRIMARY KEY DEFAULT oikumenea.new_id(6,1,3),  -- person / object / citizenship
   person_id   uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
-  country     char(2) NOT NULL REFERENCES oikumenea.geo_countries(code) ON DELETE RESTRICT,
+  country_id  uuid NOT NULL REFERENCES oikumenea.geo_countries(id) ON DELETE RESTRICT,  -- ISO code resolved in SQL
   basis       text NOT NULL DEFAULT 'other'
                 CHECK (basis IN ('birth','descent','naturalization','other')),
   acquired_on date,
@@ -192,13 +192,13 @@ CREATE TRIGGER person_citizenships_set_updated_at
   FOR EACH ROW EXECUTE FUNCTION oikumenea.set_updated_at();
 
 CREATE UNIQUE INDEX person_citizenships_active_country_idx
-  ON oikumenea.person_citizenships (person_id, country) WHERE lost_on IS NULL AND deleted_at IS NULL;
+  ON oikumenea.person_citizenships (person_id, country_id) WHERE lost_on IS NULL AND deleted_at IS NULL;
 CREATE INDEX person_citizenships_person_idx
   ON oikumenea.person_citizenships (person_id) WHERE deleted_at IS NULL;
 
 COMMENT ON COLUMN oikumenea.person_citizenships.id IS 'pii:none';
 COMMENT ON COLUMN oikumenea.person_citizenships.person_id IS 'pii:none';
-COMMENT ON COLUMN oikumenea.person_citizenships.country IS 'pii:basic';
+COMMENT ON COLUMN oikumenea.person_citizenships.country_id IS 'pii:basic';
 COMMENT ON COLUMN oikumenea.person_citizenships.basis IS 'pii:basic';
 COMMENT ON COLUMN oikumenea.person_citizenships.acquired_on IS 'pii:basic';
 COMMENT ON COLUMN oikumenea.person_citizenships.lost_on IS 'pii:basic';
@@ -209,7 +209,7 @@ COMMENT ON COLUMN oikumenea.person_citizenships.is_primary IS 'pii:none';
 CREATE TABLE oikumenea.person_residences (
   id         uuid PRIMARY KEY DEFAULT oikumenea.new_id(6,1,4),  -- person / object / residence
   person_id  uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
-  country    char(2) NOT NULL REFERENCES oikumenea.geo_countries(code) ON DELETE RESTRICT,
+  country_id uuid NOT NULL REFERENCES oikumenea.geo_countries(id) ON DELETE RESTRICT,  -- ISO code resolved in SQL
   region     text,                               -- optional sub-national region / locality (free text)
   valid_from date NOT NULL,
   valid_to   date,                               -- NULL = current
@@ -230,7 +230,7 @@ CREATE INDEX person_residences_person_idx
 
 COMMENT ON COLUMN oikumenea.person_residences.id IS 'pii:none';
 COMMENT ON COLUMN oikumenea.person_residences.person_id IS 'pii:none';
-COMMENT ON COLUMN oikumenea.person_residences.country IS 'pii:contact';
+COMMENT ON COLUMN oikumenea.person_residences.country_id IS 'pii:contact';
 COMMENT ON COLUMN oikumenea.person_residences.region IS 'pii:contact';
 COMMENT ON COLUMN oikumenea.person_residences.valid_from IS 'pii:contact';
 COMMENT ON COLUMN oikumenea.person_residences.valid_to IS 'pii:contact';

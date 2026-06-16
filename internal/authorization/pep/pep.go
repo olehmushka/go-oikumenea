@@ -116,6 +116,17 @@ func (e *Enforcer) FilterVisibleUnits(ctx context.Context, candidates []string, 
 	return e.svc.FilterVisibleUnits(ctx, Subject(ctx), candidates, shadow)
 }
 
+// RequireImport gates the generic data-import endpoint (M16 / D-Hermenea). The `hermenea-importer`
+// service principal (authenticated by the shared-secret middleware path) holds exactly `import.manage`
+// and is allowed directly; otherwise a human instance admin holding `import.manage` may also call it
+// (RequireAnywhere over the PDP). An absent/other subject is denied.
+func (e *Enforcer) RequireImport(ctx context.Context, token bearertoken.Token) error {
+	if authn.ServiceID(ctx) == authn.ServiceHermeneaImporter {
+		return nil
+	}
+	return e.RequireAnywhere(ctx, token, string(domain.PermImportManage))
+}
+
 // RequireAnywhere enforces that the token's subject can satisfy `action` at some unit (or on the
 // instance plane) — the gate for instance-global reads whose resource is not unit-keyed.
 func (e *Enforcer) RequireAnywhere(ctx context.Context, token bearertoken.Token, action string) error {

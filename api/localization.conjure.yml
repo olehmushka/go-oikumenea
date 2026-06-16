@@ -34,6 +34,25 @@ types:
         docs: The supported locales, in display order.
         fields:
           locales: list<Locale>
+      LocaleLanguage:
+        docs: |
+          A supported locale's canonical Glottolog language (D-Languages, M18; Link link__locale_language).
+          Read-only: the link is reconciled by the language-scheme import (matching the locale's ISO-639-3
+          code to a languoid's iso639_3), not edited directly.
+        fields:
+          locale:
+            type: string
+            docs: The locale's ISO 639-3 code.
+          languageId:
+            type: string
+            docs: The matched languoid's URN RID.
+          name:
+            type: map<string, string>
+            docs: The languoid's translatable display name as a locale -> text map (all enabled locales; D-i18n).
+      LocaleLanguageList:
+        docs: The locale -> canonical-language links (D-Languages, M18).
+        fields:
+          localeLanguages: list<LocaleLanguage>
       AddLocaleRequest:
         docs: Add a supported locale (instance-admin; `locale.manage`).
         fields:
@@ -99,6 +118,12 @@ services:
         http: GET /locales
         docs: List the supported locales in display order.
         returns: LocaleList
+      listLocaleLanguages:
+        http: GET /locale-languages
+        docs: |
+          List each supported locale's canonical Glottolog language (D-Languages, M18). Read-only — the
+          links are reconciled by the language-scheme import, not edited here.
+        returns: LocaleLanguageList
       addLocale:
         http: POST /locales
         docs: Add a supported locale. Returns Localization:LocaleCodeConflict if the code exists.

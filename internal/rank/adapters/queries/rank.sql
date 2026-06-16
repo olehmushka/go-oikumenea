@@ -10,15 +10,20 @@
 
 -- name: InsertSystem :one
 -- Create a rank system (the top level). The RID PK defaults at the database; sort_order appends last.
-INSERT INTO oikumenea.rank_systems (code, name, sort_order, country)
+INSERT INTO oikumenea.rank_systems (code, name, sort_order, country_id)
 VALUES (@code, @name, COALESCE(
   sqlc.narg('sort_order')::int,
   (SELECT COALESCE(max(sort_order) + 1, 0) FROM oikumenea.rank_systems WHERE deleted_at IS NULL)
-), sqlc.narg('country'))
+), sqlc.narg('country_id'))
 RETURNING *;
 
 -- name: GetSystem :one
 SELECT * FROM oikumenea.rank_systems WHERE id = @id AND deleted_at IS NULL;
+
+-- name: GetCountryIDByCode :one
+-- Resolve an ISO-3166-1 alpha-2 code to its geo_countries RID (countries are RID-keyed; a system
+-- references a country by RID). Used to translate preset country codes on import.
+SELECT id FROM oikumenea.geo_countries WHERE code = @code;
 
 -- name: GetSystemByCode :one
 SELECT * FROM oikumenea.rank_systems WHERE code = @code AND deleted_at IS NULL;
@@ -29,7 +34,7 @@ SELECT * FROM oikumenea.rank_systems WHERE code = @code AND deleted_at IS NULL;
 UPDATE oikumenea.rank_systems SET
   name       = COALESCE(sqlc.narg('name'), name),
   sort_order = COALESCE(sqlc.narg('sort_order')::int, sort_order),
-  country    = COALESCE(sqlc.narg('country'), country)
+  country_id = COALESCE(sqlc.narg('country_id'), country_id)
 WHERE id = @id AND deleted_at IS NULL
 RETURNING *;
 

@@ -107,6 +107,19 @@ func (q *Queries) GetCategoryByCodeInSystem(ctx context.Context, arg GetCategory
 	return i, err
 }
 
+const getCountryIDByCode = `-- name: GetCountryIDByCode :one
+SELECT id FROM oikumenea.geo_countries WHERE code = $1
+`
+
+// Resolve an ISO-3166-1 alpha-2 code to its geo_countries RID (countries are RID-keyed; a system
+// references a country by RID). Used to translate preset country codes on import.
+func (q *Queries) GetCountryIDByCode(ctx context.Context, code string) (string, error) {
+	row := q.db.QueryRow(ctx, getCountryIDByCode, code)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getGrade = `-- name: GetGrade :one
 SELECT code, tier, ordinal, name FROM oikumenea.rank_grades WHERE code = $1
 `
@@ -176,7 +189,7 @@ func (q *Queries) GetRankByCodeInType(ctx context.Context, arg GetRankByCodeInTy
 }
 
 const getSystem = `-- name: GetSystem :one
-SELECT id, code, name, sort_order, country, created_at, updated_at, deleted_at FROM oikumenea.rank_systems WHERE id = $1 AND deleted_at IS NULL
+SELECT id, code, name, sort_order, country_id, created_at, updated_at, deleted_at FROM oikumenea.rank_systems WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetSystem(ctx context.Context, id string) (OikumeneaRankSystem, error) {
@@ -187,7 +200,7 @@ func (q *Queries) GetSystem(ctx context.Context, id string) (OikumeneaRankSystem
 		&i.Code,
 		&i.Name,
 		&i.SortOrder,
-		&i.Country,
+		&i.CountryID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -196,7 +209,7 @@ func (q *Queries) GetSystem(ctx context.Context, id string) (OikumeneaRankSystem
 }
 
 const getSystemByCode = `-- name: GetSystemByCode :one
-SELECT id, code, name, sort_order, country, created_at, updated_at, deleted_at FROM oikumenea.rank_systems WHERE code = $1 AND deleted_at IS NULL
+SELECT id, code, name, sort_order, country_id, created_at, updated_at, deleted_at FROM oikumenea.rank_systems WHERE code = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetSystemByCode(ctx context.Context, code string) (OikumeneaRankSystem, error) {
@@ -207,7 +220,7 @@ func (q *Queries) GetSystemByCode(ctx context.Context, code string) (OikumeneaRa
 		&i.Code,
 		&i.Name,
 		&i.SortOrder,
-		&i.Country,
+		&i.CountryID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -366,19 +379,19 @@ func (q *Queries) InsertRank(ctx context.Context, arg InsertRankParams) (Oikumen
 const insertSystem = `-- name: InsertSystem :one
 
 
-INSERT INTO oikumenea.rank_systems (code, name, sort_order, country)
+INSERT INTO oikumenea.rank_systems (code, name, sort_order, country_id)
 VALUES ($1, $2, COALESCE(
   $3::int,
   (SELECT COALESCE(max(sort_order) + 1, 0) FROM oikumenea.rank_systems WHERE deleted_at IS NULL)
 ), $4)
-RETURNING id, code, name, sort_order, country, created_at, updated_at, deleted_at
+RETURNING id, code, name, sort_order, country_id, created_at, updated_at, deleted_at
 `
 
 type InsertSystemParams struct {
 	Code      string
 	Name      string
 	SortOrder pgtype.Int4
-	Country   pgtype.Text
+	CountryID pgtype.Text
 }
 
 // Rank module queries (docs/modules/rank.md). The one system-wide scheme: rank_systems ->
@@ -395,7 +408,7 @@ func (q *Queries) InsertSystem(ctx context.Context, arg InsertSystemParams) (Oik
 		arg.Code,
 		arg.Name,
 		arg.SortOrder,
-		arg.Country,
+		arg.CountryID,
 	)
 	var i OikumeneaRankSystem
 	err := row.Scan(
@@ -403,7 +416,7 @@ func (q *Queries) InsertSystem(ctx context.Context, arg InsertSystemParams) (Oik
 		&i.Code,
 		&i.Name,
 		&i.SortOrder,
-		&i.Country,
+		&i.CountryID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -568,7 +581,7 @@ func (q *Queries) ListRanks(ctx context.Context) ([]OikumeneaRankRank, error) {
 }
 
 const listSystems = `-- name: ListSystems :many
-SELECT id, code, name, sort_order, country, created_at, updated_at, deleted_at FROM oikumenea.rank_systems WHERE deleted_at IS NULL ORDER BY sort_order, code
+SELECT id, code, name, sort_order, country_id, created_at, updated_at, deleted_at FROM oikumenea.rank_systems WHERE deleted_at IS NULL ORDER BY sort_order, code
 `
 
 func (q *Queries) ListSystems(ctx context.Context) ([]OikumeneaRankSystem, error) {
@@ -585,7 +598,7 @@ func (q *Queries) ListSystems(ctx context.Context) ([]OikumeneaRankSystem, error
 			&i.Code,
 			&i.Name,
 			&i.SortOrder,
-			&i.Country,
+			&i.CountryID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
@@ -769,15 +782,15 @@ const updateSystem = `-- name: UpdateSystem :one
 UPDATE oikumenea.rank_systems SET
   name       = COALESCE($1, name),
   sort_order = COALESCE($2::int, sort_order),
-  country    = COALESCE($3, country)
+  country_id = COALESCE($3, country_id)
 WHERE id = $4 AND deleted_at IS NULL
-RETURNING id, code, name, sort_order, country, created_at, updated_at, deleted_at
+RETURNING id, code, name, sort_order, country_id, created_at, updated_at, deleted_at
 `
 
 type UpdateSystemParams struct {
 	Name      pgtype.Text
 	SortOrder pgtype.Int4
-	Country   pgtype.Text
+	CountryID pgtype.Text
 	ID        string
 }
 
@@ -787,7 +800,7 @@ func (q *Queries) UpdateSystem(ctx context.Context, arg UpdateSystemParams) (Oik
 	row := q.db.QueryRow(ctx, updateSystem,
 		arg.Name,
 		arg.SortOrder,
-		arg.Country,
+		arg.CountryID,
 		arg.ID,
 	)
 	var i OikumeneaRankSystem
@@ -796,7 +809,7 @@ func (q *Queries) UpdateSystem(ctx context.Context, arg UpdateSystemParams) (Oik
 		&i.Code,
 		&i.Name,
 		&i.SortOrder,
-		&i.Country,
+		&i.CountryID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,

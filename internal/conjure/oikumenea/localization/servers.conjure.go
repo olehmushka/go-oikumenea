@@ -23,6 +23,11 @@ by `locale.read`/`translation.read`; writes are instance-admin (`locale.manage`/
 type LocalizationService interface {
 	// List the supported locales in display order.
 	ListLocales(ctx context.Context, authHeader bearertoken.Token) (LocaleList, error)
+	/*
+	   List each supported locale's canonical Glottolog language (D-Languages, M18). Read-only — the
+	   links are reconciled by the language-scheme import, not edited here.
+	*/
+	ListLocaleLanguages(ctx context.Context, authHeader bearertoken.Token) (LocaleLanguageList, error)
 	// Add a supported locale. Returns Localization:LocaleCodeConflict if the code exists.
 	AddLocale(ctx context.Context, authHeader bearertoken.Token, requestArg AddLocaleRequest) (Locale, error)
 	// Enable/disable, rename, set default, or reorder a locale.
@@ -42,6 +47,9 @@ func RegisterRoutesLocalizationService(router wrouter.Router, impl LocalizationS
 	resource := wresource.New("localizationservice", router)
 	if err := resource.Get("ListLocales", "/localization/v1/locales", httpserver.NewJSONHandler(handler.HandleListLocales, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listLocales route")
+	}
+	if err := resource.Get("ListLocaleLanguages", "/localization/v1/locale-languages", httpserver.NewJSONHandler(handler.HandleListLocaleLanguages, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listLocaleLanguages route")
 	}
 	if err := resource.Post("AddLocale", "/localization/v1/locales", httpserver.NewJSONHandler(handler.HandleAddLocale, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add addLocale route")
@@ -68,6 +76,19 @@ func (l *localizationServiceHandler) HandleListLocales(rw http.ResponseWriter, r
 		return errors.WrapWithPermissionDenied(err)
 	}
 	respArg, err := l.impl.ListLocales(req.Context(), bearertoken.Token(authHeader))
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (l *localizationServiceHandler) HandleListLocaleLanguages(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	respArg, err := l.impl.ListLocaleLanguages(req.Context(), bearertoken.Token(authHeader))
 	if err != nil {
 		return err
 	}

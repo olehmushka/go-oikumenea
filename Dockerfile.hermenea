@@ -1,0 +1,27 @@
+# Multi-stage build for the hermenea companion service (M16 / D-Hermenea). Like the oikumenea image,
+# the binary is CGO-free — the WOF SQLite reader uses the pure-Go modernc.org/sqlite driver, so it
+# still ships on distroless/static (no libc, non-root). Hermenea's migrations (migrations/hermenea)
+# are applied out-of-band (atlas) against its OWN database before the service starts; it couples to
+# oikumenea only over HTTP. See docker-compose.yml.
+
+# ---- build ----
+FROM golang:1.26-bookworm AS build
+WORKDIR /src
+# Module graph first for layer caching.
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/hermenea ./cmd/hermenea
+
+# ---- runtime ----
+FROM gcr.io/distroless/static-debian12:nonroot
+WORKDIR /app
+# Default config baked in; operators override by mounting their own var/conf (ECV-encrypted in prod).
+COPY --from=build /src/var/conf /app/var/conf
+# Bundled presets the `file` connector reads (geo-countries ISO-3166 source locator is relative to /app).
+COPY --from=build /src/deploy/geo-presets /app/deploy/geo-presets
+COPY --from=build /out/hermenea /app/hermenea
+# 9443 = hermenea API (push trigger + source/run/job reads), 9444 = management (health/readiness).
+EXPOSE 9443 9444
+USER nonroot:nonroot
+ENTRYPOINT ["/app/hermenea"]

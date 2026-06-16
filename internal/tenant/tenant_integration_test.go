@@ -308,3 +308,71 @@ func idDepth(refs []domain.UnitRef) map[string]int {
 	}
 	return m
 }
+
+// seedLanguoid inserts a Glottolog language node (D-Languages, M18) and returns its RID, for the unit
+// official/working-language link tests.
+func seedLanguoid(t *testing.T, pool *pgxpool.Pool, code, name string) string {
+	t.Helper()
+	var id string
+	if err := pool.QueryRow(context.Background(),
+		`INSERT INTO oikumenea.language_languoids (code, level, name) VALUES ($1,'language',$2) RETURNING id`,
+		code, name).Scan(&id); err != nil {
+		t.Fatalf("seed languoid %s: %v", code, err)
+	}
+	t.Cleanup(func() {
+		ctx := context.Background()
+		// A concurrent language-scheme import (other package) rebuilds the global closure, which adds a
+		// reflexive row for this bare languoid; clear dependents before the RESTRICT delete.
+		_, _ = pool.Exec(ctx, "DELETE FROM oikumenea.language_languoid_closure WHERE ancestor_id = $1 OR descendant_id = $1", id)
+		_, _ = pool.Exec(ctx, "DELETE FROM oikumenea.tenant_unit_languages WHERE language_id = $1", id)
+		_, _ = pool.Exec(ctx, "DELETE FROM oikumenea.language_languoids WHERE id = $1", id)
+	})
+	return id
+}
+
+// TestUnitLanguages covers the unit official/working-language link (D-Languages, M18): add, the
+// (unit, language) upsert key with the isOfficial flip, the unknown-language FK, and delete.
+func TestUnitLanguages(t *testing.T) {
+	ctx := context.Background()
+	svc, pool := newService(t)
+
+	suffix := uuid.NewString()[:8]
+	lang := seedLanguoid(t, pool, "ua"+suffix[:6], "Testish")
+	u := mustCreate(t, svc, "unit-lang-"+suffix)
+
+	saved, err := svc.UpsertUnitLanguage(ctx, domain.UnitLanguage{UnitID: u.ID, LanguageID: lang, IsOfficial: true})
+	if err != nil {
+		t.Fatalf("upsert unit language: %v", err)
+	}
+	if saved.LanguageName != "Testish" || !saved.IsOfficial {
+		t.Fatalf("saved = %+v, want name=Testish official", saved)
+	}
+
+	// upsert keyed on (unit, language): flip to working language, no duplicate row
+	if _, err := svc.UpsertUnitLanguage(ctx, domain.UnitLanguage{UnitID: u.ID, LanguageID: lang, IsOfficial: false}); err != nil {
+		t.Fatalf("update unit language: %v", err)
+	}
+	ls, err := svc.ListUnitLanguages(ctx, u.ID)
+	if err != nil || len(ls) != 1 {
+		t.Fatalf("list after update: len=%d err=%v", len(ls), err)
+	}
+	if ls[0].IsOfficial {
+		t.Fatalf("expected working language (isOfficial=false), got %+v", ls[0])
+	}
+
+	// an unresolved languoid trips the FK -> ErrUnknownLanguage
+	var bogus string
+	if err := pool.QueryRow(ctx, "SELECT oikumenea.new_id(13,1,1)").Scan(&bogus); err != nil {
+		t.Fatalf("mint bogus languoid rid: %v", err)
+	}
+	if _, err := svc.UpsertUnitLanguage(ctx, domain.UnitLanguage{UnitID: u.ID, LanguageID: bogus}); !errors.Is(err, domain.ErrUnknownLanguage) {
+		t.Fatalf("unknown languoid should be ErrUnknownLanguage, got %v", err)
+	}
+
+	if err := svc.DeleteUnitLanguage(ctx, u.ID, lang); err != nil {
+		t.Fatalf("delete unit language: %v", err)
+	}
+	if ls, err := svc.ListUnitLanguages(ctx, u.ID); err != nil || len(ls) != 0 {
+		t.Fatalf("list after delete: len=%d err=%v", len(ls), err)
+	}
+}

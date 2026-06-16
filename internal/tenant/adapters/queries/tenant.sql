@@ -194,3 +194,33 @@ LIMIT @lim;
 INSERT INTO oikumenea.tenant_unit_lifecycle_events
   (unit_id, from_state, to_state, reason, actor_person_id, request_id)
 VALUES (@unit_id, @from_state, @to_state, sqlc.narg('reason'), sqlc.narg('actor_person_id'), @request_id);
+
+-- ============================ unit languages (D-Languages, M18) ============================
+
+-- name: ListUnitLanguages :many
+-- A unit's official/working languages joined to the languoid for its default-locale display name
+-- (transport assembles the locale->text map). Official first, then by name.
+SELECT ul.id, ul.unit_id, ul.language_id, ul.is_official, l.name AS language_name
+FROM oikumenea.tenant_unit_languages ul
+JOIN oikumenea.language_languoids l ON l.id = ul.language_id
+WHERE ul.unit_id = @unit_id AND ul.deleted_at IS NULL
+ORDER BY ul.is_official DESC, l.name, ul.id;
+
+-- name: GetUnitLanguage :one
+SELECT ul.id, ul.unit_id, ul.language_id, ul.is_official, l.name AS language_name
+FROM oikumenea.tenant_unit_languages ul
+JOIN oikumenea.language_languoids l ON l.id = ul.language_id
+WHERE ul.unit_id = @unit_id AND ul.language_id = @language_id AND ul.deleted_at IS NULL;
+
+-- name: InsertUnitLanguage :exec
+INSERT INTO oikumenea.tenant_unit_languages (unit_id, language_id, is_official)
+VALUES (@unit_id, @language_id, @is_official);
+
+-- name: UpdateUnitLanguage :exec
+UPDATE oikumenea.tenant_unit_languages SET is_official = @is_official
+WHERE unit_id = @unit_id AND language_id = @language_id AND deleted_at IS NULL;
+
+-- name: DeleteUnitLanguage :one
+UPDATE oikumenea.tenant_unit_languages SET deleted_at = now()
+WHERE unit_id = @unit_id AND language_id = @language_id AND deleted_at IS NULL
+RETURNING id;

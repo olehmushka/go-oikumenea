@@ -84,6 +84,24 @@ func (q *Queries) DeleteEdge(ctx context.Context, arg DeleteEdgeParams) (int64, 
 	return result.RowsAffected(), nil
 }
 
+const deleteUnitLanguage = `-- name: DeleteUnitLanguage :one
+UPDATE oikumenea.tenant_unit_languages SET deleted_at = now()
+WHERE unit_id = $1 AND language_id = $2 AND deleted_at IS NULL
+RETURNING id
+`
+
+type DeleteUnitLanguageParams struct {
+	UnitID     string
+	LanguageID string
+}
+
+func (q *Queries) DeleteUnitLanguage(ctx context.Context, arg DeleteUnitLanguageParams) (string, error) {
+	row := q.db.QueryRow(ctx, deleteUnitLanguage, arg.UnitID, arg.LanguageID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getGraphByCode = `-- name: GetGraphByCode :one
 SELECT id, code, name, is_default, is_authority_bearing, created_at, updated_at, deleted_at FROM oikumenea.tenant_graphs WHERE code = $1 AND deleted_at IS NULL
 `
@@ -143,6 +161,39 @@ func (q *Queries) GetUnit(ctx context.Context, id string) (OikumeneaTenantUnit, 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const getUnitLanguage = `-- name: GetUnitLanguage :one
+SELECT ul.id, ul.unit_id, ul.language_id, ul.is_official, l.name AS language_name
+FROM oikumenea.tenant_unit_languages ul
+JOIN oikumenea.language_languoids l ON l.id = ul.language_id
+WHERE ul.unit_id = $1 AND ul.language_id = $2 AND ul.deleted_at IS NULL
+`
+
+type GetUnitLanguageParams struct {
+	UnitID     string
+	LanguageID string
+}
+
+type GetUnitLanguageRow struct {
+	ID           string
+	UnitID       string
+	LanguageID   string
+	IsOfficial   bool
+	LanguageName string
+}
+
+func (q *Queries) GetUnitLanguage(ctx context.Context, arg GetUnitLanguageParams) (GetUnitLanguageRow, error) {
+	row := q.db.QueryRow(ctx, getUnitLanguage, arg.UnitID, arg.LanguageID)
+	var i GetUnitLanguageRow
+	err := row.Scan(
+		&i.ID,
+		&i.UnitID,
+		&i.LanguageID,
+		&i.IsOfficial,
+		&i.LanguageName,
 	)
 	return i, err
 }
@@ -301,6 +352,22 @@ func (q *Queries) InsertUnit(ctx context.Context, arg InsertUnitParams) (Oikumen
 	return i, err
 }
 
+const insertUnitLanguage = `-- name: InsertUnitLanguage :exec
+INSERT INTO oikumenea.tenant_unit_languages (unit_id, language_id, is_official)
+VALUES ($1, $2, $3)
+`
+
+type InsertUnitLanguageParams struct {
+	UnitID     string
+	LanguageID string
+	IsOfficial bool
+}
+
+func (q *Queries) InsertUnitLanguage(ctx context.Context, arg InsertUnitLanguageParams) error {
+	_, err := q.db.Exec(ctx, insertUnitLanguage, arg.UnitID, arg.LanguageID, arg.IsOfficial)
+	return err
+}
+
 const listAncestors = `-- name: ListAncestors :many
 SELECT u.id, u.code, u.name, u.visibility, c.depth
 FROM oikumenea.tenant_unit_closure c
@@ -428,6 +495,52 @@ func (q *Queries) ListGraphs(ctx context.Context) ([]OikumeneaTenantGraph, error
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUnitLanguages = `-- name: ListUnitLanguages :many
+
+SELECT ul.id, ul.unit_id, ul.language_id, ul.is_official, l.name AS language_name
+FROM oikumenea.tenant_unit_languages ul
+JOIN oikumenea.language_languoids l ON l.id = ul.language_id
+WHERE ul.unit_id = $1 AND ul.deleted_at IS NULL
+ORDER BY ul.is_official DESC, l.name, ul.id
+`
+
+type ListUnitLanguagesRow struct {
+	ID           string
+	UnitID       string
+	LanguageID   string
+	IsOfficial   bool
+	LanguageName string
+}
+
+// ============================ unit languages (D-Languages, M18) ============================
+// A unit's official/working languages joined to the languoid for its default-locale display name
+// (transport assembles the locale->text map). Official first, then by name.
+func (q *Queries) ListUnitLanguages(ctx context.Context, unitID string) ([]ListUnitLanguagesRow, error) {
+	rows, err := q.db.Query(ctx, listUnitLanguages, unitID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUnitLanguagesRow
+	for rows.Next() {
+		var i ListUnitLanguagesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UnitID,
+			&i.LanguageID,
+			&i.IsOfficial,
+			&i.LanguageName,
 		); err != nil {
 			return nil, err
 		}
@@ -650,6 +763,22 @@ func (q *Queries) UpdateUnit(ctx context.Context, arg UpdateUnitParams) (Oikumen
 		&i.DeletedAt,
 	)
 	return i, err
+}
+
+const updateUnitLanguage = `-- name: UpdateUnitLanguage :exec
+UPDATE oikumenea.tenant_unit_languages SET is_official = $1
+WHERE unit_id = $2 AND language_id = $3 AND deleted_at IS NULL
+`
+
+type UpdateUnitLanguageParams struct {
+	IsOfficial bool
+	UnitID     string
+	LanguageID string
+}
+
+func (q *Queries) UpdateUnitLanguage(ctx context.Context, arg UpdateUnitLanguageParams) error {
+	_, err := q.db.Exec(ctx, updateUnitLanguage, arg.IsOfficial, arg.UnitID, arg.LanguageID)
+	return err
 }
 
 const upsertClosureStatus = `-- name: UpsertClosureStatus :exec

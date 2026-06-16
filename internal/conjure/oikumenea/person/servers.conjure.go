@@ -51,7 +51,7 @@ type PersonService interface {
 	ListCitizenships(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Citizenship, error)
 	// Add or replace the active citizenship for a country. Returns Person:PersonInvalid for an unknown country.
 	UpsertCitizenship(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertCitizenshipRequest) (Citizenship, error)
-	// Remove a citizenship by country code.
+	// Remove a citizenship by country RID.
 	DeleteCitizenship(ctx context.Context, authHeader bearertoken.Token, personIdArg string, countryArg string) error
 	// List a person's residence history.
 	ListResidences(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Residence, error)
@@ -105,6 +105,15 @@ type PersonService interface {
 	DeleteSocialAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string, socialAccountIdArg string) error
 	// List one social account's @handle-rename history (most recent first).
 	ListSocialAccountHandles(ctx context.Context, authHeader bearertoken.Token, personIdArg string, socialAccountIdArg string) ([]SocialAccountHandle, error)
+	// List the languages the person speaks (native first, then by name; D-Languages, M18).
+	ListPersonLanguages(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]PersonLanguage, error)
+	/*
+	   Add or update a language the person speaks (keyed on languageId). Returns Person:PersonInvalid
+	   when languageId does not resolve to a level='language' languoid or cefrLevel is invalid.
+	*/
+	UpsertPersonLanguage(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertPersonLanguageRequest) (PersonLanguage, error)
+	// Remove a language the person speaks, by languoid id. Idempotent within the active set.
+	DeletePersonLanguage(ctx context.Context, authHeader bearertoken.Token, personIdArg string, languageIdArg string) error
 	// List the person↔person relation-type catalog (locale -> text names; D-i18n; D-PersonRelationships).
 	ListRelationTypes(ctx context.Context, authHeader bearertoken.Token) ([]RelationType, error)
 	// List partnerships (marriage/engagement) touching the person.
@@ -253,6 +262,15 @@ func RegisterRoutesPersonService(router wrouter.Router, impl PersonService, rout
 	}
 	if err := resource.Get("ListSocialAccountHandles", "/person/v1/persons/{personId}/social-accounts/{socialAccountId}/handles", httpserver.NewJSONHandler(handler.HandleListSocialAccountHandles, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listSocialAccountHandles route")
+	}
+	if err := resource.Get("ListPersonLanguages", "/person/v1/persons/{personId}/languages", httpserver.NewJSONHandler(handler.HandleListPersonLanguages, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listPersonLanguages route")
+	}
+	if err := resource.Put("UpsertPersonLanguage", "/person/v1/persons/{personId}/languages", httpserver.NewJSONHandler(handler.HandleUpsertPersonLanguage, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertPersonLanguage route")
+	}
+	if err := resource.Delete("DeletePersonLanguage", "/person/v1/persons/{personId}/languages/{languageId}", httpserver.NewJSONHandler(handler.HandleDeletePersonLanguage, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deletePersonLanguage route")
 	}
 	if err := resource.Get("ListRelationTypes", "/person/v1/person/relation-types", httpserver.NewJSONHandler(handler.HandleListRelationTypes, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listRelationTypes route")
@@ -1085,6 +1103,76 @@ func (p *personServiceHandler) HandleListSocialAccountHandles(rw http.ResponseWr
 	}
 	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
 	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleListPersonLanguages(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.ListPersonLanguages(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpsertPersonLanguage(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg UpsertPersonLanguageRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertPersonLanguage(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleDeletePersonLanguage(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	languageIdArg, ok := pathParams["languageId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"languageId\" not present")
+	}
+	if err := p.impl.DeletePersonLanguage(req.Context(), bearertoken.Token(authHeader), personIdArg, languageIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
 }
 
 func (p *personServiceHandler) HandleListRelationTypes(rw http.ResponseWriter, req *http.Request) error {

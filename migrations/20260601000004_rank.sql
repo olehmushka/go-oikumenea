@@ -37,7 +37,7 @@ CREATE TABLE oikumenea.rank_systems (
   code       text NOT NULL,                 -- stable, locale-agnostic; unique among active (index below)
   name       text NOT NULL,                 -- default-locale display name; translatable via i18n store
   sort_order integer NOT NULL,              -- order among active systems (app-managed)
-  country    text REFERENCES oikumenea.geo_countries(code), -- national origin; NULL = supranational
+  country_id uuid REFERENCES oikumenea.geo_countries(id), -- national origin; NULL = supranational; ISO code resolved in SQL
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,
@@ -57,7 +57,7 @@ COMMENT ON COLUMN oikumenea.rank_systems.id IS 'pii:none';
 COMMENT ON COLUMN oikumenea.rank_systems.code IS 'pii:none';
 COMMENT ON COLUMN oikumenea.rank_systems.name IS 'pii:none';
 COMMENT ON COLUMN oikumenea.rank_systems.sort_order IS 'pii:none';
-COMMENT ON COLUMN oikumenea.rank_systems.country IS 'pii:none';
+COMMENT ON COLUMN oikumenea.rank_systems.country_id IS 'pii:none';
 
 -- rank_grades: the standardized cross-system comparability scale (D-RankSystems) — NATO STANAG 2116.
 -- A seeded reference catalog with a NATURAL key (the grade code), immutable by convention: no

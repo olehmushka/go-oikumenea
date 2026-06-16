@@ -65,13 +65,33 @@ Creates the shared objects all modules rely on (see [conventions.md](../architec
 - `oikumenea.set_updated_at()` — `BEFORE UPDATE` trigger function for `updated_at`;
 - `oikumenea.reject_mutation()` — `BEFORE UPDATE OR DELETE` guard for append-only tables;
 - `oikumenea.schema_version` — the single-row table recording the applied schema revision;
-- **`geo_countries`** *(the one ontology **Object** platform owns — D-Ontology; natural `code` PK,
-  not an RID)* — the seeded **ISO-3166-1 alpha-2 country registry** (D-Geo): `code CHAR(2)`
-  PK, default-locale `name` (translatable via the [localization](localization.md) store,
-  `entity_type='country'`), `status`, `sort_order`. A shared reference table (like `uuid_v7()`) FK'd
-  by [person](person.md) (`country_of_birth`, citizenships, residences) and
-  [document](document.md) (paper `issuing_country`, personal-code scheme `country_iso`). Seeded from
-  ISO-3166 and instance-admin-extensible (`country.manage`) for historical/edge-case entities.
+- **`geo_countries`** *(an ontology **Object** of the **location** service — RID-keyed, F-014; defined
+  in the bootstrap migration but owned by [location](location.md))* — the seeded **ISO-3166-1 alpha-2
+  country registry** (D-Geo): `id uuid` RID PK (`new_id(12,1,1)`), `code CHAR(2) NOT NULL UNIQUE` (the
+  external lookup key), default-locale `name` (translatable via the [localization](localization.md)
+  store, `entity_type='country'`), `status`, `sort_order`. A shared reference table FK'd **by `id`** by
+  [person](person.md) (`country_of_birth_id`, citizenships, residences, phones) and
+  [document](document.md) (paper `issuing_country_id`, personal-code scheme `country_id`) and
+  [rank](rank.md) (`rank_systems.country_id`). Clients resolve a code → RID via `GET /geo/countries`
+  (location `GeoService`, `country.read`). Seeded from ISO-3166 and instance-admin-extensible
+  (`country.manage`). **WOF-enriched** (D-GeoPlaces): additive `wof_id` + PostGIS
+  `geom`/`centroid`/`bbox` + `iso_a3`/`numeric_code`, mirrored from the country's `geo_places` record.
+- **`geo_places`** *(location-service Object — RID-keyed, F-014; D-GeoPlaces)* — the **Who's-On-First
+  administrative gazetteer** (country/region/county/locality): `id uuid` RID PK (`new_id(12,1,2)`),
+  `wof_id BIGINT NOT NULL UNIQUE` (the WOF concordance/import key), `placetype`, `parent_id uuid`
+  self-FK → `geo_places(id)` (tree), denormalized `country_id` → `geo_countries(id)`, translatable
+  `name` (`entity_type='geo_place'`), `population`, `hierarchy`/`concordances` JSONB, `status`,
+  **PostGIS** `geom`/`centroid`/`bbox` (GeoJSON via `ST_AsGeoJSON`), and
+  `(source, source_version, imported_at)` provenance. Loaded over `POST /import/geo-places` by the
+  hermenea `wof-sqlite` connector, which streams natural keys and resolves `wof_id`/`code → id` in SQL.
+  **Supersedes** the planned ISO-3166-2 `geo_subdivisions` (D-GeoSubdivisions). PostGIS is enabled in
+  the bootstrap migration (pulled forward from D-Location/M19).
+- **Spatial extension prerequisites (D-Location, M19).** The operator DB must carry **PostGIS** (bootstrap)
+  plus **`h3` + `h3_postgis`** (migration `0019_location`, for the `location_locations` DB-derived H3
+  cells). The stock `postgis/postgis:16-3.4` image ships neither h3-pg nor an MGRS function, so the
+  operator runs the bundled **`Dockerfile.postgres`** (postgis + h3-pg) image; `h3_postgis` additionally
+  pulls in `postgis_raster`. The **readiness gate checks all three extensions are installed** and refuses
+  readiness otherwise (so a stock image is caught at boot, not at the first H3 derivation).
 
 Later migrations **enable RLS** on unit-scoped tables and create the PDP-mirror policies keyed on
 the `app.*` GUCs (D-RLSDefenseInDepth), staged permissive-first then tightened
@@ -173,6 +193,22 @@ Platform owns no domain endpoints. It exposes operational surfaces:
 
 These are unauthenticated by design.
 
+### Generic import endpoint (D-Hermenea / ex-D-DataIngestion)
+
+Platform also hosts the **reference-data import endpoint** the [hermenea](hermenea.md) companion calls:
+
+| Op | Intent | Perm |
+|---|---|---|
+| `POST /import/{objectType}` | Idempotent, **non-destructive, code-keyed** upsert of a **canonical envelope** into the target catalog, in one transaction, audited as a `system` actor; stamps `(source, source_version, imported_at)` provenance on each row | `import.manage` (instance) |
+
+It runs over an **upsert registry** (mirrors `pkg/events.Bus`): each importable object-type registers a
+handler at composition time — `geo-countries` is the first (M16). Authorization uses the
+**`hermenea-importer` service principal**: a **shared-secret** auth path (`HERMENEA_OIKUMENEA_TOKEN`,
+ECV-refreshable) beside the OIDC `Authenticator` resolves to a principal holding **exactly**
+`import.manage`, audited as `system` (L-AuthzOnly amendment; see [hermenea](hermenea.md)). The reverse
+push trigger (`POST /sync/{source}` on hermenea, `OIKUMENEA_HERMENEA_TOKEN`) is a thin outbound HTTP
+client wired here.
+
 ## Dependencies
 
 - **Calls:** nothing domain-side. Provides infrastructure to **every** module.
@@ -195,10 +231,12 @@ These are unauthenticated by design.
 - The `pkg/events` bus is in-process (subscribers run in the originating transaction) with an outbox
   seam; extracting a module later turns it into a real broker without domain changes
   ([overview.md](../architecture/overview.md), DS-26).
-- A background **job/worker** runtime (for scheduled purges, expiry sweeps, partition maintenance)
-  is an additive platform component; not required for the synchronous core. (A *scheduled* closure
-  rebuild is **not** among these — it was ruled out; closure repair stays on-demand and drift
-  detection is the diagnostic `closure-drift` reporter — D-ClosureDriftHealth.)
+- The background **job/worker** runtime moved **out of process** into the [hermenea](hermenea.md)
+  companion service (**D-Hermenea supersedes D-Worker**): scheduled syncs, the job queue, and the
+  `worker_jobs` ledger live in hermenea's own DB, not in oikumenea. Other DS-25 beneficiaries
+  (scheduled purges, expiry sweeps, partition maintenance) can run as hermenea jobs calling oikumenea
+  over HTTP. (A *scheduled* closure rebuild is still **not** among these — ruled out; closure repair
+  stays on-demand and drift detection is the diagnostic `closure-drift` reporter — D-ClosureDriftHealth.)
 - OpenTelemetry export is a drop-in behind the tracing seam.
 - The `KeyProvider` crypto seam (D-CryptoProvider) protects `pii:sensitive` today; extending envelope
   encryption to `pii:special` person fields and audit `before`/`after` payloads reuses the same seam

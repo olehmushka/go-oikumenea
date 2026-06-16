@@ -128,6 +128,9 @@ not audited — D-ClosureDriftHealth)
 | `GET /units/{id}/ancestors?graph={g}` | Ancestors in graph `g` (closure; default `command`) | `unit.read` + shadow gate |
 | `GET /units/{id}/descendants?graph={g}` | Subtree in graph `g` (closure, token-paginated; default `command`) | `unit.read` + shadow gate |
 | `POST /units/{id}/transition` | Lifecycle transition (suspend/archive/restore) | `unit.lifecycle` |
+| `GET /units/{id}/languages` | List the unit's official/working languages (name as `locale→text` map; D-Languages M18) | `unit.read` |
+| `PUT /units/{id}/languages` | Upsert an official/working-language link (body: `languageId`, `isOfficial`) | `unit.update` |
+| `DELETE /units/{id}/languages/{languageId}` | Remove a unit language | `unit.update` |
 | `POST /closure/verify?graph={g}` | Diff stored closure vs. edges → drift report (default: all graphs); also upserts the per-graph `tenant_closure_status` the `closure-drift` health reporter reads (D-ClosureIntegrity / D-ClosureDriftHealth) | `closure.rebuild` (instance) |
 | `POST /closure/rebuild?graph={g}` | Truncate + recompute closure, one txn per graph (default: all graphs); audited write (D-ClosureIntegrity) | `closure.rebuild` (instance) |
 | `GET /graphs` | List the graph registry | `graph.read` |
@@ -207,3 +210,6 @@ never decides access — it calls the PDP. `level` is **not** consulted by any c
 - A `merged`/`split` lifecycle (drafts had it) is intentionally deferred; not in scope.
 - The exact set of lifecycle states may grow via expand/contract; `TEXT`+`CHECK` makes that a
   non-destructive migration.
+- A unit's **official/working language** (`tenant_unit_languages`: an `OFFICIAL_LANGUAGE` link to a
+  languoid) landed with **M18 / D-Languages**; the languoid catalog is owned by the
+  [language](language.md) module. The management UI is deferred.

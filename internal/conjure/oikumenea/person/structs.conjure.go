@@ -69,7 +69,7 @@ func (o *CallSign) UnmarshalYAML(unmarshal func(interface{}) error) error {
 type Citizenship struct {
 	Id       string `json:"id"`
 	PersonId string `json:"personId"`
-	// ISO-3166-1 alpha-2 country code (geo registry).
+	// Country RID (resolve via GET /geo/countries).
 	Country string `json:"country"`
 	// How the citizenship was acquired — one of birth | descent | naturalization | other.
 	Basis string `json:"basis"`
@@ -462,7 +462,7 @@ type Person struct {
 	DateOfDeath *string `json:"dateOfDeath,omitempty"`
 	// Biological sex, ISO/IEC 5218 as text — one of not_known | male | female | not_applicable.
 	Sex string `json:"sex"`
-	// ISO-3166-1 alpha-2 country code, validated against the geo registry (D-Geo).
+	// Country RID (resolve via GET /geo/countries), validated against the geo registry (D-Geo).
 	CountryOfBirth *string `json:"countryOfBirth,omitempty"`
 	// Free-form long-tail directory fields (JSONB). pii:special ceiling — no special-category data without the envelope seam.
 	Attributes *interface{} `json:"attributes,omitempty"`
@@ -578,6 +578,62 @@ func (o *Person) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+/*
+A language a person speaks (D-Languages, M18; Link link__speaks). languageId references a
+level='language' Glottolog languoid (LanguageService); name is the languoid's translatable
+display name (locale -> text map). cefrLevel is the optional CEFR proficiency; isNative flags a
+mother tongue.
+*/
+type PersonLanguage struct {
+	Id       string `json:"id"`
+	PersonId string `json:"personId"`
+	// The languoid's URN RID (a level='language' node; resolve via GET /language/v1/languages).
+	LanguageId string `json:"languageId"`
+	// The languoid's translatable display name as a locale -> text map (all enabled locales; D-i18n).
+	Name map[string]string `json:"name"`
+	// CEFR proficiency — one of A1 | A2 | B1 | B2 | C1 | C2; null when unstated.
+	CefrLevel *string `json:"cefrLevel,omitempty"`
+	// Whether this is a mother tongue.
+	IsNative bool `json:"isNative"`
+}
+
+func (o PersonLanguage) MarshalJSON() ([]byte, error) {
+	if o.Name == nil {
+		o.Name = make(map[string]string)
+	}
+	type _tmpPersonLanguage PersonLanguage
+	return safejson.Marshal(_tmpPersonLanguage(o))
+}
+
+func (o *PersonLanguage) UnmarshalJSON(data []byte) error {
+	type _tmpPersonLanguage PersonLanguage
+	var rawPersonLanguage _tmpPersonLanguage
+	if err := safejson.Unmarshal(data, &rawPersonLanguage); err != nil {
+		return err
+	}
+	if rawPersonLanguage.Name == nil {
+		rawPersonLanguage.Name = make(map[string]string)
+	}
+	*o = PersonLanguage(rawPersonLanguage)
+	return nil
+}
+
+func (o PersonLanguage) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *PersonLanguage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // A page of persons plus the opaque token for the next page (empty when exhausted).
 type PersonPage struct {
 	Persons       []Person `json:"persons"`
@@ -653,7 +709,7 @@ type Phone struct {
 	TypeCode string `json:"typeCode"`
 	// The phone number, E.164-normalized on write.
 	Number string `json:"number"`
-	// ISO-3166-1 alpha-2 country code derived from the number; null when underivable.
+	// Country RID derived from the number (resolve codes via GET /geo/countries); null when underivable.
 	Country *string `json:"country,omitempty"`
 	// The person's primary phone (at most one active).
 	IsPrimary bool `json:"isPrimary"`
@@ -827,7 +883,7 @@ func (o *RelationType) UnmarshalYAML(unmarshal func(interface{}) error) error {
 type Residence struct {
 	Id       string `json:"id"`
 	PersonId string `json:"personId"`
-	// ISO-3166-1 alpha-2 country code (geo registry).
+	// Country RID (resolve via GET /geo/countries).
 	Country string `json:"country"`
 	// Optional sub-national region / locality (free text).
 	Region *string `json:"region,omitempty"`
@@ -1300,6 +1356,31 @@ func (o UpsertPartnershipRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *UpsertPartnershipRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Add or update a language the person speaks (keyed on languageId). cefrLevel/isNative are the proficiency attributes.
+type UpsertPersonLanguageRequest struct {
+	// The languoid's URN RID; must resolve to a level='language' Glottolog node.
+	LanguageId string `json:"languageId"`
+	// A1 | A2 | B1 | B2 | C1 | C2; omit to leave unstated.
+	CefrLevel *string `json:"cefrLevel,omitempty"`
+	IsNative  *bool   `json:"isNative,omitempty"`
+}
+
+func (o UpsertPersonLanguageRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertPersonLanguageRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

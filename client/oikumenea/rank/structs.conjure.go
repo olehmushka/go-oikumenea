@@ -66,7 +66,7 @@ func (o *AddRankRequest) UnmarshalYAML(unmarshal func(interface{}) error) error 
 type AddSystemRequest struct {
 	Code string `json:"code"`
 	Name string `json:"name"`
-	// ISO-3166 national origin (geo_countries code); omit for a supranational system (NATO/UN).
+	// Country RID of the national origin (resolve via GET /geo/countries); omit for a supranational system (NATO/UN).
 	Country *string `json:"country,omitempty"`
 	// Order among active systems; defaults to appended last.
 	SortOrder *int `json:"sortOrder,omitempty"`
@@ -541,7 +541,7 @@ type RankSystem struct {
 	Name map[string]string `json:"name"`
 	// Order among active systems.
 	SortOrder int `json:"sortOrder"`
-	// ISO-3166 national origin (geo_countries code); absent for a supranational system (NATO/UN).
+	// Country RID of the national origin (resolve via GET /geo/countries); absent for a supranational system (NATO/UN).
 	Country *string `json:"country,omitempty"`
 	// The system's categories in seniority order. Populated by getRankScheme; empty on create/update of the system.
 	Categories []RankCategory `json:"categories"`

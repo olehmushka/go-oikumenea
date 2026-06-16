@@ -1,15 +1,27 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { mutate } from "@/lib/api/client";
 import { PageHeader } from "@/components/ui";
 import { ErrorBox } from "@/components/ErrorBox";
+import { CountrySelect } from "@/components/CountrySelect";
+import { newSuffix, slugify } from "@/lib/code";
 
 export default function NewPersonPage() {
   const router = useRouter();
   const [err, setErr] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+
+  // Live-fill: derive a code from the display name until the operator edits the code field. A stable
+  // per-form suffix keeps the auto-code from churning on every keystroke.
+  const suffix = useRef(newSuffix());
+  const [displayName, setDisplayName] = useState("");
+  const [code, setCode] = useState("");
+  const [codeTouched, setCodeTouched] = useState(false);
+  const slug = slugify(displayName);
+  const autoCode = slug ? `${slug}-${suffix.current}` : "";
+  const codeValue = codeTouched ? code : autoCode;
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -21,8 +33,8 @@ export default function NewPersonPage() {
       return v || undefined;
     };
     const body = {
-      displayName: String(f.get("displayName") || "").trim(),
-      code: str("code"),
+      displayName: displayName.trim(),
+      code: codeValue.trim() || undefined,
       given: str("given"),
       surname: str("surname"),
       birthdate: str("birthdate"),
@@ -45,7 +57,14 @@ export default function NewPersonPage() {
       <form onSubmit={onSubmit} className="card space-y-4 p-5">
         <div>
           <label className="label">Display name *</label>
-          <input name="displayName" required className="input" placeholder="Ivan Petrenko" />
+          <input
+            name="displayName"
+            required
+            className="input"
+            placeholder="Ivan Petrenko"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+          />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -60,7 +79,16 @@ export default function NewPersonPage() {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="label">Code</label>
-            <input name="code" className="input" placeholder="external ref" />
+            <input
+              name="code"
+              className="input"
+              placeholder="auto from name"
+              value={codeValue}
+              onChange={(e) => {
+                setCode(e.target.value);
+                setCodeTouched(true);
+              }}
+            />
           </div>
           <div>
             <label className="label">Birthdate</label>
@@ -79,8 +107,8 @@ export default function NewPersonPage() {
             </select>
           </div>
           <div>
-            <label className="label">Country of birth (ISO-3166)</label>
-            <input name="countryOfBirth" className="input" placeholder="UKR" />
+            <label className="label">Country of birth</label>
+            <CountrySelect name="countryOfBirth" />
           </div>
         </div>
         <div className="flex gap-2">

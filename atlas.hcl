@@ -17,10 +17,35 @@ env "local" {
   // Target DB for `migrate apply`. Override via $DATABASE_URL (.env) or --url.
   url = local.db_url
 
+  // Ephemeral dev database Atlas uses to analyze/lint migrations (requires Docker). PostGIS-enabled
+  // image: the bootstrap migration `CREATE EXTENSION postgis` for the WOF gazetteer (D-GeoPlaces).
+  dev = "docker://postgis/postgis/16-3.4/dev"
+
+  migration {
+    dir = "file://migrations"
+    // Store Atlas's revision-history table INSIDE the existing app schema (created by migration
+    // 0000) instead of a standalone `atlas_schema_revisions` schema. Avoids needing a second
+    // schema (and the CREATE/DROP-SCHEMA privilege it implies) on locked-down DB roles.
+    revisions_schema = "oikumenea"
+  }
+}
+
+// The hermenea companion service owns a SEPARATE database (D-Hermenea) with its own migration set.
+//   set -a; . ./.env; set +a
+//   atlas migrate hash  --env hermenea
+//   atlas migrate apply --env hermenea
+env "hermenea" {
+  // Target DB for hermenea. Override via $HERMENEA_DATABASE_URL (.env) or --url. Defaults to a
+  // local-dev `hermenea` database on the same Postgres.
+  url = getenv("HERMENEA_DATABASE_URL") != "" ? getenv("HERMENEA_DATABASE_URL") : "postgres://postgres:dev@localhost:5432/hermenea?sslmode=disable"
+
   // Ephemeral dev database Atlas uses to analyze/lint migrations (requires Docker).
   dev = "docker://postgres/16/dev"
 
   migration {
-    dir = "file://migrations"
+    dir = "file://migrations/hermenea"
+    // Reuse the existing `hermenea` schema (created by migration 0001) for revision tracking —
+    // see the note in env "local"; avoids a standalone `atlas_schema_revisions` schema.
+    revisions_schema = "hermenea"
   }
 }

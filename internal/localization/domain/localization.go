@@ -48,6 +48,15 @@ type Locale struct {
 	SortOrder int
 }
 
+// LocaleLanguage is a supported locale's canonical Glottolog language (D-Languages, M18; Link
+// link__locale_language). LanguageName is the languoid's default-locale display name (read via join;
+// transport assembles the locale->text map). Read-only — reconciled by the language-scheme import.
+type LocaleLanguage struct {
+	Locale       string
+	LanguageID   string
+	LanguageName string
+}
+
 // LocalePatch is a partial update of a locale: a nil field leaves the stored value unchanged.
 type LocalePatch struct {
 	Name      *string
@@ -114,6 +123,7 @@ type TranslationKey struct {
 // write + its audit row can share one transaction (D-Audit).
 type Repository interface {
 	ListLocales(ctx context.Context) ([]Locale, error)
+	ListLocaleLanguages(ctx context.Context) ([]LocaleLanguage, error)
 	GetLocaleByCode(ctx context.Context, code string) (Locale, error)
 	InsertLocale(ctx context.Context, l Locale) (Locale, error)
 	UpdateLocale(ctx context.Context, code string, patch LocalePatch) (Locale, error)

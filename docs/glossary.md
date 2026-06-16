@@ -418,13 +418,30 @@ counterpart for *known* future seams is **DS-N** in [open-questions.md](open-que
 > implementation time (the **religion** vertical's module doc, [religion](modules/religion.md), and the
 > shared [location](modules/location.md) doc already exist).
 
-**Background worker.** The in-process scheduler + job queue runtime (D-Worker, M16) that runs scheduled
-and queued work — connector syncs, expiry sweeps. Promotes the long-parked DS-25.
+**Hermenea.** The **companion service** (a second binary, `cmd/hermenea`) that performs reference-data
+ingestion + the background-job runtime **out of process**, with its **own PostgreSQL**, coupled to
+oikumenea **only over HTTP** (D-Hermenea, M16 — supersedes D-Worker, folds D-DataIngestion/M17). It
+fetches → stages → maps → **loads** datasets by calling oikumenea's `POST /import/{objectType}`. The
+name pairs *hermenea* (interpretation) with *oikumenea*. See [hermenea](modules/hermenea.md).
 
-**Data ingestion / connector.** The generic reference-data pipeline (D-DataIngestion, M17): a
-**connector** fetches an external source → raw staging → a per-module **mapper** transforms it → a
-**code-keyed, idempotent, non-destructive upsert** into a catalog, with `import_runs` **lineage**. The
+**Background worker (hermenea).** The cron **scheduler** + `worker_jobs` **queue** inside hermenea
+(D-Hermenea, was the in-process D-Worker): at-least-once with idempotency keys, exponential backoff
+(per-job-type), `FOR UPDATE SKIP LOCKED` claim, graceful drain, a job-health reporter. Promotes the
+long-parked DS-25. Runs in hermenea's DB, not oikumenea's.
+
+**Data ingestion / connector.** The generic reference-data pipeline (D-Hermenea, M16; pipeline shape
+from D-DataIngestion): a **connector** (`http`/`file`) fetches an external source → **raw staging** →
+a per-object-type **mapper** transforms it to a **canonical envelope** → oikumenea applies a
+**code-keyed, idempotent, non-destructive upsert** with `import_runs` **lineage** + per-row provenance.
+The connectors/mapper/scheduler live in **hermenea**; the upsert endpoint lives in oikumenea. The
 right-sized analog of Palantir Foundry's Data Connection → Pipeline → Ontology mapping.
+
+**Canonical envelope.** The interchange document hermenea POSTs to oikumenea's import endpoint:
+`{ objectType, source, sourceVersion, license, generatedAt, records[] }`.
+
+**Service principal (`hermenea-importer`).** The identity hermenea presents to oikumenea: a **runtime
+shared secret** (`HERMENEA_OIKUMENEA_TOKEN`, never stored) maps to a principal holding **exactly**
+`import.manage`, audited as a **`system`** actor (amends L-AuthzOnly).
 
 **Languoid.** A node in the Glottolog genealogical forest (D-Languages, M18): `level ∈ family | language
 | dialect`, keyed by its **glottocode**, optional ISO 639-3, with an AES endangerment **status**. The
@@ -516,12 +533,12 @@ ownership history; person-owned rows are `pii:basic`, holder-scoped, and purge-e
 ## Alphabetical index
 
 Account · Action (type) · Action RID · Affiliation type · Append-only event log · Atomic permission · Audit log · Authority-bearing · Background worker · Beneficial owner (UBO) · Blind index ·
-Call sign · Canonical graph · Citizenship · Clergy credential · Clergy grade · Clergy office · Closure · Code · Company (legal entity) · Country · Data ingestion / connector · Document · Document attribute schema · Document type · Dormant seam ·
+Call sign · Canonical envelope · Canonical graph · Citizenship · Clergy credential · Clergy grade · Clergy office · Closure · Code · Company (legal entity) · Country · Data ingestion / connector · Document · Document attribute schema · Document type · Dormant seam ·
 Educational institution · Effective permissions · Email (contact) · Email type · Envelope encryption · Environment slot · Expand/contract · External identity ·
-Gate · Graph (named hierarchy) · Instance admin · Languoid · Level · Link (type) · Link RID · Locale · Location · Membership · Name (CLDR) ·
+Gate · Graph (named hierarchy) · Hermenea · Instance admin · Languoid · Level · Link (type) · Link RID · Locale · Location · Membership · Name (CLDR) ·
 Object (type) · Object-set · Ontology · Order ·
 Order category · Order item · Order type · Org kind · PDP · PDP context · Person · Personal code ·
 Personal-code scheme · Phone (contact) · Phone type · PII tier · Position · Public precision · Public/shadow · Rank · Rank category · Rank preset ·
 Rank scheme · Rank system · Rank type · Religion (faith) · Religious affiliation · Religious organization · Religious site · Residence · Reversibility · RID (Resource Identifier) · RLS backstop · Role · Role assignment · Scope ·
-Service schedule · Service type · Site type · Stage board · Standardized grade (NATO STANAG 2116) · Sub-tradition · Subdivision · Supported language · TODO-N · Tradition family · Translation · Transliteration · Unit · Unit graph (DAG) · Unit kind ·
+Service principal (hermenea-importer) · Service schedule · Service type · Site type · Stage board · Standardized grade (NATO STANAG 2116) · Sub-tradition · Subdivision · Supported language · TODO-N · Tradition family · Translation · Transliteration · Unit · Unit graph (DAG) · Unit kind ·
 Vacancy · Vehicle · Vehicle brand · Vehicle registration · Visibility · Writing system

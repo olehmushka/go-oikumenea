@@ -61,32 +61,33 @@ Real-world entities with identity over time → Objects.
 | `Order` (наказ) / `OrderType` | [order](modules/order.md) | type has `code`/`name` | `Order`: draft→issued→revoked (issued is immutable) | the legal act; `OrderType.effect` declares the downstream consequence |
 | `OrderItem` | [order](modules/order.md) | no | parent-scoped (no own `deleted_at`) | one affected person/action; the unit of effect + provenance |
 | `RankSystem` / `RankCategory` / `RankType` / `Rank` | [rank](modules/rank.md) | yes | soft-delete (RESTRICT if held) | single system-wide ordered scheme, now rooted at `RankSystem` (a national/organizational ladder — multinational; D-RankSystems); types form a **tree** (`parent_type_id` self-FK — a structural containment FK like `system_id`/`category_id`/`type_id`, **not** a reified Link), ranks on leaf types; a rank carries an optional standardized `grade_code` → `RankGrade` |
-| `RankGrade` | [rank](modules/rank.md) | `code` = NATO STANAG 2116 grade (`OF-1`…`OF-10`, `OR-1`…`OR-9`, warrant) | seeded reference registry | the cross-system comparability scale (`tier`/`ordinal`); migration-seeded like `Country` (D-RankSystems / D-Geo carve-out) |
+| `RankGrade` | [rank](modules/rank.md) | `code` = NATO STANAG 2116 grade (`OF-1`…`OF-10`, `OR-1`…`OR-9`, warrant) | seeded reference registry | the cross-system comparability scale (`tier`/`ordinal`); migration-seeded, natural `code` key (D-RankSystems carve-out) |
 | `Role` | [authorization](modules/authorization.md) | yes | soft-delete | `is_base` roles immutable; permissions are **code**, not rows |
 | `Assignment` | [authorization](modules/authorization.md) | no | revoke-flip + optional `expires_at` | a **reified Link** — see [§2](#2-link-types) |
 | `InstanceAdmin` | [authorization](modules/authorization.md) | no | revoke-flip | the instance-wide authority plane |
 | `Account` / `ExternalIdentity` | [identity-federation](modules/identity-federation.md) | no | account soft-delete; identity append-only | `(issuer, subject)` globally unique; account optional per person |
 | `Locale` / `Translation` | [localization](modules/localization.md) | locale `code` is ISO 639-3 | locale soft-delete | the translatable-`name` store |
-| `Country` | [platform](modules/platform.md) | `code` = ISO-3166-1 α2 | status | shared reference registry |
+| `Country` | [location](modules/location.md) | **RID** (location svc); `code` = ISO-3166-1 α2 is a `UNIQUE` lookup key | status | RID-keyed shared registry (F-014); consumers reference by `id`; resolve a code → RID via `GET /geo/countries` (D-Geo) |
 | `AuditEntry` | [audit](modules/audit.md) | no | **append-only** (`reject_mutation()`) | not an endpoint; written in-transaction |
-| `ImportSource` / `ImportRun` *(planned, M17)* | platform | source has `code` | source soft-delete; run append-only | external source registry + lineage ledger; D-DataIngestion |
-| `Languoid` *(planned, M18)* | `language` | `code` = glottocode; nullable unique `iso639_3` | seeded reference (import) | recursive Glottolog forest, `level ∈ family\|language\|dialect`; `parent_id` strict-tree FK (not a Link); AES `status`; D-Languages |
-| `WritingSystem` / `WritingSystemScriptType` *(planned, M18)* | `language` | `code` (ISO 15924 / catalog) | seeded reference | scripts + script-type catalog |
-| `Location` *(planned, M19)* | `location` | no | soft-delete | required `GEOGRAPHY(POINT,4326)`; DB-derived MGRS/H3; structured address over `geo_countries`; D-Location |
+| `ImportSource` / `ImportRawBatch` / `ImportRun` / `WorkerJob` / `WorkerSchedule` *(M16, hermenea's **own** DB)* | [hermenea](modules/hermenea.md) | source/job `code`/key | source soft-delete; raw/run/job append-or-update | the companion service's ingestion + job-runtime objects — **not** oikumenea Objects; coupled to oikumenea only via the `POST /import/{objectType}` upsert (which stamps `(source, source_version, imported_at)` provenance on the target rows); D-Hermenea (supersedes D-Worker, folds D-DataIngestion) |
+| `Languoid` *(M18)* | [language](modules/language.md) | **RID** (language svc); `code` = glottocode; nullable unique `iso639_3` | reference (import) | recursive Glottolog forest, `level ∈ family\|language\|dialect`; `parent_id` strict-tree FK (not a Link); denormalized `family_code` (derived via the closure); AES `status`; import-loaded via hermenea `language-scheme`; D-Languages |
+| `WritingSystem` / `WritingSystemScriptType` *(M18)* | [language](modules/language.md) | **RID** (language svc); `code` (ISO 15924 / catalog) | seeded reference | scripts + script-type catalog, both migration-seeded; `language_writing_systems` (`WRITTEN_IN`) import-loaded from CLDR; D-Languages |
+| `Location` *(M19)* | `location` | no | soft-delete | required `GEOGRAPHY(POINT,4326)`; DB-derived MGRS/H3 (h3-pg); structured address over `geo_countries`; D-Location |
 | `EducationInstitution` / `EducationUnit` / `EducationBuilding` / `EducationGroup` *(planned, M20)* | `education` | institution/unit `code` | soft-delete | external reference orgs; `EducationUnit` is a recursive per-institution tree (closure); D-Education |
 | `EducationPosition` *(planned, M20)* | `education` | yes (per institution/unit) | `status` + soft-delete | institution-owned billet, vacant-first (mirrors `Position`) |
 | `EducationInstitutionKind` / `EducationUnitKind` / `EducationDegreeLevel` *(planned, M20)* | `education` | yes (`code`/`name`) | `status` + soft-delete | catalogs; degree levels seeded ISCED 2011 |
 | `Company` *(planned, M21)* | `company` | `code` | soft-delete | legal entity; `legal_form` + `ownership_category` (two axes); D-Companies |
 | `CompanyPosition` *(planned, M21)* | `company` | yes (per company) | `status` + soft-delete | company-owned billet (mirrors `Position`) |
 | `CompanyLegalForm` / `CompanyRegistrationScheme` / `CompanyIndustryClass` *(planned, M21)* | `company` | yes (`code`/`name`) | `status` + soft-delete | catalogs; registration schemes mirror `PersonalCodeScheme` (LEI spine) |
-| `LocationType` *(planned, M19)* | `location` | yes (`code`/`name`) | `status` + soft-delete | optional place-purpose catalog beside `Location`; D-Location |
+| `LocationType` *(M19)* | `location` | yes (`code`/`name`) | `status` + soft-delete | optional place-purpose catalog beside `Location`; D-Location |
 | `Religion` / `TraditionFamily` / `SubTradition` *(planned, M22)* | `religion` | yes (`code`/`name`) | soft-delete | faith taxonomy catalogs (family nested under religion, sub-tradition under family); D-Religion |
 | `OrgKind` / `OrgProfile` / `OrgPolicy` *(planned, M22)* | `religion` | kind has `code`/`name` | soft-delete | org nodes **reuse `Unit`**; `OrgProfile` is per-unit faith attributes, `OrgPolicy` a data-driven eligibility rule (replaces any faith-specific doctrinal flag) |
 | `ClergyGrade` / `GradeCategory` / `OfficeType` *(planned, M23)* | `religion` | yes (`code`/`name`) | soft-delete | **per-tradition** ordered clergy catalog (no cross-tradition comparator, DS-43); offices **reuse `Position`**; D-ClergyCredential |
 | `AffiliationType` *(planned, M24)* | `religion` | yes (`code`/`name`) | soft-delete | per-tradition lay-affiliation catalog; D-ReligiousAffiliation |
 | `SiteType` / `ServiceType` *(planned, M25)* | `religion` | yes (`code`/`name`) | soft-delete | per-tradition discovery catalogs (church/mosque/synagogue/temple…; main/prayer…) |
 | `ServiceSchedule` / `Alias` *(planned, M25)* | `religion` | no | soft-delete | per-site recurring service times; search-only alternative names (never displayed) |
-| `GeoSubdivision` *(planned, M26)* | [platform](modules/platform.md) | `code` = ISO 3166-2 (`UA-32`…) | status | shared reference registry below `Country`; `parent_id` self-FK (nested), `subdivision_type`; migration-seeded like `Country`; D-GeoSubdivisions |
+| `GeoPlace` *(M16)* | [location](modules/location.md) | **RID** (location svc); `wof_id` (Who's-On-First id) is a `UNIQUE` concordance key | status (`active`/`retired`) | WOF admin gazetteer (country/region/county/locality); RID-keyed (F-014); `parent_id uuid` self-FK (tree), denormalized `country_id` → `Country`; PostGIS `geom`/`centroid`/`bbox`; import resolves `wof_id`/`code` → RID in SQL; import-loaded via hermenea `wof-sqlite` connector; D-GeoPlaces |
+| ~~`GeoSubdivision`~~ *(superseded by `GeoPlace`/D-GeoPlaces)* | [platform](modules/platform.md) | ~~`code` = ISO 3166-2~~ | — | **not built** — ISO-3166-2 subdivisions are subsumed by the richer WOF `geo_places` (D-GeoPlaces); D-GeoSubdivisions |
 | `Vehicle` *(planned, M26)* | `vehicle` | optional | soft-delete | physical vehicle; `vin` unique among active (nullable, `pii:basic`); `type_id`/`model_id`; `attributes` JSONB; D-Vehicles |
 | `VehicleBrand` / `VehicleModel` / `VehicleType` *(planned, M26)* | `vehicle` | yes (`code`/`name`) | `status` + soft-delete | brand (`country` of origin); model (`brand_id` + generation/manufacture window); type taxonomy **tree** (`parent_id` self-FK + denormalized root, no closure — the `RankType` pattern) |
 | `VehicleRegistrationNumberType` *(planned, M26)* | `vehicle` | yes (`code`/`name`) | `status` + soft-delete | plate-type catalog (regular/temporary/transit/diplomatic/military/old…) |
@@ -137,11 +138,11 @@ Links additionally carry `valid_from`/`valid_to`
 | `CAUSED_BY` (provenance) | `Membership`/rank change → `OrderItem` | [membership](modules/membership.md) / [order](modules/order.md) | `order_item_id` | the наказ that authorized the change |
 | `REVOKED_BY` | `Order` → `Order` | [order](modules/order.md) | — | the revoking order (legal trail) |
 | `TRANSLATES` | `Translation` → entity (polymorphic) | [localization](modules/localization.md) | `entity_type`, `field`, `locale` | no FK; kept consistent by event subscription |
-| `LANGUAGE_SUBGROUP_OF` *(planned, M18)* | `Languoid` → `Languoid` | `language` | structural; `family_code` denormalized | strict tree, a containment FK — *not* a reified Link (closure is `ANCESTOR_OF`-style) |
-| `WRITTEN_IN` *(planned, M18)* | `Languoid` → `WritingSystem` | `language` | `is_primary` | — |
-| `SPEAKS` *(planned, M18)* | `Person` → `Languoid` (level=language) | `language`/[person](modules/person.md) | `cefr_level`, `is_native`; `pii:basic` | scoped through the holder; purge-erased |
-| `OFFICIAL_LANGUAGE` *(planned, M18)* | `Unit` → `Languoid` | `language`/[tenant](modules/tenant.md) | working/official | — |
-| `LOCALE_OF` *(planned, M18)* | `Locale` → `Languoid` | `language`/[localization](modules/localization.md) | canonical language of a locale | — |
+| `LANGUAGE_SUBGROUP_OF` *(M18)* | `Languoid` → `Languoid` | [language](modules/language.md) | structural; `family_code` denormalized | strict tree, a containment FK — *not* a reified Link (closure is `ANCESTOR_OF`-style, `language_languoid_closure`) |
+| `WRITTEN_IN` *(M18)* | `Languoid` → `WritingSystem` | [language](modules/language.md) | `is_primary`; RID link (`13,2,1`) | `language_writing_systems`; import-loaded from CLDR |
+| `SPEAKS` *(M18)* | `Person` → `Languoid` (level=language) | [language](modules/language.md)/[person](modules/person.md) | `cefr_level`, `is_native`; `pii:basic` | `person_languages` (person RID link `6,2,8`); scoped through the holder; purge-erased; `level='language'` enforced by composite FK |
+| `OFFICIAL_LANGUAGE` *(M18)* | `Unit` → `Languoid` | [language](modules/language.md)/[tenant](modules/tenant.md) | `is_official` | `tenant_unit_languages` (tenant RID link `4,2,2`) |
+| `LOCALE_OF` *(M18)* | `Locale` → `Languoid` | [language](modules/language.md)/[localization](modules/localization.md) | canonical language of a locale | `i18n_locale_languages` (i18n RID link `2,2,1`); one per locale |
 | `EDUCATION_UNIT_PARENT_OF` *(planned, M20)* | `EducationUnit` → `EducationUnit` | `education` | per institution; closure maintained | recursive structure tree |
 | `STUDIED_AT` *(planned, M20)* | `Person` → `EducationInstitution` (opt. unit/group) | `education` | `degree_level`, field, status, qualification; `pii:basic` | **temporal** (effective-dated); mirrors `MEMBER_OF` |
 | `RESIDED_IN_DORMITORY` *(planned, M20)* | `Person` → `EducationBuilding` | `education` | room, period; `pii:contact` | **temporal**; dedicated dorm stay; purge-erased |
@@ -184,9 +185,12 @@ ledger ([Identifier scheme](#identifier-scheme-rids)).
   `AttachDocument`/`AttachPersonalCode`, `UpsertEmail`/`UpsertPhone`/`UpsertCallSign` (+ their
   deletes), `CreateRole`, `GrantAssignment`/`RevokeAssignment`,
   `GrantInstanceAdmin`, `CreateAccount`/`LinkExternalIdentity`, rank/locale/catalog edits.
-- **Planned (M16–M26):** `ScheduleJob`/`RunJob` (M16 worker); `RunImport` over a registered mapper
-  (M17 — a bulk **code-keyed upsert** emitted as audited Actions, the ingest≠edit boundary);
-  `CreateLanguoid`/`ImportLanguageScheme`, `UpsertPersonLanguage` (M18); `CreateLocation` (M19);
+- **Planned (M16–M26):** `RunImport` (**M16, D-Hermenea**) — oikumenea's `POST /import/{objectType}`
+  applies a bulk **code-keyed upsert** in one txn, emitted as a **`system`-actor** audited Action (the
+  ingest≠edit boundary); the scheduler/queue Actions (`ScheduleJob`/`RunJob`) live in **hermenea's own**
+  ledger (`worker_jobs`/`import_runs`), not oikumenea's audit log;
+  `CreateLanguoid`/`ImportLanguageScheme`, `UpsertPersonLanguage` (M18);
+  `CreateLocation`/`UpdateLocation`/`DeleteLocation` (M19, built);
   `CreateInstitution`/`CreateEnrollment`/`RecordDormStay`/`AppointEducationPosition` (M20);
   `CreateCompany`/`RecordShareholding`/`RecordBeneficiary`/`AppointCompanyPosition` (M21);
   `ConferCredential`/`SuspendCredential`/`AppointClergy` (M23), `RecordAffiliation` (M24),

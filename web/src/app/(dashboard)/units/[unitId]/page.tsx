@@ -11,8 +11,9 @@ import {
 } from "@/components/ui";
 import { Localized } from "@/components/Localized";
 import { EdgeManager } from "@/components/EdgeManager";
-import { CreatePosition, FillPosition, PositionAdmin } from "@/components/PositionForms";
+import { CreatePosition, FillPosition, PersonLink, PositionAdmin } from "@/components/PositionForms";
 import { UnitAdmin } from "@/components/UnitForms";
+import { UnitLanguageManager } from "@/components/UnitLanguageForms";
 import type { Position, Unit, UnitRefList } from "@/lib/api/types";
 
 export default async function UnitDetailPage({
@@ -115,6 +116,14 @@ export default async function UnitDetailPage({
         <EdgeManager unitId={unitId} />
       </Card>
 
+      <Card className="mt-4">
+        <h2 className="text-sm font-semibold text-slate-900">Languages</h2>
+        <p className="mb-2 mt-1 text-xs text-slate-500">
+          The unit&apos;s official / working languages (D-Languages).
+        </p>
+        <UnitLanguageManager unitId={unitId} />
+      </Card>
+
       <h2 className="mb-3 mt-8 text-sm font-semibold text-slate-900">Positions</h2>
       {positions && positions.positions?.length > 0 ? (
         <Table
@@ -122,6 +131,7 @@ export default async function UnitDetailPage({
             <>
               <th className="th">Code</th>
               <th className="th">Title</th>
+              <th className="th">Holder</th>
               <th className="th">Status</th>
               <th className="th"></th>
             </>
@@ -136,13 +146,20 @@ export default async function UnitDetailPage({
                 <Localized map={p.title} />
               </td>
               <td className="td">
-                <Pill tone={p.status === "FILLED" ? "green" : "slate"}>
-                  {p.status ?? "—"}
+                {p.holder?.personId ? (
+                  <PersonLink personId={p.holder.personId} />
+                ) : (
+                  <span className="text-slate-400">vacant</span>
+                )}
+              </td>
+              <td className="td">
+                <Pill tone={p.holder ? "green" : p.status === "abolished" ? "slate" : "amber"}>
+                  {p.status === "abolished" ? "abolished" : p.holder ? "filled" : "vacant"}
                 </Pill>
               </td>
               <td className="td">
                 <div className="relative flex items-center justify-end gap-3">
-                  {p.status !== "abolished" ? <FillPosition positionId={p.id} /> : null}
+                  {p.status !== "abolished" && !p.holder ? <FillPosition positionId={p.id} /> : null}
                   <PositionAdmin position={p} />
                 </div>
               </td>

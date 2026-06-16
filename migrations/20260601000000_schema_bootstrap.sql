@@ -2,15 +2,17 @@
 --
 -- Creates the shared `oikumenea` SQL objects every module depends on, BEFORE any module
 -- table (ordering invariant; docs/modules/platform.md). Expand-only (L-UpgradeSafe / D-Migrations).
--- Owns: schema + extensions, uuid_v7(), new_id() + rid_* decoders (D-ResourceIdentifiers),
--- the platform_rid_services / platform_rid_types registries, set_updated_at(), reject_mutation(),
--- the single-row schema_version marker, and the seeded ISO-3166-1 alpha-2 geo_countries registry
--- (D-Geo).
+-- Owns: schema + extensions (incl. postgis for the WOF gazetteer), uuid_v7(), new_id() + rid_*
+-- decoders (D-ResourceIdentifiers), the platform_rid_services / platform_rid_types registries,
+-- set_updated_at(), reject_mutation(), the single-row schema_version marker, the seeded
+-- ISO-3166-1 alpha-2 geo_countries registry (D-Geo, WOF-enriched), and the geo_places WOF gazetteer
+-- (D-GeoPlaces).
 
 CREATE SCHEMA IF NOT EXISTS oikumenea;
 
 CREATE EXTENSION IF NOT EXISTS citext;   -- case-insensitive text (e.g. account emails)
 CREATE EXTENSION IF NOT EXISTS pgcrypto; -- gen_random_bytes() for uuid_v7()
+CREATE EXTENSION IF NOT EXISTS postgis;  -- GEOMETRY + spatial index/ops for the WOF gazetteer (D-GeoPlaces)
 
 -- uuid_v7(): time-ordered UUIDv7 (RFC 9562). The crypto component inside every RID; also
 -- gives B-tree insert locality. PG16 has no built-in uuidv7(), so we generate it.
@@ -118,7 +120,7 @@ COMMENT ON COLUMN oikumenea.platform_rid_services.code IS 'pii:none';
 COMMENT ON COLUMN oikumenea.platform_rid_services.module IS 'pii:none';
 INSERT INTO oikumenea.platform_rid_services (code, module) VALUES
   (1,'platform'),(2,'i18n'),(3,'audit'),(4,'tenant'),(5,'rank'),(6,'person'),
-  (7,'membership'),(8,'authz'),(9,'account'),(10,'document'),(11,'order');
+  (7,'membership'),(8,'authz'),(9,'account'),(10,'document'),(11,'order'),(12,'location');
 
 -- kind: 1 = object, 2 = link, 3 = action. type_code is per (service, kind). Action RIDs use the
 -- generic type_code 0 ('action') — the specific action name lives in audit_log.action, so the RID
@@ -157,28 +159,58 @@ INSERT INTO oikumenea.platform_rid_types (service_code, kind, type_code, type_na
   (10,1,1,'document_type'),(10,1,2,'document'),(10,1,3,'personal_code'),
   -- order
   (11,1,1,'order_type'),(11,1,2,'order'),(11,1,3,'order_item'),
+  -- location (geo registry — D-Geo / D-GeoPlaces; RID-keyed, ISO code / wof_id kept as UNIQUE concordance)
+  (12,1,1,'country'),(12,1,2,'geo_place'),
   -- generic action type (kind=3) for every service that mints audit actions
   (1,3,0,'action'),(2,3,0,'action'),(4,3,0,'action'),(5,3,0,'action'),(6,3,0,'action'),
   (7,3,0,'action'),(8,3,0,'action'),(9,3,0,'action'),(10,3,0,'action'),(11,3,0,'action');
 
--- geo_countries: seeded ISO-3166-1 alpha-2 registry (D-Geo). Natural code PK (not an RID,
--- per D-ResourceIdentifiers carve-out). Default-locale (English) name; other locales arrive
--- via the i18n store (M2). Instance-admin-extensible (country.manage).
+-- geo_countries: seeded ISO-3166-1 alpha-2 registry (D-Geo). RID `id` PK (location service 12,
+-- D-ResourceIdentifiers); the ISO alpha-2 `code` is retained UNIQUE as the canonical external
+-- reference (consumers store the RID `id` but speak `code` at the API boundary — resolved in SQL).
+-- Default-locale (English) name; other locales arrive via the i18n store (M2).
+-- Instance-admin-extensible (country.manage).
+--
+-- The Who's-On-First geo connector (D-GeoPlaces, M16/hermenea) ENRICHES this table in place: a
+-- country's WOF place (placetype=country in geo_places) mirrors its `wof_id` + geometry here, so the
+-- existing FK consumers (person citizenship/birth/residence, documents, ranks) gain shapes without
+-- re-keying off the stable ISO alpha-2 PK. The columns are nullable: bootstrap-seeded rows carry NULL
+-- until the first WOF sync enriches them (expand-only). Geometry is generic GEOMETRY(Geometry,4326)
+-- since WOF country shapes are a Polygon/MultiPolygon mix; written via ST_GeomFromGeoJSON, read via
+-- ST_AsGeoJSON (never selected raw, so sqlc never sees the geometry type).
 CREATE TABLE oikumenea.geo_countries (
-  code       char(2) PRIMARY KEY,
-  name       text NOT NULL,
-  status     text NOT NULL DEFAULT 'active' CHECK (status IN ('active','retired')),
-  sort_order integer,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  id           uuid PRIMARY KEY DEFAULT oikumenea.new_id(12,1,1),  -- location / object / country
+  code         char(2) NOT NULL UNIQUE,        -- ISO-3166-1 alpha-2, the canonical external reference (lookup key)
+  name         text NOT NULL,
+  status       text NOT NULL DEFAULT 'active' CHECK (status IN ('active','retired')),
+  sort_order   integer,
+  wof_id       bigint UNIQUE,                  -- the country's Who's-On-First id (concordance to geo_places)
+  iso_a3       char(3),                        -- ISO-3166-1 alpha-3 (from WOF concordances)
+  numeric_code char(3),                        -- ISO-3166-1 numeric (from WOF concordances)
+  geom         geometry(Geometry, 4326),       -- country shape, mirrored from the WOF country place
+  centroid     geometry(Point, 4326),          -- representative interior point (ST_PointOnSurface)
+  bbox         geometry(Geometry, 4326),       -- bounding box (ST_Envelope — a Point/Line for degenerate inputs, so generic)
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  updated_at   timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT geo_countries_rid_shape
+    CHECK (oikumenea.rid_service(id)=12 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=1)
 );
 CREATE TRIGGER geo_countries_set_updated_at
   BEFORE UPDATE ON oikumenea.geo_countries
   FOR EACH ROW EXECUTE FUNCTION oikumenea.set_updated_at();
+CREATE INDEX geo_countries_geom_gist ON oikumenea.geo_countries USING gist (geom);
+COMMENT ON COLUMN oikumenea.geo_countries.id IS 'pii:none';
 COMMENT ON COLUMN oikumenea.geo_countries.code IS 'pii:none';
 COMMENT ON COLUMN oikumenea.geo_countries.name IS 'pii:none';
 COMMENT ON COLUMN oikumenea.geo_countries.status IS 'pii:none';
 COMMENT ON COLUMN oikumenea.geo_countries.sort_order IS 'pii:none';
+COMMENT ON COLUMN oikumenea.geo_countries.wof_id IS 'pii:none';
+COMMENT ON COLUMN oikumenea.geo_countries.iso_a3 IS 'pii:none';
+COMMENT ON COLUMN oikumenea.geo_countries.numeric_code IS 'pii:none';
+COMMENT ON COLUMN oikumenea.geo_countries.geom IS 'pii:none';
+COMMENT ON COLUMN oikumenea.geo_countries.centroid IS 'pii:none';
+COMMENT ON COLUMN oikumenea.geo_countries.bbox IS 'pii:none';
 
 INSERT INTO oikumenea.geo_countries (code, name, sort_order) VALUES
   ('AD', 'Andorra', 0),
@@ -430,3 +462,66 @@ INSERT INTO oikumenea.geo_countries (code, name, sort_order) VALUES
   ('ZA', 'South Africa', 2460),
   ('ZM', 'Zambia', 2470),
   ('ZW', 'Zimbabwe', 2480);
+
+-- geo_places: the Who's-On-First administrative gazetteer (D-GeoPlaces, M16/hermenea). One row per
+-- WOF place across four placetypes — country / region / county / locality (city·town·village; WOF has
+-- no town/village split, that is a `population` property, not a placetype). Loaded over the generic
+-- POST /import/geo-places endpoint by the hermenea `wof-sqlite` connector. SUPERSEDES the planned
+-- ISO-3166-2 geo_subdivisions (D-GeoSubdivisions); D-Vehicles' plate-region FK retargets here.
+--
+-- RID `id` PK (location service 12, D-ResourceIdentifiers); `wof_id` is retained UNIQUE as the
+-- import/idempotency concordance key. `parent_id` is a structural containment self-FK on `id` (the
+-- rank_types tree pattern, NOT a reified Link); `country_id` is the denormalized wof:country FK to
+-- geo_countries(id) (fast "all UA places"). Import resolves the WOF parent `wof_id` and the ISO
+-- `country_code` to their RIDs in SQL, so the connector still streams natural keys.
+-- Geometry is generic GEOMETRY(Geometry,4326) (WOF mixes Polygon/MultiPolygon); written via
+-- ST_GeomFromGeoJSON, read via ST_AsGeoJSON, so sqlc never sees the geometry type. Provenance
+-- (source/source_version/imported_at) is the per-row half of the D-DataIngestion lineage and the
+-- idempotency key: a re-import with the same source_version is a skip, a newer one an update; never
+-- a delete (mz:is_current=0 / superseded WOF records land as status='retired').
+CREATE TABLE oikumenea.geo_places (
+  id             uuid PRIMARY KEY DEFAULT oikumenea.new_id(12,1,2),  -- location / object / geo_place
+  wof_id         bigint NOT NULL UNIQUE,        -- Who's-On-First id, retained as the import/idempotency concordance key
+  placetype      text NOT NULL CHECK (placetype IN ('country','region','county','locality')),
+  parent_id      uuid REFERENCES oikumenea.geo_places(id) ON DELETE RESTRICT,
+  country_id     uuid REFERENCES oikumenea.geo_countries(id) ON DELETE RESTRICT,  -- denormalized WOF:country
+  name           text NOT NULL,
+  population      bigint,
+  hierarchy      jsonb,                        -- wof:hierarchy ancestor chain (denormalized for graph/queries)
+  concordances   jsonb,                        -- wof:concordances (GeoNames, Wikidata, ISO, …)
+  status         text NOT NULL DEFAULT 'active' CHECK (status IN ('active','retired')),
+  geom           geometry(Geometry, 4326),
+  centroid       geometry(Point, 4326),
+  bbox           geometry(Geometry, 4326),     -- ST_Envelope is a Point/Line for point/line inputs (WOF localities), so generic
+  source         text,                         -- importing dataset id (e.g. whosonfirst)
+  source_version text,                         -- the source edition (dist date / checksum)
+  imported_at    timestamptz,                  -- when the import upsert last touched this row
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  updated_at     timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT geo_places_rid_shape
+    CHECK (oikumenea.rid_service(id)=12 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=2)
+);
+CREATE TRIGGER geo_places_set_updated_at
+  BEFORE UPDATE ON oikumenea.geo_places
+  FOR EACH ROW EXECUTE FUNCTION oikumenea.set_updated_at();
+CREATE INDEX geo_places_geom_gist        ON oikumenea.geo_places USING gist (geom);
+CREATE INDEX geo_places_country_placetype ON oikumenea.geo_places (country_id, placetype);
+CREATE INDEX geo_places_parent           ON oikumenea.geo_places (parent_id);
+CREATE INDEX geo_places_placetype        ON oikumenea.geo_places (placetype);
+COMMENT ON COLUMN oikumenea.geo_places.id IS 'pii:none';
+COMMENT ON COLUMN oikumenea.geo_places.wof_id IS 'pii:none';
+COMMENT ON COLUMN oikumenea.geo_places.placetype IS 'pii:none';
+COMMENT ON COLUMN oikumenea.geo_places.parent_id IS 'pii:none';
+COMMENT ON COLUMN oikumenea.geo_places.country_id IS 'pii:none';
+COMMENT ON COLUMN oikumenea.geo_places.name IS 'pii:none';
+COMMENT ON COLUMN oikumenea.geo_places.population IS 'pii:none';
+COMMENT ON COLUMN oikumenea.geo_places.hierarchy IS 'pii:none';
+COMMENT ON COLUMN oikumenea.geo_places.concordances IS 'pii:none';
+COMMENT ON COLUMN oikumenea.geo_places.status IS 'pii:none';
+COMMENT ON COLUMN oikumenea.geo_places.geom IS 'pii:none';
+COMMENT ON COLUMN oikumenea.geo_places.centroid IS 'pii:none';
+COMMENT ON COLUMN oikumenea.geo_places.bbox IS 'pii:none';
+COMMENT ON COLUMN oikumenea.geo_places.source IS 'pii:none';
+COMMENT ON COLUMN oikumenea.geo_places.source_version IS 'pii:none';
+COMMENT ON COLUMN oikumenea.geo_places.imported_at IS 'pii:none';

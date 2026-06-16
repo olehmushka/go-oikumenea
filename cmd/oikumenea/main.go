@@ -17,10 +17,13 @@ import (
 	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
 	"github.com/olegamysk/go-oikumenea/internal/authorization"
 	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
+	"github.com/olegamysk/go-oikumenea/internal/dataimport"
 	"github.com/olegamysk/go-oikumenea/internal/document"
+	"github.com/olegamysk/go-oikumenea/internal/geo"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation/bootstrap"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation/middleware"
+	"github.com/olegamysk/go-oikumenea/internal/language"
 	"github.com/olegamysk/go-oikumenea/internal/localization"
 	"github.com/olegamysk/go-oikumenea/internal/membership"
 	"github.com/olegamysk/go-oikumenea/internal/order"
@@ -186,6 +189,31 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 		return nil, err
 	}
 
+	// Data import (M16 / D-Hermenea): the generic POST /import/{objectType} endpoint the out-of-process
+	// hermenea companion calls to load reference data (it never touches this DB). Idempotent,
+	// non-destructive, audited as a `system` actor; the enforcer it holds is bound by authorization.
+	if _, err := dataimport.Register(info, pool, auditSvc, enforcer); err != nil {
+		cleanup()
+		return nil, err
+	}
+
+	// Geo + Location (M16 / D-Geo + M19 / D-Location): the read-only GET /geo/countries lookup (clients
+	// resolve a country to its RID) plus the audited LocationService CRUD + spatial queries over the
+	// shared place entity. Both live on the `location` RID service (12); Location writes record via the
+	// audit service and assemble place-type name maps via localization.
+	if _, err := geo.Register(info, pool, auditSvc, locSvc, enforcer); err != nil {
+		cleanup()
+		return nil, err
+	}
+
+	// Language (M18 / D-Languages): read-only lookup over the Glottolog languoid forest + ISO-15924
+	// writing systems. The registry is written by the hermenea import pipeline (language-scheme /
+	// language-scripts), not here.
+	if _, err := language.Register(info, pool, locSvc, enforcer); err != nil {
+		cleanup()
+		return nil, err
+	}
+
 	// Identity-federation: the external-IdP seam. Its application service is the (issuer, subject)
 	// resolver the validation middleware binds to.
 	identitySvc, err := identityfederation.Register(info, pool, auditSvc, enforcer, install.IdentityLinkingEnabled)
@@ -203,6 +231,11 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 		return nil, werror.Wrap(err, "reject symmetric issuer outside local/dev")
 	}
 	authenticator.Bind(middleware.NewValidator(vcfg), identitySvc, personSvc, install.IDP.JIT.Enabled, authzSvc, pool)
+
+	// The hermenea import service-principal shared secret (D-Hermenea / L-AuthzOnly amendment): a
+	// RUNTIME secret from the environment (not install config). When set, a bearer matching it
+	// authenticates the `hermenea-importer` principal holding exactly import.manage.
+	authenticator.SetImportServiceToken(os.Getenv("HERMENEA_OIKUMENEA_TOKEN"))
 
 	// First-admin bootstrap (D-Bootstrap): idempotent — skips once any instance admin exists.
 	if install.BootstrapAdmin != nil {

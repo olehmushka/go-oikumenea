@@ -5,13 +5,14 @@
 #
 # This targets the dev DB ($DATABASE_URL — the `postgres` DB), NOT the integration-test DB
 # (oikumenea_test, owned by scripts/setup-test-db.sh). Because the `postgres` maintenance DB can't be
-# dropped while connected, the reset is a SCHEMA drop (oikumenea + atlas_schema_revisions), not a
-# DATABASE drop — the documented "DROP SCHEMA reset" for getting back to a clean dev state (e.g. after
-# editing a shipped migration).
+# dropped while connected, the reset is a SCHEMA drop (oikumenea), not a DATABASE drop — the documented
+# "DROP SCHEMA reset" for getting back to a clean dev state (e.g. after editing a shipped migration).
+# Atlas keeps its revision-history table INSIDE the oikumenea schema (atlas.hcl revisions_schema), so
+# dropping that schema also drops the revision history — Atlas replays the full migration set.
 #
-# Idempotent: safe to re-run. The drops are IF EXISTS, the migrations re-apply from scratch (Atlas
-# replays the full history since its revision table is dropped too), and bootstrap-admin seeds on the
-# now-fresh schema.
+# Idempotent: safe to re-run. The drop is IF EXISTS, the migrations re-apply from scratch (Atlas
+# replays the full history since its revision table lives in the dropped schema), and bootstrap-admin
+# seeds on the now-fresh schema.
 #
 # Requires: psql + atlas on PATH, a running Postgres (docker-compose.dev.yml), and either a built
 # binary or ./godelw to build one. Reads .env for the operator DSN ($DATABASE_URL); falls back to the
@@ -36,8 +37,9 @@ admin() { psql "$ADMIN_DSN" -v ON_ERROR_STOP=1 -tA "$@"; }
 
 # 1. Drop the app data. The cluster-global roles oikumenea_app / oikumenea are intentionally left
 #    intact (schema drop doesn't touch roles; migration 0011 re-creates them idempotently).
-echo "==> dropping schemas oikumenea + atlas_schema_revisions in $DEV_DB"
+echo "==> dropping schema oikumenea in $DEV_DB (Atlas revision history lives inside it)"
 admin -c "DROP SCHEMA IF EXISTS oikumenea CASCADE;"
+# Pre-revisions_schema dev DBs may still carry the standalone schema; drop it too so the reset is clean.
 admin -c "DROP SCHEMA IF EXISTS atlas_schema_revisions CASCADE;"
 
 # 2. Re-apply every migration (recreates schema oikumenea, all tables, RLS grants, schema_version).

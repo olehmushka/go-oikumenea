@@ -58,7 +58,7 @@ CREATE TABLE oikumenea.document_documents (
   type_id          uuid NOT NULL REFERENCES oikumenea.document_document_types(id) ON DELETE RESTRICT,
   number           text,                          -- document number (passport no., licence no.)
   issuer           text,                          -- issuing authority (e.g. ДМС України)
-  issuing_country  char(2) REFERENCES oikumenea.geo_countries(code) ON DELETE RESTRICT,  -- nullable (D-Geo)
+  issuing_country_id uuid REFERENCES oikumenea.geo_countries(id) ON DELETE RESTRICT,  -- nullable (D-Geo); ISO code resolved in SQL
   issued_on        date,
   expires_on       date,
   attributes       jsonb NOT NULL DEFAULT '{}',   -- long-tail per-type fields; pii:special CEILING
@@ -88,7 +88,7 @@ COMMENT ON COLUMN oikumenea.document_documents.person_id IS 'pii:none';
 COMMENT ON COLUMN oikumenea.document_documents.type_id IS 'pii:none';
 COMMENT ON COLUMN oikumenea.document_documents.number IS 'pii:basic';
 COMMENT ON COLUMN oikumenea.document_documents.issuer IS 'pii:basic';
-COMMENT ON COLUMN oikumenea.document_documents.issuing_country IS 'pii:none';
+COMMENT ON COLUMN oikumenea.document_documents.issuing_country_id IS 'pii:none';
 COMMENT ON COLUMN oikumenea.document_documents.issued_on IS 'pii:none';
 COMMENT ON COLUMN oikumenea.document_documents.expires_on IS 'pii:none';
 COMMENT ON COLUMN oikumenea.document_documents.attributes IS 'pii:special';
@@ -96,12 +96,12 @@ COMMENT ON COLUMN oikumenea.document_documents.status IS 'pii:none';
 
 -- document_personal_code_schemes: the instance-admin catalog of country-namespaced national-identifier
 -- schemes (D-PersonalCodes). Natural `code` PK (the D-ResourceIdentifiers carve-out — a seeded shared
--- reference registry FK'd by code, like geo_countries / i18n_locales). generic_category is the
+-- reference registry FK'd by code, like i18n_locales). generic_category is the
 -- cross-scheme join key ("list everyone's tax IDs"); validation_regex is the data-side FALLBACK behind
 -- a compiled pkg/personalcode validator.
 CREATE TABLE oikumenea.document_personal_code_schemes (
   code             text PRIMARY KEY,              -- the scheme id, e.g. ua-rnokpp, us-ssn (D-Code)
-  country_iso      char(2) REFERENCES oikumenea.geo_countries(code) ON DELETE RESTRICT,  -- NOT NULL for national schemes
+  country_id       uuid REFERENCES oikumenea.geo_countries(id) ON DELETE RESTRICT,  -- national scheme's country (ISO code resolved in SQL)
   generic_category text NOT NULL CHECK (generic_category IN
                      ('tax-id','national-id','social-insurance','health-insurance','residence-permit','other')),
   name             text NOT NULL,                 -- default-locale label; translatable via the i18n store
@@ -118,7 +118,7 @@ CREATE TRIGGER document_personal_code_schemes_set_updated_at
   FOR EACH ROW EXECUTE FUNCTION oikumenea.set_updated_at();
 
 COMMENT ON COLUMN oikumenea.document_personal_code_schemes.code IS 'pii:none';
-COMMENT ON COLUMN oikumenea.document_personal_code_schemes.country_iso IS 'pii:none';
+COMMENT ON COLUMN oikumenea.document_personal_code_schemes.country_id IS 'pii:none';
 COMMENT ON COLUMN oikumenea.document_personal_code_schemes.generic_category IS 'pii:none';
 COMMENT ON COLUMN oikumenea.document_personal_code_schemes.name IS 'pii:none';
 COMMENT ON COLUMN oikumenea.document_personal_code_schemes.validation_regex IS 'pii:none';
@@ -174,13 +174,17 @@ COMMENT ON COLUMN oikumenea.document_personal_codes.status IS 'pii:none';
 -- representative country-namespaced set; the instance admin adds more via the API. Schemes with a
 -- compiled pkg/personalcode validator carry no regex (the validator is authoritative); others get a
 -- fallback regex. Country codes reference the ISO-3166 geo registry seeded in 0001.
-INSERT INTO oikumenea.document_personal_code_schemes (code, country_iso, generic_category, name, validation_regex, sort_order) VALUES
-  ('ua-rnokpp',         'UA', 'tax-id',          'РНОКПП',         NULL,                  0),
+INSERT INTO oikumenea.document_personal_code_schemes (code, country_id, generic_category, name, validation_regex, sort_order)
+SELECT v.code, c.id, v.generic_category, v.name, v.validation_regex, v.sort_order
+FROM (VALUES
+  ('ua-rnokpp',         'UA', 'tax-id',          'РНОКПП',         NULL::text,            0),
   ('ua-unzr',           'UA', 'national-id',     'УНЗР',           '^\d{8}-\d{5}$',      10),
   ('us-ssn',            'US', 'social-insurance','Social Security Number', NULL,          20),
   ('de-steuer-id',      'DE', 'tax-id',          'Steuer-ID',      '^\d{11}$',           30),
   ('it-codice-fiscale', 'IT', 'tax-id',          'Codice Fiscale', '^[A-Za-z0-9]{16}$',  40),
-  ('pl-pesel',          'PL', 'national-id',     'PESEL',          NULL,                  50);
+  ('pl-pesel',          'PL', 'national-id',     'PESEL',          NULL,                  50)
+) AS v(code, country_iso, generic_category, name, validation_regex, sort_order)
+JOIN oikumenea.geo_countries c ON c.code = v.country_iso;
 
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
 UPDATE oikumenea.schema_version SET revision = '0009_document', applied_at = now() WHERE singleton;

@@ -55,7 +55,7 @@ as `category_id` already is, so grouping, sibling code-uniqueness, and seniority
 
 **`rank_systems`** (top level — D-RankSystems)
 - `id` PK, `code TEXT NOT NULL UNIQUE`, `name TEXT NOT NULL`, `sort_order INT NOT NULL`
-- `country TEXT REFERENCES geo_countries(code)` — the national origin; `NULL` for supranational (NATO/UN)
+- `country_id uuid REFERENCES geo_countries(id)` — the national-origin country RID (F-014); `NULL` for supranational (NATO/UN); preset imports resolve the ISO code → RID
 - `created_at`, `updated_at`, `deleted_at`
 
 **`rank_categories`**

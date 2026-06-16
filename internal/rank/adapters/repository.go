@@ -33,12 +33,25 @@ var _ domain.Repository = (*Repository)(nil)
 
 // ---------------------------------------------------------------- systems
 
+// CountryIDByCode resolves an ISO-3166-1 alpha-2 code to its geo_countries RID, mapping an absent
+// code to domain.ErrUnknownCountry.
+func (r *Repository) CountryIDByCode(ctx context.Context, code string) (string, error) {
+	id, err := r.q.GetCountryIDByCode(ctx, code)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", domain.ErrUnknownCountry
+		}
+		return "", err
+	}
+	return id, nil
+}
+
 func (r *Repository) InsertSystem(ctx context.Context, code, name string, sortOrder *int, country *string) (domain.System, error) {
 	row, err := r.q.InsertSystem(ctx, ranksql.InsertSystemParams{
 		Code:      code,
 		Name:      name,
 		SortOrder: int4Ptr(sortOrder),
-		Country:   textPtr(country),
+		CountryID: textPtr(country),
 	})
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -76,7 +89,7 @@ func (r *Repository) UpdateSystem(ctx context.Context, id string, patch domain.S
 		ID:        id,
 		Name:      textPtr(patch.Name),
 		SortOrder: int4Ptr(patch.SortOrder),
-		Country:   textPtr(patch.Country),
+		CountryID: textPtr(patch.Country),
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -399,7 +412,7 @@ func (r *Repository) ListRanks(ctx context.Context) ([]domain.Rank, error) {
 func toSystem(row ranksql.OikumeneaRankSystem) domain.System {
 	return domain.System{
 		ID: row.ID, Code: row.Code, Name: row.Name, SortOrder: int(row.SortOrder),
-		Country: row.Country.String, // "" when NULL (supranational)
+		Country: row.CountryID.String, // "" when NULL (supranational)
 	}
 }
 

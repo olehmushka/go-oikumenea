@@ -54,6 +54,22 @@ types:
             docs: Free-form long-tail attributes (JSONB).
           createdAt: datetime
           updatedAt: datetime
+      UnitLanguage:
+        docs: |
+          A unit's official/working language (D-Languages, M18; Link link__unit_language). languageId
+          references a Glottolog languoid (LanguageService); name is its translatable display name.
+        fields:
+          id: string
+          unitId: string
+          languageId:
+            type: string
+            docs: The languoid's URN RID (resolve via GET /language/v1/languages).
+          name:
+            type: map<string, string>
+            docs: The languoid's translatable display name as a locale -> text map (all enabled locales; D-i18n).
+          isOfficial:
+            type: boolean
+            docs: Whether the language is official (vs. merely working) for the unit.
       Graph:
         docs: A named hierarchy over the units (D-Graphs). Each graph is independently a DAG.
         fields:
@@ -178,6 +194,15 @@ types:
             type: optional<boolean>
             docs: Setting true makes this the sole default; the previous default is cleared in the same transaction.
           isAuthorityBearing: optional<boolean>
+      UpsertUnitLanguageRequest:
+        docs: Add or update a unit's official/working language (keyed on languageId).
+        fields:
+          languageId:
+            type: string
+            docs: The languoid's URN RID.
+          isOfficial:
+            type: optional<boolean>
+            docs: Defaults to true (official); false marks a working language.
     errors:
       UnitNotFound:
         namespace: Tenant
@@ -341,6 +366,35 @@ services:
             param-type: path
           request: TransitionRequest
         returns: Unit
+      listUnitLanguages:
+        http: GET /units/{unitId}/languages
+        docs: List a unit's official/working languages (D-Languages, M18).
+        args:
+          unitId:
+            type: string
+            param-type: path
+        returns: list<UnitLanguage>
+      upsertUnitLanguage:
+        http: PUT /units/{unitId}/languages
+        docs: |
+          Add or update a unit's official/working language (keyed on languageId). Returns
+          Tenant:UnitInvalid when languageId does not resolve to a languoid.
+        args:
+          unitId:
+            type: string
+            param-type: path
+          request: UpsertUnitLanguageRequest
+        returns: UnitLanguage
+      deleteUnitLanguage:
+        http: DELETE /units/{unitId}/languages/{languageId}
+        docs: Remove a unit's language by languoid id. Idempotent within the active set.
+        args:
+          unitId:
+            type: string
+            param-type: path
+          languageId:
+            type: string
+            param-type: path
       verifyClosure:
         http: POST /closure/verify
         docs: Diff the stored closure vs. the edges and upsert the per-graph drift status (default all graphs).

@@ -1,0 +1,45 @@
+// Package domain holds the language module's pure logic: the Languoid + WritingSystem registry entries
+// and the Repository port it needs (overview.md layering). No I/O, no framework imports — only the
+// standard library. Language owns the READ side of the Glottolog languoid forest + ISO-15924 writing
+// systems (D-Languages, M18); the registry itself is written by the hermenea import pipeline
+// (language-scheme / language-scripts), not here.
+package domain
+
+import "context"
+
+// Languoid is one node in the Glottolog forest. ID is the RID (the reference key person/unit/locale
+// links store); Code is the stable glottocode; optional fields fold to "" when absent.
+type Languoid struct {
+	ID         string
+	Code       string
+	Level      string
+	Name       string
+	ParentID   string
+	FamilyCode string
+	ISO639_3   string
+	Macroarea  string
+	Status     string
+}
+
+// WritingSystem is one ISO-15924 script. ID is the RID; Code is the ISO-15924 lookup code.
+type WritingSystem struct {
+	ID         string
+	Code       string
+	Name       string
+	ScriptType string
+}
+
+// Filter narrows a languoid listing (empty fields disable each criterion; Limit is clamped upstream).
+type Filter struct {
+	Level  string
+	Family string
+	Query  string
+	Limit  int
+}
+
+// Repository is the language module's port: a read-only view of the languoid + writing-system registry.
+type Repository interface {
+	ListLanguoids(ctx context.Context, f Filter) ([]Languoid, error)
+	GetLanguoid(ctx context.Context, id string) (Languoid, bool, error)
+	ListWritingSystems(ctx context.Context) ([]WritingSystem, error)
+}

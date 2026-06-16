@@ -17,6 +17,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/olegamysk/go-oikumenea/pkg/rid"
 )
 
 // ISODate is the layout person calendar-date fields (birthdate, citizenship/residence windows) are
@@ -62,6 +64,10 @@ var (
 	ErrUnknownRelationshipKind = errors.New("unknown relationship kind")
 	ErrPartnershipConflict     = errors.New("a person already has an active engaged/married partnership")
 	ErrRelationshipConflict    = errors.New("an equivalent active relationship already exists")
+	// D-Languages (M18)
+	ErrUnknownLanguage     = errors.New("language does not exist or is not a level='language' languoid")
+	ErrLanguageNotFound    = errors.New("person language not found")
+	ErrLanguageConflict    = errors.New("the person already speaks this language")
 )
 
 // Social-account attribution vocabularies (D-PersonSocialChannels): source records how the account was
@@ -183,7 +189,7 @@ func (p Person) Validate() error {
 		return wrapInvalid("sex must be one of not_known|male|female|not_applicable")
 	}
 	if p.CountryOfBirth != "" && !validCountry(p.CountryOfBirth) {
-		return wrapInvalid("countryOfBirth must be a 2-letter ISO-3166-1 alpha-2 code")
+		return wrapInvalid("countryOfBirth must be a country RID (resolve via GET /geo/countries)")
 	}
 	if !validDate(p.Birthdate) {
 		return wrapInvalid("birthdate must be an ISO-8601 date (YYYY-MM-DD)")
@@ -232,7 +238,7 @@ func (p PersonPatch) Validate() error {
 		return wrapInvalid("sex must be one of not_known|male|female|not_applicable")
 	}
 	if p.CountryOfBirth != nil && *p.CountryOfBirth != "" && !validCountry(*p.CountryOfBirth) {
-		return wrapInvalid("countryOfBirth must be a 2-letter ISO-3166-1 alpha-2 code")
+		return wrapInvalid("countryOfBirth must be a country RID (resolve via GET /geo/countries)")
 	}
 	if p.Birthdate != nil && !validDate(*p.Birthdate) {
 		return wrapInvalid("birthdate must be an ISO-8601 date (YYYY-MM-DD)")
@@ -284,7 +290,7 @@ type Citizenship struct {
 // Validate enforces a 2-letter country code, a known basis, and parseable optional dates.
 func (c Citizenship) Validate() error {
 	if !validCountry(c.Country) {
-		return wrapInvalid("country must be a 2-letter ISO-3166-1 code")
+		return wrapInvalid("country must be a country RID (resolve via GET /geo/countries)")
 	}
 	if c.Basis != "" && !validBasis[c.Basis] {
 		return wrapInvalid("basis must be one of birth|descent|naturalization|other")
@@ -309,7 +315,7 @@ type Residence struct {
 // valid_to).
 func (r Residence) Validate() error {
 	if !validCountry(r.Country) {
-		return wrapInvalid("country must be a 2-letter ISO-3166-1 code")
+		return wrapInvalid("country must be a country RID (resolve via GET /geo/countries)")
 	}
 	if r.ValidFrom == "" || !validDate(r.ValidFrom) {
 		return wrapInvalid("validFrom is required and must be an ISO-8601 date (YYYY-MM-DD)")
@@ -479,6 +485,34 @@ type SocialAccountHandle struct {
 	Handle    string
 	ValidFrom time.Time
 	ValidTo   *time.Time
+}
+
+// validCEFR is the closed set of CEFR proficiency levels (an empty level means unstated).
+var validCEFR = map[string]bool{"A1": true, "A2": true, "B1": true, "B2": true, "C1": true, "C2": true}
+
+// PersonLanguage is a language a person speaks (D-Languages, M18; Link link__speaks). LanguageID is a
+// level='language' Glottolog languoid RID; LanguageName is the languoid's default-locale display name
+// (read from the join, used to assemble the locale->text map in transport). CEFRLevel is "" when
+// unstated. Keyed on (PersonID, LanguageID): an upsert updates the proficiency of an existing row.
+type PersonLanguage struct {
+	ID           string
+	PersonID     string
+	LanguageID   string
+	LanguageName string
+	CEFRLevel    string
+	IsNative     bool
+}
+
+// Validate enforces a non-empty language id and a known CEFR level (when supplied). The languoid's
+// existence and level='language' constraint are enforced by the composite FK in the database.
+func (l PersonLanguage) Validate() error {
+	if strings.TrimSpace(l.LanguageID) == "" {
+		return wrapInvalid("languageId is required")
+	}
+	if l.CEFRLevel != "" && !validCEFR[l.CEFRLevel] {
+		return wrapInvalid("cefrLevel must be one of A1|A2|B1|B2|C1|C2")
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------- person↔person relationships (D-PersonRelationships, M14)
@@ -717,17 +751,11 @@ func validCode(code string) bool {
 	})
 }
 
-// validCountry checks the ISO-3166-1 alpha-2 shape (existence is enforced by the geo FK).
+// validCountry checks the value is a country RID (the geo registry is now RID-keyed, F-014; clients
+// resolve an ISO code to its RID via GET /geo/countries). Existence is enforced by the geo FK and
+// surfaced as ErrUnknownCountry.
 func validCountry(c string) bool {
-	if len(c) != 2 {
-		return false
-	}
-	for _, r := range c {
-		if r < 'A' || r > 'Z' {
-			return false
-		}
-	}
-	return true
+	return rid.IsRID(c)
 }
 
 // validDate reports whether s is empty (absent) or a valid ISO-8601 calendar date.
@@ -831,6 +859,13 @@ type Repository interface {
 	InsertSocialAccountHandle(ctx context.Context, h SocialAccountHandle) (SocialAccountHandle, error)
 	CloseCurrentSocialAccountHandle(ctx context.Context, accountID string) error
 	ListSocialAccountHandles(ctx context.Context, accountID string) ([]SocialAccountHandle, error)
+
+	// person languages (D-Languages, M18) — SPEAKS
+	InsertPersonLanguage(ctx context.Context, l PersonLanguage) error
+	UpdatePersonLanguage(ctx context.Context, l PersonLanguage) error
+	GetPersonLanguage(ctx context.Context, personID, languageID string) (PersonLanguage, error)
+	DeletePersonLanguage(ctx context.Context, personID, languageID string) error
+	ListPersonLanguages(ctx context.Context, personID string) ([]PersonLanguage, error)
 
 	// ---- person↔person relationships (D-PersonRelationships) ----
 

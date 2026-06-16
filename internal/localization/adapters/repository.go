@@ -44,6 +44,22 @@ func (r *Repository) ListLocales(ctx context.Context) ([]domain.Locale, error) {
 	return locales, nil
 }
 
+func (r *Repository) ListLocaleLanguages(ctx context.Context) ([]domain.LocaleLanguage, error) {
+	rows, err := r.q.ListLocaleLanguages(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.LocaleLanguage, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, domain.LocaleLanguage{
+			Locale:       row.Locale,
+			LanguageID:   row.LanguageID,
+			LanguageName: row.LanguageName,
+		})
+	}
+	return out, nil
+}
+
 func (r *Repository) GetLocaleByCode(ctx context.Context, code string) (domain.Locale, error) {
 	row, err := r.q.GetLocaleByCode(ctx, code)
 	if err != nil {

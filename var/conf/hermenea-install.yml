@@ -1,0 +1,455 @@
+# Local-dev install configuration for the hermenea companion service (M16 / D-Hermenea).
+# Plaintext for local dev; ECV-encrypted in real deployments. The two shared secrets are RUNTIME env
+# vars (OIKUMENEA_HERMENEA_TOKEN, HERMENEA_OIKUMENEA_TOKEN) — NOT in this file.
+product-name: hermenea
+product-version: 0.0.0-dev
+use-console-log: true
+server:
+  address: "0.0.0.0"
+  port: 9443
+  management-port: 9444
+  context-path: ""
+
+# Hermenea's OWN PostgreSQL (separate database from oikumenea's). Apply migrations/hermenea first:
+#   set -a; . ./.env; set +a; atlas migrate apply --env hermenea
+postgres:
+  dsn: "postgres://postgres:dev@localhost:5432/hermenea?sslmode=disable"
+
+# oikumenea's public API the loader calls (POST /import/{objectType}). insecure-skip-verify accepts the
+# self-signed local-dev cert; set false against a real certificate.
+oikumenea:
+  base-url: "https://localhost:8443"
+  insecure-skip-verify: true
+
+# Declarative import sources seeded at boot (idempotent). The first real connector is the Who's-On-First
+# geo gazetteer (D-GeoPlaces): connector-type `wof-sqlite` stages the per-country `.db.bz2` admin
+# distribution and the `geo-places` paged mapper loads country/region/county/locality.
+#
+# GLOBAL rollout = one source per ISO country (code `wof-geo-<iso>`, locator `…-admin-<iso>-latest…`).
+# Enabled below: Ukraine + Russia + the European countries + US/CA/MX/BR/CO/AR. They all share one cron
+# interval, so on the first scheduler tick after boot every enabled source becomes due at once; the
+# SINGLE worker then runs them one at a time (sequentially) — a large multi-country backfill takes hours.
+# Trigger a single country on demand with `POST /hermenea/v1/sync/wof-geo-<iso>`. To pause one, set its
+# `enabled: false`. WOF downloads + geometry imports are large, hence the raised worker.job-timeout-ms
+# below; very large countries (US, RU) may still need more.
+sources:
+  # The simplest proving consumer (network-free): the bundled ISO-3166 country list, read by the
+  # degenerate `file` connector and loaded via the in-memory geo-countries mapper into
+  # oikumenea.geo_countries (POST /import/geo-countries). Re-running is an idempotent no-op. Path is
+  # relative to the process working dir (repo root on host; /app in the Docker image).
+  - code: geo-countries-iso3166
+    name: "ISO-3166 countries (bundled)"
+    connector-type: file
+    object-type: geo-countries
+    locator: "deploy/geo-presets/iso-3166.json"
+    cron: "@weekly"
+    enabled: true
+  # Languages (D-Languages, M18) — hermenea's first NEW consumers beyond geo. These pull LIVE from
+  # upstream master on every run via the `http-files` streaming connector: the raw files are staged to a
+  # temp dir and transformed in Go (the CLDFMapper / SupplementalMapper port of gen-presets.py), so the
+  # catalog refreshes without regenerating bundled presets. The `locator` is a whitespace-separated URL
+  # list; the mapper reads each file by basename. source_version is a checksum of the fetched files, so an
+  # unchanged upstream is an idempotent no-op. language-scheme MUST load before language-scripts (scripts
+  # resolve languoids by ISO 639-3); both share the cron window and the single worker runs them
+  # sequentially. Tracking master means a run depends on upstream being reachable + format-stable; a
+  # failed/garbled run is logged in import_runs, retried, then dead-lettered — imports are transactional,
+  # so they never corrupt the existing catalog.
+  #
+  # OFFLINE / air-gap alternative: swap connector-type back to `file` and point locator at the bundled
+  # preset (regenerate with deploy/language-presets/gen-presets.py), e.g.:
+  #   connector-type: file
+  #   locator: "deploy/language-presets/glottolog-5.3.json"   # (and cldr-scripts.json)
+  - code: glottolog-languoids
+    name: "Glottolog languoids (live CLDF master)"
+    connector-type: http-files
+    object-type: language-scheme
+    locator: >-
+      https://raw.githubusercontent.com/glottolog/glottolog-cldf/master/cldf/languages.csv
+      https://raw.githubusercontent.com/glottolog/glottolog-cldf/master/cldf/values.csv
+    cron: "@weekly"
+    enabled: true
+  - code: cldr-language-scripts
+    name: "CLDR language→script links (live)"
+    connector-type: http-files
+    object-type: language-scripts
+    locator: >-
+      https://raw.githubusercontent.com/unicode-org/cldr/main/common/supplemental/supplementalData.xml
+      https://iso639-3.sil.org/sites/iso639-3/files/downloads/iso-639-3.tab
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-ua
+    name: "Who's On First — Ukraine (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-ua-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  # --- Europe (WOF admin gazetteer per country; Ukraine is above). Some micro-states / Kosovo (xk)
+  # may not have a WOF dist and will simply fail their run (logged, retried, dead-lettered) — harmless.
+  - code: wof-geo-al
+    name: "Who's On First — Albania (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-al-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-ad
+    name: "Who's On First — Andorra (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-ad-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-at
+    name: "Who's On First — Austria (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-at-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-by
+    name: "Who's On First — Belarus (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-by-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-be
+    name: "Who's On First — Belgium (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-be-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-ba
+    name: "Who's On First — Bosnia and Herzegovina (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-ba-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-bg
+    name: "Who's On First — Bulgaria (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-bg-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-hr
+    name: "Who's On First — Croatia (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-hr-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-cy
+    name: "Who's On First — Cyprus (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-cy-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-cz
+    name: "Who's On First — Czechia (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-cz-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-dk
+    name: "Who's On First — Denmark (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-dk-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-ee
+    name: "Who's On First — Estonia (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-ee-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-fi
+    name: "Who's On First — Finland (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-fi-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-fr
+    name: "Who's On First — France (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-fr-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-de
+    name: "Who's On First — Germany (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-de-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-gr
+    name: "Who's On First — Greece (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-gr-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-hu
+    name: "Who's On First — Hungary (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-hu-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-is
+    name: "Who's On First — Iceland (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-is-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-ie
+    name: "Who's On First — Ireland (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-ie-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-it
+    name: "Who's On First — Italy (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-it-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-xk
+    name: "Who's On First — Kosovo (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-xk-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-lv
+    name: "Who's On First — Latvia (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-lv-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-li
+    name: "Who's On First — Liechtenstein (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-li-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-lt
+    name: "Who's On First — Lithuania (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-lt-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-lu
+    name: "Who's On First — Luxembourg (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-lu-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-mt
+    name: "Who's On First — Malta (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-mt-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-md
+    name: "Who's On First — Moldova (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-md-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-mc
+    name: "Who's On First — Monaco (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-mc-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-me
+    name: "Who's On First — Montenegro (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-me-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-nl
+    name: "Who's On First — Netherlands (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-nl-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-mk
+    name: "Who's On First — North Macedonia (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-mk-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-no
+    name: "Who's On First — Norway (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-no-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-pl
+    name: "Who's On First — Poland (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-pl-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-pt
+    name: "Who's On First — Portugal (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-pt-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-ro
+    name: "Who's On First — Romania (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-ro-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-ru
+    name: "Who's On First — Russia (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-ru-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-sm
+    name: "Who's On First — San Marino (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-sm-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-rs
+    name: "Who's On First — Serbia (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-rs-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-sk
+    name: "Who's On First — Slovakia (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-sk-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-si
+    name: "Who's On First — Slovenia (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-si-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-es
+    name: "Who's On First — Spain (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-es-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-se
+    name: "Who's On First — Sweden (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-se-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-ch
+    name: "Who's On First — Switzerland (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-ch-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-gb
+    name: "Who's On First — United Kingdom (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-gb-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-va
+    name: "Who's On First — Vatican City (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-va-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  # --- Americas
+  - code: wof-geo-us
+    name: "Who's On First — United States (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-us-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-ca
+    name: "Who's On First — Canada (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-ca-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-mx
+    name: "Who's On First — Mexico (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-mx-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-br
+    name: "Who's On First — Brazil (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-br-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-co
+    name: "Who's On First — Colombia (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-co-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+  - code: wof-geo-ar
+    name: "Who's On First — Argentina (admin)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-ar-latest.db.bz2"
+    cron: "@weekly"
+    enabled: true
+
+# Background-runtime tunables (milliseconds; zero => documented default).
+worker:
+  poll-interval-ms: 2000
+  schedule-tick-ms: 30000
+  backoff-base-ms: 5000
+  backoff-max-ms: 300000
+  job-timeout-ms: 1800000   # 30 min (large countries; e.g. US/RU)
+  stale-after-ms: 2100000  # > job-timeout so long legit jobs are not requeued

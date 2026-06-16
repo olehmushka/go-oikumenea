@@ -43,9 +43,9 @@ migrates, and demos** on its own, so the service is runnable at every step.
 | **M13** | Social & messenger channels | platform catalog; messenger reachability over phones/emails; standalone social accounts with analytics-grade attribution (stable id, provenance+confidence, verification) | M12 |
 | **M14** | Person↔person relationships | per-type reified self-links: partnership/marriage, kinship, guardianship, sponsorship, next-of-kin, association/COI (friend/follower social-link deferred) | M5 |
 | **M15** | Rank systems, NATO grades & presets | a `rank_system` top level (multinational); standardized `grade_code` (NATO STANAG 2116) for cross-system comparability; bundled scheme presets + idempotent `/rank-scheme/import` | M4 |
-| **M16** | Background worker & scheduler | in-process cron scheduler + job queue over the `pkg/events` outbox; the runtime every scheduled sync/sweep runs on — **promotes DS-25** | M0 |
-| **M17** | Data ingestion & connector framework | source/connector registry (HTTP first cut), raw staging, mapper-registry transform→ontology, idempotent code-keyed upsert, `import_runs` lineage | M1, M16 |
-| **M18** | Language & writing systems | full Glottolog 5.3 languoid forest + ISO-15924 writing systems; person/unit/locale language links; first M17 consumer | M2, M5, M17 (M3 for the unit tie) |
+| **M16** | Hermenea — ingestion & scheduler companion (**absorbs M17**) | a **second binary** `cmd/hermenea` with its **own Postgres**, HTTP-only coupling: connector (http/file/**wof-sqlite**) → raw staging → mapper (incl. a **paged** mapper) → oikumenea `POST /import/{objectType}` idempotent upsert; cron scheduler + `worker_jobs` queue; `import_runs` lineage; service-principal auth. First real connector = the **Who's-On-First geo gazetteer** (`geo_places` + PostGIS, **D-GeoPlaces**, supersedes D-GeoSubdivisions) — **supersedes D-Worker, folds D-DataIngestion; promotes DS-25** | M0, M1 |
+| ~~**M17**~~ | ~~Data ingestion & connector framework~~ → **folded into M16** | the connector/mapper/scheduler pipeline now lives in the **hermenea** service (D-Hermenea); oikumenea keeps the generic import endpoint + per-row provenance | — |
+| **M18** | Language & writing systems | full Glottolog 5.3 languoid forest + ISO-15924 writing systems; person/unit/locale language links; first new M16 consumer | M2, M5, M16 (M3 for the unit tie) |
 | **M19** | Location | standalone `location_locations`; PostGIS `GEOGRAPHY` + h3-pg, DB-derived MGRS/H3; structured address over `geo_countries` | M0 |
 | **M20** | Education | institutions + structure tree + buildings (Location); enrollments, mentorship, groups, dorm stays; institution positions | M5, M14, M19 (M17 for registries) |
 | **M21** | Companies | legal-entity registry: legal form + ownership, registration schemes (LEI), industry classes, positions, equity/UBO links, company↔company graph | M5, M19 (M17 for registries) |
@@ -56,11 +56,13 @@ migrates, and demos** on its own, so the service is runnable at every step.
 | **M26** | Vehicles (+ subnational subdivisions) | shared `geo_subdivisions` ISO-3166-2 registry; vehicle brand/model/type taxonomy + the vehicle object (VIN); temporal brand↔Company manufacturer link; the ownership+plate registration link (polymorphic person\|company owner, plate region) | M5, M21 |
 
 M1/M2 and M3/M4 are independent and may be built in parallel. Everything after M2 assumes audit + i18n exist.
-M12 is **scoped (in progress)** — see its section below (D-PersonContactChannels, D-DocumentAttrSchema, expanded D-PersonalCodes).
+M12 is **verified** — see its section below (D-PersonContactChannels, D-DocumentAttrSchema, expanded D-PersonalCodes, D-PersonBio amendment); additive person/document enrichments, proven end-to-end (integration suites + a live HTTP demo on the running server).
 M13 and M14 are **delivered** — see their sections below (D-PersonSocialChannels, D-PersonRelationships). M14's scoped friend/follower `person_social_links` tie was **deferred — not built** (see decisions.md).
 M15 is **delivered** — see its section below (D-RankSystems); it is additive over M4 and refines the L-OneRankScheme lock (one registry, multiple systems).
 
-M16–M26 are **planned** (designed, not yet built) — a domain cluster derived from `todo.md`, binding once their decisions land: **M16** (worker runtime, promotes DS-25) and **M17** (D-DataIngestion) are foundations the rest ride; **M18** (D-Languages, full Glottolog), **M19** (D-Location, PostGIS), **M20** (D-Education), **M21** (D-Companies). M16/M17 are platform-level; **M19 is a foundation reused by M20, M21, and the religion discovery milestone M25**. The **M22–M25** cluster is the **multi-faith religion vertical** (D-Religion, D-ClergyCredential, D-ReligiousAffiliation, D-SpecialPII) — it **promotes DS-48** (Religion) off the parked list and reuses the tenant graph, person/membership/order/authorization, and the shared M19 Location rather than adding new hierarchy machinery. **M26** (D-Vehicles + D-GeoSubdivisions) is the last todo item — a vehicle registry on person + M21 Company, bundling a shared `geo_subdivisions` ISO-3166-2 foundation (as M19 bundled the PostGIS bootstrap). The M16–M26 decisions live in [roadmap-decisions.md](architecture/roadmap-decisions.md) (split out of the binding `decisions.md` so it reflects the built M0–M15 surface).
+M16 is **verified** — **re-scoped to the `hermenea` companion service** ([D-Hermenea](architecture/roadmap-decisions.md), which **supersedes D-Worker** and **absorbs M17/D-DataIngestion**): ingestion + the job runtime move **out of process** into a second binary with its own Postgres, coupled to oikumenea **only over HTTP**. M17 is **folded into M16** (no longer a separate milestone). Verified end-to-end (fixture tests both sides + a real `docker compose` cross-service run): the geo-countries pipeline and the **full WOF Ukraine `geo-places` backfill** (35k places, country→region→county→locality, with `geo_countries` enrichment + idempotent re-run); the disputed-territory parent-resolution edge (Crimea) is fixed in the WOF mapper.
+
+M18–M26 are **planned** (designed, not yet built) — a domain cluster derived from `todo.md`, binding once their decisions land: the hermenea ingestion framework (M16) is the foundation the registry-fed verticals ride; **M18** (D-Languages, full Glottolog) is its first real consumer; **M19** (D-Location, PostGIS), **M20** (D-Education), **M21** (D-Companies). **M19 is a foundation reused by M20, M21, and the religion discovery milestone M25**. The **M22–M25** cluster is the **multi-faith religion vertical** (D-Religion, D-ClergyCredential, D-ReligiousAffiliation, D-SpecialPII) — it **promotes DS-48** (Religion) off the parked list and reuses the tenant graph, person/membership/order/authorization, and the shared M19 Location rather than adding new hierarchy machinery. **M26** (D-Vehicles) is the last todo item — a vehicle registry on person + M21 Company; its plate-region FK targets the WOF `geo_places` gazetteer (D-GeoPlaces, built in M16 — which superseded the originally-planned D-GeoSubdivisions and pulled the PostGIS bootstrap forward). The M16–M26 decisions live in [roadmap-decisions.md](architecture/roadmap-decisions.md) (split out of the binding `decisions.md` so it reflects the built M0–M15 surface).
 
 ## Stage board
 
@@ -87,14 +89,14 @@ Legend: `✅` done · `🚧` in progress · `⬜` not started · `➖` not appli
 | **M9** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified |
 | **M10** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified |
 | **M11** | ✅ | ✅ | ✅ | ✅ | ➖ | ✅ | verified |
-| **M12** | ✅ | ✅ | ✅ | ✅ | ✅ | 🚧 | verifying (scoped/in progress) |
+| **M12** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified |
 | **M13** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified |
 | **M14** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified |
 | **M15** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified |
-| **M16** | ✅ | 🚧 | ⬜ | ⬜ | ⬜ | ⬜ | decided |
-| **M17** | ✅ | 🚧 | ⬜ | ⬜ | ⬜ | ⬜ | decided |
-| **M18** | ✅ | 🚧 | ⬜ | ⬜ | ⬜ | ⬜ | decided |
-| **M19** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | designed |
+| **M16** | ✅ | ✅ | ✅ | ✅ | ➖ | ✅ | verified (geo-countries + full WOF Ukraine geo-places backfill, 35k places, e2e in compose) |
+| ~~**M17**~~ | — | — | — | — | — | — | folded into M16 (D-Hermenea) |
+| **M18** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — both i18n gaps closed (`name` is now a `locale→text` map via `NamesByID`; `i18n_locale_languages` reconciled on import) and re-proven e2e (full 27k Glottolog 5.3 load + the new person/unit/locale language UI). See M18 Verdict (resolved). |
+| **M19** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — `location_locations` (PostGIS point + DB-derived MGRS/H3 via h3-pg) + audited LocationService CRUD + radius/bbox; custom Postgres image; e2e integration tests + live MGRS/H3 derivation |
 | **M20** | ✅ | 🚧 | ⬜ | ⬜ | ⬜ | ⬜ | decided |
 | **M21** | ✅ | 🚧 | ⬜ | ⬜ | ⬜ | ⬜ | decided |
 | **M22** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | designed |
@@ -105,12 +107,21 @@ Legend: `✅` done · `🚧` in progress · `⬜` not started · `➖` not appli
 
 Notes on the planned tier (M16–M26): all have a landed `D-<Name>` decision (in
 [roadmap-decisions.md](architecture/roadmap-decisions.md)), so all are at least
-**decided**. *Designed* `✅` means a dedicated module doc exists — present for **M19**
+**decided**. **M16 is verified** as the **hermenea** companion service (D-Hermenea
+supersedes D-Worker and **absorbs M17/D-DataIngestion**); its module doc
+([hermenea.md](modules/hermenea.md)) exists, so its *Designed* gate is `✅`, and its UI gate is `➖`
+(a headless companion service — no console surface). *Designed* `✅` means a dedicated module doc
+exists — present for **M16** ([hermenea.md](modules/hermenea.md)), **M18**
+([language.md](modules/language.md)), **M19**
 ([location.md](modules/location.md)) and **M22–M25** ([religion.md](modules/religion.md)); for
-M16/M17 (folded into [platform.md](modules/platform.md)) and M18/M20/M21/M26 the module doc is still
-to be written, hence `🚧`. M15's backend is additive over the M4 rank migration
-(`20260601000004_rank.sql`), not a separate file. M12 remains **scoped/in progress** until its exit
-criteria are met across the board.
+M20/M21/M26 the module doc is still to be written, hence `🚧`. M15's backend is additive over the M4 rank migration
+(`20260601000004_rank.sql`), not a separate file. M12 is now **verified**: its exit criteria are met
+across the board — grounded in migrations `0012_person_contacts` + `0016_person_date_of_death`, the
+`person`/`document` integration suites (`TestContactChannels`, `TestContactTypeCatalogs`,
+`TestPurgeGate`, `TestDocumentAttrSchema`, `TestPersonalCodeValidationAndUniqueness`), the
+`PersonForms.tsx` console managers, and a live HTTP demo against the running server (email
+provider-derivation, phone E.164 + country-derivation, call-sign uniqueness `409`, `date_of_death`
+round-trip).
 
 ---
 
@@ -273,11 +284,17 @@ timing*), per-request reach GUCs on a pinned connection, the non-superuser `oiku
 
 ## M12 — Person enrichment & expanded identity
 
-**Status: scoped (in progress).** The open questions are resolved (see *Resolved scope* below) and
-the work is binding via **D-PersonContactChannels** + **D-DocumentAttrSchema** (and the expanded
-**D-PersonalCodes** scheme set) in [decisions.md](architecture/decisions.md); the only newly parked
-seam is **DS-40** (phone carrier lookup). A bundle of additive person/document enrichments — expand-only
-(new child tables, a new nullable column, new seed rows, new compiled validators).
+**Status: verified.** The open questions are resolved (see *Resolved scope* below) and the work is
+binding via **D-PersonContactChannels** + **D-DocumentAttrSchema** (and the expanded **D-PersonalCodes**
+scheme set, plus the **D-PersonBio** amendment for `date_of_death`) in
+[decisions.md](architecture/decisions.md); the only newly parked seam is **DS-40** (phone carrier
+lookup). A bundle of additive person/document enrichments — expand-only (new child tables, a new
+nullable column, new seed rows, new compiled validators) — shipped end-to-end (migrations
+`0012_person_contacts` + `0016_person_date_of_death`, the `person`/`document` integration suites, the
+`PersonForms.tsx` console managers) and proven against the running server: a person carries
+provider-derived emails, E.164 phones with a derived country, and uniquely-named call signs (duplicate
+→ `409`), plus a round-tripping `date_of_death`; a document write is validated against its type's
+`attr_schema`; and the expanded national codes validate via their compiled/regex schemes.
 
 **Goal.** Richer contact + identity data on a person: structured emails, phone numbers, call signs, a
 wider set of national personal-ID schemes, a per-document-type attribute schema for military papers, and
@@ -356,6 +373,12 @@ Items A/B/E follow the existing effective-dated child-table pattern, and the per
 list must be extended to cover their `pii:contact`/`pii:basic` columns (D-PIITiers). When scoped,
 update `decisions.md` (new decisions for the contact model + call signs), `glossary.md`,
 `ontology-mapping.md` (new Link/Object kinds), and allocate DS-40+ in `open-questions.md`.
+
+- **Exit:** a person carries multiple contact emails (with a derived `provider`), E.164 phones (with a
+  derived country), and uniquely-named call signs, plus a `date_of_death` that round-trips and is NULLed
+  on purge; a document write is rejected when its `attributes` violate the type's `attr_schema`
+  (`military-id`); an `ru-inn` / `br-cpf` personal code validates via its compiled checksum and a
+  regex-only scheme (`ar-dni`) accept-warns; purging the person erases the three contact tables.
 
 ---
 
@@ -465,106 +488,201 @@ preset** instead of hand-entering every node.
 
 ---
 
-## M16 — Background worker & scheduler
+## M16 — Hermenea: ingestion & scheduler companion (absorbs M17)
 
-**Status: planned.** Binding via **D-Worker** in [roadmap-decisions.md](architecture/roadmap-decisions.md), which **promotes
-open-question DS-25** (the long-parked common blocker) onto the critical path because the M17 connector
-framework needs scheduled syncs. Additive over M0 — a new runtime alongside the synchronous core, no
-breaking change.
+**Status: verified.** Binding via **D-Hermenea** in
+[roadmap-decisions.md](architecture/roadmap-decisions.md), which **supersedes D-Worker** (reverses
+*in-process*) and **folds D-DataIngestion (M17) into M16**. The background-job runtime + the
+reference-data pipeline are realized as a **second deployable, `hermenea`** (`cmd/hermenea`) — a
+companion ETL + scheduler beside oikumenea, with its **own PostgreSQL** and its **own Atlas
+migrations**, coupled to oikumenea **only over HTTP** (it never touches oikumenea's DB). Promotes the
+long-parked **DS-25**; greenfield for hermenea, additive/expand-only for oikumenea. See the
+[hermenea](modules/hermenea.md) module doc.
 
-**Goal.** A first-class background-job runtime: a server that can run scheduled and queued work (the
-connector syncs of M17, and — unblocked as a side effect — expiry sweeps, audit partitioning DS-28, and
-future-dated order effects) without an external broker.
+**Goal.** Ingest external reference datasets out of process — fetch → stage raw → map → load via
+oikumenea's public import API — on a cron or a push trigger, with at-least-once execution, retry/backoff,
+lineage, and hard service separation from the PDP core.
 
-- **Delivers:** an in-process **cron scheduler** + **job queue** built over the existing `pkg/events`
-  outbox, with witchcraft-managed lifecycle (graceful drain on shutdown), at-least-once execution with
-  idempotency keys, a `worker_jobs` ledger (status/attempts/last_error), retry/backoff, and a
-  job-health reporter. No external broker (DS-26 stays parked); single-process scheduling.
-- **Implements:** D-Worker (promotes DS-25). See [platform](modules/platform.md).
-- **Exit:** a scheduled job fires on its cron; a queued job runs at-least-once and is idempotent on
-  retry; in-flight jobs drain cleanly on shutdown; failures surface in the health reporter + audit.
+- **Delivers (hermenea, its own DB):**
+  - **Connectors** — a `Connector` interface (`Fetch(ctx, source) → RawBatch`); **HTTP(S)** + the
+    degenerate **`file`** connector; an `import_sources` registry (`type ∈ http|file`; `jdbc-sql`/
+    `object-store` parked **DS-44**), credentials via the crypto seam.
+  - **Raw staging** — `import_raw_batches` lands payloads verbatim (checksum, `source_version`,
+    `fetched_at`), re-mappable without re-fetch.
+  - **Mapper registry** — per object-type, raw records → a **canonical envelope** (`{objectType,
+    source, sourceVersion, license, generatedAt, records[]}`).
+  - **Scheduler + queue** — an in-process **cron scheduler** + a `worker_jobs` queue
+    (`SELECT … FOR UPDATE SKIP LOCKED`), at-least-once with **idempotency keys**, **exponential
+    backoff (per-job-type config)**, dead-letter after max attempts, witchcraft-managed **graceful
+    drain**, a **job-health reporter**; `import_runs` lineage ledger.
+  - **`POST /sync/{source}`** endpoint (the **push trigger** from an oikumenea admin action) + source/
+    run/job read endpoints (`api/hermenea.conjure.yml`).
+- **Delivers (oikumenea, additive):** the generic **`POST /import/{objectType}`** endpoint over an
+  upsert registry (code-keyed, idempotent, non-destructive, one txn, audited as a **`system`** actor);
+  **per-row provenance** (`source`/`source_version`/`imported_at`); the **`import.manage`** permission
+  + the **`hermenea-importer` service principal** (shared-secret auth path, amends L-AuthzOnly); a thin
+  push-trigger HTTP client to hermenea.
+- **Two trust directions, two runtime secrets** — `HERMENEA_OIKUMENEA_TOKEN` (import) and
+  `OIKUMENEA_HERMENEA_TOKEN` (trigger), ECV-refreshable, never stored.
+- **First consumer:** **`geo-countries`** (ISO-3166) — an existing reference catalog needing no new
+  oikumenea domain module. M15's `/rank-scheme/import` is **not** retrofitted (legacy one-off).
+- **Implements:** D-Hermenea (supersedes D-Worker, folds D-DataIngestion). See
+  [hermenea](modules/hermenea.md) + [platform](modules/platform.md).
+- **Exit:** hermenea cron fires a `geo-countries` sync; an oikumenea push (`POST /sync/geo-countries`)
+  also fires one; raw stage → map → `POST /import/geo-countries` idempotent upsert; **re-running a sync
+  changes nothing**; `import_runs` records lineage; per-row provenance is stamped; a bad/missing service
+  secret is rejected (401); a failing fetch/map surfaces in hermenea's health + an oikumenea `system`
+  audit row; in-flight jobs drain cleanly on shutdown.
+- **Verification (delivered).** Fixture-based integration tests cover both sides — `dataimport`
+  (`internal/dataimport/dataimport_integration_test.go`: geo-countries create/skip/update idempotency,
+  per-row provenance, one `system` audit Action per import, geo-places parent-first upsert + country
+  enrichment + RESTRICT) and `hermenea`
+  (`internal/hermenea/hermenea_integration_test.go`: trigger dedup, fetch→map→load(stub)→`import_runs`
+  lineage, loader-failure → failed run) against dedicated test DBs (`scripts/setup-test-db.sh` now
+  provisions `hermenea_test`); the WOF paged mapper is covered against a generated SQLite fixture
+  (`internal/hermenea/wof/mappaged_test.go`). A full `docker compose up` ran the **real** cross-service
+  pipeline: the bundled `geo-countries-iso3166` `file` source loaded over HTTP (idempotent re-run =
+  all-skipped; bad trigger secret → 401; an early load failure retried with exponential backoff in
+  `import_runs`), and the **real** `wof-geo-ua` source downloaded + bzip2-decompressed + staged the
+  62 MB WOF Ukraine dist, then loaded the **full Ukraine gazetteer** into `geo_places` (**35,072 places**
+  — 1 country / 25 regions / 782 counties / 34,264 localities) and **enriched `geo_countries.UA`**
+  (`wof_id`/`geom`/`iso_a3`); a re-trigger over the loaded data was an idempotent no-op (all-skipped).
+- **WOF parent resolution (resolved).** The first UA run surfaced a disputed-territory quirk — WOF
+  parents **Crimea** to a `country_id` outside the Ukraine dist, so its hierarchy-derived `parent_id`
+  was absent and the whole region page failed on `geo_places_parent_id_fkey` (SQLSTATE 23503). Fixed in
+  the `geo-places` paged mapper ([wof/mapper.go](../internal/hermenea/wof/mapper.go)): it now tracks the
+  `wof_id`s it has emitted and **drops a `parentId` whose target isn't in the imported set** (the place
+  lands top-level / NULL parent), keeping oikumenea's `parent_id` RESTRICT FK strict as defence in depth.
+  Verified: Crimea loads as a top-level region, its 17 counties still attach beneath it, and normal
+  regions keep their country parent.
 
-## M17 — Data ingestion & connector framework
+## ~~M17 — Data ingestion & connector framework~~ → folded into M16
 
-**Status: planned.** Binding via **D-DataIngestion** in [roadmap-decisions.md](architecture/roadmap-decisions.md). A
-**generic, reusable** bulk reference-data pipeline that every catalog plugs into — generalizing the
-one-off M15 rank importer (which **stays as-is**, per decision) so M18 languages, M20 education
-registries, and M21 company registries all flow through one path. Maps onto Palantir Foundry's
-ingestion stages (Data Connection → Pipeline → Ontology mapping), right-sized for a self-hosted Go
-monolith (no Spark).
-
-**Goal.** Ingest external reference datasets uniformly — fetch → stage raw → map → idempotent
-upsert into a domain catalog — with provenance/lineage and re-runnable syncs, instead of a bespoke
-importer per domain.
-
-- **Delivers:**
-  - **Sources & connectors** (Data Connection): an `import_sources` registry (type ∈
-    `http`/`file` now; `jdbc-sql`/`object-store` parked as DS-44), credentials via the M0 crypto/KMS
-    seam; a pluggable `Connector` interface in `pkg/dataimport` (`Fetch(ctx, source) → RawBatch`).
-    First connector: **HTTP(S) download** (a release artifact by URL — Zenodo/GLEIF/national
-    registries); local bundled presets are the degenerate `file` case. On-demand or scheduled
-    (`import_syncs`, cron, on the M16 worker).
-  - **Raw staging** (raw dataset): `import_raw_batches` — the fetched payload landed verbatim
-    (checksum, `source_version`, `fetched_at`), re-mappable without re-fetch.
-  - **Transform → ontology** (Pipeline + mapping): each module **registers a mapper** for its
-    importable object-types (`language-scheme`, `education-institutions`, `company-registry`, …) that
-    turns raw records → a **canonical envelope** (`{object_type, source, source_version, license,
-    generated_at, records[]}`) → a **code-keyed, idempotent, non-destructive upsert** into the domain
-    catalog (never deletes; mismatches reported), in one transaction, emitted as audited Actions
-    (preserving the bulk-ingest ≠ audited-edit boundary).
-  - **Lineage & run ledger:** `import_runs` (source, version, counts, checksum, status, errors) +
-    `(source, source_version, imported_at)` provenance on every imported row + a sync-failure health
-    reporter.
-  - A generic `POST /import/{objectType}` endpoint over the mapper registry (instance-scope,
-    `import.manage`).
-- **Implements:** D-DataIngestion. M15's `/rank-scheme/import` is **not** retrofitted (stays a legacy
-  one-off). See [platform](modules/platform.md).
-- **Exit:** register an HTTP source, run a sync, watch raw stage then map → idempotent upsert; re-running
-  a sync changes nothing; `import_runs` records lineage; a failing fetch/map surfaces in health + audit.
+**Status: folded into M16 (D-Hermenea).** The generic connector/mapper/scheduler pipeline that was M17
+now lives in the **hermenea** companion service (see M16 above); oikumenea keeps only the generic
+`POST /import/{objectType}` upsert endpoint + per-row provenance. The pipeline *shape* of
+**D-DataIngestion** (sources → raw staging → mapper → canonical envelope → idempotent upsert → lineage)
+is adopted unchanged, only **relocated** out of process. M17 is no longer a separate milestone; the id
+is retained (append-only) for provenance.
 
 ## M18 — Language & writing systems
 
-**Status: planned.** Binding via **D-Languages** in [roadmap-decisions.md](architecture/roadmap-decisions.md). The
-**first real consumer of M17** — proves the framework end-to-end via a Glottolog-CLDF HTTP connector.
-The Glottolog dataset rides the M17 connector, so it adds **no** parked seam of its own. Additive over
-person/localization; the unit tie adds a tenant dependency.
+**Status: verified.** The core model — import, closure, `family_code`, country ties, cross-module
+links — was verified and sound; the two i18n binding-convention gaps an earlier review (2026-06-15)
+raised are now **closed and re-proven end-to-end** (see **Verdict (resolved)** at the end of this
+section). The web console UI (language browser + person/unit/locale language editors) is built.
+
+**Verified core (unchanged).** Verified end-to-end by loading the **real bundled presets**
+through the actual hermenea mappers + oikumenea import handlers + SQL into a live PostGIS DB: **27,177
+languoids** (4,853 families / 8,618 languages / 13,706 dialects), 212,955 closure rows, `family_code`
+derived for every node (English → Indo-European, 3,236 descendants via the closure), 11,909 country
+ties, 864 CLDR script links (134 gracefully skipped — unseeded scripts / unmatched languages), **zero
+orphaned parents** (parent-first load + FK resolution), an **idempotent re-run** (all 27,177 skipped),
+the `person_languages` `level='language'` composite-FK enforced (language insert OK, family rejected),
+and the read queries (`ListLanguoids` filters / `GetLanguoid` / `ListWritingSystems`). The HTTP/worker
+path is the **generic `POST /import/{objectType}` + `file` connector already proven by M16**; the two
+new object-types are thin registrations on it. Binding via **D-Languages** in
+[roadmap-decisions.md](architecture/roadmap-decisions.md). The **first NEW consumer of the M16 hermenea
+pipeline** — proves the framework end-to-end via the bundled Glottolog snapshot (`file` connector;
+swap to `http` for a newer CLDF release). Additive over person/localization; the unit tie adds a tenant
+dependency. See the new [language](modules/language.md) module.
 
 **Goal.** Model the world's languages faithfully (the full **Glottolog 5.3** genealogy), their writing
 systems (ISO 15924), and a person's language proficiency — at analytics grade, so language becomes a
 queryable, linkable dimension.
 
-- **Delivers:**
-  - **`language_languoids`** — the recursive **Glottolog forest**, one table: PK `code` (glottocode);
-    `level ∈ {family, language, dialect}`; translatable `name`; self-FK `parent_id` (father — strict
-    tree); denormalized `family_code` (root family, derived in SQL via the closure); nullable **UNIQUE**
-    `iso639_3`; `macroarea`; representative `latitude`/`longitude` (plain numeric — M18 precedes the
-    PostGIS Location); AES `status ∈ {not_endangered…extinct}`; `glottolog_version` provenance.
-  - **`language_languoid_closure`** — maintained transitive closure (mirrors the tenant closure) so
-    "all languages under Indo-European" is one lookup.
-  - **`language_languoid_countries`** — M:N → `geo_countries` (from CLDF `Country_IDs`).
-  - **`writing_system_script_types`** catalog (seeded `logographic`/`syllabary`/`alphabet`/`abjad`/
-    `abugida`/`featural`); **`writing_systems`** (PK `code` ISO 15924, translatable `name`,
-    `script_type`); **`language_writing_systems`** M:N (`is_primary`).
+- **Delivers** (migration `migrations/20260601000018_language.sql`, RID service **13**):
+  - **`language_languoids`** — the recursive **Glottolog forest**, one table: RID `id` PK with
+    `code` (glottocode) a **UNIQUE** lookup key (F-014 / D-ResourceIdentifiers — like `geo_countries`,
+    not a bare-`code` PK); `level ∈ {family, language, dialect}`; translatable `name`; self-FK
+    `parent_id` (father — strict tree, RESTRICT); denormalized `family_code` (root family, derived in
+    SQL via the closure on import); nullable **UNIQUE** `iso639_3`; `macroarea`; representative
+    `latitude`/`longitude` (plain numeric — M18 precedes the PostGIS Location); AES
+    `status ∈ {not_endangered…extinct}`; `glottolog_version` + `(source, source_version, imported_at)`
+    provenance.
+  - **`language_languoid_closure`** — maintained transitive closure (mirrors the tenant closure),
+    rebuilt in SQL at the end of each `language-scheme` import, so "all languages under Indo-European"
+    is one lookup.
+  - **`language_languoid_countries`** — plain M:N → `geo_countries` (from CLDF `Country_IDs`).
+  - **`writing_system_script_types`** catalog (migration-seeded `logographic`/`syllabary`/`alphabet`/
+    `abjad`/`abugida`/`featural`); **`writing_systems`** (RID PK, ISO-15924 `code` UNIQUE, translatable
+    `name`, `script_type`; **migration-seeded** with the living-language scripts);
+    **`language_writing_systems`** reified M:N (`is_primary`, RID link) — **import-loaded from CLDR**
+    (the `language-scripts` object-type), since neither Glottolog nor ISO-15924 carries the mapping.
   - **Language links:** `person_languages` (child of `person_persons`: `language_id` constrained to
-    `level='language'`, `cefr_level ∈ {A1…C2}` nullable, `is_native`; `pii:basic`, purge-erased);
-    `tenant_unit_languages` (unit official/working language); `i18n_locale_languages` (locale → canonical
-    language).
+    `level='language'` via a composite FK, `cefr_level ∈ {A1…C2}` nullable, `is_native`; `pii:basic`,
+    purge-erased); `tenant_unit_languages` (unit official/working language); `i18n_locale_languages`
+    (locale → canonical language, one per locale).
+  - **Read API:** read-only `LanguageService` (`GET /language/v1/languages`,
+    `GET /language/v1/languages/{id}`, `GET /language/v1/writing-systems`; `language.read`).
   - **Population:** the bundled preset is the **full pinned Glottolog 5.3 CLDF snapshot**
-    (`deploy/language-presets/glottolog-5.3.json`, ~26k languoids — opt-in asset, never a migration,
-    CC-BY-4.0 attribution carried) loaded via the M17 `language-scheme` mapper; the HTTP connector can
-    pull a newer CLDF release the operator points it at.
-- **Implements:** D-Languages, D-i18n (translatable names), D-DataIngestion (first consumer). See
-  [person](modules/person.md) + a new `language` module.
+    (`deploy/language-presets/glottolog-5.3.json`, **27,177** languoids — opt-in asset, never a
+    migration, CC-BY-4.0 attribution carried), plus `cldr-scripts.json` (CLDR language→script links),
+    both reproducible via `deploy/language-presets/gen-presets.py`. Loaded by the hermenea `glottolog`
+    (parent-first, in-memory) + `cldrscripts` mappers via `POST /import/{language-scheme,language-scripts}`.
+- **Implements:** D-Languages, D-DataIngestion (first new consumer), **D-i18n** (the languoid/script
+  `name` is a `locale→text` map assembled via `LocalizationService.NamesByID`, entity types
+  `languoid`/`writing_system`). See the [language](modules/language.md) module + ties on
+  [person](modules/person.md) / [tenant](modules/tenant.md) / [localization](modules/localization.md).
+- **UI (delivered):** ontology-registry entries (`languoid` / `writing_system` → explorer + ⌘K +
+  object view) + a server-side-search language picker + the person *Languages spoken* editor (SPEAKS,
+  CEFR + native), the unit official/working-language editor, and the read-only locale→language display
+  on the localization page (reconciled by import).
+- **Endpoints (links):** read-only `LanguageService` + the new sub-resources `GET|PUT|DELETE
+  /person/v1/persons/{id}/languages` (SPEAKS), `GET|PUT|DELETE /tenant/v1/units/{id}/languages`
+  (official/working), and read-only `GET /localization/v1/locale-languages`. `person_languages` is
+  erased on person purge.
 - **Exit:** import the Glottolog snapshot; query all languages under a family via the closure; a person
   speaks two languages with native + CEFR; a unit declares a working language; purge erases
   `person_languages`.
 
+**Verdict (i18n consistency review, 2026-06-15 — resolved).** The review asked whether the module is
+internally consistent and free of duplicated tables, and found two binding-convention gaps. Both are
+now closed and re-verified:
+
+- **No table duplication, no model redundancy.** `language_languoid_countries` reuses the shared
+  `geo_countries` registry (no parallel country table); the locale (`i18n_locales`, ISO-639-3 UI
+  language) and the languoid (`language_languoids`, Glottolog genealogical node) are **deliberately
+  distinct concepts**, bridged by `i18n_locale_languages` — *not* duplicates.
+- **Gap 1 — names now use the i18n store (resolved).** The `LanguageService` (and the new person/unit
+  language responses) return `name` as a `locale→text` map assembled via `LocalizationService.NamesByID`
+  (default-locale `name` column + `i18n_translations` overlay, entity types `languoid`/`writing_system`)
+  — the shape every other entity uses (cf. rank/tenant). Re-verified: an `i18n_translations` override
+  for `entity_type='languoid'` surfaces in the map (`internal/dataimport/language_integration_test.go`,
+  `TestLanguageNameLocaleMapAndOverride`).
+- **Gap 2 — `i18n_locale_languages` is reconciled (resolved).** `ReconcileLocaleLanguages` runs at the
+  end of each `language-scheme` import, matching `i18n_locales.code` to `language_languoids.iso639_3`
+  (self-healing, idempotent; `ukr`→Ukrainian, `eng`→English). Re-verified in the same suite +
+  `TestLanguageSchemeImportClosureAndReconcile`, and the read surface is exposed at
+  `GET /localization/v1/locale-languages`.
+- **Re-verification.** Fast integration suite green; the full **27,177-languoid Glottolog 5.3** preset
+  re-loads end-to-end through the real hermenea mappers + import handlers (212,955 closure rows,
+  `family_code` for every node, 864 CLDR script links / 134 gracefully skipped, locale links present,
+  idempotent re-run) via `OIKUMENEA_LANG_E2E=1 go test -tags integration` (`language_preset_e2e_test.go`).
+  The `verified` gate is restored.
+
 ## M19 — Location
 
-**Status: planned.** Binding via **D-Location** in [roadmap-decisions.md](architecture/roadmap-decisions.md). A new
+**Status: verified.** Binding via **D-Location** in [roadmap-decisions.md](architecture/roadmap-decisions.md). A new
 shared **standalone** entity that M20 (education buildings/dorms) and M21 (company addresses) reference
 by FK. Re-adopts geography/PostGIS/H3 — explicitly noted as *dropped from `drafts/`* in decisions.md,
-now reversed here with rationale.
+now reversed here with rationale. Built on the existing **`location` RID service (12)** beside the
+geo_countries/geo_places registry: migration `migrations/20260601000019_location.sql`
+(`location_locations` + `location_location_types`, the **MGRS plpgsql function**, the H3-deriving
+trigger, the `(12,1,3)`/`(12,1,4)`/`(12,3,0)` RID rows), the audited **LocationService** CRUD +
+radius/bbox in `internal/geo` (`api/location.conjure.yml`), the readiness-gate extension check, and the
+`/locations` web console page (browser + create-from-coordinate + radius search; `location`/
+`location_type` ontology-registry entries).
+
+**Verification (delivered).** PostGIS + h3-pg require a custom operator image (**`Dockerfile.postgres`** —
+`postgis/postgis:16-3.4` + h3-pg, wired into both compose files), since the stock image ships neither
+h3-pg nor an MGRS function. Integration tests (`internal/geo/location_integration_test.go`, against a
+real PostGIS + h3-pg DB) prove: create derives MGRS + all four H3 cells on write; an update recomputes
+them; an out-of-range coordinate is rejected; `ListLocationsNear` includes/excludes by `ST_DWithin`;
+soft-delete removes the row from reads; each write emits exactly one `system`-actor audited Action; and
+the `location_mgrs()` function matches known fixtures (Kyiv → `36U…`, Sydney → `56H…`, London → `30U…`).
+The migration applies cleanly + idempotently and on an existing DB (non-destructive upgrade); a live
+derivation of Kyiv yields `36UUA2418291607`.
 
 **Goal.** A reusable, analytics-grade place entity: a precise coordinate with derived spatial indexes
 plus a structured postal address over the existing country registry, so anything with a location

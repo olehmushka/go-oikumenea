@@ -1,0 +1,99 @@
+# Hermenea companion-service API (M16 / D-Hermenea). The out-of-process ingestion + scheduler service
+# (docs/modules/hermenea.md). This contract is the surface OIKUMENEA (and operators) call to drive
+# hermenea: the PUSH TRIGGER (POST /sync/{source}) plus read endpoints over hermenea's own DB
+# (sources / runs / jobs). Hermenea's loader calls oikumenea's ImportService (api/import.conjure.yml)
+# in the other direction; that coupling is hermenea -> oikumenea over HTTP only (never the DB).
+#
+# Auth: `auth: header` carries the OIKUMENEA_HERMENEA_TOKEN bearer; hermenea validates it (the trigger
+# trust direction). Generated Go lands in internal/conjure (server, implemented by hermenea's
+# transport) + client/ (so oikumenea can call the trigger). Never hand-edited.
+types:
+  definitions:
+    default-package: oikumenea.hermenea
+    objects:
+      JobRef:
+        docs: A reference to an enqueued worker job (the result of a sync trigger).
+        fields:
+          jobId: string
+          status: string
+      ImportSource:
+        docs: A registered external dataset hermenea can sync into oikumenea.
+        fields:
+          code: string
+          name: string
+          connectorType:
+            type: string
+            docs: http | file.
+          objectType:
+            type: string
+            docs: The oikumenea import target (e.g. geo-countries).
+          locator:
+            type: string
+            docs: URL (http) or bundled path (file).
+          cron:
+            type: optional<string>
+            docs: Cron spec; absent means trigger-only.
+          enabled: boolean
+      ImportRun:
+        docs: One map+load lineage record.
+        fields:
+          id: string
+          sourceCode: string
+          sourceVersion: optional<string>
+          status:
+            type: string
+            docs: running | succeeded | failed.
+          created: integer
+          updated: integer
+          skipped: integer
+          error: optional<string>
+          startedAt: string
+          finishedAt: optional<string>
+      WorkerJob:
+        docs: One unit of queued work in hermenea's runtime.
+        fields:
+          id: string
+          jobType: string
+          sourceCode: optional<string>
+          status:
+            type: string
+            docs: queued | running | succeeded | failed | dead.
+          attempts: integer
+          maxAttempts: integer
+          runAfter: string
+          lastError: optional<string>
+    errors:
+      UnknownSource:
+        docs: No import source is registered under the requested code.
+        namespace: Hermenea
+        code: NOT_FOUND
+        safe-args:
+          source: string
+services:
+  HermeneaService:
+    name: Hermenea Service
+    package: oikumenea.hermenea
+    base-path: /hermenea/v1
+    docs: The ingestion/scheduler companion's control + read API.
+    default-auth: header
+    endpoints:
+      triggerSync:
+        http: POST /sync/{source}
+        docs: Enqueue a sync job for a registered source (the push trigger from oikumenea).
+        args:
+          source:
+            type: string
+            param-type: path
+        returns: JobRef
+      listSources:
+        http: GET /sources
+        docs: List the registered import sources.
+        returns: list<ImportSource>
+      listRuns:
+        http: GET /runs
+        docs: List import-run lineage (most recent first).
+        returns: list<ImportRun>
+      listJobs:
+        http: GET /jobs
+        docs: List worker jobs (most recent first).
+        returns: list<WorkerJob>

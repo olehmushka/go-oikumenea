@@ -21,11 +21,19 @@ if [[ -f .env ]]; then set -a; . ./.env; set +a; fi
 
 ADMIN_DSN="${DATABASE_URL:-postgres://postgres:dev@localhost:5432/postgres?sslmode=disable}"
 TEST_DSN="${OIKUMENEA_TEST_DSN:-postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable}"
+# The hermenea companion owns a SEPARATE database (D-Hermenea); its integration tests run against a
+# dedicated hermenea_test DB with migrations/hermenea applied.
+HERMENEA_TEST_DSN="${HERMENEA_TEST_DSN:-postgres://postgres:dev@localhost:5432/hermenea_test?sslmode=disable}"
 
 # Derive the test database NAME from the test DSN's path (strip leading / and any ?query).
 TEST_DB="${TEST_DSN##*/}"; TEST_DB="${TEST_DB%%\?*}"
 if [[ -z "$TEST_DB" || "$TEST_DB" == "postgres" ]]; then
   echo "refusing to use '$TEST_DB' as the test database — set OIKUMENEA_TEST_DSN to a dedicated DB (e.g. .../oikumenea_test)" >&2
+  exit 1
+fi
+HERMENEA_TEST_DB="${HERMENEA_TEST_DSN##*/}"; HERMENEA_TEST_DB="${HERMENEA_TEST_DB%%\?*}"
+if [[ -z "$HERMENEA_TEST_DB" || "$HERMENEA_TEST_DB" == "postgres" ]]; then
+  echo "refusing to use '$HERMENEA_TEST_DB' as the hermenea test database — set HERMENEA_TEST_DSN to a dedicated DB" >&2
   exit 1
 fi
 
@@ -36,6 +44,8 @@ admin() { psql "$ADMIN_DSN" -v ON_ERROR_STOP=1 -tA "$@"; }
 if [[ "${1:-}" == "--reset" ]]; then
   echo "==> dropping database $TEST_DB"
   admin -c "DROP DATABASE IF EXISTS \"$TEST_DB\" WITH (FORCE);"
+  echo "==> dropping database $HERMENEA_TEST_DB"
+  admin -c "DROP DATABASE IF EXISTS \"$HERMENEA_TEST_DB\" WITH (FORCE);"
 fi
 
 # CREATE DATABASE is not IF-NOT-EXISTS in Postgres; gate on the catalog.
@@ -65,5 +75,16 @@ END \$\$;"
 echo "==> applying migrations to $TEST_DB"
 DATABASE_URL="$TEST_DSN" atlas migrate apply --env local
 
-echo "==> test database ready: $TEST_DSN"
+# Hermenea's own test database (separate schema set — migrations/hermenea, D-Hermenea). No app/RLS
+# roles: hermenea's DB has none of oikumenea's RID/RLS machinery.
+if [[ "$(admin -c "SELECT 1 FROM pg_database WHERE datname = '$HERMENEA_TEST_DB';")" != "1" ]]; then
+  echo "==> creating database $HERMENEA_TEST_DB"
+  admin -c "CREATE DATABASE \"$HERMENEA_TEST_DB\";"
+else
+  echo "==> database $HERMENEA_TEST_DB already exists"
+fi
+echo "==> applying migrations/hermenea to $HERMENEA_TEST_DB"
+HERMENEA_DATABASE_URL="$HERMENEA_TEST_DSN" atlas migrate apply --env hermenea
+
+echo "==> test databases ready: $TEST_DSN  +  $HERMENEA_TEST_DSN"
 echo "    run: set -a; . ./.env; set +a; go test -tags=integration ./internal/..."

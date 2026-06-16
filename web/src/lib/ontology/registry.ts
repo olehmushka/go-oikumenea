@@ -616,6 +616,104 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
       { label: "Grade (STANAG)", value: (r) => s(r.gradeCode) },
     ],
   },
+
+  languoid: {
+    type: "languoid",
+    kind: "object",
+    label: "Language",
+    labelPlural: "Languages",
+    module: "language",
+    blurb: "A Glottolog languoid (family/language/dialect), keyed by glottocode; the genealogical catalog.",
+    list: { path: "/language/v1/languages", search: "?limit=100", parse: pageParse("languoids") },
+    get: (id) => `/language/v1/languages/${id}`,
+    title: (l) => loc(l.name) || s(l.code) || ridTail(l.id),
+    subtitle: (l) => s(l.code),
+    columns: [
+      { key: "code", header: "Glottocode", value: (l) => s(l.code), render: "mono" },
+      { key: "name", header: "Name", value: (l) => loc(l.name) },
+      { key: "level", header: "Level", value: (l) => s(l.level), render: "pill", tone: (l) => (s(l.level) === "family" ? "indigo" : s(l.level) === "language" ? "green" : "slate") },
+      { key: "iso", header: "ISO 639-3", value: (l) => s(l.iso6393), render: "mono" },
+      { key: "family", header: "Family", value: (l) => s(l.familyCode), render: "mono" },
+    ],
+    properties: [
+      { label: "Glottocode", value: (l) => s(l.code), render: "mono" },
+      { label: "Name", value: (l) => loc(l.name) },
+      { label: "Level", value: (l) => s(l.level), render: "pill" },
+      { label: "ISO 639-3", value: (l) => s(l.iso6393), render: "mono" },
+      { label: "Family", value: (l) => s(l.familyCode), render: "mono" },
+      { label: "Macroarea", value: (l) => s(l.macroarea) },
+      { label: "Status", value: (l) => s(l.status) },
+    ],
+  },
+
+  writing_system: {
+    type: "writing_system",
+    kind: "object",
+    label: "Writing system",
+    labelPlural: "Writing systems",
+    module: "language",
+    blurb: "An ISO-15924 script (e.g. Latn, Cyrl), classified by script type; the writing-system catalog.",
+    list: { path: "/language/v1/writing-systems", parse: pageParse("writingSystems") },
+    title: (w) => loc(w.name) || s(w.code) || ridTail(w.id),
+    subtitle: (w) => s(w.code),
+    columns: [
+      { key: "code", header: "Code", value: (w) => s(w.code), render: "mono" },
+      { key: "name", header: "Name", value: (w) => loc(w.name) },
+      { key: "scriptType", header: "Script type", value: (w) => s(w.scriptType), render: "pill", tone: () => "indigo" },
+    ],
+  },
+
+  // ── M19: location ────────────────────────────────────────────────────────────
+  location: {
+    type: "location",
+    kind: "object",
+    label: "Location",
+    labelPlural: "Locations",
+    module: "location",
+    blurb: "A shared, standalone place: a coordinate + DB-derived MGRS/H3 + a structured address. Browse from the Locations page (a spatial query is required).",
+    // No unconditional list (listLocations needs a radius/bbox window) — get/properties so the object
+    // view & graph badges work; the Locations page is the browse/create surface.
+    get: (id) => `/location/v1/locations/${id}`,
+    title: (l) => s(l.mgrs) || s(l.locality) || ridTail(l.id),
+    subtitle: (l) => (l.latitude != null && l.longitude != null ? `${s(l.latitude)}, ${s(l.longitude)}` : undefined),
+    columns: [
+      { key: "mgrs", header: "MGRS", value: (l) => s(l.mgrs), render: "mono" },
+      { key: "locality", header: "Locality", value: (l) => s(l.locality) },
+      { key: "lat", header: "Lat", value: (l) => s(l.latitude), render: "mono", align: "right" },
+      { key: "lng", header: "Lng", value: (l) => s(l.longitude), render: "mono", align: "right" },
+    ],
+    properties: [
+      { label: "Latitude", value: (l) => s(l.latitude), render: "mono" },
+      { label: "Longitude", value: (l) => s(l.longitude), render: "mono" },
+      { label: "MGRS", value: (l) => s(l.mgrs), render: "mono" },
+      { label: "H3 (r5)", value: (l) => s(l.h3Res5), render: "mono" },
+      { label: "H3 (r9)", value: (l) => s(l.h3Res9), render: "mono" },
+      { label: "Type", value: (l) => loc(l.typeName) || undefined },
+      { label: "Country", value: (l) => (l.countryId ? ridTail(s(l.countryId)!) : undefined), render: "mono" },
+      { label: "Locality", value: (l) => s(l.locality) },
+      { label: "Street", value: (l) => [s(l.street), s(l.houseNumber)].filter(Boolean).join(" ") || undefined },
+      { label: "Admin area", value: (l) => [s(l.adminArea1), s(l.adminArea2)].filter(Boolean).join(", ") || undefined },
+      { label: "Postal code", value: (l) => s(l.postalCode) },
+      { label: "Raw address", value: (l) => s(l.rawAddress) },
+    ],
+  },
+
+  location_type: {
+    type: "location_type",
+    kind: "object",
+    label: "Location type",
+    labelPlural: "Location types",
+    module: "location",
+    blurb: "Instance-admin catalog of place purposes (building/address/online); descriptive only.",
+    list: { path: "/location/v1/location/types", parse: pageParse("locationTypes") },
+    title: (t) => s(t.code) || ridTail(t.id),
+    subtitle: (t) => loc(t.name) || undefined,
+    columns: [
+      { key: "code", header: "Code", value: (t) => s(t.code), render: "mono" },
+      { key: "name", header: "Name", value: (t) => loc(t.name) },
+      { key: "status", header: "Status", value: (t) => s(t.status), render: "pill", tone: (t) => statusTone(t.status) },
+    ],
+  },
 };
 
 /** Object types that can be browsed as a global table (and fanned out in search). */

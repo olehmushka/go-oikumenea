@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -113,6 +114,62 @@ func (s *Service) UpdateUnit(ctx context.Context, id string, patch domain.UnitPa
 		return s.record(ctx, tx, "unit.update", "unit", id, id, updated)
 	})
 	return out, err
+}
+
+// UpsertUnitLanguage adds (or flips the official flag of) a unit's official/working language
+// (D-Languages, M18; keyed on unit+language). The unit must exist; the languoid existence is enforced
+// by the FK (a violation surfaces as ErrUnknownLanguage). Returns the stored row joined to the name.
+func (s *Service) UpsertUnitLanguage(ctx context.Context, l domain.UnitLanguage) (domain.UnitLanguage, error) {
+	if err := l.Validate(); err != nil {
+		return domain.UnitLanguage{}, err
+	}
+	var out domain.UnitLanguage
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		repo := s.newRepo(tx)
+		if _, err := repo.GetUnit(ctx, l.UnitID); err != nil {
+			return err
+		}
+		_, err := repo.GetUnitLanguage(ctx, l.UnitID, l.LanguageID)
+		switch {
+		case err == nil:
+			if err := repo.UpdateUnitLanguage(ctx, l); err != nil {
+				return err
+			}
+		case errors.Is(err, domain.ErrUnitLanguageNotFound):
+			if err := repo.InsertUnitLanguage(ctx, l); err != nil {
+				return err
+			}
+		default:
+			return err
+		}
+		saved, err := repo.GetUnitLanguage(ctx, l.UnitID, l.LanguageID)
+		if err != nil {
+			return err
+		}
+		out = saved
+		return s.record(ctx, tx, "unit.language.upsert", "unit", l.UnitID, l.UnitID, map[string]any{"unitId": l.UnitID, "languageId": l.LanguageID})
+	})
+	return out, err
+}
+
+// DeleteUnitLanguage removes a unit's language by languoid id.
+func (s *Service) DeleteUnitLanguage(ctx context.Context, unitID, languageID string) error {
+	return s.inTx(ctx, func(tx pgx.Tx) error {
+		repo := s.newRepo(tx)
+		if err := repo.DeleteUnitLanguage(ctx, unitID, languageID); err != nil {
+			return err
+		}
+		return s.record(ctx, tx, "unit.language.delete", "unit", unitID, unitID, map[string]any{"unitId": unitID, "languageId": languageID})
+	})
+}
+
+// ListUnitLanguages lists a unit's official/working languages (the unit must exist).
+func (s *Service) ListUnitLanguages(ctx context.Context, unitID string) ([]domain.UnitLanguage, error) {
+	repo := s.newRepo(s.querier(ctx))
+	if _, err := repo.GetUnit(ctx, unitID); err != nil {
+		return nil, err
+	}
+	return repo.ListUnitLanguages(ctx, unitID)
 }
 
 // ListUnits returns a keyset-paginated page of units (by time-ordered RID), optionally filtered by

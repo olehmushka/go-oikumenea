@@ -14,10 +14,12 @@ The [`milestones.md`](../milestones.md) stage board sequences these; the
 [`ontology-mapping.md`](../ontology-mapping.md) registry classifies their (planned) Object/Link/Action
 kinds.
 
-Decisions here, in milestone order: **D-Worker** (M16) · **D-DataIngestion** (M17) · **D-Languages**
+Decisions here, in milestone order: **D-Worker** (M16, *superseded*) · **D-Hermenea** (M16, supersedes
+D-Worker, folds D-DataIngestion) · **D-GeoPlaces** (M16, WOF gazetteer + first connector, supersedes
+D-GeoSubdivisions, pulls PostGIS forward) · **D-DataIngestion** (M17→folded into M16) · **D-Languages**
 (M18) · **D-Location** (M19) · **D-Education** (M20) · **D-Companies** (M21) · **D-Religion** /
 **D-ClergyCredential** / **D-ReligiousAffiliation** / **D-SpecialPII** (M22–M25) · **D-GeoSubdivisions**
-/ **D-Vehicles** (M26).
+(*superseded by D-GeoPlaces*) / **D-Vehicles** (M26).
 
 > Cross-references into the **core** decisions (D-CryptoProvider, D-WebUI, D-Geo, D-Rank, D-Ontology,
 > D-PersonReadScope, …) point at [`decisions.md`](decisions.md); references among the planned-tier
@@ -26,6 +28,14 @@ Decisions here, in milestone order: **D-Worker** (M16) · **D-DataIngestion** (M
 ---
 
 ### D-Worker — A first-class background-job runtime (promotes DS-25)
+
+> **Superseded by [D-Hermenea](#d-hermenea--an-out-of-process-ingestion--scheduler-companion-supersedes-d-worker-folds-d-dataingestion) (M16).** The
+> *need* (scheduled syncs, a job queue, at-least-once with idempotency, retry/backoff, drain, a job
+> ledger, health+audit) is unchanged and carried forward — but the *placement* is reversed: the
+> runtime is **not** in-process inside oikumenea. It lives in a **separate companion binary,
+> `hermenea`**, with its **own Postgres**, coupled to oikumenea **only over HTTP**. The single-binary
+> premise below ("keeps the self-hosted, single-binary deployment story intact") is the one part
+> intentionally dropped (rationale in D-Hermenea). The original text is retained for provenance.
 
 **Decision.** The service gains an **in-process background-job runtime** — a cron **scheduler** + a
 **job queue** built over the existing `pkg/events` outbox, with witchcraft-managed lifecycle. This
@@ -53,7 +63,68 @@ expand-only.
 
 ---
 
+### D-Hermenea — An out-of-process ingestion & scheduler companion (supersedes D-Worker, folds D-DataIngestion)
+
+**Decision.** The background-job runtime and the reference-data ingestion pipeline are realized as a
+**second deployable, `hermenea`** (`cmd/hermenea`) — a companion ETL + scheduler service beside
+`oikumenea`, with its **own PostgreSQL** and its own Atlas migrations, coupled to oikumenea **only over
+HTTP** (it never touches oikumenea's database). This **supersedes [D-Worker](#d-worker--a-first-class-background-job-runtime-promotes-ds-25)**
+(reverses *in-process*) and **collapses [D-DataIngestion](#d-dataingestion--a-generic-reference-data-ingestion--connector-framework-extends-d-ontology) (M17) into M16** (the connector
+framework moves into hermenea). The name pairs *hermenea* (interpretation — it interprets/imports the
+world) with *oikumenea*.
+
+- **What lives in hermenea** (its own DB, own ontology/RIDs): the `Connector` interface
+  (`Fetch(ctx, source) → RawBatch`; **HTTP(S)** + the degenerate **`file`** connector), `import_sources`
+  registry, `import_raw_batches` raw staging, a per-object-type **mapper registry** (raw records → the
+  canonical envelope), an in-process **cron scheduler + `worker_jobs` queue** (`SELECT … FOR UPDATE SKIP
+  LOCKED`, at-least-once with idempotency keys, **exponential backoff with per-job-type config**,
+  dead-letter after max attempts, witchcraft-managed **graceful drain**, a **job-health reporter**), and
+  the `import_runs` lineage ledger.
+- **What lives in oikumenea**: a **generic `POST /import/{objectType}`** endpoint over an upsert
+  registry — each importable object-type registers a **code-keyed, idempotent, non-destructive** upsert
+  handler run in one transaction and emitted as **audited Actions** (preserving bulk-ingest ≠
+  audited-edit); **per-row provenance** (`source`, `source_version`, `imported_at`) on imported rows; the
+  `import.manage` permission.
+- **Two trust directions, two runtime secrets** (env/ECV refreshable, never install config, never
+  stored): `HERMENEA_OIKUMENEA_TOKEN` authorizes hermenea→oikumenea **import** calls; `OIKUMENEA_HERMENEA_TOKEN`
+  authorizes oikumenea→hermenea **push triggers** (`POST /sync/{source}`). Beyond cron, an oikumenea
+  admin/console action pushes a trigger to hermenea.
+- **Service principal** — the import token maps to a `hermenea-importer` **service principal** holding
+  exactly `import.manage` (instance scope), audited as a **`system`** actor (the audit actor-shape CHECK
+  already permits `person | system`); see the **L-AuthzOnly** amendment in [decisions.md](decisions.md).
+
+**Why.** The user requires hard service separation: ingestion is failure-prone, bursty, and pulls in
+outbound network deps and parser surface that should **not** share a process or a database with the PDP.
+An out-of-process companion keeps oikumenea's core synchronous and dependency-light, makes the importer
+independently deployable/scalable/restartable, and forces a clean **HTTP-only** contract (oikumenea's
+public import API is the only coupling — the extraction-ready boundary, realized). Per-row provenance +
+idempotent re-sync + ingest≠edit (the transferable Foundry parts of D-DataIngestion) are all preserved.
+
+**Why not** (a) *In-process worker (D-Worker as written)*: couples ingestion blast radius to the PDP
+process and DB; rejected for separation. (b) *Hermenea writes oikumenea's DB directly*: breaks the
+module/service boundary and the audit/PDP invariants; the HTTP import API is the only sanctioned write
+path. (c) *Pull triggers (hermenea polls oikumenea)*: added latency + a polling endpoint for no benefit
+over a direct push; push chosen. (d) *One shared secret both directions*: distinct per-direction secrets
+limit blast radius. (e) *OIDC client-credentials for the service*: heavier IdP setup than the operator's
+runtime shared secret; the env-secret path is simpler and audited as `system`.
+
+**Consequence.** A new `cmd/hermenea` binary + `internal/hermenea/**` + `api/hermenea.conjure.yml` +
+`migrations/hermenea/` (own `atlas.sum`); oikumenea gains the import endpoint + service-principal auth +
+`import.manage` + provenance columns + a push-trigger client. **D-Worker** and **D-DataIngestion** are
+superseded/folded; **M16 absorbs M17** ([milestones](../milestones.md)). DS-25 stays promoted; **DS-44**
+(more connector types) stays parked. Additive / expand-only on oikumenea; hermenea is greenfield.
+
+---
+
 ### D-DataIngestion — A generic reference-data ingestion & connector framework (extends D-Ontology)
+
+> **Folded into [D-Hermenea](#d-hermenea--an-out-of-process-ingestion--scheduler-companion-supersedes-d-worker-folds-d-dataingestion) (M16 absorbs M17).** The pipeline
+> shape below (sources/connectors → raw staging → mapper → canonical envelope → idempotent upsert →
+> lineage) is **adopted unchanged**, but **relocated**: connectors, raw staging, the mapper registry,
+> `import_sources`/`import_raw_batches`/`import_runs` and the scheduler live in the **hermenea**
+> service's own DB — *not* `pkg/dataimport` inside oikumenea. oikumenea keeps only the generic
+> `POST /import/{objectType}` upsert endpoint + per-row provenance + `import.manage`. The original text
+> is retained for the pipeline-design rationale it still carries.
 
 **Decision.** Bulk reference-data import becomes a **generic, reusable pipeline** in
 [platform](../modules/platform.md) (`pkg/dataimport`), not a bespoke importer per domain. It mirrors
@@ -121,10 +192,18 @@ person's **language proficiency**.
   `level='language'`, `cefr_level ∈ {A1…C2}` nullable, `is_native`; `pii:basic`, purge-erased);
   `tenant_unit_languages` (a unit's official/working language); `i18n_locale_languages` (a locale's
   canonical language).
-- **Population** — the bundled preset is the **full pinned Glottolog 5.3 CLDF snapshot** (~26k
-  languoids, `deploy/language-presets/glottolog-5.3.json`, **opt-in asset, never a migration**,
-  CC-BY-4.0 attribution carried), loaded through the **D-DataIngestion** `language-scheme` mapper; the
-  HTTP connector can pull a newer CLDF release on operator request.
+- **Population** — the migration **bootstraps the ~50 most-spoken languages** (`level='language'`,
+  required columns only; real glottocodes so the first import updates them in place) so the catalog is
+  usable on a fresh DB before any import — mirroring the `geo_countries` seed. Beyond that, by default
+  the sources fetch **live from upstream master each run** via hermenea's
+  `http-files` streaming connector + a Go transform: Glottolog CLDF (`languages.csv` + `values.csv`,
+  ~27k languoids) and CLDR (`supplementalData.xml` + `iso-639-3.tab`) are staged to disk and mapped by
+  the `CLDFMapper` / `SupplementalMapper` (the Go port of `deploy/language-presets/gen-presets.py`),
+  emitting the whole forest as one page (single transaction). The **bundled preset** (the pinned
+  Glottolog 5.3 CLDF snapshot, `deploy/language-presets/*.json`, opt-in asset / never a migration,
+  CC-BY-4.0 attribution carried) remains as the offline/air-gap `file`-connector fallback. Tracking
+  master trades reproducibility for freshness; a failed run is logged + retried + dead-lettered and
+  never corrupts the catalog (imports are transactional).
 
 **Why.** Language is a recurring analytics/linking dimension (who speaks what; a unit's working
 language; locale provenance). Modeling it on **Glottolog** — the de-facto standard genealogy with
@@ -140,8 +219,24 @@ right home. (d) *A `living` boolean*: loses Glottolog's graded AES endangerment.
 
 **Consequence.** New `language` module + tables above; person/tenant/localization gain language ties;
 new Object/Link kinds in [ontology-mapping](../ontology-mapping.md). First **D-DataIngestion** consumer.
-Lands as **M18** ([milestones](../milestones.md)), on M17 (+ M5/M2; M3 for the unit tie). Additive /
-expand-only.
+Lands as **M18** ([milestones](../milestones.md)), on M16 (the M17 pipeline, folded into M16) + M5/M2;
+M3 for the unit tie. Additive / expand-only.
+
+**Built (M18) — reconciliations.** Three details where the as-built code refines this decision (the
+code is authoritative once built; recorded here so the two don't drift):
+1. **RID PK, not `code` PK.** `language_languoids` (and `writing_systems`/`writing_system_script_types`)
+   are **RID-keyed** (`id` PK, service 13), with `code`/`iso639_3` retained as UNIQUE lookup keys —
+   consistent with **F-014/D-ResourceIdentifiers** making every structural entity RID-keyed (as
+   `geo_countries`/`geo_places` already are). The glottocode is still the universal external spine.
+2. **Writing systems are migration-seeded; the language↔script M:N is imported from CLDR.** Glottolog
+   has no script data and ISO-15924 is only a code registry, so `writing_systems` + `script_types` are
+   seeded in the migration (small/stable) and `language_writing_systems` is loaded by a second import
+   object-type, **`language-scripts`**, sourced from CLDR `languageData` (`is_primary`). The Glottolog
+   forest loads via the **`language-scheme`** object-type.
+3. **Import shape.** The ~27k-languoid snapshot loads in one in-memory, parent-first envelope (not paged)
+   so the closure + `family_code` rebuild sees the whole forest in one transaction; the bundled presets
+   (`deploy/language-presets/{glottolog-5.3.json,cldr-scripts.json}`) are reproducible via
+   `gen-presets.py`. UI is **deferred** (the `ui` gate).
 
 ---
 
@@ -460,7 +555,82 @@ identity), though *storing* gender identity stays a separate parked choice. See
 
 ---
 
-### D-GeoSubdivisions — Seeded ISO-3166-2 subnational-division registry (extends D-Geo)
+### D-GeoPlaces — Who's-On-First administrative gazetteer (`geo_places`), the first hermenea connector (extends D-Geo, supersedes D-GeoSubdivisions, pulls PostGIS forward)
+
+**Decision.** Geography gains a **full administrative gazetteer** sourced from **Who's-On-First (WOF)**,
+loaded by hermenea's **first real connector** (M16, D-Hermenea). A new shared platform table
+**`geo_places`** holds the four WOF admin placetypes — **country / region / county / locality**
+(city·town·village; WOF has no town/village split — that is a `population` property, not a placetype) —
+as a single tree: an `id uuid` **RID PK** under the **`location` service (code 12)** — minted by
+`new_id(12,1,2)` with a `rid_*` shape `CHECK` like every other Object (F-014; *amended from the
+original `wof_id BIGINT` PK*) — with `wof_id BIGINT NOT NULL UNIQUE` retained as the stable WOF
+import/concordance key; `placetype TEXT`+`CHECK`; `parent_id uuid` self-FK → `geo_places(id)`
+(a structural containment edge derived from `wof:hierarchy` to the nearest imported ancestor, the
+`rank_types` pattern — **not** a reified Link); denormalized `country_id uuid` → `geo_countries(id)`;
+default-locale `name` (other locales via the i18n store, `entity_type='geo_place'`); `population`;
+`hierarchy`/`concordances` JSONB; `status` (`active`/`retired`, the latter mirroring WOF
+`mz:is_current=0`/supersession — **non-destructive**); the `(source, source_version, imported_at)`
+provenance trio; and **PostGIS** geometry — `geom GEOMETRY(Geometry,4326)` (full shape) + DB-derived
+`centroid`/`bbox`, served as GeoJSON via `ST_AsGeoJSON`, GIST-indexed. The existing **`geo_countries`
+is enriched in place** (additive `wof_id` + geometry + `iso_a3`/`numeric_code`), and a
+`placetype=country` WOF record mirrors its geometry onto the country row in the same import
+transaction. Coverage is **global** (all four placetypes worldwide), rolled out **per country** (one
+`wof-geo-<iso>` source each, cron-staggered, Ukraine first).
+
+**Amendment (M16 — geo becomes RID-keyed, full RID end-to-end).** `geo_countries` left the
+natural-key carve-out: it gained an `id uuid` **RID PK** (`new_id(12,1,1)`, location service 12) with
+`code CHAR(2)` demoted to `NOT NULL UNIQUE` (the canonical external **lookup** key). **All 8 country
+FK consumers** — `person.country_of_birth`, `person_citizenships`/`person_residences`/`person_phones`,
+`document_documents.issuing_country`, `document_personal_code_schemes`, `rank_systems`, and
+`geo_places` — repoint to `geo_countries(id)` (the columns become `*_id uuid`). The **country RID
+flows end-to-end** through domain → Conjure → web (ISO `code` is lookup-only). Because country entry
+was free-text ISO with no countries endpoint, a read-only **`GeoService` (`GET /geo/countries`,
+`country.read`)** returns `{id, code, name, status}` so clients resolve a code to its RID and populate
+pickers. Ingestion is unchanged on the wire — the WOF/ISO importer still streams natural keys and
+resolves `wof_id`/`code → id` in SQL on upsert (an unresolvable non-zero parent/country trips the FK
+loudly, preserving the parent-first RESTRICT guarantee); the phone country is derived as an ISO code
+and likewise resolved in SQL; the rank **preset import** resolves its ISO country code to the RID
+before insert.
+
+**Pipeline / ingestion.** WOF ships as per-country "combined" SQLite admin DBs (`.db.bz2`), not a JSON
+API, and a single country's geometry far exceeds the 16 MiB in-memory batch cap. So M16 adds: a new
+**`wof-sqlite` StreamingConnector** (fetch `.db.bz2` → bzip2-decompress → stage to a temp file, never
+in-memory/BYTEA) and a **paged-mapper seam** (`PagedMapper`) that walks the SQLite **parent-first**
+(country→region→county→locality) emitting bounded pages, each loaded as its own canonical envelope via
+`POST /import/geo-places`; `import_runs` aggregates the counts. Idempotency is keyed on `source_version`
+(re-import of the same WOF edition skips; a newer one updates; never deletes). Hermenea stays
+PostGIS-agnostic — it ships GeoJSON **text**; only oikumenea materializes geometry.
+
+**Why.** A real gazetteer with shapes + parentage is the "better information for relations & graphs"
+the registry verticals need; WOF is an open, ID-stable, concordance-rich global admin source. Keeping
+`geo_countries` as the ISO-keyed FK anchor (enriched, not re-keyed) preserves every existing consumer
+while giving countries WOF geometry. A WOF tree subsumes ISO-3166-2 subdivisions **and** reaches down to
+localities, which ISO-3166-2 cannot. Pulling **PostGIS forward** from D-Location (M19) is required to
+store/query the shapes now; M19 reuses the same stack.
+
+**Why not** (a) *Keep the ISO-3166-2 `geo_subdivisions` plan (D-GeoSubdivisions)*: ISO-3166-2 has no
+codes for cities/villages and no geometry — WOF is strictly richer, so D-GeoSubdivisions is
+**superseded**. (b) *Full WOF replacement (re-key `geo_countries` onto WOF ids)*: breaks binding D-Geo
+and 8 FKs — rejected. (c) *JSONB GeoJSON instead of PostGIS*: dead-weight, unqueryable — rejected.
+(d) *Single planet SQLite in one batch*: multi-GB, no failure isolation — per-country streaming +
+paging chosen instead.
+
+**Consequence.** New `geo_places` table + enriched `geo_countries` (folded into the bootstrap migration,
+PostGIS extension added); new import object-type `geo-places` + handler in `dataimport`; hermenea gains
+the `wof-sqlite` connector, the `PagedMapper` seam, a file-staged raw batch (`staged_path`), and the
+`geo-places` mapper; new reference Object `GeoPlace` in [ontology-mapping](../ontology-mapping.md).
+**Supersedes D-GeoSubdivisions**; **D-Vehicles**' plate-region FK `subdivision_id` → `geo_places`
+(placetype=region). Global locality coverage is millions of rows + GBs of geometry — a long, staggered
+backfill, not a single sync. Lands in **M16** ([milestones](../milestones.md)). Additive / expand-only.
+
+---
+
+### D-GeoSubdivisions — Seeded ISO-3166-2 subnational-division registry (extends D-Geo) — **SUPERSEDED by D-GeoPlaces**
+
+> **Superseded (M16).** Replaced by **D-GeoPlaces** (the WOF `geo_places` gazetteer), which covers
+> region/county/locality with codes, geometry, and parentage that ISO-3166-2 cannot. The original
+> design is retained below for provenance; `geo_subdivisions` is **not built**, and D-Vehicles'
+> `subdivision_id` now targets `geo_places`.
 
 **Decision.** Geography gains a **second seeded reference layer below the country**: a new shared table
 **`geo_subdivisions`**, owned/seeded by [platform](../modules/platform.md) exactly like

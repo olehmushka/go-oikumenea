@@ -84,6 +84,19 @@ const (
 	// graph (D-Graphs)
 	PermGraphRead Permission = "graph.read"
 
+	// geo (D-Geo) — read the RID-keyed country registry so clients can resolve a country to its RID.
+	PermCountryRead Permission = "country.read"
+
+	// language (D-Languages, M18) — read the Glottolog languoid + writing-system registry.
+	PermLanguageRead Permission = "language.read"
+
+	// location (D-Location, M19) — the shared standalone place entity (PostGIS point + address). It
+	// is instance-global (a location carries no unit scope of its own; access scoping is the owning
+	// link's job), so reads/writes are satisfied anywhere via the PEP.
+	PermLocationRead   Permission = "location.read"
+	PermLocationCreate Permission = "location.create"
+	PermLocationUpdate Permission = "location.update"
+
 	// i18n
 	PermLocaleRead        Permission = "locale.read"
 	PermTranslationRead   Permission = "translation.read"
@@ -98,8 +111,13 @@ const (
 	PermOrderTypeManage          Permission = "order.type.manage"
 	PermPersonalCodeSchemeManage Permission = "personal-code-scheme.manage"
 	PermCountryManage            Permission = "country.manage"
+	PermLocationTypesManage      Permission = "location.types.manage"
 	PermInstanceConfig           Permission = "instance.config"
 	PermInstanceAdminManage      Permission = "instance.admin.manage"
+	// import — the generic reference-data import endpoint (M16 / D-Hermenea). Held by the
+	// `hermenea-importer` service principal (shared-secret path) and grantable to a human instance
+	// admin; the PDP only satisfies it on the instance plane.
+	PermImportManage Permission = "import.manage"
 )
 
 // instanceScope is the set of permissions only meaningful on the instance-admin plane
@@ -116,10 +134,12 @@ var instanceScope = map[Permission]struct{}{
 	PermOrderTypeManage:          {},
 	PermPersonalCodeSchemeManage: {},
 	PermCountryManage:            {},
+	PermLocationTypesManage:      {},
 	PermLocaleManage:             {},
 	PermTranslationManage:        {},
 	PermInstanceConfig:           {},
 	PermInstanceAdminManage:      {},
+	PermImportManage:             {},
 }
 
 // catalog is the closed vocabulary — the union of every permission constant above. It is the
@@ -138,9 +158,13 @@ var catalog = func() map[Permission]struct{} {
 		PermAuditRead,
 		PermRankSchemeRead,
 		PermGraphRead,
+		PermCountryRead,
+		PermLanguageRead,
+		PermLocationRead, PermLocationCreate, PermLocationUpdate,
 		PermLocaleRead, PermTranslationRead, PermLocaleManage, PermTranslationManage,
 		PermRankSchemeManage, PermGraphManage, PermClosureRebuild, PermDocumentTypeManage, PermOrderTypeManage,
-		PermPersonalCodeSchemeManage, PermCountryManage, PermInstanceConfig, PermInstanceAdminManage,
+		PermPersonalCodeSchemeManage, PermCountryManage, PermLocationTypesManage, PermInstanceConfig, PermInstanceAdminManage,
+		PermImportManage,
 	}
 	m := make(map[Permission]struct{}, len(all))
 	for _, p := range all {
@@ -198,7 +222,7 @@ var readerPerms = []Permission{
 	PermUnitRead, PermPersonRead, PermMembershipRead, PermPositionRead,
 	PermDocumentRead, PermPersonalCodeRead, PermOrderRead,
 	PermRoleRead, PermAssignmentRead,
-	PermRankSchemeRead, PermGraphRead,
+	PermRankSchemeRead, PermGraphRead, PermCountryRead, PermLanguageRead, PermLocationRead,
 	PermDocumentTypeRead, PermPersonalCodeSchemeRead, PermOrderTypeRead,
 	PermLocaleRead, PermTranslationRead,
 }
@@ -211,6 +235,7 @@ var managerOnlyPerms = []Permission{
 	PermDocumentCreate, PermDocumentUpdate,
 	PermPersonalCodeCreate, PermPersonalCodeUpdate,
 	PermOrderCreate,
+	PermLocationCreate, PermLocationUpdate,
 }
 
 var adminOnlyPerms = []Permission{

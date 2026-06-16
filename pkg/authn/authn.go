@@ -13,11 +13,26 @@ import "context"
 
 // Subject is the resolved PDP context attached to an authenticated request. PersonID is the PDP
 // subject the authorization layer decides on; AccountID/Email are the login attachment it came
-// through (empty for out-of-band/system contexts that set only a person).
+// through (empty for out-of-band/system contexts that set only a person). Service is set instead of
+// PersonID for a non-person SERVICE PRINCIPAL — the hermenea importer authenticated by a runtime
+// shared secret (D-Hermenea; L-AuthzOnly amendment): it holds a fixed permission set and is audited
+// as a `system` actor, not a person.
 type Subject struct {
 	PersonID  string
 	AccountID string
 	Email     string
+	Service   string
+}
+
+// ServiceHermeneaImporter is the service-principal id of the hermenea companion's importer: it holds
+// exactly `import.manage` (instance scope). Set as Subject.Service by the shared-secret auth path.
+const ServiceHermeneaImporter = "hermenea-importer"
+
+// ServiceID returns the service-principal id attached to ctx (empty when the subject is a person or
+// absent). Consumers use it to recognize the import service principal.
+func ServiceID(ctx context.Context) string {
+	s, _ := FromContext(ctx)
+	return s.Service
 }
 
 // ctxKey is the unexported context key type (avoids collisions with other packages' keys).

@@ -173,7 +173,7 @@
             "type": "string"
           },
           "country": {
-            "description": "ISO-3166 national origin (geo_countries code); omit for a supranational system (NATO/UN).",
+            "description": "Country RID of the national origin (resolve via GET /geo/countries); omit for a supranational system (NATO/UN).",
             "type": "string"
           },
           "name": {
@@ -552,6 +552,42 @@
         ],
         "type": "object"
       },
+      "CanonicalEnvelope": {
+        "description": "The interchange document hermenea produces and oikumenea upserts. `objectType` must equal the\npath object-type. `records` are object-type-specific JSON objects the registered handler reads.\n",
+        "properties": {
+          "generatedAt": {
+            "description": "ISO-8601 timestamp the upstream snapshot was generated (lineage only).",
+            "type": "string"
+          },
+          "license": {
+            "description": "License/attribution string carried for lineage (not persisted per-row).",
+            "type": "string"
+          },
+          "objectType": {
+            "description": "The importable object-type key (e.g. geo-countries); must match the path parameter.",
+            "type": "string"
+          },
+          "records": {
+            "description": "The object-type-specific records to upsert; each is a JSON object.",
+            "items": {},
+            "type": "array"
+          },
+          "source": {
+            "description": "Stable source identifier (e.g. iso-3166) — stamped as row provenance.",
+            "type": "string"
+          },
+          "sourceVersion": {
+            "description": "The source's version/edition (e.g. 2024) — stamped as row provenance.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "objectType",
+          "records",
+          "source"
+        ],
+        "type": "object"
+      },
       "Citizenship": {
         "description": "A person's effective-dated nationality in a country (D-Geo). A person may hold several; at most one active per country.",
         "properties": {
@@ -564,7 +600,7 @@
             "type": "string"
           },
           "country": {
-            "description": "ISO-3166-1 alpha-2 country code (geo registry).",
+            "description": "Country RID (resolve via GET /geo/countries).",
             "type": "string"
           },
           "id": {
@@ -662,6 +698,49 @@
         },
         "required": [
           "instanceAdmin"
+        ],
+        "type": "object"
+      },
+      "Country": {
+        "description": "A country in the ISO-3166-1 registry. `id` is the RID (the reference key); `code` is the stable ISO-3166-1 alpha-2 lookup code; `name` is the default-locale (English) name.",
+        "properties": {
+          "code": {
+            "description": "ISO-3166-1 alpha-2 code (e.g. UA, PL); the stable, locale-agnostic lookup key.",
+            "type": "string"
+          },
+          "id": {
+            "description": "The country's RID (location service); what person/document/rank reference.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Default-locale (English) display name; other locales arrive via the i18n store.",
+            "type": "string"
+          },
+          "status": {
+            "description": "active | retired.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "id",
+          "name",
+          "status"
+        ],
+        "type": "object"
+      },
+      "CountryList": {
+        "description": "The countries, in display order.",
+        "properties": {
+          "countries": {
+            "items": {
+              "$ref": "#/components/schemas/Country"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "countries"
         ],
         "type": "object"
       },
@@ -838,6 +917,9 @@
           "credentials": {
             "type": "string"
           },
+          "dateOfDeath": {
+            "type": "string"
+          },
           "displayName": {
             "type": "string"
           },
@@ -851,10 +933,6 @@
             "type": "string"
           },
           "preferred": {
-            "type": "string"
-          },
-          "rankId": {
-            "description": "Optional initial rank (validated against the rank scheme).",
             "type": "string"
           },
           "sex": {
@@ -1047,7 +1125,7 @@
             "type": "string"
           },
           "issuingCountry": {
-            "description": "ISO-3166-1 alpha-2 code of the issuing country (geo registry); lets one person hold same-type papers from several countries.",
+            "description": "Country RID of the issuing country (resolve via GET /geo/countries); lets one person hold same-type papers from several countries.",
             "type": "string"
           },
           "number": {
@@ -1518,6 +1596,124 @@
         ],
         "type": "object"
       },
+      "ImportResult": {
+        "description": "The per-object-type outcome of one idempotent upsert.",
+        "properties": {
+          "created": {
+            "description": "Rows newly inserted.",
+            "format": "int32",
+            "type": "integer"
+          },
+          "objectType": {
+            "type": "string"
+          },
+          "skipped": {
+            "description": "Rows already up to date (idempotent no-ops).",
+            "format": "int32",
+            "type": "integer"
+          },
+          "updated": {
+            "description": "Existing rows whose values changed.",
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created",
+          "objectType",
+          "skipped",
+          "updated"
+        ],
+        "type": "object"
+      },
+      "ImportRun": {
+        "description": "One map+load lineage record.",
+        "properties": {
+          "created": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "error": {
+            "type": "string"
+          },
+          "finishedAt": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "skipped": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "sourceCode": {
+            "type": "string"
+          },
+          "sourceVersion": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string"
+          },
+          "status": {
+            "description": "running | succeeded | failed.",
+            "type": "string"
+          },
+          "updated": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created",
+          "id",
+          "skipped",
+          "sourceCode",
+          "startedAt",
+          "status",
+          "updated"
+        ],
+        "type": "object"
+      },
+      "ImportSource": {
+        "description": "A registered external dataset hermenea can sync into oikumenea.",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "connectorType": {
+            "description": "http | file.",
+            "type": "string"
+          },
+          "cron": {
+            "description": "Cron spec; absent means trigger-only.",
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "locator": {
+            "description": "URL (http) or bundled path (file).",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "objectType": {
+            "description": "The oikumenea import target (e.g. geo-countries).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "connectorType",
+          "enabled",
+          "locator",
+          "name",
+          "objectType"
+        ],
+        "type": "object"
+      },
       "ImportSystem": {
         "properties": {
           "categories": {
@@ -1616,6 +1812,22 @@
         ],
         "type": "object"
       },
+      "JobRef": {
+        "description": "A reference to an enqueued worker job (the result of a sync trigger).",
+        "properties": {
+          "jobId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId",
+          "status"
+        ],
+        "type": "object"
+      },
       "Kinship": {
         "description": "A directional parent→child blood/legal parentage link (D-PersonRelationships; Link link__kin_parent_of). Siblings are derived, never stored.",
         "properties": {
@@ -1640,6 +1852,73 @@
           "id",
           "parentId",
           "status"
+        ],
+        "type": "object"
+      },
+      "Languoid": {
+        "description": "A node in the Glottolog forest. `id` is the RID (the reference key); `code` is the stable glottocode; `name` is the locale-\u003etext display map.",
+        "properties": {
+          "code": {
+            "description": "Glottocode (8-char), the stable, locale-agnostic lookup key (e.g. stan1293).",
+            "type": "string"
+          },
+          "familyCode": {
+            "description": "The root-family glottocode (derived via the closure).",
+            "type": "string"
+          },
+          "id": {
+            "description": "The languoid's RID (language service); what person/unit/locale links reference.",
+            "type": "string"
+          },
+          "iso6393": {
+            "description": "ISO 639-3 code, when the languoid has one (families/dialects usually do not).",
+            "type": "string"
+          },
+          "level": {
+            "description": "family | language | dialect.",
+            "type": "string"
+          },
+          "macroarea": {
+            "description": "Glottolog macroarea.",
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "locale-\u003etext display name (all enabled locales; default-locale `name` column + i18n store).",
+            "type": "object"
+          },
+          "parentId": {
+            "description": "The RID of the immediate parent languoid (absent for a top-level family / isolate).",
+            "type": "string"
+          },
+          "status": {
+            "description": "AES endangerment (not_endangered…extinct).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "id",
+          "level",
+          "name",
+          "status"
+        ],
+        "type": "object"
+      },
+      "LanguoidList": {
+        "description": "A page of languoids in code order.",
+        "properties": {
+          "languoids": {
+            "items": {
+              "$ref": "#/components/schemas/Languoid"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "languoids"
         ],
         "type": "object"
       },
@@ -1691,6 +1970,47 @@
         ],
         "type": "object"
       },
+      "LocaleLanguage": {
+        "description": "A supported locale's canonical Glottolog language (D-Languages, M18; Link link__locale_language).\nRead-only: the link is reconciled by the language-scheme import (matching the locale's ISO-639-3\ncode to a languoid's iso639_3), not edited directly.\n",
+        "properties": {
+          "languageId": {
+            "description": "The matched languoid's URN RID.",
+            "type": "string"
+          },
+          "locale": {
+            "description": "The locale's ISO 639-3 code.",
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "The languoid's translatable display name as a locale -\u003e text map (all enabled locales; D-i18n).",
+            "type": "object"
+          }
+        },
+        "required": [
+          "languageId",
+          "locale",
+          "name"
+        ],
+        "type": "object"
+      },
+      "LocaleLanguageList": {
+        "description": "The locale -\u003e canonical-language links (D-Languages, M18).",
+        "properties": {
+          "localeLanguages": {
+            "items": {
+              "$ref": "#/components/schemas/LocaleLanguage"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "localeLanguages"
+        ],
+        "type": "object"
+      },
       "LocaleList": {
         "description": "The supported locales, in display order.",
         "properties": {
@@ -1703,6 +2023,205 @@
         },
         "required": [
           "locales"
+        ],
+        "type": "object"
+      },
+      "Location": {
+        "description": "A shared place — a precise coordinate, DB-derived spatial indexes, and a structured postal address.",
+        "properties": {
+          "adminArea1": {
+            "type": "string"
+          },
+          "adminArea2": {
+            "type": "string"
+          },
+          "countryId": {
+            "description": "The country's RID (resolve an ISO alpha-2 code via GET /geo/countries).",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "h3Res11": {
+            "description": "DB-derived H3 cell at resolution 11 (~20m).",
+            "type": "string"
+          },
+          "h3Res5": {
+            "description": "DB-derived H3 cell at resolution 5 (~9km).",
+            "type": "string"
+          },
+          "h3Res7": {
+            "description": "DB-derived H3 cell at resolution 7 (~1.2km).",
+            "type": "string"
+          },
+          "h3Res9": {
+            "description": "DB-derived H3 cell at resolution 9 (~150m).",
+            "type": "string"
+          },
+          "houseNumber": {
+            "type": "string"
+          },
+          "id": {
+            "description": "The location's RID (location service); what owning modules reference by FK.",
+            "type": "string"
+          },
+          "latitude": {
+            "description": "WGS84 latitude of the authoritative coordinate.",
+            "format": "double",
+            "type": "number"
+          },
+          "locality": {
+            "type": "string"
+          },
+          "longitude": {
+            "description": "WGS84 longitude of the authoritative coordinate.",
+            "format": "double",
+            "type": "number"
+          },
+          "mgrs": {
+            "description": "DB-derived MGRS grid reference (absent for polar UPS coordinates, out of scope).",
+            "type": "string"
+          },
+          "postalCode": {
+            "type": "string"
+          },
+          "rawAddress": {
+            "type": "string"
+          },
+          "street": {
+            "type": "string"
+          },
+          "typeId": {
+            "description": "Optional place-type classification (location_location_types RID).",
+            "type": "string"
+          },
+          "typeName": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Localized name (locale-\u003etext) of the place type, when typeId is set.",
+            "type": "object"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "countryId",
+          "createdAt",
+          "id",
+          "latitude",
+          "longitude",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "LocationPage": {
+        "description": "A page of locations plus the opaque token for the next page (empty when exhausted).",
+        "properties": {
+          "locations": {
+            "items": {
+              "$ref": "#/components/schemas/Location"
+            },
+            "type": "array"
+          },
+          "nextPageToken": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "locations"
+        ],
+        "type": "object"
+      },
+      "LocationType": {
+        "description": "An instance-admin catalog label classifying a place (building/address/online); descriptive only.",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Localized display name (locale-\u003etext), all enabled locales.",
+            "type": "object"
+          },
+          "status": {
+            "description": "active | retired.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "id",
+          "name",
+          "status"
+        ],
+        "type": "object"
+      },
+      "LocationTypeList": {
+        "description": "The active location types, in display order.",
+        "properties": {
+          "locationTypes": {
+            "items": {
+              "$ref": "#/components/schemas/LocationType"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "locationTypes"
+        ],
+        "type": "object"
+      },
+      "LocationWrite": {
+        "description": "Create/replace payload for a location. latitude+longitude are the required spine (validated in\nthe application, not the wire, so a missing coordinate returns Location:CoordinateRequired\nrather than a deserialization error). MGRS + H3 are never supplied — they are DB-derived.\n",
+        "properties": {
+          "adminArea1": {
+            "type": "string"
+          },
+          "adminArea2": {
+            "type": "string"
+          },
+          "countryId": {
+            "description": "The country's RID (required).",
+            "type": "string"
+          },
+          "houseNumber": {
+            "type": "string"
+          },
+          "latitude": {
+            "format": "double",
+            "type": "number"
+          },
+          "locality": {
+            "type": "string"
+          },
+          "longitude": {
+            "format": "double",
+            "type": "number"
+          },
+          "postalCode": {
+            "type": "string"
+          },
+          "rawAddress": {
+            "type": "string"
+          },
+          "street": {
+            "type": "string"
+          },
+          "typeId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "countryId"
         ],
         "type": "object"
       },
@@ -2198,7 +2717,7 @@
             "type": "string"
           },
           "countryOfBirth": {
-            "description": "ISO-3166-1 alpha-2 country code, validated against the geo registry (D-Geo).",
+            "description": "Country RID (resolve via GET /geo/countries), validated against the geo registry (D-Geo).",
             "type": "string"
           },
           "createdAt": {
@@ -2207,6 +2726,10 @@
           },
           "credentials": {
             "description": "Post-nominal credentials (PhD, MD).",
+            "type": "string"
+          },
+          "dateOfDeath": {
+            "description": "ISO-8601 calendar date of death (YYYY-MM-DD); a bio attribute, not a lifecycle state — a deceased person stays an active record (D-PersonBio).",
             "type": "string"
           },
           "deactivatedAt": {
@@ -2269,9 +2792,12 @@
             "format": "date-time",
             "type": "string"
           },
-          "rankId": {
-            "description": "The URN RID of the one rank the person holds (a DIRECTORY attribute; never an authz input). Null when unranked.",
-            "type": "string"
+          "ranks": {
+            "description": "The ranks the person holds — at most one per rank system (a DIRECTORY attribute; never an authz input — D-Rank). Empty when unranked. Populated by getPerson; empty in list responses.",
+            "items": {
+              "$ref": "#/components/schemas/PersonRank"
+            },
+            "type": "array"
           },
           "residences": {
             "description": "The person's residence history. Populated by getPerson; empty in list responses.",
@@ -2324,11 +2850,50 @@
           "messengerLinks",
           "nameVariants",
           "phones",
+          "ranks",
           "residences",
           "sex",
           "socialAccounts",
           "status",
           "updatedAt"
+        ],
+        "type": "object"
+      },
+      "PersonLanguage": {
+        "description": "A language a person speaks (D-Languages, M18; Link link__speaks). languageId references a\nlevel='language' Glottolog languoid (LanguageService); name is the languoid's translatable\ndisplay name (locale -\u003e text map). cefrLevel is the optional CEFR proficiency; isNative flags a\nmother tongue.\n",
+        "properties": {
+          "cefrLevel": {
+            "description": "CEFR proficiency — one of A1 | A2 | B1 | B2 | C1 | C2; null when unstated.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isNative": {
+            "description": "Whether this is a mother tongue.",
+            "type": "boolean"
+          },
+          "languageId": {
+            "description": "The languoid's URN RID (a level='language' node; resolve via GET /language/v1/languages).",
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "The languoid's translatable display name as a locale -\u003e text map (all enabled locales; D-i18n).",
+            "type": "object"
+          },
+          "personId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "isNative",
+          "languageId",
+          "name",
+          "personId"
         ],
         "type": "object"
       },
@@ -2347,6 +2912,24 @@
         },
         "required": [
           "persons"
+        ],
+        "type": "object"
+      },
+      "PersonRank": {
+        "description": "One rank a person holds, scoped to a rank system (the HOLDS_RANK link; one per system — D-Rank). A directory attribute, never an authz input.",
+        "properties": {
+          "rankId": {
+            "description": "The URN RID of the rank held in that system.",
+            "type": "string"
+          },
+          "systemId": {
+            "description": "The URN RID of the rank system (derived from the rank); clients resolve the label via RankService.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rankId",
+          "systemId"
         ],
         "type": "object"
       },
@@ -2401,7 +2984,7 @@
             "type": "string"
           },
           "countryIso": {
-            "description": "ISO-3166-1 alpha-2 code of the scheme's country (geo registry).",
+            "description": "Country RID of the scheme's country (resolve via GET /geo/countries; the field name is retained for compatibility).",
             "type": "string"
           },
           "createdAt": {
@@ -2450,7 +3033,7 @@
         "description": "A person's contact phone (D-PersonContactChannels). number is E.164-normalized; country is derived. pii:contact.",
         "properties": {
           "country": {
-            "description": "ISO-3166-1 alpha-2 country code derived from the number; null when underivable.",
+            "description": "Country RID derived from the number (resolve codes via GET /geo/countries); null when underivable.",
             "type": "string"
           },
           "id": {
@@ -2781,7 +3364,7 @@
             "type": "string"
           },
           "country": {
-            "description": "ISO-3166 national origin (geo_countries code); absent for a supranational system (NATO/UN).",
+            "description": "Country RID of the national origin (resolve via GET /geo/countries); absent for a supranational system (NATO/UN).",
             "type": "string"
           },
           "id": {
@@ -2911,7 +3494,7 @@
         "description": "A person's effective-dated residence in a country/region (D-Geo). Locator data (pii:contact).",
         "properties": {
           "country": {
-            "description": "ISO-3166-1 alpha-2 country code (geo registry).",
+            "description": "Country RID (resolve via GET /geo/countries).",
             "type": "string"
           },
           "id": {
@@ -3056,10 +3639,14 @@
         "type": "object"
       },
       "SetRankRequest": {
-        "description": "Set or clear the person's one rank. An absent rankId clears it (D-Rank).",
+        "description": "Set or clear the person's rank in ONE rank system (one rank per system — D-Rank). The rank's\nsystem is derived from the rank itself, so on set only rankId is needed; on clear, systemId\nnames the system to clear.\n",
         "properties": {
           "rankId": {
-            "description": "The URN RID of the rank to assign; omit to clear the person's rank.",
+            "description": "The URN RID of the rank to assign (its rank system is derived); omit to clear the person's rank in `systemId`.",
+            "type": "string"
+          },
+          "systemId": {
+            "description": "Required only when clearing (rankId omitted) — the URN RID of the rank system to clear. Ignored when rankId is present.",
             "type": "string"
           }
         },
@@ -3301,6 +3888,40 @@
         ],
         "type": "object"
       },
+      "UnitLanguage": {
+        "description": "A unit's official/working language (D-Languages, M18; Link link__unit_language). languageId\nreferences a Glottolog languoid (LanguageService); name is its translatable display name.\n",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "isOfficial": {
+            "description": "Whether the language is official (vs. merely working) for the unit.",
+            "type": "boolean"
+          },
+          "languageId": {
+            "description": "The languoid's URN RID (resolve via GET /language/v1/languages).",
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "The languoid's translatable display name as a locale -\u003e text map (all enabled locales; D-i18n).",
+            "type": "object"
+          },
+          "unitId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "isOfficial",
+          "languageId",
+          "name",
+          "unitId"
+        ],
+        "type": "object"
+      },
       "UnitPage": {
         "description": "A page of units plus the opaque token for the next page (empty when exhausted).",
         "properties": {
@@ -3519,7 +4140,7 @@
         "type": "object"
       },
       "UpdatePersonRequest": {
-        "description": "Update a person's names (canonical + CLDR parts), birthdate, sex, country_of_birth, and\nattributes. Omitted fields are unchanged; an empty string clears an optional name part.\n`code` is immutable by convention and rank is set via setRank.\n",
+        "description": "Update a person's names (canonical + CLDR parts), birthdate, date_of_death, sex,\ncountry_of_birth, and attributes. Omitted fields are unchanged; an empty string clears an\noptional name part. `code` is immutable by convention and ranks are set via setRank (per system).\n",
         "properties": {
           "attributes": {},
           "birthdate": {
@@ -3529,6 +4150,9 @@
             "type": "string"
           },
           "credentials": {
+            "type": "string"
+          },
+          "dateOfDeath": {
             "type": "string"
           },
           "displayName": {
@@ -3992,6 +4616,26 @@
         ],
         "type": "object"
       },
+      "UpsertPersonLanguageRequest": {
+        "description": "Add or update a language the person speaks (keyed on languageId). cefrLevel/isNative are the proficiency attributes.",
+        "properties": {
+          "cefrLevel": {
+            "description": "A1 | A2 | B1 | B2 | C1 | C2; omit to leave unstated.",
+            "type": "string"
+          },
+          "isNative": {
+            "type": "boolean"
+          },
+          "languageId": {
+            "description": "The languoid's URN RID; must resolve to a level='language' Glottolog node.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "languageId"
+        ],
+        "type": "object"
+      },
       "UpsertPhoneRequest": {
         "description": "Add a contact phone, or replace one when id is supplied. number is E.164-normalized and country derived.",
         "properties": {
@@ -4128,6 +4772,23 @@
         ],
         "type": "object"
       },
+      "UpsertUnitLanguageRequest": {
+        "description": "Add or update a unit's official/working language (keyed on languageId).",
+        "properties": {
+          "isOfficial": {
+            "description": "Defaults to true (official); false marks a working language.",
+            "type": "boolean"
+          },
+          "languageId": {
+            "description": "The languoid's URN RID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "languageId"
+        ],
+        "type": "object"
+      },
       "VersionInfo": {
         "description": "Binary and schema revision the running server reports.",
         "properties": {
@@ -4170,6 +4831,92 @@
         },
         "required": [
           "personId"
+        ],
+        "type": "object"
+      },
+      "WorkerJob": {
+        "description": "One unit of queued work in hermenea's runtime.",
+        "properties": {
+          "attempts": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "jobType": {
+            "type": "string"
+          },
+          "lastError": {
+            "type": "string"
+          },
+          "maxAttempts": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "runAfter": {
+            "type": "string"
+          },
+          "sourceCode": {
+            "type": "string"
+          },
+          "status": {
+            "description": "queued | running | succeeded | failed | dead.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attempts",
+          "id",
+          "jobType",
+          "maxAttempts",
+          "runAfter",
+          "status"
+        ],
+        "type": "object"
+      },
+      "WritingSystem": {
+        "description": "An ISO-15924 script. `id` is the RID; `code` is the ISO-15924 lookup code.",
+        "properties": {
+          "code": {
+            "description": "ISO-15924 code (e.g. Latn, Cyrl, Hani).",
+            "type": "string"
+          },
+          "id": {
+            "description": "The writing system's RID (language service).",
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "locale-\u003etext display name (all enabled locales; default-locale `name` column + i18n store).",
+            "type": "object"
+          },
+          "scriptType": {
+            "description": "logographic | syllabary | alphabet | abjad | abugida | featural.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "id",
+          "name"
+        ],
+        "type": "object"
+      },
+      "WritingSystemList": {
+        "description": "The writing systems, in code order.",
+        "properties": {
+          "writingSystems": {
+            "items": {
+              "$ref": "#/components/schemas/WritingSystem"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "writingSystems"
         ],
         "type": "object"
       }
@@ -5143,7 +5890,7 @@
     },
     "/document/v1/personal-code-schemes": {
       "get": {
-        "description": "List the scheme catalog, optionally filtered by country and/or generic category.",
+        "description": "List the scheme catalog, optionally filtered by country RID (GET /geo/countries) and/or generic category.",
         "operationId": "DocumentService_listPersonalCodeSchemes",
         "parameters": [
           {
@@ -5188,7 +5935,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
-        "summary": "List the scheme catalog, optionally filtered by country and/or generic category.",
+        "summary": "List the scheme catalog, optionally filtered by country RID (GET /geo/countries) and/or generic category.",
         "tags": [
           "DocumentService"
         ]
@@ -5575,6 +6322,185 @@
         ]
       }
     },
+    "/geo/v1/countries": {
+      "get": {
+        "description": "List the active countries in display order (sort_order, then code).",
+        "operationId": "GeoService_listCountries",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CountryList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List the active countries in display order (sort_order, then code).",
+        "tags": [
+          "GeoService"
+        ]
+      }
+    },
+    "/hermenea/v1/jobs": {
+      "get": {
+        "description": "List worker jobs (most recent first).",
+        "operationId": "HermeneaService_listJobs",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WorkerJob"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List worker jobs (most recent first).",
+        "tags": [
+          "HermeneaService"
+        ]
+      }
+    },
+    "/hermenea/v1/runs": {
+      "get": {
+        "description": "List import-run lineage (most recent first).",
+        "operationId": "HermeneaService_listRuns",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ImportRun"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List import-run lineage (most recent first).",
+        "tags": [
+          "HermeneaService"
+        ]
+      }
+    },
+    "/hermenea/v1/sources": {
+      "get": {
+        "description": "List the registered import sources.",
+        "operationId": "HermeneaService_listSources",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ImportSource"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List the registered import sources.",
+        "tags": [
+          "HermeneaService"
+        ]
+      }
+    },
+    "/hermenea/v1/sync/{source}": {
+      "post": {
+        "description": "Enqueue a sync job for a registered source (the push trigger from oikumenea).",
+        "operationId": "HermeneaService_triggerSync",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobRef"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Enqueue a sync job for a registered source (the push trigger from oikumenea).",
+        "tags": [
+          "HermeneaService"
+        ]
+      }
+    },
     "/identity/v1/accounts": {
       "post": {
         "description": "Create an account for a person, optionally linking its first identity. Gates on\n`person.update`. Returns Account:AccountConflict if the person already has an active\naccount, Identity:IdentityConflict if the initial (issuer, subject) is already linked.\n",
@@ -5828,6 +6754,237 @@
         ]
       }
     },
+    "/import/v1/import/{objectType}": {
+      "post": {
+        "description": "Idempotently upsert a canonical envelope into the {objectType} catalog.",
+        "operationId": "ImportService_importObjects",
+        "parameters": [
+          {
+            "description": "The importable object-type (routing key).",
+            "in": "path",
+            "name": "objectType",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CanonicalEnvelope"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResult"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Idempotently upsert a canonical envelope into the {objectType} catalog.",
+        "tags": [
+          "ImportService"
+        ]
+      }
+    },
+    "/language/v1/languages": {
+      "get": {
+        "description": "List languoids in code order, optionally filtered by level, root family (glottocode), and a\nname/code substring. `limit` caps the page (default/clamped server-side) since the catalog is\nlarge (~26k); narrow with the filters.\n",
+        "operationId": "LanguageService_listLanguages",
+        "parameters": [
+          {
+            "description": "Filter to a level (family | language | dialect).",
+            "in": "query",
+            "name": "level",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to descendants of this root-family glottocode (via family_code).",
+            "in": "query",
+            "name": "family",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Case-insensitive substring match on name or glottocode.",
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Max rows to return (server clamps to a sane maximum).",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LanguoidList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List languoids in code order, optionally filtered by level, root family (glottocode), and a",
+        "tags": [
+          "LanguageService"
+        ]
+      }
+    },
+    "/language/v1/languages/{id}": {
+      "get": {
+        "description": "Fetch one languoid by its RID.",
+        "operationId": "LanguageService_getLanguage",
+        "parameters": [
+          {
+            "description": "The languoid's RID.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Languoid"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Fetch one languoid by its RID.",
+        "tags": [
+          "LanguageService"
+        ]
+      }
+    },
+    "/language/v1/writing-systems": {
+      "get": {
+        "description": "List the ISO-15924 writing systems in code order.",
+        "operationId": "LanguageService_listWritingSystems",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WritingSystemList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List the ISO-15924 writing systems in code order.",
+        "tags": [
+          "LanguageService"
+        ]
+      }
+    },
+    "/localization/v1/locale-languages": {
+      "get": {
+        "description": "List each supported locale's canonical Glottolog language (D-Languages, M18). Read-only — the\nlinks are reconciled by the language-scheme import, not edited here.\n",
+        "operationId": "LocalizationService_listLocaleLanguages",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocaleLanguageList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List each supported locale's canonical Glottolog language (D-Languages, M18). Read-only — the",
+        "tags": [
+          "LocalizationService"
+        ]
+      }
+    },
     "/localization/v1/locales": {
       "get": {
         "description": "List the supported locales in display order.",
@@ -6076,6 +7233,317 @@
         "summary": "Upsert translations for one entity (one or many fields/locales). Returns the stored set.",
         "tags": [
           "LocalizationService"
+        ]
+      }
+    },
+    "/location/v1/location/types": {
+      "get": {
+        "description": "List the active place-type catalog.",
+        "operationId": "LocationService_listLocationTypes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationTypeList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List the active place-type catalog.",
+        "tags": [
+          "LocationService"
+        ]
+      }
+    },
+    "/location/v1/locations": {
+      "get": {
+        "description": "Spatial query, token-paginated. Supply either a radius (lat + lng + radiusM, via ST_DWithin)\nor a bounding box (minLat + minLng + maxLat + maxLng); Location:QueryWindowRequired otherwise.\n",
+        "operationId": "LocationService_listLocations",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "lat",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lng",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "radiusM",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "minLat",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "minLng",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "maxLat",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "maxLng",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationPage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Spatial query, token-paginated. Supply either a radius (lat + lng + radiusM, via ST_DWithin)",
+        "tags": [
+          "LocationService"
+        ]
+      },
+      "post": {
+        "description": "Create a location from a coordinate (+ address); derives MGRS/H3. Location:CoordinateRequired when the coordinate is missing.",
+        "operationId": "LocationService_createLocation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocationWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Location"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Create a location from a coordinate (+ address); derives MGRS/H3. Location:CoordinateRequired when the coordinate is missing.",
+        "tags": [
+          "LocationService"
+        ]
+      }
+    },
+    "/location/v1/locations/{locationId}": {
+      "delete": {
+        "description": "Soft-delete a location. Location:LocationInUse when an owner still references it.",
+        "operationId": "LocationService_deleteLocation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "locationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Soft-delete a location. Location:LocationInUse when an owner still references it.",
+        "tags": [
+          "LocationService"
+        ]
+      },
+      "get": {
+        "description": "Read one location by its RID. Location:LocationNotFound when absent.",
+        "operationId": "LocationService_getLocation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "locationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Location"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Read one location by its RID. Location:LocationNotFound when absent.",
+        "tags": [
+          "LocationService"
+        ]
+      },
+      "put": {
+        "description": "Replace a location's coordinate/address/type (re-derives MGRS/H3 on the coordinate).",
+        "operationId": "LocationService_updateLocation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "locationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocationWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Location"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Replace a location's coordinate/address/type (re-derives MGRS/H3 on the coordinate).",
+        "tags": [
+          "LocationService"
         ]
       }
     },
@@ -7349,7 +8817,7 @@
         ]
       },
       "put": {
-        "description": "Update names, birthdate, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.",
+        "description": "Update names, birthdate, date_of_death, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.",
         "operationId": "PersonService_updatePerson",
         "parameters": [
           {
@@ -7393,7 +8861,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
-        "summary": "Update names, birthdate, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.",
+        "summary": "Update names, birthdate, date_of_death, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.",
         "tags": [
           "PersonService"
         ]
@@ -7729,7 +9197,7 @@
     },
     "/person/v1/persons/{personId}/citizenships/{country}": {
       "delete": {
-        "description": "Remove a citizenship by country code.",
+        "description": "Remove a citizenship by country RID.",
         "operationId": "PersonService_deleteCitizenship",
         "parameters": [
           {
@@ -7764,7 +9232,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
-        "summary": "Remove a citizenship by country code.",
+        "summary": "Remove a citizenship by country RID.",
         "tags": [
           "PersonService"
         ]
@@ -8145,6 +9613,144 @@
           }
         },
         "summary": "Add or replace a parent→child kinship. Returns Person:PersonConflict on a duplicate active pair, Person:PersonInvalid for a self-edge, unknown counterpart, or bad role.",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/languages": {
+      "get": {
+        "description": "List the languages the person speaks (native first, then by name; D-Languages, M18).",
+        "operationId": "PersonService_listPersonLanguages",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PersonLanguage"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List the languages the person speaks (native first, then by name; D-Languages, M18).",
+        "tags": [
+          "PersonService"
+        ]
+      },
+      "put": {
+        "description": "Add or update a language the person speaks (keyed on languageId). Returns Person:PersonInvalid\nwhen languageId does not resolve to a level='language' languoid or cefrLevel is invalid.\n",
+        "operationId": "PersonService_upsertPersonLanguage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertPersonLanguageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonLanguage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Add or update a language the person speaks (keyed on languageId). Returns Person:PersonInvalid",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/languages/{languageId}": {
+      "delete": {
+        "description": "Remove a language the person speaks, by languoid id. Idempotent within the active set.",
+        "operationId": "PersonService_deletePersonLanguage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "languageId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Remove a language the person speaks, by languoid id. Idempotent within the active set.",
         "tags": [
           "PersonService"
         ]
@@ -8755,7 +10361,7 @@
     },
     "/person/v1/persons/{personId}/rank": {
       "put": {
-        "description": "Set or clear the person's one rank (a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.",
+        "description": "Set or clear the person's rank in one rank system (one rank per system, a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.",
         "operationId": "PersonService_setRank",
         "parameters": [
           {
@@ -8799,7 +10405,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
-        "summary": "Set or clear the person's one rank (a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.",
+        "summary": "Set or clear the person's rank in one rank system (one rank per system, a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.",
         "tags": [
           "PersonService"
         ]
@@ -10548,6 +12154,144 @@
           }
         },
         "summary": "Attach the path unit as a child of parentId within a graph (default command). Returns Tenant:UnitCycleDetected on a cycle.",
+        "tags": [
+          "TenantService"
+        ]
+      }
+    },
+    "/tenant/v1/units/{unitId}/languages": {
+      "get": {
+        "description": "List a unit's official/working languages (D-Languages, M18).",
+        "operationId": "TenantService_listUnitLanguages",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "unitId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UnitLanguage"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List a unit's official/working languages (D-Languages, M18).",
+        "tags": [
+          "TenantService"
+        ]
+      },
+      "put": {
+        "description": "Add or update a unit's official/working language (keyed on languageId). Returns\nTenant:UnitInvalid when languageId does not resolve to a languoid.\n",
+        "operationId": "TenantService_upsertUnitLanguage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "unitId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertUnitLanguageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitLanguage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Add or update a unit's official/working language (keyed on languageId). Returns",
+        "tags": [
+          "TenantService"
+        ]
+      }
+    },
+    "/tenant/v1/units/{unitId}/languages/{languageId}": {
+      "delete": {
+        "description": "Remove a unit's language by languoid id. Idempotent within the active set.",
+        "operationId": "TenantService_deleteUnitLanguage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "unitId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "languageId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Remove a unit's language by languoid id. Idempotent within the active set.",
         "tags": [
           "TenantService"
         ]

@@ -359,6 +359,94 @@ func isUniqueViolation(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
+// isFKViolation reports whether err is a Postgres foreign-key violation (SQLSTATE 23503).
+func isFKViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23503"
+}
+
+// ---------------------------------------------------------------- unit languages (D-Languages, M18)
+
+func (r *Repository) InsertUnitLanguage(ctx context.Context, l domain.UnitLanguage) error {
+	if err := r.q.InsertUnitLanguage(ctx, tenantsql.InsertUnitLanguageParams{
+		UnitID:     l.UnitID,
+		LanguageID: l.LanguageID,
+		IsOfficial: l.IsOfficial,
+	}); err != nil {
+		return mapUnitLanguageErr(err)
+	}
+	return nil
+}
+
+func (r *Repository) UpdateUnitLanguage(ctx context.Context, l domain.UnitLanguage) error {
+	if err := r.q.UpdateUnitLanguage(ctx, tenantsql.UpdateUnitLanguageParams{
+		UnitID:     l.UnitID,
+		LanguageID: l.LanguageID,
+		IsOfficial: l.IsOfficial,
+	}); err != nil {
+		return mapUnitLanguageErr(err)
+	}
+	return nil
+}
+
+func (r *Repository) GetUnitLanguage(ctx context.Context, unitID, languageID string) (domain.UnitLanguage, error) {
+	row, err := r.q.GetUnitLanguage(ctx, tenantsql.GetUnitLanguageParams{UnitID: unitID, LanguageID: languageID})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.UnitLanguage{}, domain.ErrUnitLanguageNotFound
+		}
+		return domain.UnitLanguage{}, err
+	}
+	return domain.UnitLanguage{
+		ID:           row.ID,
+		UnitID:       row.UnitID,
+		LanguageID:   row.LanguageID,
+		LanguageName: row.LanguageName,
+		IsOfficial:   row.IsOfficial,
+	}, nil
+}
+
+func (r *Repository) DeleteUnitLanguage(ctx context.Context, unitID, languageID string) error {
+	if _, err := r.q.DeleteUnitLanguage(ctx, tenantsql.DeleteUnitLanguageParams{UnitID: unitID, LanguageID: languageID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrUnitLanguageNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) ListUnitLanguages(ctx context.Context, unitID string) ([]domain.UnitLanguage, error) {
+	rows, err := r.q.ListUnitLanguages(ctx, unitID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.UnitLanguage, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, domain.UnitLanguage{
+			ID:           row.ID,
+			UnitID:       row.UnitID,
+			LanguageID:   row.LanguageID,
+			LanguageName: row.LanguageName,
+			IsOfficial:   row.IsOfficial,
+		})
+	}
+	return out, nil
+}
+
+// mapUnitLanguageErr maps the unit-language constraint violations: an unresolved languoid FK becomes
+// ErrUnknownLanguage; a duplicate active (unit, language) becomes ErrUnitLanguageConflict.
+func mapUnitLanguageErr(err error) error {
+	switch {
+	case isFKViolation(err):
+		return domain.ErrUnknownLanguage
+	case isUniqueViolation(err):
+		return domain.ErrUnitLanguageConflict
+	default:
+		return err
+	}
+}
+
 func strPtrOrNil(s string) *string {
 	if s == "" {
 		return nil

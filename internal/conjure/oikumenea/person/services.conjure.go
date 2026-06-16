@@ -48,7 +48,7 @@ type PersonServiceClient interface {
 	ListCitizenships(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Citizenship, error)
 	// Add or replace the active citizenship for a country. Returns Person:PersonInvalid for an unknown country.
 	UpsertCitizenship(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertCitizenshipRequest) (Citizenship, error)
-	// Remove a citizenship by country code.
+	// Remove a citizenship by country RID.
 	DeleteCitizenship(ctx context.Context, authHeader bearertoken.Token, personIdArg string, countryArg string) error
 	// List a person's residence history.
 	ListResidences(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Residence, error)
@@ -102,6 +102,15 @@ type PersonServiceClient interface {
 	DeleteSocialAccount(ctx context.Context, authHeader bearertoken.Token, personIdArg string, socialAccountIdArg string) error
 	// List one social account's @handle-rename history (most recent first).
 	ListSocialAccountHandles(ctx context.Context, authHeader bearertoken.Token, personIdArg string, socialAccountIdArg string) ([]SocialAccountHandle, error)
+	// List the languages the person speaks (native first, then by name; D-Languages, M18).
+	ListPersonLanguages(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]PersonLanguage, error)
+	/*
+	   Add or update a language the person speaks (keyed on languageId). Returns Person:PersonInvalid
+	   when languageId does not resolve to a level='language' languoid or cefrLevel is invalid.
+	*/
+	UpsertPersonLanguage(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertPersonLanguageRequest) (PersonLanguage, error)
+	// Remove a language the person speaks, by languoid id. Idempotent within the active set.
+	DeletePersonLanguage(ctx context.Context, authHeader bearertoken.Token, personIdArg string, languageIdArg string) error
 	// List the person↔person relation-type catalog (locale -> text names; D-i18n; D-PersonRelationships).
 	ListRelationTypes(ctx context.Context, authHeader bearertoken.Token) ([]RelationType, error)
 	// List partnerships (marriage/engagement) touching the person.
@@ -722,6 +731,53 @@ func (c *personServiceClient) ListSocialAccountHandles(ctx context.Context, auth
 	return returnVal, nil
 }
 
+func (c *personServiceClient) ListPersonLanguages(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]PersonLanguage, error) {
+	var returnVal []PersonLanguage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListPersonLanguages"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/languages", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listPersonLanguages failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listPersonLanguages response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) UpsertPersonLanguage(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertPersonLanguageRequest) (PersonLanguage, error) {
+	var returnVal *PersonLanguage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertPersonLanguage"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/languages", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(PersonLanguage), werror.WrapWithContextParams(ctx, err, "upsertPersonLanguage failed")
+	}
+	if returnVal == nil {
+		return *new(PersonLanguage), werror.ErrorWithContextParams(ctx, "upsertPersonLanguage response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) DeletePersonLanguage(ctx context.Context, authHeader bearertoken.Token, personIdArg string, languageIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeletePersonLanguage"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/languages/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(languageIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deletePersonLanguage failed")
+	}
+	return nil
+}
+
 func (c *personServiceClient) ListRelationTypes(ctx context.Context, authHeader bearertoken.Token) ([]RelationType, error) {
 	var returnVal []RelationType
 	var requestParams []httpclient.RequestParam
@@ -996,7 +1052,7 @@ type PersonServiceClientWithAuth interface {
 	ListCitizenships(ctx context.Context, personIdArg string) ([]Citizenship, error)
 	// Add or replace the active citizenship for a country. Returns Person:PersonInvalid for an unknown country.
 	UpsertCitizenship(ctx context.Context, personIdArg string, requestArg UpsertCitizenshipRequest) (Citizenship, error)
-	// Remove a citizenship by country code.
+	// Remove a citizenship by country RID.
 	DeleteCitizenship(ctx context.Context, personIdArg string, countryArg string) error
 	// List a person's residence history.
 	ListResidences(ctx context.Context, personIdArg string) ([]Residence, error)
@@ -1050,6 +1106,15 @@ type PersonServiceClientWithAuth interface {
 	DeleteSocialAccount(ctx context.Context, personIdArg string, socialAccountIdArg string) error
 	// List one social account's @handle-rename history (most recent first).
 	ListSocialAccountHandles(ctx context.Context, personIdArg string, socialAccountIdArg string) ([]SocialAccountHandle, error)
+	// List the languages the person speaks (native first, then by name; D-Languages, M18).
+	ListPersonLanguages(ctx context.Context, personIdArg string) ([]PersonLanguage, error)
+	/*
+	   Add or update a language the person speaks (keyed on languageId). Returns Person:PersonInvalid
+	   when languageId does not resolve to a level='language' languoid or cefrLevel is invalid.
+	*/
+	UpsertPersonLanguage(ctx context.Context, personIdArg string, requestArg UpsertPersonLanguageRequest) (PersonLanguage, error)
+	// Remove a language the person speaks, by languoid id. Idempotent within the active set.
+	DeletePersonLanguage(ctx context.Context, personIdArg string, languageIdArg string) error
 	// List the person↔person relation-type catalog (locale -> text names; D-i18n; D-PersonRelationships).
 	ListRelationTypes(ctx context.Context) ([]RelationType, error)
 	// List partnerships (marriage/engagement) touching the person.
@@ -1234,6 +1299,18 @@ func (c *personServiceClientWithAuth) DeleteSocialAccount(ctx context.Context, p
 
 func (c *personServiceClientWithAuth) ListSocialAccountHandles(ctx context.Context, personIdArg string, socialAccountIdArg string) ([]SocialAccountHandle, error) {
 	return c.client.ListSocialAccountHandles(ctx, c.authHeader, personIdArg, socialAccountIdArg)
+}
+
+func (c *personServiceClientWithAuth) ListPersonLanguages(ctx context.Context, personIdArg string) ([]PersonLanguage, error) {
+	return c.client.ListPersonLanguages(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertPersonLanguage(ctx context.Context, personIdArg string, requestArg UpsertPersonLanguageRequest) (PersonLanguage, error) {
+	return c.client.UpsertPersonLanguage(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) DeletePersonLanguage(ctx context.Context, personIdArg string, languageIdArg string) error {
+	return c.client.DeletePersonLanguage(ctx, c.authHeader, personIdArg, languageIdArg)
 }
 
 func (c *personServiceClientWithAuth) ListRelationTypes(ctx context.Context) ([]RelationType, error) {
@@ -1579,6 +1656,30 @@ func (c *personServiceClientWithTokenProvider) ListSocialAccountHandles(ctx cont
 		return nil, err
 	}
 	return c.client.ListSocialAccountHandles(ctx, bearertoken.Token(token), personIdArg, socialAccountIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListPersonLanguages(ctx context.Context, personIdArg string) ([]PersonLanguage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListPersonLanguages(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertPersonLanguage(ctx context.Context, personIdArg string, requestArg UpsertPersonLanguageRequest) (PersonLanguage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(PersonLanguage), err
+	}
+	return c.client.UpsertPersonLanguage(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) DeletePersonLanguage(ctx context.Context, personIdArg string, languageIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeletePersonLanguage(ctx, bearertoken.Token(token), personIdArg, languageIdArg)
 }
 
 func (c *personServiceClientWithTokenProvider) ListRelationTypes(ctx context.Context) ([]RelationType, error) {

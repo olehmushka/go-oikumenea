@@ -11,13 +11,13 @@
 -- NOT set here — a person holds one rank per rank system via person_ranks (UpsertPersonRank, D-Rank).
 INSERT INTO oikumenea.person_persons (
   code, display_name, title, given, given2, surname, surname_prefix, surname2,
-  generation, credentials, preferred, birthdate, date_of_death, sex, country_of_birth, attributes
+  generation, credentials, preferred, birthdate, date_of_death, sex, country_of_birth_id, attributes
 ) VALUES (
   sqlc.narg('code'), @display_name, sqlc.narg('title'), sqlc.narg('given'), sqlc.narg('given2'),
   sqlc.narg('surname'), sqlc.narg('surname_prefix'), sqlc.narg('surname2'), sqlc.narg('generation'),
   sqlc.narg('credentials'), sqlc.narg('preferred'), sqlc.narg('birthdate')::date,
   sqlc.narg('date_of_death')::date, @sex,
-  sqlc.narg('country_of_birth'), COALESCE(sqlc.narg('attributes')::jsonb, '{}'::jsonb)
+  sqlc.narg('country_of_birth_id'), COALESCE(sqlc.narg('attributes')::jsonb, '{}'::jsonb)
 )
 RETURNING *;
 
@@ -42,7 +42,7 @@ UPDATE oikumenea.person_persons SET
   birthdate        = COALESCE(sqlc.narg('birthdate')::date, birthdate),
   date_of_death    = COALESCE(sqlc.narg('date_of_death')::date, date_of_death),
   sex              = COALESCE(sqlc.narg('sex'), sex),
-  country_of_birth = COALESCE(sqlc.narg('country_of_birth'), country_of_birth),
+  country_of_birth_id = COALESCE(sqlc.narg('country_of_birth_id'), country_of_birth_id),
   attributes       = COALESCE(sqlc.narg('attributes')::jsonb, attributes)
 WHERE id = @id AND deleted_at IS NULL
 RETURNING *;
@@ -107,7 +107,7 @@ UPDATE oikumenea.person_persons SET
   code = NULL, display_name = '', title = NULL, given = NULL, given2 = NULL,
   surname = NULL, surname_prefix = NULL, surname2 = NULL, generation = NULL,
   credentials = NULL, preferred = NULL, birthdate = NULL, date_of_death = NULL, sex = 'not_known',
-  country_of_birth = NULL, attributes = '{}'::jsonb,
+  country_of_birth_id = NULL, attributes = '{}'::jsonb,
   status = 'purged', deactivated_at = NULL, purge_after = NULL
 WHERE id = @id AND deleted_at IS NULL
 RETURNING *;
@@ -159,9 +159,9 @@ SELECT * FROM oikumenea.person_name_variants WHERE person_id = @person_id ORDER 
 -- name: UpsertCitizenship :one
 -- Add or replace the ACTIVE citizenship for (person, country) via the partial unique index. The
 -- geo_countries FK validates the country.
-INSERT INTO oikumenea.person_citizenships (person_id, country, basis, acquired_on, lost_on, is_primary)
-VALUES (@person_id, @country, @basis, sqlc.narg('acquired_on')::date, sqlc.narg('lost_on')::date, @is_primary)
-ON CONFLICT (person_id, country) WHERE lost_on IS NULL AND deleted_at IS NULL DO UPDATE SET
+INSERT INTO oikumenea.person_citizenships (person_id, country_id, basis, acquired_on, lost_on, is_primary)
+VALUES (@person_id, @country_id, @basis, sqlc.narg('acquired_on')::date, sqlc.narg('lost_on')::date, @is_primary)
+ON CONFLICT (person_id, country_id) WHERE lost_on IS NULL AND deleted_at IS NULL DO UPDATE SET
   basis = excluded.basis, acquired_on = excluded.acquired_on, lost_on = excluded.lost_on,
   is_primary = excluded.is_primary
 RETURNING *;
@@ -173,23 +173,23 @@ WHERE person_id = @person_id AND deleted_at IS NULL AND is_primary;
 -- name: DeleteCitizenship :one
 -- Soft-delete the active citizenship for a country.
 UPDATE oikumenea.person_citizenships SET deleted_at = now()
-WHERE person_id = @person_id AND country = @country AND deleted_at IS NULL
+WHERE person_id = @person_id AND country_id = @country_id AND deleted_at IS NULL
 RETURNING id;
 
 -- name: ListCitizenships :many
 SELECT * FROM oikumenea.person_citizenships
-WHERE person_id = @person_id AND deleted_at IS NULL ORDER BY country;
+WHERE person_id = @person_id AND deleted_at IS NULL ORDER BY country_id;
 
 -- ============================ residences ============================
 
 -- name: InsertResidence :one
-INSERT INTO oikumenea.person_residences (person_id, country, region, valid_from, valid_to)
-VALUES (@person_id, @country, sqlc.narg('region'), @valid_from::date, sqlc.narg('valid_to')::date)
+INSERT INTO oikumenea.person_residences (person_id, country_id, region, valid_from, valid_to)
+VALUES (@person_id, @country_id, sqlc.narg('region'), @valid_from::date, sqlc.narg('valid_to')::date)
 RETURNING *;
 
 -- name: UpdateResidence :one
 UPDATE oikumenea.person_residences SET
-  country = @country, region = sqlc.narg('region'),
+  country_id = @country_id, region = sqlc.narg('region'),
   valid_from = @valid_from::date, valid_to = sqlc.narg('valid_to')::date
 WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
 RETURNING *;
@@ -242,14 +242,21 @@ WHERE person_id = @person_id AND deleted_at IS NULL ORDER BY is_primary DESC, ad
 -- name: InsertPhone :one
 -- number is E.164-normalized and country derived in the application before insert. The
 -- person_phone_types FK validates type_code; geo_countries FK validates the derived country.
-INSERT INTO oikumenea.person_phones (person_id, type_code, number, country, is_primary)
-VALUES (@person_id, @type_code, @number, sqlc.narg('country'), @is_primary)
+-- The phone's country is DERIVED from the number (libphonenumber, application layer) as an ISO-3166-1
+-- alpha-2 code, then resolved to the country's RID here (the geo registry is RID-keyed); an absent /
+-- unresolvable region folds to NULL.
+INSERT INTO oikumenea.person_phones (person_id, type_code, number, country_id, is_primary)
+VALUES (@person_id, @type_code, @number,
+        (SELECT gc.id FROM oikumenea.geo_countries gc WHERE gc.code = NULLIF(sqlc.narg('country_code')::text, '')),
+        @is_primary)
 RETURNING *;
 
 -- name: UpdatePhone :one
 UPDATE oikumenea.person_phones SET
-  type_code = @type_code, number = @number, country = sqlc.narg('country'), is_primary = @is_primary
-WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+  type_code = @type_code, number = @number,
+  country_id = (SELECT gc.id FROM oikumenea.geo_countries gc WHERE gc.code = NULLIF(sqlc.narg('country_code')::text, '')),
+  is_primary = @is_primary
+WHERE person_phones.id = @id AND person_id = @person_id AND deleted_at IS NULL
 RETURNING *;
 
 -- name: ClearPrimaryPhones :exec
@@ -439,6 +446,44 @@ WHERE account_id IN (SELECT id FROM oikumenea.person_social_accounts WHERE perso
 -- Erase the person's social accounts (CASCADE-deletes their handle history). The person row itself is
 -- kept as a tombstone, so these are not removed by the person delete — purge must erase them explicitly.
 DELETE FROM oikumenea.person_social_accounts WHERE person_id = @person_id;
+
+-- name: DeleteAllPersonLanguages :exec
+-- Erase the person's SPEAKS links (D-Languages, M18). person_languages is pii:basic, so purge must
+-- hard-delete it explicitly (the person row is kept as a tombstone).
+DELETE FROM oikumenea.person_languages WHERE person_id = @person_id;
+
+-- ============================ person languages (D-Languages, M18) — SPEAKS ============================
+
+-- name: ListPersonLanguages :many
+-- The person's spoken languages joined to the languoid for its default-locale display name (the
+-- transport assembles the locale->text map). Native first, then by name.
+SELECT pl.id, pl.person_id, pl.language_id, pl.cefr_level, pl.is_native, l.name AS language_name
+FROM oikumenea.person_languages pl
+JOIN oikumenea.language_languoids l ON l.id = pl.language_id
+WHERE pl.person_id = @person_id AND pl.deleted_at IS NULL
+ORDER BY pl.is_native DESC, l.name, pl.id;
+
+-- name: GetPersonLanguage :one
+SELECT pl.id, pl.person_id, pl.language_id, pl.cefr_level, pl.is_native, l.name AS language_name
+FROM oikumenea.person_languages pl
+JOIN oikumenea.language_languoids l ON l.id = pl.language_id
+WHERE pl.person_id = @person_id AND pl.language_id = @language_id AND pl.deleted_at IS NULL;
+
+-- name: InsertPersonLanguage :exec
+-- language_level defaults to 'language'; the composite FK (language_id, language_level) ->
+-- language_languoids(id, level) rejects a non-language languoid (23503 -> ErrUnknownLanguage).
+INSERT INTO oikumenea.person_languages (person_id, language_id, cefr_level, is_native)
+VALUES (@person_id, @language_id, sqlc.narg('cefr_level'), @is_native);
+
+-- name: UpdatePersonLanguage :exec
+UPDATE oikumenea.person_languages
+SET cefr_level = sqlc.narg('cefr_level'), is_native = @is_native
+WHERE person_id = @person_id AND language_id = @language_id AND deleted_at IS NULL;
+
+-- name: DeletePersonLanguage :one
+UPDATE oikumenea.person_languages SET deleted_at = now()
+WHERE person_id = @person_id AND language_id = @language_id AND deleted_at IS NULL
+RETURNING id;
 
 -- ============================ person↔person relationships (D-PersonRelationships, M14) ============================
 

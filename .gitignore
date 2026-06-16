@@ -7,3 +7,6 @@
 
 # local-dev tooling connection/secrets (commit .env.example instead)
 .env
+
+oikumenea
+hermenea

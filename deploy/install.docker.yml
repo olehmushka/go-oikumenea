@@ -12,7 +12,10 @@ server:
   management-port: 8444
   context-path: ""
 
-environment: docker
+# local-dev environment: this reference stack ships an insecure HS256 (symmetric) issuer below, which
+# the app fail-closes on outside local/dev (F-009). Use a real OIDC issuer + `staging`/`production` for
+# any real deployment.
+environment: local
 
 postgres:
   dsn: "postgres://oikumenea:oikumenea@postgres:5432/postgres?sslmode=disable"

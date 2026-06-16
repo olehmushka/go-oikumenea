@@ -1,0 +1,93 @@
+# Generic reference-data import API (M16 / D-Hermenea, folds D-DataIngestion).
+#
+# The single write path the out-of-process `hermenea` companion uses to load reference data into
+# oikumenea (docs/modules/hermenea.md + docs/modules/platform.md). Hermenea fetches → stages → maps an
+# external dataset into a CANONICAL ENVELOPE and POSTs it here; oikumenea applies a code-keyed,
+# idempotent, NON-DESTRUCTIVE upsert into the target catalog in one transaction, stamping
+# (source, source_version, imported_at) provenance on each row and recording ONE audited Action as a
+# `system` actor (the ingest != audited-edit boundary).
+#
+# Authorization: `import.manage` (instance scope). The caller is the `hermenea-importer` service
+# principal — a runtime shared secret (HERMENEA_OIKUMENEA_TOKEN) the inbound middleware validates and
+# maps to a `system`-actor PDP context holding exactly import.manage (L-AuthzOnly amendment). A human
+# instance admin holding import.manage may also call it. `auth: header` carries the bearer token.
+#
+# Records are intentionally untyped (`any`): each object-type's registered upsert handler interprets
+# its own record shape, so one endpoint serves every importable catalog. Generated Go lands in
+# internal/conjure and is never hand-edited.
+types:
+  definitions:
+    default-package: oikumenea.dataimport
+    objects:
+      CanonicalEnvelope:
+        docs: |
+          The interchange document hermenea produces and oikumenea upserts. `objectType` must equal the
+          path object-type. `records` are object-type-specific JSON objects the registered handler reads.
+        fields:
+          objectType:
+            type: string
+            docs: The importable object-type key (e.g. geo-countries); must match the path parameter.
+          source:
+            type: string
+            docs: Stable source identifier (e.g. iso-3166) — stamped as row provenance.
+          sourceVersion:
+            type: optional<string>
+            docs: The source's version/edition (e.g. 2024) — stamped as row provenance.
+          license:
+            type: optional<string>
+            docs: License/attribution string carried for lineage (not persisted per-row).
+          generatedAt:
+            type: optional<string>
+            docs: ISO-8601 timestamp the upstream snapshot was generated (lineage only).
+          records:
+            type: list<any>
+            docs: The object-type-specific records to upsert; each is a JSON object.
+      ImportResult:
+        docs: The per-object-type outcome of one idempotent upsert.
+        fields:
+          objectType: string
+          created:
+            type: integer
+            docs: Rows newly inserted.
+          updated:
+            type: integer
+            docs: Existing rows whose values changed.
+          skipped:
+            type: integer
+            docs: Rows already up to date (idempotent no-ops).
+    errors:
+      UnknownObjectType:
+        docs: No upsert handler is registered for the requested object-type.
+        namespace: DataImport
+        code: INVALID_ARGUMENT
+        safe-args:
+          objectType: string
+      EnvelopeMismatch:
+        docs: The envelope's objectType does not match the path object-type.
+        namespace: DataImport
+        code: INVALID_ARGUMENT
+        safe-args:
+          pathObjectType: string
+          bodyObjectType: string
+services:
+  ImportService:
+    name: Import Service
+    package: oikumenea.dataimport
+    base-path: /import/v1
+    docs: |
+      The generic reference-data import endpoint (instance-scope, import.manage). Called by the
+      hermenea companion's loader; idempotent and non-destructive.
+    default-auth: header
+    endpoints:
+      importObjects:
+        http: POST /import/{objectType}
+        docs: Idempotently upsert a canonical envelope into the {objectType} catalog.
+        args:
+          objectType:
+            type: string
+            param-type: path
+            docs: The importable object-type (routing key).
+          envelope:
+            type: CanonicalEnvelope
+            param-type: body
+        returns: ImportResult

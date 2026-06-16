@@ -300,8 +300,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List the scheme catalog, optionally filtered by country and/or generic category.
-         * @description List the scheme catalog, optionally filtered by country and/or generic category.
+         * List the scheme catalog, optionally filtered by country RID (GET /geo/countries) and/or generic category.
+         * @description List the scheme catalog, optionally filtered by country RID (GET /geo/countries) and/or generic category.
          */
         get: operations["DocumentService_listPersonalCodeSchemes"];
         put?: never;
@@ -404,6 +404,106 @@ export interface paths {
          *     Document:PersonalCodeDuplicate.
          */
         post: operations["DocumentService_attachPersonalCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/geo/v1/countries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the active countries in display order (sort_order, then code).
+         * @description List the active countries in display order (sort_order, then code).
+         */
+        get: operations["GeoService_listCountries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hermenea/v1/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List worker jobs (most recent first).
+         * @description List worker jobs (most recent first).
+         */
+        get: operations["HermeneaService_listJobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hermenea/v1/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List import-run lineage (most recent first).
+         * @description List import-run lineage (most recent first).
+         */
+        get: operations["HermeneaService_listRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hermenea/v1/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the registered import sources.
+         * @description List the registered import sources.
+         */
+        get: operations["HermeneaService_listSources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hermenea/v1/sync/{source}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enqueue a sync job for a registered source (the push trigger from oikumenea).
+         * @description Enqueue a sync job for a registered source (the push trigger from oikumenea).
+         */
+        post: operations["HermeneaService_triggerSync"];
         delete?: never;
         options?: never;
         head?: never;
@@ -534,6 +634,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/import/v1/import/{objectType}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Idempotently upsert a canonical envelope into the {objectType} catalog.
+         * @description Idempotently upsert a canonical envelope into the {objectType} catalog.
+         */
+        post: operations["ImportService_importObjects"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/language/v1/languages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List languoids in code order, optionally filtered by level, root family (glottocode), and a
+         * @description List languoids in code order, optionally filtered by level, root family (glottocode), and a
+         *     name/code substring. `limit` caps the page (default/clamped server-side) since the catalog is
+         *     large (~26k); narrow with the filters.
+         */
+        get: operations["LanguageService_listLanguages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/language/v1/languages/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fetch one languoid by its RID.
+         * @description Fetch one languoid by its RID.
+         */
+        get: operations["LanguageService_getLanguage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/language/v1/writing-systems": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the ISO-15924 writing systems in code order.
+         * @description List the ISO-15924 writing systems in code order.
+         */
+        get: operations["LanguageService_listWritingSystems"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/localization/v1/locale-languages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List each supported locale's canonical Glottolog language (D-Languages, M18). Read-only — the
+         * @description List each supported locale's canonical Glottolog language (D-Languages, M18). Read-only — the
+         *     links are reconciled by the language-scheme import, not edited here.
+         */
+        get: operations["LocalizationService_listLocaleLanguages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/localization/v1/locales": {
         parameters: {
             query?: never;
@@ -597,6 +800,79 @@ export interface paths {
         put: operations["LocalizationService_putTranslations"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/location/v1/location/types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the active place-type catalog.
+         * @description List the active place-type catalog.
+         */
+        get: operations["LocationService_listLocationTypes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/location/v1/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Spatial query, token-paginated. Supply either a radius (lat + lng + radiusM, via ST_DWithin)
+         * @description Spatial query, token-paginated. Supply either a radius (lat + lng + radiusM, via ST_DWithin)
+         *     or a bounding box (minLat + minLng + maxLat + maxLng); Location:QueryWindowRequired otherwise.
+         */
+        get: operations["LocationService_listLocations"];
+        put?: never;
+        /**
+         * Create a location from a coordinate (+ address); derives MGRS/H3. Location:CoordinateRequired when the coordinate is missing.
+         * @description Create a location from a coordinate (+ address); derives MGRS/H3. Location:CoordinateRequired when the coordinate is missing.
+         */
+        post: operations["LocationService_createLocation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/location/v1/locations/{locationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one location by its RID. Location:LocationNotFound when absent.
+         * @description Read one location by its RID. Location:LocationNotFound when absent.
+         */
+        get: operations["LocationService_getLocation"];
+        /**
+         * Replace a location's coordinate/address/type (re-derives MGRS/H3 on the coordinate).
+         * @description Replace a location's coordinate/address/type (re-derives MGRS/H3 on the coordinate).
+         */
+        put: operations["LocationService_updateLocation"];
+        post?: never;
+        /**
+         * Soft-delete a location. Location:LocationInUse when an owner still references it.
+         * @description Soft-delete a location. Location:LocationInUse when an owner still references it.
+         */
+        delete: operations["LocationService_deleteLocation"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1042,8 +1318,8 @@ export interface paths {
          */
         get: operations["PersonService_getPerson"];
         /**
-         * Update names, birthdate, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.
-         * @description Update names, birthdate, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.
+         * Update names, birthdate, date_of_death, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.
+         * @description Update names, birthdate, date_of_death, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.
          */
         put: operations["PersonService_updatePerson"];
         post?: never;
@@ -1156,8 +1432,8 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Remove a citizenship by country code.
-         * @description Remove a citizenship by country code.
+         * Remove a citizenship by country RID.
+         * @description Remove a citizenship by country RID.
          */
         delete: operations["PersonService_deleteCitizenship"];
         options?: never;
@@ -1272,6 +1548,51 @@ export interface paths {
         put: operations["PersonService_upsertKinship"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/person/v1/persons/{personId}/languages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the languages the person speaks (native first, then by name; D-Languages, M18).
+         * @description List the languages the person speaks (native first, then by name; D-Languages, M18).
+         */
+        get: operations["PersonService_listPersonLanguages"];
+        /**
+         * Add or update a language the person speaks (keyed on languageId). Returns Person:PersonInvalid
+         * @description Add or update a language the person speaks (keyed on languageId). Returns Person:PersonInvalid
+         *     when languageId does not resolve to a level='language' languoid or cefrLevel is invalid.
+         */
+        put: operations["PersonService_upsertPersonLanguage"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/person/v1/persons/{personId}/languages/{languageId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a language the person speaks, by languoid id. Idempotent within the active set.
+         * @description Remove a language the person speaks, by languoid id. Idempotent within the active set.
+         */
+        delete: operations["PersonService_deletePersonLanguage"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1488,8 +1809,8 @@ export interface paths {
         };
         get?: never;
         /**
-         * Set or clear the person's one rank (a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.
-         * @description Set or clear the person's one rank (a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.
+         * Set or clear the person's rank in one rank system (one rank per system, a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.
+         * @description Set or clear the person's rank in one rank system (one rank per system, a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.
          */
         put: operations["PersonService_setRank"];
         post?: never;
@@ -2161,6 +2482,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenant/v1/units/{unitId}/languages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a unit's official/working languages (D-Languages, M18).
+         * @description List a unit's official/working languages (D-Languages, M18).
+         */
+        get: operations["TenantService_listUnitLanguages"];
+        /**
+         * Add or update a unit's official/working language (keyed on languageId). Returns
+         * @description Add or update a unit's official/working language (keyed on languageId). Returns
+         *     Tenant:UnitInvalid when languageId does not resolve to a languoid.
+         */
+        put: operations["TenantService_upsertUnitLanguage"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenant/v1/units/{unitId}/languages/{languageId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a unit's language by languoid id. Idempotent within the active set.
+         * @description Remove a unit's language by languoid id. Idempotent within the active set.
+         */
+        delete: operations["TenantService_deleteUnitLanguage"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenant/v1/units/{unitId}/transition": {
         parameters: {
             query?: never;
@@ -2259,7 +2625,7 @@ export interface components {
         /** @description Add a rank system (the top level). `name` is the default-locale text; other locales via LocalizationService. */
         AddSystemRequest: {
             code: string;
-            /** @description ISO-3166 national origin (geo_countries code); omit for a supranational system (NATO/UN). */
+            /** @description Country RID of the national origin (resolve via GET /geo/countries); omit for a supranational system (NATO/UN). */
             country?: string;
             name: string;
             /**
@@ -2417,13 +2783,31 @@ export interface components {
             isPrimary: boolean;
             personId: string;
         };
+        /**
+         * @description The interchange document hermenea produces and oikumenea upserts. `objectType` must equal the
+         *     path object-type. `records` are object-type-specific JSON objects the registered handler reads.
+         */
+        CanonicalEnvelope: {
+            /** @description ISO-8601 timestamp the upstream snapshot was generated (lineage only). */
+            generatedAt?: string;
+            /** @description License/attribution string carried for lineage (not persisted per-row). */
+            license?: string;
+            /** @description The importable object-type key (e.g. geo-countries); must match the path parameter. */
+            objectType: string;
+            /** @description The object-type-specific records to upsert; each is a JSON object. */
+            records: unknown[];
+            /** @description Stable source identifier (e.g. iso-3166) — stamped as row provenance. */
+            source: string;
+            /** @description The source's version/edition (e.g. 2024) — stamped as row provenance. */
+            sourceVersion?: string;
+        };
         /** @description A person's effective-dated nationality in a country (D-Geo). A person may hold several; at most one active per country. */
         Citizenship: {
             /** @description ISO-8601 date the citizenship was acquired. */
             acquiredOn?: string;
             /** @description How the citizenship was acquired — one of birth | descent | naturalization | other. */
             basis: string;
-            /** @description ISO-3166-1 alpha-2 country code (geo registry). */
+            /** @description Country RID (resolve via GET /geo/countries). */
             country: string;
             id: string;
             /** @description The person's primary nationality (at most one active). */
@@ -2462,6 +2846,21 @@ export interface components {
             roleCode?: string;
             scope?: string;
             targetUnitId?: string;
+        };
+        /** @description A country in the ISO-3166-1 registry. `id` is the RID (the reference key); `code` is the stable ISO-3166-1 alpha-2 lookup code; `name` is the default-locale (English) name. */
+        Country: {
+            /** @description ISO-3166-1 alpha-2 code (e.g. UA, PL); the stable, locale-agnostic lookup key. */
+            code: string;
+            /** @description The country's RID (location service); what person/document/rank reference. */
+            id: string;
+            /** @description Default-locale (English) display name; other locales arrive via the i18n store. */
+            name: string;
+            /** @description active | retired. */
+            status: string;
+        };
+        /** @description The countries, in display order. */
+        CountryList: {
+            countries: components["schemas"]["Country"][];
         };
         /**
          * @description Create an account for a person, optionally linking its first external identity in the same
@@ -2534,13 +2933,12 @@ export interface components {
             code?: string;
             countryOfBirth?: string;
             credentials?: string;
+            dateOfDeath?: string;
             displayName: string;
             generation?: string;
             given?: string;
             given2?: string;
             preferred?: string;
-            /** @description Optional initial rank (validated against the rank scheme). */
-            rankId?: string;
             /** @description ISO/IEC 5218 value; defaults to not_known when omitted. */
             sex?: string;
             surname?: string;
@@ -2612,7 +3010,7 @@ export interface components {
             issuedOn?: string;
             /** @description Issuing authority (e.g. ДМС України). pii:basic. */
             issuer?: string;
-            /** @description ISO-3166-1 alpha-2 code of the issuing country (geo registry); lets one person hold same-type papers from several countries. */
+            /** @description Country RID of the issuing country (resolve via GET /geo/countries); lets one person hold same-type papers from several countries. */
             issuingCountry?: string;
             /** @description The document number (passport no., licence no.). pii:basic. */
             number?: string;
@@ -2805,6 +3203,56 @@ export interface components {
             /** Format: int32 */
             updated: number;
         };
+        /** @description The per-object-type outcome of one idempotent upsert. */
+        ImportResult: {
+            /**
+             * Format: int32
+             * @description Rows newly inserted.
+             */
+            created: number;
+            objectType: string;
+            /**
+             * Format: int32
+             * @description Rows already up to date (idempotent no-ops).
+             */
+            skipped: number;
+            /**
+             * Format: int32
+             * @description Existing rows whose values changed.
+             */
+            updated: number;
+        };
+        /** @description One map+load lineage record. */
+        ImportRun: {
+            /** Format: int32 */
+            created: number;
+            error?: string;
+            finishedAt?: string;
+            id: string;
+            /** Format: int32 */
+            skipped: number;
+            sourceCode: string;
+            sourceVersion?: string;
+            startedAt: string;
+            /** @description running | succeeded | failed. */
+            status: string;
+            /** Format: int32 */
+            updated: number;
+        };
+        /** @description A registered external dataset hermenea can sync into oikumenea. */
+        ImportSource: {
+            code: string;
+            /** @description http | file. */
+            connectorType: string;
+            /** @description Cron spec; absent means trigger-only. */
+            cron?: string;
+            enabled: boolean;
+            /** @description URL (http) or bundled path (file). */
+            locator: string;
+            name: string;
+            /** @description The oikumenea import target (e.g. geo-countries). */
+            objectType: string;
+        };
         ImportSystem: {
             categories: components["schemas"]["ImportCategory"][];
             code: string;
@@ -2837,6 +3285,11 @@ export interface components {
             revokedAt?: string;
             revokedBy?: string;
         };
+        /** @description A reference to an enqueued worker job (the result of a sync trigger). */
+        JobRef: {
+            jobId: string;
+            status: string;
+        };
         /** @description A directional parent→child blood/legal parentage link (D-PersonRelationships; Link link__kin_parent_of). Siblings are derived, never stored. */
         Kinship: {
             /** @description The child's URN RID. */
@@ -2846,6 +3299,33 @@ export interface components {
             parentId: string;
             /** @description One of active | disestablished. */
             status: string;
+        };
+        /** @description A node in the Glottolog forest. `id` is the RID (the reference key); `code` is the stable glottocode; `name` is the locale->text display map. */
+        Languoid: {
+            /** @description Glottocode (8-char), the stable, locale-agnostic lookup key (e.g. stan1293). */
+            code: string;
+            /** @description The root-family glottocode (derived via the closure). */
+            familyCode?: string;
+            /** @description The languoid's RID (language service); what person/unit/locale links reference. */
+            id: string;
+            /** @description ISO 639-3 code, when the languoid has one (families/dialects usually do not). */
+            iso6393?: string;
+            /** @description family | language | dialect. */
+            level: string;
+            /** @description Glottolog macroarea. */
+            macroarea?: string;
+            /** @description locale->text display name (all enabled locales; default-locale `name` column + i18n store). */
+            name: {
+                [key: string]: string;
+            };
+            /** @description The RID of the immediate parent languoid (absent for a top-level family / isolate). */
+            parentId?: string;
+            /** @description AES endangerment (not_endangered…extinct). */
+            status: string;
+        };
+        /** @description A page of languoids in code order. */
+        LanguoidList: {
+            languoids: components["schemas"]["Languoid"][];
         };
         /** @description Link a verified (issuer, subject) login point to an account. */
         LinkIdentityRequest: {
@@ -2864,9 +3344,113 @@ export interface components {
             /** Format: int32 */
             sortOrder: number;
         };
+        /**
+         * @description A supported locale's canonical Glottolog language (D-Languages, M18; Link link__locale_language).
+         *     Read-only: the link is reconciled by the language-scheme import (matching the locale's ISO-639-3
+         *     code to a languoid's iso639_3), not edited directly.
+         */
+        LocaleLanguage: {
+            /** @description The matched languoid's URN RID. */
+            languageId: string;
+            /** @description The locale's ISO 639-3 code. */
+            locale: string;
+            /** @description The languoid's translatable display name as a locale -> text map (all enabled locales; D-i18n). */
+            name: {
+                [key: string]: string;
+            };
+        };
+        /** @description The locale -> canonical-language links (D-Languages, M18). */
+        LocaleLanguageList: {
+            localeLanguages: components["schemas"]["LocaleLanguage"][];
+        };
         /** @description The supported locales, in display order. */
         LocaleList: {
             locales: components["schemas"]["Locale"][];
+        };
+        /** @description A shared place — a precise coordinate, DB-derived spatial indexes, and a structured postal address. */
+        Location: {
+            adminArea1?: string;
+            adminArea2?: string;
+            /** @description The country's RID (resolve an ISO alpha-2 code via GET /geo/countries). */
+            countryId: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description DB-derived H3 cell at resolution 11 (~20m). */
+            h3Res11?: string;
+            /** @description DB-derived H3 cell at resolution 5 (~9km). */
+            h3Res5?: string;
+            /** @description DB-derived H3 cell at resolution 7 (~1.2km). */
+            h3Res7?: string;
+            /** @description DB-derived H3 cell at resolution 9 (~150m). */
+            h3Res9?: string;
+            houseNumber?: string;
+            /** @description The location's RID (location service); what owning modules reference by FK. */
+            id: string;
+            /**
+             * Format: double
+             * @description WGS84 latitude of the authoritative coordinate.
+             */
+            latitude: number;
+            locality?: string;
+            /**
+             * Format: double
+             * @description WGS84 longitude of the authoritative coordinate.
+             */
+            longitude: number;
+            /** @description DB-derived MGRS grid reference (absent for polar UPS coordinates, out of scope). */
+            mgrs?: string;
+            postalCode?: string;
+            rawAddress?: string;
+            street?: string;
+            /** @description Optional place-type classification (location_location_types RID). */
+            typeId?: string;
+            /** @description Localized name (locale->text) of the place type, when typeId is set. */
+            typeName?: {
+                [key: string]: string;
+            };
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description A page of locations plus the opaque token for the next page (empty when exhausted). */
+        LocationPage: {
+            locations: components["schemas"]["Location"][];
+            nextPageToken?: string;
+        };
+        /** @description An instance-admin catalog label classifying a place (building/address/online); descriptive only. */
+        LocationType: {
+            code: string;
+            id: string;
+            /** @description Localized display name (locale->text), all enabled locales. */
+            name: {
+                [key: string]: string;
+            };
+            /** @description active | retired. */
+            status: string;
+        };
+        /** @description The active location types, in display order. */
+        LocationTypeList: {
+            locationTypes: components["schemas"]["LocationType"][];
+        };
+        /**
+         * @description Create/replace payload for a location. latitude+longitude are the required spine (validated in
+         *     the application, not the wire, so a missing coordinate returns Location:CoordinateRequired
+         *     rather than a deserialization error). MGRS + H3 are never supplied — they are DB-derived.
+         */
+        LocationWrite: {
+            adminArea1?: string;
+            adminArea2?: string;
+            /** @description The country's RID (required). */
+            countryId: string;
+            houseNumber?: string;
+            /** Format: double */
+            latitude?: number;
+            locality?: string;
+            /** Format: double */
+            longitude?: number;
+            postalCode?: string;
+            rawAddress?: string;
+            street?: string;
+            typeId?: string;
         };
         /**
          * @description A person's belonging to a unit (the reified link__member_of), effective-dated, optionally
@@ -3082,12 +3666,14 @@ export interface components {
             citizenships: components["schemas"]["Citizenship"][];
             /** @description Optional stable, locale-agnostic external id (e.g. personnel/service number); unique among active persons. */
             code?: string;
-            /** @description ISO-3166-1 alpha-2 country code, validated against the geo registry (D-Geo). */
+            /** @description Country RID (resolve via GET /geo/countries), validated against the geo registry (D-Geo). */
             countryOfBirth?: string;
             /** Format: date-time */
             createdAt: string;
             /** @description Post-nominal credentials (PhD, MD). */
             credentials?: string;
+            /** @description ISO-8601 calendar date of death (YYYY-MM-DD); a bio attribute, not a lifecycle state — a deceased person stays an active record (D-PersonBio). */
+            dateOfDeath?: string;
             /** Format: date-time */
             deactivatedAt?: string;
             /** @description The canonical full name form; authoritative for search/display. */
@@ -3114,8 +3700,8 @@ export interface components {
              * @description End of the reversibility window; purge is refused before it.
              */
             purgeAfter?: string;
-            /** @description The URN RID of the one rank the person holds (a DIRECTORY attribute; never an authz input). Null when unranked. */
-            rankId?: string;
+            /** @description The ranks the person holds — at most one per rank system (a DIRECTORY attribute; never an authz input — D-Rank). Empty when unranked. Populated by getPerson; empty in list responses. */
+            ranks: components["schemas"]["PersonRank"][];
             /** @description The person's residence history. Populated by getPerson; empty in list responses. */
             residences: components["schemas"]["Residence"][];
             /** @description Biological sex, ISO/IEC 5218 as text — one of not_known | male | female | not_applicable. */
@@ -3133,10 +3719,37 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        /**
+         * @description A language a person speaks (D-Languages, M18; Link link__speaks). languageId references a
+         *     level='language' Glottolog languoid (LanguageService); name is the languoid's translatable
+         *     display name (locale -> text map). cefrLevel is the optional CEFR proficiency; isNative flags a
+         *     mother tongue.
+         */
+        PersonLanguage: {
+            /** @description CEFR proficiency — one of A1 | A2 | B1 | B2 | C1 | C2; null when unstated. */
+            cefrLevel?: string;
+            id: string;
+            /** @description Whether this is a mother tongue. */
+            isNative: boolean;
+            /** @description The languoid's URN RID (a level='language' node; resolve via GET /language/v1/languages). */
+            languageId: string;
+            /** @description The languoid's translatable display name as a locale -> text map (all enabled locales; D-i18n). */
+            name: {
+                [key: string]: string;
+            };
+            personId: string;
+        };
         /** @description A page of persons plus the opaque token for the next page (empty when exhausted). */
         PersonPage: {
             nextPageToken?: string;
             persons: components["schemas"]["Person"][];
+        };
+        /** @description One rank a person holds, scoped to a rank system (the HOLDS_RANK link; one per system — D-Rank). A directory attribute, never an authz input. */
+        PersonRank: {
+            /** @description The URN RID of the rank held in that system. */
+            rankId: string;
+            /** @description The URN RID of the rank system (derived from the rank); clients resolve the label via RankService. */
+            systemId: string;
         };
         /** @description A person-held government identifier of some scheme. Its value is pii:sensitive — stored encrypted, returned decrypted here. */
         PersonalCode: {
@@ -3159,7 +3772,7 @@ export interface components {
         PersonalCodeScheme: {
             /** @description The scheme id (D-Code); the natural key. Immutable by convention. */
             code: string;
-            /** @description ISO-3166-1 alpha-2 code of the scheme's country (geo registry). */
+            /** @description Country RID of the scheme's country (resolve via GET /geo/countries; the field name is retained for compatibility). */
             countryIso?: string;
             /** Format: date-time */
             createdAt: string;
@@ -3180,7 +3793,7 @@ export interface components {
         };
         /** @description A person's contact phone (D-PersonContactChannels). number is E.164-normalized; country is derived. pii:contact. */
         Phone: {
-            /** @description ISO-3166-1 alpha-2 country code derived from the number; null when underivable. */
+            /** @description Country RID derived from the number (resolve codes via GET /geo/countries); null when underivable. */
             country?: string;
             id: string;
             /** @description The person's primary phone (at most one active). */
@@ -3334,7 +3947,7 @@ export interface components {
             categories: components["schemas"]["RankCategory"][];
             /** @description Stable, locale-agnostic identifier (e.g. us-armed-forces); unique among active systems. */
             code: string;
-            /** @description ISO-3166 national origin (geo_countries code); absent for a supranational system (NATO/UN). */
+            /** @description Country RID of the national origin (resolve via GET /geo/countries); absent for a supranational system (NATO/UN). */
             country?: string;
             /** @description The system's URN RID (carried as a plain string). */
             id: string;
@@ -3395,7 +4008,7 @@ export interface components {
         };
         /** @description A person's effective-dated residence in a country/region (D-Geo). Locator data (pii:contact). */
         Residence: {
-            /** @description ISO-3166-1 alpha-2 country code (geo registry). */
+            /** @description Country RID (resolve via GET /geo/countries). */
             country: string;
             id: string;
             personId: string;
@@ -3451,10 +4064,16 @@ export interface components {
                 [key: string]: unknown;
             };
         };
-        /** @description Set or clear the person's one rank. An absent rankId clears it (D-Rank). */
+        /**
+         * @description Set or clear the person's rank in ONE rank system (one rank per system — D-Rank). The rank's
+         *     system is derived from the rank itself, so on set only rankId is needed; on clear, systemId
+         *     names the system to clear.
+         */
         SetRankRequest: {
-            /** @description The URN RID of the rank to assign; omit to clear the person's rank. */
+            /** @description The URN RID of the rank to assign (its rank system is derived); omit to clear the person's rank in `systemId`. */
             rankId?: string;
+            /** @description Required only when clearing (rankId omitted) — the URN RID of the rank system to clear. Ignored when rankId is present. */
+            systemId?: string;
         };
         /**
          * @description A person's standalone social-network account (D-PersonSocialChannels). platformUserId is the
@@ -3557,6 +4176,22 @@ export interface components {
             id: string;
             parentId: string;
         };
+        /**
+         * @description A unit's official/working language (D-Languages, M18; Link link__unit_language). languageId
+         *     references a Glottolog languoid (LanguageService); name is its translatable display name.
+         */
+        UnitLanguage: {
+            id: string;
+            /** @description Whether the language is official (vs. merely working) for the unit. */
+            isOfficial: boolean;
+            /** @description The languoid's URN RID (resolve via GET /language/v1/languages). */
+            languageId: string;
+            /** @description The languoid's translatable display name as a locale -> text map (all enabled locales; D-i18n). */
+            name: {
+                [key: string]: string;
+            };
+            unitId: string;
+        };
         /** @description A page of units plus the opaque token for the next page (empty when exhausted). */
         UnitPage: {
             nextPageToken?: string;
@@ -3645,15 +4280,16 @@ export interface components {
             status?: string;
         };
         /**
-         * @description Update a person's names (canonical + CLDR parts), birthdate, sex, country_of_birth, and
-         *     attributes. Omitted fields are unchanged; an empty string clears an optional name part.
-         *     `code` is immutable by convention and rank is set via setRank.
+         * @description Update a person's names (canonical + CLDR parts), birthdate, date_of_death, sex,
+         *     country_of_birth, and attributes. Omitted fields are unchanged; an empty string clears an
+         *     optional name part. `code` is immutable by convention and ranks are set via setRank (per system).
          */
         UpdatePersonRequest: {
             attributes?: unknown;
             birthdate?: string;
             countryOfBirth?: string;
             credentials?: string;
+            dateOfDeath?: string;
             displayName?: string;
             generation?: string;
             given?: string;
@@ -3843,6 +4479,14 @@ export interface components {
             /** @description engaged | married | divorced | widowed | annulled | dissolved. */
             status: string;
         };
+        /** @description Add or update a language the person speaks (keyed on languageId). cefrLevel/isNative are the proficiency attributes. */
+        UpsertPersonLanguageRequest: {
+            /** @description A1 | A2 | B1 | B2 | C1 | C2; omit to leave unstated. */
+            cefrLevel?: string;
+            isNative?: boolean;
+            /** @description The languoid's URN RID; must resolve to a level='language' Glottolog node. */
+            languageId: string;
+        };
         /** @description Add a contact phone, or replace one when id is supplied. number is E.164-normalized and country derived. */
         UpsertPhoneRequest: {
             /** @description The URN RID of an existing phone row to replace; omit to add a new row. */
@@ -3893,6 +4537,13 @@ export interface components {
             /** @description active | ended; defaults to active. */
             status?: string;
         };
+        /** @description Add or update a unit's official/working language (keyed on languageId). */
+        UpsertUnitLanguageRequest: {
+            /** @description Defaults to true (official); false marks a working language. */
+            isOfficial?: boolean;
+            /** @description The languoid's URN RID. */
+            languageId: string;
+        };
         /** @description Binary and schema revision the running server reports. */
         VersionInfo: {
             binaryRevision: string;
@@ -3914,6 +4565,37 @@ export interface components {
             email?: string;
             /** @description The URN RID of the resolved person (the PDP subject). */
             personId: string;
+        };
+        /** @description One unit of queued work in hermenea's runtime. */
+        WorkerJob: {
+            /** Format: int32 */
+            attempts: number;
+            id: string;
+            jobType: string;
+            lastError?: string;
+            /** Format: int32 */
+            maxAttempts: number;
+            runAfter: string;
+            sourceCode?: string;
+            /** @description queued | running | succeeded | failed | dead. */
+            status: string;
+        };
+        /** @description An ISO-15924 script. `id` is the RID; `code` is the ISO-15924 lookup code. */
+        WritingSystem: {
+            /** @description ISO-15924 code (e.g. Latn, Cyrl, Hani). */
+            code: string;
+            /** @description The writing system's RID (language service). */
+            id: string;
+            /** @description locale->text display name (all enabled locales; default-locale `name` column + i18n store). */
+            name: {
+                [key: string]: string;
+            };
+            /** @description logographic | syllabary | alphabet | abjad | abugida | featural. */
+            scriptType?: string;
+        };
+        /** @description The writing systems, in code order. */
+        WritingSystemList: {
+            writingSystems: components["schemas"]["WritingSystem"][];
         };
     };
     responses: never;
@@ -4875,6 +5557,153 @@ export interface operations {
             };
         };
     };
+    GeoService_listCountries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CountryList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    HermeneaService_listJobs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerJob"][];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    HermeneaService_listRuns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRun"][];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    HermeneaService_listSources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportSource"][];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    HermeneaService_triggerSync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRef"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
     IdentityFederationService_createAccount: {
         parameters: {
             query?: never;
@@ -5064,6 +5893,170 @@ export interface operations {
             };
         };
     };
+    ImportService_importObjects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The importable object-type (routing key). */
+                objectType: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CanonicalEnvelope"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    LanguageService_listLanguages: {
+        parameters: {
+            query?: {
+                /** @description Filter to a level (family | language | dialect). */
+                level?: string;
+                /** @description Filter to descendants of this root-family glottocode (via family_code). */
+                family?: string;
+                /** @description Case-insensitive substring match on name or glottocode. */
+                query?: string;
+                /** @description Max rows to return (server clamps to a sane maximum). */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LanguoidList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    LanguageService_getLanguage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The languoid's RID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Languoid"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    LanguageService_listWritingSystems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WritingSystemList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    LocalizationService_listLocaleLanguages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocaleLanguageList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
     LocalizationService_listLocales: {
         parameters: {
             query?: never;
@@ -5230,6 +6223,202 @@ export interface operations {
                         };
                     };
                 };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    LocationService_listLocationTypes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocationTypeList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    LocationService_listLocations: {
+        parameters: {
+            query?: {
+                lat?: number;
+                lng?: number;
+                radiusM?: number;
+                minLat?: number;
+                minLng?: number;
+                maxLat?: number;
+                maxLng?: number;
+                pageSize?: number;
+                pageToken?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocationPage"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    LocationService_createLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocationWrite"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Location"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    LocationService_getLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                locationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Location"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    LocationService_updateLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                locationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocationWrite"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Location"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    LocationService_deleteLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                locationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
             default: {
@@ -6669,6 +7858,102 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Kinship"];
                 };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    PersonService_listPersonLanguages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonLanguage"][];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    PersonService_upsertPersonLanguage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertPersonLanguageRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonLanguage"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    PersonService_deletePersonLanguage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+                languageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
             default: {
@@ -8369,6 +9654,102 @@ export interface operations {
             header?: never;
             path: {
                 unitId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    TenantService_listUnitLanguages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                unitId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnitLanguage"][];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    TenantService_upsertUnitLanguage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                unitId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertUnitLanguageRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnitLanguage"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    TenantService_deleteUnitLanguage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                unitId: string;
+                languageId: string;
             };
             cookie?: never;
         };

@@ -114,6 +114,18 @@ func seedPerson(t *testing.T, pool *pgxpool.Pool) string {
 	return id
 }
 
+// countryRID resolves a seeded ISO-3166-1 alpha-2 code to its geo_countries RID (countries are
+// RID-keyed; documents reference the issuing country by RID).
+func countryRID(t *testing.T, pool *pgxpool.Pool, code string) string {
+	t.Helper()
+	var id string
+	if err := pool.QueryRow(context.Background(),
+		"SELECT id FROM oikumenea.geo_countries WHERE code = $1", code).Scan(&id); err != nil {
+		t.Fatalf("country %s: %v", code, err)
+	}
+	return id
+}
+
 // TestDocumentAttrSchema exercises the per-type attribute schema (D-DocumentAttrSchema): a document of
 // a type that declares a schema is validated against it on write — valid attributes are accepted,
 // unknown keys / wrong types / bad enum values are rejected as ErrDocumentInvalid.
@@ -176,7 +188,7 @@ func TestDocumentLifecycle(t *testing.T) {
 	}
 
 	doc, err := svc.AttachDocument(ctx, domain.Document{
-		PersonID: person, TypeID: typ.ID, Number: "AA123456", Issuer: "DMS", IssuingCountry: "UA", IssuedOn: "2020-01-02",
+		PersonID: person, TypeID: typ.ID, Number: "AA123456", Issuer: "DMS", IssuingCountry: countryRID(t, pool, "UA"), IssuedOn: "2020-01-02",
 	})
 	if err != nil {
 		t.Fatalf("attach document: %v", err)

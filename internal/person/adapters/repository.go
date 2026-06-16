@@ -51,7 +51,7 @@ func (r *Repository) InsertPerson(ctx context.Context, p domain.Person) (domain.
 		Birthdate:      dateText(p.Birthdate),
 		DateOfDeath:    dateText(p.DateOfDeath),
 		Sex:            p.Sex,
-		CountryOfBirth: text(p.CountryOfBirth),
+		CountryOfBirthID: text(p.CountryOfBirth),
 		Attributes:     p.Attributes,
 	})
 	if err != nil {
@@ -100,7 +100,7 @@ func (r *Repository) UpdatePerson(ctx context.Context, id string, patch domain.P
 		Birthdate:      datePtr(patch.Birthdate),
 		DateOfDeath:    datePtr(patch.DateOfDeath),
 		Sex:            textPtr(patch.Sex),
-		CountryOfBirth: textPtr(patch.CountryOfBirth),
+		CountryOfBirthID: textPtr(patch.CountryOfBirth),
 		Attributes:     patch.Attributes,
 		ID:             id,
 	})
@@ -228,6 +228,10 @@ func (r *Repository) Purge(ctx context.Context, id string) (domain.Person, error
 	if err := r.q.DeleteAllSocialAccounts(ctx, id); err != nil {
 		return domain.Person{}, err
 	}
+	// person languages (D-Languages, M18) — pii:basic, erased on purge.
+	if err := r.q.DeleteAllPersonLanguages(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
 	// person↔person relationships (D-PersonRelationships) — erased on EITHER endpoint's purge.
 	if err := r.q.DeleteAllPartnerships(ctx, id); err != nil {
 		return domain.Person{}, err
@@ -312,7 +316,7 @@ func (r *Repository) ListNameVariants(ctx context.Context, personID string) ([]d
 func (r *Repository) UpsertCitizenship(ctx context.Context, c domain.Citizenship) (domain.Citizenship, error) {
 	row, err := r.q.UpsertCitizenship(ctx, personsql.UpsertCitizenshipParams{
 		PersonID:   c.PersonID,
-		Country:    c.Country,
+		CountryID:  c.Country,
 		Basis:      c.Basis,
 		AcquiredOn: dateText(c.AcquiredOn),
 		LostOn:     dateText(c.LostOn),
@@ -329,7 +333,7 @@ func (r *Repository) ClearPrimaryCitizenships(ctx context.Context, personID stri
 }
 
 func (r *Repository) DeleteCitizenship(ctx context.Context, personID, country string) error {
-	if _, err := r.q.DeleteCitizenship(ctx, personsql.DeleteCitizenshipParams{PersonID: personID, Country: country}); err != nil {
+	if _, err := r.q.DeleteCitizenship(ctx, personsql.DeleteCitizenshipParams{PersonID: personID, CountryID: country}); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.ErrCitizenshipNotFound
 		}
@@ -357,7 +361,7 @@ func (r *Repository) UpsertResidence(ctx context.Context, res domain.Residence) 
 	if res.ID == "" {
 		row, err := r.q.InsertResidence(ctx, personsql.InsertResidenceParams{
 			PersonID:  res.PersonID,
-			Country:   res.Country,
+			CountryID: res.Country,
 			Region:    text(res.Region),
 			ValidFrom: dateText(res.ValidFrom),
 			ValidTo:   dateText(res.ValidTo),
@@ -368,7 +372,7 @@ func (r *Repository) UpsertResidence(ctx context.Context, res domain.Residence) 
 		return toResidence(row), nil
 	}
 	row, err := r.q.UpdateResidence(ctx, personsql.UpdateResidenceParams{
-		Country:   res.Country,
+		CountryID: res.Country,
 		Region:    text(res.Region),
 		ValidFrom: dateText(res.ValidFrom),
 		ValidTo:   dateText(res.ValidTo),
@@ -475,7 +479,7 @@ func (r *Repository) UpsertPhone(ctx context.Context, p domain.Phone) (domain.Ph
 			PersonID:  p.PersonID,
 			TypeCode:  p.TypeCode,
 			Number:    p.Number,
-			Country:   text(p.Country),
+			CountryCode: text(p.Country),
 			IsPrimary: p.IsPrimary,
 		})
 		if err != nil {
@@ -486,7 +490,7 @@ func (r *Repository) UpsertPhone(ctx context.Context, p domain.Phone) (domain.Ph
 	row, err := r.q.UpdatePhone(ctx, personsql.UpdatePhoneParams{
 		TypeCode:  p.TypeCode,
 		Number:    p.Number,
-		Country:   text(p.Country),
+		CountryCode: text(p.Country),
 		IsPrimary: p.IsPrimary,
 		ID:        p.ID,
 		PersonID:  p.PersonID,
@@ -827,6 +831,79 @@ func (r *Repository) ListSocialAccountHandles(ctx context.Context, accountID str
 	out := make([]domain.SocialAccountHandle, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, toSocialAccountHandle(row))
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------- person languages (D-Languages, M18)
+
+func (r *Repository) InsertPersonLanguage(ctx context.Context, l domain.PersonLanguage) error {
+	if err := r.q.InsertPersonLanguage(ctx, personsql.InsertPersonLanguageParams{
+		PersonID:   l.PersonID,
+		LanguageID: l.LanguageID,
+		CefrLevel:  text(l.CEFRLevel),
+		IsNative:   l.IsNative,
+	}); err != nil {
+		return mapWriteErr(err)
+	}
+	return nil
+}
+
+func (r *Repository) UpdatePersonLanguage(ctx context.Context, l domain.PersonLanguage) error {
+	if err := r.q.UpdatePersonLanguage(ctx, personsql.UpdatePersonLanguageParams{
+		PersonID:   l.PersonID,
+		LanguageID: l.LanguageID,
+		CefrLevel:  text(l.CEFRLevel),
+		IsNative:   l.IsNative,
+	}); err != nil {
+		return mapWriteErr(err)
+	}
+	return nil
+}
+
+func (r *Repository) GetPersonLanguage(ctx context.Context, personID, languageID string) (domain.PersonLanguage, error) {
+	row, err := r.q.GetPersonLanguage(ctx, personsql.GetPersonLanguageParams{PersonID: personID, LanguageID: languageID})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.PersonLanguage{}, domain.ErrLanguageNotFound
+		}
+		return domain.PersonLanguage{}, err
+	}
+	return domain.PersonLanguage{
+		ID:           row.ID,
+		PersonID:     row.PersonID,
+		LanguageID:   row.LanguageID,
+		LanguageName: row.LanguageName,
+		CEFRLevel:    row.CefrLevel.String,
+		IsNative:     row.IsNative,
+	}, nil
+}
+
+func (r *Repository) DeletePersonLanguage(ctx context.Context, personID, languageID string) error {
+	if _, err := r.q.DeletePersonLanguage(ctx, personsql.DeletePersonLanguageParams{PersonID: personID, LanguageID: languageID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrLanguageNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) ListPersonLanguages(ctx context.Context, personID string) ([]domain.PersonLanguage, error) {
+	rows, err := r.q.ListPersonLanguages(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.PersonLanguage, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, domain.PersonLanguage{
+			ID:           row.ID,
+			PersonID:     row.PersonID,
+			LanguageID:   row.LanguageID,
+			LanguageName: row.LanguageName,
+			CEFRLevel:    row.CefrLevel.String,
+			IsNative:     row.IsNative,
+		})
 	}
 	return out, nil
 }
@@ -1262,7 +1339,7 @@ func toPhone(r personsql.OikumeneaPersonPhone) domain.Phone {
 		PersonID:  r.PersonID,
 		TypeCode:  r.TypeCode,
 		Number:    r.Number,
-		Country:   r.Country.String,
+		Country:   r.CountryID.String,
 		IsPrimary: r.IsPrimary,
 	}
 }
@@ -1295,7 +1372,7 @@ func toPerson(r personsql.OikumeneaPersonPerson) domain.Person {
 		Birthdate:      dateStr(r.Birthdate),
 		DateOfDeath:    dateStr(r.DateOfDeath),
 		Sex:            r.Sex,
-		CountryOfBirth: r.CountryOfBirth.String,
+		CountryOfBirth: r.CountryOfBirthID.String,
 		Attributes:     r.Attributes,
 		Status:         domain.Status(r.Status),
 		DeactivatedAt:  tsPtr(r.DeactivatedAt),
@@ -1330,7 +1407,7 @@ func toCitizenship(r personsql.OikumeneaPersonCitizenship) domain.Citizenship {
 	return domain.Citizenship{
 		ID:         r.ID,
 		PersonID:   r.PersonID,
-		Country:    r.Country,
+		Country:    r.CountryID,
 		Basis:      r.Basis,
 		AcquiredOn: dateStr(r.AcquiredOn),
 		LostOn:     dateStr(r.LostOn),
@@ -1342,7 +1419,7 @@ func toResidence(r personsql.OikumeneaPersonResidence) domain.Residence {
 	return domain.Residence{
 		ID:        r.ID,
 		PersonID:  r.PersonID,
-		Country:   r.Country,
+		Country:   r.CountryID,
 		Region:    r.Region.String,
 		ValidFrom: dateStr(r.ValidFrom),
 		ValidTo:   dateStr(r.ValidTo),
@@ -1379,11 +1456,15 @@ func mapWriteErr(err error) error {
 			strings.Contains(name, "sponsorship"), strings.Contains(name, "next_of_kin"),
 			strings.Contains(name, "association"):
 			return domain.ErrRelationshipConflict
+		case strings.Contains(name, "person_languages"):
+			return domain.ErrLanguageConflict
 		case strings.Contains(name, "code"):
 			return domain.ErrCodeConflict
 		}
 	case "23503": // foreign_key_violation
 		switch {
+		case strings.Contains(name, "is_language"):
+			return domain.ErrUnknownLanguage
 		case strings.Contains(name, "relation_code"):
 			return domain.ErrUnknownRelationType
 		case strings.Contains(name, "rank"):

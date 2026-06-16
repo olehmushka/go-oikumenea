@@ -53,7 +53,7 @@ export interface Person {
   birthdate?: string;
   sex?: string;
   status?: string;
-  rankId?: string;
+  ranks?: PersonRank[];
   countryOfBirth?: string;
   citizenships?: Citizenship[];
   residences?: Residence[];
@@ -136,6 +136,30 @@ export interface SocialAccount {
   source: string; // self_declared | operator_verified | imported
   confidence: string; // confirmed | probable | possible
   isPrimary?: boolean;
+}
+
+// D-Languages (M18)
+export interface PersonLanguage {
+  id: string;
+  personId: string;
+  languageId: string;
+  name?: LocaleMap; // the languoid's display name
+  cefrLevel?: string; // A1..C2
+  isNative: boolean;
+}
+
+export interface UnitLanguage {
+  id: string;
+  unitId: string;
+  languageId: string;
+  name?: LocaleMap;
+  isOfficial: boolean;
+}
+
+export interface LocaleLanguage {
+  locale: string;
+  languageId: string;
+  name?: LocaleMap;
 }
 /** A historical @handle for a social account (validTo null = current). */
 export interface SocialAccountHandle {
@@ -233,13 +257,18 @@ export interface Position {
   status?: string;
   requiredRankId?: string;
   sortOrder?: number;
-  holder?: unknown;
+  holder?: Membership;
 }
 export interface PositionPage {
   positions: Position[];
   nextPageToken?: string;
 }
 
+/** One rank a person holds, scoped to a rank system (at most one per system — D-Rank). */
+export interface PersonRank {
+  systemId: string;
+  rankId: string;
+}
 export interface Rank {
   id: string;
   code: string;
