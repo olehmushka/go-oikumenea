@@ -11,7 +11,7 @@ import {
 } from "@/components/ui";
 import { Localized } from "@/components/Localized";
 import { EdgeManager } from "@/components/EdgeManager";
-import { CreatePosition, FillPosition, PositionAdmin } from "@/components/PositionForms";
+import { CreatePosition, FillPosition, PersonLink, PositionAdmin } from "@/components/PositionForms";
 import { UnitAdmin } from "@/components/UnitForms";
 import { UnitLanguageManager } from "@/components/UnitLanguageForms";
 import type { Position, Unit, UnitRefList } from "@/lib/api/types";
@@ -131,6 +131,7 @@ export default async function UnitDetailPage({
             <>
               <th className="th">Code</th>
               <th className="th">Title</th>
+              <th className="th">Holder</th>
               <th className="th">Status</th>
               <th className="th"></th>
             </>
@@ -145,13 +146,20 @@ export default async function UnitDetailPage({
                 <Localized map={p.title} />
               </td>
               <td className="td">
-                <Pill tone={p.status === "FILLED" ? "green" : "slate"}>
-                  {p.status ?? "—"}
+                {p.holder?.personId ? (
+                  <PersonLink personId={p.holder.personId} />
+                ) : (
+                  <span className="text-slate-400">vacant</span>
+                )}
+              </td>
+              <td className="td">
+                <Pill tone={p.holder ? "green" : p.status === "abolished" ? "slate" : "amber"}>
+                  {p.status === "abolished" ? "abolished" : p.holder ? "filled" : "vacant"}
                 </Pill>
               </td>
               <td className="td">
                 <div className="relative flex items-center justify-end gap-3">
-                  {p.status !== "abolished" ? <FillPosition positionId={p.id} /> : null}
+                  {p.status !== "abolished" && !p.holder ? <FillPosition positionId={p.id} /> : null}
                   <PositionAdmin position={p} />
                 </div>
               </td>

@@ -53,7 +53,7 @@ export interface Person {
   birthdate?: string;
   sex?: string;
   status?: string;
-  rankId?: string;
+  ranks?: PersonRank[];
   countryOfBirth?: string;
   citizenships?: Citizenship[];
   residences?: Residence[];
@@ -257,13 +257,18 @@ export interface Position {
   status?: string;
   requiredRankId?: string;
   sortOrder?: number;
-  holder?: unknown;
+  holder?: Membership;
 }
 export interface PositionPage {
   positions: Position[];
   nextPageToken?: string;
 }
 
+/** One rank a person holds, scoped to a rank system (at most one per system — D-Rank). */
+export interface PersonRank {
+  systemId: string;
+  rankId: string;
+}
 export interface Rank {
   id: string;
   code: string;

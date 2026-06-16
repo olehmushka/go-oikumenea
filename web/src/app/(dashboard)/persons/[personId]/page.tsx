@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { apiGet } from "@/lib/api/server";
 import { Card, EmptyState, ErrorNotice, Mono, PageHeader, Pill } from "@/components/ui";
@@ -12,6 +13,7 @@ import {
   PersonalCodeManager,
   PersonLanguageManager,
   PersonLifecycle,
+  PersonRankLabel,
   PhoneManager,
   RelationshipManager,
   ResidenceManager,
@@ -21,22 +23,16 @@ import {
 import type {
   Association,
   DocumentDoc,
-  DocumentType,
   Guardianship,
   Kinship,
-  LocaleMap,
   Membership,
   NextOfKin,
   Order,
   Partnership,
-  PersonalCodeScheme,
   Person,
-  Platform,
-  RelationType,
   Sponsorship,
 } from "@/lib/api/types";
 
-type ContactType = { code: string; name?: LocaleMap };
 type CodeRow = { id: string; schemeCode?: string; status?: string };
 
 export default async function PersonDetailPage({
@@ -46,66 +42,9 @@ export default async function PersonDetailPage({
 }) {
   const { personId } = await params;
   let person: Person | null = null;
-  let documents: { documents: DocumentDoc[] } | null = null;
-  let codes: { codes?: CodeRow[] } | null = null;
-  let memberships: { memberships: Membership[] } | null = null;
-  let orders: { orders: Order[] } | null = null;
-  let emailTypes: ContactType[] = [];
-  let phoneTypes: ContactType[] = [];
-  let docTypes: DocumentType[] = [];
-  let schemes: PersonalCodeScheme[] = [];
-  let platforms: Platform[] = [];
-  let relationTypes: RelationType[] = [];
-  let partnerships: Partnership[] = [];
-  let kinships: Kinship[] = [];
-  let guardianships: Guardianship[] = [];
-  let sponsorships: Sponsorship[] = [];
-  let nextOfKin: NextOfKin[] = [];
-  let associations: Association[] = [];
   let error: unknown = null;
   try {
     person = await apiGet<Person>(`/person/v1/persons/${personId}`);
-    [
-      documents,
-      codes,
-      memberships,
-      orders,
-      emailTypes,
-      phoneTypes,
-      docTypes,
-      schemes,
-      platforms,
-      relationTypes,
-      partnerships,
-      kinships,
-      guardianships,
-      sponsorships,
-      nextOfKin,
-      associations,
-    ] = await Promise.all([
-      apiGet<{ documents: DocumentDoc[] }>(`/document/v1/persons/${personId}/documents`).catch(
-        () => null,
-      ),
-      apiGet<{ codes?: CodeRow[] }>(`/document/v1/persons/${personId}/personal-codes`).catch(
-        () => null,
-      ),
-      apiGet<{ memberships: Membership[] }>(
-        `/membership/v1/persons/${personId}/memberships`,
-      ).catch(() => null),
-      apiGet<{ orders: Order[] }>(`/order/v1/persons/${personId}/orders`).catch(() => null),
-      apiGet<ContactType[]>("/person/v1/person/email-types").catch(() => []),
-      apiGet<ContactType[]>("/person/v1/person/phone-types").catch(() => []),
-      apiGet<DocumentType[]>("/document/v1/document-types").catch(() => []),
-      apiGet<PersonalCodeScheme[]>("/document/v1/personal-code-schemes").catch(() => []),
-      apiGet<Platform[]>("/person/v1/person/platforms").catch(() => []),
-      apiGet<RelationType[]>("/person/v1/person/relation-types").catch(() => []),
-      apiGet<Partnership[]>(`/person/v1/persons/${personId}/partnerships`).catch(() => []),
-      apiGet<Kinship[]>(`/person/v1/persons/${personId}/kinships`).catch(() => []),
-      apiGet<Guardianship[]>(`/person/v1/persons/${personId}/guardianships`).catch(() => []),
-      apiGet<Sponsorship[]>(`/person/v1/persons/${personId}/sponsorships`).catch(() => []),
-      apiGet<NextOfKin[]>(`/person/v1/persons/${personId}/next-of-kin`).catch(() => []),
-      apiGet<Association[]>(`/person/v1/persons/${personId}/associations`).catch(() => []),
-    ]);
   } catch (e) {
     error = e;
   }
@@ -142,6 +81,7 @@ export default async function PersonDetailPage({
             <Row label="Surname" value={person.surname} />
             <Row label="Birthdate" value={person.birthdate} />
             <Row label="Sex" value={person.sex} />
+            <Row label="Rank" value={<PersonRankLabel ranks={person.ranks} />} />
             <Row label="Country of birth" value={person.countryOfBirth} />
             <Row
               label="Status"
@@ -154,7 +94,7 @@ export default async function PersonDetailPage({
             <Row label="ID" value={<Mono>{person.id}</Mono>} />
           </dl>
           <div className="mt-4 border-t border-slate-100 pt-3">
-            <SetRank personId={person.id} currentRankId={person.rankId} />
+            <SetRank personId={person.id} ranks={person.ranks} />
           </div>
           <div className="mt-3 border-t border-slate-100 pt-3">
             <PersonLifecycle person={person} />
@@ -163,22 +103,17 @@ export default async function PersonDetailPage({
 
         <Card>
           <h2 className="text-sm font-semibold text-slate-900">Contact channels</h2>
-          <EmailManager personId={person.id} emails={person.emails} types={emailTypes} />
-          <PhoneManager personId={person.id} phones={person.phones} types={phoneTypes} />
+          <EmailManager personId={person.id} emails={person.emails} />
+          <PhoneManager personId={person.id} phones={person.phones} />
           <CallSignManager personId={person.id} callSigns={person.callSigns} />
         </Card>
 
         <Card>
           <h2 className="text-sm font-semibold text-slate-900">Social &amp; messenger</h2>
-          <SocialAccountManager
-            personId={person.id}
-            accounts={person.socialAccounts}
-            platforms={platforms}
-          />
+          <SocialAccountManager personId={person.id} accounts={person.socialAccounts} />
           <MessengerLinkManager
             personId={person.id}
             links={person.messengerLinks}
-            platforms={platforms}
             emails={person.emails}
             phones={person.phones}
           />
@@ -195,6 +130,40 @@ export default async function PersonDetailPage({
           <ResidenceManager personId={person.id} residences={person.residences} />
         </Card>
 
+        <Card>
+          <h2 className="text-sm font-semibold text-slate-900">Name variants</h2>
+          <NameVariantManager personId={person.id} variants={person.nameVariants} />
+        </Card>
+      </div>
+
+      <Suspense fallback={<StreamFallback />}>
+        <PersonRelations personId={person.id} person={person} />
+      </Suspense>
+    </div>
+  );
+}
+
+// PersonRelations holds everything that needs a second round of per-person reads (documents, codes,
+// relationships, memberships, orders). It is streamed under <Suspense> so the page shell paints as
+// soon as the person resolves — the create→navigate path no longer blocks on this batch.
+async function PersonRelations({ personId, person }: { personId: string; person: Person }) {
+  const [documents, codes, memberships, orders, partnerships, kinships, guardianships, sponsorships, nextOfKin, associations] =
+    await Promise.all([
+      apiGet<{ documents: DocumentDoc[] }>(`/document/v1/persons/${personId}/documents`).catch(() => null),
+      apiGet<{ codes?: CodeRow[] }>(`/document/v1/persons/${personId}/personal-codes`).catch(() => null),
+      apiGet<{ memberships: Membership[] }>(`/membership/v1/persons/${personId}/memberships`).catch(() => null),
+      apiGet<{ orders: Order[] }>(`/order/v1/persons/${personId}/orders`).catch(() => null),
+      apiGet<Partnership[]>(`/person/v1/persons/${personId}/partnerships`).catch(() => []),
+      apiGet<Kinship[]>(`/person/v1/persons/${personId}/kinships`).catch(() => []),
+      apiGet<Guardianship[]>(`/person/v1/persons/${personId}/guardianships`).catch(() => []),
+      apiGet<Sponsorship[]>(`/person/v1/persons/${personId}/sponsorships`).catch(() => []),
+      apiGet<NextOfKin[]>(`/person/v1/persons/${personId}/next-of-kin`).catch(() => []),
+      apiGet<Association[]>(`/person/v1/persons/${personId}/associations`).catch(() => []),
+    ]);
+
+  return (
+    <>
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <Card className="lg:col-span-2">
           <h2 className="text-sm font-semibold text-slate-900">Relationships</h2>
           <RelationshipManager
@@ -205,23 +174,13 @@ export default async function PersonDetailPage({
             sponsorships={sponsorships}
             nextOfKin={nextOfKin}
             associations={associations}
-            relationTypes={relationTypes}
           />
-        </Card>
-
-        <Card>
-          <h2 className="text-sm font-semibold text-slate-900">Name variants</h2>
-          <NameVariantManager personId={person.id} variants={person.nameVariants} />
         </Card>
 
         <Card className="lg:col-span-2">
           <h2 className="text-sm font-semibold text-slate-900">Documents &amp; personal codes</h2>
-          <DocumentManager
-            personId={person.id}
-            documents={documents?.documents}
-            types={docTypes}
-          />
-          <PersonalCodeManager personId={person.id} codes={codes?.codes} schemes={schemes} />
+          <DocumentManager personId={person.id} documents={documents?.documents} />
+          <PersonalCodeManager personId={person.id} codes={codes?.codes} />
         </Card>
       </div>
 
@@ -259,8 +218,12 @@ export default async function PersonDetailPage({
           <EmptyState>No orders reference this person.</EmptyState>
         )}
       </Section>
-    </div>
+    </>
   );
+}
+
+function StreamFallback() {
+  return <div className="mt-4 text-sm text-slate-400">Loading relationships, documents, memberships…</div>;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

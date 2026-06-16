@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { mutate } from "@/lib/api/client";
 import { bffGet } from "@/lib/api/browser";
+import { useCatalog } from "@/lib/catalog";
 import { ErrorBox } from "@/components/ErrorBox";
 import { EntitySelect } from "@/components/EntitySelect";
 import { CountrySelect, useCountryMap } from "@/components/CountrySelect";
@@ -26,6 +27,7 @@ import type {
   Partnership,
   Person,
   PersonLanguage,
+  PersonRank,
   Phone,
   Platform,
   RelationType,
@@ -207,33 +209,67 @@ export function PersonLifecycle({ person }: { person: Person }) {
   );
 }
 
-/** Set or clear the person's single rank (flattened from the rank scheme). */
-export function SetRank({ personId, currentRankId }: { personId: string; currentRankId?: string }) {
+// useRankIndex fetches the rank scheme once (module-cached) and flattens it to the option list plus a
+// rankId -> label lookup, so both SetRank (the editor) and PersonRankLabel (the read-only display)
+// resolve the same human labels. Labels are "<system> · <rank>"; re-derived per locale.
+let rankSchemeCache: unknown | null = null;
+function useRankIndex(): { options: { id: string; label: string }[]; labelOf: (id?: string) => string } {
   const { locale } = useLocale();
-  const { busy, err, run } = useRun();
-  const [ranks, setRanks] = useState<{ id: string; label: string }[]>([]);
-  const [value, setValue] = useState(currentRankId ?? "");
+  const [scheme, setScheme] = useState<unknown | null>(rankSchemeCache);
 
   useEffect(() => {
+    if (rankSchemeCache) {
+      setScheme(rankSchemeCache);
+      return;
+    }
     fetch("/api/oikumenea/rank/v1/rank-scheme")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        const out: { id: string; label: string }[] = [];
-        // The scheme tree is system → category → type (which may nest sub-types) → rank.
-        const walkType = (t: { name?: LocaleMap; code: string; children?: unknown[]; ranks?: unknown[] }, sys: string) => {
-          for (const rk of (t.ranks as { id: string; name?: LocaleMap; code: string }[]) ?? [])
-            out.push({ id: rk.id, label: `${sys} · ${pickLabel(rk.name, locale) || rk.code}` });
-          for (const c of (t.children as typeof t[]) ?? []) walkType(c, sys);
-        };
-        for (const sysNode of d?.systems ?? []) {
-          const sysLabel = pickLabel(sysNode.name, locale) || sysNode.code;
-          for (const c of sysNode.categories ?? [])
-            for (const t of c.types ?? []) walkType(t, sysLabel);
-        }
-        setRanks(out);
+        rankSchemeCache = d;
+        setScheme(d);
       })
       .catch(() => {});
-  }, [locale]);
+  }, []);
+
+  const options: { id: string; label: string }[] = [];
+  // The scheme tree is system → category → type (which may nest sub-types) → rank.
+  const walkType = (t: { name?: LocaleMap; code: string; children?: unknown[]; ranks?: unknown[] }, sys: string) => {
+    for (const rk of (t.ranks as { id: string; name?: LocaleMap; code: string }[]) ?? [])
+      options.push({ id: rk.id, label: `${sys} · ${pickLabel(rk.name, locale) || rk.code}` });
+    for (const c of (t.children as typeof t[]) ?? []) walkType(c, sys);
+  };
+  for (const sysNode of (scheme as { systems?: { name?: LocaleMap; code: string; categories?: { types?: unknown[] }[] }[] })?.systems ?? []) {
+    const sysLabel = pickLabel(sysNode.name, locale) || sysNode.code;
+    for (const c of sysNode.categories ?? [])
+      for (const t of (c.types as Parameters<typeof walkType>[0][]) ?? []) walkType(t, sysLabel);
+  }
+  const index = new Map(options.map((o) => [o.id, o.label]));
+  return { options, labelOf: (id) => (id ? index.get(id) ?? "" : "") };
+}
+
+/** Read-only display of the rank(s) a person holds (one per system — D-Rank), resolved to labels. */
+export function PersonRankLabel({ ranks }: { ranks?: PersonRank[] }) {
+  const { labelOf } = useRankIndex();
+  if (!ranks || ranks.length === 0) return <span className="text-slate-400">—</span>;
+  return (
+    <span>
+      {ranks
+        .map((r) => labelOf(r.rankId) || r.rankId)
+        .join(", ")}
+    </span>
+  );
+}
+
+/** Set or clear the person's single rank (flattened from the rank scheme). */
+export function SetRank({ personId, ranks }: { personId: string; ranks?: PersonRank[] }) {
+  const { busy, err, run } = useRun();
+  const { options } = useRankIndex();
+  const [value, setValue] = useState(ranks?.[0]?.rankId ?? "");
+
+  // Keep the editor in sync once the person's held ranks arrive / change.
+  useEffect(() => {
+    setValue(ranks?.[0]?.rankId ?? "");
+  }, [ranks]);
 
   return (
     <div className="flex items-end gap-2">
@@ -241,7 +277,7 @@ export function SetRank({ personId, currentRankId }: { personId: string; current
         <label className="label">Rank</label>
         <select className="input" value={value} onChange={(e) => setValue(e.target.value)}>
           <option value="">— none —</option>
-          {ranks.map((r) => (
+          {options.map((r) => (
             <option key={r.id} value={r.id}>
               {r.label}
             </option>
@@ -254,7 +290,11 @@ export function SetRank({ personId, currentRankId }: { personId: string; current
         disabled={busy}
         onClick={() =>
           run(() =>
-            mutate("PUT", `/person/v1/persons/${personId}/rank`, { rankId: value || undefined }),
+            mutate("PUT", `/person/v1/persons/${personId}/rank`, {
+              rankId: value || undefined,
+              // On clear (no rank chosen) the system must be supplied; reuse the currently held one.
+              systemId: value ? undefined : ranks?.[0]?.systemId,
+            }),
           )
         }
       >
@@ -267,17 +307,10 @@ export function SetRank({ personId, currentRankId }: { personId: string; current
 
 /* ------------------------------------------------------------------ contact channels */
 
-export function EmailManager({
-  personId,
-  emails,
-  types,
-}: {
-  personId: string;
-  emails?: Email[];
-  types: ContactType[];
-}) {
+export function EmailManager({ personId, emails }: { personId: string; emails?: Email[] }) {
   const { locale } = useLocale();
   const { busy, err, run } = useRun();
+  const types = useCatalog<ContactType>("/person/v1/person/email-types");
   return (
     <ChannelBlock title="Emails" err={err}>
       <ItemList
@@ -319,17 +352,10 @@ export function EmailManager({
   );
 }
 
-export function PhoneManager({
-  personId,
-  phones,
-  types,
-}: {
-  personId: string;
-  phones?: Phone[];
-  types: ContactType[];
-}) {
+export function PhoneManager({ personId, phones }: { personId: string; phones?: Phone[] }) {
   const { locale } = useLocale();
   const { busy, err, run } = useRun();
+  const types = useCatalog<ContactType>("/person/v1/person/phone-types");
   return (
     <ChannelBlock title="Phones" err={err}>
       <ItemList
@@ -552,15 +578,14 @@ export function NameVariantManager({
 export function DocumentManager({
   personId,
   documents,
-  types,
 }: {
   personId: string;
   documents?: DocumentDoc[];
-  types: Catalog[];
 }) {
   const { locale } = useLocale();
   const { busy, err, run } = useRun();
   const countryCode = useCountryMap();
+  const types = useCatalog<Catalog>("/document/v1/document-types");
   return (
     <ChannelBlock title="Documents" err={err}>
       <ItemList
@@ -609,14 +634,13 @@ export function DocumentManager({
 export function PersonalCodeManager({
   personId,
   codes,
-  schemes,
 }: {
   personId: string;
   codes?: CodeRow[];
-  schemes: { code: string; name?: LocaleMap }[];
 }) {
   const { locale } = useLocale();
   const { busy, err, run } = useRun();
+  const schemes = useCatalog<{ code: string; name?: LocaleMap }>("/document/v1/personal-code-schemes");
   return (
     <ChannelBlock title="Personal codes" err={err}>
       <ItemList
@@ -669,14 +693,13 @@ const pf = (code: string, platforms: Platform[], locale: string) =>
 export function SocialAccountManager({
   personId,
   accounts,
-  platforms,
 }: {
   personId: string;
   accounts?: SocialAccount[];
-  platforms: Platform[];
 }) {
   const { locale } = useLocale();
   const { busy, err, run } = useRun();
+  const platforms = useCatalog<Platform>("/person/v1/person/platforms");
   return (
     <ChannelBlock title="Social accounts" err={err}>
       {accounts && accounts.length ? (
@@ -802,18 +825,17 @@ function HandleHistory({ personId, accountId }: { personId: string; accountId: s
 export function MessengerLinkManager({
   personId,
   links,
-  platforms,
   emails,
   phones,
 }: {
   personId: string;
   links?: MessengerLink[];
-  platforms: Platform[];
   emails?: Email[];
   phones?: Phone[];
 }) {
   const { locale } = useLocale();
   const { busy, err, run } = useRun();
+  const platforms = useCatalog<Platform>("/person/v1/person/platforms");
   const messengers = platforms.filter((p) => p.category === "messenger");
   const channelLabel = (l: MessengerLink) => {
     if (l.phoneId) return phones?.find((p) => p.id === l.phoneId)?.number ?? ridTail(l.phoneId);
@@ -908,7 +930,6 @@ export function RelationshipManager({
   sponsorships,
   nextOfKin,
   associations,
-  relationTypes,
 }: {
   personId: string;
   partnerships?: Partnership[];
@@ -917,8 +938,8 @@ export function RelationshipManager({
   sponsorships?: Sponsorship[];
   nextOfKin?: NextOfKin[];
   associations?: Association[];
-  relationTypes: RelationType[];
 }) {
+  const relationTypes = useCatalog<RelationType>("/person/v1/person/relation-types");
   const other = (a: string, b: string) => (a === personId ? b : a);
   const relTone = (st?: string) =>
     (st ?? "").toLowerCase() === "active" || (st ?? "").toLowerCase() === "married"

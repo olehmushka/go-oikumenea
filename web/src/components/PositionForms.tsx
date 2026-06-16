@@ -1,36 +1,79 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { mutate } from "@/lib/api/client";
+import { bffGet } from "@/lib/api/browser";
 import { ErrorBox } from "./ErrorBox";
 import { EntitySelect } from "./EntitySelect";
 import { ActionButton } from "./ActionButton";
 import { pickLabel } from "@/lib/i18n";
 import { useLocale } from "@/lib/locale";
+import { newSuffix, slugify } from "@/lib/code";
+import { ridTail } from "@/lib/ontology/rid";
 import type { Position } from "@/lib/api/types";
+
+// PersonLink resolves a person RID to a clickable display-name link, caching names module-wide so a
+// table of positions doesn't refetch the same holder. Falls back to the RID tail while loading.
+const personNameCache = new Map<string, string>();
+export function PersonLink({ personId }: { personId: string }) {
+  const [name, setName] = useState<string>(() => personNameCache.get(personId) ?? "");
+  useEffect(() => {
+    if (personNameCache.has(personId)) {
+      setName(personNameCache.get(personId) ?? "");
+      return;
+    }
+    let alive = true;
+    bffGet<{ displayName?: string; code?: string }>(`/person/v1/persons/${personId}`)
+      .then((p) => {
+        const label = p.displayName || p.code || "";
+        personNameCache.set(personId, label);
+        if (alive) setName(label);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [personId]);
+  return (
+    <Link href={`/persons/${personId}`} className="text-indigo-600 hover:underline">
+      {name || ridTail(personId)}
+    </Link>
+  );
+}
 
 /** Create a (vacant) billet in a unit. POST /membership/v1/units/{unitId}/positions. */
 export function CreatePosition({ unitId }: { unitId: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<unknown>(null);
+
+  // Live-fill the code from the title until the operator edits it (stable per-form suffix).
+  const suffix = useRef(newSuffix());
+  const [title, setTitle] = useState("");
+  const [code, setCode] = useState("");
+  const [codeTouched, setCodeTouched] = useState(false);
+  const slug = slugify(title);
+  const codeValue = codeTouched ? code : slug ? `${slug}-${suffix.current}` : "";
+
   return (
     <form
       className="card space-y-3 p-5"
       onSubmit={(e) => {
         e.preventDefault();
-        const f = new FormData(e.currentTarget);
-        const form = e.currentTarget;
         setBusy(true);
         setErr(null);
         (async () => {
           try {
             await mutate("POST", `/membership/v1/units/${unitId}/positions`, {
-              code: String(f.get("code") || "").trim(),
-              title: String(f.get("title") || "").trim(),
+              code: codeValue.trim(),
+              title: title.trim(),
             });
-            form.reset();
+            setTitle("");
+            setCode("");
+            setCodeTouched(false);
+            suffix.current = newSuffix();
             router.refresh();
           } catch (e) {
             setErr(e);
@@ -43,8 +86,25 @@ export function CreatePosition({ unitId }: { unitId: string }) {
       <h3 className="text-sm font-semibold text-slate-900">Create position</h3>
       {err ? <ErrorBox error={err} /> : null}
       <div className="grid grid-cols-2 gap-3">
-        <input name="code" required className="input" placeholder="code (e.g. cmd-officer)" />
-        <input name="title" required className="input" placeholder="title (e.g. Commanding Officer)" />
+        <input
+          name="code"
+          required
+          className="input"
+          placeholder="auto from title"
+          value={codeValue}
+          onChange={(e) => {
+            setCode(e.target.value);
+            setCodeTouched(true);
+          }}
+        />
+        <input
+          name="title"
+          required
+          className="input"
+          placeholder="title (e.g. Commanding Officer)"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
       </div>
       <button type="submit" className="btn-primary" disabled={busy}>
         {busy ? "Creating…" : "Create position"}

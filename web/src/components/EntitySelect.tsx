@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useLocale } from "@/lib/locale";
 import { pickLabel } from "@/lib/i18n";
 
@@ -94,6 +95,11 @@ export function EntitySelect({
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const boxRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Fixed-viewport coordinates for the portaled dropdown (so an overflow-hidden ancestor — e.g. a
+  // table card — can't clip it).
+  const [menuPos, setMenuPos] = useState<{ left: number; top: number; width: number } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -118,7 +124,10 @@ export function EntitySelect({
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) {
+      const t = e.target as Node;
+      const inBox = boxRef.current?.contains(t);
+      const inPanel = panelRef.current?.contains(t);
+      if (!inBox && !inPanel) {
         setOpen(false);
         if (!selected) setQuery("");
       }
@@ -126,6 +135,23 @@ export function EntitySelect({
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [selected]);
+
+  // Track the input's viewport rect while the menu is open so the portaled dropdown stays anchored
+  // (also follows scroll/resize).
+  useEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const r = inputRef.current?.getBoundingClientRect();
+      if (r) setMenuPos({ left: r.left, top: r.bottom + 4, width: r.width });
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [open]);
 
   const selectedOption = items.find((o) => o.id === selected);
   const filtered = useMemo(() => {
@@ -159,6 +185,7 @@ export function EntitySelect({
     <div className="relative" ref={boxRef}>
       {name ? <input type="hidden" name={name} value={selected} /> : null}
       <input
+        ref={inputRef}
         className="input"
         placeholder={loading ? "Loading…" : loadErr ? "(failed to load list)" : placeholder}
         value={display}
@@ -203,32 +230,39 @@ export function EntitySelect({
           ✕
         </button>
       ) : null}
-      {open && !loadErr ? (
-        <div className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border border-slate-200 bg-white py-1 shadow-lg">
-          {filtered.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-slate-400">
-              {loading ? "Loading…" : "No matches"}
-            </div>
-          ) : (
-            filtered.map((o, i) => (
-              <button
-                type="button"
-                key={o.id}
-                onMouseEnter={() => setActive(i)}
-                onClick={() => choose(o)}
-                className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm ${
-                  i === active ? "bg-indigo-50" : "hover:bg-slate-50"
-                }`}
-              >
-                <span className="truncate text-slate-800">{o.label}</span>
-                {o.hint ? (
-                  <span className="ml-2 shrink-0 font-mono text-xs text-slate-400">{o.hint}</span>
-                ) : null}
-              </button>
-            ))
-          )}
-        </div>
-      ) : null}
+      {open && !loadErr && menuPos
+        ? createPortal(
+            <div
+              ref={panelRef}
+              style={{ position: "fixed", left: menuPos.left, top: menuPos.top, width: menuPos.width }}
+              className="z-50 max-h-64 overflow-auto rounded-md border border-slate-200 bg-white py-1 shadow-lg"
+            >
+              {filtered.length === 0 ? (
+                <div className="px-3 py-2 text-sm text-slate-400">
+                  {loading ? "Loading…" : "No matches"}
+                </div>
+              ) : (
+                filtered.map((o, i) => (
+                  <button
+                    type="button"
+                    key={o.id}
+                    onMouseEnter={() => setActive(i)}
+                    onClick={() => choose(o)}
+                    className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm ${
+                      i === active ? "bg-indigo-50" : "hover:bg-slate-50"
+                    }`}
+                  >
+                    <span className="truncate text-slate-800">{o.label}</span>
+                    {o.hint ? (
+                      <span className="ml-2 shrink-0 font-mono text-xs text-slate-400">{o.hint}</span>
+                    ) : null}
+                  </button>
+                ))
+              )}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

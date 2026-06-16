@@ -176,14 +176,32 @@ func (s *Service) ListPositions(ctx context.Context, unitID string, filter domai
 	if err != nil {
 		return PositionPage{}, err
 	}
-	positions, err := s.newRepo(s.querier(ctx)).ListPositions(ctx, unitID, filter, after, size+1)
+	repo := s.newRepo(s.querier(ctx))
+	positions, err := repo.ListPositions(ctx, unitID, filter, after, size+1)
 	if err != nil {
 		return PositionPage{}, err
 	}
+	page := positions
+	var next string
 	if len(positions) > size {
-		return PositionPage{Positions: positions[:size], NextPageToken: encodeCursor(positions[size-1].ID)}, nil
+		page = positions[:size]
+		next = encodeCursor(positions[size-1].ID)
 	}
-	return PositionPage{Positions: positions}, nil
+	// Attach the current holder to each billet so callers (e.g. the unit page) can show and link the
+	// person filling it, not just a vacant/filled flag. The page is unit-scoped and admin-sized, so a
+	// per-position lookup is acceptable; a vacant billet simply has no active filling.
+	for i := range page {
+		holder, herr := repo.ActiveFillingByPosition(ctx, page[i].ID)
+		switch {
+		case herr == nil:
+			page[i].Holder = &holder
+		case errors.Is(herr, domain.ErrMembershipNotFound):
+			// vacant — no holder
+		default:
+			return PositionPage{}, herr
+		}
+	}
+	return PositionPage{Positions: page, NextPageToken: next}, nil
 }
 
 // ---------------------------------------------------------------- memberships
