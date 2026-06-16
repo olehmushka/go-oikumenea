@@ -1,0 +1,223 @@
+# Location module API (M19 / D-Location). A shared, standalone place entity: a precise
+# GEOGRAPHY(POINT,4326) coordinate + a structured postal address over the geo_countries registry, with
+# DB-derived MGRS + H3 spatial indexes. Anything with a location (M20 buildings, M21 addresses,
+# religion sites) references a location by its RID and owns visibility/precision/purpose on its own
+# link — a location itself carries no owner. Lives beside the read-only GeoService on the `location`
+# RID service (12); unlike GeoService, LocationService is a full audited CRUD surface.
+#
+# RID-bearing fields are typed `string` (the canonical uuid RID): Conjure reserves `rid` as a built-in
+# primitive whose `ri.` format is NOT our RID, so a type named `Rid`/`rid` cannot be used. Localized
+# `name` (on a location type) is an inline map<string,string> (locale->text), all enabled locales in
+# every response (D-i18n). Generated Go lands in internal/conjure and is never hand-edited.
+types:
+  definitions:
+    default-package: oikumenea.location
+    objects:
+      Location:
+        docs: A shared place — a precise coordinate, DB-derived spatial indexes, and a structured postal address.
+        fields:
+          id:
+            type: string
+            docs: The location's RID (location service); what owning modules reference by FK.
+          latitude:
+            type: double
+            docs: WGS84 latitude of the authoritative coordinate.
+          longitude:
+            type: double
+            docs: WGS84 longitude of the authoritative coordinate.
+          mgrs:
+            type: optional<string>
+            docs: DB-derived MGRS grid reference (absent for polar UPS coordinates, out of scope).
+          h3Res5:
+            type: optional<string>
+            docs: DB-derived H3 cell at resolution 5 (~9km).
+          h3Res7:
+            type: optional<string>
+            docs: DB-derived H3 cell at resolution 7 (~1.2km).
+          h3Res9:
+            type: optional<string>
+            docs: DB-derived H3 cell at resolution 9 (~150m).
+          h3Res11:
+            type: optional<string>
+            docs: DB-derived H3 cell at resolution 11 (~20m).
+          countryId:
+            type: string
+            docs: The country's RID (resolve an ISO alpha-2 code via GET /geo/countries).
+          adminArea1:
+            type: optional<string>
+          adminArea2:
+            type: optional<string>
+          locality:
+            type: optional<string>
+          street:
+            type: optional<string>
+          houseNumber:
+            type: optional<string>
+          postalCode:
+            type: optional<string>
+          rawAddress:
+            type: optional<string>
+          typeId:
+            type: optional<string>
+            docs: Optional place-type classification (location_location_types RID).
+          typeName:
+            type: optional<map<string, string>>
+            docs: Localized name (locale->text) of the place type, when typeId is set.
+          createdAt:
+            type: datetime
+          updatedAt:
+            type: datetime
+      LocationWrite:
+        docs: |
+          Create/replace payload for a location. latitude+longitude are the required spine (validated in
+          the application, not the wire, so a missing coordinate returns Location:CoordinateRequired
+          rather than a deserialization error). MGRS + H3 are never supplied — they are DB-derived.
+        fields:
+          latitude:
+            type: optional<double>
+          longitude:
+            type: optional<double>
+          countryId:
+            type: string
+            docs: The country's RID (required).
+          adminArea1:
+            type: optional<string>
+          adminArea2:
+            type: optional<string>
+          locality:
+            type: optional<string>
+          street:
+            type: optional<string>
+          houseNumber:
+            type: optional<string>
+          postalCode:
+            type: optional<string>
+          rawAddress:
+            type: optional<string>
+          typeId:
+            type: optional<string>
+      LocationPage:
+        docs: A page of locations plus the opaque token for the next page (empty when exhausted).
+        fields:
+          locations: list<Location>
+          nextPageToken: optional<string>
+      LocationType:
+        docs: An instance-admin catalog label classifying a place (building/address/online); descriptive only.
+        fields:
+          id:
+            type: string
+          code:
+            type: string
+          name:
+            type: map<string, string>
+            docs: Localized display name (locale->text), all enabled locales.
+          status:
+            type: string
+            docs: active | retired.
+      LocationTypeList:
+        docs: The active location types, in display order.
+        fields:
+          locationTypes: list<LocationType>
+    errors:
+      CoordinateRequired:
+        namespace: Location
+        code: INVALID_ARGUMENT
+        docs: A location requires a coordinate (latitude + longitude); address-only records are out of scope.
+      QueryWindowRequired:
+        namespace: Location
+        code: INVALID_ARGUMENT
+        docs: A list query requires either a radius (lat/lng/radiusM) or a bounding box (minLat/minLng/maxLat/maxLng).
+      LocationNotFound:
+        namespace: Location
+        code: NOT_FOUND
+        safe-args:
+          locationId: string
+      LocationInUse:
+        namespace: Location
+        code: CONFLICT
+        docs: The location is referenced by an owning link and cannot be deleted.
+        safe-args:
+          locationId: string
+services:
+  LocationService:
+    name: Location Service
+    package: oikumenea.location
+    base-path: /location/v1
+    default-auth: header
+    docs: |
+      CRUD + spatial queries over the shared location entity (D-Location). A location has no unit scope
+      of its own; reads/writes are satisfied anywhere via the PEP (location.read/create/update,
+      location.types.manage). MGRS + H3 are DB-derived and recomputed on every coordinate change.
+    endpoints:
+      createLocation:
+        http: POST /locations
+        docs: Create a location from a coordinate (+ address); derives MGRS/H3. Location:CoordinateRequired when the coordinate is missing.
+        args:
+          request:
+            type: LocationWrite
+            param-type: body
+        returns: Location
+      getLocation:
+        http: GET /locations/{locationId}
+        docs: Read one location by its RID. Location:LocationNotFound when absent.
+        args:
+          locationId:
+            type: string
+            param-type: path
+        returns: Location
+      updateLocation:
+        http: PUT /locations/{locationId}
+        docs: Replace a location's coordinate/address/type (re-derives MGRS/H3 on the coordinate).
+        args:
+          locationId:
+            type: string
+            param-type: path
+          request:
+            type: LocationWrite
+            param-type: body
+        returns: Location
+      deleteLocation:
+        http: DELETE /locations/{locationId}
+        docs: Soft-delete a location. Location:LocationInUse when an owner still references it.
+        args:
+          locationId:
+            type: string
+            param-type: path
+      listLocations:
+        http: GET /locations
+        docs: |
+          Spatial query, token-paginated. Supply either a radius (lat + lng + radiusM, via ST_DWithin)
+          or a bounding box (minLat + minLng + maxLat + maxLng); Location:QueryWindowRequired otherwise.
+        args:
+          lat:
+            type: optional<double>
+            param-type: query
+          lng:
+            type: optional<double>
+            param-type: query
+          radiusM:
+            type: optional<double>
+            param-type: query
+          minLat:
+            type: optional<double>
+            param-type: query
+          minLng:
+            type: optional<double>
+            param-type: query
+          maxLat:
+            type: optional<double>
+            param-type: query
+          maxLng:
+            type: optional<double>
+            param-type: query
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: LocationPage
+      listLocationTypes:
+        http: GET /location/types
+        docs: List the active place-type catalog.
+        returns: LocationTypeList

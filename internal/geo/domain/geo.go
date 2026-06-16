@@ -17,7 +17,18 @@ type Country struct {
 	Status string
 }
 
-// Repository is the geo module's port: a read-only view of the country registry.
+// Repository is the geo module's port: a read-only view of the country registry plus the audited CRUD
+// + spatial reads over the shared Location entity (D-Location, M19). The country side is written by the
+// hermenea import pipeline (not here); the location side is owned by this module.
 type Repository interface {
 	ListCountries(ctx context.Context) ([]Country, error)
+
+	// location (D-Location)
+	InsertLocation(ctx context.Context, w LocationWrite) (Location, error)
+	GetLocation(ctx context.Context, id string) (Location, error)
+	UpdateLocation(ctx context.Context, id string, w LocationWrite) (Location, error)
+	SoftDeleteLocation(ctx context.Context, id string) (int64, error)
+	ListLocationsNear(ctx context.Context, lat, lng, radiusM float64, limit, offset int) ([]Location, error)
+	ListLocationsInBbox(ctx context.Context, minLat, minLng, maxLat, maxLng float64, limit, offset int) ([]Location, error)
+	ListLocationTypes(ctx context.Context) ([]LocationType, error)
 }

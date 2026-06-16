@@ -89,6 +89,8 @@ var typeNames = map[typeKey]string{
 	// location
 	{SvcLocation, int(KindObject), 1}: "country",
 	{SvcLocation, int(KindObject), 2}: "geo_place",
+	{SvcLocation, int(KindObject), 3}: "location",
+	{SvcLocation, int(KindObject), 4}: "location_type",
 	// language (M18 / D-Languages)
 	{SvcLanguage, int(KindObject), 1}: "languoid",
 	{SvcLanguage, int(KindObject), 2}: "writing_system",

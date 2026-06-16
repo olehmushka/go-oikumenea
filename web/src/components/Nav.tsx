@@ -14,6 +14,7 @@ const TOOLS: { href: string; label: string; hint: string }[] = [
   { href: "/orders", label: "Orders", hint: "наказ" },
   { href: "/documents", label: "Documents", hint: "papers & catalogs" },
   { href: "/ranks", label: "Ranks", hint: "rank scheme" },
+  { href: "/locations", label: "Locations", hint: "places + radius search" },
   { href: "/localization", label: "Localization", hint: "locales" },
   { href: "/audit", label: "Audit", hint: "log" },
 ];

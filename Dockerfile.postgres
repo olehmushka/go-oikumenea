@@ -1,0 +1,29 @@
+# Operator database image for go-oikumenea (D-Location, M19). A drop-in superset of the stock
+# postgis/postgis:16-3.4 image that additionally provides the h3 + h3_postgis extensions, so the
+# location module can derive H3 cells (and the MGRS function can ST_Transform) in the database. The
+# bootstrap migration (0000) enables postgis; migration 0019 runs `CREATE EXTENSION h3 / h3_postgis`,
+# which require this image. The boot-time readiness gate refuses readiness if the extensions are absent.
+#
+# h3-pg (github.com/zachasme/h3-pg) bundles the core H3 C library as a submodule and builds both the
+# `h3` and `h3_postgis` Postgres extensions via cmake. Pinned to a commit SHA for reproducibility
+# (the upstream publishes GitHub releases but no git tags); override with `--build-arg H3PG_REF=...`.
+ARG H3PG_REF=04227cb62a7338eb2a655fff875b125de2f043f4
+
+FROM postgis/postgis:16-3.4
+
+ARG H3PG_REF
+
+# Build + install h3-pg at the pinned ref, then strip the build toolchain so the runtime image stays lean.
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        build-essential cmake git ca-certificates postgresql-server-dev-16; \
+    git clone --recurse-submodules https://github.com/zachasme/h3-pg.git /tmp/h3-pg; \
+    git -C /tmp/h3-pg checkout "${H3PG_REF}"; \
+    git -C /tmp/h3-pg submodule update --init --recursive; \
+    cmake -S /tmp/h3-pg -B /tmp/h3-pg/build -DCMAKE_BUILD_TYPE=Release; \
+    cmake --build /tmp/h3-pg/build; \
+    cmake --install /tmp/h3-pg/build; \
+    rm -rf /tmp/h3-pg; \
+    apt-get purge -y --auto-remove build-essential cmake git postgresql-server-dev-16; \
+    rm -rf /var/lib/apt/lists/*

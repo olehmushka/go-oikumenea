@@ -72,14 +72,14 @@ Real-world entities with identity over time → Objects.
 | `ImportSource` / `ImportRawBatch` / `ImportRun` / `WorkerJob` / `WorkerSchedule` *(M16, hermenea's **own** DB)* | [hermenea](modules/hermenea.md) | source/job `code`/key | source soft-delete; raw/run/job append-or-update | the companion service's ingestion + job-runtime objects — **not** oikumenea Objects; coupled to oikumenea only via the `POST /import/{objectType}` upsert (which stamps `(source, source_version, imported_at)` provenance on the target rows); D-Hermenea (supersedes D-Worker, folds D-DataIngestion) |
 | `Languoid` *(M18)* | [language](modules/language.md) | **RID** (language svc); `code` = glottocode; nullable unique `iso639_3` | reference (import) | recursive Glottolog forest, `level ∈ family\|language\|dialect`; `parent_id` strict-tree FK (not a Link); denormalized `family_code` (derived via the closure); AES `status`; import-loaded via hermenea `language-scheme`; D-Languages |
 | `WritingSystem` / `WritingSystemScriptType` *(M18)* | [language](modules/language.md) | **RID** (language svc); `code` (ISO 15924 / catalog) | seeded reference | scripts + script-type catalog, both migration-seeded; `language_writing_systems` (`WRITTEN_IN`) import-loaded from CLDR; D-Languages |
-| `Location` *(planned, M19)* | `location` | no | soft-delete | required `GEOGRAPHY(POINT,4326)`; DB-derived MGRS/H3; structured address over `geo_countries`; D-Location |
+| `Location` *(M19)* | `location` | no | soft-delete | required `GEOGRAPHY(POINT,4326)`; DB-derived MGRS/H3 (h3-pg); structured address over `geo_countries`; D-Location |
 | `EducationInstitution` / `EducationUnit` / `EducationBuilding` / `EducationGroup` *(planned, M20)* | `education` | institution/unit `code` | soft-delete | external reference orgs; `EducationUnit` is a recursive per-institution tree (closure); D-Education |
 | `EducationPosition` *(planned, M20)* | `education` | yes (per institution/unit) | `status` + soft-delete | institution-owned billet, vacant-first (mirrors `Position`) |
 | `EducationInstitutionKind` / `EducationUnitKind` / `EducationDegreeLevel` *(planned, M20)* | `education` | yes (`code`/`name`) | `status` + soft-delete | catalogs; degree levels seeded ISCED 2011 |
 | `Company` *(planned, M21)* | `company` | `code` | soft-delete | legal entity; `legal_form` + `ownership_category` (two axes); D-Companies |
 | `CompanyPosition` *(planned, M21)* | `company` | yes (per company) | `status` + soft-delete | company-owned billet (mirrors `Position`) |
 | `CompanyLegalForm` / `CompanyRegistrationScheme` / `CompanyIndustryClass` *(planned, M21)* | `company` | yes (`code`/`name`) | `status` + soft-delete | catalogs; registration schemes mirror `PersonalCodeScheme` (LEI spine) |
-| `LocationType` *(planned, M19)* | `location` | yes (`code`/`name`) | `status` + soft-delete | optional place-purpose catalog beside `Location`; D-Location |
+| `LocationType` *(M19)* | `location` | yes (`code`/`name`) | `status` + soft-delete | optional place-purpose catalog beside `Location`; D-Location |
 | `Religion` / `TraditionFamily` / `SubTradition` *(planned, M22)* | `religion` | yes (`code`/`name`) | soft-delete | faith taxonomy catalogs (family nested under religion, sub-tradition under family); D-Religion |
 | `OrgKind` / `OrgProfile` / `OrgPolicy` *(planned, M22)* | `religion` | kind has `code`/`name` | soft-delete | org nodes **reuse `Unit`**; `OrgProfile` is per-unit faith attributes, `OrgPolicy` a data-driven eligibility rule (replaces any faith-specific doctrinal flag) |
 | `ClergyGrade` / `GradeCategory` / `OfficeType` *(planned, M23)* | `religion` | yes (`code`/`name`) | soft-delete | **per-tradition** ordered clergy catalog (no cross-tradition comparator, DS-43); offices **reuse `Position`**; D-ClergyCredential |
@@ -189,7 +189,8 @@ ledger ([Identifier scheme](#identifier-scheme-rids)).
   applies a bulk **code-keyed upsert** in one txn, emitted as a **`system`-actor** audited Action (the
   ingest≠edit boundary); the scheduler/queue Actions (`ScheduleJob`/`RunJob`) live in **hermenea's own**
   ledger (`worker_jobs`/`import_runs`), not oikumenea's audit log;
-  `CreateLanguoid`/`ImportLanguageScheme`, `UpsertPersonLanguage` (M18); `CreateLocation` (M19);
+  `CreateLanguoid`/`ImportLanguageScheme`, `UpsertPersonLanguage` (M18);
+  `CreateLocation`/`UpdateLocation`/`DeleteLocation` (M19, built);
   `CreateInstitution`/`CreateEnrollment`/`RecordDormStay`/`AppointEducationPosition` (M20);
   `CreateCompany`/`RecordShareholding`/`RecordBeneficiary`/`AppointCompanyPosition` (M21);
   `ConferCredential`/`SuspendCredential`/`AppointClergy` (M23), `RecordAffiliation` (M24),

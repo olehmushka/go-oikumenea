@@ -398,6 +398,46 @@ type OikumeneaLanguageWritingSystem struct {
 	UpdatedAt     pgtype.Timestamptz
 }
 
+type OikumeneaLocationLocation struct {
+	// pii:none
+	ID string
+	// pii:none
+	Geom interface{}
+	// pii:none
+	Mgrs    pgtype.Text
+	H3Res5  pgtype.Text
+	H3Res7  pgtype.Text
+	H3Res9  pgtype.Text
+	H3Res11 pgtype.Text
+	// pii:none
+	CountryID   string
+	AdminArea1  pgtype.Text
+	AdminArea2  pgtype.Text
+	Locality    pgtype.Text
+	Street      pgtype.Text
+	HouseNumber pgtype.Text
+	PostalCode  pgtype.Text
+	// pii:none
+	RawAddress pgtype.Text
+	TypeID     pgtype.Text
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
+}
+
+type OikumeneaLocationLocationType struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name      string
+	Status    string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
 type OikumeneaMembershipMembership struct {
 	// pii:none
 	ID string

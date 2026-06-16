@@ -197,9 +197,11 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 		return nil, err
 	}
 
-	// Geo (M16 / D-Geo): read-only GET /geo/countries lookup so clients resolve a country to its RID
-	// (countries are RID-keyed; person/document/rank reference them by RID).
-	if _, err := geo.Register(info, pool, enforcer); err != nil {
+	// Geo + Location (M16 / D-Geo + M19 / D-Location): the read-only GET /geo/countries lookup (clients
+	// resolve a country to its RID) plus the audited LocationService CRUD + spatial queries over the
+	// shared place entity. Both live on the `location` RID service (12); Location writes record via the
+	// audit service and assemble place-type name maps via localization.
+	if _, err := geo.Register(info, pool, auditSvc, locSvc, enforcer); err != nil {
 		cleanup()
 		return nil, err
 	}

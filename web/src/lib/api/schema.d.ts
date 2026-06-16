@@ -805,6 +805,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/location/v1/location/types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the active place-type catalog.
+         * @description List the active place-type catalog.
+         */
+        get: operations["LocationService_listLocationTypes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/location/v1/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Spatial query, token-paginated. Supply either a radius (lat + lng + radiusM, via ST_DWithin)
+         * @description Spatial query, token-paginated. Supply either a radius (lat + lng + radiusM, via ST_DWithin)
+         *     or a bounding box (minLat + minLng + maxLat + maxLng); Location:QueryWindowRequired otherwise.
+         */
+        get: operations["LocationService_listLocations"];
+        put?: never;
+        /**
+         * Create a location from a coordinate (+ address); derives MGRS/H3. Location:CoordinateRequired when the coordinate is missing.
+         * @description Create a location from a coordinate (+ address); derives MGRS/H3. Location:CoordinateRequired when the coordinate is missing.
+         */
+        post: operations["LocationService_createLocation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/location/v1/locations/{locationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one location by its RID. Location:LocationNotFound when absent.
+         * @description Read one location by its RID. Location:LocationNotFound when absent.
+         */
+        get: operations["LocationService_getLocation"];
+        /**
+         * Replace a location's coordinate/address/type (re-derives MGRS/H3 on the coordinate).
+         * @description Replace a location's coordinate/address/type (re-derives MGRS/H3 on the coordinate).
+         */
+        put: operations["LocationService_updateLocation"];
+        post?: never;
+        /**
+         * Soft-delete a location. Location:LocationInUse when an owner still references it.
+         * @description Soft-delete a location. Location:LocationInUse when an owner still references it.
+         */
+        delete: operations["LocationService_deleteLocation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/membership/v1/memberships": {
         parameters: {
             query?: never;
@@ -3293,6 +3366,91 @@ export interface components {
         /** @description The supported locales, in display order. */
         LocaleList: {
             locales: components["schemas"]["Locale"][];
+        };
+        /** @description A shared place — a precise coordinate, DB-derived spatial indexes, and a structured postal address. */
+        Location: {
+            adminArea1?: string;
+            adminArea2?: string;
+            /** @description The country's RID (resolve an ISO alpha-2 code via GET /geo/countries). */
+            countryId: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description DB-derived H3 cell at resolution 11 (~20m). */
+            h3Res11?: string;
+            /** @description DB-derived H3 cell at resolution 5 (~9km). */
+            h3Res5?: string;
+            /** @description DB-derived H3 cell at resolution 7 (~1.2km). */
+            h3Res7?: string;
+            /** @description DB-derived H3 cell at resolution 9 (~150m). */
+            h3Res9?: string;
+            houseNumber?: string;
+            /** @description The location's RID (location service); what owning modules reference by FK. */
+            id: string;
+            /**
+             * Format: double
+             * @description WGS84 latitude of the authoritative coordinate.
+             */
+            latitude: number;
+            locality?: string;
+            /**
+             * Format: double
+             * @description WGS84 longitude of the authoritative coordinate.
+             */
+            longitude: number;
+            /** @description DB-derived MGRS grid reference (absent for polar UPS coordinates, out of scope). */
+            mgrs?: string;
+            postalCode?: string;
+            rawAddress?: string;
+            street?: string;
+            /** @description Optional place-type classification (location_location_types RID). */
+            typeId?: string;
+            /** @description Localized name (locale->text) of the place type, when typeId is set. */
+            typeName?: {
+                [key: string]: string;
+            };
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description A page of locations plus the opaque token for the next page (empty when exhausted). */
+        LocationPage: {
+            locations: components["schemas"]["Location"][];
+            nextPageToken?: string;
+        };
+        /** @description An instance-admin catalog label classifying a place (building/address/online); descriptive only. */
+        LocationType: {
+            code: string;
+            id: string;
+            /** @description Localized display name (locale->text), all enabled locales. */
+            name: {
+                [key: string]: string;
+            };
+            /** @description active | retired. */
+            status: string;
+        };
+        /** @description The active location types, in display order. */
+        LocationTypeList: {
+            locationTypes: components["schemas"]["LocationType"][];
+        };
+        /**
+         * @description Create/replace payload for a location. latitude+longitude are the required spine (validated in
+         *     the application, not the wire, so a missing coordinate returns Location:CoordinateRequired
+         *     rather than a deserialization error). MGRS + H3 are never supplied — they are DB-derived.
+         */
+        LocationWrite: {
+            adminArea1?: string;
+            adminArea2?: string;
+            /** @description The country's RID (required). */
+            countryId: string;
+            houseNumber?: string;
+            /** Format: double */
+            latitude?: number;
+            locality?: string;
+            /** Format: double */
+            longitude?: number;
+            postalCode?: string;
+            rawAddress?: string;
+            street?: string;
+            typeId?: string;
         };
         /**
          * @description A person's belonging to a unit (the reified link__member_of), effective-dated, optionally
@@ -6065,6 +6223,202 @@ export interface operations {
                         };
                     };
                 };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    LocationService_listLocationTypes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocationTypeList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    LocationService_listLocations: {
+        parameters: {
+            query?: {
+                lat?: number;
+                lng?: number;
+                radiusM?: number;
+                minLat?: number;
+                minLng?: number;
+                maxLat?: number;
+                maxLng?: number;
+                pageSize?: number;
+                pageToken?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocationPage"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    LocationService_createLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocationWrite"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Location"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    LocationService_getLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                locationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Location"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    LocationService_updateLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                locationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocationWrite"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Location"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    LocationService_deleteLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                locationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
             default: {

@@ -96,7 +96,7 @@ Legend: `✅` done · `🚧` in progress · `⬜` not started · `➖` not appli
 | **M16** | ✅ | ✅ | ✅ | ✅ | ➖ | ✅ | verified (geo-countries + full WOF Ukraine geo-places backfill, 35k places, e2e in compose) |
 | ~~**M17**~~ | — | — | — | — | — | — | folded into M16 (D-Hermenea) |
 | **M18** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — both i18n gaps closed (`name` is now a `locale→text` map via `NamesByID`; `i18n_locale_languages` reconciled on import) and re-proven e2e (full 27k Glottolog 5.3 load + the new person/unit/locale language UI). See M18 Verdict (resolved). |
-| **M19** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | designed |
+| **M19** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — `location_locations` (PostGIS point + DB-derived MGRS/H3 via h3-pg) + audited LocationService CRUD + radius/bbox; custom Postgres image; e2e integration tests + live MGRS/H3 derivation |
 | **M20** | ✅ | 🚧 | ⬜ | ⬜ | ⬜ | ⬜ | decided |
 | **M21** | ✅ | 🚧 | ⬜ | ⬜ | ⬜ | ⬜ | decided |
 | **M22** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | designed |
@@ -663,10 +663,26 @@ now closed and re-verified:
 
 ## M19 — Location
 
-**Status: planned.** Binding via **D-Location** in [roadmap-decisions.md](architecture/roadmap-decisions.md). A new
+**Status: verified.** Binding via **D-Location** in [roadmap-decisions.md](architecture/roadmap-decisions.md). A new
 shared **standalone** entity that M20 (education buildings/dorms) and M21 (company addresses) reference
 by FK. Re-adopts geography/PostGIS/H3 — explicitly noted as *dropped from `drafts/`* in decisions.md,
-now reversed here with rationale.
+now reversed here with rationale. Built on the existing **`location` RID service (12)** beside the
+geo_countries/geo_places registry: migration `migrations/20260601000019_location.sql`
+(`location_locations` + `location_location_types`, the **MGRS plpgsql function**, the H3-deriving
+trigger, the `(12,1,3)`/`(12,1,4)`/`(12,3,0)` RID rows), the audited **LocationService** CRUD +
+radius/bbox in `internal/geo` (`api/location.conjure.yml`), the readiness-gate extension check, and the
+`/locations` web console page (browser + create-from-coordinate + radius search; `location`/
+`location_type` ontology-registry entries).
+
+**Verification (delivered).** PostGIS + h3-pg require a custom operator image (**`Dockerfile.postgres`** —
+`postgis/postgis:16-3.4` + h3-pg, wired into both compose files), since the stock image ships neither
+h3-pg nor an MGRS function. Integration tests (`internal/geo/location_integration_test.go`, against a
+real PostGIS + h3-pg DB) prove: create derives MGRS + all four H3 cells on write; an update recomputes
+them; an out-of-range coordinate is rejected; `ListLocationsNear` includes/excludes by `ST_DWithin`;
+soft-delete removes the row from reads; each write emits exactly one `system`-actor audited Action; and
+the `location_mgrs()` function matches known fixtures (Kyiv → `36U…`, Sydney → `56H…`, London → `30U…`).
+The migration applies cleanly + idempotently and on an existing DB (non-destructive upgrade); a live
+derivation of Kyiv yields `36UUA2418291607`.
 
 **Goal.** A reusable, analytics-grade place entity: a precise coordinate with derived spatial indexes
 plus a structured postal address over the existing country registry, so anything with a location

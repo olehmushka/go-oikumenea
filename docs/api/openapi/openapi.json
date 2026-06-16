@@ -2026,6 +2026,205 @@
         ],
         "type": "object"
       },
+      "Location": {
+        "description": "A shared place — a precise coordinate, DB-derived spatial indexes, and a structured postal address.",
+        "properties": {
+          "adminArea1": {
+            "type": "string"
+          },
+          "adminArea2": {
+            "type": "string"
+          },
+          "countryId": {
+            "description": "The country's RID (resolve an ISO alpha-2 code via GET /geo/countries).",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "h3Res11": {
+            "description": "DB-derived H3 cell at resolution 11 (~20m).",
+            "type": "string"
+          },
+          "h3Res5": {
+            "description": "DB-derived H3 cell at resolution 5 (~9km).",
+            "type": "string"
+          },
+          "h3Res7": {
+            "description": "DB-derived H3 cell at resolution 7 (~1.2km).",
+            "type": "string"
+          },
+          "h3Res9": {
+            "description": "DB-derived H3 cell at resolution 9 (~150m).",
+            "type": "string"
+          },
+          "houseNumber": {
+            "type": "string"
+          },
+          "id": {
+            "description": "The location's RID (location service); what owning modules reference by FK.",
+            "type": "string"
+          },
+          "latitude": {
+            "description": "WGS84 latitude of the authoritative coordinate.",
+            "format": "double",
+            "type": "number"
+          },
+          "locality": {
+            "type": "string"
+          },
+          "longitude": {
+            "description": "WGS84 longitude of the authoritative coordinate.",
+            "format": "double",
+            "type": "number"
+          },
+          "mgrs": {
+            "description": "DB-derived MGRS grid reference (absent for polar UPS coordinates, out of scope).",
+            "type": "string"
+          },
+          "postalCode": {
+            "type": "string"
+          },
+          "rawAddress": {
+            "type": "string"
+          },
+          "street": {
+            "type": "string"
+          },
+          "typeId": {
+            "description": "Optional place-type classification (location_location_types RID).",
+            "type": "string"
+          },
+          "typeName": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Localized name (locale-\u003etext) of the place type, when typeId is set.",
+            "type": "object"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "countryId",
+          "createdAt",
+          "id",
+          "latitude",
+          "longitude",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "LocationPage": {
+        "description": "A page of locations plus the opaque token for the next page (empty when exhausted).",
+        "properties": {
+          "locations": {
+            "items": {
+              "$ref": "#/components/schemas/Location"
+            },
+            "type": "array"
+          },
+          "nextPageToken": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "locations"
+        ],
+        "type": "object"
+      },
+      "LocationType": {
+        "description": "An instance-admin catalog label classifying a place (building/address/online); descriptive only.",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Localized display name (locale-\u003etext), all enabled locales.",
+            "type": "object"
+          },
+          "status": {
+            "description": "active | retired.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "id",
+          "name",
+          "status"
+        ],
+        "type": "object"
+      },
+      "LocationTypeList": {
+        "description": "The active location types, in display order.",
+        "properties": {
+          "locationTypes": {
+            "items": {
+              "$ref": "#/components/schemas/LocationType"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "locationTypes"
+        ],
+        "type": "object"
+      },
+      "LocationWrite": {
+        "description": "Create/replace payload for a location. latitude+longitude are the required spine (validated in\nthe application, not the wire, so a missing coordinate returns Location:CoordinateRequired\nrather than a deserialization error). MGRS + H3 are never supplied — they are DB-derived.\n",
+        "properties": {
+          "adminArea1": {
+            "type": "string"
+          },
+          "adminArea2": {
+            "type": "string"
+          },
+          "countryId": {
+            "description": "The country's RID (required).",
+            "type": "string"
+          },
+          "houseNumber": {
+            "type": "string"
+          },
+          "latitude": {
+            "format": "double",
+            "type": "number"
+          },
+          "locality": {
+            "type": "string"
+          },
+          "longitude": {
+            "format": "double",
+            "type": "number"
+          },
+          "postalCode": {
+            "type": "string"
+          },
+          "rawAddress": {
+            "type": "string"
+          },
+          "street": {
+            "type": "string"
+          },
+          "typeId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "countryId"
+        ],
+        "type": "object"
+      },
       "Membership": {
         "description": "A person's belonging to a unit (the reified link__member_of), effective-dated, optionally\nfilling a position. A position-less membership is plain belonging. Reversible: ending flips\nstatus and sets effectiveTo rather than deleting, vacating any filled billet.\n",
         "properties": {
@@ -7034,6 +7233,317 @@
         "summary": "Upsert translations for one entity (one or many fields/locales). Returns the stored set.",
         "tags": [
           "LocalizationService"
+        ]
+      }
+    },
+    "/location/v1/location/types": {
+      "get": {
+        "description": "List the active place-type catalog.",
+        "operationId": "LocationService_listLocationTypes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationTypeList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List the active place-type catalog.",
+        "tags": [
+          "LocationService"
+        ]
+      }
+    },
+    "/location/v1/locations": {
+      "get": {
+        "description": "Spatial query, token-paginated. Supply either a radius (lat + lng + radiusM, via ST_DWithin)\nor a bounding box (minLat + minLng + maxLat + maxLng); Location:QueryWindowRequired otherwise.\n",
+        "operationId": "LocationService_listLocations",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "lat",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lng",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "radiusM",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "minLat",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "minLng",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "maxLat",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "maxLng",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationPage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Spatial query, token-paginated. Supply either a radius (lat + lng + radiusM, via ST_DWithin)",
+        "tags": [
+          "LocationService"
+        ]
+      },
+      "post": {
+        "description": "Create a location from a coordinate (+ address); derives MGRS/H3. Location:CoordinateRequired when the coordinate is missing.",
+        "operationId": "LocationService_createLocation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocationWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Location"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Create a location from a coordinate (+ address); derives MGRS/H3. Location:CoordinateRequired when the coordinate is missing.",
+        "tags": [
+          "LocationService"
+        ]
+      }
+    },
+    "/location/v1/locations/{locationId}": {
+      "delete": {
+        "description": "Soft-delete a location. Location:LocationInUse when an owner still references it.",
+        "operationId": "LocationService_deleteLocation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "locationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Soft-delete a location. Location:LocationInUse when an owner still references it.",
+        "tags": [
+          "LocationService"
+        ]
+      },
+      "get": {
+        "description": "Read one location by its RID. Location:LocationNotFound when absent.",
+        "operationId": "LocationService_getLocation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "locationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Location"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Read one location by its RID. Location:LocationNotFound when absent.",
+        "tags": [
+          "LocationService"
+        ]
+      },
+      "put": {
+        "description": "Replace a location's coordinate/address/type (re-derives MGRS/H3 on the coordinate).",
+        "operationId": "LocationService_updateLocation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "locationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocationWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Location"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Replace a location's coordinate/address/type (re-derives MGRS/H3 on the coordinate).",
+        "tags": [
+          "LocationService"
         ]
       }
     },

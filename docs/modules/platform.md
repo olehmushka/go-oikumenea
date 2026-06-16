@@ -86,6 +86,12 @@ Creates the shared objects all modules rely on (see [conventions.md](../architec
   hermenea `wof-sqlite` connector, which streams natural keys and resolves `wof_id`/`code → id` in SQL.
   **Supersedes** the planned ISO-3166-2 `geo_subdivisions` (D-GeoSubdivisions). PostGIS is enabled in
   the bootstrap migration (pulled forward from D-Location/M19).
+- **Spatial extension prerequisites (D-Location, M19).** The operator DB must carry **PostGIS** (bootstrap)
+  plus **`h3` + `h3_postgis`** (migration `0019_location`, for the `location_locations` DB-derived H3
+  cells). The stock `postgis/postgis:16-3.4` image ships neither h3-pg nor an MGRS function, so the
+  operator runs the bundled **`Dockerfile.postgres`** (postgis + h3-pg) image; `h3_postgis` additionally
+  pulls in `postgis_raster`. The **readiness gate checks all three extensions are installed** and refuses
+  readiness otherwise (so a stock image is caught at boot, not at the first H3 derivation).
 
 Later migrations **enable RLS** on unit-scoped tables and create the PDP-mirror policies keyed on
 the `app.*` GUCs (D-RLSDefenseInDepth), staged permissive-first then tightened

@@ -90,6 +90,13 @@ const (
 	// language (D-Languages, M18) — read the Glottolog languoid + writing-system registry.
 	PermLanguageRead Permission = "language.read"
 
+	// location (D-Location, M19) — the shared standalone place entity (PostGIS point + address). It
+	// is instance-global (a location carries no unit scope of its own; access scoping is the owning
+	// link's job), so reads/writes are satisfied anywhere via the PEP.
+	PermLocationRead   Permission = "location.read"
+	PermLocationCreate Permission = "location.create"
+	PermLocationUpdate Permission = "location.update"
+
 	// i18n
 	PermLocaleRead        Permission = "locale.read"
 	PermTranslationRead   Permission = "translation.read"
@@ -104,6 +111,7 @@ const (
 	PermOrderTypeManage          Permission = "order.type.manage"
 	PermPersonalCodeSchemeManage Permission = "personal-code-scheme.manage"
 	PermCountryManage            Permission = "country.manage"
+	PermLocationTypesManage      Permission = "location.types.manage"
 	PermInstanceConfig           Permission = "instance.config"
 	PermInstanceAdminManage      Permission = "instance.admin.manage"
 	// import — the generic reference-data import endpoint (M16 / D-Hermenea). Held by the
@@ -126,6 +134,7 @@ var instanceScope = map[Permission]struct{}{
 	PermOrderTypeManage:          {},
 	PermPersonalCodeSchemeManage: {},
 	PermCountryManage:            {},
+	PermLocationTypesManage:      {},
 	PermLocaleManage:             {},
 	PermTranslationManage:        {},
 	PermInstanceConfig:           {},
@@ -151,9 +160,10 @@ var catalog = func() map[Permission]struct{} {
 		PermGraphRead,
 		PermCountryRead,
 		PermLanguageRead,
+		PermLocationRead, PermLocationCreate, PermLocationUpdate,
 		PermLocaleRead, PermTranslationRead, PermLocaleManage, PermTranslationManage,
 		PermRankSchemeManage, PermGraphManage, PermClosureRebuild, PermDocumentTypeManage, PermOrderTypeManage,
-		PermPersonalCodeSchemeManage, PermCountryManage, PermInstanceConfig, PermInstanceAdminManage,
+		PermPersonalCodeSchemeManage, PermCountryManage, PermLocationTypesManage, PermInstanceConfig, PermInstanceAdminManage,
 		PermImportManage,
 	}
 	m := make(map[Permission]struct{}, len(all))
@@ -212,7 +222,7 @@ var readerPerms = []Permission{
 	PermUnitRead, PermPersonRead, PermMembershipRead, PermPositionRead,
 	PermDocumentRead, PermPersonalCodeRead, PermOrderRead,
 	PermRoleRead, PermAssignmentRead,
-	PermRankSchemeRead, PermGraphRead, PermCountryRead, PermLanguageRead,
+	PermRankSchemeRead, PermGraphRead, PermCountryRead, PermLanguageRead, PermLocationRead,
 	PermDocumentTypeRead, PermPersonalCodeSchemeRead, PermOrderTypeRead,
 	PermLocaleRead, PermTranslationRead,
 }
@@ -225,6 +235,7 @@ var managerOnlyPerms = []Permission{
 	PermDocumentCreate, PermDocumentUpdate,
 	PermPersonalCodeCreate, PermPersonalCodeUpdate,
 	PermOrderCreate,
+	PermLocationCreate, PermLocationUpdate,
 }
 
 var adminOnlyPerms = []Permission{
