@@ -616,6 +616,52 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
       { label: "Grade (STANAG)", value: (r) => s(r.gradeCode) },
     ],
   },
+
+  languoid: {
+    type: "languoid",
+    kind: "object",
+    label: "Language",
+    labelPlural: "Languages",
+    module: "language",
+    blurb: "A Glottolog languoid (family/language/dialect), keyed by glottocode; the genealogical catalog.",
+    list: { path: "/language/v1/languages", search: "?limit=100", parse: pageParse("languoids") },
+    get: (id) => `/language/v1/languages/${id}`,
+    title: (l) => loc(l.name) || s(l.code) || ridTail(l.id),
+    subtitle: (l) => s(l.code),
+    columns: [
+      { key: "code", header: "Glottocode", value: (l) => s(l.code), render: "mono" },
+      { key: "name", header: "Name", value: (l) => loc(l.name) },
+      { key: "level", header: "Level", value: (l) => s(l.level), render: "pill", tone: (l) => (s(l.level) === "family" ? "indigo" : s(l.level) === "language" ? "green" : "slate") },
+      { key: "iso", header: "ISO 639-3", value: (l) => s(l.iso6393), render: "mono" },
+      { key: "family", header: "Family", value: (l) => s(l.familyCode), render: "mono" },
+    ],
+    properties: [
+      { label: "Glottocode", value: (l) => s(l.code), render: "mono" },
+      { label: "Name", value: (l) => loc(l.name) },
+      { label: "Level", value: (l) => s(l.level), render: "pill" },
+      { label: "ISO 639-3", value: (l) => s(l.iso6393), render: "mono" },
+      { label: "Family", value: (l) => s(l.familyCode), render: "mono" },
+      { label: "Macroarea", value: (l) => s(l.macroarea) },
+      { label: "Status", value: (l) => s(l.status) },
+    ],
+  },
+
+  writing_system: {
+    type: "writing_system",
+    kind: "object",
+    label: "Writing system",
+    labelPlural: "Writing systems",
+    module: "language",
+    blurb: "An ISO-15924 script (e.g. Latn, Cyrl), classified by script type; the writing-system catalog.",
+    list: { path: "/language/v1/writing-systems", parse: pageParse("writingSystems") },
+    title: (w) => loc(w.name) || s(w.code) || ridTail(w.id),
+    subtitle: (w) => s(w.code),
+    columns: [
+      { key: "code", header: "Code", value: (w) => s(w.code), render: "mono" },
+      { key: "name", header: "Name", value: (w) => loc(w.name) },
+      { key: "scriptType", header: "Script type", value: (w) => s(w.scriptType), render: "pill", tone: () => "indigo" },
+    ],
+  },
 };
 
 /** Object types that can be browsed as a global table (and fanned out in search). */

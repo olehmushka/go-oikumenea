@@ -1,0 +1,119 @@
+# Language module API (M18 / D-Languages). A read-only lookup over the language service's Glottolog
+# languoid forest + ISO-15924 writing-system registry, so clients can resolve a language/script to its
+# RID and browse the genealogy. The catalog is WRITTEN by the hermenea import pipeline (language-scheme
+# / language-scripts), not here; this service is read-only.
+#
+# RID-bearing fields are typed `string` (the canonical uuid RID): Conjure reserves `rid` as a built-in
+# primitive whose `ri.` format is NOT our RID, so a type named `Rid`/`rid` cannot be used. Generated Go
+# lands in internal/conjure and is never hand-edited. Reads are gated by `language.read`.
+types:
+  definitions:
+    default-package: oikumenea.language
+    objects:
+      Languoid:
+        docs: A node in the Glottolog forest. `id` is the RID (the reference key); `code` is the stable glottocode; `name` is the locale->text display map.
+        fields:
+          id:
+            type: string
+            docs: The languoid's RID (language service); what person/unit/locale links reference.
+          code:
+            type: string
+            docs: Glottocode (8-char), the stable, locale-agnostic lookup key (e.g. stan1293).
+          level:
+            type: string
+            docs: family | language | dialect.
+          name:
+            type: map<string, string>
+            docs: locale->text display name (all enabled locales; default-locale `name` column + i18n store).
+          parentId:
+            type: optional<string>
+            docs: The RID of the immediate parent languoid (absent for a top-level family / isolate).
+          familyCode:
+            type: optional<string>
+            docs: The root-family glottocode (derived via the closure).
+          iso6393:
+            type: optional<string>
+            docs: ISO 639-3 code, when the languoid has one (families/dialects usually do not).
+          macroarea:
+            type: optional<string>
+            docs: Glottolog macroarea.
+          status:
+            type: string
+            docs: AES endangerment (not_endangered…extinct).
+      LanguoidList:
+        docs: A page of languoids in code order.
+        fields:
+          languoids: list<Languoid>
+      WritingSystem:
+        docs: An ISO-15924 script. `id` is the RID; `code` is the ISO-15924 lookup code.
+        fields:
+          id:
+            type: string
+            docs: The writing system's RID (language service).
+          code:
+            type: string
+            docs: ISO-15924 code (e.g. Latn, Cyrl, Hani).
+          name:
+            type: map<string, string>
+            docs: locale->text display name (all enabled locales; default-locale `name` column + i18n store).
+          scriptType:
+            type: optional<string>
+            docs: logographic | syllabary | alphabet | abjad | abugida | featural.
+      WritingSystemList:
+        docs: The writing systems, in code order.
+        fields:
+          writingSystems: list<WritingSystem>
+    errors:
+      LanguoidNotFound:
+        docs: No languoid exists with the given RID.
+        namespace: Language
+        code: NOT_FOUND
+        safe-args:
+          languoidId: string
+services:
+  LanguageService:
+    name: Language Service
+    package: oikumenea.language
+    base-path: /language/v1
+    default-auth: header
+    docs: |
+      Read-only lookup over the Glottolog languoid forest + ISO-15924 writing systems (D-Languages).
+      Reads are gated by `language.read`. Writes happen via the hermenea import pipeline, not here.
+    endpoints:
+      listLanguages:
+        http: GET /languages
+        docs: |
+          List languoids in code order, optionally filtered by level, root family (glottocode), and a
+          name/code substring. `limit` caps the page (default/clamped server-side) since the catalog is
+          large (~26k); narrow with the filters.
+        args:
+          level:
+            type: optional<string>
+            param-type: query
+            docs: Filter to a level (family | language | dialect).
+          family:
+            type: optional<string>
+            param-type: query
+            docs: Filter to descendants of this root-family glottocode (via family_code).
+          query:
+            type: optional<string>
+            param-type: query
+            docs: Case-insensitive substring match on name or glottocode.
+          limit:
+            type: optional<integer>
+            param-type: query
+            docs: Max rows to return (server clamps to a sane maximum).
+        returns: LanguoidList
+      getLanguage:
+        http: GET /languages/{id}
+        docs: Fetch one languoid by its RID.
+        args:
+          id:
+            type: string
+            param-type: path
+            docs: The languoid's RID.
+        returns: Languoid
+      listWritingSystems:
+        http: GET /writing-systems
+        docs: List the ISO-15924 writing systems in code order.
+        returns: WritingSystemList

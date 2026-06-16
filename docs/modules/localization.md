@@ -50,7 +50,8 @@ Conventions per [conventions.md](../architecture/conventions.md).
 **`i18n_translations`** (shared, polymorphic store)
 - `id` PK
 - `entity_type TEXT NOT NULL` — e.g. `unit`, `graph`, `rank_category`, `rank_type`, `rank`,
-  `position`, `role`, `document_type`, `order_type`, `personal_code_scheme`, `country`
+  `position`, `role`, `document_type`, `order_type`, `personal_code_scheme`, `country`, `languoid`,
+  `writing_system`
 - `entity_id TEXT NOT NULL` — the owning entity's id (polymorphic; no FK — see Invariants)
 - `field TEXT NOT NULL` — the translatable field key, e.g. `name`, `title`, `description`
 - `locale TEXT NOT NULL REFERENCES i18n_locales(code) ON UPDATE RESTRICT`
@@ -71,6 +72,7 @@ are entered; the locale→text map in responses is `{default_locale: name} ∪ i
 | Op | Intent | Perm |
 |---|---|---|
 | `GET /locales` | List supported locales | `locale.read` |
+| `GET /locale-languages` | Each locale's canonical Glottolog language (read-only; reconciled by the `language-scheme` import; D-Languages M18) | `locale.read` |
 | `POST /locales` | Add a locale | `locale.manage` (instance) |
 | `PUT /locales/{code}` | Enable/disable, rename, set default, reorder | `locale.manage` (instance) |
 | `GET /translations/{entityType}/{entityId}` | All translations of one entity (for editing) | `translation.read` |
@@ -131,3 +133,12 @@ entity, OQ-1).
   `LocalizationService`.
 - If Accept-Language negotiation is ever wanted (it is intentionally **not** today), it is an
   additive read option layered over the same store.
+- A locale's **canonical language** (`i18n_locale_languages`: a `LOCALE_OF` link to a Glottolog
+  languoid, one per locale) landed with **M18 / D-Languages** — distinct from the supported-locale
+  registry here (a *locale* is a UI language; a *languoid* is a genealogical node). The languoid
+  catalog is owned by the [language](language.md) module. These three tables stay **separate by
+  design** — `i18n_locales` (admin-CRUD, ~2–10 rows, ISO-639-3 natural key), `language_languoids`
+  (import-only, ~27k rows, glottocode/RID key), and the polymorphic `i18n_translations` store are
+  not mergeable: they differ in cardinality, write-ownership (`locale.manage` vs. hermenea
+  `import.manage`), RID service, and lifecycle. The 1:1 locale↔languoid tie is the job of the
+  `i18n_locale_languages` link, not a table merge (D-i18n, D-Languages, L-UpgradeSafe).

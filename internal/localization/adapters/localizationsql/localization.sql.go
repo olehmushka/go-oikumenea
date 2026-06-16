@@ -149,6 +149,42 @@ func (q *Queries) InsertLocale(ctx context.Context, arg InsertLocaleParams) (Oik
 	return i, err
 }
 
+const listLocaleLanguages = `-- name: ListLocaleLanguages :many
+SELECT ll.locale, ll.language_id, l.name AS language_name
+FROM oikumenea.i18n_locale_languages ll
+JOIN oikumenea.language_languoids l ON l.id = ll.language_id
+JOIN oikumenea.i18n_locales loc ON loc.code = ll.locale AND loc.deleted_at IS NULL
+ORDER BY loc.sort_order, ll.locale
+`
+
+type ListLocaleLanguagesRow struct {
+	Locale       string
+	LanguageID   string
+	LanguageName string
+}
+
+// Each supported locale's canonical Glottolog language (D-Languages, M18), reconciled by the
+// language-scheme import. Joined to the languoid for its default-locale display name.
+func (q *Queries) ListLocaleLanguages(ctx context.Context) ([]ListLocaleLanguagesRow, error) {
+	rows, err := q.db.Query(ctx, listLocaleLanguages)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLocaleLanguagesRow
+	for rows.Next() {
+		var i ListLocaleLanguagesRow
+		if err := rows.Scan(&i.Locale, &i.LanguageID, &i.LanguageName); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLocales = `-- name: ListLocales :many
 
 SELECT code, name, enabled, is_default, sort_order, created_at, updated_at, deleted_at FROM oikumenea.i18n_locales

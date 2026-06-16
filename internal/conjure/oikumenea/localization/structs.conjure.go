@@ -61,6 +61,99 @@ func (o *Locale) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+/*
+A supported locale's canonical Glottolog language (D-Languages, M18; Link link__locale_language).
+Read-only: the link is reconciled by the language-scheme import (matching the locale's ISO-639-3
+code to a languoid's iso639_3), not edited directly.
+*/
+type LocaleLanguage struct {
+	// The locale's ISO 639-3 code.
+	Locale string `json:"locale"`
+	// The matched languoid's URN RID.
+	LanguageId string `json:"languageId"`
+	// The languoid's translatable display name as a locale -> text map (all enabled locales; D-i18n).
+	Name map[string]string `json:"name"`
+}
+
+func (o LocaleLanguage) MarshalJSON() ([]byte, error) {
+	if o.Name == nil {
+		o.Name = make(map[string]string)
+	}
+	type _tmpLocaleLanguage LocaleLanguage
+	return safejson.Marshal(_tmpLocaleLanguage(o))
+}
+
+func (o *LocaleLanguage) UnmarshalJSON(data []byte) error {
+	type _tmpLocaleLanguage LocaleLanguage
+	var rawLocaleLanguage _tmpLocaleLanguage
+	if err := safejson.Unmarshal(data, &rawLocaleLanguage); err != nil {
+		return err
+	}
+	if rawLocaleLanguage.Name == nil {
+		rawLocaleLanguage.Name = make(map[string]string)
+	}
+	*o = LocaleLanguage(rawLocaleLanguage)
+	return nil
+}
+
+func (o LocaleLanguage) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *LocaleLanguage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// The locale -> canonical-language links (D-Languages, M18).
+type LocaleLanguageList struct {
+	LocaleLanguages []LocaleLanguage `json:"localeLanguages"`
+}
+
+func (o LocaleLanguageList) MarshalJSON() ([]byte, error) {
+	if o.LocaleLanguages == nil {
+		o.LocaleLanguages = make([]LocaleLanguage, 0)
+	}
+	type _tmpLocaleLanguageList LocaleLanguageList
+	return safejson.Marshal(_tmpLocaleLanguageList(o))
+}
+
+func (o *LocaleLanguageList) UnmarshalJSON(data []byte) error {
+	type _tmpLocaleLanguageList LocaleLanguageList
+	var rawLocaleLanguageList _tmpLocaleLanguageList
+	if err := safejson.Unmarshal(data, &rawLocaleLanguageList); err != nil {
+		return err
+	}
+	if rawLocaleLanguageList.LocaleLanguages == nil {
+		rawLocaleLanguageList.LocaleLanguages = make([]LocaleLanguage, 0)
+	}
+	*o = LocaleLanguageList(rawLocaleLanguageList)
+	return nil
+}
+
+func (o LocaleLanguageList) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *LocaleLanguageList) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // The supported locales, in display order.
 type LocaleList struct {
 	Locales []Locale `json:"locales"`

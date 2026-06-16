@@ -41,6 +41,15 @@ type TenantService interface {
 	UnitDescendants(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, graphArg *string, pageSizeArg *int, pageTokenArg *string) (UnitRefPage, error)
 	// Transition the unit's lifecycle state. Returns Tenant:TransitionInvalid for an illegal transition.
 	TransitionUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg TransitionRequest) (Unit, error)
+	// List a unit's official/working languages (D-Languages, M18).
+	ListUnitLanguages(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) ([]UnitLanguage, error)
+	/*
+	   Add or update a unit's official/working language (keyed on languageId). Returns
+	   Tenant:UnitInvalid when languageId does not resolve to a languoid.
+	*/
+	UpsertUnitLanguage(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg UpsertUnitLanguageRequest) (UnitLanguage, error)
+	// Remove a unit's language by languoid id. Idempotent within the active set.
+	DeleteUnitLanguage(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, languageIdArg string) error
 	// Diff the stored closure vs. the edges and upsert the per-graph drift status (default all graphs).
 	VerifyClosure(ctx context.Context, authHeader bearertoken.Token, graphArg *string) (ClosureReportList, error)
 	// Truncate + recompute the closure, one transaction per graph (default all graphs).
@@ -88,6 +97,15 @@ func RegisterRoutesTenantService(router wrouter.Router, impl TenantService, rout
 	}
 	if err := resource.Post("TransitionUnit", "/tenant/v1/units/{unitId}/transition", httpserver.NewJSONHandler(handler.HandleTransitionUnit, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add transitionUnit route")
+	}
+	if err := resource.Get("ListUnitLanguages", "/tenant/v1/units/{unitId}/languages", httpserver.NewJSONHandler(handler.HandleListUnitLanguages, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listUnitLanguages route")
+	}
+	if err := resource.Put("UpsertUnitLanguage", "/tenant/v1/units/{unitId}/languages", httpserver.NewJSONHandler(handler.HandleUpsertUnitLanguage, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertUnitLanguage route")
+	}
+	if err := resource.Delete("DeleteUnitLanguage", "/tenant/v1/units/{unitId}/languages/{languageId}", httpserver.NewJSONHandler(handler.HandleDeleteUnitLanguage, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteUnitLanguage route")
 	}
 	if err := resource.Post("VerifyClosure", "/tenant/v1/closure/verify", httpserver.NewJSONHandler(handler.HandleVerifyClosure, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add verifyClosure route")
@@ -350,6 +368,76 @@ func (t *tenantServiceHandler) HandleTransitionUnit(rw http.ResponseWriter, req 
 	}
 	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
 	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (t *tenantServiceHandler) HandleListUnitLanguages(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	unitIdArg, ok := pathParams["unitId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"unitId\" not present")
+	}
+	respArg, err := t.impl.ListUnitLanguages(req.Context(), bearertoken.Token(authHeader), unitIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (t *tenantServiceHandler) HandleUpsertUnitLanguage(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	unitIdArg, ok := pathParams["unitId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"unitId\" not present")
+	}
+	var requestArg UpsertUnitLanguageRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := t.impl.UpsertUnitLanguage(req.Context(), bearertoken.Token(authHeader), unitIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (t *tenantServiceHandler) HandleDeleteUnitLanguage(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	unitIdArg, ok := pathParams["unitId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"unitId\" not present")
+	}
+	languageIdArg, ok := pathParams["languageId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"languageId\" not present")
+	}
+	if err := t.impl.DeleteUnitLanguage(req.Context(), bearertoken.Token(authHeader), unitIdArg, languageIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
 }
 
 func (t *tenantServiceHandler) HandleVerifyClosure(rw http.ResponseWriter, req *http.Request) error {

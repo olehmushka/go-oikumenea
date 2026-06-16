@@ -354,7 +354,8 @@ DATA-GOVERNANCE:
   of `person_citizenships` and `person_residences` (D-Geo), the rows of `person_emails`,
   `person_phones`, and `person_call_signs` (D-PersonContactChannels), the rows of
   `person_messenger_links`, `person_social_accounts` (+ `person_social_account_handles`)
-  (D-PersonSocialChannels), the person↔person relationship rows on **either** endpoint
+  (D-PersonSocialChannels), the rows of `person_languages` (the SPEAKS link, `pii:basic`;
+  D-Languages M18), the person↔person relationship rows on **either** endpoint
   (D-PersonRelationships), plus the JSONB `attributes`. The `person_ranks` rows (`pii:none`, the
   HOLDS_RANK link) are also removed on purge as part of the child-row cleanup.
   [document](document.md) rows for the person — including its **personal codes** (crypto-erased by
@@ -405,6 +406,9 @@ DATA-GOVERNANCE:
 | `GET /persons/{id}/social-accounts` | List the person's social accounts (+ handle history) | `person.read` |
 | `PUT /persons/{id}/social-accounts` | Upsert a social account (platform, id/handle, verification, source/confidence) | `person.update` |
 | `DELETE /persons/{id}/social-accounts/{id}` | Remove a social account | `person.update` |
+| `GET /persons/{id}/languages` | List languages the person speaks (name as `locale→text` map) | `person.read` |
+| `PUT /persons/{id}/languages` | Upsert a SPEAKS link (languoid, CEFR, native; D-Languages M18) | `person.update` |
+| `DELETE /persons/{id}/languages/{languageId}` | Remove a spoken language | `person.update` |
 | `GET /persons/{id}/partnerships` | List partnerships (marriage/engagement) | `person.read` |
 | `PUT /persons/{id}/partnerships` | Upsert a partnership (partner, status, interval) | `person.update` |
 | `GET /persons/{id}/kinships` | List parent/child kinships | `person.read` |
@@ -550,3 +554,6 @@ through the holder.
   metrics (follower/activity counts) are **excluded outright**, not parked.
 - **External (non-directory) next-of-kin** remain out of scope — both ends of every person↔person link
   must be directory persons (D-PersonRelationships); revisit if real deployments need free-text contacts.
+- **Languages spoken** (`person_languages`: a `SPEAKS` link to a `level='language'` languoid, with
+  `cefr_level` + `is_native`; `pii:basic`, purge-erased) landed with **M18 / D-Languages** — the
+  languoid catalog is owned by the [language](language.md) module; the editor UI is deferred.

@@ -855,6 +855,63 @@ func (s *Service) DeleteSocialAccount(ctx context.Context, personID, accountID s
 	})
 }
 
+// UpsertPersonLanguage adds (or updates the proficiency of) a language the person speaks (D-Languages,
+// M18; keyed on person+language). The person must exist; the languoid existence + level='language'
+// constraint is enforced by the composite FK (a violation surfaces as ErrUnknownLanguage). Returns the
+// stored row joined to the languoid name.
+func (s *Service) UpsertPersonLanguage(ctx context.Context, l domain.PersonLanguage) (domain.PersonLanguage, error) {
+	if err := l.Validate(); err != nil {
+		return domain.PersonLanguage{}, err
+	}
+	var out domain.PersonLanguage
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		repo := s.newRepo(tx)
+		if _, err := repo.GetPerson(ctx, l.PersonID); err != nil {
+			return err
+		}
+		_, err := repo.GetPersonLanguage(ctx, l.PersonID, l.LanguageID)
+		switch {
+		case err == nil:
+			if err := repo.UpdatePersonLanguage(ctx, l); err != nil {
+				return err
+			}
+		case errors.Is(err, domain.ErrLanguageNotFound):
+			if err := repo.InsertPersonLanguage(ctx, l); err != nil {
+				return err
+			}
+		default:
+			return err
+		}
+		saved, err := repo.GetPersonLanguage(ctx, l.PersonID, l.LanguageID)
+		if err != nil {
+			return err
+		}
+		out = saved
+		return s.record(ctx, tx, "person.language.upsert", l.PersonID, map[string]any{"id": l.PersonID, "languageId": l.LanguageID})
+	})
+	return out, err
+}
+
+// DeletePersonLanguage removes a language the person speaks, by languoid id.
+func (s *Service) DeletePersonLanguage(ctx context.Context, personID, languageID string) error {
+	return s.inTx(ctx, func(tx pgx.Tx) error {
+		repo := s.newRepo(tx)
+		if err := repo.DeletePersonLanguage(ctx, personID, languageID); err != nil {
+			return err
+		}
+		return s.record(ctx, tx, "person.language.delete", personID, map[string]any{"id": personID, "languageId": languageID})
+	})
+}
+
+// ListPersonLanguages lists the languages a person speaks (the person must exist).
+func (s *Service) ListPersonLanguages(ctx context.Context, personID string) ([]domain.PersonLanguage, error) {
+	repo := s.newRepo(s.pool)
+	if _, err := repo.GetPerson(ctx, personID); err != nil {
+		return nil, err
+	}
+	return repo.ListPersonLanguages(ctx, personID)
+}
+
 // ListSocialAccounts lists a person's social accounts (the person must exist).
 func (s *Service) ListSocialAccounts(ctx context.Context, personID string) ([]domain.SocialAccount, error) {
 	repo := s.newRepo(s.pool)

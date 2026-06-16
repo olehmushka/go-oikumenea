@@ -44,6 +44,39 @@ sources:
     locator: "deploy/geo-presets/iso-3166.json"
     cron: "@weekly"
     enabled: true
+  # Languages (D-Languages, M18) — hermenea's first NEW consumers beyond geo. These pull LIVE from
+  # upstream master on every run via the `http-files` streaming connector: the raw files are staged to a
+  # temp dir and transformed in Go (the CLDFMapper / SupplementalMapper port of gen-presets.py), so the
+  # catalog refreshes without regenerating bundled presets. The `locator` is a whitespace-separated URL
+  # list; the mapper reads each file by basename. source_version is a checksum of the fetched files, so an
+  # unchanged upstream is an idempotent no-op. language-scheme MUST load before language-scripts (scripts
+  # resolve languoids by ISO 639-3); both share the cron window and the single worker runs them
+  # sequentially. Tracking master means a run depends on upstream being reachable + format-stable; a
+  # failed/garbled run is logged in import_runs, retried, then dead-lettered — imports are transactional,
+  # so they never corrupt the existing catalog.
+  #
+  # OFFLINE / air-gap alternative: swap connector-type back to `file` and point locator at the bundled
+  # preset (regenerate with deploy/language-presets/gen-presets.py), e.g.:
+  #   connector-type: file
+  #   locator: "deploy/language-presets/glottolog-5.3.json"   # (and cldr-scripts.json)
+  - code: glottolog-languoids
+    name: "Glottolog languoids (live CLDF master)"
+    connector-type: http-files
+    object-type: language-scheme
+    locator: >-
+      https://raw.githubusercontent.com/glottolog/glottolog-cldf/master/cldf/languages.csv
+      https://raw.githubusercontent.com/glottolog/glottolog-cldf/master/cldf/values.csv
+    cron: "@weekly"
+    enabled: true
+  - code: cldr-language-scripts
+    name: "CLDR language→script links (live)"
+    connector-type: http-files
+    object-type: language-scripts
+    locator: >-
+      https://raw.githubusercontent.com/unicode-org/cldr/main/common/supplemental/supplementalData.xml
+      https://iso639-3.sil.org/sites/iso639-3/files/downloads/iso-639-3.tab
+    cron: "@weekly"
+    enabled: true
   - code: wof-geo-ua
     name: "Who's On First — Ukraine (admin)"
     connector-type: wof-sqlite

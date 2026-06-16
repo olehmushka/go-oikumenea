@@ -250,6 +250,17 @@ func (q *Queries) DeleteAllPartnerships(ctx context.Context, personID string) er
 	return err
 }
 
+const deleteAllPersonLanguages = `-- name: DeleteAllPersonLanguages :exec
+DELETE FROM oikumenea.person_languages WHERE person_id = $1
+`
+
+// Erase the person's SPEAKS links (D-Languages, M18). person_languages is pii:basic, so purge must
+// hard-delete it explicitly (the person row is kept as a tombstone).
+func (q *Queries) DeleteAllPersonLanguages(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllPersonLanguages, personID)
+	return err
+}
+
 const deleteAllPersonRanks = `-- name: DeleteAllPersonRanks :exec
 DELETE FROM oikumenea.person_ranks WHERE person_id = $1
 `
@@ -491,6 +502,24 @@ func (q *Queries) DeletePartnership(ctx context.Context, arg DeletePartnershipPa
 	return id, err
 }
 
+const deletePersonLanguage = `-- name: DeletePersonLanguage :one
+UPDATE oikumenea.person_languages SET deleted_at = now()
+WHERE person_id = $1 AND language_id = $2 AND deleted_at IS NULL
+RETURNING id
+`
+
+type DeletePersonLanguageParams struct {
+	PersonID   string
+	LanguageID string
+}
+
+func (q *Queries) DeletePersonLanguage(ctx context.Context, arg DeletePersonLanguageParams) (string, error) {
+	row := q.db.QueryRow(ctx, deletePersonLanguage, arg.PersonID, arg.LanguageID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const deletePhone = `-- name: DeletePhone :one
 UPDATE oikumenea.person_phones SET deleted_at = now()
 WHERE id = $1 AND person_id = $2 AND deleted_at IS NULL
@@ -643,6 +672,41 @@ func (q *Queries) GetPerson(ctx context.Context, id string) (OikumeneaPersonPers
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.DateOfDeath,
+	)
+	return i, err
+}
+
+const getPersonLanguage = `-- name: GetPersonLanguage :one
+SELECT pl.id, pl.person_id, pl.language_id, pl.cefr_level, pl.is_native, l.name AS language_name
+FROM oikumenea.person_languages pl
+JOIN oikumenea.language_languoids l ON l.id = pl.language_id
+WHERE pl.person_id = $1 AND pl.language_id = $2 AND pl.deleted_at IS NULL
+`
+
+type GetPersonLanguageParams struct {
+	PersonID   string
+	LanguageID string
+}
+
+type GetPersonLanguageRow struct {
+	ID           string
+	PersonID     string
+	LanguageID   string
+	CefrLevel    pgtype.Text
+	IsNative     bool
+	LanguageName string
+}
+
+func (q *Queries) GetPersonLanguage(ctx context.Context, arg GetPersonLanguageParams) (GetPersonLanguageRow, error) {
+	row := q.db.QueryRow(ctx, getPersonLanguage, arg.PersonID, arg.LanguageID)
+	var i GetPersonLanguageRow
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.LanguageID,
+		&i.CefrLevel,
+		&i.IsNative,
+		&i.LanguageName,
 	)
 	return i, err
 }
@@ -1134,6 +1198,30 @@ func (q *Queries) InsertPerson(ctx context.Context, arg InsertPersonParams) (Oik
 		&i.DateOfDeath,
 	)
 	return i, err
+}
+
+const insertPersonLanguage = `-- name: InsertPersonLanguage :exec
+INSERT INTO oikumenea.person_languages (person_id, language_id, cefr_level, is_native)
+VALUES ($1, $2, $3, $4)
+`
+
+type InsertPersonLanguageParams struct {
+	PersonID   string
+	LanguageID string
+	CefrLevel  pgtype.Text
+	IsNative   bool
+}
+
+// language_level defaults to 'language'; the composite FK (language_id, language_level) ->
+// language_languoids(id, level) rejects a non-language languoid (23503 -> ErrUnknownLanguage).
+func (q *Queries) InsertPersonLanguage(ctx context.Context, arg InsertPersonLanguageParams) error {
+	_, err := q.db.Exec(ctx, insertPersonLanguage,
+		arg.PersonID,
+		arg.LanguageID,
+		arg.CefrLevel,
+		arg.IsNative,
+	)
+	return err
 }
 
 const insertPhone = `-- name: InsertPhone :one
@@ -1751,6 +1839,54 @@ func (q *Queries) ListPartnerships(ctx context.Context, personID string) ([]Oiku
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPersonLanguages = `-- name: ListPersonLanguages :many
+
+SELECT pl.id, pl.person_id, pl.language_id, pl.cefr_level, pl.is_native, l.name AS language_name
+FROM oikumenea.person_languages pl
+JOIN oikumenea.language_languoids l ON l.id = pl.language_id
+WHERE pl.person_id = $1 AND pl.deleted_at IS NULL
+ORDER BY pl.is_native DESC, l.name, pl.id
+`
+
+type ListPersonLanguagesRow struct {
+	ID           string
+	PersonID     string
+	LanguageID   string
+	CefrLevel    pgtype.Text
+	IsNative     bool
+	LanguageName string
+}
+
+// ============================ person languages (D-Languages, M18) — SPEAKS ============================
+// The person's spoken languages joined to the languoid for its default-locale display name (the
+// transport assembles the locale->text map). Native first, then by name.
+func (q *Queries) ListPersonLanguages(ctx context.Context, personID string) ([]ListPersonLanguagesRow, error) {
+	rows, err := q.db.Query(ctx, listPersonLanguages, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListPersonLanguagesRow
+	for rows.Next() {
+		var i ListPersonLanguagesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.LanguageID,
+			&i.CefrLevel,
+			&i.IsNative,
+			&i.LanguageName,
 		); err != nil {
 			return nil, err
 		}
@@ -2696,6 +2832,29 @@ func (q *Queries) UpdatePerson(ctx context.Context, arg UpdatePersonParams) (Oik
 		&i.DateOfDeath,
 	)
 	return i, err
+}
+
+const updatePersonLanguage = `-- name: UpdatePersonLanguage :exec
+UPDATE oikumenea.person_languages
+SET cefr_level = $1, is_native = $2
+WHERE person_id = $3 AND language_id = $4 AND deleted_at IS NULL
+`
+
+type UpdatePersonLanguageParams struct {
+	CefrLevel  pgtype.Text
+	IsNative   bool
+	PersonID   string
+	LanguageID string
+}
+
+func (q *Queries) UpdatePersonLanguage(ctx context.Context, arg UpdatePersonLanguageParams) error {
+	_, err := q.db.Exec(ctx, updatePersonLanguage,
+		arg.CefrLevel,
+		arg.IsNative,
+		arg.PersonID,
+		arg.LanguageID,
+	)
+	return err
 }
 
 const updatePhone = `-- name: UpdatePhone :one

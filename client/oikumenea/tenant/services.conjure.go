@@ -38,6 +38,15 @@ type TenantServiceClient interface {
 	UnitDescendants(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, graphArg *string, pageSizeArg *int, pageTokenArg *string) (UnitRefPage, error)
 	// Transition the unit's lifecycle state. Returns Tenant:TransitionInvalid for an illegal transition.
 	TransitionUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg TransitionRequest) (Unit, error)
+	// List a unit's official/working languages (D-Languages, M18).
+	ListUnitLanguages(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) ([]UnitLanguage, error)
+	/*
+	   Add or update a unit's official/working language (keyed on languageId). Returns
+	   Tenant:UnitInvalid when languageId does not resolve to a languoid.
+	*/
+	UpsertUnitLanguage(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg UpsertUnitLanguageRequest) (UnitLanguage, error)
+	// Remove a unit's language by languoid id. Idempotent within the active set.
+	DeleteUnitLanguage(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, languageIdArg string) error
 	// Diff the stored closure vs. the edges and upsert the per-graph drift status (default all graphs).
 	VerifyClosure(ctx context.Context, authHeader bearertoken.Token, graphArg *string) (ClosureReportList, error)
 	// Truncate + recompute the closure, one transaction per graph (default all graphs).
@@ -245,6 +254,53 @@ func (c *tenantServiceClient) TransitionUnit(ctx context.Context, authHeader bea
 	return *returnVal, nil
 }
 
+func (c *tenantServiceClient) ListUnitLanguages(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) ([]UnitLanguage, error) {
+	var returnVal []UnitLanguage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListUnitLanguages"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/tenant/v1/units/%s/languages", url.PathEscape(fmt.Sprint(unitIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listUnitLanguages failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listUnitLanguages response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *tenantServiceClient) UpsertUnitLanguage(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg UpsertUnitLanguageRequest) (UnitLanguage, error) {
+	var returnVal *UnitLanguage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertUnitLanguage"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/tenant/v1/units/%s/languages", url.PathEscape(fmt.Sprint(unitIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(UnitLanguage), werror.WrapWithContextParams(ctx, err, "upsertUnitLanguage failed")
+	}
+	if returnVal == nil {
+		return *new(UnitLanguage), werror.ErrorWithContextParams(ctx, "upsertUnitLanguage response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *tenantServiceClient) DeleteUnitLanguage(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, languageIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeleteUnitLanguage"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/tenant/v1/units/%s/languages/%s", url.PathEscape(fmt.Sprint(unitIdArg)), url.PathEscape(fmt.Sprint(languageIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deleteUnitLanguage failed")
+	}
+	return nil
+}
+
 func (c *tenantServiceClient) VerifyClosure(ctx context.Context, authHeader bearertoken.Token, graphArg *string) (ClosureReportList, error) {
 	var returnVal *ClosureReportList
 	var requestParams []httpclient.RequestParam
@@ -379,6 +435,15 @@ type TenantServiceClientWithAuth interface {
 	UnitDescendants(ctx context.Context, unitIdArg string, graphArg *string, pageSizeArg *int, pageTokenArg *string) (UnitRefPage, error)
 	// Transition the unit's lifecycle state. Returns Tenant:TransitionInvalid for an illegal transition.
 	TransitionUnit(ctx context.Context, unitIdArg string, requestArg TransitionRequest) (Unit, error)
+	// List a unit's official/working languages (D-Languages, M18).
+	ListUnitLanguages(ctx context.Context, unitIdArg string) ([]UnitLanguage, error)
+	/*
+	   Add or update a unit's official/working language (keyed on languageId). Returns
+	   Tenant:UnitInvalid when languageId does not resolve to a languoid.
+	*/
+	UpsertUnitLanguage(ctx context.Context, unitIdArg string, requestArg UpsertUnitLanguageRequest) (UnitLanguage, error)
+	// Remove a unit's language by languoid id. Idempotent within the active set.
+	DeleteUnitLanguage(ctx context.Context, unitIdArg string, languageIdArg string) error
 	// Diff the stored closure vs. the edges and upsert the per-graph drift status (default all graphs).
 	VerifyClosure(ctx context.Context, graphArg *string) (ClosureReportList, error)
 	// Truncate + recompute the closure, one transaction per graph (default all graphs).
@@ -436,6 +501,18 @@ func (c *tenantServiceClientWithAuth) UnitDescendants(ctx context.Context, unitI
 
 func (c *tenantServiceClientWithAuth) TransitionUnit(ctx context.Context, unitIdArg string, requestArg TransitionRequest) (Unit, error) {
 	return c.client.TransitionUnit(ctx, c.authHeader, unitIdArg, requestArg)
+}
+
+func (c *tenantServiceClientWithAuth) ListUnitLanguages(ctx context.Context, unitIdArg string) ([]UnitLanguage, error) {
+	return c.client.ListUnitLanguages(ctx, c.authHeader, unitIdArg)
+}
+
+func (c *tenantServiceClientWithAuth) UpsertUnitLanguage(ctx context.Context, unitIdArg string, requestArg UpsertUnitLanguageRequest) (UnitLanguage, error) {
+	return c.client.UpsertUnitLanguage(ctx, c.authHeader, unitIdArg, requestArg)
+}
+
+func (c *tenantServiceClientWithAuth) DeleteUnitLanguage(ctx context.Context, unitIdArg string, languageIdArg string) error {
+	return c.client.DeleteUnitLanguage(ctx, c.authHeader, unitIdArg, languageIdArg)
 }
 
 func (c *tenantServiceClientWithAuth) VerifyClosure(ctx context.Context, graphArg *string) (ClosureReportList, error) {
@@ -541,6 +618,30 @@ func (c *tenantServiceClientWithTokenProvider) TransitionUnit(ctx context.Contex
 		return *new(Unit), err
 	}
 	return c.client.TransitionUnit(ctx, bearertoken.Token(token), unitIdArg, requestArg)
+}
+
+func (c *tenantServiceClientWithTokenProvider) ListUnitLanguages(ctx context.Context, unitIdArg string) ([]UnitLanguage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListUnitLanguages(ctx, bearertoken.Token(token), unitIdArg)
+}
+
+func (c *tenantServiceClientWithTokenProvider) UpsertUnitLanguage(ctx context.Context, unitIdArg string, requestArg UpsertUnitLanguageRequest) (UnitLanguage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(UnitLanguage), err
+	}
+	return c.client.UpsertUnitLanguage(ctx, bearertoken.Token(token), unitIdArg, requestArg)
+}
+
+func (c *tenantServiceClientWithTokenProvider) DeleteUnitLanguage(ctx context.Context, unitIdArg string, languageIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeleteUnitLanguage(ctx, bearertoken.Token(token), unitIdArg, languageIdArg)
 }
 
 func (c *tenantServiceClientWithTokenProvider) VerifyClosure(ctx context.Context, graphArg *string) (ClosureReportList, error) {

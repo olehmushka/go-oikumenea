@@ -10,6 +10,7 @@ import {
   MessengerLinkManager,
   NameVariantManager,
   PersonalCodeManager,
+  PersonLanguageManager,
   PersonLifecycle,
   PhoneManager,
   RelationshipManager,
@@ -181,6 +182,11 @@ export default async function PersonDetailPage({
             emails={person.emails}
             phones={person.phones}
           />
+        </Card>
+
+        <Card>
+          <h2 className="text-sm font-semibold text-slate-900">Languages</h2>
+          <PersonLanguageManager personId={person.id} />
         </Card>
 
         <Card>

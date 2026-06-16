@@ -447,6 +447,44 @@ WHERE account_id IN (SELECT id FROM oikumenea.person_social_accounts WHERE perso
 -- kept as a tombstone, so these are not removed by the person delete — purge must erase them explicitly.
 DELETE FROM oikumenea.person_social_accounts WHERE person_id = @person_id;
 
+-- name: DeleteAllPersonLanguages :exec
+-- Erase the person's SPEAKS links (D-Languages, M18). person_languages is pii:basic, so purge must
+-- hard-delete it explicitly (the person row is kept as a tombstone).
+DELETE FROM oikumenea.person_languages WHERE person_id = @person_id;
+
+-- ============================ person languages (D-Languages, M18) — SPEAKS ============================
+
+-- name: ListPersonLanguages :many
+-- The person's spoken languages joined to the languoid for its default-locale display name (the
+-- transport assembles the locale->text map). Native first, then by name.
+SELECT pl.id, pl.person_id, pl.language_id, pl.cefr_level, pl.is_native, l.name AS language_name
+FROM oikumenea.person_languages pl
+JOIN oikumenea.language_languoids l ON l.id = pl.language_id
+WHERE pl.person_id = @person_id AND pl.deleted_at IS NULL
+ORDER BY pl.is_native DESC, l.name, pl.id;
+
+-- name: GetPersonLanguage :one
+SELECT pl.id, pl.person_id, pl.language_id, pl.cefr_level, pl.is_native, l.name AS language_name
+FROM oikumenea.person_languages pl
+JOIN oikumenea.language_languoids l ON l.id = pl.language_id
+WHERE pl.person_id = @person_id AND pl.language_id = @language_id AND pl.deleted_at IS NULL;
+
+-- name: InsertPersonLanguage :exec
+-- language_level defaults to 'language'; the composite FK (language_id, language_level) ->
+-- language_languoids(id, level) rejects a non-language languoid (23503 -> ErrUnknownLanguage).
+INSERT INTO oikumenea.person_languages (person_id, language_id, cefr_level, is_native)
+VALUES (@person_id, @language_id, sqlc.narg('cefr_level'), @is_native);
+
+-- name: UpdatePersonLanguage :exec
+UPDATE oikumenea.person_languages
+SET cefr_level = sqlc.narg('cefr_level'), is_native = @is_native
+WHERE person_id = @person_id AND language_id = @language_id AND deleted_at IS NULL;
+
+-- name: DeletePersonLanguage :one
+UPDATE oikumenea.person_languages SET deleted_at = now()
+WHERE person_id = @person_id AND language_id = @language_id AND deleted_at IS NULL
+RETURNING id;
+
 -- ============================ person↔person relationships (D-PersonRelationships, M14) ============================
 
 -- relation-type catalog ------------------------------------------------------

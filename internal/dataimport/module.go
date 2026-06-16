@@ -37,6 +37,18 @@ func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Serv
 		func(conn db.DBTX) domain.GeoPlaceStore { return adapters.NewGeoPlaceRepo(conn) },
 	))
 
+	// language-scheme: the Glottolog languoid forest (D-Languages, M18) — the first NEW import consumer.
+	// Parent-first upsert; the handler rebuilds the closure + family_code at the end of the batch.
+	svc.Register(domain.ObjectTypeLanguageScheme, application.LanguageSchemeHandler(
+		func(conn db.DBTX) domain.LanguoidStore { return adapters.NewLanguoidRepo(conn) },
+	))
+
+	// language-scripts: the CLDR language→writing-system links (D-Languages). Resolves languoid (by ISO
+	// 639-3) + writing system (by ISO-15924) and upserts the link; unresolved records are skipped.
+	svc.Register(domain.ObjectTypeLanguageScripts, application.LanguageScriptsHandler(
+		func(conn db.DBTX) domain.LanguageScriptStore { return adapters.NewLanguageScriptRepo(conn) },
+	))
+
 	if err := dataimportapi.RegisterRoutesImportService(info.Router, transport.NewService(svc, enforcer)); err != nil {
 		return nil, werror.Wrap(err, "register import service routes")
 	}

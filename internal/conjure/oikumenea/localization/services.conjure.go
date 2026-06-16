@@ -21,6 +21,11 @@ by `locale.read`/`translation.read`; writes are instance-admin (`locale.manage`/
 type LocalizationServiceClient interface {
 	// List the supported locales in display order.
 	ListLocales(ctx context.Context, authHeader bearertoken.Token) (LocaleList, error)
+	/*
+	   List each supported locale's canonical Glottolog language (D-Languages, M18). Read-only — the
+	   links are reconciled by the language-scheme import, not edited here.
+	*/
+	ListLocaleLanguages(ctx context.Context, authHeader bearertoken.Token) (LocaleLanguageList, error)
 	// Add a supported locale. Returns Localization:LocaleCodeConflict if the code exists.
 	AddLocale(ctx context.Context, authHeader bearertoken.Token, requestArg AddLocaleRequest) (Locale, error)
 	// Enable/disable, rename, set default, or reorder a locale.
@@ -52,6 +57,23 @@ func (c *localizationServiceClient) ListLocales(ctx context.Context, authHeader 
 	}
 	if returnVal == nil {
 		return *new(LocaleList), werror.ErrorWithContextParams(ctx, "listLocales response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *localizationServiceClient) ListLocaleLanguages(ctx context.Context, authHeader bearertoken.Token) (LocaleLanguageList, error) {
+	var returnVal *LocaleLanguageList
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListLocaleLanguages"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/localization/v1/locale-languages"))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(LocaleLanguageList), werror.WrapWithContextParams(ctx, err, "listLocaleLanguages failed")
+	}
+	if returnVal == nil {
+		return *new(LocaleLanguageList), werror.ErrorWithContextParams(ctx, "listLocaleLanguages response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -135,6 +157,11 @@ by `locale.read`/`translation.read`; writes are instance-admin (`locale.manage`/
 type LocalizationServiceClientWithAuth interface {
 	// List the supported locales in display order.
 	ListLocales(ctx context.Context) (LocaleList, error)
+	/*
+	   List each supported locale's canonical Glottolog language (D-Languages, M18). Read-only — the
+	   links are reconciled by the language-scheme import, not edited here.
+	*/
+	ListLocaleLanguages(ctx context.Context) (LocaleLanguageList, error)
 	// Add a supported locale. Returns Localization:LocaleCodeConflict if the code exists.
 	AddLocale(ctx context.Context, requestArg AddLocaleRequest) (Locale, error)
 	// Enable/disable, rename, set default, or reorder a locale.
@@ -156,6 +183,10 @@ type localizationServiceClientWithAuth struct {
 
 func (c *localizationServiceClientWithAuth) ListLocales(ctx context.Context) (LocaleList, error) {
 	return c.client.ListLocales(ctx, c.authHeader)
+}
+
+func (c *localizationServiceClientWithAuth) ListLocaleLanguages(ctx context.Context) (LocaleLanguageList, error) {
+	return c.client.ListLocaleLanguages(ctx, c.authHeader)
 }
 
 func (c *localizationServiceClientWithAuth) AddLocale(ctx context.Context, requestArg AddLocaleRequest) (Locale, error) {
@@ -189,6 +220,14 @@ func (c *localizationServiceClientWithTokenProvider) ListLocales(ctx context.Con
 		return *new(LocaleList), err
 	}
 	return c.client.ListLocales(ctx, bearertoken.Token(token))
+}
+
+func (c *localizationServiceClientWithTokenProvider) ListLocaleLanguages(ctx context.Context) (LocaleLanguageList, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(LocaleLanguageList), err
+	}
+	return c.client.ListLocaleLanguages(ctx, bearertoken.Token(token))
 }
 
 func (c *localizationServiceClientWithTokenProvider) AddLocale(ctx context.Context, requestArg AddLocaleRequest) (Locale, error) {

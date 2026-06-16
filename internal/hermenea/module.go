@@ -13,10 +13,12 @@ import (
 	hermeneaapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/hermenea"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/adapters"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/application"
+	"github.com/olegamysk/go-oikumenea/internal/hermenea/cldrscripts"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/config"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/connector"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/geocountries"
+	"github.com/olegamysk/go-oikumenea/internal/hermenea/glottolog"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/loader"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/runtime"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/transport"
@@ -46,6 +48,16 @@ func Register(ctx context.Context, info witchcraft.InitInfo, pool *pgxpool.Pool,
 	//     wof-sqlite StreamingConnector.
 	svc.RegisterMapper(geocountries.ObjectType, geocountries.Mapper{})
 	svc.RegisterPagedMapper(wof.ObjectTypeGeoPlaces, wof.GeoPlacesMapper{})
+	//   - language-scheme: the Glottolog languoid forest (D-Languages, M18) — hermenea's first NEW
+	//     consumer beyond geo. Two source paths: the in-memory Mapper over a bundled/remote preprocessed
+	//     JSON (file/http), and the live PagedMapper (CLDFMapper) that transforms the raw Glottolog CLDF
+	//     fetched fresh from upstream master by the http-files StreamingConnector.
+	//   - language-scripts: the CLDR language→writing-system links (which script a language uses) — same
+	//     dual path (JSON Mapper + the live SupplementalMapper over raw CLDR supplementalData + ISO-639).
+	svc.RegisterMapper(glottolog.ObjectType, glottolog.Mapper{})
+	svc.RegisterMapper(cldrscripts.ObjectType, cldrscripts.Mapper{})
+	svc.RegisterPagedMapper(glottolog.ObjectType, glottolog.CLDFMapper{})
+	svc.RegisterPagedMapper(cldrscripts.ObjectType, cldrscripts.SupplementalMapper{})
 
 	// Seed declaratively-configured sources (idempotent upsert + schedule).
 	for _, cs := range cfg.Sources {

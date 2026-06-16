@@ -52,6 +52,34 @@ func (s Service) ListLocales(ctx context.Context, token bearertoken.Token) (loca
 	return locapi.LocaleList{Locales: out}, nil
 }
 
+// ListLocaleLanguages implements GET /locale-languages (D-Languages, M18; read-only).
+func (s Service) ListLocaleLanguages(ctx context.Context, token bearertoken.Token) (locapi.LocaleLanguageList, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermLocaleRead)); err != nil {
+		return locapi.LocaleLanguageList{}, err
+	}
+	lls, err := s.app.ListLocaleLanguages(ctx)
+	if err != nil {
+		return locapi.LocaleLanguageList{}, mapError(ctx, err, "")
+	}
+	defaults := make(map[string]string, len(lls))
+	for _, l := range lls {
+		defaults[l.LanguageID] = l.LanguageName
+	}
+	names, err := s.app.NamesByID(ctx, "languoid", defaults)
+	if err != nil {
+		return locapi.LocaleLanguageList{}, werror.WrapWithContextParams(ctx, err, "assemble languoid names failed")
+	}
+	out := make([]locapi.LocaleLanguage, 0, len(lls))
+	for _, l := range lls {
+		out = append(out, locapi.LocaleLanguage{
+			Locale:     l.Locale,
+			LanguageId: l.LanguageID,
+			Name:       names[l.LanguageID],
+		})
+	}
+	return locapi.LocaleLanguageList{LocaleLanguages: out}, nil
+}
+
 // AddLocale implements POST /locales.
 func (s Service) AddLocale(ctx context.Context, token bearertoken.Token, req locapi.AddLocaleRequest) (locapi.Locale, error) {
 	if err := s.pep.Require(ctx, token, string(authzdomain.PermLocaleManage), ""); err != nil {

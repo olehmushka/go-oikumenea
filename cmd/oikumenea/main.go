@@ -23,6 +23,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation/bootstrap"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation/middleware"
+	"github.com/olegamysk/go-oikumenea/internal/language"
 	"github.com/olegamysk/go-oikumenea/internal/localization"
 	"github.com/olegamysk/go-oikumenea/internal/membership"
 	"github.com/olegamysk/go-oikumenea/internal/order"
@@ -199,6 +200,14 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// Geo (M16 / D-Geo): read-only GET /geo/countries lookup so clients resolve a country to its RID
 	// (countries are RID-keyed; person/document/rank reference them by RID).
 	if _, err := geo.Register(info, pool, enforcer); err != nil {
+		cleanup()
+		return nil, err
+	}
+
+	// Language (M18 / D-Languages): read-only lookup over the Glottolog languoid forest + ISO-15924
+	// writing systems. The registry is written by the hermenea import pipeline (language-scheme /
+	// language-scripts), not here.
+	if _, err := language.Register(info, pool, locSvc, enforcer); err != nil {
 		cleanup()
 		return nil, err
 	}

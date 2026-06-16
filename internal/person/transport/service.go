@@ -49,6 +49,7 @@ const (
 	phoneTypeEntity    = "phone_type"
 	platformEntity     = "platform"
 	relationTypeEntity = "relation_type"
+	languoidEntity     = "languoid"
 )
 
 // Service adapts *application.Service to the generated personapi.PersonService interface. It holds the
@@ -555,6 +556,80 @@ func (s Service) DeleteSocialAccount(ctx context.Context, token bearertoken.Toke
 		return s.mapError(ctx, err, personID)
 	}
 	return nil
+}
+
+// ListPersonLanguages implements GET /persons/{personId}/languages (D-Languages, M18).
+func (s Service) ListPersonLanguages(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.PersonLanguage, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	ls, err := s.app.ListPersonLanguages(ctx, personID)
+	if err != nil {
+		return nil, s.mapError(ctx, err, personID)
+	}
+	return s.toAPIPersonLanguages(ctx, ls)
+}
+
+// UpsertPersonLanguage implements PUT /persons/{personId}/languages.
+func (s Service) UpsertPersonLanguage(ctx context.Context, token bearertoken.Token, personID string, req personapi.UpsertPersonLanguageRequest) (personapi.PersonLanguage, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return personapi.PersonLanguage{}, err
+	}
+	saved, err := s.app.UpsertPersonLanguage(ctx, domain.PersonLanguage{
+		PersonID:   personID,
+		LanguageID: req.LanguageId,
+		CEFRLevel:  derefOr(req.CefrLevel, ""),
+		IsNative:   derefOr(req.IsNative, false),
+	})
+	if err != nil {
+		return personapi.PersonLanguage{}, s.mapError(ctx, err, personID)
+	}
+	out, err := s.toAPIPersonLanguages(ctx, []domain.PersonLanguage{saved})
+	if err != nil {
+		return personapi.PersonLanguage{}, err
+	}
+	return out[0], nil
+}
+
+// DeletePersonLanguage implements DELETE /persons/{personId}/languages/{languageId}.
+func (s Service) DeletePersonLanguage(ctx context.Context, token bearertoken.Token, personID, languageID string) error {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return err
+	}
+	if err := s.app.DeletePersonLanguage(ctx, personID, languageID); err != nil {
+		return s.mapError(ctx, err, personID)
+	}
+	return nil
+}
+
+// toAPIPersonLanguages maps the domain rows to the API shape, assembling each languoid's locale->text
+// name map (D-i18n) from its default-locale name + the localization store (entity type "languoid",
+// consistent with the language module).
+func (s Service) toAPIPersonLanguages(ctx context.Context, ls []domain.PersonLanguage) ([]personapi.PersonLanguage, error) {
+	defaults := make(map[string]string, len(ls))
+	for _, l := range ls {
+		defaults[l.LanguageID] = l.LanguageName
+	}
+	names, err := s.loc.NamesByID(ctx, languoidEntity, defaults)
+	if err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "assemble languoid names failed")
+	}
+	out := make([]personapi.PersonLanguage, 0, len(ls))
+	for _, l := range ls {
+		pl := personapi.PersonLanguage{
+			Id:         l.ID,
+			PersonId:   l.PersonID,
+			LanguageId: l.LanguageID,
+			Name:       names[l.LanguageID],
+			IsNative:   l.IsNative,
+		}
+		if l.CEFRLevel != "" {
+			c := l.CEFRLevel
+			pl.CefrLevel = &c
+		}
+		out = append(out, pl)
+	}
+	return out, nil
 }
 
 func (s Service) ListSocialAccountHandles(ctx context.Context, token bearertoken.Token, personID, socialAccountID string) ([]personapi.SocialAccountHandle, error) {
@@ -1195,6 +1270,7 @@ func (s Service) mapError(ctx context.Context, err error, personID string) error
 		errors.Is(err, domain.ErrCallSignNotFound),
 		errors.Is(err, domain.ErrMessengerLinkNotFound),
 		errors.Is(err, domain.ErrSocialAccountNotFound),
+		errors.Is(err, domain.ErrLanguageNotFound),
 		errors.Is(err, domain.ErrRelationshipNotFound):
 		return personapi.NewPersonNotFound(personID)
 	case errors.Is(err, domain.ErrCodeConflict):
@@ -1241,6 +1317,10 @@ func (s Service) mapError(ctx context.Context, err error, personID string) error
 		return personapi.NewPersonInvalid("country does not exist")
 	case errors.Is(err, domain.ErrUnknownLocale):
 		return personapi.NewPersonInvalid("locale does not exist")
+	case errors.Is(err, domain.ErrUnknownLanguage):
+		return personapi.NewPersonInvalid("language does not exist or is not a level='language' languoid")
+	case errors.Is(err, domain.ErrLanguageConflict):
+		return personapi.NewPersonConflict("the person already speaks this language")
 	case errors.Is(err, domain.ErrInvalid):
 		return personapi.NewPersonInvalid(err.Error())
 	case errors.Is(err, domain.ErrLifecycle):

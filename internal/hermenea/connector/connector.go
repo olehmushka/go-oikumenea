@@ -13,6 +13,10 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
+	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
@@ -36,6 +40,9 @@ func Default() Registry {
 		domain.ConnectorHTTP:      HTTP{client: &http.Client{Timeout: 30 * time.Second}},
 		domain.ConnectorFile:      File{},
 		domain.ConnectorWOFSQLite: WOFSQLite{client: &http.Client{Timeout: 0}},
+		// No fixed client deadline: the Glottolog CLDF values.csv is large and the transform runs per
+		// run; bounded by the job-timeout context instead (mirrors WOFSQLite).
+		domain.ConnectorHTTPFiles: HTTPFiles{client: &http.Client{Timeout: 0}},
 	}
 }
 
@@ -136,6 +143,98 @@ func (w WOFSQLite) Stage(ctx context.Context, src domain.Source) (domain.StagedS
 	sum := hex.EncodeToString(h.Sum(nil))
 	version := firstNonEmpty(resp.Header.Get("ETag"), resp.Header.Get("Last-Modified"), sum[:12])
 	return domain.StagedSource{Path: path, SourceVersion: version, Checksum: sum, Cleanup: cleanup}, nil
+}
+
+// HTTPFiles stages a whitespace-separated LIST of URLs to a temp directory (D-Languages, M18): each is
+// streamed to dir/<url-basename> (no in-memory cap — raw Glottolog values.csv is large), and the paged
+// language mappers read the files they need from the directory by name. source_version is a sha256 over
+// the per-file content digests (sorted by name) so an unchanged upstream master skips idempotently.
+type HTTPFiles struct{ client *http.Client }
+
+// compile-time assertions: HTTPFiles is both a Connector (registry value) and a StreamingConnector.
+var (
+	_ domain.Connector          = HTTPFiles{}
+	_ domain.StreamingConnector = HTTPFiles{}
+)
+
+// Fetch is never called for a StreamingConnector (the pipeline routes it through Stage).
+func (HTTPFiles) Fetch(context.Context, domain.Source) (domain.RawBatch, error) {
+	return domain.RawBatch{}, ErrStreamingOnly
+}
+
+func (h HTTPFiles) Stage(ctx context.Context, src domain.Source) (domain.StagedSource, error) {
+	urls := strings.Fields(src.Locator)
+	if len(urls) == 0 {
+		return domain.StagedSource{}, fmt.Errorf("connector http-files: empty locator (expected a whitespace-separated URL list)")
+	}
+	dir, err := os.MkdirTemp("", "hermenea-files-*")
+	if err != nil {
+		return domain.StagedSource{}, err
+	}
+	cleanup := func() { _ = os.RemoveAll(dir) }
+
+	fileSums := make(map[string]string, len(urls))
+	names := make([]string, 0, len(urls))
+	for _, u := range urls {
+		name := path.Base(u)
+		if i := strings.IndexAny(name, "?#"); i >= 0 {
+			name = name[:i]
+		}
+		if name == "" || name == "." || name == "/" {
+			cleanup()
+			return domain.StagedSource{}, fmt.Errorf("connector http-files: cannot derive a filename from %q", u)
+		}
+		if _, dup := fileSums[name]; dup {
+			cleanup()
+			return domain.StagedSource{}, fmt.Errorf("connector http-files: duplicate staged filename %q", name)
+		}
+		sum, err := h.download(ctx, u, filepath.Join(dir, name))
+		if err != nil {
+			cleanup()
+			return domain.StagedSource{}, err
+		}
+		fileSums[name] = sum
+		names = append(names, name)
+	}
+
+	sort.Strings(names)
+	combined := sha256.New()
+	for _, name := range names {
+		_, _ = fmt.Fprintf(combined, "%s:%s\n", name, fileSums[name])
+	}
+	sum := hex.EncodeToString(combined.Sum(nil))
+	return domain.StagedSource{Path: dir, SourceVersion: sum[:16], Checksum: sum, Cleanup: cleanup}, nil
+}
+
+// userAgent identifies the importer to upstreams. Some hosts (e.g. SIL/iso639-3.sil.org) 403 the Go
+// default "Go-http-client" UA, so send a descriptive one.
+const userAgent = "go-oikumenea-hermenea/1.0 (+https://github.com/olegamysk/go-oikumenea)"
+
+// download streams url to dest and returns the sha256 of its content (no full in-memory copy).
+func (h HTTPFiles) download(ctx context.Context, url, dest string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", userAgent)
+	resp, err := h.client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("connector http-files: %s returned %d", url, resp.StatusCode)
+	}
+	f, err := os.Create(dest)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+	hsh := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(f, hsh), resp.Body); err != nil {
+		return "", fmt.Errorf("connector http-files: download %s: %w", url, err)
+	}
+	return hex.EncodeToString(hsh.Sum(nil)), nil
 }
 
 func checksum(b []byte) string {

@@ -152,3 +152,186 @@ func deref(p *int64) int64 {
 	}
 	return *p
 }
+
+// f8 maps an optional float to a pgtype.Float8 (nil → NULL).
+func f8(p *float64) pgtype.Float8 {
+	if p == nil {
+		return pgtype.Float8{}
+	}
+	return pgtype.Float8{Float64: *p, Valid: true}
+}
+
+// LanguoidRepo is the pgx/sqlc-backed implementation of domain.LanguoidStore (D-Languages, M18), bound
+// to a single db.DBTX (the caller's transaction so the upsert + audit row commit together — D-Audit).
+type LanguoidRepo struct {
+	q *dataimportsql.Queries
+}
+
+// NewLanguoidRepo binds a languoid store to the given command surface.
+func NewLanguoidRepo(conn db.DBTX) *LanguoidRepo {
+	return &LanguoidRepo{q: dataimportsql.New(conn)}
+}
+
+var _ domain.LanguoidStore = (*LanguoidRepo)(nil)
+
+// GetVersion returns the languoid's stored source_version (the idempotency key) and whether it exists.
+func (r *LanguoidRepo) GetVersion(ctx context.Context, code string) (string, bool, error) {
+	v, err := r.q.GetLanguoidVersion(ctx, code)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return v.String, true, nil
+}
+
+// Insert adds a languoid; parent glottocode is resolved to its RID in SQL, provenance stamped.
+func (r *LanguoidRepo) Insert(ctx context.Context, l domain.Languoid, prov domain.Provenance) error {
+	return r.q.InsertLanguoidImport(ctx, dataimportsql.InsertLanguoidImportParams{
+		Code:          l.Code,
+		Level:         l.Level,
+		Name:          l.Name,
+		ParentCode:    l.Parent,
+		Iso6393:       l.ISO639_3,
+		Macroarea:     l.Macroarea,
+		Latitude:      f8(l.Latitude),
+		Longitude:     f8(l.Longitude),
+		Status:        l.Status,
+		Source:        prov.Source,
+		SourceVersion: prov.SourceVersion,
+		ImportedAt:    ts(prov.ImportedAt),
+	})
+}
+
+// UpdateImport rewrites a languoid (called when the source edition changed).
+func (r *LanguoidRepo) UpdateImport(ctx context.Context, l domain.Languoid, prov domain.Provenance) error {
+	return r.q.UpdateLanguoidImport(ctx, dataimportsql.UpdateLanguoidImportParams{
+		Code:          l.Code,
+		Level:         l.Level,
+		Name:          l.Name,
+		ParentCode:    l.Parent,
+		Iso6393:       l.ISO639_3,
+		Macroarea:     l.Macroarea,
+		Latitude:      f8(l.Latitude),
+		Longitude:     f8(l.Longitude),
+		Status:        l.Status,
+		Source:        prov.Source,
+		SourceVersion: prov.SourceVersion,
+		ImportedAt:    ts(prov.ImportedAt),
+	})
+}
+
+// ReplaceCountries resets a languoid's country ties to the given ISO alpha-2 codes (unresolved codes
+// are silently dropped by the insert).
+func (r *LanguoidRepo) ReplaceCountries(ctx context.Context, code string, countryCodes []string) error {
+	if err := r.q.DeleteLanguoidCountries(ctx, code); err != nil {
+		return err
+	}
+	for _, cc := range countryCodes {
+		if cc == "" {
+			continue
+		}
+		if err := r.q.InsertLanguoidCountry(ctx, dataimportsql.InsertLanguoidCountryParams{Code: code, CountryCode: cc}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// RebuildClosure recomputes the transitive closure and the denormalized family_code (run once at the
+// end of a language-scheme import).
+func (r *LanguoidRepo) RebuildClosure(ctx context.Context) error {
+	// Clear then rebuild as two statements (same import tx) — a single DELETE+INSERT CTE would
+	// self-conflict on the closure PK when re-importing over an existing closure.
+	if err := r.q.ClearLanguoidClosure(ctx); err != nil {
+		return err
+	}
+	if err := r.q.RebuildLanguoidClosure(ctx); err != nil {
+		return err
+	}
+	return r.q.RebuildLanguoidFamilyCodes(ctx)
+}
+
+// ReconcileLocaleLanguages populates the i18n_locale_languages link by matching each supported UI
+// locale's ISO-639-3 code to the Glottolog languoid carrying that iso639_3 (D-i18n; run once at the
+// end of a language-scheme import, after languoids exist). Idempotent and self-healing.
+func (r *LanguoidRepo) ReconcileLocaleLanguages(ctx context.Context) error {
+	return r.q.ReconcileLocaleLanguages(ctx)
+}
+
+// LanguageScriptRepo is the pgx/sqlc-backed implementation of domain.LanguageScriptStore (D-Languages,
+// M18), bound to a single db.DBTX (the caller's transaction).
+type LanguageScriptRepo struct {
+	q *dataimportsql.Queries
+}
+
+// NewLanguageScriptRepo binds a language-scripts store to the given command surface.
+func NewLanguageScriptRepo(conn db.DBTX) *LanguageScriptRepo {
+	return &LanguageScriptRepo{q: dataimportsql.New(conn)}
+}
+
+var _ domain.LanguageScriptStore = (*LanguageScriptRepo)(nil)
+
+// ResolveLanguoid maps an ISO 639-3 code to a languoid RID (found=false when no language carries it).
+func (r *LanguageScriptRepo) ResolveLanguoid(ctx context.Context, iso639_3 string) (string, bool, error) {
+	id, err := r.q.ResolveLanguoidByISO(ctx, pgtype.Text{String: iso639_3, Valid: iso639_3 != ""})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return id, true, nil
+}
+
+// ResolveWritingSystem maps an ISO-15924 code to a writing-system RID (found=false when not seeded).
+func (r *LanguageScriptRepo) ResolveWritingSystem(ctx context.Context, code string) (string, bool, error) {
+	id, err := r.q.ResolveWritingSystemByCode(ctx, code)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return id, true, nil
+}
+
+// GetLinkPrimary returns the link's is_primary flag and whether the link exists.
+func (r *LanguageScriptRepo) GetLinkPrimary(ctx context.Context, languoidID, writingSystemID string) (bool, bool, error) {
+	p, err := r.q.GetLanguageWritingSystemPrimary(ctx, dataimportsql.GetLanguageWritingSystemPrimaryParams{
+		LanguoidID:      languoidID,
+		WritingSystemID: writingSystemID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, false, nil
+	}
+	if err != nil {
+		return false, false, err
+	}
+	return p, true, nil
+}
+
+// InsertLink adds a languoid↔writing-system link with provenance.
+func (r *LanguageScriptRepo) InsertLink(ctx context.Context, languoidID, writingSystemID string, isPrimary bool, prov domain.Provenance) error {
+	return r.q.InsertLanguageWritingSystem(ctx, dataimportsql.InsertLanguageWritingSystemParams{
+		LanguoidID:      languoidID,
+		WritingSystemID: writingSystemID,
+		IsPrimary:       isPrimary,
+		Source:          text(prov.Source),
+		SourceVersion:   text(prov.SourceVersion),
+		ImportedAt:      ts(prov.ImportedAt),
+	})
+}
+
+// UpdateLink updates a link's is_primary + provenance (called when is_primary changed).
+func (r *LanguageScriptRepo) UpdateLink(ctx context.Context, languoidID, writingSystemID string, isPrimary bool, prov domain.Provenance) error {
+	return r.q.UpdateLanguageWritingSystem(ctx, dataimportsql.UpdateLanguageWritingSystemParams{
+		LanguoidID:      languoidID,
+		WritingSystemID: writingSystemID,
+		IsPrimary:       isPrimary,
+		Source:          text(prov.Source),
+		SourceVersion:   text(prov.SourceVersion),
+		ImportedAt:      ts(prov.ImportedAt),
+	})
+}

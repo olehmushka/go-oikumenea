@@ -70,7 +70,7 @@ across graphs. That — *hierarchy + inheritance + visibility, decided by a PDP*
 
 | Module | Responsibility |
 |---|---|
-| `language` *(M18)* | Languages, language groups & writing systems as a Glottolog-faithful registry; person/unit/locale language ties. |
+| [language](modules/language.md) *(M18 — backend + migrated, UI deferred)* | Languages & writing systems as a Glottolog-faithful registry (the full 5.3 forest, import-loaded) + ISO-15924 scripts; person/unit/locale language ties. |
 | [location](modules/location.md) *(M19)* | A shared, standalone place entity: PostGIS coordinate + derived MGRS/H3 + structured address. Reused by education, company, and religion sites. |
 | `education` *(M20)* | Educational institutions, internal structure, buildings, and person bindings (enrollment, mentorship, groups, dorm stays, positions). |
 | `company` *(M21)* | A legal-entity registry with the ownership/affiliation graph (legal form, registration, positions, founders, shareholders, UBO). |

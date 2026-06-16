@@ -13,6 +13,7 @@ import { Localized } from "@/components/Localized";
 import { EdgeManager } from "@/components/EdgeManager";
 import { CreatePosition, FillPosition, PositionAdmin } from "@/components/PositionForms";
 import { UnitAdmin } from "@/components/UnitForms";
+import { UnitLanguageManager } from "@/components/UnitLanguageForms";
 import type { Position, Unit, UnitRefList } from "@/lib/api/types";
 
 export default async function UnitDetailPage({
@@ -113,6 +114,14 @@ export default async function UnitDetailPage({
           Nest this unit under a parent (creates a child relationship in the chosen graph).
         </p>
         <EdgeManager unitId={unitId} />
+      </Card>
+
+      <Card className="mt-4">
+        <h2 className="text-sm font-semibold text-slate-900">Languages</h2>
+        <p className="mb-2 mt-1 text-xs text-slate-500">
+          The unit&apos;s official / working languages (D-Languages).
+        </p>
+        <UnitLanguageManager unitId={unitId} />
       </Card>
 
       <h2 className="mb-3 mt-8 text-sm font-semibold text-slate-900">Positions</h2>

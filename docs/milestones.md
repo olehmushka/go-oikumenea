@@ -45,7 +45,7 @@ migrates, and demos** on its own, so the service is runnable at every step.
 | **M15** | Rank systems, NATO grades & presets | a `rank_system` top level (multinational); standardized `grade_code` (NATO STANAG 2116) for cross-system comparability; bundled scheme presets + idempotent `/rank-scheme/import` | M4 |
 | **M16** | Hermenea — ingestion & scheduler companion (**absorbs M17**) | a **second binary** `cmd/hermenea` with its **own Postgres**, HTTP-only coupling: connector (http/file/**wof-sqlite**) → raw staging → mapper (incl. a **paged** mapper) → oikumenea `POST /import/{objectType}` idempotent upsert; cron scheduler + `worker_jobs` queue; `import_runs` lineage; service-principal auth. First real connector = the **Who's-On-First geo gazetteer** (`geo_places` + PostGIS, **D-GeoPlaces**, supersedes D-GeoSubdivisions) — **supersedes D-Worker, folds D-DataIngestion; promotes DS-25** | M0, M1 |
 | ~~**M17**~~ | ~~Data ingestion & connector framework~~ → **folded into M16** | the connector/mapper/scheduler pipeline now lives in the **hermenea** service (D-Hermenea); oikumenea keeps the generic import endpoint + per-row provenance | — |
-| **M18** | Language & writing systems | full Glottolog 5.3 languoid forest + ISO-15924 writing systems; person/unit/locale language links; first M17 consumer | M2, M5, M17 (M3 for the unit tie) |
+| **M18** | Language & writing systems | full Glottolog 5.3 languoid forest + ISO-15924 writing systems; person/unit/locale language links; first new M16 consumer | M2, M5, M16 (M3 for the unit tie) |
 | **M19** | Location | standalone `location_locations`; PostGIS `GEOGRAPHY` + h3-pg, DB-derived MGRS/H3; structured address over `geo_countries` | M0 |
 | **M20** | Education | institutions + structure tree + buildings (Location); enrollments, mentorship, groups, dorm stays; institution positions | M5, M14, M19 (M17 for registries) |
 | **M21** | Companies | legal-entity registry: legal form + ownership, registration schemes (LEI), industry classes, positions, equity/UBO links, company↔company graph | M5, M19 (M17 for registries) |
@@ -95,7 +95,7 @@ Legend: `✅` done · `🚧` in progress · `⬜` not started · `➖` not appli
 | **M15** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified |
 | **M16** | ✅ | ✅ | ✅ | ✅ | ➖ | ✅ | verified (geo-countries + full WOF Ukraine geo-places backfill, 35k places, e2e in compose) |
 | ~~**M17**~~ | — | — | — | — | — | — | folded into M16 (D-Hermenea) |
-| **M18** | ✅ | 🚧 | ⬜ | ⬜ | ⬜ | ⬜ | decided |
+| **M18** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — both i18n gaps closed (`name` is now a `locale→text` map via `NamesByID`; `i18n_locale_languages` reconciled on import) and re-proven e2e (full 27k Glottolog 5.3 load + the new person/unit/locale language UI). See M18 Verdict (resolved). |
 | **M19** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | designed |
 | **M20** | ✅ | 🚧 | ⬜ | ⬜ | ⬜ | ⬜ | decided |
 | **M21** | ✅ | 🚧 | ⬜ | ⬜ | ⬜ | ⬜ | decided |
@@ -111,9 +111,10 @@ Notes on the planned tier (M16–M26): all have a landed `D-<Name>` decision (in
 supersedes D-Worker and **absorbs M17/D-DataIngestion**); its module doc
 ([hermenea.md](modules/hermenea.md)) exists, so its *Designed* gate is `✅`, and its UI gate is `➖`
 (a headless companion service — no console surface). *Designed* `✅` means a dedicated module doc
-exists — present for **M16** ([hermenea.md](modules/hermenea.md)), **M19**
+exists — present for **M16** ([hermenea.md](modules/hermenea.md)), **M18**
+([language.md](modules/language.md)), **M19**
 ([location.md](modules/location.md)) and **M22–M25** ([religion.md](modules/religion.md)); for
-M18/M20/M21/M26 the module doc is still to be written, hence `🚧`. M15's backend is additive over the M4 rank migration
+M20/M21/M26 the module doc is still to be written, hence `🚧`. M15's backend is additive over the M4 rank migration
 (`20260601000004_rank.sql`), not a separate file. M12 is now **verified**: its exit criteria are met
 across the board — grounded in migrations `0012_person_contacts` + `0016_person_date_of_death`, the
 `person`/`document` integration suites (`TestContactChannels`, `TestContactTypeCatalogs`,
@@ -566,40 +567,99 @@ is retained (append-only) for provenance.
 
 ## M18 — Language & writing systems
 
-**Status: planned.** Binding via **D-Languages** in [roadmap-decisions.md](architecture/roadmap-decisions.md). The
-**first real consumer of M17** — proves the framework end-to-end via a Glottolog-CLDF HTTP connector.
-The Glottolog dataset rides the M17 connector, so it adds **no** parked seam of its own. Additive over
-person/localization; the unit tie adds a tenant dependency.
+**Status: verified.** The core model — import, closure, `family_code`, country ties, cross-module
+links — was verified and sound; the two i18n binding-convention gaps an earlier review (2026-06-15)
+raised are now **closed and re-proven end-to-end** (see **Verdict (resolved)** at the end of this
+section). The web console UI (language browser + person/unit/locale language editors) is built.
+
+**Verified core (unchanged).** Verified end-to-end by loading the **real bundled presets**
+through the actual hermenea mappers + oikumenea import handlers + SQL into a live PostGIS DB: **27,177
+languoids** (4,853 families / 8,618 languages / 13,706 dialects), 212,955 closure rows, `family_code`
+derived for every node (English → Indo-European, 3,236 descendants via the closure), 11,909 country
+ties, 864 CLDR script links (134 gracefully skipped — unseeded scripts / unmatched languages), **zero
+orphaned parents** (parent-first load + FK resolution), an **idempotent re-run** (all 27,177 skipped),
+the `person_languages` `level='language'` composite-FK enforced (language insert OK, family rejected),
+and the read queries (`ListLanguoids` filters / `GetLanguoid` / `ListWritingSystems`). The HTTP/worker
+path is the **generic `POST /import/{objectType}` + `file` connector already proven by M16**; the two
+new object-types are thin registrations on it. Binding via **D-Languages** in
+[roadmap-decisions.md](architecture/roadmap-decisions.md). The **first NEW consumer of the M16 hermenea
+pipeline** — proves the framework end-to-end via the bundled Glottolog snapshot (`file` connector;
+swap to `http` for a newer CLDF release). Additive over person/localization; the unit tie adds a tenant
+dependency. See the new [language](modules/language.md) module.
 
 **Goal.** Model the world's languages faithfully (the full **Glottolog 5.3** genealogy), their writing
 systems (ISO 15924), and a person's language proficiency — at analytics grade, so language becomes a
 queryable, linkable dimension.
 
-- **Delivers:**
-  - **`language_languoids`** — the recursive **Glottolog forest**, one table: PK `code` (glottocode);
-    `level ∈ {family, language, dialect}`; translatable `name`; self-FK `parent_id` (father — strict
-    tree); denormalized `family_code` (root family, derived in SQL via the closure); nullable **UNIQUE**
-    `iso639_3`; `macroarea`; representative `latitude`/`longitude` (plain numeric — M18 precedes the
-    PostGIS Location); AES `status ∈ {not_endangered…extinct}`; `glottolog_version` provenance.
-  - **`language_languoid_closure`** — maintained transitive closure (mirrors the tenant closure) so
-    "all languages under Indo-European" is one lookup.
-  - **`language_languoid_countries`** — M:N → `geo_countries` (from CLDF `Country_IDs`).
-  - **`writing_system_script_types`** catalog (seeded `logographic`/`syllabary`/`alphabet`/`abjad`/
-    `abugida`/`featural`); **`writing_systems`** (PK `code` ISO 15924, translatable `name`,
-    `script_type`); **`language_writing_systems`** M:N (`is_primary`).
+- **Delivers** (migration `migrations/20260601000018_language.sql`, RID service **13**):
+  - **`language_languoids`** — the recursive **Glottolog forest**, one table: RID `id` PK with
+    `code` (glottocode) a **UNIQUE** lookup key (F-014 / D-ResourceIdentifiers — like `geo_countries`,
+    not a bare-`code` PK); `level ∈ {family, language, dialect}`; translatable `name`; self-FK
+    `parent_id` (father — strict tree, RESTRICT); denormalized `family_code` (root family, derived in
+    SQL via the closure on import); nullable **UNIQUE** `iso639_3`; `macroarea`; representative
+    `latitude`/`longitude` (plain numeric — M18 precedes the PostGIS Location); AES
+    `status ∈ {not_endangered…extinct}`; `glottolog_version` + `(source, source_version, imported_at)`
+    provenance.
+  - **`language_languoid_closure`** — maintained transitive closure (mirrors the tenant closure),
+    rebuilt in SQL at the end of each `language-scheme` import, so "all languages under Indo-European"
+    is one lookup.
+  - **`language_languoid_countries`** — plain M:N → `geo_countries` (from CLDF `Country_IDs`).
+  - **`writing_system_script_types`** catalog (migration-seeded `logographic`/`syllabary`/`alphabet`/
+    `abjad`/`abugida`/`featural`); **`writing_systems`** (RID PK, ISO-15924 `code` UNIQUE, translatable
+    `name`, `script_type`; **migration-seeded** with the living-language scripts);
+    **`language_writing_systems`** reified M:N (`is_primary`, RID link) — **import-loaded from CLDR**
+    (the `language-scripts` object-type), since neither Glottolog nor ISO-15924 carries the mapping.
   - **Language links:** `person_languages` (child of `person_persons`: `language_id` constrained to
-    `level='language'`, `cefr_level ∈ {A1…C2}` nullable, `is_native`; `pii:basic`, purge-erased);
-    `tenant_unit_languages` (unit official/working language); `i18n_locale_languages` (locale → canonical
-    language).
+    `level='language'` via a composite FK, `cefr_level ∈ {A1…C2}` nullable, `is_native`; `pii:basic`,
+    purge-erased); `tenant_unit_languages` (unit official/working language); `i18n_locale_languages`
+    (locale → canonical language, one per locale).
+  - **Read API:** read-only `LanguageService` (`GET /language/v1/languages`,
+    `GET /language/v1/languages/{id}`, `GET /language/v1/writing-systems`; `language.read`).
   - **Population:** the bundled preset is the **full pinned Glottolog 5.3 CLDF snapshot**
-    (`deploy/language-presets/glottolog-5.3.json`, ~26k languoids — opt-in asset, never a migration,
-    CC-BY-4.0 attribution carried) loaded via the M17 `language-scheme` mapper; the HTTP connector can
-    pull a newer CLDF release the operator points it at.
-- **Implements:** D-Languages, D-i18n (translatable names), D-DataIngestion (first consumer). See
-  [person](modules/person.md) + a new `language` module.
+    (`deploy/language-presets/glottolog-5.3.json`, **27,177** languoids — opt-in asset, never a
+    migration, CC-BY-4.0 attribution carried), plus `cldr-scripts.json` (CLDR language→script links),
+    both reproducible via `deploy/language-presets/gen-presets.py`. Loaded by the hermenea `glottolog`
+    (parent-first, in-memory) + `cldrscripts` mappers via `POST /import/{language-scheme,language-scripts}`.
+- **Implements:** D-Languages, D-DataIngestion (first new consumer), **D-i18n** (the languoid/script
+  `name` is a `locale→text` map assembled via `LocalizationService.NamesByID`, entity types
+  `languoid`/`writing_system`). See the [language](modules/language.md) module + ties on
+  [person](modules/person.md) / [tenant](modules/tenant.md) / [localization](modules/localization.md).
+- **UI (delivered):** ontology-registry entries (`languoid` / `writing_system` → explorer + ⌘K +
+  object view) + a server-side-search language picker + the person *Languages spoken* editor (SPEAKS,
+  CEFR + native), the unit official/working-language editor, and the read-only locale→language display
+  on the localization page (reconciled by import).
+- **Endpoints (links):** read-only `LanguageService` + the new sub-resources `GET|PUT|DELETE
+  /person/v1/persons/{id}/languages` (SPEAKS), `GET|PUT|DELETE /tenant/v1/units/{id}/languages`
+  (official/working), and read-only `GET /localization/v1/locale-languages`. `person_languages` is
+  erased on person purge.
 - **Exit:** import the Glottolog snapshot; query all languages under a family via the closure; a person
   speaks two languages with native + CEFR; a unit declares a working language; purge erases
   `person_languages`.
+
+**Verdict (i18n consistency review, 2026-06-15 — resolved).** The review asked whether the module is
+internally consistent and free of duplicated tables, and found two binding-convention gaps. Both are
+now closed and re-verified:
+
+- **No table duplication, no model redundancy.** `language_languoid_countries` reuses the shared
+  `geo_countries` registry (no parallel country table); the locale (`i18n_locales`, ISO-639-3 UI
+  language) and the languoid (`language_languoids`, Glottolog genealogical node) are **deliberately
+  distinct concepts**, bridged by `i18n_locale_languages` — *not* duplicates.
+- **Gap 1 — names now use the i18n store (resolved).** The `LanguageService` (and the new person/unit
+  language responses) return `name` as a `locale→text` map assembled via `LocalizationService.NamesByID`
+  (default-locale `name` column + `i18n_translations` overlay, entity types `languoid`/`writing_system`)
+  — the shape every other entity uses (cf. rank/tenant). Re-verified: an `i18n_translations` override
+  for `entity_type='languoid'` surfaces in the map (`internal/dataimport/language_integration_test.go`,
+  `TestLanguageNameLocaleMapAndOverride`).
+- **Gap 2 — `i18n_locale_languages` is reconciled (resolved).** `ReconcileLocaleLanguages` runs at the
+  end of each `language-scheme` import, matching `i18n_locales.code` to `language_languoids.iso639_3`
+  (self-healing, idempotent; `ukr`→Ukrainian, `eng`→English). Re-verified in the same suite +
+  `TestLanguageSchemeImportClosureAndReconcile`, and the read surface is exposed at
+  `GET /localization/v1/locale-languages`.
+- **Re-verification.** Fast integration suite green; the full **27,177-languoid Glottolog 5.3** preset
+  re-loads end-to-end through the real hermenea mappers + import handlers (212,955 closure rows,
+  `family_code` for every node, 864 CLDR script links / 134 gracefully skipped, locale links present,
+  idempotent re-run) via `OIKUMENEA_LANG_E2E=1 go test -tags integration` (`language_preset_e2e_test.go`).
+  The `verified` gate is restored.
 
 ## M19 — Location
 

@@ -352,6 +352,58 @@ func (o *UnitEdge) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+/*
+A unit's official/working language (D-Languages, M18; Link link__unit_language). languageId
+references a Glottolog languoid (LanguageService); name is its translatable display name.
+*/
+type UnitLanguage struct {
+	Id     string `json:"id"`
+	UnitId string `json:"unitId"`
+	// The languoid's URN RID (resolve via GET /language/v1/languages).
+	LanguageId string `json:"languageId"`
+	// The languoid's translatable display name as a locale -> text map (all enabled locales; D-i18n).
+	Name map[string]string `json:"name"`
+	// Whether the language is official (vs. merely working) for the unit.
+	IsOfficial bool `json:"isOfficial"`
+}
+
+func (o UnitLanguage) MarshalJSON() ([]byte, error) {
+	if o.Name == nil {
+		o.Name = make(map[string]string)
+	}
+	type _tmpUnitLanguage UnitLanguage
+	return safejson.Marshal(_tmpUnitLanguage(o))
+}
+
+func (o *UnitLanguage) UnmarshalJSON(data []byte) error {
+	type _tmpUnitLanguage UnitLanguage
+	var rawUnitLanguage _tmpUnitLanguage
+	if err := safejson.Unmarshal(data, &rawUnitLanguage); err != nil {
+		return err
+	}
+	if rawUnitLanguage.Name == nil {
+		rawUnitLanguage.Name = make(map[string]string)
+	}
+	*o = UnitLanguage(rawUnitLanguage)
+	return nil
+}
+
+func (o UnitLanguage) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UnitLanguage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // A page of units plus the opaque token for the next page (empty when exhausted).
 type UnitPage struct {
 	Units         []Unit  `json:"units"`
@@ -568,6 +620,30 @@ func (o UpdateUnitRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *UpdateUnitRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Add or update a unit's official/working language (keyed on languageId).
+type UpsertUnitLanguageRequest struct {
+	// The languoid's URN RID.
+	LanguageId string `json:"languageId"`
+	// Defaults to true (official); false marks a working language.
+	IsOfficial *bool `json:"isOfficial,omitempty"`
+}
+
+func (o UpsertUnitLanguageRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertUnitLanguageRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

@@ -23,6 +23,10 @@ env "local" {
 
   migration {
     dir = "file://migrations"
+    // Store Atlas's revision-history table INSIDE the existing app schema (created by migration
+    // 0000) instead of a standalone `atlas_schema_revisions` schema. Avoids needing a second
+    // schema (and the CREATE/DROP-SCHEMA privilege it implies) on locked-down DB roles.
+    revisions_schema = "oikumenea"
   }
 }
 
@@ -40,5 +44,8 @@ env "hermenea" {
 
   migration {
     dir = "file://migrations/hermenea"
+    // Reuse the existing `hermenea` schema (created by migration 0001) for revision tracking —
+    // see the note in env "local"; avoids a standalone `atlas_schema_revisions` schema.
+    revisions_schema = "hermenea"
   }
 }

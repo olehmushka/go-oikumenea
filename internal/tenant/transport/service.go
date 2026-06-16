@@ -142,6 +142,75 @@ func (s Service) TransitionUnit(ctx context.Context, token bearertoken.Token, un
 	return s.unitToAPI(ctx, updated)
 }
 
+// ---------------------------------------------------------------- unit languages (D-Languages, M18)
+
+// ListUnitLanguages implements GET /units/{unitId}/languages.
+func (s Service) ListUnitLanguages(ctx context.Context, token bearertoken.Token, unitID string) ([]tenantapi.UnitLanguage, error) {
+	if err := s.pep.Require(ctx, token, string(authzdomain.PermUnitRead), unitID); err != nil {
+		return nil, err
+	}
+	ls, err := s.app.ListUnitLanguages(ctx, unitID)
+	if err != nil {
+		return nil, s.mapError(ctx, err, errCtx{unitID: unitID})
+	}
+	return s.unitLanguagesToAPI(ctx, ls)
+}
+
+// UpsertUnitLanguage implements PUT /units/{unitId}/languages.
+func (s Service) UpsertUnitLanguage(ctx context.Context, token bearertoken.Token, unitID string, req tenantapi.UpsertUnitLanguageRequest) (tenantapi.UnitLanguage, error) {
+	if err := s.pep.Require(ctx, token, string(authzdomain.PermUnitUpdate), unitID); err != nil {
+		return tenantapi.UnitLanguage{}, err
+	}
+	saved, err := s.app.UpsertUnitLanguage(ctx, domain.UnitLanguage{
+		UnitID:     unitID,
+		LanguageID: req.LanguageId,
+		IsOfficial: derefOr(req.IsOfficial, true),
+	})
+	if err != nil {
+		return tenantapi.UnitLanguage{}, s.mapError(ctx, err, errCtx{unitID: unitID})
+	}
+	out, err := s.unitLanguagesToAPI(ctx, []domain.UnitLanguage{saved})
+	if err != nil {
+		return tenantapi.UnitLanguage{}, err
+	}
+	return out[0], nil
+}
+
+// DeleteUnitLanguage implements DELETE /units/{unitId}/languages/{languageId}.
+func (s Service) DeleteUnitLanguage(ctx context.Context, token bearertoken.Token, unitID, languageID string) error {
+	if err := s.pep.Require(ctx, token, string(authzdomain.PermUnitUpdate), unitID); err != nil {
+		return err
+	}
+	if err := s.app.DeleteUnitLanguage(ctx, unitID, languageID); err != nil {
+		return s.mapError(ctx, err, errCtx{unitID: unitID})
+	}
+	return nil
+}
+
+// unitLanguagesToAPI maps the domain rows to the API shape, assembling each languoid's locale->text
+// name map (D-i18n) from the default-locale name + the localization store (entity type "languoid").
+func (s Service) unitLanguagesToAPI(ctx context.Context, ls []domain.UnitLanguage) ([]tenantapi.UnitLanguage, error) {
+	defaults := make(map[string]string, len(ls))
+	for _, l := range ls {
+		defaults[l.LanguageID] = l.LanguageName
+	}
+	names, err := s.loc.NamesByID(ctx, "languoid", defaults)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]tenantapi.UnitLanguage, 0, len(ls))
+	for _, l := range ls {
+		out = append(out, tenantapi.UnitLanguage{
+			Id:         l.ID,
+			UnitId:     l.UnitID,
+			LanguageId: l.LanguageID,
+			Name:       names[l.LanguageID],
+			IsOfficial: l.IsOfficial,
+		})
+	}
+	return out, nil
+}
+
 // ---------------------------------------------------------------- edges
 
 func (s Service) AddEdge(ctx context.Context, token bearertoken.Token, unitID string, req tenantapi.AddEdgeRequest) (tenantapi.UnitEdge, error) {
@@ -464,6 +533,12 @@ func (s Service) mapError(ctx context.Context, err error, c errCtx) error {
 		return tenantapi.NewGraphInUse(c.graph)
 	case errors.Is(err, domain.ErrGraphProtected):
 		return tenantapi.NewGraphProtected(err.Error())
+	case errors.Is(err, domain.ErrUnknownLanguage):
+		return tenantapi.NewUnitInvalid("language does not exist")
+	case errors.Is(err, domain.ErrUnitLanguageConflict):
+		return tenantapi.NewUnitInvalid("the unit already has this language")
+	case errors.Is(err, domain.ErrUnitLanguageNotFound):
+		return tenantapi.NewUnitNotFound(c.unitID)
 	default:
 		return werror.WrapWithContextParams(ctx, err, "tenant request failed")
 	}

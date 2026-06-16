@@ -36,8 +36,9 @@ hermenea's DB: `Import source`, `Import raw batch`, `Import run`, `Worker job`; 
 the import endpoint, carrying `(source, source_version, imported_at)` **provenance** and audited there
 as `system`-actor Actions.
 
-- **Import source** — a registered external dataset: `type ∈ {http, file, wof-sqlite}` (DS-44 parks
-  `jdbc-sql`/`object-store`), a connector-specific locator (URL or bundled path), an `object_type`
+- **Import source** — a registered external dataset: `type ∈ {http, file, wof-sqlite, http-files}`
+  (DS-44 parks `jdbc-sql`/`object-store`), a connector-specific locator (URL, bundled path, or a
+  whitespace-separated URL list for `http-files`), an `object_type`
   (which oikumenea import target it feeds, e.g. `geo-places`), optional credentials (via the M0
   crypto seam), and an optional cron schedule.
 - **Import raw batch** — one fetched payload landed **verbatim** (checksum, `source_version`,
@@ -58,9 +59,11 @@ registry tables). The queue/ledger tables are **append-or-update operational** t
 
 **`hermenea.import_sources`**
 - `id` PK (RID), `code TEXT NOT NULL UNIQUE`, `name TEXT NOT NULL`
-- `connector_type TEXT NOT NULL CHECK (connector_type IN ('http','file','wof-sqlite'))`
+- `connector_type TEXT NOT NULL CHECK (connector_type IN ('http','file','wof-sqlite','http-files'))`
+  (`http-files` added by migration `0002`, D-Languages M18)
 - `object_type TEXT NOT NULL` — the oikumenea import target (e.g. `geo-places`)
-- `locator TEXT NOT NULL` — URL (http / wof-sqlite `.db.bz2`) or bundled path (file)
+- `locator TEXT NOT NULL` — URL (http / wof-sqlite `.db.bz2`), bundled path (file), or a
+  whitespace-separated URL list (http-files)
 - `cron TEXT` — optional cron spec; `NULL` = trigger-only
 - `enabled BOOLEAN NOT NULL DEFAULT TRUE`
 - `credentials_ref TEXT` — optional crypto-seam reference; timestamps + `deleted_at`
@@ -150,6 +153,13 @@ stamped from the envelope on each upsert (D-DataIngestion lineage, retained unde
 
 - **Connector seam** — `Connector.Fetch(ctx, source) → RawBatch`; HTTP(S) + the degenerate `file`
   connector. New source types (DS-44) are new `Connector` implementations, not new call sites.
+- **Live multi-file transform** (`http-files`, D-Languages M18) — a `StreamingConnector` whose
+  `locator` is a whitespace-separated **URL list**, each streamed to a staged temp directory by basename
+  (no 16 MiB cap; a descriptive User-Agent avoids upstream 403s). The paired `PagedMapper` transforms
+  the raw upstream in Go and emits a **single page** (whole forest) so a multi-file source that needs
+  one transaction works. Used for languages: `glottolog` CLDF (`languages.csv` + `values.csv`) and CLDR
+  (`supplementalData.xml` + `iso-639-3.tab`) are fetched fresh from upstream master each run — the live
+  Go port of `deploy/language-presets/gen-presets.py` (which remains the offline/`file` fallback).
 - **Streaming connector + paged mapper** (D-GeoPlaces) — for sources too large for a single in-memory
   batch, a `StreamingConnector.Stage(...) → StagedSource` lands the body to disk (the `wof-sqlite`
   connector fetches a `.db.bz2`, bzip2-decompresses, stages a temp SQLite file), and a

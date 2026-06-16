@@ -829,3 +829,89 @@ func TestPersonRelationships(t *testing.T) {
 		t.Fatalf("sponsorships for a after purging b: %d err %v", len(ss), err)
 	}
 }
+
+// seedLanguoid inserts a Glottolog languoid (D-Languages, M18) at the given level and returns its RID.
+// The composite FK person_languages(language_id, language_level)->language_languoids(id, level) only
+// accepts level='language', so the tests seed both a language and a family to prove the constraint.
+func seedLanguoid(t *testing.T, pool *pgxpool.Pool, code, level, name string) string {
+	t.Helper()
+	var id string
+	if err := pool.QueryRow(context.Background(),
+		`INSERT INTO oikumenea.language_languoids (code, level, name) VALUES ($1,$2,$3) RETURNING id`,
+		code, level, name).Scan(&id); err != nil {
+		t.Fatalf("seed languoid %s: %v", code, err)
+	}
+	t.Cleanup(func() {
+		ctx := context.Background()
+		// A concurrent language-scheme import (other package) rebuilds the global closure, which adds a
+		// reflexive row for this bare languoid; clear dependents before the RESTRICT delete.
+		_, _ = pool.Exec(ctx, "DELETE FROM oikumenea.language_languoid_closure WHERE ancestor_id = $1 OR descendant_id = $1", id)
+		_, _ = pool.Exec(ctx, "DELETE FROM oikumenea.person_languages WHERE language_id = $1", id)
+		_, _ = pool.Exec(ctx, "DELETE FROM oikumenea.language_languoids WHERE id = $1", id)
+	})
+	return id
+}
+
+// TestPersonLanguages covers the SPEAKS link (D-Languages, M18): add with CEFR + native, the
+// (person, language) upsert key, the composite FK that rejects a non-language languoid, delete, and
+// purge erasure.
+func TestPersonLanguages(t *testing.T) {
+	ctx := context.Background()
+	svc, pool := newService(t, 0)
+
+	lang := seedLanguoid(t, pool, "test1234", "language", "Testish")
+	family := seedLanguoid(t, pool, "testfam1", "family", "Testic")
+	p := newPerson(t, svc, "Polyglot")
+
+	// add a spoken language with proficiency + native flag
+	saved, err := svc.UpsertPersonLanguage(ctx, domain.PersonLanguage{PersonID: p.ID, LanguageID: lang, CEFRLevel: "B2", IsNative: true})
+	if err != nil {
+		t.Fatalf("upsert language: %v", err)
+	}
+	if saved.LanguageName != "Testish" || saved.CEFRLevel != "B2" || !saved.IsNative {
+		t.Fatalf("saved = %+v, want name=Testish cefr=B2 native", saved)
+	}
+
+	// upsert is keyed on (person, language): a second call updates rather than duplicating
+	if _, err := svc.UpsertPersonLanguage(ctx, domain.PersonLanguage{PersonID: p.ID, LanguageID: lang, CEFRLevel: "C1"}); err != nil {
+		t.Fatalf("update language: %v", err)
+	}
+	ls, err := svc.ListPersonLanguages(ctx, p.ID)
+	if err != nil || len(ls) != 1 {
+		t.Fatalf("list after update: len=%d err=%v", len(ls), err)
+	}
+	if ls[0].CEFRLevel != "C1" || ls[0].IsNative {
+		t.Fatalf("updated row = %+v, want cefr=C1 native=false", ls[0])
+	}
+
+	// the composite FK rejects a family-level languoid (must be level='language')
+	if _, err := svc.UpsertPersonLanguage(ctx, domain.PersonLanguage{PersonID: p.ID, LanguageID: family}); !errors.Is(err, domain.ErrUnknownLanguage) {
+		t.Fatalf("family languoid should be rejected with ErrUnknownLanguage, got %v", err)
+	}
+
+	// delete, then purge erasure leaves no rows
+	if err := svc.DeletePersonLanguage(ctx, p.ID, lang); err != nil {
+		t.Fatalf("delete language: %v", err)
+	}
+	if ls, err := svc.ListPersonLanguages(ctx, p.ID); err != nil || len(ls) != 0 {
+		t.Fatalf("list after delete: len=%d err=%v", len(ls), err)
+	}
+
+	// re-add, then purge the person — person_languages is pii:basic and must be erased
+	if _, err := svc.UpsertPersonLanguage(ctx, domain.PersonLanguage{PersonID: p.ID, LanguageID: lang}); err != nil {
+		t.Fatalf("re-add language: %v", err)
+	}
+	if _, err := svc.DeactivatePerson(ctx, p.ID, "x"); err != nil {
+		t.Fatalf("deactivate: %v", err)
+	}
+	if _, err := svc.PurgePerson(ctx, p.ID); err != nil {
+		t.Fatalf("purge: %v", err)
+	}
+	var remaining int
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM oikumenea.person_languages WHERE person_id = $1", p.ID).Scan(&remaining); err != nil {
+		t.Fatalf("count after purge: %v", err)
+	}
+	if remaining != 0 {
+		t.Fatalf("person_languages after purge = %d, want 0", remaining)
+	}
+}

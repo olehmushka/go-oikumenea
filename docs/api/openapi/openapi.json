@@ -1855,6 +1855,73 @@
         ],
         "type": "object"
       },
+      "Languoid": {
+        "description": "A node in the Glottolog forest. `id` is the RID (the reference key); `code` is the stable glottocode; `name` is the locale-\u003etext display map.",
+        "properties": {
+          "code": {
+            "description": "Glottocode (8-char), the stable, locale-agnostic lookup key (e.g. stan1293).",
+            "type": "string"
+          },
+          "familyCode": {
+            "description": "The root-family glottocode (derived via the closure).",
+            "type": "string"
+          },
+          "id": {
+            "description": "The languoid's RID (language service); what person/unit/locale links reference.",
+            "type": "string"
+          },
+          "iso6393": {
+            "description": "ISO 639-3 code, when the languoid has one (families/dialects usually do not).",
+            "type": "string"
+          },
+          "level": {
+            "description": "family | language | dialect.",
+            "type": "string"
+          },
+          "macroarea": {
+            "description": "Glottolog macroarea.",
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "locale-\u003etext display name (all enabled locales; default-locale `name` column + i18n store).",
+            "type": "object"
+          },
+          "parentId": {
+            "description": "The RID of the immediate parent languoid (absent for a top-level family / isolate).",
+            "type": "string"
+          },
+          "status": {
+            "description": "AES endangerment (not_endangered…extinct).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "id",
+          "level",
+          "name",
+          "status"
+        ],
+        "type": "object"
+      },
+      "LanguoidList": {
+        "description": "A page of languoids in code order.",
+        "properties": {
+          "languoids": {
+            "items": {
+              "$ref": "#/components/schemas/Languoid"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "languoids"
+        ],
+        "type": "object"
+      },
       "LinkIdentityRequest": {
         "description": "Link a verified (issuer, subject) login point to an account.",
         "properties": {
@@ -1900,6 +1967,47 @@
           "isDefault",
           "name",
           "sortOrder"
+        ],
+        "type": "object"
+      },
+      "LocaleLanguage": {
+        "description": "A supported locale's canonical Glottolog language (D-Languages, M18; Link link__locale_language).\nRead-only: the link is reconciled by the language-scheme import (matching the locale's ISO-639-3\ncode to a languoid's iso639_3), not edited directly.\n",
+        "properties": {
+          "languageId": {
+            "description": "The matched languoid's URN RID.",
+            "type": "string"
+          },
+          "locale": {
+            "description": "The locale's ISO 639-3 code.",
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "The languoid's translatable display name as a locale -\u003e text map (all enabled locales; D-i18n).",
+            "type": "object"
+          }
+        },
+        "required": [
+          "languageId",
+          "locale",
+          "name"
+        ],
+        "type": "object"
+      },
+      "LocaleLanguageList": {
+        "description": "The locale -\u003e canonical-language links (D-Languages, M18).",
+        "properties": {
+          "localeLanguages": {
+            "items": {
+              "$ref": "#/components/schemas/LocaleLanguage"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "localeLanguages"
         ],
         "type": "object"
       },
@@ -2549,6 +2657,44 @@
           "socialAccounts",
           "status",
           "updatedAt"
+        ],
+        "type": "object"
+      },
+      "PersonLanguage": {
+        "description": "A language a person speaks (D-Languages, M18; Link link__speaks). languageId references a\nlevel='language' Glottolog languoid (LanguageService); name is the languoid's translatable\ndisplay name (locale -\u003e text map). cefrLevel is the optional CEFR proficiency; isNative flags a\nmother tongue.\n",
+        "properties": {
+          "cefrLevel": {
+            "description": "CEFR proficiency — one of A1 | A2 | B1 | B2 | C1 | C2; null when unstated.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isNative": {
+            "description": "Whether this is a mother tongue.",
+            "type": "boolean"
+          },
+          "languageId": {
+            "description": "The languoid's URN RID (a level='language' node; resolve via GET /language/v1/languages).",
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "The languoid's translatable display name as a locale -\u003e text map (all enabled locales; D-i18n).",
+            "type": "object"
+          },
+          "personId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "isNative",
+          "languageId",
+          "name",
+          "personId"
         ],
         "type": "object"
       },
@@ -3543,6 +3689,40 @@
         ],
         "type": "object"
       },
+      "UnitLanguage": {
+        "description": "A unit's official/working language (D-Languages, M18; Link link__unit_language). languageId\nreferences a Glottolog languoid (LanguageService); name is its translatable display name.\n",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "isOfficial": {
+            "description": "Whether the language is official (vs. merely working) for the unit.",
+            "type": "boolean"
+          },
+          "languageId": {
+            "description": "The languoid's URN RID (resolve via GET /language/v1/languages).",
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "The languoid's translatable display name as a locale -\u003e text map (all enabled locales; D-i18n).",
+            "type": "object"
+          },
+          "unitId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "isOfficial",
+          "languageId",
+          "name",
+          "unitId"
+        ],
+        "type": "object"
+      },
       "UnitPage": {
         "description": "A page of units plus the opaque token for the next page (empty when exhausted).",
         "properties": {
@@ -4237,6 +4417,26 @@
         ],
         "type": "object"
       },
+      "UpsertPersonLanguageRequest": {
+        "description": "Add or update a language the person speaks (keyed on languageId). cefrLevel/isNative are the proficiency attributes.",
+        "properties": {
+          "cefrLevel": {
+            "description": "A1 | A2 | B1 | B2 | C1 | C2; omit to leave unstated.",
+            "type": "string"
+          },
+          "isNative": {
+            "type": "boolean"
+          },
+          "languageId": {
+            "description": "The languoid's URN RID; must resolve to a level='language' Glottolog node.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "languageId"
+        ],
+        "type": "object"
+      },
       "UpsertPhoneRequest": {
         "description": "Add a contact phone, or replace one when id is supplied. number is E.164-normalized and country derived.",
         "properties": {
@@ -4373,6 +4573,23 @@
         ],
         "type": "object"
       },
+      "UpsertUnitLanguageRequest": {
+        "description": "Add or update a unit's official/working language (keyed on languageId).",
+        "properties": {
+          "isOfficial": {
+            "description": "Defaults to true (official); false marks a working language.",
+            "type": "boolean"
+          },
+          "languageId": {
+            "description": "The languoid's URN RID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "languageId"
+        ],
+        "type": "object"
+      },
       "VersionInfo": {
         "description": "Binary and schema revision the running server reports.",
         "properties": {
@@ -4456,6 +4673,51 @@
           "maxAttempts",
           "runAfter",
           "status"
+        ],
+        "type": "object"
+      },
+      "WritingSystem": {
+        "description": "An ISO-15924 script. `id` is the RID; `code` is the ISO-15924 lookup code.",
+        "properties": {
+          "code": {
+            "description": "ISO-15924 code (e.g. Latn, Cyrl, Hani).",
+            "type": "string"
+          },
+          "id": {
+            "description": "The writing system's RID (language service).",
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "locale-\u003etext display name (all enabled locales; default-locale `name` column + i18n store).",
+            "type": "object"
+          },
+          "scriptType": {
+            "description": "logographic | syllabary | alphabet | abjad | abugida | featural.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "id",
+          "name"
+        ],
+        "type": "object"
+      },
+      "WritingSystemList": {
+        "description": "The writing systems, in code order.",
+        "properties": {
+          "writingSystems": {
+            "items": {
+              "$ref": "#/components/schemas/WritingSystem"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "writingSystems"
         ],
         "type": "object"
       }
@@ -6343,6 +6605,184 @@
         "summary": "Idempotently upsert a canonical envelope into the {objectType} catalog.",
         "tags": [
           "ImportService"
+        ]
+      }
+    },
+    "/language/v1/languages": {
+      "get": {
+        "description": "List languoids in code order, optionally filtered by level, root family (glottocode), and a\nname/code substring. `limit` caps the page (default/clamped server-side) since the catalog is\nlarge (~26k); narrow with the filters.\n",
+        "operationId": "LanguageService_listLanguages",
+        "parameters": [
+          {
+            "description": "Filter to a level (family | language | dialect).",
+            "in": "query",
+            "name": "level",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to descendants of this root-family glottocode (via family_code).",
+            "in": "query",
+            "name": "family",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Case-insensitive substring match on name or glottocode.",
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Max rows to return (server clamps to a sane maximum).",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LanguoidList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List languoids in code order, optionally filtered by level, root family (glottocode), and a",
+        "tags": [
+          "LanguageService"
+        ]
+      }
+    },
+    "/language/v1/languages/{id}": {
+      "get": {
+        "description": "Fetch one languoid by its RID.",
+        "operationId": "LanguageService_getLanguage",
+        "parameters": [
+          {
+            "description": "The languoid's RID.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Languoid"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Fetch one languoid by its RID.",
+        "tags": [
+          "LanguageService"
+        ]
+      }
+    },
+    "/language/v1/writing-systems": {
+      "get": {
+        "description": "List the ISO-15924 writing systems in code order.",
+        "operationId": "LanguageService_listWritingSystems",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WritingSystemList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List the ISO-15924 writing systems in code order.",
+        "tags": [
+          "LanguageService"
+        ]
+      }
+    },
+    "/localization/v1/locale-languages": {
+      "get": {
+        "description": "List each supported locale's canonical Glottolog language (D-Languages, M18). Read-only — the\nlinks are reconciled by the language-scheme import, not edited here.\n",
+        "operationId": "LocalizationService_listLocaleLanguages",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocaleLanguageList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List each supported locale's canonical Glottolog language (D-Languages, M18). Read-only — the",
+        "tags": [
+          "LocalizationService"
         ]
       }
     },
@@ -8663,6 +9103,144 @@
           }
         },
         "summary": "Add or replace a parent→child kinship. Returns Person:PersonConflict on a duplicate active pair, Person:PersonInvalid for a self-edge, unknown counterpart, or bad role.",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/languages": {
+      "get": {
+        "description": "List the languages the person speaks (native first, then by name; D-Languages, M18).",
+        "operationId": "PersonService_listPersonLanguages",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PersonLanguage"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List the languages the person speaks (native first, then by name; D-Languages, M18).",
+        "tags": [
+          "PersonService"
+        ]
+      },
+      "put": {
+        "description": "Add or update a language the person speaks (keyed on languageId). Returns Person:PersonInvalid\nwhen languageId does not resolve to a level='language' languoid or cefrLevel is invalid.\n",
+        "operationId": "PersonService_upsertPersonLanguage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertPersonLanguageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonLanguage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Add or update a language the person speaks (keyed on languageId). Returns Person:PersonInvalid",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/languages/{languageId}": {
+      "delete": {
+        "description": "Remove a language the person speaks, by languoid id. Idempotent within the active set.",
+        "operationId": "PersonService_deletePersonLanguage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "languageId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Remove a language the person speaks, by languoid id. Idempotent within the active set.",
         "tags": [
           "PersonService"
         ]
@@ -11066,6 +11644,144 @@
           }
         },
         "summary": "Attach the path unit as a child of parentId within a graph (default command). Returns Tenant:UnitCycleDetected on a cycle.",
+        "tags": [
+          "TenantService"
+        ]
+      }
+    },
+    "/tenant/v1/units/{unitId}/languages": {
+      "get": {
+        "description": "List a unit's official/working languages (D-Languages, M18).",
+        "operationId": "TenantService_listUnitLanguages",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "unitId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UnitLanguage"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List a unit's official/working languages (D-Languages, M18).",
+        "tags": [
+          "TenantService"
+        ]
+      },
+      "put": {
+        "description": "Add or update a unit's official/working language (keyed on languageId). Returns\nTenant:UnitInvalid when languageId does not resolve to a languoid.\n",
+        "operationId": "TenantService_upsertUnitLanguage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "unitId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertUnitLanguageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitLanguage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Add or update a unit's official/working language (keyed on languageId). Returns",
+        "tags": [
+          "TenantService"
+        ]
+      }
+    },
+    "/tenant/v1/units/{unitId}/languages/{languageId}": {
+      "delete": {
+        "description": "Remove a unit's language by languoid id. Idempotent within the active set.",
+        "operationId": "TenantService_deleteUnitLanguage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "unitId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "languageId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Remove a unit's language by languoid id. Idempotent within the active set.",
         "tags": [
           "TenantService"
         ]

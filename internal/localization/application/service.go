@@ -51,6 +51,12 @@ func (s *Service) ListLocales(ctx context.Context) ([]domain.Locale, error) {
 	return s.newRepo(s.pool).ListLocales(ctx)
 }
 
+// ListLocaleLanguages returns each supported locale's canonical Glottolog language (D-Languages, M18;
+// reconciled by the language-scheme import; read-only).
+func (s *Service) ListLocaleLanguages(ctx context.Context) ([]domain.LocaleLanguage, error) {
+	return s.newRepo(s.pool).ListLocaleLanguages(ctx)
+}
+
 // AddLocale adds a supported locale and records the action. New locales are never the default
 // (the default is changed via UpdateLocale), so this never disturbs the single-default invariant.
 func (s *Service) AddLocale(ctx context.Context, l domain.Locale) (domain.Locale, error) {

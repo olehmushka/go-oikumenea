@@ -13,6 +13,15 @@ ORDER BY sort_order, code;
 SELECT * FROM oikumenea.i18n_locales
 WHERE code = @code AND deleted_at IS NULL;
 
+-- name: ListLocaleLanguages :many
+-- Each supported locale's canonical Glottolog language (D-Languages, M18), reconciled by the
+-- language-scheme import. Joined to the languoid for its default-locale display name.
+SELECT ll.locale, ll.language_id, l.name AS language_name
+FROM oikumenea.i18n_locale_languages ll
+JOIN oikumenea.language_languoids l ON l.id = ll.language_id
+JOIN oikumenea.i18n_locales loc ON loc.code = ll.locale AND loc.deleted_at IS NULL
+ORDER BY loc.sort_order, ll.locale;
+
 -- name: InsertLocale :one
 -- Add a supported locale. The RID PK defaults at the database; the unique code guards duplicates.
 INSERT INTO oikumenea.i18n_locales (code, name, enabled, is_default, sort_order)

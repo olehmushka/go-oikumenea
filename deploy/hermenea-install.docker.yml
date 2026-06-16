@@ -34,6 +34,27 @@ sources:
     locator: "deploy/geo-presets/iso-3166.json"
     cron: "@weekly"
     enabled: true
+  # Languages (D-Languages, M18) — live from upstream master via the http-files streaming connector,
+  # transformed in Go (CLDFMapper / SupplementalMapper). language-scheme MUST precede language-scripts.
+  # For an offline build, swap connector-type to `file` + the bundled deploy/language-presets/*.json.
+  - code: glottolog-languoids
+    name: "Glottolog languoids (live CLDF master)"
+    connector-type: http-files
+    object-type: language-scheme
+    locator: >-
+      https://raw.githubusercontent.com/glottolog/glottolog-cldf/master/cldf/languages.csv
+      https://raw.githubusercontent.com/glottolog/glottolog-cldf/master/cldf/values.csv
+    cron: "@weekly"
+    enabled: true
+  - code: cldr-language-scripts
+    name: "CLDR language→script links (live)"
+    connector-type: http-files
+    object-type: language-scripts
+    locator: >-
+      https://raw.githubusercontent.com/unicode-org/cldr/main/common/supplemental/supplementalData.xml
+      https://iso639-3.sil.org/sites/iso639-3/files/downloads/iso-639-3.tab
+    cron: "@weekly"
+    enabled: true
   - code: wof-geo-ua
     name: "Who's On First — Ukraine (admin)"
     connector-type: wof-sqlite
@@ -47,5 +68,5 @@ worker:
   schedule-tick-ms: 30000
   backoff-base-ms: 5000
   backoff-max-ms: 300000
-  job-timeout-ms: 120000
-  stale-after-ms: 600000
+  job-timeout-ms: 600000   # 10 min — the live language-scheme load (download + transform + 27k upsert)
+  stale-after-ms: 660000   # > job-timeout so a long legit job is not requeued

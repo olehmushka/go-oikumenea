@@ -43,6 +43,7 @@ services:
       migrate apply --allow-dirty
       --url "postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable"
       --dir "file:///migrations"
+      --revisions-schema oikumenea
     volumes:
       - ./migrations:/migrations:ro
 
@@ -104,6 +105,7 @@ services:
       migrate apply
       --url "postgres://postgres:postgres@postgres:5432/hermenea?sslmode=disable"
       --dir "file:///migrations"
+      --revisions-schema hermenea
     volumes:
       - ./migrations/hermenea:/migrations:ro
 

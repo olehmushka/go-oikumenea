@@ -37,6 +37,12 @@ type StoreFactory func(conn db.DBTX) domain.GeoCountryStore
 // GeoPlaceStoreFactory binds the geo-places store port to the caller's tx (D-GeoPlaces).
 type GeoPlaceStoreFactory func(conn db.DBTX) domain.GeoPlaceStore
 
+// LanguoidStoreFactory binds the languoid store port to the caller's tx (D-Languages, M18).
+type LanguoidStoreFactory func(conn db.DBTX) domain.LanguoidStore
+
+// LanguageScriptStoreFactory binds the language-scripts store port to the caller's tx (D-Languages).
+type LanguageScriptStoreFactory func(conn db.DBTX) domain.LanguageScriptStore
+
 // Envelope is the application-level canonical envelope (the transport maps the Conjure type onto it).
 type Envelope struct {
 	ObjectType    string
@@ -218,6 +224,182 @@ func geoPlaceFields(rec domain.Record) (domain.GeoPlace, error) {
 	p.ISOA3 = strings.ToUpper(strings.TrimSpace(recStr(rec["isoA3"])))
 	p.NumericCode = strings.TrimSpace(recStr(rec["numericCode"]))
 	return p, nil
+}
+
+// LanguageSchemeHandler builds the Glottolog languoid upsert handler (D-Languages, M18). Idempotency is
+// keyed on source_version (like geo-places): a languoid is inserted when absent, updated when the
+// incoming Glottolog edition differs, and skipped otherwise — never deleted. Records MUST arrive
+// parent-first (family → language → dialect): the parent_id FK is RESTRICT, so a forward reference
+// fails the whole transaction loudly (the glottolog mapper guarantees this ordering). On every
+// insert/update the languoid's country ties are replaced. After the whole batch the handler rebuilds
+// the transitive closure and the denormalized family_code in one shot (the whole import is one tx).
+func LanguageSchemeHandler(newStore LanguoidStoreFactory) Handler {
+	return func(ctx context.Context, tx pgx.Tx, records []domain.Record, prov domain.Provenance) (domain.Summary, error) {
+		store := newStore(tx)
+		var sum domain.Summary
+		touched := false
+		for _, rec := range records {
+			l, err := languoidFields(rec)
+			if err != nil {
+				return domain.Summary{}, err
+			}
+			ver, found, err := store.GetVersion(ctx, l.Code)
+			if err != nil {
+				return domain.Summary{}, err
+			}
+			switch {
+			case !found:
+				if err := store.Insert(ctx, l, prov); err != nil {
+					return domain.Summary{}, err
+				}
+				sum.Created++
+				touched = true
+			case ver != prov.SourceVersion:
+				if err := store.UpdateImport(ctx, l, prov); err != nil {
+					return domain.Summary{}, err
+				}
+				sum.Updated++
+				touched = true
+			default:
+				sum.Skipped++
+				continue // unchanged edition: leave country ties as-is
+			}
+			if err := store.ReplaceCountries(ctx, l.Code, l.Countries); err != nil {
+				return domain.Summary{}, err
+			}
+		}
+		// Rebuild the closure + family_code only when the tree actually changed (skip a full no-op import),
+		// then reconcile the locale→languoid link (D-i18n) so supported UI locales point at their languoid.
+		if touched {
+			if err := store.RebuildClosure(ctx); err != nil {
+				return domain.Summary{}, err
+			}
+			if err := store.ReconcileLocaleLanguages(ctx); err != nil {
+				return domain.Summary{}, err
+			}
+		}
+		return sum, nil
+	}
+}
+
+// languoidFields decodes a Glottolog record. code/level/name are required (level must be one of the
+// three Glottolog levels); optional fields fold to ""/nil; status defaults to not_endangered; countries
+// are upper-cased ISO alpha-2 codes.
+func languoidFields(rec domain.Record) (domain.Languoid, error) {
+	l := domain.Languoid{
+		Code:      strings.ToLower(strings.TrimSpace(recStr(rec["code"]))),
+		Level:     strings.ToLower(strings.TrimSpace(recStr(rec["level"]))),
+		Name:      strings.TrimSpace(recStr(rec["name"])),
+		Parent:    strings.ToLower(strings.TrimSpace(recStr(rec["parent"]))),
+		ISO639_3:  strings.ToLower(strings.TrimSpace(recStr(rec["iso639_3"]))),
+		Macroarea: strings.TrimSpace(recStr(rec["macroarea"])),
+		Latitude:  recOptFloat(rec["latitude"]),
+		Longitude: recOptFloat(rec["longitude"]),
+		Status:    strings.TrimSpace(recStr(rec["status"])),
+	}
+	if l.Code == "" || l.Name == "" || !validLevel(l.Level) {
+		return domain.Languoid{}, domain.ErrInvalidRecord
+	}
+	if l.Status == "" {
+		l.Status = "not_endangered"
+	}
+	for _, c := range recStrList(rec["countries"]) {
+		if cc := strings.ToUpper(strings.TrimSpace(c)); cc != "" {
+			l.Countries = append(l.Countries, cc)
+		}
+	}
+	return l, nil
+}
+
+func validLevel(s string) bool {
+	switch s {
+	case "family", "language", "dialect":
+		return true
+	}
+	return false
+}
+
+// LanguageScriptsHandler builds the CLDR language→writing-system upsert handler (D-Languages, M18). A
+// record ties a language (by ISO 639-3) to a writing system (by ISO-15924 code) with an is_primary
+// flag. A record whose languoid or writing system does not resolve is skipped (counted, not an error) —
+// so the import is resilient to a partly-seeded script catalog and to languages outside the imported
+// scheme. Idempotency is on the (languoid, writing-system) pair.
+func LanguageScriptsHandler(newStore LanguageScriptStoreFactory) Handler {
+	return func(ctx context.Context, tx pgx.Tx, records []domain.Record, prov domain.Provenance) (domain.Summary, error) {
+		store := newStore(tx)
+		var sum domain.Summary
+		for _, rec := range records {
+			iso := strings.ToLower(strings.TrimSpace(recStr(rec["iso639_3"])))
+			ws := strings.TrimSpace(recStr(rec["writingSystem"]))
+			isPrimary, _ := rec["isPrimary"].(bool)
+			if iso == "" || ws == "" {
+				return domain.Summary{}, domain.ErrInvalidRecord
+			}
+			lid, ok, err := store.ResolveLanguoid(ctx, iso)
+			if err != nil {
+				return domain.Summary{}, err
+			}
+			if !ok {
+				sum.Skipped++
+				continue
+			}
+			wid, ok, err := store.ResolveWritingSystem(ctx, ws)
+			if err != nil {
+				return domain.Summary{}, err
+			}
+			if !ok {
+				sum.Skipped++
+				continue
+			}
+			cur, found, err := store.GetLinkPrimary(ctx, lid, wid)
+			if err != nil {
+				return domain.Summary{}, err
+			}
+			switch {
+			case !found:
+				if err := store.InsertLink(ctx, lid, wid, isPrimary, prov); err != nil {
+					return domain.Summary{}, err
+				}
+				sum.Created++
+			case cur != isPrimary:
+				if err := store.UpdateLink(ctx, lid, wid, isPrimary, prov); err != nil {
+					return domain.Summary{}, err
+				}
+				sum.Updated++
+			default:
+				sum.Skipped++
+			}
+		}
+		return sum, nil
+	}
+}
+
+// recOptFloat reads an optional JSON number as *float64 (nil when absent/null/non-numeric).
+func recOptFloat(v any) *float64 {
+	switch n := v.(type) {
+	case float64:
+		return &n
+	case json.Number:
+		if f, err := n.Float64(); err == nil {
+			return &f
+		}
+	}
+	return nil
+}
+
+// recStrList reads a JSON array of strings (nil/non-array → empty).
+func recStrList(v any) []string {
+	list, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(list))
+	for _, e := range list {
+		if s, ok := e.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func validPlacetype(s string) bool {

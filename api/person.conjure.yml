@@ -330,6 +330,27 @@ types:
           validTo:
             type: optional<datetime>
             docs: When this handle stopped being current; null = current.
+      PersonLanguage:
+        docs: |
+          A language a person speaks (D-Languages, M18; Link link__speaks). languageId references a
+          level='language' Glottolog languoid (LanguageService); name is the languoid's translatable
+          display name (locale -> text map). cefrLevel is the optional CEFR proficiency; isNative flags a
+          mother tongue.
+        fields:
+          id: string
+          personId: string
+          languageId:
+            type: string
+            docs: The languoid's URN RID (a level='language' node; resolve via GET /language/v1/languages).
+          name:
+            type: map<string, string>
+            docs: The languoid's translatable display name as a locale -> text map (all enabled locales; D-i18n).
+          cefrLevel:
+            type: optional<string>
+            docs: CEFR proficiency — one of A1 | A2 | B1 | B2 | C1 | C2; null when unstated.
+          isNative:
+            type: boolean
+            docs: Whether this is a mother tongue.
       RelationType:
         docs: An instance-admin catalog entry for an open-ended person↔person relation label (D-PersonRelationships). Stable code + translatable name + category.
         fields:
@@ -619,6 +640,16 @@ types:
             type: optional<string>
             docs: confirmed | probable | possible; defaults to possible.
           isPrimary: optional<boolean>
+      UpsertPersonLanguageRequest:
+        docs: Add or update a language the person speaks (keyed on languageId). cefrLevel/isNative are the proficiency attributes.
+        fields:
+          languageId:
+            type: string
+            docs: The languoid's URN RID; must resolve to a level='language' Glottolog node.
+          cefrLevel:
+            type: optional<string>
+            docs: A1 | A2 | B1 | B2 | C1 | C2; omit to leave unstated.
+          isNative: optional<boolean>
       UpsertPartnershipRequest:
         docs: |
           Record or replace a partnership between the path person and partnerId. The pair is stored in
@@ -1059,6 +1090,35 @@ services:
             type: string
             param-type: path
         returns: list<SocialAccountHandle>
+      listPersonLanguages:
+        http: GET /persons/{personId}/languages
+        docs: List the languages the person speaks (native first, then by name; D-Languages, M18).
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<PersonLanguage>
+      upsertPersonLanguage:
+        http: PUT /persons/{personId}/languages
+        docs: |
+          Add or update a language the person speaks (keyed on languageId). Returns Person:PersonInvalid
+          when languageId does not resolve to a level='language' languoid or cefrLevel is invalid.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertPersonLanguageRequest
+        returns: PersonLanguage
+      deletePersonLanguage:
+        http: DELETE /persons/{personId}/languages/{languageId}
+        docs: Remove a language the person speaks, by languoid id. Idempotent within the active set.
+        args:
+          personId:
+            type: string
+            param-type: path
+          languageId:
+            type: string
+            param-type: path
       listRelationTypes:
         http: GET /person/relation-types
         docs: List the person↔person relation-type catalog (locale -> text names; D-i18n; D-PersonRelationships).

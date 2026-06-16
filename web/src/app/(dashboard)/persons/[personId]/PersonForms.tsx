@@ -7,6 +7,7 @@ import { bffGet } from "@/lib/api/browser";
 import { ErrorBox } from "@/components/ErrorBox";
 import { EntitySelect } from "@/components/EntitySelect";
 import { CountrySelect, useCountryMap } from "@/components/CountrySelect";
+import { LanguagePicker } from "@/components/LanguagePicker";
 import { pickLabel } from "@/lib/i18n";
 import { useLocale } from "@/lib/locale";
 import { ridTail } from "@/lib/ontology/rid";
@@ -24,6 +25,7 @@ import type {
   NextOfKin,
   Partnership,
   Person,
+  PersonLanguage,
   Phone,
   Platform,
   RelationType,
@@ -1158,6 +1160,106 @@ function RelFamily({
 }
 
 /* ------------------------------------------------------------------ small shared UI */
+
+/* ------------------------------------------------------------------ languages (D-Languages, M18) */
+
+// PersonLanguageManager owns the SPEAKS sub-resource. Unlike the embedded channels, person_languages
+// is not part of the Person aggregate, so it fetches its own list and refreshes it after each write.
+export function PersonLanguageManager({ personId }: { personId: string }) {
+  const { locale } = useLocale();
+  const [rows, setRows] = useState<PersonLanguage[] | null>(null);
+  const [err, setErr] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+  const [langId, setLangId] = useState("");
+  const [pickerKey, setPickerKey] = useState(0);
+
+  const load = () =>
+    bffGet<PersonLanguage[]>(`/person/v1/persons/${personId}/languages`)
+      .then((r) => setRows(r ?? []))
+      .catch(setErr);
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personId]);
+
+  const run = async (fn: () => Promise<unknown>, after?: () => void) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await fn();
+      after?.();
+      await load();
+    } catch (e) {
+      setErr(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <ChannelBlock title="Languages spoken" err={err}>
+      {rows && rows.length === 0 ? <p className="mt-1 text-sm text-slate-400">—</p> : null}
+      <ul className="mt-1 space-y-0.5 text-sm text-slate-700">
+        {(rows ?? []).map((l) => (
+          <li key={l.id} className="flex items-center justify-between gap-2">
+            <span>
+              {pickLabel(l.name, locale) || l.languageId}
+              {l.isNative ? " · native" : ""}
+              {l.cefrLevel ? ` · ${l.cefrLevel}` : ""}
+            </span>
+            <button
+              type="button"
+              className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
+              disabled={busy}
+              onClick={() =>
+                window.confirm("Remove this language?") &&
+                run(() => mutate("DELETE", `/person/v1/persons/${personId}/languages/${l.languageId}`))
+              }
+            >
+              Remove
+            </button>
+          </li>
+        ))}
+      </ul>
+      <form
+        className="mt-2 grid grid-cols-[1fr_6rem_auto_auto] items-center gap-2"
+        onSubmit={(ev) => {
+          ev.preventDefault();
+          if (!langId) return;
+          const f = new FormData(ev.currentTarget);
+          run(
+            () =>
+              mutate("PUT", `/person/v1/persons/${personId}/languages`, {
+                languageId: langId,
+                cefrLevel: s(f, "cefrLevel"),
+                isNative: f.get("isNative") === "on",
+              }),
+            () => {
+              setLangId("");
+              setPickerKey((k) => k + 1);
+            },
+          );
+        }}
+      >
+        <LanguagePicker key={pickerKey} onChange={setLangId} />
+        <select name="cefrLevel" className="input" defaultValue="">
+          <option value="">CEFR…</option>
+          {["A1", "A2", "B1", "B2", "C1", "C2"].map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        <label className="flex items-center gap-1 text-xs text-slate-600">
+          <input type="checkbox" name="isNative" /> native
+        </label>
+        <button className="btn-ghost" disabled={busy || !langId}>
+          Add
+        </button>
+      </form>
+    </ChannelBlock>
+  );
+}
 
 function ChannelBlock({
   title,

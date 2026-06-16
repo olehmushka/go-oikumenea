@@ -87,6 +87,9 @@ const (
 	// geo (D-Geo) — read the RID-keyed country registry so clients can resolve a country to its RID.
 	PermCountryRead Permission = "country.read"
 
+	// language (D-Languages, M18) — read the Glottolog languoid + writing-system registry.
+	PermLanguageRead Permission = "language.read"
+
 	// i18n
 	PermLocaleRead        Permission = "locale.read"
 	PermTranslationRead   Permission = "translation.read"
@@ -147,6 +150,7 @@ var catalog = func() map[Permission]struct{} {
 		PermRankSchemeRead,
 		PermGraphRead,
 		PermCountryRead,
+		PermLanguageRead,
 		PermLocaleRead, PermTranslationRead, PermLocaleManage, PermTranslationManage,
 		PermRankSchemeManage, PermGraphManage, PermClosureRebuild, PermDocumentTypeManage, PermOrderTypeManage,
 		PermPersonalCodeSchemeManage, PermCountryManage, PermInstanceConfig, PermInstanceAdminManage,
@@ -208,7 +212,7 @@ var readerPerms = []Permission{
 	PermUnitRead, PermPersonRead, PermMembershipRead, PermPositionRead,
 	PermDocumentRead, PermPersonalCodeRead, PermOrderRead,
 	PermRoleRead, PermAssignmentRead,
-	PermRankSchemeRead, PermGraphRead, PermCountryRead,
+	PermRankSchemeRead, PermGraphRead, PermCountryRead, PermLanguageRead,
 	PermDocumentTypeRead, PermPersonalCodeSchemeRead, PermOrderTypeRead,
 	PermLocaleRead, PermTranslationRead,
 }

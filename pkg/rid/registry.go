@@ -25,6 +25,7 @@ var serviceNames = map[int]string{
 	SvcDocument:   "document",
 	SvcOrder:      "order",
 	SvcLocation:   "location",
+	SvcLanguage:   "language",
 }
 
 type typeKey struct {
@@ -66,6 +67,7 @@ var typeNames = map[typeKey]string{
 	{SvcPerson, int(KindLink), 5}: "sponsor_of",
 	{SvcPerson, int(KindLink), 6}: "next_of_kin",
 	{SvcPerson, int(KindLink), 7}: "associated_with",
+	{SvcPerson, int(KindLink), 8}: "speaks",
 	// membership
 	{SvcMembership, int(KindObject), 1}: "position",
 	{SvcMembership, int(KindLink), 1}:   "member_of",
@@ -87,6 +89,14 @@ var typeNames = map[typeKey]string{
 	// location
 	{SvcLocation, int(KindObject), 1}: "country",
 	{SvcLocation, int(KindObject), 2}: "geo_place",
+	// language (M18 / D-Languages)
+	{SvcLanguage, int(KindObject), 1}: "languoid",
+	{SvcLanguage, int(KindObject), 2}: "writing_system",
+	{SvcLanguage, int(KindObject), 3}: "script_type",
+	{SvcLanguage, int(KindLink), 1}:   "written_in",
+	// cross-module language links (M18)
+	{SvcTenant, int(KindLink), 2}: "unit_language",
+	{SvcI18n, int(KindLink), 1}:   "locale_language",
 }
 
 // Bare person link-type names (the dispatch tokens), derived from the registry above.

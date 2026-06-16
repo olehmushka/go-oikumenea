@@ -121,6 +121,22 @@ func TestResidenceValidate(t *testing.T) {
 	}
 }
 
+func TestPersonLanguageValidate(t *testing.T) {
+	valid := "00000000-0000-0000-0000-000000000001"
+	if err := (PersonLanguage{LanguageID: valid, CEFRLevel: "B2", IsNative: true}).Validate(); err != nil {
+		t.Fatalf("valid person language: %v", err)
+	}
+	if err := (PersonLanguage{LanguageID: valid}).Validate(); err != nil {
+		t.Fatalf("empty cefr is allowed: %v", err)
+	}
+	if err := (PersonLanguage{}).Validate(); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("missing languageId should be invalid, got %v", err)
+	}
+	if err := (PersonLanguage{LanguageID: valid, CEFRLevel: "Z9"}).Validate(); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("bad cefr should be invalid, got %v", err)
+	}
+}
+
 func TestNameVariantValidate(t *testing.T) {
 	if err := (NameVariant{Locale: "eng", Name: Name{DisplayName: "John Doe"}}).Validate(); err != nil {
 		t.Fatalf("valid variant: %v", err)

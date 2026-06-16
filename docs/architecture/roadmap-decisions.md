@@ -192,10 +192,18 @@ person's **language proficiency**.
   `level='language'`, `cefr_level ∈ {A1…C2}` nullable, `is_native`; `pii:basic`, purge-erased);
   `tenant_unit_languages` (a unit's official/working language); `i18n_locale_languages` (a locale's
   canonical language).
-- **Population** — the bundled preset is the **full pinned Glottolog 5.3 CLDF snapshot** (~26k
-  languoids, `deploy/language-presets/glottolog-5.3.json`, **opt-in asset, never a migration**,
-  CC-BY-4.0 attribution carried), loaded through the **D-DataIngestion** `language-scheme` mapper; the
-  HTTP connector can pull a newer CLDF release on operator request.
+- **Population** — the migration **bootstraps the ~50 most-spoken languages** (`level='language'`,
+  required columns only; real glottocodes so the first import updates them in place) so the catalog is
+  usable on a fresh DB before any import — mirroring the `geo_countries` seed. Beyond that, by default
+  the sources fetch **live from upstream master each run** via hermenea's
+  `http-files` streaming connector + a Go transform: Glottolog CLDF (`languages.csv` + `values.csv`,
+  ~27k languoids) and CLDR (`supplementalData.xml` + `iso-639-3.tab`) are staged to disk and mapped by
+  the `CLDFMapper` / `SupplementalMapper` (the Go port of `deploy/language-presets/gen-presets.py`),
+  emitting the whole forest as one page (single transaction). The **bundled preset** (the pinned
+  Glottolog 5.3 CLDF snapshot, `deploy/language-presets/*.json`, opt-in asset / never a migration,
+  CC-BY-4.0 attribution carried) remains as the offline/air-gap `file`-connector fallback. Tracking
+  master trades reproducibility for freshness; a failed run is logged + retried + dead-lettered and
+  never corrupts the catalog (imports are transactional).
 
 **Why.** Language is a recurring analytics/linking dimension (who speaks what; a unit's working
 language; locale provenance). Modeling it on **Glottolog** — the de-facto standard genealogy with
@@ -211,8 +219,24 @@ right home. (d) *A `living` boolean*: loses Glottolog's graded AES endangerment.
 
 **Consequence.** New `language` module + tables above; person/tenant/localization gain language ties;
 new Object/Link kinds in [ontology-mapping](../ontology-mapping.md). First **D-DataIngestion** consumer.
-Lands as **M18** ([milestones](../milestones.md)), on M17 (+ M5/M2; M3 for the unit tie). Additive /
-expand-only.
+Lands as **M18** ([milestones](../milestones.md)), on M16 (the M17 pipeline, folded into M16) + M5/M2;
+M3 for the unit tie. Additive / expand-only.
+
+**Built (M18) — reconciliations.** Three details where the as-built code refines this decision (the
+code is authoritative once built; recorded here so the two don't drift):
+1. **RID PK, not `code` PK.** `language_languoids` (and `writing_systems`/`writing_system_script_types`)
+   are **RID-keyed** (`id` PK, service 13), with `code`/`iso639_3` retained as UNIQUE lookup keys —
+   consistent with **F-014/D-ResourceIdentifiers** making every structural entity RID-keyed (as
+   `geo_countries`/`geo_places` already are). The glottocode is still the universal external spine.
+2. **Writing systems are migration-seeded; the language↔script M:N is imported from CLDR.** Glottolog
+   has no script data and ISO-15924 is only a code registry, so `writing_systems` + `script_types` are
+   seeded in the migration (small/stable) and `language_writing_systems` is loaded by a second import
+   object-type, **`language-scripts`**, sourced from CLDR `languageData` (`is_primary`). The Glottolog
+   forest loads via the **`language-scheme`** object-type.
+3. **Import shape.** The ~27k-languoid snapshot loads in one in-memory, parent-first envelope (not paged)
+   so the closure + `family_code` rebuild sees the whole forest in one transaction; the bundled presets
+   (`deploy/language-presets/{glottolog-5.3.json,cldr-scripts.json}`) are reproducible via
+   `gen-presets.py`. UI is **deferred** (the `ui` gate).
 
 ---
 

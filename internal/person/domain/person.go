@@ -64,6 +64,10 @@ var (
 	ErrUnknownRelationshipKind = errors.New("unknown relationship kind")
 	ErrPartnershipConflict     = errors.New("a person already has an active engaged/married partnership")
 	ErrRelationshipConflict    = errors.New("an equivalent active relationship already exists")
+	// D-Languages (M18)
+	ErrUnknownLanguage     = errors.New("language does not exist or is not a level='language' languoid")
+	ErrLanguageNotFound    = errors.New("person language not found")
+	ErrLanguageConflict    = errors.New("the person already speaks this language")
 )
 
 // Social-account attribution vocabularies (D-PersonSocialChannels): source records how the account was
@@ -483,6 +487,34 @@ type SocialAccountHandle struct {
 	ValidTo   *time.Time
 }
 
+// validCEFR is the closed set of CEFR proficiency levels (an empty level means unstated).
+var validCEFR = map[string]bool{"A1": true, "A2": true, "B1": true, "B2": true, "C1": true, "C2": true}
+
+// PersonLanguage is a language a person speaks (D-Languages, M18; Link link__speaks). LanguageID is a
+// level='language' Glottolog languoid RID; LanguageName is the languoid's default-locale display name
+// (read from the join, used to assemble the locale->text map in transport). CEFRLevel is "" when
+// unstated. Keyed on (PersonID, LanguageID): an upsert updates the proficiency of an existing row.
+type PersonLanguage struct {
+	ID           string
+	PersonID     string
+	LanguageID   string
+	LanguageName string
+	CEFRLevel    string
+	IsNative     bool
+}
+
+// Validate enforces a non-empty language id and a known CEFR level (when supplied). The languoid's
+// existence and level='language' constraint are enforced by the composite FK in the database.
+func (l PersonLanguage) Validate() error {
+	if strings.TrimSpace(l.LanguageID) == "" {
+		return wrapInvalid("languageId is required")
+	}
+	if l.CEFRLevel != "" && !validCEFR[l.CEFRLevel] {
+		return wrapInvalid("cefrLevel must be one of A1|A2|B1|B2|C1|C2")
+	}
+	return nil
+}
+
 // ---------------------------------------------------------------- person↔person relationships (D-PersonRelationships, M14)
 
 // Relationship link-type tokens — the bare link type names the polymorphic delete dispatches on,
@@ -827,6 +859,13 @@ type Repository interface {
 	InsertSocialAccountHandle(ctx context.Context, h SocialAccountHandle) (SocialAccountHandle, error)
 	CloseCurrentSocialAccountHandle(ctx context.Context, accountID string) error
 	ListSocialAccountHandles(ctx context.Context, accountID string) ([]SocialAccountHandle, error)
+
+	// person languages (D-Languages, M18) — SPEAKS
+	InsertPersonLanguage(ctx context.Context, l PersonLanguage) error
+	UpdatePersonLanguage(ctx context.Context, l PersonLanguage) error
+	GetPersonLanguage(ctx context.Context, personID, languageID string) (PersonLanguage, error)
+	DeletePersonLanguage(ctx context.Context, personID, languageID string) error
+	ListPersonLanguages(ctx context.Context, personID string) ([]PersonLanguage, error)
 
 	// ---- person↔person relationships (D-PersonRelationships) ----
 

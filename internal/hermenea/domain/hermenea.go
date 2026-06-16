@@ -20,6 +20,12 @@ const (
 	// disk for the paged geo-places pipeline (D-GeoPlaces). It is a StreamingConnector: the payload is
 	// gigabytes of geometry, so it never lands in memory or the raw-batch BYTEA column.
 	ConnectorWOFSQLite = "wof-sqlite"
+	// ConnectorHTTPFiles streams a whitespace-separated LIST of URLs to a temp directory for the paged
+	// language pipeline (D-Languages, M18): the Glottolog CLDF (languages.csv + values.csv) and the CLDR
+	// language→script inputs (supplementalData.xml + iso-639-3.tab) are transformed live in Go on each
+	// run. A StreamingConnector — raw values.csv exceeds the 16 MiB in-memory cap, and an object-type
+	// needs several files, so the set is staged to disk and read by a PagedMapper.
+	ConnectorHTTPFiles = "http-files"
 )
 
 // Job types in the queue.
@@ -126,8 +132,9 @@ type Mapper interface {
 	Map(raw RawBatch) (records []map[string]any, err error)
 }
 
-// StagedSource is a large source landed to a local file rather than in memory (the wof-sqlite path).
-// Path is a temp file the pipeline removes via Cleanup once the run finishes.
+// StagedSource is a large source landed to local disk rather than in memory (the wof-sqlite path).
+// Path is a temp file (wof-sqlite) OR a temp directory of files (http-files, D-Languages); the pipeline
+// removes it via Cleanup once the run finishes.
 type StagedSource struct {
 	Path          string
 	SourceVersion string

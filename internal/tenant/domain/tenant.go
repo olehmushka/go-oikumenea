@@ -27,6 +27,10 @@ var (
 	ErrGraphCodeConflict = errors.New("graph code already exists")
 	ErrGraphInUse        = errors.New("graph is in use")
 	ErrGraphProtected    = errors.New("graph is protected")
+	// D-Languages (M18)
+	ErrUnknownLanguage      = errors.New("language does not exist")
+	ErrUnitLanguageNotFound = errors.New("unit language not found")
+	ErrUnitLanguageConflict = errors.New("the unit already has this language")
 )
 
 // CommandGraphCode is the seeded default + undeletable + locked-authority-bearing graph (D-Graphs).
@@ -215,4 +219,30 @@ type Repository interface {
 
 	// lifecycle
 	InsertLifecycleEvent(ctx context.Context, unitID string, from, to State, reason, actorPersonID, requestID string) error
+
+	// unit languages (D-Languages, M18) — official/working language
+	InsertUnitLanguage(ctx context.Context, l UnitLanguage) error
+	UpdateUnitLanguage(ctx context.Context, l UnitLanguage) error
+	GetUnitLanguage(ctx context.Context, unitID, languageID string) (UnitLanguage, error)
+	DeleteUnitLanguage(ctx context.Context, unitID, languageID string) error
+	ListUnitLanguages(ctx context.Context, unitID string) ([]UnitLanguage, error)
+}
+
+// UnitLanguage is a unit's official/working language (D-Languages, M18; Link link__unit_language).
+// LanguageName is the languoid's default-locale display name (read via join; transport assembles the
+// locale->text map). Keyed on (UnitID, LanguageID).
+type UnitLanguage struct {
+	ID           string
+	UnitID       string
+	LanguageID   string
+	LanguageName string
+	IsOfficial   bool
+}
+
+// Validate enforces a non-empty language id. The languoid's existence is enforced by the FK.
+func (l UnitLanguage) Validate() error {
+	if strings.TrimSpace(l.LanguageID) == "" {
+		return wrapInvalid("languageId is required")
+	}
+	return nil
 }

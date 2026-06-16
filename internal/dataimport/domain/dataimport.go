@@ -30,6 +30,18 @@ const ObjectTypeGeoCountries = "geo-countries"
 // placetype=country record additionally enriches the matching geo_countries row.
 const ObjectTypeGeoPlaces = "geo-places"
 
+// ObjectTypeLanguageScheme is the routing key for the Glottolog languoid forest (D-Languages, M18) —
+// the family/language/dialect tree (+ each languoid's country ties) loaded by the hermenea `glottolog`
+// mapper. Records arrive parent-first (the languoid `parent_id` FK is RESTRICT); after the batch the
+// handler rebuilds the transitive closure and the denormalized `family_code`.
+const ObjectTypeLanguageScheme = "language-scheme"
+
+// ObjectTypeLanguageScripts is the routing key for the CLDR language→writing-system links
+// (D-Languages, M18): which ISO-15924 script(s) a language is written in, and which is primary. The
+// languoids (language-scheme) and the ISO-15924 `writing_systems` catalog (migration-seeded) must
+// pre-exist; a link whose languoid or script does not resolve is skipped (not an error).
+const ObjectTypeLanguageScripts = "language-scripts"
+
 // Record is one object-type-specific record decoded from the canonical envelope (a JSON object). The
 // registered handler interprets its own shape.
 type Record = map[string]any
@@ -87,4 +99,47 @@ type GeoPlaceStore interface {
 	Insert(ctx context.Context, p GeoPlace, prov Provenance) error
 	UpdateImport(ctx context.Context, p GeoPlace, prov Provenance) error
 	EnrichCountry(ctx context.Context, p GeoPlace, prov Provenance) error
+}
+
+// Languoid is one Glottolog node decoded from a canonical-envelope record (D-Languages, M18). Parent is
+// carried as the parent's glottocode (resolved to its RID in SQL on upsert, parent-first ordering
+// required). Optional fields use pointers / empty-string for "absent". Countries are ISO-3166 alpha-2
+// codes (CLDF Country_IDs), resolved to geo_countries RIDs in SQL.
+type Languoid struct {
+	Code      string // glottocode (8-char), the import/idempotency key
+	Level     string // family | language | dialect
+	Name      string
+	Parent    string // parent glottocode ("" = root)
+	ISO639_3  string // optional ISO 639-3 ("" = absent)
+	Macroarea string
+	Latitude  *float64
+	Longitude *float64
+	Status    string   // AES endangerment (not_endangered…extinct); "" defaults to not_endangered
+	Countries []string // ISO-3166 alpha-2 country codes
+}
+
+// LanguoidStore is the port the language-scheme upsert handler drives (D-Languages). Idempotency is
+// keyed on source_version (like geo-places). The languoid's country ties are replaced on every
+// insert/update (ReplaceCountries). After the whole batch, RebuildClosure recomputes the transitive
+// closure and the denormalized family_code in SQL, and ReconcileLocaleLanguages links each supported
+// UI locale to the languoid carrying its ISO-639-3 code (D-i18n). Never deletes a languoid.
+type LanguoidStore interface {
+	GetVersion(ctx context.Context, code string) (sourceVersion string, found bool, err error)
+	Insert(ctx context.Context, l Languoid, prov Provenance) error
+	UpdateImport(ctx context.Context, l Languoid, prov Provenance) error
+	ReplaceCountries(ctx context.Context, code string, countryCodes []string) error
+	RebuildClosure(ctx context.Context) error
+	ReconcileLocaleLanguages(ctx context.Context) error
+}
+
+// LanguageScriptStore is the port the language-scripts upsert handler drives (D-Languages). A link ties
+// a languoid (resolved by its ISO 639-3 code) to a writing system (resolved by its ISO-15924 code);
+// either failing to resolve makes the handler skip the record. Idempotency is on the (languoid,
+// writing-system) pair: insert when absent, update when is_primary changed, skip otherwise.
+type LanguageScriptStore interface {
+	ResolveLanguoid(ctx context.Context, iso639_3 string) (id string, found bool, err error)
+	ResolveWritingSystem(ctx context.Context, code string) (id string, found bool, err error)
+	GetLinkPrimary(ctx context.Context, languoidID, writingSystemID string) (isPrimary bool, found bool, err error)
+	InsertLink(ctx context.Context, languoidID, writingSystemID string, isPrimary bool, prov Provenance) error
+	UpdateLink(ctx context.Context, languoidID, writingSystemID string, isPrimary bool, prov Provenance) error
 }

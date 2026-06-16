@@ -228,6 +228,10 @@ func (r *Repository) Purge(ctx context.Context, id string) (domain.Person, error
 	if err := r.q.DeleteAllSocialAccounts(ctx, id); err != nil {
 		return domain.Person{}, err
 	}
+	// person languages (D-Languages, M18) — pii:basic, erased on purge.
+	if err := r.q.DeleteAllPersonLanguages(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
 	// person↔person relationships (D-PersonRelationships) — erased on EITHER endpoint's purge.
 	if err := r.q.DeleteAllPartnerships(ctx, id); err != nil {
 		return domain.Person{}, err
@@ -831,6 +835,79 @@ func (r *Repository) ListSocialAccountHandles(ctx context.Context, accountID str
 	return out, nil
 }
 
+// ---------------------------------------------------------------- person languages (D-Languages, M18)
+
+func (r *Repository) InsertPersonLanguage(ctx context.Context, l domain.PersonLanguage) error {
+	if err := r.q.InsertPersonLanguage(ctx, personsql.InsertPersonLanguageParams{
+		PersonID:   l.PersonID,
+		LanguageID: l.LanguageID,
+		CefrLevel:  text(l.CEFRLevel),
+		IsNative:   l.IsNative,
+	}); err != nil {
+		return mapWriteErr(err)
+	}
+	return nil
+}
+
+func (r *Repository) UpdatePersonLanguage(ctx context.Context, l domain.PersonLanguage) error {
+	if err := r.q.UpdatePersonLanguage(ctx, personsql.UpdatePersonLanguageParams{
+		PersonID:   l.PersonID,
+		LanguageID: l.LanguageID,
+		CefrLevel:  text(l.CEFRLevel),
+		IsNative:   l.IsNative,
+	}); err != nil {
+		return mapWriteErr(err)
+	}
+	return nil
+}
+
+func (r *Repository) GetPersonLanguage(ctx context.Context, personID, languageID string) (domain.PersonLanguage, error) {
+	row, err := r.q.GetPersonLanguage(ctx, personsql.GetPersonLanguageParams{PersonID: personID, LanguageID: languageID})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.PersonLanguage{}, domain.ErrLanguageNotFound
+		}
+		return domain.PersonLanguage{}, err
+	}
+	return domain.PersonLanguage{
+		ID:           row.ID,
+		PersonID:     row.PersonID,
+		LanguageID:   row.LanguageID,
+		LanguageName: row.LanguageName,
+		CEFRLevel:    row.CefrLevel.String,
+		IsNative:     row.IsNative,
+	}, nil
+}
+
+func (r *Repository) DeletePersonLanguage(ctx context.Context, personID, languageID string) error {
+	if _, err := r.q.DeletePersonLanguage(ctx, personsql.DeletePersonLanguageParams{PersonID: personID, LanguageID: languageID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrLanguageNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) ListPersonLanguages(ctx context.Context, personID string) ([]domain.PersonLanguage, error) {
+	rows, err := r.q.ListPersonLanguages(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.PersonLanguage, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, domain.PersonLanguage{
+			ID:           row.ID,
+			PersonID:     row.PersonID,
+			LanguageID:   row.LanguageID,
+			LanguageName: row.LanguageName,
+			CEFRLevel:    row.CefrLevel.String,
+			IsNative:     row.IsNative,
+		})
+	}
+	return out, nil
+}
+
 // ---------------------------------------------------------------- mapping helpers
 
 func toPlatform(r personsql.OikumeneaPersonPlatform) domain.Platform {
@@ -1379,11 +1456,15 @@ func mapWriteErr(err error) error {
 			strings.Contains(name, "sponsorship"), strings.Contains(name, "next_of_kin"),
 			strings.Contains(name, "association"):
 			return domain.ErrRelationshipConflict
+		case strings.Contains(name, "person_languages"):
+			return domain.ErrLanguageConflict
 		case strings.Contains(name, "code"):
 			return domain.ErrCodeConflict
 		}
 	case "23503": // foreign_key_violation
 		switch {
+		case strings.Contains(name, "is_language"):
+			return domain.ErrUnknownLanguage
 		case strings.Contains(name, "relation_code"):
 			return domain.ErrUnknownRelationType
 		case strings.Contains(name, "rank"):

@@ -654,6 +654,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/language/v1/languages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List languoids in code order, optionally filtered by level, root family (glottocode), and a
+         * @description List languoids in code order, optionally filtered by level, root family (glottocode), and a
+         *     name/code substring. `limit` caps the page (default/clamped server-side) since the catalog is
+         *     large (~26k); narrow with the filters.
+         */
+        get: operations["LanguageService_listLanguages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/language/v1/languages/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fetch one languoid by its RID.
+         * @description Fetch one languoid by its RID.
+         */
+        get: operations["LanguageService_getLanguage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/language/v1/writing-systems": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the ISO-15924 writing systems in code order.
+         * @description List the ISO-15924 writing systems in code order.
+         */
+        get: operations["LanguageService_listWritingSystems"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/localization/v1/locale-languages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List each supported locale's canonical Glottolog language (D-Languages, M18). Read-only — the
+         * @description List each supported locale's canonical Glottolog language (D-Languages, M18). Read-only — the
+         *     links are reconciled by the language-scheme import, not edited here.
+         */
+        get: operations["LocalizationService_listLocaleLanguages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/localization/v1/locales": {
         parameters: {
             query?: never;
@@ -1392,6 +1475,51 @@ export interface paths {
         put: operations["PersonService_upsertKinship"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/person/v1/persons/{personId}/languages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the languages the person speaks (native first, then by name; D-Languages, M18).
+         * @description List the languages the person speaks (native first, then by name; D-Languages, M18).
+         */
+        get: operations["PersonService_listPersonLanguages"];
+        /**
+         * Add or update a language the person speaks (keyed on languageId). Returns Person:PersonInvalid
+         * @description Add or update a language the person speaks (keyed on languageId). Returns Person:PersonInvalid
+         *     when languageId does not resolve to a level='language' languoid or cefrLevel is invalid.
+         */
+        put: operations["PersonService_upsertPersonLanguage"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/person/v1/persons/{personId}/languages/{languageId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a language the person speaks, by languoid id. Idempotent within the active set.
+         * @description Remove a language the person speaks, by languoid id. Idempotent within the active set.
+         */
+        delete: operations["PersonService_deletePersonLanguage"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2281,6 +2409,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenant/v1/units/{unitId}/languages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a unit's official/working languages (D-Languages, M18).
+         * @description List a unit's official/working languages (D-Languages, M18).
+         */
+        get: operations["TenantService_listUnitLanguages"];
+        /**
+         * Add or update a unit's official/working language (keyed on languageId). Returns
+         * @description Add or update a unit's official/working language (keyed on languageId). Returns
+         *     Tenant:UnitInvalid when languageId does not resolve to a languoid.
+         */
+        put: operations["TenantService_upsertUnitLanguage"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenant/v1/units/{unitId}/languages/{languageId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a unit's language by languoid id. Idempotent within the active set.
+         * @description Remove a unit's language by languoid id. Idempotent within the active set.
+         */
+        delete: operations["TenantService_deleteUnitLanguage"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenant/v1/units/{unitId}/transition": {
         parameters: {
             query?: never;
@@ -3054,6 +3227,33 @@ export interface components {
             /** @description One of active | disestablished. */
             status: string;
         };
+        /** @description A node in the Glottolog forest. `id` is the RID (the reference key); `code` is the stable glottocode; `name` is the locale->text display map. */
+        Languoid: {
+            /** @description Glottocode (8-char), the stable, locale-agnostic lookup key (e.g. stan1293). */
+            code: string;
+            /** @description The root-family glottocode (derived via the closure). */
+            familyCode?: string;
+            /** @description The languoid's RID (language service); what person/unit/locale links reference. */
+            id: string;
+            /** @description ISO 639-3 code, when the languoid has one (families/dialects usually do not). */
+            iso6393?: string;
+            /** @description family | language | dialect. */
+            level: string;
+            /** @description Glottolog macroarea. */
+            macroarea?: string;
+            /** @description locale->text display name (all enabled locales; default-locale `name` column + i18n store). */
+            name: {
+                [key: string]: string;
+            };
+            /** @description The RID of the immediate parent languoid (absent for a top-level family / isolate). */
+            parentId?: string;
+            /** @description AES endangerment (not_endangered…extinct). */
+            status: string;
+        };
+        /** @description A page of languoids in code order. */
+        LanguoidList: {
+            languoids: components["schemas"]["Languoid"][];
+        };
         /** @description Link a verified (issuer, subject) login point to an account. */
         LinkIdentityRequest: {
             issuer: string;
@@ -3070,6 +3270,25 @@ export interface components {
             name: string;
             /** Format: int32 */
             sortOrder: number;
+        };
+        /**
+         * @description A supported locale's canonical Glottolog language (D-Languages, M18; Link link__locale_language).
+         *     Read-only: the link is reconciled by the language-scheme import (matching the locale's ISO-639-3
+         *     code to a languoid's iso639_3), not edited directly.
+         */
+        LocaleLanguage: {
+            /** @description The matched languoid's URN RID. */
+            languageId: string;
+            /** @description The locale's ISO 639-3 code. */
+            locale: string;
+            /** @description The languoid's translatable display name as a locale -> text map (all enabled locales; D-i18n). */
+            name: {
+                [key: string]: string;
+            };
+        };
+        /** @description The locale -> canonical-language links (D-Languages, M18). */
+        LocaleLanguageList: {
+            localeLanguages: components["schemas"]["LocaleLanguage"][];
         };
         /** @description The supported locales, in display order. */
         LocaleList: {
@@ -3341,6 +3560,26 @@ export interface components {
             title?: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        /**
+         * @description A language a person speaks (D-Languages, M18; Link link__speaks). languageId references a
+         *     level='language' Glottolog languoid (LanguageService); name is the languoid's translatable
+         *     display name (locale -> text map). cefrLevel is the optional CEFR proficiency; isNative flags a
+         *     mother tongue.
+         */
+        PersonLanguage: {
+            /** @description CEFR proficiency — one of A1 | A2 | B1 | B2 | C1 | C2; null when unstated. */
+            cefrLevel?: string;
+            id: string;
+            /** @description Whether this is a mother tongue. */
+            isNative: boolean;
+            /** @description The languoid's URN RID (a level='language' node; resolve via GET /language/v1/languages). */
+            languageId: string;
+            /** @description The languoid's translatable display name as a locale -> text map (all enabled locales; D-i18n). */
+            name: {
+                [key: string]: string;
+            };
+            personId: string;
         };
         /** @description A page of persons plus the opaque token for the next page (empty when exhausted). */
         PersonPage: {
@@ -3779,6 +4018,22 @@ export interface components {
             id: string;
             parentId: string;
         };
+        /**
+         * @description A unit's official/working language (D-Languages, M18; Link link__unit_language). languageId
+         *     references a Glottolog languoid (LanguageService); name is its translatable display name.
+         */
+        UnitLanguage: {
+            id: string;
+            /** @description Whether the language is official (vs. merely working) for the unit. */
+            isOfficial: boolean;
+            /** @description The languoid's URN RID (resolve via GET /language/v1/languages). */
+            languageId: string;
+            /** @description The languoid's translatable display name as a locale -> text map (all enabled locales; D-i18n). */
+            name: {
+                [key: string]: string;
+            };
+            unitId: string;
+        };
         /** @description A page of units plus the opaque token for the next page (empty when exhausted). */
         UnitPage: {
             nextPageToken?: string;
@@ -4066,6 +4321,14 @@ export interface components {
             /** @description engaged | married | divorced | widowed | annulled | dissolved. */
             status: string;
         };
+        /** @description Add or update a language the person speaks (keyed on languageId). cefrLevel/isNative are the proficiency attributes. */
+        UpsertPersonLanguageRequest: {
+            /** @description A1 | A2 | B1 | B2 | C1 | C2; omit to leave unstated. */
+            cefrLevel?: string;
+            isNative?: boolean;
+            /** @description The languoid's URN RID; must resolve to a level='language' Glottolog node. */
+            languageId: string;
+        };
         /** @description Add a contact phone, or replace one when id is supplied. number is E.164-normalized and country derived. */
         UpsertPhoneRequest: {
             /** @description The URN RID of an existing phone row to replace; omit to add a new row. */
@@ -4116,6 +4379,13 @@ export interface components {
             /** @description active | ended; defaults to active. */
             status?: string;
         };
+        /** @description Add or update a unit's official/working language (keyed on languageId). */
+        UpsertUnitLanguageRequest: {
+            /** @description Defaults to true (official); false marks a working language. */
+            isOfficial?: boolean;
+            /** @description The languoid's URN RID. */
+            languageId: string;
+        };
         /** @description Binary and schema revision the running server reports. */
         VersionInfo: {
             binaryRevision: string;
@@ -4151,6 +4421,23 @@ export interface components {
             sourceCode?: string;
             /** @description queued | running | succeeded | failed | dead. */
             status: string;
+        };
+        /** @description An ISO-15924 script. `id` is the RID; `code` is the ISO-15924 lookup code. */
+        WritingSystem: {
+            /** @description ISO-15924 code (e.g. Latn, Cyrl, Hani). */
+            code: string;
+            /** @description The writing system's RID (language service). */
+            id: string;
+            /** @description locale->text display name (all enabled locales; default-locale `name` column + i18n store). */
+            name: {
+                [key: string]: string;
+            };
+            /** @description logographic | syllabary | alphabet | abjad | abugida | featural. */
+            scriptType?: string;
+        };
+        /** @description The writing systems, in code order. */
+        WritingSystemList: {
+            writingSystems: components["schemas"]["WritingSystem"][];
         };
     };
     responses: never;
@@ -5471,6 +5758,134 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    LanguageService_listLanguages: {
+        parameters: {
+            query?: {
+                /** @description Filter to a level (family | language | dialect). */
+                level?: string;
+                /** @description Filter to descendants of this root-family glottocode (via family_code). */
+                family?: string;
+                /** @description Case-insensitive substring match on name or glottocode. */
+                query?: string;
+                /** @description Max rows to return (server clamps to a sane maximum). */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LanguoidList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    LanguageService_getLanguage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The languoid's RID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Languoid"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    LanguageService_listWritingSystems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WritingSystemList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    LocalizationService_listLocaleLanguages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocaleLanguageList"];
                 };
             };
             /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
@@ -7089,6 +7504,102 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Kinship"];
                 };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    PersonService_listPersonLanguages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonLanguage"][];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    PersonService_upsertPersonLanguage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertPersonLanguageRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonLanguage"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    PersonService_deletePersonLanguage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+                languageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
             default: {
@@ -8789,6 +9300,102 @@ export interface operations {
             header?: never;
             path: {
                 unitId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    TenantService_listUnitLanguages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                unitId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnitLanguage"][];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    TenantService_upsertUnitLanguage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                unitId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertUnitLanguageRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnitLanguage"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    TenantService_deleteUnitLanguage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                unitId: string;
+                languageId: string;
             };
             cookie?: never;
         };

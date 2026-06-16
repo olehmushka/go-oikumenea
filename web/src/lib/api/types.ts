@@ -137,6 +137,30 @@ export interface SocialAccount {
   confidence: string; // confirmed | probable | possible
   isPrimary?: boolean;
 }
+
+// D-Languages (M18)
+export interface PersonLanguage {
+  id: string;
+  personId: string;
+  languageId: string;
+  name?: LocaleMap; // the languoid's display name
+  cefrLevel?: string; // A1..C2
+  isNative: boolean;
+}
+
+export interface UnitLanguage {
+  id: string;
+  unitId: string;
+  languageId: string;
+  name?: LocaleMap;
+  isOfficial: boolean;
+}
+
+export interface LocaleLanguage {
+  locale: string;
+  languageId: string;
+  name?: LocaleMap;
+}
 /** A historical @handle for a social account (validTo null = current). */
 export interface SocialAccountHandle {
   id: string;

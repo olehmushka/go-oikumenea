@@ -25,6 +25,11 @@ func New(baseURL, token string, insecureTLS bool) (*Oikumenea, error) {
 	params := []httpclient.ClientParam{
 		httpclient.WithBaseURLs([]string{baseURL}),
 		httpclient.WithMaxRetries(0), // hermenea's queue owns retry/backoff
+		// No fixed client deadline: an in-memory scheme (e.g. the ~27k-languoid language-scheme,
+		// D-Languages) is one big POST whose server side rebuilds the closure + family_code in a single
+		// transaction — well past conjure's 60s default. The request is bounded by the job-timeout
+		// context (worker.job-timeout-ms) instead, mirroring the connector's large-download philosophy.
+		httpclient.WithHTTPTimeout(0),
 	}
 	if insecureTLS {
 		params = append(params, httpclient.WithTLSInsecureSkipVerify())
