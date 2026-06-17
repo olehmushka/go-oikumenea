@@ -195,7 +195,7 @@ func (o *MembershipPage) UnmarshalYAML(unmarshal func(interface{}) error) error 
 /*
 A unit-owned billet (D-Position) — an Object that exists whether or not anyone fills it (a
 VACANCY is an active position with no active filling). Position grants no authority. The
-current holder is populated by getPosition and is null in list responses.
+current holder is populated by getPosition and by listPositions (null when vacant).
 */
 type Position struct {
 	// The position's URN RID (carried as a plain string).
@@ -212,7 +212,7 @@ type Position struct {
 	Status string `json:"status"`
 	// App-managed display order within the unit.
 	SortOrder *int `json:"sortOrder,omitempty"`
-	// The current active filling, if any. Populated by getPosition; null in list responses.
+	// The current active filling, if any. Populated by getPosition and listPositions; null when vacant.
 	Holder    *Membership       `json:"holder,omitempty"`
 	CreatedAt datetime.DateTime `json:"createdAt"`
 	UpdatedAt datetime.DateTime `json:"updatedAt"`

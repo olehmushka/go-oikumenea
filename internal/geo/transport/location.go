@@ -7,6 +7,7 @@ package transport
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"strconv"
 
@@ -53,11 +54,11 @@ func (s LocationService) CreateLocation(ctx context.Context, token bearertoken.T
 	if err := s.pep.RequireAnywhere(ctx, token, locCreatePerm); err != nil {
 		return locationapi.Location{}, err
 	}
-	w, err := toWrite(req)
+	in, err := toInput(req)
 	if err != nil {
 		return locationapi.Location{}, err
 	}
-	loc, err := s.app.CreateLocation(ctx, w)
+	loc, err := s.app.CreateLocation(ctx, in)
 	if err != nil {
 		return locationapi.Location{}, s.mapError(ctx, err, "")
 	}
@@ -68,11 +69,11 @@ func (s LocationService) UpdateLocation(ctx context.Context, token bearertoken.T
 	if err := s.pep.RequireAnywhere(ctx, token, locUpdatePerm); err != nil {
 		return locationapi.Location{}, err
 	}
-	w, err := toWrite(req)
+	in, err := toInput(req)
 	if err != nil {
 		return locationapi.Location{}, err
 	}
-	loc, err := s.app.UpdateLocation(ctx, locationID, w)
+	loc, err := s.app.UpdateLocation(ctx, locationID, in)
 	if err != nil {
 		return locationapi.Location{}, s.mapError(ctx, err, locationID)
 	}
@@ -170,16 +171,15 @@ func (s LocationService) ListLocationTypes(ctx context.Context, token bearertoke
 
 // ---------------------------------------------------------------- mapping
 
-// toWrite maps the wire payload to the domain write, enforcing the coordinate-required rule (the
-// latitude/longitude are optional on the wire so a missing coordinate is a domain error, not a
-// deserialization failure).
-func toWrite(req locationapi.LocationWrite) (domain.LocationWrite, error) {
-	if req.Latitude == nil || req.Longitude == nil {
-		return domain.LocationWrite{}, locationapi.NewCoordinateRequired()
+// toInput maps the wire payload to the domain input, enforcing the coordinate-required rule (the
+// coordinate is optional on the wire so a missing coordinate is a domain error, not a deserialization
+// failure). The application resolves the coordinate to WGS84 and derives the MGRS.
+func toInput(req locationapi.LocationWrite) (domain.LocationInput, error) {
+	if req.Coordinate == nil {
+		return domain.LocationInput{}, locationapi.NewCoordinateRequired()
 	}
-	return domain.LocationWrite{
-		Latitude:    *req.Latitude,
-		Longitude:   *req.Longitude,
+	return domain.LocationInput{
+		Coordinate:  toDomainCoord(*req.Coordinate),
 		CountryID:   req.CountryId,
 		AdminArea1:  req.AdminArea1,
 		AdminArea2:  req.AdminArea2,
@@ -190,6 +190,27 @@ func toWrite(req locationapi.LocationWrite) (domain.LocationWrite, error) {
 		RawAddress:  req.RawAddress,
 		TypeID:      req.TypeId,
 	}, nil
+}
+
+// toDomainCoord / fromDomainCoord bridge the Conjure CoordinateInput and the domain CoordinateInput
+// (identical field shapes; the conversion logic lives in the domain).
+func toDomainCoord(c locationapi.CoordinateInput) domain.CoordinateInput {
+	return domain.CoordinateInput{
+		Format: c.Format, Latitude: c.Latitude, Longitude: c.Longitude, MGRS: c.Mgrs,
+		Zone: c.Zone, Hemisphere: c.Hemisphere, Easting: c.Easting, Northing: c.Northing, Grid: c.Grid,
+	}
+}
+
+// fromDomainCoord unmarshals the stored source coordinate (json.RawMessage) back into the wire type.
+func fromDomainCoord(raw []byte) *locationapi.CoordinateInput {
+	if len(raw) == 0 {
+		return nil
+	}
+	var c locationapi.CoordinateInput
+	if err := json.Unmarshal(raw, &c); err != nil || c.Format == "" {
+		return nil
+	}
+	return &c
 }
 
 // toAPI converts one domain Location, loading the place-type name maps so a typed location carries its
@@ -217,25 +238,22 @@ func (s LocationService) typeNames(ctx context.Context) (map[string]map[string]s
 
 func toAPILocation(l domain.Location, typeNames map[string]map[string]string) locationapi.Location {
 	out := locationapi.Location{
-		Id:          l.ID,
-		Latitude:    l.Latitude,
-		Longitude:   l.Longitude,
-		Mgrs:        l.MGRS,
-		H3Res5:      l.H3Res5,
-		H3Res7:      l.H3Res7,
-		H3Res9:      l.H3Res9,
-		H3Res11:     l.H3Res11,
-		CountryId:   l.CountryID,
-		AdminArea1:  l.AdminArea1,
-		AdminArea2:  l.AdminArea2,
-		Locality:    l.Locality,
-		Street:      l.Street,
-		HouseNumber: l.HouseNumber,
-		PostalCode:  l.PostalCode,
-		RawAddress:  l.RawAddress,
-		TypeId:      l.TypeID,
-		CreatedAt:   datetime.DateTime(l.CreatedAt),
-		UpdatedAt:   datetime.DateTime(l.UpdatedAt),
+		Id:               l.ID,
+		Latitude:         l.Latitude,
+		Longitude:        l.Longitude,
+		Mgrs:             l.MGRS,
+		SourceCoordinate: fromDomainCoord(l.SourceCoordinate),
+		CountryId:        l.CountryID,
+		AdminArea1:       l.AdminArea1,
+		AdminArea2:       l.AdminArea2,
+		Locality:         l.Locality,
+		Street:           l.Street,
+		HouseNumber:      l.HouseNumber,
+		PostalCode:       l.PostalCode,
+		RawAddress:       l.RawAddress,
+		TypeId:           l.TypeID,
+		CreatedAt:        datetime.DateTime(l.CreatedAt),
+		UpdatedAt:        datetime.DateTime(l.UpdatedAt),
 	}
 	if l.TypeID != nil {
 		if nm, ok := typeNames[*l.TypeID]; ok {
@@ -251,7 +269,9 @@ func (s LocationService) mapError(ctx context.Context, err error, locationID str
 		return locationapi.NewLocationNotFound(locationID)
 	case errors.Is(err, domain.ErrLocationInUse):
 		return locationapi.NewLocationInUse(locationID)
-	case errors.Is(err, domain.ErrCoordinateOutOfRange), errors.Is(err, domain.ErrInvalidLocation):
+	case errors.Is(err, domain.ErrCoordinateInvalid), errors.Is(err, domain.ErrCoordinateOutOfRange):
+		return locationapi.NewCoordinateInvalid()
+	case errors.Is(err, domain.ErrInvalidLocation):
 		return locationapi.NewCoordinateRequired()
 	}
 	return werror.WrapWithContextParams(ctx, err, "location operation failed")

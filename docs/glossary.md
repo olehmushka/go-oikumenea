@@ -450,9 +450,11 @@ recursive `language_languoids` table; a person `SPEAKS` a `language`-level langu
 **Writing system.** An ISO 15924 script (D-Languages, M18) a languoid is `WRITTEN_IN`; classified by a
 **script type** (logographic/syllabary/alphabet/abjad/abugida/featural).
 
-**Location.** A shared, standalone place (D-Location, M19): a **required** WGS84 coordinate with
-DB-derived **MGRS** + **H3** indexes (PostGIS + h3-pg) plus a structured postal address over the country
-registry. Education buildings/dorms and company addresses reference it by FK.
+**Location.** A shared, standalone place (D-Location, M19): a **required** WGS84 coordinate (PostGIS
+`GEOGRAPHY` point) with an **app-derived MGRS** and the original input preserved in `source_coordinate`,
+plus a structured postal address over the country registry. The coordinate may be supplied in several
+formats (lat/lon, MGRS, UTM, СК-42); radius/bbox search uses PostGIS `ST_DWithin`. Education
+buildings/dorms and company addresses reference it by FK.
 
 **Educational institution.** An external reference org (D-Education, M20) — kindergarten…academy — with a
 recursive internal **structure tree** (campus/faculty/department/chair), **buildings** (Locations), and

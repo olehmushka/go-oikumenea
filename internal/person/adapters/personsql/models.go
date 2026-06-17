@@ -404,11 +404,9 @@ type OikumeneaLocationLocation struct {
 	// pii:none
 	Geom interface{}
 	// pii:none
-	Mgrs    pgtype.Text
-	H3Res5  pgtype.Text
-	H3Res7  pgtype.Text
-	H3Res9  pgtype.Text
-	H3Res11 pgtype.Text
+	Mgrs pgtype.Text
+	// pii:none
+	SourceCoordinate []byte
 	// pii:none
 	CountryID   string
 	AdminArea1  pgtype.Text

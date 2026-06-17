@@ -11,16 +11,16 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 )
 
-// requiredExtensions are the PostGIS/H3 operator-DB prerequisites the spatial features need: PostGIS
-// for the WOF gazetteer (D-GeoPlaces) + the Location point model (D-Location), and h3 / h3_postgis for
-// the DB-derived H3 cells (D-Location, M19 — provisioned by Dockerfile.postgres). Readiness refuses if
-// any is absent, so a stock postgis image (no h3-pg) is caught at boot rather than at first write.
-var requiredExtensions = []string{"postgis", "h3", "h3_postgis"}
+// requiredExtensions are the operator-DB prerequisites the spatial features need: PostGIS for the WOF
+// gazetteer (D-GeoPlaces) + the Location point model + radius/bbox queries (D-Location). MGRS is derived
+// in the application (pure Go), so no h3-pg or other extension is required — the stock postgis image
+// suffices. Readiness refuses if PostGIS is absent, catching a non-PostGIS image at boot.
+var requiredExtensions = []string{"postgis"}
 
 // ReadinessSource gates /status/readiness on three conditions (upgrade-safety.md):
 //   - the operator database is reachable,
 //   - its applied schema revision matches what this binary expects (refuse on newer/unknown), and
-//   - the required PostGIS/H3 extensions are installed.
+//   - the required PostGIS extension is installed.
 //
 // It implements witchcraft-go-health status.Source: Status() returns 200 when ready, 503 otherwise.
 type ReadinessSource struct {
@@ -67,8 +67,8 @@ func (r ReadinessSource) Status() (int, interface{}) {
 		meta.Reason = "extension check failed"
 		return http.StatusServiceUnavailable, meta
 	} else if missing != "" {
-		// The operator DB lacks a required spatial extension (e.g. a stock postgis image without
-		// h3-pg) — refuse readiness rather than fail at the first H3 derivation.
+		// The operator DB lacks PostGIS (e.g. a plain postgres image) — refuse readiness rather than
+		// fail at the first spatial write.
 		meta.Reason = "missing extension: " + missing
 		return http.StatusServiceUnavailable, meta
 	}

@@ -240,38 +240,59 @@ code is authoritative once built; recorded here so the two don't drift):
 
 ---
 
-### D-Location — A shared, standalone Location entity (PostGIS + H3; reverses the `drafts/` geography drop)
+### D-Location — A shared, standalone Location entity (PostGIS; app-derived MGRS; multi-format input)
 
 **Decision.** A new **`location`** module provides one **standalone** place entity that anything with a
 location references by FK. **`location_locations`** carries a **required** `geom GEOGRAPHY(POINT, 4326)`
-(**PostGIS**), **DB-derived** MGRS string + **H3 indexes** (a small set of resolutions) via DB
-functions/triggers using the **PostGIS + h3-pg** extensions, and a structured postal address:
-`country_code` (NOT NULL → `geo_countries`, D-Geo), `admin_area_1`/`admin_area_2`, `locality`, `street`,
-`house_number`, `postal_code`, `raw_address`; soft-delete; a spatial GIST index. A `LocationService`
-offers CRUD + radius (`ST_DWithin`) queries. The operator DB must carry the **PostGIS + h3-pg**
-extensions; the schema-bootstrap enables them and the readiness gate checks for them. This **reverses
-the explicit `drafts/` drop of `location`/PostGIS/H3/geography** — re-adopted with rationale, exactly as
-D-WebUI re-adopted the UI.
+(**PostGIS**), an **app-derived** MGRS string (pure Go, written on every coordinate change; nullable for
+polar UPS points), the original input coordinate in a **`source_coordinate` JSONB** column, and a
+structured postal address: `country_id` (NOT NULL → `geo_countries`, D-Geo), `admin_area_1`/
+`admin_area_2`, `locality`, `street`, `house_number`, `postal_code`, `raw_address`; soft-delete; a
+spatial GIST index. A `LocationService` offers CRUD + radius/bbox (`ST_DWithin`) queries. The coordinate
+is accepted in **several formats** — WGS84 lat/lon, MGRS, UTM, СК-42 (Gauss-Krüger, numeric + grid) —
+via a **pluggable converter registry** (`internal/geo/domain/coordinate.go`); the application converts
+each to canonical WGS84, derives the MGRS, and persists the original input. **PostGIS is the only
+operator-DB prerequisite** (the stock postgis image); the schema-bootstrap enables it and the readiness
+gate checks for it. This **reverses the explicit `drafts/` drop of `location`/PostGIS/geography** —
+re-adopted with rationale, exactly as D-WebUI re-adopted the UI.
+
+**Amendment (2026-06-17).** The original decision derived **MGRS + H3** in the DB via the **h3-pg**
+extension and a plpgsql `location_mgrs()` function/trigger, and accepted only WGS84 lat/lon input. This
+was amended: **H3 is dropped entirely** (its sole intended use was efficient radius search, which PostGIS
+already serves exactly via `ST_DWithin` on the GiST index — H3 is redundant given a real spatial index),
+**MGRS moves to the application** (pure Go, no cgo, no DB extension), the coordinate gains **multi-format
+input + `source_coordinate`**, and the operator image reverts from the custom `Dockerfile.postgres`
+(postgis + h3-pg) to the **stock postgis image**. The change was applied by editing the M19 migration
+`0019_location` in place (no new migration; the location tables had no production data).
 
 **Why.** Both the education domain (buildings, campuses, dormitories — D-Education) and companies
 (registered/operating addresses — D-Companies) need precise, queryable places, and the project's
 analytics ambition ("better information for building relations & graphs") wants real spatial indexing.
 A single shared entity dedupes addresses and enables "everything near point X" once, instead of
-re-inventing address columns per owner. PostGIS + h3-pg are the standard spatial stack; deriving
-MGRS/H3 in the DB keeps them consistent with the authoritative geometry.
+re-inventing address columns per owner. PostGIS `ST_DWithin` + GiST is the standard, efficient radius/kNN
+stack; deriving MGRS in the app keeps the spatial dependency to PostGIS alone (no cgo, no custom image),
+and supporting multiple input formats lets operators enter coordinates as they have them (e.g. MGRS or
+СК-42 off a military map) without pre-converting.
 
 **Why not** (a) *Embedded address columns per owner*: duplicates schema, blocks cross-entity spatial
 queries and dedup. (b) *App-layer geometry, plain columns*: loses native spatial indexing / radius
-queries (`ST_DWithin`). (c) *Coordinate optional*: the deployments here want spatial analytics, so the
-coordinate is the required spine and a precise point is mandated (address-only records are out of
-scope — geocode first). (d) *Stay faithful to the `drafts/` drop*: that drop was for a
-church-discovery scope; the army/university analytics scope genuinely needs geography.
+queries (`ST_DWithin`) — so the authoritative `geom` stays PostGIS. (c) *Coordinate optional*: the
+deployments here want spatial analytics, so the coordinate is the required spine and a precise point is
+mandated (address-only records are out of scope — geocode first). (d) *Keep H3 / derive in DB*: H3 adds
+an operator-DB extension (custom image) and a cgo binding for no benefit over the GiST `ST_DWithin` path;
+deriving MGRS in plpgsql couples the operator image to h3-pg unnecessarily. (e) *Stay faithful to the
+`drafts/` drop*: that drop was for a church-discovery scope; the army/university analytics scope
+genuinely needs geography.
 
-**Consequence.** New `location` module + `location_locations`; PostGIS + h3-pg become operator-DB
-prerequisites (bootstrap + readiness gate, [platform](../modules/platform.md)); the L-Conventions enum
+**Consequence.** New `location` module + `location_locations`; **PostGIS** becomes the operator-DB
+prerequisite (bootstrap + readiness gate, [platform](../modules/platform.md)); the L-Conventions enum
 note is unaffected. New Object kind `Location` in [ontology-mapping](../ontology-mapping.md). The
-"Explicitly dropped from `drafts/`" list is updated to mark geography **re-adopted**. Lands as **M19**
-([milestones](../milestones.md)); a foundation for M20 + M21. Additive / expand-only.
+"Explicitly dropped from `drafts/`" list is updated to mark geography **re-adopted** (H3 stays dropped).
+The planned religion `public_precision` projection (D-Religion, M22) was sketched as a coarsening to an
+H3 cell at read time; with H3 no longer in the stack it must adopt an app-side coarsening (e.g. rounding
+the coordinate / a geohash, or computing a single cell in Go) when M22 lands — a planned-tier seam, not a
+built dependency. Lands as **M19** ([milestones](../milestones.md)); a foundation for M20 + M21. Additive
+/ expand-only.
 
 ---
 

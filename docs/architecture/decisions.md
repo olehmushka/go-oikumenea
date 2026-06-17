@@ -1575,7 +1575,7 @@ milestone enters implementation. In milestone order they are:
 - **D-Worker** (M16 — background-job runtime; promotes DS-25)
 - **D-DataIngestion** (M17 — generic reference-data ingestion & connector framework)
 - **D-Languages** (M18 — Glottolog-faithful language/writing-system registry)
-- **D-Location** (M19 — shared standalone Location entity; PostGIS + H3)
+- **D-Location** (M19 — shared standalone Location entity; PostGIS; app-derived MGRS; multi-format input)
 - **D-Education** (M20 — institutions, structure & person bindings)
 - **D-Companies** (M21 — legal-entity registry + ownership/affiliation graph)
 - **D-Religion** (M22–M25 — multi-faith taxonomy, organization graphs & discovery)
@@ -1635,10 +1635,11 @@ Russian-locale rules)~~ (**superseded by [D-Religion](#d-religion--a-multi-faith
 re-adopted as a **multi-faith**, **catalog-driven** `religion` module: the dropped Christianity-shaped
 concepts return generalized to *all* faiths with no hard-coded vocabulary, the Nicene gate replaced by
 a generic data-driven org-policy, and the ROC/Russian-locale rules **not** carried over); the org-type
-discriminator; per-tenant rank adoption; `content` (pages/blocks/i18n — stays in the consuming app); ~~`location`/PostGIS/H3/geography~~ (**superseded by
-[D-Location](#d-location--a-shared-standalone-location-entity-postgis--h3-reverses-the-drafts-geography-drop)** —
+discriminator; per-tenant rank adoption; `content` (pages/blocks/i18n — stays in the consuming app); ~~`location`/PostGIS/geography~~ (**superseded by
+[D-Location](roadmap-decisions.md#d-location--a-shared-standalone-location-entity-postgis-app-derived-mgrs-multi-format-input)** —
 re-adopted as a shared, standalone `location` module because the army/university analytics scope genuinely
-needs queryable geography, unlike the original church-discovery scope); `vouching`/web-of-trust; content
+needs queryable geography, unlike the original church-discovery scope; H3 stays dropped — MGRS is derived
+app-side, radius search uses PostGIS `ST_DWithin`); `vouching`/web-of-trust; content
 `moderation`/policy engine; `integrations`/scrapers; the OAuth **credential vault** (auth is
 delegated — we validate, we do not store secrets); `uber/fx`; ~~the Next.js UI (API-only)~~
 (**superseded by [D-WebUI](#d-webui--an-optional-standalone-nextjs-admin-ui-reverses-the-api-only-no-ui-drop)** —

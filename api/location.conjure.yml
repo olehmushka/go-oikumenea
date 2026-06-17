@@ -1,6 +1,6 @@
 # Location module API (M19 / D-Location). A shared, standalone place entity: a precise
 # GEOGRAPHY(POINT,4326) coordinate + a structured postal address over the geo_countries registry, with
-# DB-derived MGRS + H3 spatial indexes. Anything with a location (M20 buildings, M21 addresses,
+# an app-derived MGRS index. Anything with a location (M20 buildings, M21 addresses,
 # religion sites) references a location by its RID and owns visibility/precision/purpose on its own
 # link — a location itself carries no owner. Lives beside the read-only GeoService on the `location`
 # RID service (12); unlike GeoService, LocationService is a full audited CRUD surface.
@@ -13,8 +13,42 @@ types:
   definitions:
     default-package: oikumenea.location
     objects:
+      CoordinateInput:
+        docs: |
+          A coordinate in one of several supported formats. The application converts it to a canonical
+          WGS84 lat/lon, derives the MGRS, and preserves this input verbatim as the location's
+          sourceCoordinate. `format` selects which fields are read (the others are ignored); the
+          converter set is a pluggable registry, so more formats can be added without a schema change.
+        fields:
+          format:
+            type: string
+            docs: One of latlon | mgrs | utm | sk42 | sk42grid.
+          latitude:
+            type: optional<double>
+            docs: WGS84 latitude (format=latlon).
+          longitude:
+            type: optional<double>
+            docs: WGS84 longitude (format=latlon).
+          mgrs:
+            type: optional<string>
+            docs: MGRS grid reference, e.g. 36UUA2418291607 (format=mgrs).
+          zone:
+            type: optional<integer>
+            docs: UTM or СК-42 (Gauss-Krüger) zone number (format=utm|sk42).
+          hemisphere:
+            type: optional<string>
+            docs: N | S, the UTM hemisphere (format=utm).
+          easting:
+            type: optional<double>
+            docs: Easting in metres (format=utm|sk42).
+          northing:
+            type: optional<double>
+            docs: Northing in metres (format=utm|sk42).
+          grid:
+            type: optional<string>
+            docs: СК-42 grid-square reference (format=sk42grid).
       Location:
-        docs: A shared place — a precise coordinate, DB-derived spatial indexes, and a structured postal address.
+        docs: A shared place — a precise coordinate, an app-derived MGRS, and a structured postal address.
         fields:
           id:
             type: string
@@ -27,19 +61,10 @@ types:
             docs: WGS84 longitude of the authoritative coordinate.
           mgrs:
             type: optional<string>
-            docs: DB-derived MGRS grid reference (absent for polar UPS coordinates, out of scope).
-          h3Res5:
-            type: optional<string>
-            docs: DB-derived H3 cell at resolution 5 (~9km).
-          h3Res7:
-            type: optional<string>
-            docs: DB-derived H3 cell at resolution 7 (~1.2km).
-          h3Res9:
-            type: optional<string>
-            docs: DB-derived H3 cell at resolution 9 (~150m).
-          h3Res11:
-            type: optional<string>
-            docs: DB-derived H3 cell at resolution 11 (~20m).
+            docs: App-derived MGRS grid reference (absent for polar UPS coordinates, out of scope).
+          sourceCoordinate:
+            type: optional<CoordinateInput>
+            docs: The coordinate as originally supplied (its format + raw values), preserved verbatim.
           countryId:
             type: string
             docs: The country's RID (resolve an ISO alpha-2 code via GET /geo/countries).
@@ -69,14 +94,14 @@ types:
             type: datetime
       LocationWrite:
         docs: |
-          Create/replace payload for a location. latitude+longitude are the required spine (validated in
-          the application, not the wire, so a missing coordinate returns Location:CoordinateRequired
-          rather than a deserialization error). MGRS + H3 are never supplied — they are DB-derived.
+          Create/replace payload for a location. `coordinate` is the required spine (validated in the
+          application, not the wire, so a missing/unparseable coordinate returns Location:CoordinateRequired
+          or Location:CoordinateInvalid rather than a deserialization error). MGRS is never supplied — it
+          is app-derived from the resolved WGS84 coordinate.
         fields:
-          latitude:
-            type: optional<double>
-          longitude:
-            type: optional<double>
+          coordinate:
+            type: optional<CoordinateInput>
+            docs: The coordinate in any supported format; required (absence → Location:CoordinateRequired).
           countryId:
             type: string
             docs: The country's RID (required).
@@ -122,7 +147,11 @@ types:
       CoordinateRequired:
         namespace: Location
         code: INVALID_ARGUMENT
-        docs: A location requires a coordinate (latitude + longitude); address-only records are out of scope.
+        docs: A location requires a coordinate; address-only records are out of scope.
+      CoordinateInvalid:
+        namespace: Location
+        code: INVALID_ARGUMENT
+        docs: The supplied coordinate could not be parsed/converted to WGS84, or resolves out of range.
       QueryWindowRequired:
         namespace: Location
         code: INVALID_ARGUMENT
@@ -147,11 +176,12 @@ services:
     docs: |
       CRUD + spatial queries over the shared location entity (D-Location). A location has no unit scope
       of its own; reads/writes are satisfied anywhere via the PEP (location.read/create/update,
-      location.types.manage). MGRS + H3 are DB-derived and recomputed on every coordinate change.
+      location.types.manage). The coordinate may be supplied in several formats; the application converts
+      it to WGS84 and derives the MGRS on every coordinate change. Radius/bbox use PostGIS ST_DWithin.
     endpoints:
       createLocation:
         http: POST /locations
-        docs: Create a location from a coordinate (+ address); derives MGRS/H3. Location:CoordinateRequired when the coordinate is missing.
+        docs: Create a location from a coordinate (any supported format) + address; derives MGRS. Location:CoordinateRequired when the coordinate is missing.
         args:
           request:
             type: LocationWrite
@@ -167,7 +197,7 @@ services:
         returns: Location
       updateLocation:
         http: PUT /locations/{locationId}
-        docs: Replace a location's coordinate/address/type (re-derives MGRS/H3 on the coordinate).
+        docs: Replace a location's coordinate/address/type (re-derives MGRS on the coordinate).
         args:
           locationId:
             type: string

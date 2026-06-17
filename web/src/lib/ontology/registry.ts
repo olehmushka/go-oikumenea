@@ -670,7 +670,7 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
     label: "Location",
     labelPlural: "Locations",
     module: "location",
-    blurb: "A shared, standalone place: a coordinate + DB-derived MGRS/H3 + a structured address. Browse from the Locations page (a spatial query is required).",
+    blurb: "A shared, standalone place: a coordinate + an app-derived MGRS + a structured address. Browse from the Locations page (a spatial query is required).",
     // No unconditional list (listLocations needs a radius/bbox window) — get/properties so the object
     // view & graph badges work; the Locations page is the browse/create surface.
     get: (id) => `/location/v1/locations/${id}`,
@@ -686,8 +686,7 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
       { label: "Latitude", value: (l) => s(l.latitude), render: "mono" },
       { label: "Longitude", value: (l) => s(l.longitude), render: "mono" },
       { label: "MGRS", value: (l) => s(l.mgrs), render: "mono" },
-      { label: "H3 (r5)", value: (l) => s(l.h3Res5), render: "mono" },
-      { label: "H3 (r9)", value: (l) => s(l.h3Res9), render: "mono" },
+      { label: "Source format", value: (l) => s((l.sourceCoordinate as { format?: string } | undefined)?.format), render: "mono" },
       { label: "Type", value: (l) => loc(l.typeName) || undefined },
       { label: "Country", value: (l) => (l.countryId ? ridTail(s(l.countryId)!) : undefined), render: "mono" },
       { label: "Locality", value: (l) => s(l.locality) },

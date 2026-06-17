@@ -15,7 +15,7 @@ const getLocation = `-- name: GetLocation :one
 SELECT id,
   ST_Y(geom::geometry)::double precision AS latitude,
   ST_X(geom::geometry)::double precision AS longitude,
-  mgrs, h3_res_5, h3_res_7, h3_res_9, h3_res_11, country_id,
+  mgrs, source_coordinate, country_id,
   admin_area_1, admin_area_2, locality, street, house_number, postal_code, raw_address,
   type_id, created_at, updated_at
 FROM oikumenea.location_locations
@@ -23,25 +23,22 @@ WHERE id = $1 AND deleted_at IS NULL
 `
 
 type GetLocationRow struct {
-	ID          string
-	Latitude    float64
-	Longitude   float64
-	Mgrs        pgtype.Text
-	H3Res5      pgtype.Text
-	H3Res7      pgtype.Text
-	H3Res9      pgtype.Text
-	H3Res11     pgtype.Text
-	CountryID   string
-	AdminArea1  pgtype.Text
-	AdminArea2  pgtype.Text
-	Locality    pgtype.Text
-	Street      pgtype.Text
-	HouseNumber pgtype.Text
-	PostalCode  pgtype.Text
-	RawAddress  pgtype.Text
-	TypeID      pgtype.Text
-	CreatedAt   pgtype.Timestamptz
-	UpdatedAt   pgtype.Timestamptz
+	ID               string
+	Latitude         float64
+	Longitude        float64
+	Mgrs             pgtype.Text
+	SourceCoordinate []byte
+	CountryID        string
+	AdminArea1       pgtype.Text
+	AdminArea2       pgtype.Text
+	Locality         pgtype.Text
+	Street           pgtype.Text
+	HouseNumber      pgtype.Text
+	PostalCode       pgtype.Text
+	RawAddress       pgtype.Text
+	TypeID           pgtype.Text
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
 }
 
 func (q *Queries) GetLocation(ctx context.Context, id string) (GetLocationRow, error) {
@@ -52,10 +49,7 @@ func (q *Queries) GetLocation(ctx context.Context, id string) (GetLocationRow, e
 		&i.Latitude,
 		&i.Longitude,
 		&i.Mgrs,
-		&i.H3Res5,
-		&i.H3Res7,
-		&i.H3Res9,
-		&i.H3Res11,
+		&i.SourceCoordinate,
 		&i.CountryID,
 		&i.AdminArea1,
 		&i.AdminArea2,
@@ -74,68 +68,69 @@ func (q *Queries) GetLocation(ctx context.Context, id string) (GetLocationRow, e
 const insertLocation = `-- name: InsertLocation :one
 
 INSERT INTO oikumenea.location_locations (
-  geom, country_id, admin_area_1, admin_area_2, locality, street, house_number, postal_code,
-  raw_address, type_id
+  geom, mgrs, source_coordinate, country_id, admin_area_1, admin_area_2, locality, street,
+  house_number, postal_code, raw_address, type_id
 ) VALUES (
   ST_SetSRID(ST_MakePoint($1::double precision, $2::double precision), 4326)::geography,
   $3, $4, $5, $6,
   $7, $8, $9, $10,
-  $11
+  $11, $12, $13
 )
 RETURNING id,
   ST_Y(geom::geometry)::double precision AS latitude,
   ST_X(geom::geometry)::double precision AS longitude,
-  mgrs, h3_res_5, h3_res_7, h3_res_9, h3_res_11, country_id,
+  mgrs, source_coordinate, country_id,
   admin_area_1, admin_area_2, locality, street, house_number, postal_code, raw_address,
   type_id, created_at, updated_at
 `
 
 type InsertLocationParams struct {
-	Longitude   float64
-	Latitude    float64
-	CountryID   string
-	AdminArea1  pgtype.Text
-	AdminArea2  pgtype.Text
-	Locality    pgtype.Text
-	Street      pgtype.Text
-	HouseNumber pgtype.Text
-	PostalCode  pgtype.Text
-	RawAddress  pgtype.Text
-	TypeID      pgtype.Text
+	Longitude        float64
+	Latitude         float64
+	Mgrs             pgtype.Text
+	SourceCoordinate []byte
+	CountryID        string
+	AdminArea1       pgtype.Text
+	AdminArea2       pgtype.Text
+	Locality         pgtype.Text
+	Street           pgtype.Text
+	HouseNumber      pgtype.Text
+	PostalCode       pgtype.Text
+	RawAddress       pgtype.Text
+	TypeID           pgtype.Text
 }
 
 type InsertLocationRow struct {
-	ID          string
-	Latitude    float64
-	Longitude   float64
-	Mgrs        pgtype.Text
-	H3Res5      pgtype.Text
-	H3Res7      pgtype.Text
-	H3Res9      pgtype.Text
-	H3Res11     pgtype.Text
-	CountryID   string
-	AdminArea1  pgtype.Text
-	AdminArea2  pgtype.Text
-	Locality    pgtype.Text
-	Street      pgtype.Text
-	HouseNumber pgtype.Text
-	PostalCode  pgtype.Text
-	RawAddress  pgtype.Text
-	TypeID      pgtype.Text
-	CreatedAt   pgtype.Timestamptz
-	UpdatedAt   pgtype.Timestamptz
+	ID               string
+	Latitude         float64
+	Longitude        float64
+	Mgrs             pgtype.Text
+	SourceCoordinate []byte
+	CountryID        string
+	AdminArea1       pgtype.Text
+	AdminArea2       pgtype.Text
+	Locality         pgtype.Text
+	Street           pgtype.Text
+	HouseNumber      pgtype.Text
+	PostalCode       pgtype.Text
+	RawAddress       pgtype.Text
+	TypeID           pgtype.Text
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
 }
 
 // Location module queries (docs/modules/location.md; D-Location, M19). Full audited CRUD + spatial
 // queries over oikumenea.location_locations, plus the place-type catalog read. The geometry never
 // crosses to sqlc: inputs build the point with ST_SetSRID(ST_MakePoint(lng,lat),4326)::geography, and
 // outputs project the coordinate back as latitude/longitude via ST_Y/ST_X with an explicit
-// ::double precision cast (so sqlc types them as float64). mgrs + the H3 cells are plain text columns,
-// DB-derived by the location_locations trigger (never written here).
+// ::double precision cast (so sqlc types them as float64). mgrs is a plain text column the application
+// derives and writes; source_coordinate is jsonb (the original input as supplied).
 func (q *Queries) InsertLocation(ctx context.Context, arg InsertLocationParams) (InsertLocationRow, error) {
 	row := q.db.QueryRow(ctx, insertLocation,
 		arg.Longitude,
 		arg.Latitude,
+		arg.Mgrs,
+		arg.SourceCoordinate,
 		arg.CountryID,
 		arg.AdminArea1,
 		arg.AdminArea2,
@@ -152,10 +147,7 @@ func (q *Queries) InsertLocation(ctx context.Context, arg InsertLocationParams) 
 		&i.Latitude,
 		&i.Longitude,
 		&i.Mgrs,
-		&i.H3Res5,
-		&i.H3Res7,
-		&i.H3Res9,
-		&i.H3Res11,
+		&i.SourceCoordinate,
 		&i.CountryID,
 		&i.AdminArea1,
 		&i.AdminArea2,
@@ -213,7 +205,7 @@ const listLocationsInBbox = `-- name: ListLocationsInBbox :many
 SELECT id,
   ST_Y(geom::geometry)::double precision AS latitude,
   ST_X(geom::geometry)::double precision AS longitude,
-  mgrs, h3_res_5, h3_res_7, h3_res_9, h3_res_11, country_id,
+  mgrs, source_coordinate, country_id,
   admin_area_1, admin_area_2, locality, street, house_number, postal_code, raw_address,
   type_id, created_at, updated_at
 FROM oikumenea.location_locations
@@ -236,25 +228,22 @@ type ListLocationsInBboxParams struct {
 }
 
 type ListLocationsInBboxRow struct {
-	ID          string
-	Latitude    float64
-	Longitude   float64
-	Mgrs        pgtype.Text
-	H3Res5      pgtype.Text
-	H3Res7      pgtype.Text
-	H3Res9      pgtype.Text
-	H3Res11     pgtype.Text
-	CountryID   string
-	AdminArea1  pgtype.Text
-	AdminArea2  pgtype.Text
-	Locality    pgtype.Text
-	Street      pgtype.Text
-	HouseNumber pgtype.Text
-	PostalCode  pgtype.Text
-	RawAddress  pgtype.Text
-	TypeID      pgtype.Text
-	CreatedAt   pgtype.Timestamptz
-	UpdatedAt   pgtype.Timestamptz
+	ID               string
+	Latitude         float64
+	Longitude        float64
+	Mgrs             pgtype.Text
+	SourceCoordinate []byte
+	CountryID        string
+	AdminArea1       pgtype.Text
+	AdminArea2       pgtype.Text
+	Locality         pgtype.Text
+	Street           pgtype.Text
+	HouseNumber      pgtype.Text
+	PostalCode       pgtype.Text
+	RawAddress       pgtype.Text
+	TypeID           pgtype.Text
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
 }
 
 // Locations whose coordinate falls inside the bounding box, ordered by id for stable pagination.
@@ -279,10 +268,7 @@ func (q *Queries) ListLocationsInBbox(ctx context.Context, arg ListLocationsInBb
 			&i.Latitude,
 			&i.Longitude,
 			&i.Mgrs,
-			&i.H3Res5,
-			&i.H3Res7,
-			&i.H3Res9,
-			&i.H3Res11,
+			&i.SourceCoordinate,
 			&i.CountryID,
 			&i.AdminArea1,
 			&i.AdminArea2,
@@ -309,7 +295,7 @@ const listLocationsNear = `-- name: ListLocationsNear :many
 SELECT id,
   ST_Y(geom::geometry)::double precision AS latitude,
   ST_X(geom::geometry)::double precision AS longitude,
-  mgrs, h3_res_5, h3_res_7, h3_res_9, h3_res_11, country_id,
+  mgrs, source_coordinate, country_id,
   admin_area_1, admin_area_2, locality, street, house_number, postal_code, raw_address,
   type_id, created_at, updated_at
 FROM oikumenea.location_locations
@@ -331,25 +317,22 @@ type ListLocationsNearParams struct {
 }
 
 type ListLocationsNearRow struct {
-	ID          string
-	Latitude    float64
-	Longitude   float64
-	Mgrs        pgtype.Text
-	H3Res5      pgtype.Text
-	H3Res7      pgtype.Text
-	H3Res9      pgtype.Text
-	H3Res11     pgtype.Text
-	CountryID   string
-	AdminArea1  pgtype.Text
-	AdminArea2  pgtype.Text
-	Locality    pgtype.Text
-	Street      pgtype.Text
-	HouseNumber pgtype.Text
-	PostalCode  pgtype.Text
-	RawAddress  pgtype.Text
-	TypeID      pgtype.Text
-	CreatedAt   pgtype.Timestamptz
-	UpdatedAt   pgtype.Timestamptz
+	ID               string
+	Latitude         float64
+	Longitude        float64
+	Mgrs             pgtype.Text
+	SourceCoordinate []byte
+	CountryID        string
+	AdminArea1       pgtype.Text
+	AdminArea2       pgtype.Text
+	Locality         pgtype.Text
+	Street           pgtype.Text
+	HouseNumber      pgtype.Text
+	PostalCode       pgtype.Text
+	RawAddress       pgtype.Text
+	TypeID           pgtype.Text
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
 }
 
 // Locations within radiusM metres of (lat,lng), nearest first (ST_DWithin on geography). Offset/limit
@@ -374,10 +357,7 @@ func (q *Queries) ListLocationsNear(ctx context.Context, arg ListLocationsNearPa
 			&i.Latitude,
 			&i.Longitude,
 			&i.Mgrs,
-			&i.H3Res5,
-			&i.H3Res7,
-			&i.H3Res9,
-			&i.H3Res11,
+			&i.SourceCoordinate,
 			&i.CountryID,
 			&i.AdminArea1,
 			&i.AdminArea2,
@@ -417,67 +397,70 @@ func (q *Queries) SoftDeleteLocation(ctx context.Context, id string) (int64, err
 const updateLocation = `-- name: UpdateLocation :one
 UPDATE oikumenea.location_locations
 SET geom = ST_SetSRID(ST_MakePoint($1::double precision, $2::double precision), 4326)::geography,
-    country_id = $3,
-    admin_area_1 = $4,
-    admin_area_2 = $5,
-    locality = $6,
-    street = $7,
-    house_number = $8,
-    postal_code = $9,
-    raw_address = $10,
-    type_id = $11
-WHERE id = $12 AND deleted_at IS NULL
+    mgrs = $3,
+    source_coordinate = $4,
+    country_id = $5,
+    admin_area_1 = $6,
+    admin_area_2 = $7,
+    locality = $8,
+    street = $9,
+    house_number = $10,
+    postal_code = $11,
+    raw_address = $12,
+    type_id = $13
+WHERE id = $14 AND deleted_at IS NULL
 RETURNING id,
   ST_Y(geom::geometry)::double precision AS latitude,
   ST_X(geom::geometry)::double precision AS longitude,
-  mgrs, h3_res_5, h3_res_7, h3_res_9, h3_res_11, country_id,
+  mgrs, source_coordinate, country_id,
   admin_area_1, admin_area_2, locality, street, house_number, postal_code, raw_address,
   type_id, created_at, updated_at
 `
 
 type UpdateLocationParams struct {
-	Longitude   float64
-	Latitude    float64
-	CountryID   string
-	AdminArea1  pgtype.Text
-	AdminArea2  pgtype.Text
-	Locality    pgtype.Text
-	Street      pgtype.Text
-	HouseNumber pgtype.Text
-	PostalCode  pgtype.Text
-	RawAddress  pgtype.Text
-	TypeID      pgtype.Text
-	ID          string
+	Longitude        float64
+	Latitude         float64
+	Mgrs             pgtype.Text
+	SourceCoordinate []byte
+	CountryID        string
+	AdminArea1       pgtype.Text
+	AdminArea2       pgtype.Text
+	Locality         pgtype.Text
+	Street           pgtype.Text
+	HouseNumber      pgtype.Text
+	PostalCode       pgtype.Text
+	RawAddress       pgtype.Text
+	TypeID           pgtype.Text
+	ID               string
 }
 
 type UpdateLocationRow struct {
-	ID          string
-	Latitude    float64
-	Longitude   float64
-	Mgrs        pgtype.Text
-	H3Res5      pgtype.Text
-	H3Res7      pgtype.Text
-	H3Res9      pgtype.Text
-	H3Res11     pgtype.Text
-	CountryID   string
-	AdminArea1  pgtype.Text
-	AdminArea2  pgtype.Text
-	Locality    pgtype.Text
-	Street      pgtype.Text
-	HouseNumber pgtype.Text
-	PostalCode  pgtype.Text
-	RawAddress  pgtype.Text
-	TypeID      pgtype.Text
-	CreatedAt   pgtype.Timestamptz
-	UpdatedAt   pgtype.Timestamptz
+	ID               string
+	Latitude         float64
+	Longitude        float64
+	Mgrs             pgtype.Text
+	SourceCoordinate []byte
+	CountryID        string
+	AdminArea1       pgtype.Text
+	AdminArea2       pgtype.Text
+	Locality         pgtype.Text
+	Street           pgtype.Text
+	HouseNumber      pgtype.Text
+	PostalCode       pgtype.Text
+	RawAddress       pgtype.Text
+	TypeID           pgtype.Text
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
 }
 
-// Full replace: re-sets geom from the supplied coordinate (the trigger recomputes mgrs + H3 because
-// geom is in the UPDATE), the country, the address parts, and the type.
+// Full replace: re-sets geom from the supplied coordinate, the app-derived mgrs, the original source
+// coordinate, the country, the address parts, and the type.
 func (q *Queries) UpdateLocation(ctx context.Context, arg UpdateLocationParams) (UpdateLocationRow, error) {
 	row := q.db.QueryRow(ctx, updateLocation,
 		arg.Longitude,
 		arg.Latitude,
+		arg.Mgrs,
+		arg.SourceCoordinate,
 		arg.CountryID,
 		arg.AdminArea1,
 		arg.AdminArea2,
@@ -495,10 +478,7 @@ func (q *Queries) UpdateLocation(ctx context.Context, arg UpdateLocationParams) 
 		&i.Latitude,
 		&i.Longitude,
 		&i.Mgrs,
-		&i.H3Res5,
-		&i.H3Res7,
-		&i.H3Res9,
-		&i.H3Res11,
+		&i.SourceCoordinate,
 		&i.CountryID,
 		&i.AdminArea1,
 		&i.AdminArea2,

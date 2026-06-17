@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/jackc/pgx/v5"
@@ -16,17 +17,19 @@ import (
 
 func (r *Repository) InsertLocation(ctx context.Context, w domain.LocationWrite) (domain.Location, error) {
 	row, err := r.q.InsertLocation(ctx, geosql.InsertLocationParams{
-		Longitude:   w.Longitude,
-		Latitude:    w.Latitude,
-		CountryID:   w.CountryID,
-		AdminArea1:  text(w.AdminArea1),
-		AdminArea2:  text(w.AdminArea2),
-		Locality:    text(w.Locality),
-		Street:      text(w.Street),
-		HouseNumber: text(w.HouseNumber),
-		PostalCode:  text(w.PostalCode),
-		RawAddress:  text(w.RawAddress),
-		TypeID:      text(w.TypeID),
+		Longitude:        w.Longitude,
+		Latitude:         w.Latitude,
+		Mgrs:             text(w.MGRS),
+		SourceCoordinate: sourceJSON(w.SourceCoordinate),
+		CountryID:        w.CountryID,
+		AdminArea1:       text(w.AdminArea1),
+		AdminArea2:       text(w.AdminArea2),
+		Locality:         text(w.Locality),
+		Street:           text(w.Street),
+		HouseNumber:      text(w.HouseNumber),
+		PostalCode:       text(w.PostalCode),
+		RawAddress:       text(w.RawAddress),
+		TypeID:           text(w.TypeID),
 	})
 	if err != nil {
 		return domain.Location{}, err
@@ -47,18 +50,20 @@ func (r *Repository) GetLocation(ctx context.Context, id string) (domain.Locatio
 
 func (r *Repository) UpdateLocation(ctx context.Context, id string, w domain.LocationWrite) (domain.Location, error) {
 	row, err := r.q.UpdateLocation(ctx, geosql.UpdateLocationParams{
-		Longitude:   w.Longitude,
-		Latitude:    w.Latitude,
-		CountryID:   w.CountryID,
-		AdminArea1:  text(w.AdminArea1),
-		AdminArea2:  text(w.AdminArea2),
-		Locality:    text(w.Locality),
-		Street:      text(w.Street),
-		HouseNumber: text(w.HouseNumber),
-		PostalCode:  text(w.PostalCode),
-		RawAddress:  text(w.RawAddress),
-		TypeID:      text(w.TypeID),
-		ID:          id,
+		Longitude:        w.Longitude,
+		Latitude:         w.Latitude,
+		Mgrs:             text(w.MGRS),
+		SourceCoordinate: sourceJSON(w.SourceCoordinate),
+		CountryID:        w.CountryID,
+		AdminArea1:       text(w.AdminArea1),
+		AdminArea2:       text(w.AdminArea2),
+		Locality:         text(w.Locality),
+		Street:           text(w.Street),
+		HouseNumber:      text(w.HouseNumber),
+		PostalCode:       text(w.PostalCode),
+		RawAddress:       text(w.RawAddress),
+		TypeID:           text(w.TypeID),
+		ID:               id,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Location{}, domain.ErrLocationNotFound
@@ -118,8 +123,7 @@ func (r *Repository) ListLocationTypes(ctx context.Context) ([]domain.LocationTy
 func locationFromInsert(row geosql.InsertLocationRow) domain.Location {
 	return domain.Location{
 		ID: row.ID, Latitude: row.Latitude, Longitude: row.Longitude,
-		MGRS: strp(row.Mgrs), H3Res5: strp(row.H3Res5), H3Res7: strp(row.H3Res7),
-		H3Res9: strp(row.H3Res9), H3Res11: strp(row.H3Res11), CountryID: row.CountryID,
+		MGRS: strp(row.Mgrs), SourceCoordinate: srcFromDB(row.SourceCoordinate), CountryID: row.CountryID,
 		AdminArea1: strp(row.AdminArea1), AdminArea2: strp(row.AdminArea2), Locality: strp(row.Locality),
 		Street: strp(row.Street), HouseNumber: strp(row.HouseNumber), PostalCode: strp(row.PostalCode),
 		RawAddress: strp(row.RawAddress), TypeID: strp(row.TypeID),
@@ -141,6 +145,22 @@ func locationFromNear(row geosql.ListLocationsNearRow) domain.Location {
 
 func locationFromBbox(row geosql.ListLocationsInBboxRow) domain.Location {
 	return locationFromInsert(geosql.InsertLocationRow(row))
+}
+
+// sourceJSON / srcFromDB bridge the source_coordinate jsonb column (sqlc maps jsonb to []byte). A nil
+// write defaults to '{}' so the NOT NULL column always holds valid JSON; an empty read surfaces as nil.
+func sourceJSON(m json.RawMessage) []byte {
+	if len(m) == 0 {
+		return []byte("{}")
+	}
+	return m
+}
+
+func srcFromDB(b []byte) json.RawMessage {
+	if len(b) == 0 {
+		return nil
+	}
+	return json.RawMessage(b)
 }
 
 // text / strp bridge *string <-> pgtype.Text at the sqlc boundary.
