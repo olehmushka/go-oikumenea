@@ -295,6 +295,24 @@ sql:
             go_type:
               import: "github.com/jackc/pgx/v5/pgtype"
               type: "Text"
+  - engine: postgresql
+    schema: migrations
+    queries: internal/company/adapters/queries
+    gen:
+      go:
+        package: companysql
+        out: internal/company/adapters/companysql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false
+        overrides:
+          - db_type: "uuid"
+            go_type: "string"
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              import: "github.com/jackc/pgx/v5/pgtype"
+              type: "Text"
   # hermenea companion service — its OWN database/schema (migrations/hermenea), not the oikumenea one.
   - engine: postgresql
     schema: migrations/hermenea

@@ -220,6 +220,462 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/company/v1/appointments/{appointmentId}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CompanyService_endAppointment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/beneficiaries/{beneficiaryId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["CompanyService_removeBeneficiary"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/branches/{branchId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["CompanyService_removeBranch"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/companies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CompanyService_listCompanies"];
+        put?: never;
+        post: operations["CompanyService_createCompany"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/companies/{companyId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CompanyService_getCompany"];
+        put: operations["CompanyService_updateCompany"];
+        post?: never;
+        delete: operations["CompanyService_deleteCompany"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/companies/{companyId}/beneficiaries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CompanyService_recordBeneficiary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/companies/{companyId}/branches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CompanyService_recordBranch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/companies/{companyId}/foundings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CompanyService_recordFounding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/companies/{companyId}/industries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CompanyService_listIndustries"];
+        put?: never;
+        post: operations["CompanyService_assignIndustry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/companies/{companyId}/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CompanyService_listCompanyLocations"];
+        put?: never;
+        post: operations["CompanyService_addCompanyLocation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/companies/{companyId}/ownership-graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CompanyService_getOwnershipGraph"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/companies/{companyId}/positions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CompanyService_listPositions"];
+        put?: never;
+        post: operations["CompanyService_createPosition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/companies/{companyId}/registrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CompanyService_listRegistrations"];
+        put?: never;
+        post: operations["CompanyService_addRegistration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/companies/{companyId}/shareholdings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CompanyService_recordShareholding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/companies/{companyId}/successions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CompanyService_recordSuccession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/company-locations/{companyLocationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["CompanyService_removeCompanyLocation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/foundings/{foundingId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["CompanyService_removeFounding"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/industries/{assignmentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["CompanyService_removeIndustry"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/industry-classes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CompanyService_listIndustryClasses"];
+        put: operations["CompanyService_upsertIndustryClass"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/legal-forms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CompanyService_listLegalForms"];
+        put: operations["CompanyService_upsertLegalForm"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/persons/{personId}/company-affiliations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read-only view of a person's company links (employment, founding, ownership, beneficiary-of).
+         * @description Read-only view of a person's company links (employment, founding, ownership, beneficiary-of).
+         */
+        get: operations["CompanyService_listPersonCompanyAffiliations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/positions/{positionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CompanyService_getPosition"];
+        put: operations["CompanyService_updatePosition"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/positions/{positionId}/abolish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CompanyService_abolishPosition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/positions/{positionId}/fill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fill a vacant position. Returns Company:PositionAlreadyFilled if already filled.
+         * @description Fill a vacant position. Returns Company:PositionAlreadyFilled if already filled.
+         */
+        post: operations["CompanyService_fillPosition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/registration-schemes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CompanyService_listRegistrationSchemes"];
+        put: operations["CompanyService_upsertRegistrationScheme"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/registrations/{registrationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["CompanyService_updateRegistration"];
+        post?: never;
+        delete: operations["CompanyService_deleteRegistration"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/shareholdings/{shareholdingId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["CompanyService_removeShareholding"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/v1/successions/{successionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["CompanyService_removeSuccession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/document/v1/document-types": {
         parameters: {
             query?: never;
@@ -404,6 +860,1050 @@ export interface paths {
          *     Document:PersonalCodeDuplicate.
          */
         post: operations["DocumentService_attachPersonalCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/accreditation-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_listAccreditationEvents"];
+        put?: never;
+        post: operations["EducationReferenceService_createAccreditationEvent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/accreditation-events/{eventId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_getAccreditationEvent"];
+        put: operations["EducationReferenceService_updateAccreditationEvent"];
+        post?: never;
+        delete: operations["EducationReferenceService_deleteAccreditationEvent"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/appointments/{appointmentId}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["EducationService_endAppointment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/buildings/{buildingId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationService_getBuilding"];
+        put: operations["EducationService_updateBuilding"];
+        post?: never;
+        delete: operations["EducationService_deleteBuilding"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/course-prerequisites/{prerequisiteId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["EducationReferenceService_deleteCoursePrerequisite"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/courses/{courseId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_getCourse"];
+        put: operations["EducationReferenceService_updateCourse"];
+        post?: never;
+        delete: operations["EducationReferenceService_deleteCourse"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/courses/{courseId}/prerequisites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_listCoursePrerequisites"];
+        put?: never;
+        post: operations["EducationReferenceService_addCoursePrerequisite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/curriculum-items/{itemId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["EducationReferenceService_updateCurriculumItem"];
+        post?: never;
+        delete: operations["EducationReferenceService_deleteCurriculumItem"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/curriculum-versions/{versionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_getCurriculumVersion"];
+        put: operations["EducationReferenceService_updateCurriculumVersion"];
+        post?: never;
+        delete: operations["EducationReferenceService_deleteCurriculumVersion"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/curriculum-versions/{versionId}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_listCurriculumItems"];
+        put?: never;
+        post: operations["EducationReferenceService_addCurriculumItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/degree-levels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationService_listDegreeLevels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/governance-bodies/{bodyId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_getGovernanceBody"];
+        put: operations["EducationReferenceService_updateGovernanceBody"];
+        post?: never;
+        delete: operations["EducationReferenceService_deleteGovernanceBody"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/grants/{grantId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_getGrant"];
+        put: operations["EducationReferenceService_updateGrant"];
+        post?: never;
+        delete: operations["EducationReferenceService_deleteGrant"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/groups/{groupId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationService_getGroup"];
+        put: operations["EducationService_updateGroup"];
+        post?: never;
+        delete: operations["EducationService_deleteGroup"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/institution-kinds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationService_listInstitutionKinds"];
+        /**
+         * Create or update (by code) an institution-kind catalog entry.
+         * @description Create or update (by code) an institution-kind catalog entry.
+         */
+        put: operations["EducationService_upsertInstitutionKind"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/institutions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationService_listInstitutions"];
+        put?: never;
+        post: operations["EducationService_createInstitution"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/institutions/{institutionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationService_getInstitution"];
+        put: operations["EducationService_updateInstitution"];
+        post?: never;
+        delete: operations["EducationService_deleteInstitution"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/institutions/{institutionId}/buildings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationService_listBuildings"];
+        put?: never;
+        post: operations["EducationService_createBuilding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/institutions/{institutionId}/courses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_listCourses"];
+        put?: never;
+        post: operations["EducationReferenceService_createCourse"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/institutions/{institutionId}/governance-bodies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_listGovernanceBodies"];
+        put?: never;
+        post: operations["EducationReferenceService_createGovernanceBody"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/institutions/{institutionId}/grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_listGrants"];
+        put?: never;
+        post: operations["EducationReferenceService_createGrant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/institutions/{institutionId}/policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_listPolicies"];
+        put?: never;
+        post: operations["EducationReferenceService_createPolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/institutions/{institutionId}/positions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationService_listPositions"];
+        put?: never;
+        post: operations["EducationService_createPosition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/institutions/{institutionId}/programs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_listPrograms"];
+        put?: never;
+        post: operations["EducationReferenceService_createProgram"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/institutions/{institutionId}/qualifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_listQualifications"];
+        put?: never;
+        post: operations["EducationReferenceService_createQualification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/institutions/{institutionId}/research-centres": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_listResearchCentres"];
+        put?: never;
+        post: operations["EducationReferenceService_createResearchCentre"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/institutions/{institutionId}/research-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_listResearchGroups"];
+        put?: never;
+        post: operations["EducationReferenceService_createResearchGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/institutions/{institutionId}/units": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * All active units of an institution with their closure depth from the nearest root.
+         * @description All active units of an institution with their closure depth from the nearest root.
+         */
+        get: operations["EducationService_listUnits"];
+        put?: never;
+        post: operations["EducationService_createUnit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/institutions/{institutionId}/units/rebuild-closure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["EducationService_rebuildClosure"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/institutions/{institutionId}/units/verify-closure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["EducationService_verifyClosure"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/persons/{personId}/appointments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read-only list of the education positions a person holds, enriched with title + institution.
+         * @description Read-only list of the education positions a person holds, enriched with title + institution.
+         */
+        get: operations["EducationService_listPersonAppointments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/persons/{personId}/dormitory-stays": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationService_listDormitoryStays"];
+        put?: never;
+        post: operations["EducationService_createDormitoryStay"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/persons/{personId}/dormitory-stays/{stayId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["EducationService_updateDormitoryStay"];
+        post?: never;
+        delete: operations["EducationService_deleteDormitoryStay"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/persons/{personId}/enrollments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationService_listEnrollments"];
+        put?: never;
+        post: operations["EducationService_createEnrollment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/persons/{personId}/enrollments/{enrollmentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["EducationService_updateEnrollment"];
+        post?: never;
+        delete: operations["EducationService_deleteEnrollment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/persons/{personId}/governance-memberships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_listGovernanceMemberships"];
+        put?: never;
+        post: operations["EducationReferenceService_createGovernanceMembership"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/persons/{personId}/governance-memberships/{linkId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["EducationReferenceService_updateGovernanceMembership"];
+        post?: never;
+        delete: operations["EducationReferenceService_deleteGovernanceMembership"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/persons/{personId}/grant-holdings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_listGrantHoldings"];
+        put?: never;
+        post: operations["EducationReferenceService_createGrantHolding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/persons/{personId}/grant-holdings/{linkId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["EducationReferenceService_updateGrantHolding"];
+        post?: never;
+        delete: operations["EducationReferenceService_deleteGrantHolding"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/persons/{personId}/publication-authorships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_listPublicationAuthorships"];
+        put?: never;
+        post: operations["EducationReferenceService_createPublicationAuthorship"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/persons/{personId}/publication-authorships/{linkId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["EducationReferenceService_updatePublicationAuthorship"];
+        post?: never;
+        delete: operations["EducationReferenceService_deletePublicationAuthorship"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/persons/{personId}/qualification-awards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_listQualificationAwards"];
+        put?: never;
+        post: operations["EducationReferenceService_createQualificationAward"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/persons/{personId}/qualification-awards/{linkId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["EducationReferenceService_updateQualificationAward"];
+        post?: never;
+        delete: operations["EducationReferenceService_deleteQualificationAward"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/persons/{personId}/research-memberships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_listResearchMemberships"];
+        put?: never;
+        post: operations["EducationReferenceService_createResearchMembership"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/persons/{personId}/research-memberships/{linkId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["EducationReferenceService_updateResearchMembership"];
+        post?: never;
+        delete: operations["EducationReferenceService_deleteResearchMembership"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/persons/{personId}/scholarship-awards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_listScholarshipAwards"];
+        put?: never;
+        post: operations["EducationReferenceService_createScholarshipAward"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/persons/{personId}/scholarship-awards/{linkId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["EducationReferenceService_updateScholarshipAward"];
+        post?: never;
+        delete: operations["EducationReferenceService_deleteScholarshipAward"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/policies/{policyId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_getPolicy"];
+        put: operations["EducationReferenceService_updatePolicy"];
+        post?: never;
+        delete: operations["EducationReferenceService_deletePolicy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/positions/{positionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationService_getPosition"];
+        put: operations["EducationService_updatePosition"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/positions/{positionId}/abolish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["EducationService_abolishPosition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/positions/{positionId}/fill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fill a vacant position. Returns Education:PositionAlreadyFilled if already filled.
+         * @description Fill a vacant position. Returns Education:PositionAlreadyFilled if already filled.
+         */
+        post: operations["EducationService_fillPosition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/programs/{programId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_getProgram"];
+        put: operations["EducationReferenceService_updateProgram"];
+        post?: never;
+        delete: operations["EducationReferenceService_deleteProgram"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/programs/{programId}/curriculum-versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_listCurriculumVersions"];
+        put?: never;
+        post: operations["EducationReferenceService_createCurriculumVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/publications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_listPublications"];
+        put?: never;
+        post: operations["EducationReferenceService_createPublication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/publications/{publicationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_getPublication"];
+        put: operations["EducationReferenceService_updatePublication"];
+        post?: never;
+        delete: operations["EducationReferenceService_deletePublication"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/qualifications/{qualificationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_getQualification"];
+        put: operations["EducationReferenceService_updateQualification"];
+        post?: never;
+        delete: operations["EducationReferenceService_deleteQualification"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/research-centres/{centreId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_getResearchCentre"];
+        put: operations["EducationReferenceService_updateResearchCentre"];
+        post?: never;
+        delete: operations["EducationReferenceService_deleteResearchCentre"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/research-groups/{groupId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_getResearchGroup"];
+        put: operations["EducationReferenceService_updateResearchGroup"];
+        post?: never;
+        delete: operations["EducationReferenceService_deleteResearchGroup"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/scholarships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_listScholarships"];
+        put?: never;
+        post: operations["EducationReferenceService_createScholarship"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/scholarships/{scholarshipId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationReferenceService_getScholarship"];
+        put: operations["EducationReferenceService_updateScholarship"];
+        post?: never;
+        delete: operations["EducationReferenceService_deleteScholarship"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/unit-kinds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationService_listUnitKinds"];
+        put: operations["EducationService_upsertUnitKind"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/units/{unitId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationService_getUnit"];
+        put: operations["EducationService_updateUnit"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/units/{unitId}/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EducationService_listGroups"];
+        put?: never;
+        post: operations["EducationService_createGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/education/v1/units/{unitId}/reparent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move a unit under a new parent, recomputing the closure. Returns Education:UnitCycleDetected on a cycle.
+         * @description Move a unit under a new parent, recomputing the closure. Returns Education:UnitCycleDetected on a cycle.
+         */
+        post: operations["EducationService_reparentUnit"];
         delete?: never;
         options?: never;
         head?: never;
@@ -833,9 +2333,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Spatial query, token-paginated. Supply either a radius (lat + lng + radiusM, via ST_DWithin)
-         * @description Spatial query, token-paginated. Supply either a radius (lat + lng + radiusM, via ST_DWithin)
-         *     or a bounding box (minLat + minLng + maxLat + maxLng); Location:QueryWindowRequired otherwise.
+         * Spatial or text query, token-paginated. Supply a `query` (case-insensitive match on the
+         * @description Spatial or text query, token-paginated. Supply a `query` (case-insensitive match on the
+         *     address fields — no spatial window required), or a radius (lat + lng + radiusM, via
+         *     ST_DWithin), or a bounding box (minLat + minLng + maxLat + maxLng); Location:QueryWindowRequired
+         *     when none is given.
          */
         get: operations["LocationService_listLocations"];
         put?: never;
@@ -2572,6 +4074,27 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        /** @description An accreditation review cycle against an institution OR a program. */
+        AccreditationEvent: {
+            body?: string;
+            bodyCountryId?: string;
+            /** Format: date-time */
+            createdAt: string;
+            effectiveFrom?: string;
+            effectiveTo?: string;
+            entityKind: string;
+            id: string;
+            institutionId?: string;
+            notes?: string;
+            outcome: string;
+            programId?: string;
+            reviewOn?: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        AccreditationEventList: {
+            events: components["schemas"]["AccreditationEvent"][];
+        };
         /** @description Add a category under a system. `name` is the default-locale text; other locales via LocalizationService. */
         AddCategoryRequest: {
             code: string;
@@ -2583,6 +4106,10 @@ export interface components {
             sortOrder?: number;
             /** @description The URN RID of the owning (active) rank system. */
             systemId: string;
+        };
+        AddCompanyLocationRequest: {
+            locationId: string;
+            role?: string;
         };
         /** @description Attach the path unit as a child of `parentId` within a graph. */
         AddEdgeRequest: {
@@ -2651,6 +4178,25 @@ export interface components {
              * @description Seniority ordinal; defaults to appended last among the new type's active siblings.
              */
             sortOrder?: number;
+        };
+        /** @description A person filling an education position (link__holds_education_position), one-holder, effective-dated. */
+        Appointment: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            effectiveFrom: string;
+            /** Format: date-time */
+            effectiveTo?: string;
+            id: string;
+            personId: string;
+            positionId: string;
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        AssignIndustryRequest: {
+            industryClassId: string;
+            isPrimary?: boolean;
         };
         /**
          * @description The reified link__has_role — the unit of granted authority. graphId is null for unit scope
@@ -2774,6 +4320,54 @@ export interface components {
         BatchAuthorizeResponse: {
             decisions: components["schemas"]["AuthorizeResponse"][];
         };
+        /** @description A natural person who is the ultimate beneficial owner of a company (link__beneficiary_of, UBO). */
+        Beneficiary: {
+            companyId: string;
+            companyLabel?: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description Whether the ultimate ownership is registry-declared (vs computed). */
+            declared: boolean;
+            id: string;
+            personId: string;
+            /** Format: double */
+            ultimatePct?: number;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description A non-independent sub-unit BRANCH_OF a parent company (link__branch_of). */
+        Branch: {
+            branchId: string;
+            branchLabel?: string;
+            /** Format: date-time */
+            createdAt: string;
+            id: string;
+            parentId: string;
+            parentLabel?: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description A physical building of an institution (optionally a unit), located via the shared M19 location. */
+        Building: {
+            code: string;
+            /** Format: date-time */
+            createdAt: string;
+            id: string;
+            institutionId: string;
+            /** @description One of academic | dormitory | administrative | library | sports | other. */
+            kind: string;
+            /** @description The shared location RID (M19); null until geocoded. */
+            locationId?: string;
+            name: {
+                [key: string]: string;
+            };
+            unitId?: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        BuildingList: {
+            buildings: components["schemas"]["Building"][];
+        };
         /** @description A person's informal identifier / позивний (D-PersonContactChannels). pii:basic; unique per person among active. */
         CallSign: {
             /** @description The call sign label (required; unique per person). */
@@ -2837,6 +4431,70 @@ export interface components {
         /** @description Per-graph closure reports (one per graph processed). */
         ClosureReportList: {
             reports: components["schemas"]["ClosureReport"][];
+        };
+        /** @description A legal entity at registry grade. Soft-deleted, not destroyed. */
+        Company: {
+            code: string;
+            countryId?: string;
+            /** Format: date-time */
+            createdAt: string;
+            dissolvedOn?: string;
+            foundedOn?: string;
+            id: string;
+            legalFormId: string;
+            legalName: {
+                [key: string]: string;
+            };
+            /** @description One of private | public | state_owned | municipal | foreign | mixed. */
+            ownershipCategory: string;
+            shortName?: string;
+            /** @description One of active | dissolved | merged. */
+            state: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description A company's address, located via the shared M19 location; role distinguishes registered/operating/branch. */
+        CompanyLocation: {
+            companyId: string;
+            /** Format: date-time */
+            createdAt: string;
+            id: string;
+            locationId: string;
+            /** @description One of registered | operating | branch. */
+            role: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CompanyLocationList: {
+            locations: components["schemas"]["CompanyLocation"][];
+        };
+        CompanyPage: {
+            companies: components["schemas"]["Company"][];
+            nextPageToken?: string;
+        };
+        /**
+         * @description A company-owned billet (CEO/director/employee line; mirrors membership Position) — exists while
+         *     vacant; carries no authority. The current holder is populated on get/list (null when vacant).
+         */
+        CompanyPosition: {
+            code: string;
+            companyId: string;
+            /** Format: date-time */
+            createdAt: string;
+            holder?: components["schemas"]["Appointment"];
+            id: string;
+            /** Format: int32 */
+            sortOrder?: number;
+            status: string;
+            title: {
+                [key: string]: string;
+            };
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CompanyPositionPage: {
+            nextPageToken?: string;
+            positions: components["schemas"]["CompanyPosition"][];
         };
         /** @description One reason an ALLOW was reached. instanceAdmin true means the instance plane; otherwise the assignment is named. */
         Contribution: {
@@ -2903,6 +4561,43 @@ export interface components {
         CountryList: {
             countries: components["schemas"]["Country"][];
         };
+        /** @description A unit of study / module / subject of an institution (optionally a unit). */
+        Course: {
+            code: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int32 */
+            creditHours?: number;
+            deliveryMode: string;
+            description?: string;
+            id: string;
+            institutionId: string;
+            /** Format: int32 */
+            level?: number;
+            owningUnitId?: string;
+            status: string;
+            title: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CourseList: {
+            courses: components["schemas"]["Course"][];
+        };
+        /** @description A course requires another course (required/recommended/corequisite). */
+        CoursePrerequisite: {
+            courseId: string;
+            /** Format: date-time */
+            createdAt: string;
+            id: string;
+            kind: string;
+            minGrade?: string;
+            requiredCourseId: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CoursePrerequisiteList: {
+            prerequisites: components["schemas"]["CoursePrerequisite"][];
+        };
         /**
          * @description Create an account for a person, optionally linking its first external identity in the same
          *     operation. The first identity on a new account is always permitted (the linking cap applies
@@ -2914,6 +4609,27 @@ export interface components {
             /** @description The first login point to link; omit to create a login-less account shell. */
             identity?: components["schemas"]["LinkIdentityRequest"];
             personId: string;
+        };
+        CreateBuildingRequest: {
+            code: string;
+            kind: string;
+            locationId?: string;
+            name: string;
+            unitId?: string;
+        };
+        CreateCompanyRequest: {
+            code: string;
+            countryId?: string;
+            foundedOn?: string;
+            legalFormId: string;
+            legalName: string;
+            ownershipCategory?: string;
+            shortName?: string;
+        };
+        CreateCoursePrerequisiteRequest: {
+            kind?: string;
+            minGrade?: string;
+            requiredCourseId: string;
         };
         /** @description Attach a paper to a person. The type and (optional) issuing country are validated against their registries. */
         CreateDocumentRequest: {
@@ -2934,6 +4650,20 @@ export interface components {
             name: string;
             /** Format: int32 */
             sortOrder?: number;
+        };
+        CreateGroupRequest: {
+            /** Format: int32 */
+            admissionYear?: number;
+            code: string;
+            name: string;
+        };
+        CreateInstitutionRequest: {
+            closedOn?: string;
+            code: string;
+            countryId?: string;
+            foundedOn?: string;
+            kindId: string;
+            name: string;
         };
         /** @description Add a person's belonging to a unit, optionally filling a position. The position (if given) must belong to the unit. */
         CreateMembershipRequest: {
@@ -3032,10 +4762,62 @@ export interface components {
             /** @description Defaults to PUBLIC. */
             visibility?: components["schemas"]["Visibility"];
         };
+        /** @description A course placed in a curriculum version (required/elective + credit/year metadata). */
+        CurriculumItem: {
+            courseId: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int32 */
+            creditAllocation?: number;
+            id: string;
+            isRequired: boolean;
+            /** Format: int32 */
+            semesterSlot?: number;
+            /** Format: date-time */
+            updatedAt: string;
+            versionId: string;
+            /** Format: int32 */
+            yearOfStudy?: number;
+        };
+        CurriculumItemList: {
+            items: components["schemas"]["CurriculumItem"][];
+        };
+        /** @description A versioned snapshot of a program's requirements. */
+        CurriculumVersion: {
+            /** Format: date-time */
+            createdAt: string;
+            effectiveFrom?: string;
+            effectiveTo?: string;
+            id: string;
+            programId: string;
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+            versionCode: string;
+        };
+        CurriculumVersionList: {
+            versions: components["schemas"]["CurriculumVersion"][];
+        };
         /** @description Begin reversible deactivation; opens a grace window (purgeAfter = now + the configured grace). */
         DeactivateRequest: {
             /** @description Optional free-text reason recorded in the audit entry. */
             reason?: string;
+        };
+        /** @description An ISCED 2011 degree level (0..8), a migration-seeded reference scale. */
+        DegreeLevel: {
+            code: string;
+            id: string;
+            /** Format: int32 */
+            iscedLevel: number;
+            name: {
+                [key: string]: string;
+            };
+            /** Format: int32 */
+            sortOrder?: number;
+            status: string;
+        };
+        DegreeLevelList: {
+            degreeLevels: components["schemas"]["DegreeLevel"][];
         };
         /** @description A person-held paper of some type — metadata only (no binaries). number/issuer are pii:basic. */
         Document: {
@@ -3094,6 +4876,72 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        /** @description A person RESIDED_IN_DORMITORY — a dedicated stay (person ↔ dorm building, room, period). */
+        DormitoryStay: {
+            buildingId: string;
+            /** Format: date-time */
+            createdAt: string;
+            effectiveFrom?: string;
+            effectiveTo?: string;
+            id: string;
+            personId: string;
+            room?: string;
+            /** @description One of active | ended. */
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        DormitoryStayList: {
+            dormitoryStays: components["schemas"]["DormitoryStay"][];
+        };
+        /**
+         * @description An institution/unit-owned billet (mirrors membership Position) — exists while vacant; carries
+         *     no authority. The current holder is populated on get/list (null when vacant).
+         */
+        EducationPosition: {
+            code: string;
+            /** Format: date-time */
+            createdAt: string;
+            holder?: components["schemas"]["Appointment"];
+            id: string;
+            institutionId: string;
+            /** Format: int32 */
+            sortOrder?: number;
+            status: string;
+            title: {
+                [key: string]: string;
+            };
+            unitId?: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description A node in an institution's recursive structure tree (campus → faculty → department → chair). */
+        EducationUnit: {
+            code: string;
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: int32
+             * @description Distance from the queried root (populated by list-by-institution via the closure).
+             */
+            depth?: number;
+            id: string;
+            institutionId: string;
+            kindId: string;
+            name: {
+                [key: string]: string;
+            };
+            /** @description The parent unit RID; null for a top-level unit. */
+            parentId?: string;
+            /** Format: int32 */
+            sortOrder?: number;
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        EducationUnitList: {
+            units: components["schemas"]["EducationUnit"][];
+        };
         /** @description A person's contact email (D-PersonContactChannels). pii:contact; distinct from the login email. */
         Email: {
             /** @description The email address (stored case-insensitively). */
@@ -3120,6 +4968,10 @@ export interface components {
             /** @description One of active | retired. */
             status: string;
         };
+        EndAppointmentRequest: {
+            /** Format: date-time */
+            effectiveTo?: string;
+        };
         /** @description End a membership, vacating any filled billet (reversible status flip + effectiveTo). */
         EndMembershipRequest: {
             /**
@@ -3129,6 +4981,31 @@ export interface components {
             effectiveTo?: string;
             /** @description Optional provenance pointer to the authorizing order item (D-Orders). */
             orderItemId?: string;
+        };
+        /** @description A person STUDIED_AT an institution (optionally a unit/group), with an ISCED level + qualification. */
+        Enrollment: {
+            /** Format: date-time */
+            createdAt: string;
+            degreeLevelId?: string;
+            effectiveFrom?: string;
+            effectiveTo?: string;
+            fieldOfStudy?: string;
+            groupId?: string;
+            id: string;
+            institutionId: string;
+            personId: string;
+            /** @description The program studied (education_programs); null if unspecified. */
+            programId?: string;
+            qualification?: string;
+            /** @description One of enrolled | graduated | withdrawn | expelled | on_leave. */
+            status: string;
+            studentNumber?: string;
+            unitId?: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        EnrollmentList: {
+            enrollments: components["schemas"]["Enrollment"][];
         };
         /** @description Why a decision was reached. For ALLOW, the contributing grants (may be several across graphs); for DENY, the reason. */
         Explanation: {
@@ -3159,6 +5036,74 @@ export interface components {
             orderItemId?: string;
             personId: string;
         };
+        /** @description Who FOUNDED a company (link__founded). The founder is a person or a company (polymorphic holder). */
+        Founding: {
+            companyId: string;
+            companyLabel?: string;
+            /** Format: date-time */
+            createdAt: string;
+            foundedOn?: string;
+            holderId: string;
+            /** @description One of person | company. */
+            holderKind: string;
+            /** @description Best-effort display label (company legal name for company holders; empty for persons). */
+            holderLabel?: string;
+            id: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description A board / senate / council / committee of an institution. */
+        GovernanceBody: {
+            code: string;
+            /** Format: date-time */
+            createdAt: string;
+            id: string;
+            institutionId: string;
+            kind: string;
+            mandate?: string;
+            name: string;
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        GovernanceBodyList: {
+            governanceBodies: components["schemas"]["GovernanceBody"][];
+        };
+        /** @description A person is a member of a governance body. */
+        GovernanceMembership: {
+            bodyId: string;
+            /** Format: date-time */
+            createdAt: string;
+            effectiveFrom?: string;
+            effectiveTo?: string;
+            id: string;
+            personId: string;
+            roleInBody?: string;
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        GovernanceMembershipList: {
+            memberships: components["schemas"]["GovernanceMembership"][];
+        };
+        /** @description A funding grant held by an institution. */
+        Grant: {
+            amount?: string;
+            code: string;
+            /** Format: date-time */
+            createdAt: string;
+            currency?: string;
+            endOn?: string;
+            funder?: string;
+            funderRef?: string;
+            id: string;
+            institutionId: string;
+            startOn?: string;
+            status: string;
+            title: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
         /** @description Grant a role to a person at a target unit. graph applies to subtree scope (default command); ignored for unit. */
         GrantAssignmentRequest: {
             /**
@@ -3174,9 +5119,29 @@ export interface components {
             subjectPersonId: string;
             targetUnitId: string;
         };
+        /** @description A person holds a grant (PI / co-investigator / researcher). */
+        GrantHolding: {
+            /** Format: date-time */
+            createdAt: string;
+            effectiveFrom?: string;
+            effectiveTo?: string;
+            grantId: string;
+            id: string;
+            personId: string;
+            role: string;
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        GrantHoldingList: {
+            holdings: components["schemas"]["GrantHolding"][];
+        };
         /** @description Place a person on the instance-admin plane. */
         GrantInstanceAdminRequest: {
             personId: string;
+        };
+        GrantList: {
+            grants: components["schemas"]["Grant"][];
         };
         /** @description A named hierarchy over the units (D-Graphs). Each graph is independently a DAG. */
         Graph: {
@@ -3196,6 +5161,25 @@ export interface components {
         /** @description The graph registry, in display order. */
         GraphList: {
             graphs: components["schemas"]["Graph"][];
+        };
+        /** @description A cohort (study group) under a unit, with an admission year. */
+        Group: {
+            /** Format: int32 */
+            admissionYear?: number;
+            code: string;
+            /** Format: date-time */
+            createdAt: string;
+            id: string;
+            name: {
+                [key: string]: string;
+            };
+            status: string;
+            unitId: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        GroupList: {
+            groups: components["schemas"]["Group"][];
         };
         /** @description A legal guardian→ward link, distinct from blood kinship (D-PersonRelationships; Link link__guardian_of). */
         Guardianship: {
@@ -3313,6 +5297,36 @@ export interface components {
             /** Format: int32 */
             sortOrder?: number;
         };
+        /** @description A company's economic-activity classification (M:N), one primary + secondaries. */
+        IndustryAssignment: {
+            companyId: string;
+            /** Format: date-time */
+            createdAt: string;
+            id: string;
+            industryClassId: string;
+            isPrimary: boolean;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        IndustryAssignmentList: {
+            industries: components["schemas"]["IndustryAssignment"][];
+        };
+        /** @description An economic-activity classification entry (NACE/ISIC/KVED). */
+        IndustryClass: {
+            code: string;
+            id: string;
+            name: {
+                [key: string]: string;
+            };
+            /** Format: int32 */
+            sortOrder?: number;
+            status: string;
+            /** @description One of nace | isic | kved. */
+            system: string;
+        };
+        IndustryClassList: {
+            industryClasses: components["schemas"]["IndustryClass"][];
+        };
         /** @description A person on the instance-wide authority plane (the reified link__instance_admin). */
         InstanceAdmin: {
             /** Format: date-time */
@@ -3325,6 +5339,44 @@ export interface components {
             /** Format: date-time */
             revokedAt?: string;
             revokedBy?: string;
+        };
+        /** @description An external reference institution (where people studied/taught). Soft-deleted, not destroyed. */
+        Institution: {
+            closedOn?: string;
+            code: string;
+            /** @description The institution's country RID (geo_countries); null for international/online. */
+            countryId?: string;
+            /** Format: date-time */
+            createdAt: string;
+            foundedOn?: string;
+            id: string;
+            kindId: string;
+            name: {
+                [key: string]: string;
+            };
+            /** @description One of active | closed | merged. */
+            state: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description An instance-admin catalog entry classifying an institution (university/school/…). */
+        InstitutionKind: {
+            code: string;
+            id: string;
+            /** @description Default-locale fallback + i18n translations. */
+            name: {
+                [key: string]: string;
+            };
+            /** Format: int32 */
+            sortOrder?: number;
+            status: string;
+        };
+        InstitutionKindList: {
+            institutionKinds: components["schemas"]["InstitutionKind"][];
+        };
+        InstitutionPage: {
+            institutions: components["schemas"]["Institution"][];
+            nextPageToken?: string;
         };
         /** @description A reference to an enqueued worker job (the result of a sync trigger). */
         JobRef: {
@@ -3367,6 +5419,23 @@ export interface components {
         /** @description A page of languoids in code order. */
         LanguoidList: {
             languoids: components["schemas"]["Languoid"][];
+        };
+        /** @description A per-country legal form (ТОВ/ПАТ/ФОП, LLC/JSC/GmbH …); countryId null for a generic form. */
+        LegalForm: {
+            abbreviation?: string;
+            code: string;
+            countryId?: string;
+            id: string;
+            /** @description Default-locale fallback + i18n translations. */
+            name: {
+                [key: string]: string;
+            };
+            /** Format: int32 */
+            sortOrder?: number;
+            status: string;
+        };
+        LegalFormList: {
+            legalForms: components["schemas"]["LegalForm"][];
         };
         /** @description Link a verified (issuer, subject) login point to an account. */
         LinkIdentityRequest: {
@@ -3665,6 +5734,20 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        /** @description The ownership/affiliation neighbourhood of one company (one hop in each direction). */
+        OwnershipGraph: {
+            beneficiaries: components["schemas"]["Beneficiary"][];
+            /** @description Branches of this company. */
+            branches: components["schemas"]["Branch"][];
+            companyId: string;
+            founders: components["schemas"]["Founding"][];
+            /** @description Stakes this company holds in OTHER companies (subsidiaries via the ownership DAG). */
+            holdings: components["schemas"]["Shareholding"][];
+            /** @description Stakes held IN this company. */
+            shareholders: components["schemas"]["Shareholding"][];
+            /** @description Lineage where this company is the predecessor or the successor. */
+            successions: components["schemas"]["Succession"][];
+        };
         /**
          * @description A marriage or engagement between two persons (D-PersonRelationships; Link link__partnered_with).
          *     Symmetric: stored as a canonical pair (personIdA < personIdB). At most one active engaged/married
@@ -3750,6 +5833,52 @@ export interface components {
             /** @description Nobiliary / genealogical particle (van, von, de, bin). */
             surnamePrefix?: string;
             title?: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description An appointment a person holds, enriched with the position's title and owning institution (read-only person view). */
+        PersonAppointment: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            effectiveFrom: string;
+            /** Format: date-time */
+            effectiveTo?: string;
+            id: string;
+            institutionId: string;
+            institutionName: string;
+            personId: string;
+            positionId: string;
+            positionTitle: string;
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        PersonAppointmentList: {
+            appointments: components["schemas"]["PersonAppointment"][];
+        };
+        /** @description A person's company links — employment, founding, ownership, and ultimate-beneficiary records. */
+        PersonCompanyAffiliations: {
+            appointments: components["schemas"]["PersonCompanyAppointment"][];
+            beneficiaryOf: components["schemas"]["Beneficiary"][];
+            foundings: components["schemas"]["Founding"][];
+            shareholdings: components["schemas"]["Shareholding"][];
+        };
+        /** @description A company appointment a person holds, enriched with the position title + owning company (read-only). */
+        PersonCompanyAppointment: {
+            companyId: string;
+            companyName: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            effectiveFrom: string;
+            /** Format: date-time */
+            effectiveTo?: string;
+            id: string;
+            personId: string;
+            positionId: string;
+            positionTitle: string;
+            status: string;
             /** Format: date-time */
             updatedAt: string;
         };
@@ -3866,6 +5995,27 @@ export interface components {
             /** @description One of active | retired. */
             status: string;
         };
+        /** @description An institutional rule/regulation (optionally approved by a governance body). */
+        Policy: {
+            code: string;
+            /** Format: date-time */
+            createdAt: string;
+            documentUrl?: string;
+            effectiveOn?: string;
+            expiryOn?: string;
+            governanceBodyId?: string;
+            id: string;
+            institutionId: string;
+            kind: string;
+            status: string;
+            supersedesId?: string;
+            title: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        PolicyList: {
+            policies: components["schemas"]["Policy"][];
+        };
         /**
          * @description A unit-owned billet (D-Position) — an Object that exists whether or not anyone fills it (a
          *     VACANCY is an active position with no active filling). Position grants no authority. The
@@ -3902,6 +6052,102 @@ export interface components {
         PositionPage: {
             nextPageToken?: string;
             positions: components["schemas"]["Position"][];
+        };
+        /** @description A degree/diploma/certificate program of an institution (optionally a unit). */
+        Program: {
+            code: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int32 */
+            creditHoursTotal?: number;
+            degreeLevelId?: string;
+            durationYears?: string;
+            id: string;
+            institutionId: string;
+            mode: string;
+            name: string;
+            owningUnitId?: string;
+            state: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        ProgramList: {
+            programs: components["schemas"]["Program"][];
+        };
+        /** @description An academic publication (optionally tied to an institution). */
+        Publication: {
+            code: string;
+            /** Format: date-time */
+            createdAt: string;
+            doi?: string;
+            id: string;
+            institutionId?: string;
+            kind: string;
+            openAccess: boolean;
+            publishedOn?: string;
+            title: string;
+            /** Format: date-time */
+            updatedAt: string;
+            venue?: string;
+        };
+        /** @description A person authored a publication. */
+        PublicationAuthorship: {
+            /** Format: int32 */
+            authorOrder?: number;
+            corresponding: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            effectiveFrom?: string;
+            effectiveTo?: string;
+            id: string;
+            personId: string;
+            publicationId: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        PublicationAuthorshipList: {
+            authorships: components["schemas"]["PublicationAuthorship"][];
+        };
+        PublicationList: {
+            publications: components["schemas"]["Publication"][];
+        };
+        /** @description A formally awardable qualification (degree) classification of an institution. */
+        Qualification: {
+            awardingBody?: string;
+            code: string;
+            /** Format: date-time */
+            createdAt: string;
+            degreeLevelId?: string;
+            frameworkCode?: string;
+            frameworkLevel?: string;
+            id: string;
+            institutionId: string;
+            name: string;
+            programId?: string;
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description A person was awarded a qualification (the diploma award). */
+        QualificationAward: {
+            awardedOn?: string;
+            /** Format: date-time */
+            createdAt: string;
+            enrollmentId?: string;
+            gpa?: string;
+            id: string;
+            personId: string;
+            qualificationId: string;
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+            withDistinction: boolean;
+        };
+        QualificationAwardList: {
+            awards: components["schemas"]["QualificationAward"][];
+        };
+        QualificationList: {
+            qualifications: components["schemas"]["Qualification"][];
         };
         /** @description A specific grade within a type (e.g. sergeant, associate_professor), ordered for exact seniority. */
         Rank: {
@@ -4025,6 +6271,68 @@ export interface components {
             /** @description The URN RID of the owning rank system (denormalized; equals the category's system). */
             systemId: string;
         };
+        RecordBeneficiaryRequest: {
+            declared?: boolean;
+            personId: string;
+            /** Format: double */
+            ultimatePct?: number;
+        };
+        /** @description Record that the given branch company is a branch of this company (the parent). */
+        RecordBranchRequest: {
+            branchId: string;
+        };
+        /** @description Record a founder of this company (person or company holder). */
+        RecordFoundingRequest: {
+            foundedOn?: string;
+            holderId: string;
+            holderKind: string;
+        };
+        /** @description Record a stake held in this company (person or company holder). */
+        RecordShareholdingRequest: {
+            effectiveFrom?: string;
+            effectiveTo?: string;
+            holderId: string;
+            holderKind: string;
+            /** Format: double */
+            stakePct?: number;
+        };
+        /** @description Record that this company (the predecessor) is succeeded by the given successor. */
+        RecordSuccessionRequest: {
+            effectiveOn?: string;
+            kind?: string;
+            successorId: string;
+        };
+        /** @description A company's per-scheme registration identifier (LEI / national number / VAT …). */
+        Registration: {
+            companyId: string;
+            /** Format: date-time */
+            createdAt: string;
+            id: string;
+            identifier: string;
+            schemeId: string;
+            /** Format: date-time */
+            updatedAt: string;
+            validated: boolean;
+        };
+        RegistrationList: {
+            registrations: components["schemas"]["Registration"][];
+        };
+        /** @description A registration-identifier scheme (LEI/DUNS/EDRPOU/VAT/EIN); isGlobal marks the worldwide spine. */
+        RegistrationScheme: {
+            code: string;
+            id: string;
+            isGlobal: boolean;
+            name: {
+                [key: string]: string;
+            };
+            /** Format: int32 */
+            sortOrder?: number;
+            status: string;
+            validatorPattern?: string;
+        };
+        RegistrationSchemeList: {
+            registrationSchemes: components["schemas"]["RegistrationScheme"][];
+        };
         /** @description An instance-admin catalog entry for an open-ended person↔person relation label (D-PersonRelationships). Stable code + translatable name + category. */
         RelationType: {
             /** @description One of sponsorship | association | next_of_kin. */
@@ -4039,6 +6347,65 @@ export interface components {
             sortOrder?: number;
             /** @description One of active | retired. */
             status: string;
+        };
+        /** @description Move a unit under a new parent (same institution), recomputing the closure. Cycle-guarded. */
+        ReparentUnitRequest: {
+            /** @description The new parent unit; null makes the unit top-level. */
+            parentId?: string;
+        };
+        /** @description A research centre / institute / lab of an institution. */
+        ResearchCentre: {
+            code: string;
+            /** Format: date-time */
+            createdAt: string;
+            dissolvedOn?: string;
+            foundedOn?: string;
+            fundingSource?: string;
+            id: string;
+            institutionId: string;
+            kind: string;
+            name: string;
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        ResearchCentreList: {
+            researchCentres: components["schemas"]["ResearchCentre"][];
+        };
+        /** @description A research cluster under a centre and/or unit of an institution. */
+        ResearchGroup: {
+            centreId?: string;
+            code: string;
+            /** Format: date-time */
+            createdAt: string;
+            focusArea?: string;
+            id: string;
+            institutionId: string;
+            name: string;
+            status: string;
+            unitId?: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        ResearchGroupList: {
+            researchGroups: components["schemas"]["ResearchGroup"][];
+        };
+        /** @description A person is a member of a research group. */
+        ResearchMembership: {
+            /** Format: date-time */
+            createdAt: string;
+            effectiveFrom?: string;
+            effectiveTo?: string;
+            groupId: string;
+            id: string;
+            personId: string;
+            role?: string;
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        ResearchMembershipList: {
+            memberships: components["schemas"]["ResearchMembership"][];
         };
         /** @description A person's effective-dated residence in a country/region (D-Geo). Locator data (pii:contact). */
         Residence: {
@@ -4086,6 +6453,43 @@ export interface components {
             nextPageToken?: string;
             roles: components["schemas"]["Role"][];
         };
+        /** @description A financial award scheme (institution or external). */
+        Scholarship: {
+            amount?: string;
+            code: string;
+            conditions?: string;
+            /** Format: date-time */
+            createdAt: string;
+            currency?: string;
+            frequency: string;
+            id: string;
+            institutionId?: string;
+            kind: string;
+            name: string;
+            renewable: boolean;
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description A person was awarded a scholarship. */
+        ScholarshipAward: {
+            /** Format: date-time */
+            createdAt: string;
+            effectiveFrom?: string;
+            effectiveTo?: string;
+            id: string;
+            personId: string;
+            scholarshipId: string;
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        ScholarshipAwardList: {
+            awards: components["schemas"]["ScholarshipAward"][];
+        };
+        ScholarshipList: {
+            scholarships: components["schemas"]["Scholarship"][];
+        };
         /** @description The Conjure error envelope returned on any non-2xx response. */
         SerializableError: {
             /** @description Coarse category, e.g. NOT_FOUND, INVALID_ARGUMENT, PERMISSION_DENIED, CONFLICT, FAILED_PRECONDITION. */
@@ -4108,6 +6512,23 @@ export interface components {
             rankId?: string;
             /** @description Required only when clearing (rankId omitted) — the URN RID of the rank system to clear. Ignored when rankId is present. */
             systemId?: string;
+        };
+        /** @description A holder OWNS_STAKE in a company (link__owns_stake). Polymorphic holder; company-holder edges form the ownership DAG. */
+        Shareholding: {
+            companyId: string;
+            companyLabel?: string;
+            /** Format: date-time */
+            createdAt: string;
+            effectiveFrom?: string;
+            effectiveTo?: string;
+            holderId: string;
+            holderKind: string;
+            holderLabel?: string;
+            id: string;
+            /** Format: double */
+            stakePct?: number;
+            /** Format: date-time */
+            updatedAt: string;
         };
         /**
          * @description A person's standalone social-network account (D-PersonSocialChannels). platformUserId is the
@@ -4155,9 +6576,13 @@ export interface components {
         };
         /** @description A sponsor→sponsored link — godparent / academic advisor / military mentor (D-PersonRelationships; Link link__sponsor_of). */
         Sponsorship: {
+            /** @description Optional education role of the sponsor — one of professor | tutor | curator | advisor. */
+            educationRole?: string;
             effectiveFrom?: string;
             /** @description null = ongoing. */
             effectiveTo?: string;
+            /** @description Optional education context — the enrollment (D-Education, M20) this sponsorship relates to. */
+            enrollmentId?: string;
             id: string;
             /** @description Required relation-type catalog code (category=sponsorship). */
             relationCode: string;
@@ -4167,6 +6592,21 @@ export interface components {
             sponsoredId: string;
             /** @description One of active | ended. */
             status: string;
+        };
+        /** @description M&A / reorganization lineage — predecessor SUCCEEDED_BY successor (link__succeeded_by). */
+        Succession: {
+            /** Format: date-time */
+            createdAt: string;
+            effectiveOn?: string;
+            id: string;
+            /** @description One of merger | reorganization | rename | acquisition | spinoff. */
+            kind: string;
+            predecessorId: string;
+            predecessorLabel?: string;
+            successorId: string;
+            successorLabel?: string;
+            /** Format: date-time */
+            updatedAt: string;
         };
         /** @description Transition a unit's lifecycle state (suspend/archive/restore). */
         TransitionRequest: {
@@ -4209,6 +6649,20 @@ export interface components {
             /** @description The edge's URN RID (carried as a plain string). */
             id: string;
             parentId: string;
+        };
+        /** @description An instance-admin catalog entry classifying a structure-tree node (faculty/department/…). */
+        UnitKind: {
+            code: string;
+            id: string;
+            name: {
+                [key: string]: string;
+            };
+            /** Format: int32 */
+            sortOrder?: number;
+            status: string;
+        };
+        UnitKindList: {
+            unitKinds: components["schemas"]["UnitKind"][];
         };
         /**
          * @description A unit's official/working language (D-Languages, M18; Link link__unit_language). languageId
@@ -4258,11 +6712,28 @@ export interface components {
          * @enum {string}
          */
         UnitState: "ACTIVE" | "SUSPENDED" | "ARCHIVED";
+        UpdateBuildingRequest: {
+            kind?: string;
+            locationId?: string;
+            name?: string;
+            unitId?: string;
+        };
         /** @description Edit/reorder a category. Omitted fields are unchanged. `code` is immutable by convention. */
         UpdateCategoryRequest: {
             name?: string;
             /** Format: int32 */
             sortOrder?: number;
+        };
+        /** @description Update name/form/category/country/dates/state. code is immutable; omitted fields are unchanged. */
+        UpdateCompanyRequest: {
+            countryId?: string;
+            dissolvedOn?: string;
+            foundedOn?: string;
+            legalFormId?: string;
+            legalName?: string;
+            ownershipCategory?: string;
+            shortName?: string;
+            state?: string;
         };
         /** @description Update number/issuer/issuing-country/validity/attributes/status. Omitted fields are unchanged. */
         UpdateDocumentRequest: {
@@ -4290,6 +6761,21 @@ export interface components {
             /** @description Setting true makes this the sole default; the previous default is cleared in the same transaction. */
             isDefault?: boolean;
             name?: string;
+        };
+        UpdateGroupRequest: {
+            /** Format: int32 */
+            admissionYear?: number;
+            name?: string;
+            status?: string;
+        };
+        /** @description Update name/kind/country/dates/state. code is immutable; omitted fields are unchanged. */
+        UpdateInstitutionRequest: {
+            closedOn?: string;
+            countryId?: string;
+            foundedOn?: string;
+            kindId?: string;
+            name?: string;
+            state?: string;
         };
         /** @description Enable/disable, rename, set default, or reorder a locale (instance-admin; `locale.manage`). Omitted fields are unchanged. */
         UpdateLocaleRequest: {
@@ -4395,6 +6881,18 @@ export interface components {
             unitKind?: string;
             visibility?: components["schemas"]["Visibility"];
         };
+        UpsertAccreditationEventRequest: {
+            body?: string;
+            bodyCountryId?: string;
+            effectiveFrom?: string;
+            effectiveTo?: string;
+            entityKind: string;
+            institutionId?: string;
+            notes?: string;
+            outcome?: string;
+            programId?: string;
+            reviewOn?: string;
+        };
         /** @description Record or replace a symmetric association between the path person and counterpartId. */
         UpsertAssociationRequest: {
             /** @description The other person's URN RID. */
@@ -4414,6 +6912,13 @@ export interface components {
             id?: string;
             isPrimary?: boolean;
         };
+        /** @description Create/update an institution-kind or unit-kind. name is the default-locale fallback. */
+        UpsertCatalogKindRequest: {
+            code: string;
+            name: string;
+            /** Format: int32 */
+            sortOrder?: number;
+        };
         /** @description Add or replace the active citizenship for a country (keyed by (person, country)). */
         UpsertCitizenshipRequest: {
             acquiredOn?: string;
@@ -4423,6 +6928,41 @@ export interface components {
             isPrimary?: boolean;
             lostOn?: string;
         };
+        UpsertCourseRequest: {
+            code: string;
+            /** Format: int32 */
+            creditHours?: number;
+            deliveryMode?: string;
+            description?: string;
+            /** Format: int32 */
+            level?: number;
+            owningUnitId?: string;
+            status?: string;
+            title: string;
+        };
+        UpsertCurriculumItemRequest: {
+            courseId: string;
+            /** Format: int32 */
+            creditAllocation?: number;
+            isRequired?: boolean;
+            /** Format: int32 */
+            semesterSlot?: number;
+            /** Format: int32 */
+            yearOfStudy?: number;
+        };
+        UpsertCurriculumVersionRequest: {
+            effectiveFrom?: string;
+            effectiveTo?: string;
+            status?: string;
+            versionCode: string;
+        };
+        UpsertDormitoryStayRequest: {
+            buildingId: string;
+            effectiveFrom?: string;
+            effectiveTo?: string;
+            room?: string;
+            status?: string;
+        };
         /** @description Add a contact email, or replace one when id is supplied. provider is derived from the address. */
         UpsertEmailRequest: {
             address: string;
@@ -4430,6 +6970,52 @@ export interface components {
             id?: string;
             isPrimary?: boolean;
             typeCode: string;
+        };
+        /** @description Create or update a person's enrollment. On create, omit nothing required; on update, target by id. */
+        UpsertEnrollmentRequest: {
+            degreeLevelId?: string;
+            effectiveFrom?: string;
+            effectiveTo?: string;
+            fieldOfStudy?: string;
+            groupId?: string;
+            institutionId: string;
+            programId?: string;
+            qualification?: string;
+            status?: string;
+            studentNumber?: string;
+            unitId?: string;
+        };
+        UpsertGovernanceBodyRequest: {
+            code: string;
+            kind?: string;
+            mandate?: string;
+            name: string;
+            status?: string;
+        };
+        UpsertGovernanceMembershipRequest: {
+            bodyId: string;
+            effectiveFrom?: string;
+            effectiveTo?: string;
+            roleInBody?: string;
+            status?: string;
+        };
+        UpsertGrantHoldingRequest: {
+            effectiveFrom?: string;
+            effectiveTo?: string;
+            grantId: string;
+            role?: string;
+            status?: string;
+        };
+        UpsertGrantRequest: {
+            amount?: string;
+            code: string;
+            currency?: string;
+            endOn?: string;
+            funder?: string;
+            funderRef?: string;
+            startOn?: string;
+            status?: string;
+            title: string;
         };
         /** @description Record or replace a guardian→ward link between the path person and counterpartId; role names the path person's side. */
         UpsertGuardianshipRequest: {
@@ -4444,6 +7030,14 @@ export interface components {
             /** @description active | ended; defaults to active. */
             status?: string;
         };
+        /** @description Create/update (by code) an industry-class catalog entry. */
+        UpsertIndustryClassRequest: {
+            code: string;
+            name: string;
+            /** Format: int32 */
+            sortOrder?: number;
+            system?: string;
+        };
         /** @description Record or replace a parent→child kinship between the path person and counterpartId; role names the path person's side. */
         UpsertKinshipRequest: {
             /** @description The other person's URN RID. */
@@ -4453,6 +7047,15 @@ export interface components {
             role: string;
             /** @description active | disestablished; defaults to active. */
             status?: string;
+        };
+        /** @description Create/update (by code) a legal-form catalog entry. name is the default-locale fallback. */
+        UpsertLegalFormRequest: {
+            abbreviation?: string;
+            code: string;
+            countryId?: string;
+            name: string;
+            /** Format: int32 */
+            sortOrder?: number;
         };
         /**
          * @description Add a messenger link over one of the person's phones or emails, or replace one when id is
@@ -4529,6 +7132,92 @@ export interface components {
             number: string;
             typeCode: string;
         };
+        UpsertPolicyRequest: {
+            code: string;
+            documentUrl?: string;
+            effectiveOn?: string;
+            expiryOn?: string;
+            governanceBodyId?: string;
+            kind?: string;
+            status?: string;
+            supersedesId?: string;
+            title: string;
+        };
+        UpsertProgramRequest: {
+            code: string;
+            /** Format: int32 */
+            creditHoursTotal?: number;
+            degreeLevelId?: string;
+            durationYears?: string;
+            mode?: string;
+            name: string;
+            owningUnitId?: string;
+            state?: string;
+        };
+        UpsertPublicationAuthorshipRequest: {
+            /** Format: int32 */
+            authorOrder?: number;
+            corresponding?: boolean;
+            effectiveFrom?: string;
+            effectiveTo?: string;
+            publicationId: string;
+        };
+        UpsertPublicationRequest: {
+            code: string;
+            doi?: string;
+            institutionId?: string;
+            kind?: string;
+            openAccess?: boolean;
+            publishedOn?: string;
+            title: string;
+            venue?: string;
+        };
+        UpsertQualificationAwardRequest: {
+            awardedOn?: string;
+            enrollmentId?: string;
+            gpa?: string;
+            qualificationId: string;
+            status?: string;
+            withDistinction?: boolean;
+        };
+        UpsertQualificationRequest: {
+            awardingBody?: string;
+            code: string;
+            degreeLevelId?: string;
+            frameworkCode?: string;
+            frameworkLevel?: string;
+            name: string;
+            programId?: string;
+            status?: string;
+        };
+        UpsertRegistrationRequest: {
+            identifier: string;
+            schemeId: string;
+        };
+        UpsertResearchCentreRequest: {
+            code: string;
+            dissolvedOn?: string;
+            foundedOn?: string;
+            fundingSource?: string;
+            kind?: string;
+            name: string;
+            status?: string;
+        };
+        UpsertResearchGroupRequest: {
+            centreId?: string;
+            code: string;
+            focusArea?: string;
+            name: string;
+            status?: string;
+            unitId?: string;
+        };
+        UpsertResearchMembershipRequest: {
+            effectiveFrom?: string;
+            effectiveTo?: string;
+            groupId: string;
+            role?: string;
+            status?: string;
+        };
         /** @description Add a residence row, or replace one when id is supplied. */
         UpsertResidenceRequest: {
             country: string;
@@ -4537,6 +7226,33 @@ export interface components {
             region?: string;
             validFrom: string;
             validTo?: string;
+        };
+        /** @description Create/update (by code) a registration-scheme catalog entry. */
+        UpsertSchemeRequest: {
+            code: string;
+            isGlobal?: boolean;
+            name: string;
+            /** Format: int32 */
+            sortOrder?: number;
+            validatorPattern?: string;
+        };
+        UpsertScholarshipAwardRequest: {
+            effectiveFrom?: string;
+            effectiveTo?: string;
+            scholarshipId: string;
+            status?: string;
+        };
+        UpsertScholarshipRequest: {
+            amount?: string;
+            code: string;
+            conditions?: string;
+            currency?: string;
+            frequency?: string;
+            institutionId?: string;
+            kind?: string;
+            name: string;
+            renewable?: boolean;
+            status?: string;
         };
         /** @description Add a social account, or replace one when id is supplied. handle is normalized and profileUrl derived when omitted. */
         UpsertSocialAccountRequest: {
@@ -4561,8 +7277,12 @@ export interface components {
         UpsertSponsorshipRequest: {
             /** @description The other person's URN RID. */
             counterpartId: string;
+            /** @description Optional sponsor education role — one of professor | tutor | curator | advisor. */
+            educationRole?: string;
             effectiveFrom?: string;
             effectiveTo?: string;
+            /** @description Optional education context — the enrollment (D-Education, M20) this sponsorship relates to. */
+            enrollmentId?: string;
             id?: string;
             /** @description Required relation-type code (category=sponsorship). */
             relationCode: string;
@@ -5100,6 +7820,1294 @@ export interface operations {
             };
         };
     };
+    CompanyService_endAppointment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                appointmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EndAppointmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Appointment"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_removeBeneficiary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                beneficiaryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_removeBranch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                branchId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_listCompanies: {
+        parameters: {
+            query?: {
+                /** @description Optional case-insensitive code/name filter. */
+                query?: string;
+                pageSize?: number;
+                pageToken?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyPage"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_createCompany: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCompanyRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Company"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_getCompany: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                companyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Company"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_updateCompany: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                companyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCompanyRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Company"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_deleteCompany: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                companyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_recordBeneficiary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                companyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordBeneficiaryRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Beneficiary"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_recordBranch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                companyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordBranchRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Branch"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_recordFounding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                companyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordFoundingRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Founding"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_listIndustries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                companyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndustryAssignmentList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_assignIndustry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                companyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignIndustryRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndustryAssignment"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_listCompanyLocations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                companyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyLocationList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_addCompanyLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                companyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddCompanyLocationRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyLocation"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_getOwnershipGraph: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                companyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnershipGraph"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_listPositions: {
+        parameters: {
+            query?: {
+                /** @description Filter — vacant | filled. Omit for all active. */
+                state?: string;
+                pageSize?: number;
+                pageToken?: string;
+            };
+            header?: never;
+            path: {
+                companyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyPositionPage"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_createPosition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                companyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePositionRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyPosition"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_listRegistrations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                companyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistrationList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_addRegistration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                companyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertRegistrationRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Registration"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_recordShareholding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                companyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordShareholdingRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Shareholding"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_recordSuccession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                companyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordSuccessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Succession"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_removeCompanyLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                companyLocationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_removeFounding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                foundingId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_removeIndustry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assignmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_listIndustryClasses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndustryClassList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_upsertIndustryClass: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertIndustryClassRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndustryClass"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_listLegalForms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LegalFormList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_upsertLegalForm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertLegalFormRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LegalForm"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_listPersonCompanyAffiliations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonCompanyAffiliations"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_getPosition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                positionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyPosition"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_updatePosition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                positionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePositionRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyPosition"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_abolishPosition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                positionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyPosition"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_fillPosition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                positionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FillPositionRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Appointment"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_listRegistrationSchemes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistrationSchemeList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_upsertRegistrationScheme: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertSchemeRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistrationScheme"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_updateRegistration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                registrationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertRegistrationRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Registration"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_deleteRegistration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                registrationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_removeShareholding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shareholdingId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    CompanyService_removeSuccession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                successionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
     DocumentService_listDocumentTypes: {
         parameters: {
             query?: never;
@@ -5578,6 +9586,4349 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PersonalCode"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_listAccreditationEvents: {
+        parameters: {
+            query?: {
+                institutionId?: string;
+                programId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccreditationEventList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_createAccreditationEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertAccreditationEventRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccreditationEvent"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_getAccreditationEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eventId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccreditationEvent"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_updateAccreditationEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eventId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertAccreditationEventRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccreditationEvent"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_deleteAccreditationEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eventId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_endAppointment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                appointmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EndAppointmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Appointment"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_getBuilding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                buildingId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Building"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_updateBuilding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                buildingId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateBuildingRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Building"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_deleteBuilding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                buildingId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_deleteCoursePrerequisite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                prerequisiteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_getCourse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Course"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_updateCourse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertCourseRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Course"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_deleteCourse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_listCoursePrerequisites: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursePrerequisiteList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_addCoursePrerequisite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCoursePrerequisiteRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursePrerequisite"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_updateCurriculumItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertCurriculumItemRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurriculumItem"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_deleteCurriculumItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_getCurriculumVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurriculumVersion"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_updateCurriculumVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertCurriculumVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurriculumVersion"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_deleteCurriculumVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_listCurriculumItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurriculumItemList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_addCurriculumItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertCurriculumItemRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurriculumItem"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_listDegreeLevels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DegreeLevelList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_getGovernanceBody: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bodyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceBody"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_updateGovernanceBody: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bodyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertGovernanceBodyRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceBody"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_deleteGovernanceBody: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bodyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_getGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                grantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Grant"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_updateGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                grantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertGrantRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Grant"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_deleteGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                grantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_getGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Group"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_updateGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateGroupRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Group"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_deleteGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_listInstitutionKinds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionKindList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_upsertInstitutionKind: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertCatalogKindRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionKind"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_listInstitutions: {
+        parameters: {
+            query?: {
+                /** @description Optional case-insensitive code/name filter. */
+                query?: string;
+                pageSize?: number;
+                pageToken?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionPage"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_createInstitution: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInstitutionRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Institution"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_getInstitution: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Institution"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_updateInstitution: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateInstitutionRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Institution"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_deleteInstitution: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_listBuildings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildingList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_createBuilding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateBuildingRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Building"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_listCourses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_createCourse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertCourseRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Course"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_listGovernanceBodies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceBodyList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_createGovernanceBody: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertGovernanceBodyRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceBody"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_listGrants: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrantList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_createGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertGrantRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Grant"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_listPolicies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_createPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertPolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Policy"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_listPositions: {
+        parameters: {
+            query?: {
+                /** @description Filter — vacant | filled. Omit for all active. */
+                state?: string;
+                pageSize?: number;
+                pageToken?: string;
+            };
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PositionPage"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_createPosition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePositionRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EducationPosition"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_listPrograms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgramList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_createProgram: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertProgramRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Program"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_listQualifications: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualificationList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_createQualification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertQualificationRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Qualification"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_listResearchCentres: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchCentreList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_createResearchCentre: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertResearchCentreRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchCentre"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_listResearchGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchGroupList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_createResearchGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertResearchGroupRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchGroup"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_listUnits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EducationUnitList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_createUnit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateUnitRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EducationUnit"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_rebuildClosure: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClosureReport"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_verifyClosure: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institutionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClosureReport"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_listPersonAppointments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonAppointmentList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_listDormitoryStays: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DormitoryStayList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_createDormitoryStay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertDormitoryStayRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DormitoryStay"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_updateDormitoryStay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+                stayId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertDormitoryStayRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DormitoryStay"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_deleteDormitoryStay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+                stayId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_listEnrollments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrollmentList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_createEnrollment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertEnrollmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Enrollment"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_updateEnrollment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+                enrollmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertEnrollmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Enrollment"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_deleteEnrollment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+                enrollmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_listGovernanceMemberships: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceMembershipList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_createGovernanceMembership: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertGovernanceMembershipRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceMembership"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_updateGovernanceMembership: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+                linkId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertGovernanceMembershipRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceMembership"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_deleteGovernanceMembership: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+                linkId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_listGrantHoldings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrantHoldingList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_createGrantHolding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertGrantHoldingRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrantHolding"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_updateGrantHolding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+                linkId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertGrantHoldingRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrantHolding"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_deleteGrantHolding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+                linkId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_listPublicationAuthorships: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicationAuthorshipList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_createPublicationAuthorship: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertPublicationAuthorshipRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicationAuthorship"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_updatePublicationAuthorship: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+                linkId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertPublicationAuthorshipRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicationAuthorship"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_deletePublicationAuthorship: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+                linkId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_listQualificationAwards: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualificationAwardList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_createQualificationAward: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertQualificationAwardRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualificationAward"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_updateQualificationAward: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+                linkId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertQualificationAwardRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualificationAward"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_deleteQualificationAward: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+                linkId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_listResearchMemberships: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchMembershipList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_createResearchMembership: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertResearchMembershipRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchMembership"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_updateResearchMembership: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+                linkId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertResearchMembershipRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchMembership"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_deleteResearchMembership: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+                linkId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_listScholarshipAwards: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScholarshipAwardList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_createScholarshipAward: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertScholarshipAwardRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScholarshipAward"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_updateScholarshipAward: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+                linkId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertScholarshipAwardRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScholarshipAward"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_deleteScholarshipAward: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+                linkId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_getPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Policy"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_updatePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertPolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Policy"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_deletePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_getPosition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                positionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EducationPosition"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_updatePosition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                positionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePositionRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EducationPosition"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_abolishPosition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                positionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EducationPosition"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_fillPosition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                positionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FillPositionRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Appointment"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_getProgram: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                programId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Program"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_updateProgram: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                programId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertProgramRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Program"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_deleteProgram: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                programId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_listCurriculumVersions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                programId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurriculumVersionList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_createCurriculumVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                programId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertCurriculumVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurriculumVersion"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_listPublications: {
+        parameters: {
+            query?: {
+                query?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicationList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_createPublication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertPublicationRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Publication"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_getPublication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                publicationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Publication"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_updatePublication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                publicationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertPublicationRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Publication"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_deletePublication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                publicationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_getQualification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                qualificationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Qualification"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_updateQualification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                qualificationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertQualificationRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Qualification"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_deleteQualification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                qualificationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_getResearchCentre: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                centreId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchCentre"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_updateResearchCentre: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                centreId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertResearchCentreRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchCentre"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_deleteResearchCentre: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                centreId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_getResearchGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchGroup"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_updateResearchGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertResearchGroupRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchGroup"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_deleteResearchGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_listScholarships: {
+        parameters: {
+            query?: {
+                query?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScholarshipList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_createScholarship: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertScholarshipRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Scholarship"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_getScholarship: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scholarshipId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Scholarship"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_updateScholarship: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scholarshipId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertScholarshipRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Scholarship"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationReferenceService_deleteScholarship: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scholarshipId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_listUnitKinds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnitKindList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_upsertUnitKind: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertCatalogKindRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnitKind"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_getUnit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                unitId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EducationUnit"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_updateUnit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                unitId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateUnitRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EducationUnit"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_listGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                unitId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_createGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                unitId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGroupRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Group"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    EducationService_reparentUnit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                unitId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReparentUnitRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EducationUnit"];
                 };
             };
             /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
@@ -6310,6 +14661,8 @@ export interface operations {
                 maxLng?: number;
                 pageSize?: number;
                 pageToken?: string;
+                /** @description Case-insensitive substring match on locality, admin areas, street, MGRS, or raw address. */
+                query?: string;
             };
             header?: never;
             path?: never;
@@ -7257,6 +15610,8 @@ export interface operations {
             query?: {
                 pageSize?: number;
                 pageToken?: string;
+                /** @description Optional case-insensitive substring match on display name, code, given name, or surname. */
+                query?: string;
             };
             header?: never;
             path?: never;

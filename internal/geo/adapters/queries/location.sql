@@ -96,6 +96,27 @@ WHERE deleted_at IS NULL
 ORDER BY id
 LIMIT sqlc.arg(lim)::int OFFSET sqlc.arg(off)::int;
 
+-- name: SearchLocationsByText :many
+-- Case-insensitive text search over the address fields (no spatial window required), ordered by id for
+-- stable pagination. Backs the typeahead picker — a location has no `code`, so the match runs over
+-- locality, the admin areas, street, mgrs, and the raw address.
+SELECT id,
+  ST_Y(geom::geometry)::double precision AS latitude,
+  ST_X(geom::geometry)::double precision AS longitude,
+  mgrs, source_coordinate, country_id,
+  admin_area_1, admin_area_2, locality, street, house_number, postal_code, raw_address,
+  type_id, created_at, updated_at
+FROM oikumenea.location_locations
+WHERE deleted_at IS NULL
+  AND (locality ILIKE '%' || sqlc.arg(query)::text || '%'
+       OR admin_area_1 ILIKE '%' || sqlc.arg(query)::text || '%'
+       OR admin_area_2 ILIKE '%' || sqlc.arg(query)::text || '%'
+       OR street ILIKE '%' || sqlc.arg(query)::text || '%'
+       OR mgrs ILIKE '%' || sqlc.arg(query)::text || '%'
+       OR raw_address ILIKE '%' || sqlc.arg(query)::text || '%')
+ORDER BY id
+LIMIT sqlc.arg(lim)::int OFFSET sqlc.arg(off)::int;
+
 -- name: ListLocationTypes :many
 SELECT id, code, name, status FROM oikumenea.location_location_types
 WHERE deleted_at IS NULL AND status = 'active'

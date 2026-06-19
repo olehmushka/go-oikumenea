@@ -216,8 +216,10 @@ services:
       listLocations:
         http: GET /locations
         docs: |
-          Spatial query, token-paginated. Supply either a radius (lat + lng + radiusM, via ST_DWithin)
-          or a bounding box (minLat + minLng + maxLat + maxLng); Location:QueryWindowRequired otherwise.
+          Spatial or text query, token-paginated. Supply a `query` (case-insensitive match on the
+          address fields — no spatial window required), or a radius (lat + lng + radiusM, via
+          ST_DWithin), or a bounding box (minLat + minLng + maxLat + maxLng); Location:QueryWindowRequired
+          when none is given.
         args:
           lat:
             type: optional<double>
@@ -246,6 +248,10 @@ services:
           pageToken:
             type: optional<string>
             param-type: query
+          query:
+            type: optional<string>
+            param-type: query
+            docs: Case-insensitive substring match on locality, admin areas, street, MGRS, or raw address.
         returns: LocationPage
       listLocationTypes:
         http: GET /location/types

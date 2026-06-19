@@ -66,14 +66,14 @@ across graphs. That — *hierarchy + inheritance + visibility, decided by a PDP*
 |---|---|
 | [hermenea](modules/hermenea.md) *(M16, `cmd/hermenea`)* | Out-of-process **ingestion + scheduler**, its **own Postgres**, HTTP-only coupling: fetch (http/file connector) → raw staging → mapper → oikumenea `POST /import/{objectType}` idempotent upsert; cron + `worker_jobs` queue; `import_runs` lineage. **D-Hermenea** supersedes D-Worker and folds the M17 data-ingestion framework. |
 
-**Planned modules** (designed in [milestones.md](milestones.md) M16–M26 + [roadmap-decisions.md](architecture/roadmap-decisions.md); most module docs follow at implementation time — the **religion** and shared **location** docs already exist):
+**Planned modules** (designed in [milestones.md](milestones.md) M16–M26 + [roadmap-decisions.md](architecture/roadmap-decisions.md); most module docs follow at implementation time — the **religion**, shared **location**, and **company** docs already exist):
 
 | Module | Responsibility |
 |---|---|
 | [language](modules/language.md) *(M18 — backend + migrated, UI deferred)* | Languages & writing systems as a Glottolog-faithful registry (the full 5.3 forest, import-loaded) + ISO-15924 scripts; person/unit/locale language ties. |
 | [location](modules/location.md) *(M19)* | A shared, standalone place entity: PostGIS coordinate + app-derived MGRS + multi-format coordinate input + structured address. Reused by education, company, and religion sites. |
 | `education` *(M20)* | Educational institutions, internal structure, buildings, and person bindings (enrollment, mentorship, groups, dorm stays, positions). |
-| `company` *(M21)* | A legal-entity registry with the ownership/affiliation graph (legal form, registration, positions, founders, shareholders, UBO). |
+| [company](modules/company.md) *(M21)* | A legal-entity registry with the ownership/affiliation graph (legal form, registration, positions, founders, shareholders, UBO). |
 | [religion](modules/religion.md) *(M22–M25)* | The **multi-faith** religion vertical: faith taxonomy (religions→traditions), organizations as tenant units in religion graphs, clergy grades/credentials, lay affiliation (`pii:special`), and discovery (sites→Location, schedules, search). Catalog-driven, no hard-coded faith vocabulary. |
 | `vehicle` *(M26)* | A vehicle registry binding people & companies to vehicles: brand/model/type taxonomy, the vehicle (VIN), a temporal brand↔Company manufacturer link, and the ownership+plate registration (polymorphic person\|company owner, plate region via the shared `geo_subdivisions` registry). |
 

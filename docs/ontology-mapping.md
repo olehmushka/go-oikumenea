@@ -79,9 +79,10 @@ Real-world entities with identity over time → Objects.
 | `Program` / `Course` / `CurriculumVersion` *(M20 ref)* | [education](modules/education.md) | `code` (per institution / program) | lifecycle + soft-delete | reference curriculum catalog (RID `14,1,9/10/11`); D-Education reference layer |
 | `ResearchCentre` / `ResearchGroup` / `Grant` / `Publication` *(M20 ref)* | [education](modules/education.md) | `code` | `status`/lifecycle + soft-delete | reference research entities (RID `14,1,12..15`) |
 | `GovernanceBody` / `Policy` / `Qualification` / `Scholarship` / `AccreditationEvent` *(M20 ref)* | [education](modules/education.md) | `code` (events: none) | lifecycle + soft-delete | reference governance/credentials (RID `14,1,16..20`) |
-| `Company` *(planned, M21)* | `company` | `code` | soft-delete | legal entity; `legal_form` + `ownership_category` (two axes); D-Companies |
-| `CompanyPosition` *(planned, M21)* | `company` | yes (per company) | `status` + soft-delete | company-owned billet (mirrors `Position`) |
-| `CompanyLegalForm` / `CompanyRegistrationScheme` / `CompanyIndustryClass` *(planned, M21)* | `company` | yes (`code`/`name`) | `status` + soft-delete | catalogs; registration schemes mirror `PersonalCodeScheme` (LEI spine) |
+| `Company` *(M21)* | [company](modules/company.md) | `code` | soft-delete | legal entity (RID service 15, `15,1,1`); `legal_form` + `ownership_category` (two axes); translatable `legal_name`; D-Companies |
+| `CompanyPosition` *(M21)* | [company](modules/company.md) | yes (per company) | `status` + soft-delete | company-owned billet (RID `15,1,5`; mirrors `Position`) |
+| `Registration` *(M21)* | [company](modules/company.md) | per `(scheme, identifier)` | soft-delete | a company's per-scheme registration id (RID `15,1,6`; mirrors `PersonalCode`); `validated` against the scheme pattern |
+| `CompanyLegalForm` / `CompanyRegistrationScheme` / `CompanyIndustryClass` *(M21)* | [company](modules/company.md) | yes (`code`/`name`) | `status` + soft-delete | catalogs (RID `15,1,2/3/4`); registration schemes mirror `PersonalCodeScheme` (LEI ISO-17442 spine, per-scheme validators) |
 | `LocationType` *(M19)* | `location` | yes (`code`/`name`) | `status` + soft-delete | optional place-purpose catalog beside `Location`; D-Location |
 | `Religion` / `TraditionFamily` / `SubTradition` *(planned, M22)* | `religion` | yes (`code`/`name`) | soft-delete | faith taxonomy catalogs (family nested under religion, sub-tradition under family); D-Religion |
 | `OrgKind` / `OrgProfile` / `OrgPolicy` *(planned, M22)* | `religion` | kind has `code`/`name` | soft-delete | org nodes **reuse `Unit`**; `OrgProfile` is per-unit faith attributes, `OrgPolicy` a data-driven eligibility rule (replaces any faith-specific doctrinal flag) |
@@ -154,12 +155,14 @@ Links additionally carry `valid_from`/`valid_to`
 | `AUTHORED_PUBLICATION` / `MEMBER_OF_RESEARCH_GROUP` / `HOLDS_GRANT` *(M20 ref)* | `Person` → `Publication` / `ResearchGroup` / `Grant` | [education](modules/education.md) | order/role; `pii:basic` | **temporal**; person links (RID `14,2,7/8/9`); purge-erased |
 | `MEMBER_OF_GOVERNANCE_BODY` / `AWARDED_QUALIFICATION` / `AWARDED_SCHOLARSHIP` *(M20 ref)* | `Person` → `GovernanceBody` / `Qualification` / `Scholarship` | [education](modules/education.md) | role; diploma award; `pii:basic` | **temporal**; person links (RID `14,2,10/11/12`); purge-erased |
 | `SPONSOR_OF` (education context) *(M20)* | `Person` → `Person` | [person](modules/person.md) | optional `enrollment_id` ref + `education_role ∈ professor/tutor/curator/advisor` | **extends M14 `SPONSOR_OF`** — two nullable columns, no new link type (D-Education) |
-| `HOLDS_COMPANY_POSITION` *(planned, M21)* | `Person` → `CompanyPosition` | `company` | one-holder | **temporal**; mirrors `FILLS` |
-| `FOUNDED` *(planned, M21)* | `Person`\|`Company` → `Company` | `company` | founder (person or company) | — |
-| `OWNS_STAKE` *(planned, M21)* | `Person`\|`Company` → `Company` | `company` | stake %; **polymorphic holder** | **temporal**; company-holder edges form the ownership DAG |
-| `BENEFICIARY_OF` *(planned, M21)* | `Person` → `Company` | `company` | ultimate %, declared-vs-computed | UBO; computed traversal is DS-47 |
-| `SUCCEEDED_BY` *(planned, M21)* | `Company` → `Company` | `company` | M&A/reorganization lineage | — |
-| `BRANCH_OF` *(planned, M21)* | `Company` → `Company` | `company` | non-independent sub-unit | distinct from a subsidiary |
+| `HOLDS_COMPANY_POSITION` *(M21)* | `Person` → `CompanyPosition` | [company](modules/company.md) | one-holder; `pii:basic` | **temporal**; `company_appointments` (`15,2,1`); mirrors `FILLS`; purge-erased |
+| `FOUNDED` *(M21)* | `Person`\|`Company` → `Company` | [company](modules/company.md) | founder (person or company); **polymorphic holder** (`holder_kind`+`holder_id`, no FK) | `company_foundings` (`15,2,2`); person-holder rows `pii:basic`, purge-erased |
+| `OWNS_STAKE` *(M21)* | `Person`\|`Company` → `Company` | [company](modules/company.md) | stake %; **polymorphic holder** | **temporal**; `company_shareholdings` (`15,2,3`); company-holder edges form the ownership DAG; person-holder rows purge-erased |
+| `BENEFICIARY_OF` *(M21)* | `Person` → `Company` | [company](modules/company.md) | ultimate %, declared-vs-computed; `pii:basic` | UBO; `company_beneficiaries` (`15,2,4`); purge-erased; computed traversal is DS-47 |
+| `SUCCEEDED_BY` *(M21)* | `Company` → `Company` | [company](modules/company.md) | M&A/reorganization lineage (`kind`) | `company_successions` (`15,2,5`) |
+| `BRANCH_OF` *(M21)* | `Company` → `Company` | [company](modules/company.md) | non-independent sub-unit | `company_branches` (`15,2,6`); distinct from a subsidiary |
+| `HAS_INDUSTRY` *(M21)* | `Company` → `CompanyIndustryClass` | [company](modules/company.md) | M:N, one primary | `company_industry_assignments` (`15,2,7`) |
+| `LOCATED_AT` *(M21)* | `Company` → `Location` | [company](modules/company.md) | `role ∈ registered\|operating\|branch` | `company_locations` (`15,2,8`) → shared M19 `Location` |
 | `CLERGY_CREDENTIAL` *(planned, M23)* | `Person` → `ClergyGrade` (in an org `Unit`) | `religion` | `granted_on`, conferrer, `status ∈ active\|suspended\|revoked`, `source`/`confidence` | **temporal**; indelible where sacramental; **never an authz input** (parallels `HOLDS_RANK`) |
 | `AFFILIATED_WITH` *(planned, M24)* | `Person` → religion/tradition/community `Unit` | `religion` | `affiliation_type`, **`pii:special`** envelope-encrypted value + blind index, `source`/`confidence` | **temporal**; crypto-erased on purge; never an authz input; D-ReligiousAffiliation / D-SpecialPII |
 | `SITE_OF` *(planned, M25)* | `Unit` → `Location` | `religion` | `site_type`, `visibility`, `public_precision`, `is_primary` (one per unit) | — (shared `Location`; precision projected at read time) |

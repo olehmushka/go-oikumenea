@@ -827,6 +827,10 @@ services:
           pageToken:
             type: optional<string>
             param-type: query
+          query:
+            type: optional<string>
+            param-type: query
+            docs: Optional case-insensitive substring match on display name, code, given name, or surname.
         returns: PersonPage
       setRank:
         http: PUT /persons/{personId}/rank

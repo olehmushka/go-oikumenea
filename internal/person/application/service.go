@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -181,14 +182,15 @@ func (s *Service) UpdatePerson(ctx context.Context, id string, patch domain.Pers
 	return out, err
 }
 
-// ListPersons returns a keyset-paginated page of the directory (by time-ordered RID).
-func (s *Service) ListPersons(ctx context.Context, pageSize int, pageToken string) (Page, error) {
+// ListPersons returns a keyset-paginated page of the directory (by time-ordered RID), optionally
+// narrowed by a case-insensitive name/code substring (server-side, keeps the keyset cursor correct).
+func (s *Service) ListPersons(ctx context.Context, pageSize int, pageToken, query string) (Page, error) {
 	size := resolvePageSize(pageSize)
 	after, err := decodeCursor(pageToken)
 	if err != nil {
 		return Page{}, err
 	}
-	persons, err := s.newRepo(s.pool).ListPersons(ctx, after, size+1)
+	persons, err := s.newRepo(s.pool).ListPersons(ctx, after, query, size+1)
 	if err != nil {
 		return Page{}, err
 	}
@@ -228,7 +230,7 @@ func (s *Service) ReadablePerson(ctx context.Context, reach authzdomain.Reach, p
 // effective readable units. The instance-admin case is the unrestricted ListPersons and is handled by
 // the caller. An empty readable set yields an empty page. Pagination keys on the person RID, matching
 // the membership union's ordering, so the returned rows are already in token order.
-func (s *Service) ListVisiblePersons(ctx context.Context, reach authzdomain.Reach, pageSize int, pageToken string) (Page, error) {
+func (s *Service) ListVisiblePersons(ctx context.Context, reach authzdomain.Reach, pageSize int, pageToken, query string) (Page, error) {
 	size := resolvePageSize(pageSize)
 	after, err := decodeCursor(pageToken)
 	if err != nil {
@@ -255,10 +257,33 @@ func (s *Service) ListVisiblePersons(ctx context.Context, reach authzdomain.Reac
 	if err != nil {
 		return Page{}, err
 	}
+	// The visible-set page is keyed on the membership union (its cursor is unaffected by the text
+	// filter), so the optional @query is applied in Go to the hydrated rows: a typeahead narrows the
+	// returned page without disturbing pagination.
+	if q := strings.TrimSpace(strings.ToLower(query)); q != "" {
+		filtered := persons[:0]
+		for _, p := range persons {
+			if matchesPersonQuery(p, q) {
+				filtered = append(filtered, p)
+			}
+		}
+		persons = filtered
+	}
 	if hasMore && len(ids) > 0 {
 		return Page{Persons: persons, NextPageToken: encodeCursor(ids[len(ids)-1])}, nil
 	}
 	return Page{Persons: persons}, nil
+}
+
+// matchesPersonQuery reports whether a person matches a lowercased name/code substring (the Go-side
+// equivalent of the ListPersons SQL ILIKE, used by the read-scope visible path).
+func matchesPersonQuery(p domain.Person, q string) bool {
+	for _, f := range []string{p.DisplayName, p.Code, p.Given, p.Surname} {
+		if strings.Contains(strings.ToLower(f), q) {
+			return true
+		}
+	}
+	return false
 }
 
 // SetPersonRank sets the person's rank in one rank system, or clears it (a directory attribute;

@@ -98,7 +98,7 @@ Legend: `✅` done · `🚧` in progress · `⬜` not started · `➖` not appli
 | **M18** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — both i18n gaps closed (`name` is now a `locale→text` map via `NamesByID`; `i18n_locale_languages` reconciled on import) and re-proven e2e (full 27k Glottolog 5.3 load + the new person/unit/locale language UI). See M18 Verdict (resolved). |
 | **M19** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — `location_locations` (PostGIS point + app-derived MGRS + multi-format coordinate input + `source_coordinate`) + audited LocationService CRUD + radius/bbox; stock postgis image; unit + e2e integration tests (D-Location amended 2026-06-17: MGRS app-side, H3 dropped) |
 | **M20** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — `education` module (RID service 14): external reference institutions + recursive unit tree (+ closure), buildings (→M19 location), groups, positions/appointments (one-holder), person enrollments + dorm stays (purge-erased) + sponsorship education context; migration `0020_education` (ISCED-seeded degree levels); audited EducationService CRUD; `/education` web page; integration test proves the full slice (closure/cycle/reparent, fill/PositionAlreadyFilled/end, purge erasure). **Reference-layer extension** (`university_ontology.md` adoption, migration `0021_education_reference` + `EducationReferenceService`): curriculum/courses (+ prerequisite cycle guard), research (centres/groups/grants/publications), governance/policy, credentials (qualifications/`diploma` doc-type/accreditation), scholarships, and 6 person↔reference links (purge-erased); operational SIS deliberately excluded — second integration test green |
-| **M21** | ✅ | 🚧 | ⬜ | ⬜ | ⬜ | ⬜ | decided |
+| **M21** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — `company` module (RID service 15): legal-entity registry over person + M19 location. Catalogs (legal forms / registration schemes w/ per-scheme validators incl. LEI / NACE industry classes), companies (`legal_form` + orthogonal `ownership_category`), per-scheme registrations (validated), industry assignments (one primary), locations (→M19), positions/appointments (one-holder), and the ownership/affiliation graph — foundings/shareholdings (**polymorphic person\|company holder**, ownership DAG), beneficiaries (UBO), successions, branches. Migration `0022_company`; audited CompanyService CRUD + `GET /companies/{id}/ownership-graph` + `/persons/{id}/company-affiliations`; `/companies` web page + person companies panel; integration test proves the full exit slice (LEI+EDRPOU validation, fill/PositionAlreadyFilled, 60% corporate shareholder, UBO, subsidiary/branch, predecessor succession, ownership-graph query, person-purge erasure). DS-45/46/47 (intelligence feeds, web/contact, ownership closure) parked |
 | **M22** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | designed |
 | **M23** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | designed |
 | **M24** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | designed |
@@ -113,8 +113,9 @@ supersedes D-Worker and **absorbs M17/D-DataIngestion**); its module doc
 (a headless companion service — no console surface). *Designed* `✅` means a dedicated module doc
 exists — present for **M16** ([hermenea.md](modules/hermenea.md)), **M18**
 ([language.md](modules/language.md)), **M19**
-([location.md](modules/location.md)) and **M22–M25** ([religion.md](modules/religion.md)); for
-M20/M21/M26 the module doc is still to be written, hence `🚧`. M15's backend is additive over the M4 rank migration
+([location.md](modules/location.md)), **M20** ([education.md](modules/education.md)),
+**M21** ([company.md](modules/company.md)) and **M22–M25** ([religion.md](modules/religion.md)); for
+M26 the module doc is still to be written, hence `🚧`. M15's backend is additive over the M4 rank migration
 (`20260601000004_rank.sql`), not a separate file. M12 is now **verified**: its exit criteria are met
 across the board — grounded in migrations `0012_person_contacts` + `0016_person_date_of_death`, the
 `person`/`document` integration suites (`TestContactChannels`, `TestContactTypeCatalogs`,
@@ -744,10 +745,11 @@ studied where/when, under whom, in which group/department, and where they lived.
 
 ## M21 — Companies
 
-**Status: planned.** Binding via **D-Companies** in [roadmap-decisions.md](architecture/roadmap-decisions.md). A new
+**Status: verified.** Built as the [company](modules/company.md) module (RID service 15), binding via
+**D-Companies** in [roadmap-decisions.md](architecture/roadmap-decisions.md). A
 legal-entity registry over person + the M19 Location foundation — **independent of education** (per
 decision). Scoped to **structural** registry data (identity + affiliation + ownership graph) for
-analysis and linking; volatile intelligence (financials/court/tax/sanctions) is parked.
+analysis and linking; volatile intelligence (financials/court/tax/sanctions) is parked (DS-45/46/47).
 
 **Goal.** Hold companies (private/public/state-owned/…) at registry grade — identity, legal form,
 multi-jurisdiction registration, locations, positions, and the **ownership/affiliation graph** (founders,

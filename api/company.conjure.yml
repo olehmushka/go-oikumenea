@@ -1,0 +1,653 @@
+# Company module API (M21). A generic legal-entity registry over person + the M19 location foundation
+# (docs/modules/company.md / D-Companies): companies, multi-jurisdiction registrations, industry
+# classification, locations, positions/appointments, and the ownership/affiliation graph (founders,
+# shareholders, beneficial owners, parent/subsidiary, succession, branches). Volatile intelligence
+# (financials/court/tax/sanctions, web/contact, ownership closure / computed-UBO) is PARKED.
+#
+# RID-bearing fields are typed `string` (the canonical RID text): Conjure reserves `rid` as a built-in
+# primitive, so a type named `Rid` cannot be used. Translatable labels (company legal name; legal-form,
+# registration-scheme, industry-class names; position titles) are returned as a `locale -> text` map
+# assembled from the i18n store (D-i18n: all locales in every response, no negotiation); create/update
+# requests carry the default-locale value as a plain `string`. Company entities carry no unit scope of
+# their own (external reference data), so reads gate on `company.read`, writes on `company.manage` /
+# `company.position.manage`, catalog management on the instance-scope `company.catalog.manage` — all
+# satisfied anywhere via the PEP. Writes are audited in-process under an interim `system` actor (D-Audit).
+# Generated Go lands in internal/conjure and is never hand-edited.
+types:
+  definitions:
+    default-package: oikumenea.company
+    objects:
+      # ---- reference catalogs ----
+      LegalForm:
+        docs: A per-country legal form (ТОВ/ПАТ/ФОП, LLC/JSC/GmbH …); countryId null for a generic form.
+        fields:
+          id: string
+          code: string
+          name:
+            type: map<string, string>
+            docs: Default-locale fallback + i18n translations.
+          abbreviation: optional<string>
+          countryId: optional<string>
+          status: string
+          sortOrder: optional<integer>
+      RegistrationScheme:
+        docs: A registration-identifier scheme (LEI/DUNS/EDRPOU/VAT/EIN); isGlobal marks the worldwide spine.
+        fields:
+          id: string
+          code: string
+          name: map<string, string>
+          validatorPattern: optional<string>
+          isGlobal: boolean
+          status: string
+          sortOrder: optional<integer>
+      IndustryClass:
+        docs: An economic-activity classification entry (NACE/ISIC/KVED).
+        fields:
+          id: string
+          code: string
+          name: map<string, string>
+          system:
+            type: string
+            docs: One of nace | isic | kved.
+          status: string
+          sortOrder: optional<integer>
+      # ---- objects ----
+      Company:
+        docs: A legal entity at registry grade. Soft-deleted, not destroyed.
+        fields:
+          id: string
+          code: string
+          legalName: map<string, string>
+          shortName: optional<string>
+          legalFormId: string
+          ownershipCategory:
+            type: string
+            docs: One of private | public | state_owned | municipal | foreign | mixed.
+          countryId: optional<string>
+          foundedOn: optional<string>
+          dissolvedOn: optional<string>
+          state:
+            type: string
+            docs: One of active | dissolved | merged.
+          createdAt: datetime
+          updatedAt: datetime
+      Registration:
+        docs: A company's per-scheme registration identifier (LEI / national number / VAT …).
+        fields:
+          id: string
+          companyId: string
+          schemeId: string
+          identifier: string
+          validated: boolean
+          createdAt: datetime
+          updatedAt: datetime
+      IndustryAssignment:
+        docs: A company's economic-activity classification (M:N), one primary + secondaries.
+        fields:
+          id: string
+          companyId: string
+          industryClassId: string
+          isPrimary: boolean
+          createdAt: datetime
+          updatedAt: datetime
+      CompanyLocation:
+        docs: A company's address, located via the shared M19 location; role distinguishes registered/operating/branch.
+        fields:
+          id: string
+          companyId: string
+          locationId: string
+          role:
+            type: string
+            docs: One of registered | operating | branch.
+          createdAt: datetime
+          updatedAt: datetime
+      CompanyPosition:
+        docs: |
+          A company-owned billet (CEO/director/employee line; mirrors membership Position) — exists while
+          vacant; carries no authority. The current holder is populated on get/list (null when vacant).
+        fields:
+          id: string
+          companyId: string
+          code: string
+          title: map<string, string>
+          status: string
+          sortOrder: optional<integer>
+          holder: optional<Appointment>
+          createdAt: datetime
+          updatedAt: datetime
+      Appointment:
+        docs: A person filling a company position (link__holds_company_position), one-holder, effective-dated.
+        fields:
+          id: string
+          personId: string
+          positionId: string
+          status: string
+          effectiveFrom: datetime
+          effectiveTo: optional<datetime>
+          createdAt: datetime
+          updatedAt: datetime
+      # ---- ownership / affiliation links ----
+      Founding:
+        docs: Who FOUNDED a company (link__founded). The founder is a person or a company (polymorphic holder).
+        fields:
+          id: string
+          companyId: string
+          companyLabel: optional<string>
+          holderKind:
+            type: string
+            docs: One of person | company.
+          holderId: string
+          holderLabel:
+            type: optional<string>
+            docs: Best-effort display label (company legal name for company holders; empty for persons).
+          foundedOn: optional<string>
+          createdAt: datetime
+          updatedAt: datetime
+      Shareholding:
+        docs: A holder OWNS_STAKE in a company (link__owns_stake). Polymorphic holder; company-holder edges form the ownership DAG.
+        fields:
+          id: string
+          companyId: string
+          companyLabel: optional<string>
+          holderKind: string
+          holderId: string
+          holderLabel: optional<string>
+          stakePct: optional<double>
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+          createdAt: datetime
+          updatedAt: datetime
+      Beneficiary:
+        docs: A natural person who is the ultimate beneficial owner of a company (link__beneficiary_of, UBO).
+        fields:
+          id: string
+          companyId: string
+          companyLabel: optional<string>
+          personId: string
+          ultimatePct: optional<double>
+          declared:
+            type: boolean
+            docs: Whether the ultimate ownership is registry-declared (vs computed).
+          createdAt: datetime
+          updatedAt: datetime
+      Succession:
+        docs: M&A / reorganization lineage — predecessor SUCCEEDED_BY successor (link__succeeded_by).
+        fields:
+          id: string
+          predecessorId: string
+          predecessorLabel: optional<string>
+          successorId: string
+          successorLabel: optional<string>
+          kind:
+            type: string
+            docs: One of merger | reorganization | rename | acquisition | spinoff.
+          effectiveOn: optional<string>
+          createdAt: datetime
+          updatedAt: datetime
+      Branch:
+        docs: A non-independent sub-unit BRANCH_OF a parent company (link__branch_of).
+        fields:
+          id: string
+          branchId: string
+          branchLabel: optional<string>
+          parentId: string
+          parentLabel: optional<string>
+          createdAt: datetime
+          updatedAt: datetime
+      # ---- person view ----
+      PersonCompanyAppointment:
+        docs: A company appointment a person holds, enriched with the position title + owning company (read-only).
+        fields:
+          id: string
+          personId: string
+          positionId: string
+          positionTitle: string
+          companyId: string
+          companyName: string
+          status: string
+          effectiveFrom: datetime
+          effectiveTo: optional<datetime>
+          createdAt: datetime
+          updatedAt: datetime
+      # ---- aggregate read views ----
+      OwnershipGraph:
+        docs: The ownership/affiliation neighbourhood of one company (one hop in each direction).
+        fields:
+          companyId: string
+          shareholders:
+            type: list<Shareholding>
+            docs: Stakes held IN this company.
+          holdings:
+            type: list<Shareholding>
+            docs: Stakes this company holds in OTHER companies (subsidiaries via the ownership DAG).
+          beneficiaries: list<Beneficiary>
+          founders: list<Founding>
+          successions:
+            type: list<Succession>
+            docs: Lineage where this company is the predecessor or the successor.
+          branches:
+            type: list<Branch>
+            docs: Branches of this company.
+      PersonCompanyAffiliations:
+        docs: A person's company links — employment, founding, ownership, and ultimate-beneficiary records.
+        fields:
+          appointments: list<PersonCompanyAppointment>
+          foundings: list<Founding>
+          shareholdings: list<Shareholding>
+          beneficiaryOf: list<Beneficiary>
+      # ---- pages / lists ----
+      CompanyPage:
+        fields:
+          companies: list<Company>
+          nextPageToken: optional<string>
+      CompanyPositionPage:
+        fields:
+          positions: list<CompanyPosition>
+          nextPageToken: optional<string>
+      LegalFormList:
+        fields:
+          legalForms: list<LegalForm>
+      RegistrationSchemeList:
+        fields:
+          registrationSchemes: list<RegistrationScheme>
+      IndustryClassList:
+        fields:
+          industryClasses: list<IndustryClass>
+      RegistrationList:
+        fields:
+          registrations: list<Registration>
+      IndustryAssignmentList:
+        fields:
+          industries: list<IndustryAssignment>
+      CompanyLocationList:
+        fields:
+          locations: list<CompanyLocation>
+      # ---- request bodies ----
+      UpsertLegalFormRequest:
+        docs: Create/update (by code) a legal-form catalog entry. name is the default-locale fallback.
+        fields:
+          code: string
+          name: string
+          abbreviation: optional<string>
+          countryId: optional<string>
+          sortOrder: optional<integer>
+      UpsertSchemeRequest:
+        docs: Create/update (by code) a registration-scheme catalog entry.
+        fields:
+          code: string
+          name: string
+          validatorPattern: optional<string>
+          isGlobal: optional<boolean>
+          sortOrder: optional<integer>
+      UpsertIndustryClassRequest:
+        docs: Create/update (by code) an industry-class catalog entry.
+        fields:
+          code: string
+          name: string
+          system: optional<string>
+          sortOrder: optional<integer>
+      CreateCompanyRequest:
+        fields:
+          code: string
+          legalName: string
+          shortName: optional<string>
+          legalFormId: string
+          ownershipCategory: optional<string>
+          countryId: optional<string>
+          foundedOn: optional<string>
+      UpdateCompanyRequest:
+        docs: Update name/form/category/country/dates/state. code is immutable; omitted fields are unchanged.
+        fields:
+          legalName: optional<string>
+          shortName: optional<string>
+          legalFormId: optional<string>
+          ownershipCategory: optional<string>
+          countryId: optional<string>
+          foundedOn: optional<string>
+          dissolvedOn: optional<string>
+          state: optional<string>
+      UpsertRegistrationRequest:
+        fields:
+          schemeId: string
+          identifier: string
+      AssignIndustryRequest:
+        fields:
+          industryClassId: string
+          isPrimary: optional<boolean>
+      AddCompanyLocationRequest:
+        fields:
+          locationId: string
+          role: optional<string>
+      CreatePositionRequest:
+        fields:
+          code: string
+          title: string
+          sortOrder: optional<integer>
+      UpdatePositionRequest:
+        fields:
+          title: optional<string>
+          sortOrder: optional<integer>
+      FillPositionRequest:
+        fields:
+          personId: string
+          effectiveFrom: optional<datetime>
+      EndAppointmentRequest:
+        fields:
+          effectiveTo: optional<datetime>
+      RecordFoundingRequest:
+        docs: Record a founder of this company (person or company holder).
+        fields:
+          holderKind: string
+          holderId: string
+          foundedOn: optional<string>
+      RecordShareholdingRequest:
+        docs: Record a stake held in this company (person or company holder).
+        fields:
+          holderKind: string
+          holderId: string
+          stakePct: optional<double>
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+      RecordBeneficiaryRequest:
+        fields:
+          personId: string
+          ultimatePct: optional<double>
+          declared: optional<boolean>
+      RecordSuccessionRequest:
+        docs: Record that this company (the predecessor) is succeeded by the given successor.
+        fields:
+          successorId: string
+          kind: optional<string>
+          effectiveOn: optional<string>
+      RecordBranchRequest:
+        docs: Record that the given branch company is a branch of this company (the parent).
+        fields:
+          branchId: string
+    errors:
+      CompanyNotFound:
+        namespace: Company
+        code: NOT_FOUND
+        safe-args:
+          companyId: string
+      PositionNotFound:
+        namespace: Company
+        code: NOT_FOUND
+        safe-args:
+          positionId: string
+      LinkNotFound:
+        docs: A registration / industry / location / ownership-graph link was not found.
+        namespace: Company
+        code: NOT_FOUND
+        safe-args:
+          linkId: string
+      Conflict:
+        docs: A code/identifier already exists in scope (company code, scheme+identifier, duplicate industry).
+        namespace: Company
+        code: CONFLICT
+        safe-args:
+          reason: string
+      Invalid:
+        docs: A malformed request or an unknown referenced entity (form/scheme/country/person/company/…).
+        namespace: Company
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
+      PositionAlreadyFilled:
+        docs: The position already has an active holder (one billet, one holder).
+        namespace: Company
+        code: FAILED_PRECONDITION
+        safe-args:
+          positionId: string
+      InUse:
+        docs: The entity is still referenced and cannot be removed.
+        namespace: Company
+        code: FAILED_PRECONDITION
+        safe-args:
+          reason: string
+      LifecycleConflict:
+        docs: The entity is not in a state that allows the transition.
+        namespace: Company
+        code: FAILED_PRECONDITION
+        safe-args:
+          reason: string
+services:
+  CompanyService:
+    name: Company Service
+    package: oikumenea.company
+    base-path: /company/v1
+    default-auth: header
+    docs: |
+      A legal-entity registry: companies, registrations, industries, locations, positions/appointments,
+      and the ownership/affiliation graph. Reads gate on `company.read`; company/registration/industry/
+      location/ownership writes on `company.manage`; position/appointment writes on
+      `company.position.manage`; catalog-entry writes on `company.catalog.manage`. Writes are audited
+      in-process (D-Audit).
+    endpoints:
+      # ---- catalogs ----
+      listLegalForms:
+        http: GET /legal-forms
+        returns: LegalFormList
+      upsertLegalForm:
+        http: PUT /legal-forms
+        args:
+          request: UpsertLegalFormRequest
+        returns: LegalForm
+      listRegistrationSchemes:
+        http: GET /registration-schemes
+        returns: RegistrationSchemeList
+      upsertRegistrationScheme:
+        http: PUT /registration-schemes
+        args:
+          request: UpsertSchemeRequest
+        returns: RegistrationScheme
+      listIndustryClasses:
+        http: GET /industry-classes
+        returns: IndustryClassList
+      upsertIndustryClass:
+        http: PUT /industry-classes
+        args:
+          request: UpsertIndustryClassRequest
+        returns: IndustryClass
+      # ---- companies ----
+      createCompany:
+        http: POST /companies
+        args:
+          request: CreateCompanyRequest
+        returns: Company
+      listCompanies:
+        http: GET /companies
+        args:
+          query:
+            type: optional<string>
+            param-type: query
+            docs: Optional case-insensitive code/name filter.
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: CompanyPage
+      getCompany:
+        http: GET /companies/{companyId}
+        args:
+          companyId: { type: string, param-type: path }
+        returns: Company
+      updateCompany:
+        http: PUT /companies/{companyId}
+        args:
+          companyId: { type: string, param-type: path }
+          request: UpdateCompanyRequest
+        returns: Company
+      deleteCompany:
+        http: DELETE /companies/{companyId}
+        args:
+          companyId: { type: string, param-type: path }
+      # ---- registrations ----
+      listRegistrations:
+        http: GET /companies/{companyId}/registrations
+        args:
+          companyId: { type: string, param-type: path }
+        returns: RegistrationList
+      addRegistration:
+        http: POST /companies/{companyId}/registrations
+        args:
+          companyId: { type: string, param-type: path }
+          request: UpsertRegistrationRequest
+        returns: Registration
+      updateRegistration:
+        http: PUT /registrations/{registrationId}
+        args:
+          registrationId: { type: string, param-type: path }
+          request: UpsertRegistrationRequest
+        returns: Registration
+      deleteRegistration:
+        http: DELETE /registrations/{registrationId}
+        args:
+          registrationId: { type: string, param-type: path }
+      # ---- industries ----
+      listIndustries:
+        http: GET /companies/{companyId}/industries
+        args:
+          companyId: { type: string, param-type: path }
+        returns: IndustryAssignmentList
+      assignIndustry:
+        http: POST /companies/{companyId}/industries
+        args:
+          companyId: { type: string, param-type: path }
+          request: AssignIndustryRequest
+        returns: IndustryAssignment
+      removeIndustry:
+        http: DELETE /industries/{assignmentId}
+        args:
+          assignmentId: { type: string, param-type: path }
+      # ---- locations ----
+      listCompanyLocations:
+        http: GET /companies/{companyId}/locations
+        args:
+          companyId: { type: string, param-type: path }
+        returns: CompanyLocationList
+      addCompanyLocation:
+        http: POST /companies/{companyId}/locations
+        args:
+          companyId: { type: string, param-type: path }
+          request: AddCompanyLocationRequest
+        returns: CompanyLocation
+      removeCompanyLocation:
+        http: DELETE /company-locations/{companyLocationId}
+        args:
+          companyLocationId: { type: string, param-type: path }
+      # ---- positions & appointments ----
+      createPosition:
+        http: POST /companies/{companyId}/positions
+        args:
+          companyId: { type: string, param-type: path }
+          request: CreatePositionRequest
+        returns: CompanyPosition
+      listPositions:
+        http: GET /companies/{companyId}/positions
+        args:
+          companyId: { type: string, param-type: path }
+          state:
+            type: optional<string>
+            param-type: query
+            docs: Filter — vacant | filled. Omit for all active.
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: CompanyPositionPage
+      getPosition:
+        http: GET /positions/{positionId}
+        args:
+          positionId: { type: string, param-type: path }
+        returns: CompanyPosition
+      updatePosition:
+        http: PUT /positions/{positionId}
+        args:
+          positionId: { type: string, param-type: path }
+          request: UpdatePositionRequest
+        returns: CompanyPosition
+      abolishPosition:
+        http: POST /positions/{positionId}/abolish
+        args:
+          positionId: { type: string, param-type: path }
+        returns: CompanyPosition
+      fillPosition:
+        http: POST /positions/{positionId}/fill
+        docs: Fill a vacant position. Returns Company:PositionAlreadyFilled if already filled.
+        args:
+          positionId: { type: string, param-type: path }
+          request: FillPositionRequest
+        returns: Appointment
+      endAppointment:
+        http: POST /appointments/{appointmentId}/end
+        args:
+          appointmentId: { type: string, param-type: path }
+          request: EndAppointmentRequest
+        returns: Appointment
+      # ---- ownership / affiliation graph ----
+      getOwnershipGraph:
+        http: GET /companies/{companyId}/ownership-graph
+        args:
+          companyId: { type: string, param-type: path }
+        returns: OwnershipGraph
+      recordFounding:
+        http: POST /companies/{companyId}/foundings
+        args:
+          companyId: { type: string, param-type: path }
+          request: RecordFoundingRequest
+        returns: Founding
+      removeFounding:
+        http: DELETE /foundings/{foundingId}
+        args:
+          foundingId: { type: string, param-type: path }
+      recordShareholding:
+        http: POST /companies/{companyId}/shareholdings
+        args:
+          companyId: { type: string, param-type: path }
+          request: RecordShareholdingRequest
+        returns: Shareholding
+      removeShareholding:
+        http: DELETE /shareholdings/{shareholdingId}
+        args:
+          shareholdingId: { type: string, param-type: path }
+      recordBeneficiary:
+        http: POST /companies/{companyId}/beneficiaries
+        args:
+          companyId: { type: string, param-type: path }
+          request: RecordBeneficiaryRequest
+        returns: Beneficiary
+      removeBeneficiary:
+        http: DELETE /beneficiaries/{beneficiaryId}
+        args:
+          beneficiaryId: { type: string, param-type: path }
+      recordSuccession:
+        http: POST /companies/{companyId}/successions
+        args:
+          companyId: { type: string, param-type: path }
+          request: RecordSuccessionRequest
+        returns: Succession
+      removeSuccession:
+        http: DELETE /successions/{successionId}
+        args:
+          successionId: { type: string, param-type: path }
+      recordBranch:
+        http: POST /companies/{companyId}/branches
+        args:
+          companyId: { type: string, param-type: path }
+          request: RecordBranchRequest
+        returns: Branch
+      removeBranch:
+        http: DELETE /branches/{branchId}
+        args:
+          branchId: { type: string, param-type: path }
+      # ---- person view ----
+      listPersonCompanyAffiliations:
+        http: GET /persons/{personId}/company-affiliations
+        docs: Read-only view of a person's company links (employment, founding, ownership, beneficiary-of).
+        args:
+          personId: { type: string, param-type: path }
+        returns: PersonCompanyAffiliations
