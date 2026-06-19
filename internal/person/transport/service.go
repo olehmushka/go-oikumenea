@@ -810,6 +810,7 @@ func (s Service) UpsertSponsorship(ctx context.Context, token bearertoken.Token,
 	saved, err := s.app.UpsertSponsorship(ctx, personID, domain.Sponsorship{
 		ID: derefOr(req.Id, ""), SponsorID: sponsor, SponsoredID: sponsored, RelationCode: req.RelationCode,
 		Status: derefOr(req.Status, ""), EffectiveFrom: derefOr(req.EffectiveFrom, ""), EffectiveTo: derefOr(req.EffectiveTo, ""),
+		EnrollmentID: derefOr(req.EnrollmentId, ""), EducationRole: derefOr(req.EducationRole, ""),
 	})
 	if err != nil {
 		return personapi.Sponsorship{}, s.mapError(ctx, err, personID)
@@ -1214,6 +1215,7 @@ func toAPISponsorship(sp domain.Sponsorship) personapi.Sponsorship {
 	return personapi.Sponsorship{
 		Id: sp.ID, SponsorId: sp.SponsorID, SponsoredId: sp.SponsoredID, RelationCode: sp.RelationCode,
 		Status: sp.Status, EffectiveFrom: strPtrOrNil(sp.EffectiveFrom), EffectiveTo: strPtrOrNil(sp.EffectiveTo),
+		EnrollmentId: strPtrOrNil(sp.EnrollmentID), EducationRole: strPtrOrNil(sp.EducationRole),
 	}
 }
 

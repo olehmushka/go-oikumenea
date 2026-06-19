@@ -1,0 +1,625 @@
+# Education reference layer (M20 extension — university_ontology.md adoption / D-Education). A SECOND
+# Conjure service alongside EducationService (api/education.conjure.yml), kept in its own package so the
+# large additive surface generates in isolation and never collides with the M20 base. Same base-path
+# (/education/v1), distinct sub-paths. Adds the reference-grade slice of the source ontology as EXTERNAL
+# reference data + person↔reference directory links: curriculum/courses, research, governance/policy,
+# credentials/accreditation, scholarships. NOT an operational SIS (no terms/sections/grades/assessments).
+#
+# RID-bearing fields are typed `string` (Conjure reserves `rid`). Unlike the i18n'd M20 base entities,
+# these reference names/titles are plain `string` (external reference data, not in the translation
+# store) — a deliberate simplification. Reads gate on `education.read`; reference-object writes on
+# `education.manage`; person-binding writes on `education.enrollment.manage` — all satisfied anywhere via
+# the PEP (instance-global reference data, no unit scope). Writes are audited in-process (D-Audit).
+types:
+  definitions:
+    default-package: oikumenea.educationref
+    objects:
+      # ============================ curriculum & courses ============================
+      Program:
+        docs: A degree/diploma/certificate program of an institution (optionally a unit).
+        fields:
+          id: string
+          institutionId: string
+          owningUnitId: optional<string>
+          degreeLevelId: optional<string>
+          code: string
+          name: string
+          mode: string
+          durationYears: optional<string>
+          creditHoursTotal: optional<integer>
+          state: string
+          createdAt: datetime
+          updatedAt: datetime
+      Course:
+        docs: A unit of study / module / subject of an institution (optionally a unit).
+        fields:
+          id: string
+          institutionId: string
+          owningUnitId: optional<string>
+          code: string
+          title: string
+          creditHours: optional<integer>
+          level: optional<integer>
+          description: optional<string>
+          deliveryMode: string
+          status: string
+          createdAt: datetime
+          updatedAt: datetime
+      CurriculumVersion:
+        docs: A versioned snapshot of a program's requirements.
+        fields:
+          id: string
+          programId: string
+          versionCode: string
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+          status: string
+          createdAt: datetime
+          updatedAt: datetime
+      CurriculumItem:
+        docs: A course placed in a curriculum version (required/elective + credit/year metadata).
+        fields:
+          id: string
+          versionId: string
+          courseId: string
+          isRequired: boolean
+          yearOfStudy: optional<integer>
+          creditAllocation: optional<integer>
+          semesterSlot: optional<integer>
+          createdAt: datetime
+          updatedAt: datetime
+      CoursePrerequisite:
+        docs: A course requires another course (required/recommended/corequisite).
+        fields:
+          id: string
+          courseId: string
+          requiredCourseId: string
+          kind: string
+          minGrade: optional<string>
+          createdAt: datetime
+          updatedAt: datetime
+      # ============================ research ============================
+      ResearchCentre:
+        docs: A research centre / institute / lab of an institution.
+        fields:
+          id: string
+          institutionId: string
+          code: string
+          name: string
+          kind: string
+          fundingSource: optional<string>
+          foundedOn: optional<string>
+          dissolvedOn: optional<string>
+          status: string
+          createdAt: datetime
+          updatedAt: datetime
+      ResearchGroup:
+        docs: A research cluster under a centre and/or unit of an institution.
+        fields:
+          id: string
+          institutionId: string
+          centreId: optional<string>
+          unitId: optional<string>
+          code: string
+          name: string
+          focusArea: optional<string>
+          status: string
+          createdAt: datetime
+          updatedAt: datetime
+      Grant:
+        docs: A funding grant held by an institution.
+        fields:
+          id: string
+          institutionId: string
+          code: string
+          title: string
+          funder: optional<string>
+          funderRef: optional<string>
+          amount: optional<string>
+          currency: optional<string>
+          startOn: optional<string>
+          endOn: optional<string>
+          status: string
+          createdAt: datetime
+          updatedAt: datetime
+      Publication:
+        docs: An academic publication (optionally tied to an institution).
+        fields:
+          id: string
+          institutionId: optional<string>
+          code: string
+          title: string
+          kind: string
+          doi: optional<string>
+          venue: optional<string>
+          publishedOn: optional<string>
+          openAccess: boolean
+          createdAt: datetime
+          updatedAt: datetime
+      # ============================ governance & policy ============================
+      GovernanceBody:
+        docs: A board / senate / council / committee of an institution.
+        fields:
+          id: string
+          institutionId: string
+          code: string
+          name: string
+          kind: string
+          mandate: optional<string>
+          status: string
+          createdAt: datetime
+          updatedAt: datetime
+      Policy:
+        docs: An institutional rule/regulation (optionally approved by a governance body).
+        fields:
+          id: string
+          institutionId: string
+          governanceBodyId: optional<string>
+          supersedesId: optional<string>
+          code: string
+          title: string
+          kind: string
+          effectiveOn: optional<string>
+          expiryOn: optional<string>
+          documentUrl: optional<string>
+          status: string
+          createdAt: datetime
+          updatedAt: datetime
+      # ============================ credentials & accreditation ============================
+      Qualification:
+        docs: A formally awardable qualification (degree) classification of an institution.
+        fields:
+          id: string
+          institutionId: string
+          programId: optional<string>
+          degreeLevelId: optional<string>
+          code: string
+          name: string
+          frameworkCode: optional<string>
+          frameworkLevel: optional<string>
+          awardingBody: optional<string>
+          status: string
+          createdAt: datetime
+          updatedAt: datetime
+      Scholarship:
+        docs: A financial award scheme (institution or external).
+        fields:
+          id: string
+          institutionId: optional<string>
+          code: string
+          name: string
+          kind: string
+          amount: optional<string>
+          currency: optional<string>
+          frequency: string
+          renewable: boolean
+          conditions: optional<string>
+          status: string
+          createdAt: datetime
+          updatedAt: datetime
+      AccreditationEvent:
+        docs: An accreditation review cycle against an institution OR a program.
+        fields:
+          id: string
+          entityKind: string
+          institutionId: optional<string>
+          programId: optional<string>
+          body: optional<string>
+          bodyCountryId: optional<string>
+          outcome: string
+          reviewOn: optional<string>
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+          notes: optional<string>
+          createdAt: datetime
+          updatedAt: datetime
+      # ============================ person bindings ============================
+      PublicationAuthorship:
+        docs: A person authored a publication.
+        fields:
+          id: string
+          personId: string
+          publicationId: string
+          authorOrder: optional<integer>
+          corresponding: boolean
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+          createdAt: datetime
+          updatedAt: datetime
+      ResearchMembership:
+        docs: A person is a member of a research group.
+        fields:
+          id: string
+          personId: string
+          groupId: string
+          role: optional<string>
+          status: string
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+          createdAt: datetime
+          updatedAt: datetime
+      GrantHolding:
+        docs: A person holds a grant (PI / co-investigator / researcher).
+        fields:
+          id: string
+          personId: string
+          grantId: string
+          role: string
+          status: string
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+          createdAt: datetime
+          updatedAt: datetime
+      GovernanceMembership:
+        docs: A person is a member of a governance body.
+        fields:
+          id: string
+          personId: string
+          bodyId: string
+          roleInBody: optional<string>
+          status: string
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+          createdAt: datetime
+          updatedAt: datetime
+      QualificationAward:
+        docs: A person was awarded a qualification (the diploma award).
+        fields:
+          id: string
+          personId: string
+          qualificationId: string
+          enrollmentId: optional<string>
+          awardedOn: optional<string>
+          withDistinction: boolean
+          gpa: optional<string>
+          status: string
+          createdAt: datetime
+          updatedAt: datetime
+      ScholarshipAward:
+        docs: A person was awarded a scholarship.
+        fields:
+          id: string
+          personId: string
+          scholarshipId: string
+          status: string
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+          createdAt: datetime
+          updatedAt: datetime
+      # ============================ list wrappers ============================
+      ProgramList: { fields: { programs: list<Program> } }
+      CourseList: { fields: { courses: list<Course> } }
+      CurriculumVersionList: { fields: { versions: list<CurriculumVersion> } }
+      CurriculumItemList: { fields: { items: list<CurriculumItem> } }
+      CoursePrerequisiteList: { fields: { prerequisites: list<CoursePrerequisite> } }
+      ResearchCentreList: { fields: { researchCentres: list<ResearchCentre> } }
+      ResearchGroupList: { fields: { researchGroups: list<ResearchGroup> } }
+      GrantList: { fields: { grants: list<Grant> } }
+      PublicationList: { fields: { publications: list<Publication> } }
+      GovernanceBodyList: { fields: { governanceBodies: list<GovernanceBody> } }
+      PolicyList: { fields: { policies: list<Policy> } }
+      QualificationList: { fields: { qualifications: list<Qualification> } }
+      ScholarshipList: { fields: { scholarships: list<Scholarship> } }
+      AccreditationEventList: { fields: { events: list<AccreditationEvent> } }
+      PublicationAuthorshipList: { fields: { authorships: list<PublicationAuthorship> } }
+      ResearchMembershipList: { fields: { memberships: list<ResearchMembership> } }
+      GrantHoldingList: { fields: { holdings: list<GrantHolding> } }
+      GovernanceMembershipList: { fields: { memberships: list<GovernanceMembership> } }
+      QualificationAwardList: { fields: { awards: list<QualificationAward> } }
+      ScholarshipAwardList: { fields: { awards: list<ScholarshipAward> } }
+      # ============================ request bodies ============================
+      UpsertProgramRequest:
+        fields:
+          code: string
+          name: string
+          owningUnitId: optional<string>
+          degreeLevelId: optional<string>
+          mode: optional<string>
+          durationYears: optional<string>
+          creditHoursTotal: optional<integer>
+          state: optional<string>
+      UpsertCourseRequest:
+        fields:
+          code: string
+          title: string
+          owningUnitId: optional<string>
+          creditHours: optional<integer>
+          level: optional<integer>
+          description: optional<string>
+          deliveryMode: optional<string>
+          status: optional<string>
+      UpsertCurriculumVersionRequest:
+        fields:
+          versionCode: string
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+          status: optional<string>
+      UpsertCurriculumItemRequest:
+        fields:
+          courseId: string
+          isRequired: optional<boolean>
+          yearOfStudy: optional<integer>
+          creditAllocation: optional<integer>
+          semesterSlot: optional<integer>
+      CreateCoursePrerequisiteRequest:
+        fields:
+          requiredCourseId: string
+          kind: optional<string>
+          minGrade: optional<string>
+      UpsertResearchCentreRequest:
+        fields:
+          code: string
+          name: string
+          kind: optional<string>
+          fundingSource: optional<string>
+          foundedOn: optional<string>
+          dissolvedOn: optional<string>
+          status: optional<string>
+      UpsertResearchGroupRequest:
+        fields:
+          code: string
+          name: string
+          centreId: optional<string>
+          unitId: optional<string>
+          focusArea: optional<string>
+          status: optional<string>
+      UpsertGrantRequest:
+        fields:
+          code: string
+          title: string
+          funder: optional<string>
+          funderRef: optional<string>
+          amount: optional<string>
+          currency: optional<string>
+          startOn: optional<string>
+          endOn: optional<string>
+          status: optional<string>
+      UpsertPublicationRequest:
+        fields:
+          code: string
+          title: string
+          institutionId: optional<string>
+          kind: optional<string>
+          doi: optional<string>
+          venue: optional<string>
+          publishedOn: optional<string>
+          openAccess: optional<boolean>
+      UpsertGovernanceBodyRequest:
+        fields:
+          code: string
+          name: string
+          kind: optional<string>
+          mandate: optional<string>
+          status: optional<string>
+      UpsertPolicyRequest:
+        fields:
+          code: string
+          title: string
+          governanceBodyId: optional<string>
+          supersedesId: optional<string>
+          kind: optional<string>
+          effectiveOn: optional<string>
+          expiryOn: optional<string>
+          documentUrl: optional<string>
+          status: optional<string>
+      UpsertQualificationRequest:
+        fields:
+          code: string
+          name: string
+          programId: optional<string>
+          degreeLevelId: optional<string>
+          frameworkCode: optional<string>
+          frameworkLevel: optional<string>
+          awardingBody: optional<string>
+          status: optional<string>
+      UpsertScholarshipRequest:
+        fields:
+          code: string
+          name: string
+          institutionId: optional<string>
+          kind: optional<string>
+          amount: optional<string>
+          currency: optional<string>
+          frequency: optional<string>
+          renewable: optional<boolean>
+          conditions: optional<string>
+          status: optional<string>
+      UpsertAccreditationEventRequest:
+        fields:
+          entityKind: string
+          institutionId: optional<string>
+          programId: optional<string>
+          body: optional<string>
+          bodyCountryId: optional<string>
+          outcome: optional<string>
+          reviewOn: optional<string>
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+          notes: optional<string>
+      UpsertPublicationAuthorshipRequest:
+        fields:
+          publicationId: string
+          authorOrder: optional<integer>
+          corresponding: optional<boolean>
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+      UpsertResearchMembershipRequest:
+        fields:
+          groupId: string
+          role: optional<string>
+          status: optional<string>
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+      UpsertGrantHoldingRequest:
+        fields:
+          grantId: string
+          role: optional<string>
+          status: optional<string>
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+      UpsertGovernanceMembershipRequest:
+        fields:
+          bodyId: string
+          roleInBody: optional<string>
+          status: optional<string>
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+      UpsertQualificationAwardRequest:
+        fields:
+          qualificationId: string
+          enrollmentId: optional<string>
+          awardedOn: optional<string>
+          withDistinction: optional<boolean>
+          gpa: optional<string>
+          status: optional<string>
+      UpsertScholarshipAwardRequest:
+        fields:
+          scholarshipId: string
+          status: optional<string>
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+    errors:
+      ReferenceNotFound:
+        docs: A referenced education-reference entity (program/course/grant/…) was not found.
+        namespace: Education
+        code: NOT_FOUND
+        safe-args:
+          entity: string
+          id: string
+      RefConflict:
+        docs: A code already exists in the parent scope.
+        namespace: Education
+        code: CONFLICT
+        safe-args:
+          reason: string
+      RefInvalid:
+        docs: A malformed request or an unknown referenced entity.
+        namespace: Education
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
+      RefInUse:
+        docs: The entity is still referenced and cannot be removed.
+        namespace: Education
+        code: FAILED_PRECONDITION
+        safe-args:
+          reason: string
+      PrerequisiteCycle:
+        docs: The prerequisite would create a cycle (a course cannot require itself transitively).
+        namespace: Education
+        code: FAILED_PRECONDITION
+        safe-args:
+          courseId: string
+services:
+  EducationReferenceService:
+    name: Education Reference Service
+    package: oikumenea.educationref
+    base-path: /education/v1
+    default-auth: header
+    docs: |
+      The education reference layer: curriculum/courses, research, governance/policy, credentials,
+      scholarships, and the person↔reference directory links. Reads gate on `education.read`;
+      reference writes on `education.manage`; person-binding writes on `education.enrollment.manage`.
+      Writes are audited in-process (D-Audit).
+    endpoints:
+      # ---- programs ----
+      createProgram: { http: "POST /institutions/{institutionId}/programs", args: { institutionId: { type: string, param-type: path }, request: UpsertProgramRequest }, returns: Program }
+      listPrograms: { http: "GET /institutions/{institutionId}/programs", args: { institutionId: { type: string, param-type: path } }, returns: ProgramList }
+      getProgram: { http: "GET /programs/{programId}", args: { programId: { type: string, param-type: path } }, returns: Program }
+      updateProgram: { http: "PUT /programs/{programId}", args: { programId: { type: string, param-type: path }, request: UpsertProgramRequest }, returns: Program }
+      deleteProgram: { http: "DELETE /programs/{programId}", args: { programId: { type: string, param-type: path } } }
+      # ---- courses ----
+      createCourse: { http: "POST /institutions/{institutionId}/courses", args: { institutionId: { type: string, param-type: path }, request: UpsertCourseRequest }, returns: Course }
+      listCourses: { http: "GET /institutions/{institutionId}/courses", args: { institutionId: { type: string, param-type: path } }, returns: CourseList }
+      getCourse: { http: "GET /courses/{courseId}", args: { courseId: { type: string, param-type: path } }, returns: Course }
+      updateCourse: { http: "PUT /courses/{courseId}", args: { courseId: { type: string, param-type: path }, request: UpsertCourseRequest }, returns: Course }
+      deleteCourse: { http: "DELETE /courses/{courseId}", args: { courseId: { type: string, param-type: path } } }
+      # ---- curriculum versions + items ----
+      createCurriculumVersion: { http: "POST /programs/{programId}/curriculum-versions", args: { programId: { type: string, param-type: path }, request: UpsertCurriculumVersionRequest }, returns: CurriculumVersion }
+      listCurriculumVersions: { http: "GET /programs/{programId}/curriculum-versions", args: { programId: { type: string, param-type: path } }, returns: CurriculumVersionList }
+      getCurriculumVersion: { http: "GET /curriculum-versions/{versionId}", args: { versionId: { type: string, param-type: path } }, returns: CurriculumVersion }
+      updateCurriculumVersion: { http: "PUT /curriculum-versions/{versionId}", args: { versionId: { type: string, param-type: path }, request: UpsertCurriculumVersionRequest }, returns: CurriculumVersion }
+      deleteCurriculumVersion: { http: "DELETE /curriculum-versions/{versionId}", args: { versionId: { type: string, param-type: path } } }
+      addCurriculumItem: { http: "POST /curriculum-versions/{versionId}/items", args: { versionId: { type: string, param-type: path }, request: UpsertCurriculumItemRequest }, returns: CurriculumItem }
+      listCurriculumItems: { http: "GET /curriculum-versions/{versionId}/items", args: { versionId: { type: string, param-type: path } }, returns: CurriculumItemList }
+      updateCurriculumItem: { http: "PUT /curriculum-items/{itemId}", args: { itemId: { type: string, param-type: path }, request: UpsertCurriculumItemRequest }, returns: CurriculumItem }
+      deleteCurriculumItem: { http: "DELETE /curriculum-items/{itemId}", args: { itemId: { type: string, param-type: path } } }
+      # ---- course prerequisites ----
+      addCoursePrerequisite: { http: "POST /courses/{courseId}/prerequisites", args: { courseId: { type: string, param-type: path }, request: CreateCoursePrerequisiteRequest }, returns: CoursePrerequisite }
+      listCoursePrerequisites: { http: "GET /courses/{courseId}/prerequisites", args: { courseId: { type: string, param-type: path } }, returns: CoursePrerequisiteList }
+      deleteCoursePrerequisite: { http: "DELETE /course-prerequisites/{prerequisiteId}", args: { prerequisiteId: { type: string, param-type: path } } }
+      # ---- research ----
+      createResearchCentre: { http: "POST /institutions/{institutionId}/research-centres", args: { institutionId: { type: string, param-type: path }, request: UpsertResearchCentreRequest }, returns: ResearchCentre }
+      listResearchCentres: { http: "GET /institutions/{institutionId}/research-centres", args: { institutionId: { type: string, param-type: path } }, returns: ResearchCentreList }
+      getResearchCentre: { http: "GET /research-centres/{centreId}", args: { centreId: { type: string, param-type: path } }, returns: ResearchCentre }
+      updateResearchCentre: { http: "PUT /research-centres/{centreId}", args: { centreId: { type: string, param-type: path }, request: UpsertResearchCentreRequest }, returns: ResearchCentre }
+      deleteResearchCentre: { http: "DELETE /research-centres/{centreId}", args: { centreId: { type: string, param-type: path } } }
+      createResearchGroup: { http: "POST /institutions/{institutionId}/research-groups", args: { institutionId: { type: string, param-type: path }, request: UpsertResearchGroupRequest }, returns: ResearchGroup }
+      listResearchGroups: { http: "GET /institutions/{institutionId}/research-groups", args: { institutionId: { type: string, param-type: path } }, returns: ResearchGroupList }
+      getResearchGroup: { http: "GET /research-groups/{groupId}", args: { groupId: { type: string, param-type: path } }, returns: ResearchGroup }
+      updateResearchGroup: { http: "PUT /research-groups/{groupId}", args: { groupId: { type: string, param-type: path }, request: UpsertResearchGroupRequest }, returns: ResearchGroup }
+      deleteResearchGroup: { http: "DELETE /research-groups/{groupId}", args: { groupId: { type: string, param-type: path } } }
+      # ---- grants ----
+      createGrant: { http: "POST /institutions/{institutionId}/grants", args: { institutionId: { type: string, param-type: path }, request: UpsertGrantRequest }, returns: Grant }
+      listGrants: { http: "GET /institutions/{institutionId}/grants", args: { institutionId: { type: string, param-type: path } }, returns: GrantList }
+      getGrant: { http: "GET /grants/{grantId}", args: { grantId: { type: string, param-type: path } }, returns: Grant }
+      updateGrant: { http: "PUT /grants/{grantId}", args: { grantId: { type: string, param-type: path }, request: UpsertGrantRequest }, returns: Grant }
+      deleteGrant: { http: "DELETE /grants/{grantId}", args: { grantId: { type: string, param-type: path } } }
+      # ---- publications ----
+      createPublication: { http: "POST /publications", args: { request: UpsertPublicationRequest }, returns: Publication }
+      listPublications: { http: "GET /publications", args: { query: { type: optional<string>, param-type: query } }, returns: PublicationList }
+      getPublication: { http: "GET /publications/{publicationId}", args: { publicationId: { type: string, param-type: path } }, returns: Publication }
+      updatePublication: { http: "PUT /publications/{publicationId}", args: { publicationId: { type: string, param-type: path }, request: UpsertPublicationRequest }, returns: Publication }
+      deletePublication: { http: "DELETE /publications/{publicationId}", args: { publicationId: { type: string, param-type: path } } }
+      # ---- governance & policy ----
+      createGovernanceBody: { http: "POST /institutions/{institutionId}/governance-bodies", args: { institutionId: { type: string, param-type: path }, request: UpsertGovernanceBodyRequest }, returns: GovernanceBody }
+      listGovernanceBodies: { http: "GET /institutions/{institutionId}/governance-bodies", args: { institutionId: { type: string, param-type: path } }, returns: GovernanceBodyList }
+      getGovernanceBody: { http: "GET /governance-bodies/{bodyId}", args: { bodyId: { type: string, param-type: path } }, returns: GovernanceBody }
+      updateGovernanceBody: { http: "PUT /governance-bodies/{bodyId}", args: { bodyId: { type: string, param-type: path }, request: UpsertGovernanceBodyRequest }, returns: GovernanceBody }
+      deleteGovernanceBody: { http: "DELETE /governance-bodies/{bodyId}", args: { bodyId: { type: string, param-type: path } } }
+      createPolicy: { http: "POST /institutions/{institutionId}/policies", args: { institutionId: { type: string, param-type: path }, request: UpsertPolicyRequest }, returns: Policy }
+      listPolicies: { http: "GET /institutions/{institutionId}/policies", args: { institutionId: { type: string, param-type: path } }, returns: PolicyList }
+      getPolicy: { http: "GET /policies/{policyId}", args: { policyId: { type: string, param-type: path } }, returns: Policy }
+      updatePolicy: { http: "PUT /policies/{policyId}", args: { policyId: { type: string, param-type: path }, request: UpsertPolicyRequest }, returns: Policy }
+      deletePolicy: { http: "DELETE /policies/{policyId}", args: { policyId: { type: string, param-type: path } } }
+      # ---- credentials & accreditation ----
+      createQualification: { http: "POST /institutions/{institutionId}/qualifications", args: { institutionId: { type: string, param-type: path }, request: UpsertQualificationRequest }, returns: Qualification }
+      listQualifications: { http: "GET /institutions/{institutionId}/qualifications", args: { institutionId: { type: string, param-type: path } }, returns: QualificationList }
+      getQualification: { http: "GET /qualifications/{qualificationId}", args: { qualificationId: { type: string, param-type: path } }, returns: Qualification }
+      updateQualification: { http: "PUT /qualifications/{qualificationId}", args: { qualificationId: { type: string, param-type: path }, request: UpsertQualificationRequest }, returns: Qualification }
+      deleteQualification: { http: "DELETE /qualifications/{qualificationId}", args: { qualificationId: { type: string, param-type: path } } }
+      createScholarship: { http: "POST /scholarships", args: { request: UpsertScholarshipRequest }, returns: Scholarship }
+      listScholarships: { http: "GET /scholarships", args: { query: { type: optional<string>, param-type: query } }, returns: ScholarshipList }
+      getScholarship: { http: "GET /scholarships/{scholarshipId}", args: { scholarshipId: { type: string, param-type: path } }, returns: Scholarship }
+      updateScholarship: { http: "PUT /scholarships/{scholarshipId}", args: { scholarshipId: { type: string, param-type: path }, request: UpsertScholarshipRequest }, returns: Scholarship }
+      deleteScholarship: { http: "DELETE /scholarships/{scholarshipId}", args: { scholarshipId: { type: string, param-type: path } } }
+      createAccreditationEvent: { http: "POST /accreditation-events", args: { request: UpsertAccreditationEventRequest }, returns: AccreditationEvent }
+      listAccreditationEvents: { http: "GET /accreditation-events", args: { institutionId: { type: optional<string>, param-type: query }, programId: { type: optional<string>, param-type: query } }, returns: AccreditationEventList }
+      getAccreditationEvent: { http: "GET /accreditation-events/{eventId}", args: { eventId: { type: string, param-type: path } }, returns: AccreditationEvent }
+      updateAccreditationEvent: { http: "PUT /accreditation-events/{eventId}", args: { eventId: { type: string, param-type: path }, request: UpsertAccreditationEventRequest }, returns: AccreditationEvent }
+      deleteAccreditationEvent: { http: "DELETE /accreditation-events/{eventId}", args: { eventId: { type: string, param-type: path } } }
+      # ---- person bindings ----
+      listPublicationAuthorships: { http: "GET /persons/{personId}/publication-authorships", args: { personId: { type: string, param-type: path } }, returns: PublicationAuthorshipList }
+      createPublicationAuthorship: { http: "POST /persons/{personId}/publication-authorships", args: { personId: { type: string, param-type: path }, request: UpsertPublicationAuthorshipRequest }, returns: PublicationAuthorship }
+      updatePublicationAuthorship: { http: "PUT /persons/{personId}/publication-authorships/{linkId}", args: { personId: { type: string, param-type: path }, linkId: { type: string, param-type: path }, request: UpsertPublicationAuthorshipRequest }, returns: PublicationAuthorship }
+      deletePublicationAuthorship: { http: "DELETE /persons/{personId}/publication-authorships/{linkId}", args: { personId: { type: string, param-type: path }, linkId: { type: string, param-type: path } } }
+      listResearchMemberships: { http: "GET /persons/{personId}/research-memberships", args: { personId: { type: string, param-type: path } }, returns: ResearchMembershipList }
+      createResearchMembership: { http: "POST /persons/{personId}/research-memberships", args: { personId: { type: string, param-type: path }, request: UpsertResearchMembershipRequest }, returns: ResearchMembership }
+      updateResearchMembership: { http: "PUT /persons/{personId}/research-memberships/{linkId}", args: { personId: { type: string, param-type: path }, linkId: { type: string, param-type: path }, request: UpsertResearchMembershipRequest }, returns: ResearchMembership }
+      deleteResearchMembership: { http: "DELETE /persons/{personId}/research-memberships/{linkId}", args: { personId: { type: string, param-type: path }, linkId: { type: string, param-type: path } } }
+      listGrantHoldings: { http: "GET /persons/{personId}/grant-holdings", args: { personId: { type: string, param-type: path } }, returns: GrantHoldingList }
+      createGrantHolding: { http: "POST /persons/{personId}/grant-holdings", args: { personId: { type: string, param-type: path }, request: UpsertGrantHoldingRequest }, returns: GrantHolding }
+      updateGrantHolding: { http: "PUT /persons/{personId}/grant-holdings/{linkId}", args: { personId: { type: string, param-type: path }, linkId: { type: string, param-type: path }, request: UpsertGrantHoldingRequest }, returns: GrantHolding }
+      deleteGrantHolding: { http: "DELETE /persons/{personId}/grant-holdings/{linkId}", args: { personId: { type: string, param-type: path }, linkId: { type: string, param-type: path } } }
+      listGovernanceMemberships: { http: "GET /persons/{personId}/governance-memberships", args: { personId: { type: string, param-type: path } }, returns: GovernanceMembershipList }
+      createGovernanceMembership: { http: "POST /persons/{personId}/governance-memberships", args: { personId: { type: string, param-type: path }, request: UpsertGovernanceMembershipRequest }, returns: GovernanceMembership }
+      updateGovernanceMembership: { http: "PUT /persons/{personId}/governance-memberships/{linkId}", args: { personId: { type: string, param-type: path }, linkId: { type: string, param-type: path }, request: UpsertGovernanceMembershipRequest }, returns: GovernanceMembership }
+      deleteGovernanceMembership: { http: "DELETE /persons/{personId}/governance-memberships/{linkId}", args: { personId: { type: string, param-type: path }, linkId: { type: string, param-type: path } } }
+      listQualificationAwards: { http: "GET /persons/{personId}/qualification-awards", args: { personId: { type: string, param-type: path } }, returns: QualificationAwardList }
+      createQualificationAward: { http: "POST /persons/{personId}/qualification-awards", args: { personId: { type: string, param-type: path }, request: UpsertQualificationAwardRequest }, returns: QualificationAward }
+      updateQualificationAward: { http: "PUT /persons/{personId}/qualification-awards/{linkId}", args: { personId: { type: string, param-type: path }, linkId: { type: string, param-type: path }, request: UpsertQualificationAwardRequest }, returns: QualificationAward }
+      deleteQualificationAward: { http: "DELETE /persons/{personId}/qualification-awards/{linkId}", args: { personId: { type: string, param-type: path }, linkId: { type: string, param-type: path } } }
+      listScholarshipAwards: { http: "GET /persons/{personId}/scholarship-awards", args: { personId: { type: string, param-type: path } }, returns: ScholarshipAwardList }
+      createScholarshipAward: { http: "POST /persons/{personId}/scholarship-awards", args: { personId: { type: string, param-type: path }, request: UpsertScholarshipAwardRequest }, returns: ScholarshipAward }
+      updateScholarshipAward: { http: "PUT /persons/{personId}/scholarship-awards/{linkId}", args: { personId: { type: string, param-type: path }, linkId: { type: string, param-type: path }, request: UpsertScholarshipAwardRequest }, returns: ScholarshipAward }
+      deleteScholarshipAward: { http: "DELETE /persons/{personId}/scholarship-awards/{linkId}", args: { personId: { type: string, param-type: path }, linkId: { type: string, param-type: path } } }

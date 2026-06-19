@@ -65,9 +65,9 @@ var (
 	ErrPartnershipConflict     = errors.New("a person already has an active engaged/married partnership")
 	ErrRelationshipConflict    = errors.New("an equivalent active relationship already exists")
 	// D-Languages (M18)
-	ErrUnknownLanguage     = errors.New("language does not exist or is not a level='language' languoid")
-	ErrLanguageNotFound    = errors.New("person language not found")
-	ErrLanguageConflict    = errors.New("the person already speaks this language")
+	ErrUnknownLanguage  = errors.New("language does not exist or is not a level='language' languoid")
+	ErrLanguageNotFound = errors.New("person language not found")
+	ErrLanguageConflict = errors.New("the person already speaks this language")
 )
 
 // Social-account attribution vocabularies (D-PersonSocialChannels): source records how the account was
@@ -667,6 +667,10 @@ type Sponsorship struct {
 	Status        string
 	EffectiveFrom string
 	EffectiveTo   string
+	// Optional education context (D-Education, M20): the enrollment this sponsorship relates to and the
+	// sponsor's education role (professor|tutor|curator|advisor). "" = not an education sponsorship.
+	EnrollmentID  string
+	EducationRole string
 }
 
 func (s Sponsorship) Validate() error {

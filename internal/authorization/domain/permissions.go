@@ -97,6 +97,14 @@ const (
 	PermLocationCreate Permission = "location.create"
 	PermLocationUpdate Permission = "location.update"
 
+	// education (D-Education, M20) — external reference institutions + structure (units/buildings/
+	// groups) + the person bindings (enrollments, dorm stays, positions/appointments). External
+	// reference data, not tenant-unit scoped, so reads/writes are satisfied anywhere via the PEP.
+	PermEducationRead             Permission = "education.read"
+	PermEducationManage           Permission = "education.manage"
+	PermEducationPositionManage   Permission = "education.position.manage"
+	PermEducationEnrollmentManage Permission = "education.enrollment.manage"
+
 	// i18n
 	PermLocaleRead        Permission = "locale.read"
 	PermTranslationRead   Permission = "translation.read"
@@ -112,6 +120,7 @@ const (
 	PermPersonalCodeSchemeManage Permission = "personal-code-scheme.manage"
 	PermCountryManage            Permission = "country.manage"
 	PermLocationTypesManage      Permission = "location.types.manage"
+	PermEducationCatalogManage   Permission = "education.catalog.manage"
 	PermInstanceConfig           Permission = "instance.config"
 	PermInstanceAdminManage      Permission = "instance.admin.manage"
 	// import — the generic reference-data import endpoint (M16 / D-Hermenea). Held by the
@@ -135,6 +144,7 @@ var instanceScope = map[Permission]struct{}{
 	PermPersonalCodeSchemeManage: {},
 	PermCountryManage:            {},
 	PermLocationTypesManage:      {},
+	PermEducationCatalogManage:   {},
 	PermLocaleManage:             {},
 	PermTranslationManage:        {},
 	PermInstanceConfig:           {},
@@ -161,9 +171,10 @@ var catalog = func() map[Permission]struct{} {
 		PermCountryRead,
 		PermLanguageRead,
 		PermLocationRead, PermLocationCreate, PermLocationUpdate,
+		PermEducationRead, PermEducationManage, PermEducationPositionManage, PermEducationEnrollmentManage,
 		PermLocaleRead, PermTranslationRead, PermLocaleManage, PermTranslationManage,
 		PermRankSchemeManage, PermGraphManage, PermClosureRebuild, PermDocumentTypeManage, PermOrderTypeManage,
-		PermPersonalCodeSchemeManage, PermCountryManage, PermLocationTypesManage, PermInstanceConfig, PermInstanceAdminManage,
+		PermPersonalCodeSchemeManage, PermCountryManage, PermLocationTypesManage, PermEducationCatalogManage, PermInstanceConfig, PermInstanceAdminManage,
 		PermImportManage,
 	}
 	m := make(map[Permission]struct{}, len(all))

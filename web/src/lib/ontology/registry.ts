@@ -218,6 +218,62 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
         path: (id) => `/person/v1/persons/${id}/associations`,
         parse: (r, src) => bare(r).map((a) => ({ id: other(s(a.personIdA)!, s(a.personIdB)!, src), label: ridTail(other(s(a.personIdA)!, s(a.personIdB)!, src)), sub: s(a.kind), tone: s(a.kind) === "no_contact" ? "slate" : relTone(a.status) })),
       },
+      // Education (M20/M21): the person's enrollments + the other education bindings, each pointing at
+      // its education object (institution / building / research group / grant / publication / body / …).
+      {
+        label: "Education",
+        targetType: "institution",
+        path: (id) => `/education/v1/persons/${id}/enrollments`,
+        parse: (r) => arr(r, "enrollments").map((e) => ({ id: s(e.institutionId)!, label: ridTail(s(e.institutionId)!), sub: s(e.status), tone: relTone(e.status) })),
+      },
+      {
+        label: "Dormitory stays",
+        targetType: "building",
+        path: (id) => `/education/v1/persons/${id}/dormitory-stays`,
+        parse: (r) => arr(r, "dormitoryStays").map((d) => ({ id: s(d.buildingId)!, label: ridTail(s(d.buildingId)!), sub: s(d.status), tone: relTone(d.status) })),
+      },
+      {
+        label: "Appointments",
+        targetType: "education_position",
+        path: (id) => `/education/v1/persons/${id}/appointments`,
+        parse: (r) => arr(r, "appointments").map((a) => ({ id: s(a.positionId)!, label: s(a.positionTitle) || ridTail(s(a.positionId)!), sub: s(a.status), tone: relTone(a.status) })),
+      },
+      {
+        label: "Research memberships",
+        targetType: "research_group",
+        path: (id) => `/education/v1/persons/${id}/research-memberships`,
+        parse: (r) => arr(r, "memberships").map((m) => ({ id: s(m.groupId)!, label: ridTail(s(m.groupId)!), sub: s(m.role) || s(m.status), tone: relTone(m.status) })),
+      },
+      {
+        label: "Grant holdings",
+        targetType: "grant",
+        path: (id) => `/education/v1/persons/${id}/grant-holdings`,
+        parse: (r) => arr(r, "holdings").map((h) => ({ id: s(h.grantId)!, label: ridTail(s(h.grantId)!), sub: s(h.role) || s(h.status), tone: relTone(h.status) })),
+      },
+      {
+        label: "Governance memberships",
+        targetType: "governance_body",
+        path: (id) => `/education/v1/persons/${id}/governance-memberships`,
+        parse: (r) => arr(r, "memberships").map((m) => ({ id: s(m.bodyId)!, label: ridTail(s(m.bodyId)!), sub: s(m.roleInBody) || s(m.status), tone: relTone(m.status) })),
+      },
+      {
+        label: "Publication authorships",
+        targetType: "publication",
+        path: (id) => `/education/v1/persons/${id}/publication-authorships`,
+        parse: (r) => arr(r, "authorships").map((a) => ({ id: s(a.publicationId)!, label: ridTail(s(a.publicationId)!), sub: a.corresponding ? "corresponding" : undefined })),
+      },
+      {
+        label: "Qualification awards",
+        targetType: "qualification",
+        path: (id) => `/education/v1/persons/${id}/qualification-awards`,
+        parse: (r) => arr(r, "awards").map((a) => ({ id: s(a.qualificationId)!, label: ridTail(s(a.qualificationId)!), sub: s(a.status), tone: relTone(a.status) })),
+      },
+      {
+        label: "Scholarship awards",
+        targetType: "scholarship",
+        path: (id) => `/education/v1/persons/${id}/scholarship-awards`,
+        parse: (r) => arr(r, "awards").map((a) => ({ id: s(a.scholarshipId)!, label: ridTail(s(a.scholarshipId)!), sub: s(a.status), tone: relTone(a.status) })),
+      },
     ],
     actions: [
       { key: "deactivate", label: "Deactivate", method: "POST", path: (id) => `/person/v1/persons/${id}/deactivate`, confirm: "Deactivate this person?", appliesTo: (p) => String(p.status ?? "").toUpperCase() === "ACTIVE" },
@@ -711,6 +767,449 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
       { key: "code", header: "Code", value: (t) => s(t.code), render: "mono" },
       { key: "name", header: "Name", value: (t) => loc(t.name) },
       { key: "status", header: "Status", value: (t) => s(t.status), render: "pill", tone: (t) => statusTone(t.status) },
+    ],
+  },
+
+  // Education (M20 / D-Education): external reference institutions + their structure tree, buildings,
+  // groups and positions. Institutions are globally browsable; the children are reached per institution.
+  institution: {
+    type: "institution",
+    kind: "object",
+    label: "Institution",
+    labelPlural: "Institutions",
+    module: "education",
+    blurb: "External reference education institution (where people studied/taught) + its structure tree.",
+    list: { path: "/education/v1/institutions", search: "?pageSize=50", parse: pageParse("institutions") },
+    get: (id) => `/education/v1/institutions/${id}`,
+    title: (i) => loc(i.name) || s(i.code) || ridTail(i.id),
+    subtitle: (i) => s(i.code),
+    columns: [
+      { key: "code", header: "Code", value: (i) => s(i.code), render: "mono" },
+      { key: "name", header: "Name", value: (i) => loc(i.name) },
+      { key: "state", header: "State", value: (i) => s(i.state), render: "pill", tone: (i) => statusTone(i.state) },
+    ],
+    properties: [
+      { label: "Name", value: (i) => loc(i.name) },
+      { label: "Code", value: (i) => s(i.code), render: "mono" },
+      { label: "Kind", value: (i) => (i.kindId ? ridTail(s(i.kindId)!) : undefined), render: "mono" },
+      { label: "Country", value: (i) => (i.countryId ? ridTail(s(i.countryId)!) : undefined), render: "mono" },
+      { label: "Founded", value: (i) => s(i.foundedOn) },
+      { label: "Closed", value: (i) => s(i.closedOn) },
+      { label: "State", value: (i) => s(i.state), render: "pill", tone: (i) => statusTone(i.state) },
+    ],
+    links: [
+      {
+        label: "Units",
+        targetType: "education_unit",
+        path: (id) => `/education/v1/institutions/${id}/units`,
+        parse: (r) => arr(r, "units").map((u) => ({ id: s(u.id)!, label: loc(u.name) || s(u.code) || ridTail(s(u.id)!), sub: `depth ${s(u.depth) ?? "0"}` })),
+      },
+      {
+        label: "Buildings",
+        targetType: "building",
+        path: (id) => `/education/v1/institutions/${id}/buildings`,
+        parse: (r) => arr(r, "buildings").map((b) => ({ id: s(b.id)!, label: loc(b.name) || s(b.code) || ridTail(s(b.id)!), sub: s(b.kind) })),
+      },
+      {
+        label: "Positions",
+        targetType: "education_position",
+        path: (id) => `/education/v1/institutions/${id}/positions`,
+        parse: (r) => arr(r, "positions").map((p) => ({ id: s(p.id)!, label: loc(p.title) || s(p.code) || ridTail(s(p.id)!), sub: p.holder ? "filled" : "vacant", tone: p.holder ? "green" : "amber" })),
+      },
+      {
+        label: "Programs",
+        targetType: "program",
+        path: (id) => `/education/v1/institutions/${id}/programs`,
+        parse: (r) => arr(r, "programs").map((p) => ({ id: s(p.id)!, label: s(p.name) || s(p.code) || ridTail(s(p.id)!), sub: s(p.mode) })),
+      },
+      {
+        label: "Courses",
+        targetType: "course",
+        path: (id) => `/education/v1/institutions/${id}/courses`,
+        parse: (r) => arr(r, "courses").map((c) => ({ id: s(c.id)!, label: s(c.title) || s(c.code) || ridTail(s(c.id)!), sub: s(c.code) })),
+      },
+      {
+        label: "Research centres",
+        targetType: "research_centre",
+        path: (id) => `/education/v1/institutions/${id}/research-centres`,
+        parse: (r) => arr(r, "researchCentres").map((c) => ({ id: s(c.id)!, label: s(c.name) || s(c.code) || ridTail(s(c.id)!), sub: s(c.kind) })),
+      },
+      {
+        label: "Grants",
+        targetType: "grant",
+        path: (id) => `/education/v1/institutions/${id}/grants`,
+        parse: (r) => arr(r, "grants").map((g) => ({ id: s(g.id)!, label: s(g.title) || s(g.code) || ridTail(s(g.id)!), sub: s(g.status) })),
+      },
+      {
+        label: "Governance bodies",
+        targetType: "governance_body",
+        path: (id) => `/education/v1/institutions/${id}/governance-bodies`,
+        parse: (r) => arr(r, "governanceBodies").map((b) => ({ id: s(b.id)!, label: s(b.name) || s(b.code) || ridTail(s(b.id)!), sub: s(b.kind) })),
+      },
+      {
+        label: "Qualifications",
+        targetType: "qualification",
+        path: (id) => `/education/v1/institutions/${id}/qualifications`,
+        parse: (r) => arr(r, "qualifications").map((q) => ({ id: s(q.id)!, label: s(q.name) || s(q.code) || ridTail(s(q.id)!), sub: s(q.frameworkCode) })),
+      },
+    ],
+  },
+
+  education_unit: {
+    type: "education_unit",
+    kind: "object",
+    label: "Education unit",
+    labelPlural: "Education units",
+    module: "education",
+    blurb: "A node in an institution's recursive structure tree (campus/faculty/department/chair).",
+    get: (id) => `/education/v1/units/${id}`,
+    title: (u) => loc(u.name) || s(u.code) || ridTail(u.id),
+    subtitle: (u) => s(u.code),
+    columns: [
+      { key: "code", header: "Code", value: (u) => s(u.code), render: "mono" },
+      { key: "name", header: "Name", value: (u) => loc(u.name) },
+      { key: "status", header: "Status", value: (u) => s(u.status), render: "pill", tone: (u) => statusTone(u.status) },
+    ],
+    properties: [
+      { label: "Name", value: (u) => loc(u.name) },
+      { label: "Code", value: (u) => s(u.code), render: "mono" },
+      { label: "Institution", value: (u) => (u.institutionId ? ridTail(s(u.institutionId)!) : undefined), render: "mono" },
+      { label: "Parent", value: (u) => (u.parentId ? ridTail(s(u.parentId)!) : undefined), render: "mono" },
+      { label: "Status", value: (u) => s(u.status), render: "pill", tone: (u) => statusTone(u.status) },
+    ],
+    links: [
+      {
+        label: "Groups",
+        targetType: "group",
+        path: (id) => `/education/v1/units/${id}/groups`,
+        parse: (r) => arr(r, "groups").map((g) => ({ id: s(g.id)!, label: loc(g.name) || s(g.code) || ridTail(s(g.id)!), sub: s(g.admissionYear) })),
+      },
+    ],
+  },
+
+  building: {
+    type: "building",
+    kind: "object",
+    label: "Building",
+    labelPlural: "Buildings",
+    module: "education",
+    blurb: "A building of an institution (academic/dormitory/…), located via the shared Location.",
+    get: (id) => `/education/v1/buildings/${id}`,
+    title: (b) => loc(b.name) || s(b.code) || ridTail(b.id),
+    subtitle: (b) => s(b.kind),
+    columns: [
+      { key: "code", header: "Code", value: (b) => s(b.code), render: "mono" },
+      { key: "name", header: "Name", value: (b) => loc(b.name) },
+      { key: "kind", header: "Kind", value: (b) => s(b.kind), render: "pill" },
+    ],
+    properties: [
+      { label: "Name", value: (b) => loc(b.name) },
+      { label: "Code", value: (b) => s(b.code), render: "mono" },
+      { label: "Kind", value: (b) => s(b.kind), render: "pill" },
+      { label: "Institution", value: (b) => (b.institutionId ? ridTail(s(b.institutionId)!) : undefined), render: "mono" },
+      { label: "Location", value: (b) => (b.locationId ? ridTail(s(b.locationId)!) : undefined), render: "mono" },
+    ],
+  },
+
+  group: {
+    type: "group",
+    kind: "object",
+    label: "Study group",
+    labelPlural: "Study groups",
+    module: "education",
+    blurb: "A cohort under an education unit, with an admission year.",
+    get: (id) => `/education/v1/groups/${id}`,
+    title: (g) => loc(g.name) || s(g.code) || ridTail(g.id),
+    subtitle: (g) => s(g.code),
+    columns: [
+      { key: "code", header: "Code", value: (g) => s(g.code), render: "mono" },
+      { key: "name", header: "Name", value: (g) => loc(g.name) },
+      { key: "admissionYear", header: "Year", value: (g) => s(g.admissionYear) },
+    ],
+    properties: [
+      { label: "Name", value: (g) => loc(g.name) },
+      { label: "Code", value: (g) => s(g.code), render: "mono" },
+      { label: "Admission year", value: (g) => s(g.admissionYear) },
+      { label: "Status", value: (g) => s(g.status), render: "pill", tone: (g) => statusTone(g.status) },
+    ],
+  },
+
+  education_position: {
+    type: "education_position",
+    kind: "object",
+    label: "Education position",
+    labelPlural: "Education positions",
+    module: "education",
+    blurb: "An institution/unit-owned billet (rector/dean/chair); vacant-first, one active holder.",
+    get: (id) => `/education/v1/positions/${id}`,
+    title: (p) => loc(p.title) || s(p.code) || ridTail(p.id),
+    subtitle: (p) => s(p.code),
+    columns: [
+      { key: "code", header: "Code", value: (p) => s(p.code), render: "mono" },
+      { key: "title", header: "Title", value: (p) => loc(p.title) },
+      { key: "status", header: "Status", value: (p) => s(p.status), render: "pill", tone: (p) => statusTone(p.status) },
+    ],
+    properties: [
+      { label: "Title", value: (p) => loc(p.title) },
+      { label: "Code", value: (p) => s(p.code), render: "mono" },
+      { label: "Institution", value: (p) => (p.institutionId ? ridTail(s(p.institutionId)!) : undefined), render: "mono" },
+      { label: "Status", value: (p) => s(p.status), render: "pill", tone: (p) => statusTone(p.status) },
+      { label: "Holder", value: (p) => { const h = p.holder as { personId?: string } | undefined; return h?.personId ? ridTail(h.personId) : "vacant"; }, render: "mono" },
+    ],
+  },
+
+  // Education reference layer (M20 extension). Reference entities use plain-string names/titles.
+  program: {
+    type: "program", kind: "object", label: "Program", labelPlural: "Programs", module: "education",
+    blurb: "A degree/diploma/certificate program of an institution.",
+    get: (id) => `/education/v1/programs/${id}`,
+    title: (p) => s(p.name) || s(p.code) || ridTail(p.id), subtitle: (p) => s(p.code),
+    columns: [
+      { key: "code", header: "Code", value: (p) => s(p.code), render: "mono" },
+      { key: "name", header: "Name", value: (p) => s(p.name) },
+      { key: "mode", header: "Mode", value: (p) => s(p.mode), render: "pill" },
+    ],
+    properties: [
+      { label: "Name", value: (p) => s(p.name) },
+      { label: "Code", value: (p) => s(p.code), render: "mono" },
+      { label: "Mode", value: (p) => s(p.mode), render: "pill" },
+      { label: "Duration (years)", value: (p) => s(p.durationYears) },
+      { label: "Credit hours", value: (p) => s(p.creditHoursTotal) },
+      { label: "Institution", value: (p) => (p.institutionId ? ridTail(s(p.institutionId)!) : undefined), render: "mono" },
+      { label: "State", value: (p) => s(p.state), render: "pill", tone: (p) => statusTone(p.state) },
+    ],
+    links: [
+      {
+        label: "Curriculum versions", targetType: "curriculum_version",
+        path: (id) => `/education/v1/programs/${id}/curriculum-versions`,
+        parse: (r) => arr(r, "versions").map((v) => ({ id: s(v.id)!, label: s(v.versionCode) || ridTail(s(v.id)!), sub: s(v.status) })),
+      },
+    ],
+  },
+
+  course: {
+    type: "course", kind: "object", label: "Course", labelPlural: "Courses", module: "education",
+    blurb: "A unit of study / module / subject of an institution.",
+    get: (id) => `/education/v1/courses/${id}`,
+    title: (c) => s(c.title) || s(c.code) || ridTail(c.id), subtitle: (c) => s(c.code),
+    columns: [
+      { key: "code", header: "Code", value: (c) => s(c.code), render: "mono" },
+      { key: "title", header: "Title", value: (c) => s(c.title) },
+      { key: "deliveryMode", header: "Delivery", value: (c) => s(c.deliveryMode), render: "pill" },
+    ],
+    properties: [
+      { label: "Title", value: (c) => s(c.title) },
+      { label: "Code", value: (c) => s(c.code), render: "mono" },
+      { label: "Credit hours", value: (c) => s(c.creditHours) },
+      { label: "Level", value: (c) => s(c.level) },
+      { label: "Delivery mode", value: (c) => s(c.deliveryMode), render: "pill" },
+      { label: "Institution", value: (c) => (c.institutionId ? ridTail(s(c.institutionId)!) : undefined), render: "mono" },
+    ],
+    links: [
+      {
+        label: "Prerequisites", targetType: "course",
+        path: (id) => `/education/v1/courses/${id}/prerequisites`,
+        parse: (r) => arr(r, "prerequisites").map((p) => ({ id: s(p.requiredCourseId)!, label: ridTail(s(p.requiredCourseId)!), sub: s(p.kind) })),
+      },
+    ],
+  },
+
+  curriculum_version: {
+    type: "curriculum_version", kind: "object", label: "Curriculum version", labelPlural: "Curriculum versions", module: "education",
+    blurb: "A versioned snapshot of a program's course requirements.",
+    get: (id) => `/education/v1/curriculum-versions/${id}`,
+    title: (v) => s(v.versionCode) || ridTail(v.id), subtitle: (v) => s(v.status),
+    columns: [
+      { key: "versionCode", header: "Version", value: (v) => s(v.versionCode), render: "mono" },
+      { key: "status", header: "Status", value: (v) => s(v.status), render: "pill", tone: (v) => statusTone(v.status) },
+    ],
+    properties: [
+      { label: "Version", value: (v) => s(v.versionCode), render: "mono" },
+      { label: "Program", value: (v) => (v.programId ? ridTail(s(v.programId)!) : undefined), render: "mono" },
+      { label: "Effective from", value: (v) => s(v.effectiveFrom) },
+      { label: "Status", value: (v) => s(v.status), render: "pill", tone: (v) => statusTone(v.status) },
+    ],
+    links: [
+      {
+        label: "Items", targetType: "course",
+        path: (id) => `/education/v1/curriculum-versions/${id}/items`,
+        parse: (r) => arr(r, "items").map((it) => ({ id: s(it.courseId)!, label: ridTail(s(it.courseId)!), sub: it.isRequired ? "required" : "elective" })),
+      },
+    ],
+  },
+
+  research_centre: {
+    type: "research_centre", kind: "object", label: "Research centre", labelPlural: "Research centres", module: "education",
+    blurb: "A research centre / institute / lab of an institution.",
+    get: (id) => `/education/v1/research-centres/${id}`,
+    title: (c) => s(c.name) || s(c.code) || ridTail(c.id), subtitle: (c) => s(c.code),
+    columns: [
+      { key: "code", header: "Code", value: (c) => s(c.code), render: "mono" },
+      { key: "name", header: "Name", value: (c) => s(c.name) },
+      { key: "kind", header: "Kind", value: (c) => s(c.kind), render: "pill" },
+    ],
+    properties: [
+      { label: "Name", value: (c) => s(c.name) },
+      { label: "Code", value: (c) => s(c.code), render: "mono" },
+      { label: "Kind", value: (c) => s(c.kind), render: "pill" },
+      { label: "Funding source", value: (c) => s(c.fundingSource) },
+      { label: "Status", value: (c) => s(c.status), render: "pill", tone: (c) => statusTone(c.status) },
+    ],
+  },
+
+  research_group: {
+    type: "research_group", kind: "object", label: "Research group", labelPlural: "Research groups", module: "education",
+    blurb: "A research cluster under a centre and/or unit.",
+    get: (id) => `/education/v1/research-groups/${id}`,
+    title: (g) => s(g.name) || s(g.code) || ridTail(g.id), subtitle: (g) => s(g.code),
+    columns: [
+      { key: "code", header: "Code", value: (g) => s(g.code), render: "mono" },
+      { key: "name", header: "Name", value: (g) => s(g.name) },
+      { key: "status", header: "Status", value: (g) => s(g.status), render: "pill", tone: (g) => statusTone(g.status) },
+    ],
+    properties: [
+      { label: "Name", value: (g) => s(g.name) },
+      { label: "Code", value: (g) => s(g.code), render: "mono" },
+      { label: "Focus area", value: (g) => s(g.focusArea) },
+      { label: "Status", value: (g) => s(g.status), render: "pill", tone: (g) => statusTone(g.status) },
+    ],
+  },
+
+  grant: {
+    type: "grant", kind: "object", label: "Grant", labelPlural: "Grants", module: "education",
+    blurb: "A funding grant held by an institution.",
+    get: (id) => `/education/v1/grants/${id}`,
+    title: (g) => s(g.title) || s(g.code) || ridTail(g.id), subtitle: (g) => s(g.code),
+    columns: [
+      { key: "code", header: "Code", value: (g) => s(g.code), render: "mono" },
+      { key: "title", header: "Title", value: (g) => s(g.title) },
+      { key: "status", header: "Status", value: (g) => s(g.status), render: "pill", tone: (g) => statusTone(g.status) },
+    ],
+    properties: [
+      { label: "Title", value: (g) => s(g.title) },
+      { label: "Code", value: (g) => s(g.code), render: "mono" },
+      { label: "Funder", value: (g) => s(g.funder) },
+      { label: "Amount", value: (g) => { const a = s(g.amount); const c = s(g.currency); return a ? `${a} ${c ?? ""}`.trim() : undefined; } },
+      { label: "Status", value: (g) => s(g.status), render: "pill", tone: (g) => statusTone(g.status) },
+    ],
+  },
+
+  publication: {
+    type: "publication", kind: "object", label: "Publication", labelPlural: "Publications", module: "education",
+    blurb: "An academic publication (optionally tied to an institution).",
+    list: { path: "/education/v1/publications", search: "", parse: (r) => ({ rows: arr(r, "publications") as Row[] }) },
+    get: (id) => `/education/v1/publications/${id}`,
+    title: (p) => s(p.title) || s(p.code) || ridTail(p.id), subtitle: (p) => s(p.code),
+    columns: [
+      { key: "code", header: "Code", value: (p) => s(p.code), render: "mono" },
+      { key: "title", header: "Title", value: (p) => s(p.title) },
+      { key: "kind", header: "Kind", value: (p) => s(p.kind), render: "pill" },
+    ],
+    properties: [
+      { label: "Title", value: (p) => s(p.title) },
+      { label: "Code", value: (p) => s(p.code), render: "mono" },
+      { label: "Kind", value: (p) => s(p.kind), render: "pill" },
+      { label: "DOI", value: (p) => s(p.doi), render: "mono" },
+      { label: "Venue", value: (p) => s(p.venue) },
+      { label: "Published", value: (p) => s(p.publishedOn) },
+    ],
+  },
+
+  governance_body: {
+    type: "governance_body", kind: "object", label: "Governance body", labelPlural: "Governance bodies", module: "education",
+    blurb: "A board / senate / council / committee of an institution.",
+    get: (id) => `/education/v1/governance-bodies/${id}`,
+    title: (b) => s(b.name) || s(b.code) || ridTail(b.id), subtitle: (b) => s(b.code),
+    columns: [
+      { key: "code", header: "Code", value: (b) => s(b.code), render: "mono" },
+      { key: "name", header: "Name", value: (b) => s(b.name) },
+      { key: "kind", header: "Kind", value: (b) => s(b.kind), render: "pill" },
+    ],
+    properties: [
+      { label: "Name", value: (b) => s(b.name) },
+      { label: "Code", value: (b) => s(b.code), render: "mono" },
+      { label: "Kind", value: (b) => s(b.kind), render: "pill" },
+      { label: "Mandate", value: (b) => s(b.mandate) },
+      { label: "Status", value: (b) => s(b.status), render: "pill", tone: (b) => statusTone(b.status) },
+    ],
+  },
+
+  policy: {
+    type: "policy", kind: "object", label: "Policy", labelPlural: "Policies", module: "education",
+    blurb: "An institutional rule/regulation.",
+    get: (id) => `/education/v1/policies/${id}`,
+    title: (p) => s(p.title) || s(p.code) || ridTail(p.id), subtitle: (p) => s(p.code),
+    columns: [
+      { key: "code", header: "Code", value: (p) => s(p.code), render: "mono" },
+      { key: "title", header: "Title", value: (p) => s(p.title) },
+      { key: "status", header: "Status", value: (p) => s(p.status), render: "pill", tone: (p) => statusTone(p.status) },
+    ],
+    properties: [
+      { label: "Title", value: (p) => s(p.title) },
+      { label: "Code", value: (p) => s(p.code), render: "mono" },
+      { label: "Kind", value: (p) => s(p.kind), render: "pill" },
+      { label: "Effective", value: (p) => s(p.effectiveOn) },
+      { label: "Status", value: (p) => s(p.status), render: "pill", tone: (p) => statusTone(p.status) },
+    ],
+  },
+
+  qualification: {
+    type: "qualification", kind: "object", label: "Qualification", labelPlural: "Qualifications", module: "education",
+    blurb: "A formally awardable qualification (degree) classification.",
+    get: (id) => `/education/v1/qualifications/${id}`,
+    title: (q) => s(q.name) || s(q.code) || ridTail(q.id), subtitle: (q) => s(q.code),
+    columns: [
+      { key: "code", header: "Code", value: (q) => s(q.code), render: "mono" },
+      { key: "name", header: "Name", value: (q) => s(q.name) },
+      { key: "frameworkCode", header: "Framework", value: (q) => s(q.frameworkCode), render: "pill" },
+    ],
+    properties: [
+      { label: "Name", value: (q) => s(q.name) },
+      { label: "Code", value: (q) => s(q.code), render: "mono" },
+      { label: "Framework", value: (q) => s(q.frameworkCode), render: "pill" },
+      { label: "Framework level", value: (q) => s(q.frameworkLevel) },
+      { label: "Awarding body", value: (q) => s(q.awardingBody) },
+      { label: "Status", value: (q) => s(q.status), render: "pill", tone: (q) => statusTone(q.status) },
+    ],
+  },
+
+  scholarship: {
+    type: "scholarship", kind: "object", label: "Scholarship", labelPlural: "Scholarships", module: "education",
+    blurb: "A financial award scheme (institution or external).",
+    list: { path: "/education/v1/scholarships", search: "", parse: (r) => ({ rows: arr(r, "scholarships") as Row[] }) },
+    get: (id) => `/education/v1/scholarships/${id}`,
+    title: (x) => s(x.name) || s(x.code) || ridTail(x.id), subtitle: (x) => s(x.code),
+    columns: [
+      { key: "code", header: "Code", value: (x) => s(x.code), render: "mono" },
+      { key: "name", header: "Name", value: (x) => s(x.name) },
+      { key: "kind", header: "Kind", value: (x) => s(x.kind), render: "pill" },
+    ],
+    properties: [
+      { label: "Name", value: (x) => s(x.name) },
+      { label: "Code", value: (x) => s(x.code), render: "mono" },
+      { label: "Kind", value: (x) => s(x.kind), render: "pill" },
+      { label: "Amount", value: (x) => { const a = s(x.amount); const c = s(x.currency); return a ? `${a} ${c ?? ""}`.trim() : undefined; } },
+      { label: "Frequency", value: (x) => s(x.frequency), render: "pill" },
+      { label: "Status", value: (x) => s(x.status), render: "pill", tone: (x) => statusTone(x.status) },
+    ],
+  },
+
+  accreditation_event: {
+    type: "accreditation_event", kind: "object", label: "Accreditation event", labelPlural: "Accreditation events", module: "education",
+    blurb: "An accreditation review cycle against an institution or program.",
+    get: (id) => `/education/v1/accreditation-events/${id}`,
+    title: (e) => `${s(e.outcome) ?? "event"} (${s(e.entityKind) ?? ""})`, subtitle: (e) => s(e.reviewOn),
+    columns: [
+      { key: "entityKind", header: "Target", value: (e) => s(e.entityKind), render: "pill" },
+      { key: "outcome", header: "Outcome", value: (e) => s(e.outcome), render: "pill" },
+      { key: "reviewOn", header: "Reviewed", value: (e) => s(e.reviewOn) },
+    ],
+    properties: [
+      { label: "Target", value: (e) => s(e.entityKind), render: "pill" },
+      { label: "Outcome", value: (e) => s(e.outcome), render: "pill" },
+      { label: "Body", value: (e) => s(e.body) },
+      { label: "Reviewed", value: (e) => s(e.reviewOn) },
+      { label: "Effective from", value: (e) => s(e.effectiveFrom) },
     ],
   },
 };

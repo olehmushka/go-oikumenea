@@ -461,6 +461,14 @@ recursive internal **structure tree** (campus/faculty/department/chair), **build
 person bindings: **enrollment** (`STUDIED_AT`), **mentorship** (reuses M14 sponsorship with an education
 context), **dorm stay**, and institution **positions**. Distinct from the deploying org's tenant units.
 
+**Education reference layer.** The M20 extension (D-Education *Extension*) adding reference-grade facts:
+**program** (degree offering), **course** (module), **curriculum version** + **curriculum item** (a
+versioned course list), **course prerequisite** (cycle-guarded), **research centre/group**, **grant**,
+**publication**, **governance body**, **policy**, **qualification** (a credential type; an awarded
+**diploma** is a qualification award + a `diploma` document), **scholarship**, **accreditation event** —
+plus person↔reference links (authorship, research/governance membership, grant holding, qualification &
+scholarship awards). Reference data only — **not** an operational SIS (no terms/sections/grades).
+
 **Company (legal entity).** A registered organization (D-Companies, M21): `legal_form` + orthogonal
 `ownership_category`, multi-scheme **registration** (LEI spine), industry classification, positions, and
 the **ownership/affiliation graph** — founders, shareholders (stake %), and **beneficial owner (UBO)**.
@@ -536,7 +544,7 @@ ownership history; person-owned rows are `pii:basic`, holder-scoped, and purge-e
 
 Account · Action (type) · Action RID · Affiliation type · Append-only event log · Atomic permission · Audit log · Authority-bearing · Background worker · Beneficial owner (UBO) · Blind index ·
 Call sign · Canonical envelope · Canonical graph · Citizenship · Clergy credential · Clergy grade · Clergy office · Closure · Code · Company (legal entity) · Country · Data ingestion / connector · Document · Document attribute schema · Document type · Dormant seam ·
-Educational institution · Effective permissions · Email (contact) · Email type · Envelope encryption · Environment slot · Expand/contract · External identity ·
+Education reference layer · Educational institution · Effective permissions · Email (contact) · Email type · Envelope encryption · Environment slot · Expand/contract · External identity ·
 Gate · Graph (named hierarchy) · Hermenea · Instance admin · Languoid · Level · Link (type) · Link RID · Locale · Location · Membership · Name (CLDR) ·
 Object (type) · Object-set · Ontology · Order ·
 Order category · Order item · Order type · Org kind · PDP · PDP context · Person · Personal code ·

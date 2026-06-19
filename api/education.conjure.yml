@@ -1,0 +1,680 @@
+# Education module API (M20). External reference institutions (where a person studied/taught), their
+# internal structure + buildings, and the person bindings (docs/modules/education.md / D-Education).
+# Modelled as EXTERNAL reference entities — distinct from the deploying org's tenant units, independent
+# of companies. Mirrors two existing templates: membership (positions + one-holder effective-dated
+# appointments) and tenant (a recursive structure tree + a maintained transitive closure). Buildings
+# reference the shared M19 location (locationId).
+#
+# RID-bearing fields are typed `string` (the canonical RID text): Conjure reserves `rid` as a built-in
+# primitive, so a type named `Rid` cannot be used. Translatable labels (catalog/institution/unit/group
+# names, building names, position titles) are returned as a `locale -> text` map assembled from the i18n
+# store (D-i18n: all locales in every response, no negotiation); create/update requests carry the
+# default-locale value as a plain `string`. Education entities carry no unit scope of their own (external
+# reference data), so reads gate on `education.read` and writes on `education.manage` /
+# `education.position.manage` / `education.enrollment.manage` (catalog management is instance-scope,
+# `education.catalog.manage`) — all satisfied anywhere via the PEP. Writes are audited in-process under
+# an interim `system` actor (D-Audit). Generated Go lands in internal/conjure and is never hand-edited.
+types:
+  definitions:
+    default-package: oikumenea.education
+    objects:
+      # ---- reference catalogs ----
+      InstitutionKind:
+        docs: An instance-admin catalog entry classifying an institution (university/school/…).
+        fields:
+          id: string
+          code: string
+          name:
+            type: map<string, string>
+            docs: Default-locale fallback + i18n translations.
+          status: string
+          sortOrder: optional<integer>
+      UnitKind:
+        docs: An instance-admin catalog entry classifying a structure-tree node (faculty/department/…).
+        fields:
+          id: string
+          code: string
+          name: map<string, string>
+          status: string
+          sortOrder: optional<integer>
+      DegreeLevel:
+        docs: An ISCED 2011 degree level (0..8), a migration-seeded reference scale.
+        fields:
+          id: string
+          code: string
+          name: map<string, string>
+          iscedLevel: integer
+          status: string
+          sortOrder: optional<integer>
+      # ---- objects ----
+      Institution:
+        docs: An external reference institution (where people studied/taught). Soft-deleted, not destroyed.
+        fields:
+          id: string
+          code: string
+          name: map<string, string>
+          kindId: string
+          countryId:
+            type: optional<string>
+            docs: The institution's country RID (geo_countries); null for international/online.
+          foundedOn: optional<string>
+          closedOn: optional<string>
+          state:
+            type: string
+            docs: One of active | closed | merged.
+          createdAt: datetime
+          updatedAt: datetime
+      EducationUnit:
+        docs: A node in an institution's recursive structure tree (campus → faculty → department → chair).
+        fields:
+          id: string
+          institutionId: string
+          parentId:
+            type: optional<string>
+            docs: The parent unit RID; null for a top-level unit.
+          kindId: string
+          code: string
+          name: map<string, string>
+          status: string
+          sortOrder: optional<integer>
+          depth:
+            type: optional<integer>
+            docs: Distance from the queried root (populated by list-by-institution via the closure).
+          createdAt: datetime
+          updatedAt: datetime
+      Building:
+        docs: A physical building of an institution (optionally a unit), located via the shared M19 location.
+        fields:
+          id: string
+          institutionId: string
+          unitId: optional<string>
+          locationId:
+            type: optional<string>
+            docs: The shared location RID (M19); null until geocoded.
+          code: string
+          name: map<string, string>
+          kind:
+            type: string
+            docs: One of academic | dormitory | administrative | library | sports | other.
+          createdAt: datetime
+          updatedAt: datetime
+      Group:
+        docs: A cohort (study group) under a unit, with an admission year.
+        fields:
+          id: string
+          unitId: string
+          code: string
+          name: map<string, string>
+          admissionYear: optional<integer>
+          status: string
+          createdAt: datetime
+          updatedAt: datetime
+      EducationPosition:
+        docs: |
+          An institution/unit-owned billet (mirrors membership Position) — exists while vacant; carries
+          no authority. The current holder is populated on get/list (null when vacant).
+        fields:
+          id: string
+          institutionId: string
+          unitId: optional<string>
+          code: string
+          title: map<string, string>
+          status: string
+          sortOrder: optional<integer>
+          holder: optional<Appointment>
+          createdAt: datetime
+          updatedAt: datetime
+      Appointment:
+        docs: A person filling an education position (link__holds_education_position), one-holder, effective-dated.
+        fields:
+          id: string
+          personId: string
+          positionId: string
+          status: string
+          effectiveFrom: datetime
+          effectiveTo: optional<datetime>
+          createdAt: datetime
+          updatedAt: datetime
+      PersonAppointment:
+        docs: An appointment a person holds, enriched with the position's title and owning institution (read-only person view).
+        fields:
+          id: string
+          personId: string
+          positionId: string
+          positionTitle: string
+          institutionId: string
+          institutionName: string
+          status: string
+          effectiveFrom: datetime
+          effectiveTo: optional<datetime>
+          createdAt: datetime
+          updatedAt: datetime
+      # ---- person bindings ----
+      Enrollment:
+        docs: A person STUDIED_AT an institution (optionally a unit/group), with an ISCED level + qualification.
+        fields:
+          id: string
+          personId: string
+          institutionId: string
+          unitId: optional<string>
+          groupId: optional<string>
+          programId:
+            type: optional<string>
+            docs: The program studied (education_programs); null if unspecified.
+          degreeLevelId: optional<string>
+          fieldOfStudy: optional<string>
+          studentNumber: optional<string>
+          status:
+            type: string
+            docs: One of enrolled | graduated | withdrawn | expelled | on_leave.
+          qualification: optional<string>
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+          createdAt: datetime
+          updatedAt: datetime
+      DormitoryStay:
+        docs: A person RESIDED_IN_DORMITORY — a dedicated stay (person ↔ dorm building, room, period).
+        fields:
+          id: string
+          personId: string
+          buildingId: string
+          room: optional<string>
+          status:
+            type: string
+            docs: One of active | ended.
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+          createdAt: datetime
+          updatedAt: datetime
+      # ---- pages ----
+      InstitutionPage:
+        fields:
+          institutions: list<Institution>
+          nextPageToken: optional<string>
+      PositionPage:
+        fields:
+          positions: list<EducationPosition>
+          nextPageToken: optional<string>
+      # ---- catalog lists ----
+      InstitutionKindList:
+        fields:
+          institutionKinds: list<InstitutionKind>
+      UnitKindList:
+        fields:
+          unitKinds: list<UnitKind>
+      DegreeLevelList:
+        fields:
+          degreeLevels: list<DegreeLevel>
+      EducationUnitList:
+        fields:
+          units: list<EducationUnit>
+      BuildingList:
+        fields:
+          buildings: list<Building>
+      GroupList:
+        fields:
+          groups: list<Group>
+      PersonAppointmentList:
+        fields:
+          appointments: list<PersonAppointment>
+      EnrollmentList:
+        fields:
+          enrollments: list<Enrollment>
+      DormitoryStayList:
+        fields:
+          dormitoryStays: list<DormitoryStay>
+      ClosureReport:
+        docs: The result of a closure verify/rebuild for an institution's unit tree.
+        fields:
+          institutionId: string
+          missingCount: integer
+          extraCount: integer
+          inDrift: boolean
+      # ---- request bodies ----
+      UpsertCatalogKindRequest:
+        docs: Create/update an institution-kind or unit-kind. name is the default-locale fallback.
+        fields:
+          code: string
+          name: string
+          sortOrder: optional<integer>
+      CreateInstitutionRequest:
+        fields:
+          code: string
+          name: string
+          kindId: string
+          countryId: optional<string>
+          foundedOn: optional<string>
+          closedOn: optional<string>
+      UpdateInstitutionRequest:
+        docs: Update name/kind/country/dates/state. code is immutable; omitted fields are unchanged.
+        fields:
+          name: optional<string>
+          kindId: optional<string>
+          countryId: optional<string>
+          foundedOn: optional<string>
+          closedOn: optional<string>
+          state: optional<string>
+      CreateUnitRequest:
+        fields:
+          code: string
+          name: string
+          kindId: string
+          parentId:
+            type: optional<string>
+            docs: The parent unit (same institution); omit for a top-level unit.
+          sortOrder: optional<integer>
+      UpdateUnitRequest:
+        docs: Update name/kind/sort order/status. code and institution are immutable.
+        fields:
+          name: optional<string>
+          kindId: optional<string>
+          status: optional<string>
+          sortOrder: optional<integer>
+      ReparentUnitRequest:
+        docs: Move a unit under a new parent (same institution), recomputing the closure. Cycle-guarded.
+        fields:
+          parentId:
+            type: optional<string>
+            docs: The new parent unit; null makes the unit top-level.
+      CreateBuildingRequest:
+        fields:
+          code: string
+          name: string
+          kind: string
+          unitId: optional<string>
+          locationId: optional<string>
+      UpdateBuildingRequest:
+        fields:
+          name: optional<string>
+          kind: optional<string>
+          unitId: optional<string>
+          locationId: optional<string>
+      CreateGroupRequest:
+        fields:
+          code: string
+          name: string
+          admissionYear: optional<integer>
+      UpdateGroupRequest:
+        fields:
+          name: optional<string>
+          admissionYear: optional<integer>
+          status: optional<string>
+      CreatePositionRequest:
+        docs: Create a billet (vacant) owned by the institution or one of its units.
+        fields:
+          code: string
+          title: string
+          unitId: optional<string>
+          sortOrder: optional<integer>
+      UpdatePositionRequest:
+        fields:
+          title: optional<string>
+          sortOrder: optional<integer>
+      FillPositionRequest:
+        fields:
+          personId: string
+          effectiveFrom: optional<datetime>
+      EndAppointmentRequest:
+        fields:
+          effectiveTo: optional<datetime>
+      UpsertEnrollmentRequest:
+        docs: Create or update a person's enrollment. On create, omit nothing required; on update, target by id.
+        fields:
+          institutionId: string
+          unitId: optional<string>
+          groupId: optional<string>
+          programId: optional<string>
+          degreeLevelId: optional<string>
+          fieldOfStudy: optional<string>
+          studentNumber: optional<string>
+          status: optional<string>
+          qualification: optional<string>
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+      UpsertDormitoryStayRequest:
+        fields:
+          buildingId: string
+          room: optional<string>
+          status: optional<string>
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+    errors:
+      InstitutionNotFound:
+        namespace: Education
+        code: NOT_FOUND
+        safe-args:
+          institutionId: string
+      UnitNotFound:
+        namespace: Education
+        code: NOT_FOUND
+        safe-args:
+          unitId: string
+      BuildingNotFound:
+        namespace: Education
+        code: NOT_FOUND
+        safe-args:
+          buildingId: string
+      GroupNotFound:
+        namespace: Education
+        code: NOT_FOUND
+        safe-args:
+          groupId: string
+      PositionNotFound:
+        namespace: Education
+        code: NOT_FOUND
+        safe-args:
+          positionId: string
+      EnrollmentNotFound:
+        namespace: Education
+        code: NOT_FOUND
+        safe-args:
+          enrollmentId: string
+      DormitoryStayNotFound:
+        namespace: Education
+        code: NOT_FOUND
+        safe-args:
+          stayId: string
+      Conflict:
+        docs: A code already exists in the parent scope (institution/unit).
+        namespace: Education
+        code: CONFLICT
+        safe-args:
+          reason: string
+      Invalid:
+        docs: A malformed request or an unknown referenced entity (kind/country/parent/person/…).
+        namespace: Education
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
+      UnitCycleDetected:
+        docs: Reparenting would create a cycle in the structure tree.
+        namespace: Education
+        code: FAILED_PRECONDITION
+        safe-args:
+          unitId: string
+      PositionAlreadyFilled:
+        docs: The position already has an active holder (one billet, one holder).
+        namespace: Education
+        code: FAILED_PRECONDITION
+        safe-args:
+          positionId: string
+      InUse:
+        docs: The entity is still referenced and cannot be removed (e.g. a unit with children).
+        namespace: Education
+        code: FAILED_PRECONDITION
+        safe-args:
+          reason: string
+      LifecycleConflict:
+        docs: The entity is not in a state that allows the transition (e.g. ending an ended appointment).
+        namespace: Education
+        code: FAILED_PRECONDITION
+        safe-args:
+          reason: string
+services:
+  EducationService:
+    name: Education Service
+    package: oikumenea.education
+    base-path: /education/v1
+    default-auth: header
+    docs: |
+      Institutions, their structure tree (+ closure), buildings, groups, positions/appointments, and the
+      person bindings (enrollments, dorm stays). Reads gate on `education.read`; structure writes on
+      `education.manage`; position/appointment writes on `education.position.manage`; person-binding
+      writes on `education.enrollment.manage`; catalog-kind writes on `education.catalog.manage`. Writes
+      are audited in-process (D-Audit).
+    endpoints:
+      # ---- catalogs ----
+      listInstitutionKinds:
+        http: GET /institution-kinds
+        returns: InstitutionKindList
+      upsertInstitutionKind:
+        http: PUT /institution-kinds
+        docs: Create or update (by code) an institution-kind catalog entry.
+        args:
+          request: UpsertCatalogKindRequest
+        returns: InstitutionKind
+      listUnitKinds:
+        http: GET /unit-kinds
+        returns: UnitKindList
+      upsertUnitKind:
+        http: PUT /unit-kinds
+        args:
+          request: UpsertCatalogKindRequest
+        returns: UnitKind
+      listDegreeLevels:
+        http: GET /degree-levels
+        returns: DegreeLevelList
+      # ---- institutions ----
+      createInstitution:
+        http: POST /institutions
+        args:
+          request: CreateInstitutionRequest
+        returns: Institution
+      listInstitutions:
+        http: GET /institutions
+        args:
+          query:
+            type: optional<string>
+            param-type: query
+            docs: Optional case-insensitive code/name filter.
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: InstitutionPage
+      getInstitution:
+        http: GET /institutions/{institutionId}
+        args:
+          institutionId: { type: string, param-type: path }
+        returns: Institution
+      updateInstitution:
+        http: PUT /institutions/{institutionId}
+        args:
+          institutionId: { type: string, param-type: path }
+          request: UpdateInstitutionRequest
+        returns: Institution
+      deleteInstitution:
+        http: DELETE /institutions/{institutionId}
+        args:
+          institutionId: { type: string, param-type: path }
+      # ---- units (structure tree) ----
+      createUnit:
+        http: POST /institutions/{institutionId}/units
+        args:
+          institutionId: { type: string, param-type: path }
+          request: CreateUnitRequest
+        returns: EducationUnit
+      listUnits:
+        http: GET /institutions/{institutionId}/units
+        docs: All active units of an institution with their closure depth from the nearest root.
+        args:
+          institutionId: { type: string, param-type: path }
+        returns: EducationUnitList
+      getUnit:
+        http: GET /units/{unitId}
+        args:
+          unitId: { type: string, param-type: path }
+        returns: EducationUnit
+      updateUnit:
+        http: PUT /units/{unitId}
+        args:
+          unitId: { type: string, param-type: path }
+          request: UpdateUnitRequest
+        returns: EducationUnit
+      reparentUnit:
+        http: POST /units/{unitId}/reparent
+        docs: Move a unit under a new parent, recomputing the closure. Returns Education:UnitCycleDetected on a cycle.
+        args:
+          unitId: { type: string, param-type: path }
+          request: ReparentUnitRequest
+        returns: EducationUnit
+      verifyClosure:
+        http: POST /institutions/{institutionId}/units/verify-closure
+        args:
+          institutionId: { type: string, param-type: path }
+        returns: ClosureReport
+      rebuildClosure:
+        http: POST /institutions/{institutionId}/units/rebuild-closure
+        args:
+          institutionId: { type: string, param-type: path }
+        returns: ClosureReport
+      # ---- buildings ----
+      createBuilding:
+        http: POST /institutions/{institutionId}/buildings
+        args:
+          institutionId: { type: string, param-type: path }
+          request: CreateBuildingRequest
+        returns: Building
+      listBuildings:
+        http: GET /institutions/{institutionId}/buildings
+        args:
+          institutionId: { type: string, param-type: path }
+        returns: BuildingList
+      getBuilding:
+        http: GET /buildings/{buildingId}
+        args:
+          buildingId: { type: string, param-type: path }
+        returns: Building
+      updateBuilding:
+        http: PUT /buildings/{buildingId}
+        args:
+          buildingId: { type: string, param-type: path }
+          request: UpdateBuildingRequest
+        returns: Building
+      deleteBuilding:
+        http: DELETE /buildings/{buildingId}
+        args:
+          buildingId: { type: string, param-type: path }
+      # ---- groups ----
+      createGroup:
+        http: POST /units/{unitId}/groups
+        args:
+          unitId: { type: string, param-type: path }
+          request: CreateGroupRequest
+        returns: Group
+      listGroups:
+        http: GET /units/{unitId}/groups
+        args:
+          unitId: { type: string, param-type: path }
+        returns: GroupList
+      getGroup:
+        http: GET /groups/{groupId}
+        args:
+          groupId: { type: string, param-type: path }
+        returns: Group
+      updateGroup:
+        http: PUT /groups/{groupId}
+        args:
+          groupId: { type: string, param-type: path }
+          request: UpdateGroupRequest
+        returns: Group
+      deleteGroup:
+        http: DELETE /groups/{groupId}
+        args:
+          groupId: { type: string, param-type: path }
+      # ---- positions & appointments ----
+      createPosition:
+        http: POST /institutions/{institutionId}/positions
+        args:
+          institutionId: { type: string, param-type: path }
+          request: CreatePositionRequest
+        returns: EducationPosition
+      listPositions:
+        http: GET /institutions/{institutionId}/positions
+        args:
+          institutionId: { type: string, param-type: path }
+          state:
+            type: optional<string>
+            param-type: query
+            docs: Filter — vacant | filled. Omit for all active.
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: PositionPage
+      getPosition:
+        http: GET /positions/{positionId}
+        args:
+          positionId: { type: string, param-type: path }
+        returns: EducationPosition
+      updatePosition:
+        http: PUT /positions/{positionId}
+        args:
+          positionId: { type: string, param-type: path }
+          request: UpdatePositionRequest
+        returns: EducationPosition
+      abolishPosition:
+        http: POST /positions/{positionId}/abolish
+        args:
+          positionId: { type: string, param-type: path }
+        returns: EducationPosition
+      fillPosition:
+        http: POST /positions/{positionId}/fill
+        docs: Fill a vacant position. Returns Education:PositionAlreadyFilled if already filled.
+        args:
+          positionId: { type: string, param-type: path }
+          request: FillPositionRequest
+        returns: Appointment
+      endAppointment:
+        http: POST /appointments/{appointmentId}/end
+        args:
+          appointmentId: { type: string, param-type: path }
+          request: EndAppointmentRequest
+        returns: Appointment
+      # ---- person bindings ----
+      listPersonAppointments:
+        http: GET /persons/{personId}/appointments
+        docs: Read-only list of the education positions a person holds, enriched with title + institution.
+        args:
+          personId: { type: string, param-type: path }
+        returns: PersonAppointmentList
+      listEnrollments:
+        http: GET /persons/{personId}/enrollments
+        args:
+          personId: { type: string, param-type: path }
+        returns: EnrollmentList
+      createEnrollment:
+        http: POST /persons/{personId}/enrollments
+        args:
+          personId: { type: string, param-type: path }
+          request: UpsertEnrollmentRequest
+        returns: Enrollment
+      updateEnrollment:
+        http: PUT /persons/{personId}/enrollments/{enrollmentId}
+        args:
+          personId: { type: string, param-type: path }
+          enrollmentId: { type: string, param-type: path }
+          request: UpsertEnrollmentRequest
+        returns: Enrollment
+      deleteEnrollment:
+        http: DELETE /persons/{personId}/enrollments/{enrollmentId}
+        args:
+          personId: { type: string, param-type: path }
+          enrollmentId: { type: string, param-type: path }
+      listDormitoryStays:
+        http: GET /persons/{personId}/dormitory-stays
+        args:
+          personId: { type: string, param-type: path }
+        returns: DormitoryStayList
+      createDormitoryStay:
+        http: POST /persons/{personId}/dormitory-stays
+        args:
+          personId: { type: string, param-type: path }
+          request: UpsertDormitoryStayRequest
+        returns: DormitoryStay
+      updateDormitoryStay:
+        http: PUT /persons/{personId}/dormitory-stays/{stayId}
+        args:
+          personId: { type: string, param-type: path }
+          stayId: { type: string, param-type: path }
+          request: UpsertDormitoryStayRequest
+        returns: DormitoryStay
+      deleteDormitoryStay:
+        http: DELETE /persons/{personId}/dormitory-stays/{stayId}
+        args:
+          personId: { type: string, param-type: path }
+          stayId: { type: string, param-type: path }

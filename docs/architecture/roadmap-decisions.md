@@ -337,6 +337,39 @@ stay carries room/occupancy the generic residence lacks.
 [ontology-mapping](../ontology-mapping.md); institution registries ride D-DataIngestion. Lands as
 **M20** ([milestones](../milestones.md)), on M5/M14/M19. Additive / expand-only.
 
+**Extension (M20 reference layer — `university_ontology.md` adoption).** The M20 base is enriched with
+the **reference-grade** slice of a full university ontology (`docs/university_ontology.md`), still as
+**external reference data + person↔reference directory links** — explicitly **not** an operational SIS.
+
+- **Adopted (additive, migration `0021_education_reference`):** *Curriculum/courses* — `education_programs`,
+  `education_courses`, `education_curriculum_versions`, `education_curriculum_items` (reified
+  `link__curriculum_item`), `education_course_prerequisites` (reified `link__course_prerequisite`,
+  Go-side cycle guard); a person's enrollment gains optional `program_id` + `student_number`.
+  *Research* — `education_research_centres`, `education_research_groups`, `education_grants`,
+  `education_publications`. *Governance/credentials* — `education_governance_bodies`,
+  `education_policies`, `education_qualifications`, `education_scholarships`,
+  `education_accreditation_events`. *Person links (CASCADE, `pii:basic`, purge-erased):*
+  `person_publication_authorships`, `person_research_memberships`, `person_grant_holdings`,
+  `person_governance_memberships`, `person_education_qualifications` (the diploma award),
+  `person_scholarship_awards`. A `diploma` row is added to the `document_types` catalog (the paper lives
+  in the [document](../modules/document.md) module; the academic fact is the qualification award).
+- **Deliberately excluded (kept reference, not operational):** academic **terms / calendars**,
+  **course sections**, section-level **enrollment with grades**, **assessments**, GPA / grading; the
+  source doc's **Person→Student/StaffMember subtype** split (the repo keeps a single person + directory
+  attributes); **bi-temporal validity everywhere** (effective-dated links + soft-delete instead); and
+  `country_code CHAR(2)` (the richer `geo_countries` FK is kept).
+- **Surface.** A **second Conjure service** `EducationReferenceService` (own package, same `/education/v1`
+  base-path) carries the reference CRUD + person links — isolated from the M20 base service. Reference
+  names/titles are plain `string` (external reference data, **not** the i18n translation store) — a
+  deliberate simplification vs the i18n'd M20 base entities. Reuses `education.read` / `education.manage`
+  / `education.enrollment.manage`; no new permission strings. RID service 14 extended with object kinds
+  9–20 and link kinds 5–12. No PDP/RLS (instance-global reference data).
+
+**Why this scope.** The directory benefits from the curriculum/research/governance/credentials *facts*
+about an institution and a person's relationship to them (analytics + relationship graphs), but the
+operational SIS (scheduling, registration, grades) is a different product and conflicts with the
+external-reference + single-person + soft-delete model. Adopt the reference half; leave the rest.
+
 ---
 
 ### D-Companies — A `company` legal-entity registry with an ownership/affiliation graph (extends D-Ontology)

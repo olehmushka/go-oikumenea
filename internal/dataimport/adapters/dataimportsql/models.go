@@ -221,6 +221,440 @@ type OikumeneaDocumentPersonalCodeScheme struct {
 	DeletedAt pgtype.Timestamptz
 }
 
+type OikumeneaEducationAccreditationEvent struct {
+	// pii:none
+	ID string
+	// pii:none
+	EntityKind string
+	// pii:none
+	InstitutionID pgtype.Text
+	// pii:none
+	ProgramID     pgtype.Text
+	Body          pgtype.Text
+	BodyCountryID pgtype.Text
+	Outcome       string
+	ReviewOn      pgtype.Date
+	EffectiveFrom pgtype.Date
+	EffectiveTo   pgtype.Date
+	Notes         pgtype.Text
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	DeletedAt     pgtype.Timestamptz
+}
+
+type OikumeneaEducationAppointment struct {
+	// pii:none
+	ID string
+	// pii:basic
+	PersonID string
+	// pii:none
+	PositionID string
+	// pii:none
+	Status        string
+	EffectiveFrom pgtype.Timestamptz
+	EffectiveTo   pgtype.Timestamptz
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	DeletedAt     pgtype.Timestamptz
+}
+
+type OikumeneaEducationBuilding struct {
+	// pii:none
+	ID string
+	// pii:none
+	InstitutionID string
+	// pii:none
+	UnitID pgtype.Text
+	// pii:none
+	LocationID pgtype.Text
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	Kind      string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaEducationCourse struct {
+	// pii:none
+	ID string
+	// pii:none
+	InstitutionID string
+	// pii:none
+	OwningUnitID pgtype.Text
+	// pii:none
+	Code string
+	// pii:none
+	Title        string
+	CreditHours  pgtype.Int4
+	Level        pgtype.Int4
+	Description  pgtype.Text
+	DeliveryMode string
+	Status       string
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+	DeletedAt    pgtype.Timestamptz
+}
+
+type OikumeneaEducationCoursePrerequisite struct {
+	// pii:none
+	ID string
+	// pii:none
+	CourseID string
+	// pii:none
+	RequiredCourseID string
+	Kind             string
+	MinGrade         pgtype.Text
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	DeletedAt        pgtype.Timestamptz
+}
+
+type OikumeneaEducationCurriculumItem struct {
+	// pii:none
+	ID string
+	// pii:none
+	VersionID string
+	// pii:none
+	CourseID         string
+	IsRequired       bool
+	YearOfStudy      pgtype.Int4
+	CreditAllocation pgtype.Int4
+	SemesterSlot     pgtype.Int4
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	DeletedAt        pgtype.Timestamptz
+}
+
+type OikumeneaEducationCurriculumVersion struct {
+	// pii:none
+	ID string
+	// pii:none
+	ProgramID string
+	// pii:none
+	VersionCode   string
+	EffectiveFrom pgtype.Date
+	EffectiveTo   pgtype.Date
+	Status        string
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	DeletedAt     pgtype.Timestamptz
+}
+
+type OikumeneaEducationDegreeLevel struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	IscedLevel int32
+	Status     string
+	SortOrder  pgtype.Int4
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
+}
+
+type OikumeneaEducationGovernanceBody struct {
+	// pii:none
+	ID string
+	// pii:none
+	InstitutionID string
+	// pii:none
+	Code string
+	// pii:none
+	Name      string
+	Kind      string
+	Mandate   pgtype.Text
+	Status    string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaEducationGrant struct {
+	// pii:none
+	ID string
+	// pii:none
+	InstitutionID string
+	// pii:none
+	Code string
+	// pii:none
+	Title     string
+	Funder    pgtype.Text
+	FunderRef pgtype.Text
+	Amount    pgtype.Numeric
+	Currency  pgtype.Text
+	StartOn   pgtype.Date
+	EndOn     pgtype.Date
+	Status    string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaEducationGroup struct {
+	// pii:none
+	ID string
+	// pii:none
+	UnitID string
+	// pii:none
+	Code string
+	// pii:none
+	Name          string
+	AdmissionYear pgtype.Int4
+	Status        string
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	DeletedAt     pgtype.Timestamptz
+}
+
+type OikumeneaEducationInstitution struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	KindID string
+	// pii:none
+	CountryID pgtype.Text
+	FoundedOn pgtype.Date
+	ClosedOn  pgtype.Date
+	State     string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaEducationInstitutionKind struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name      string
+	Status    string
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaEducationPolicy struct {
+	// pii:none
+	ID string
+	// pii:none
+	InstitutionID string
+	// pii:none
+	GovernanceBodyID pgtype.Text
+	// pii:none
+	SupersedesID pgtype.Text
+	// pii:none
+	Code string
+	// pii:none
+	Title       string
+	Kind        string
+	EffectiveOn pgtype.Date
+	ExpiryOn    pgtype.Date
+	DocumentUrl pgtype.Text
+	Status      string
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+	DeletedAt   pgtype.Timestamptz
+}
+
+type OikumeneaEducationPosition struct {
+	// pii:none
+	ID string
+	// pii:none
+	InstitutionID string
+	// pii:none
+	UnitID pgtype.Text
+	// pii:none
+	Code string
+	// pii:none
+	Title string
+	// pii:none
+	Status    string
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaEducationProgram struct {
+	// pii:none
+	ID string
+	// pii:none
+	InstitutionID string
+	// pii:none
+	OwningUnitID pgtype.Text
+	// pii:none
+	DegreeLevelID pgtype.Text
+	// pii:none
+	Code string
+	// pii:none
+	Name             string
+	Mode             string
+	DurationYears    pgtype.Numeric
+	CreditHoursTotal pgtype.Int4
+	State            string
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	DeletedAt        pgtype.Timestamptz
+}
+
+type OikumeneaEducationPublication struct {
+	// pii:none
+	ID string
+	// pii:none
+	InstitutionID pgtype.Text
+	// pii:none
+	Code string
+	// pii:none
+	Title       string
+	Kind        string
+	Doi         pgtype.Text
+	Venue       pgtype.Text
+	PublishedOn pgtype.Date
+	OpenAccess  bool
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+	DeletedAt   pgtype.Timestamptz
+}
+
+type OikumeneaEducationQualification struct {
+	// pii:none
+	ID string
+	// pii:none
+	InstitutionID string
+	// pii:none
+	ProgramID pgtype.Text
+	// pii:none
+	DegreeLevelID pgtype.Text
+	// pii:none
+	Code string
+	// pii:none
+	Name           string
+	FrameworkCode  pgtype.Text
+	FrameworkLevel pgtype.Text
+	AwardingBody   pgtype.Text
+	Status         string
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	DeletedAt      pgtype.Timestamptz
+}
+
+type OikumeneaEducationResearchCentre struct {
+	// pii:none
+	ID string
+	// pii:none
+	InstitutionID string
+	// pii:none
+	Code string
+	// pii:none
+	Name          string
+	Kind          string
+	FundingSource pgtype.Text
+	FoundedOn     pgtype.Date
+	DissolvedOn   pgtype.Date
+	Status        string
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	DeletedAt     pgtype.Timestamptz
+}
+
+type OikumeneaEducationResearchGroup struct {
+	// pii:none
+	ID string
+	// pii:none
+	InstitutionID string
+	// pii:none
+	CentreID pgtype.Text
+	// pii:none
+	UnitID pgtype.Text
+	// pii:none
+	Code string
+	// pii:none
+	Name      string
+	FocusArea pgtype.Text
+	Status    string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaEducationScholarship struct {
+	// pii:none
+	ID string
+	// pii:none
+	InstitutionID pgtype.Text
+	// pii:none
+	Code string
+	// pii:none
+	Name       string
+	Kind       string
+	Amount     pgtype.Numeric
+	Currency   pgtype.Text
+	Frequency  string
+	Renewable  bool
+	Conditions pgtype.Text
+	Status     string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
+}
+
+type OikumeneaEducationUnit struct {
+	// pii:none
+	ID string
+	// pii:none
+	InstitutionID string
+	// pii:none
+	ParentID pgtype.Text
+	// pii:none
+	KindID string
+	// pii:none
+	Code string
+	// pii:none
+	Name      string
+	Status    string
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaEducationUnitClosure struct {
+	// pii:none
+	AncestorID string
+	// pii:none
+	DescendantID string
+	// pii:none
+	Depth int32
+}
+
+type OikumeneaEducationUnitKind struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name      string
+	Status    string
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
 type OikumeneaGeoCountry struct {
 	// pii:none
 	ID string
@@ -593,6 +1027,70 @@ type OikumeneaPersonCitizenship struct {
 	DeletedAt pgtype.Timestamptz
 }
 
+type OikumeneaPersonDormitoryStay struct {
+	// pii:none
+	ID string
+	// pii:contact
+	PersonID string
+	// pii:contact
+	BuildingID string
+	// pii:contact
+	Room          pgtype.Text
+	Status        string
+	EffectiveFrom pgtype.Date
+	EffectiveTo   pgtype.Date
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	DeletedAt     pgtype.Timestamptz
+}
+
+type OikumeneaPersonEducationEnrollment struct {
+	// pii:none
+	ID string
+	// pii:basic
+	PersonID string
+	// pii:basic
+	InstitutionID string
+	// pii:basic
+	UnitID pgtype.Text
+	// pii:basic
+	GroupID pgtype.Text
+	// pii:basic
+	DegreeLevelID pgtype.Text
+	// pii:basic
+	FieldOfStudy pgtype.Text
+	Status       string
+	// pii:basic
+	Qualification pgtype.Text
+	EffectiveFrom pgtype.Date
+	EffectiveTo   pgtype.Date
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	DeletedAt     pgtype.Timestamptz
+	// pii:basic
+	ProgramID pgtype.Text
+	// pii:basic
+	StudentNumber pgtype.Text
+}
+
+type OikumeneaPersonEducationQualification struct {
+	// pii:none
+	ID string
+	// pii:basic
+	PersonID string
+	// pii:basic
+	QualificationID string
+	// pii:basic
+	EnrollmentID    pgtype.Text
+	AwardedOn       pgtype.Date
+	WithDistinction bool
+	Gpa             pgtype.Numeric
+	Status          string
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+	DeletedAt       pgtype.Timestamptz
+}
+
 type OikumeneaPersonEmail struct {
 	// pii:none
 	ID string
@@ -623,6 +1121,38 @@ type OikumeneaPersonEmailType struct {
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaPersonGovernanceMembership struct {
+	// pii:none
+	ID string
+	// pii:basic
+	PersonID string
+	// pii:basic
+	BodyID        string
+	RoleInBody    pgtype.Text
+	Status        string
+	EffectiveFrom pgtype.Date
+	EffectiveTo   pgtype.Date
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	DeletedAt     pgtype.Timestamptz
+}
+
+type OikumeneaPersonGrantHolding struct {
+	// pii:none
+	ID string
+	// pii:basic
+	PersonID string
+	// pii:basic
+	GrantID       string
+	Role          string
+	Status        string
+	EffectiveFrom pgtype.Date
+	EffectiveTo   pgtype.Date
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	DeletedAt     pgtype.Timestamptz
 }
 
 type OikumeneaPersonGuardianship struct {
@@ -858,6 +1388,22 @@ type OikumeneaPersonPlatform struct {
 	DeletedAt pgtype.Timestamptz
 }
 
+type OikumeneaPersonPublicationAuthorship struct {
+	// pii:none
+	ID string
+	// pii:basic
+	PersonID string
+	// pii:basic
+	PublicationID string
+	AuthorOrder   pgtype.Int4
+	Corresponding bool
+	EffectiveFrom pgtype.Date
+	EffectiveTo   pgtype.Date
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	DeletedAt     pgtype.Timestamptz
+}
+
 type OikumeneaPersonRank struct {
 	// pii:none
 	ID string
@@ -888,6 +1434,22 @@ type OikumeneaPersonRelationType struct {
 	DeletedAt pgtype.Timestamptz
 }
 
+type OikumeneaPersonResearchMembership struct {
+	// pii:none
+	ID string
+	// pii:basic
+	PersonID string
+	// pii:basic
+	GroupID       string
+	Role          pgtype.Text
+	Status        string
+	EffectiveFrom pgtype.Date
+	EffectiveTo   pgtype.Date
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	DeletedAt     pgtype.Timestamptz
+}
+
 type OikumeneaPersonResidence struct {
 	// pii:none
 	ID string
@@ -904,6 +1466,21 @@ type OikumeneaPersonResidence struct {
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaPersonScholarshipAward struct {
+	// pii:none
+	ID string
+	// pii:basic
+	PersonID string
+	// pii:basic
+	ScholarshipID string
+	Status        string
+	EffectiveFrom pgtype.Date
+	EffectiveTo   pgtype.Date
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	DeletedAt     pgtype.Timestamptz
 }
 
 type OikumeneaPersonSocialAccount struct {
@@ -972,6 +1549,10 @@ type OikumeneaPersonSponsorship struct {
 	CreatedAt   pgtype.Timestamptz
 	UpdatedAt   pgtype.Timestamptz
 	DeletedAt   pgtype.Timestamptz
+	// pii:none
+	EnrollmentID pgtype.Text
+	// pii:none
+	EducationRole pgtype.Text
 }
 
 type OikumeneaPlatformRidService struct {

@@ -452,6 +452,35 @@ DELETE FROM oikumenea.person_social_accounts WHERE person_id = @person_id;
 -- hard-delete it explicitly (the person row is kept as a tombstone).
 DELETE FROM oikumenea.person_languages WHERE person_id = @person_id;
 
+-- name: DeleteAllPersonEducationEnrollments :exec
+-- Erase the person's STUDIED_AT links (D-Education, M20). Education-owned table; person purge hard-deletes
+-- it (pii:basic) — the enrollment_id FK on person_sponsorships is ON DELETE SET NULL.
+DELETE FROM oikumenea.person_education_enrollments WHERE person_id = @person_id;
+
+-- name: DeleteAllPersonDormitoryStays :exec
+-- Erase the person's RESIDED_IN_DORMITORY links (D-Education, M20; pii:contact).
+DELETE FROM oikumenea.person_dormitory_stays WHERE person_id = @person_id;
+
+-- The education reference-layer person↔reference links (D-Education, M20 extension; pii:basic). Each is
+-- an education-owned table erased on person purge.
+-- name: DeleteAllPersonPublicationAuthorships :exec
+DELETE FROM oikumenea.person_publication_authorships WHERE person_id = @person_id;
+
+-- name: DeleteAllPersonResearchMemberships :exec
+DELETE FROM oikumenea.person_research_memberships WHERE person_id = @person_id;
+
+-- name: DeleteAllPersonGrantHoldings :exec
+DELETE FROM oikumenea.person_grant_holdings WHERE person_id = @person_id;
+
+-- name: DeleteAllPersonGovernanceMemberships :exec
+DELETE FROM oikumenea.person_governance_memberships WHERE person_id = @person_id;
+
+-- name: DeleteAllPersonEducationQualifications :exec
+DELETE FROM oikumenea.person_education_qualifications WHERE person_id = @person_id;
+
+-- name: DeleteAllPersonScholarshipAwards :exec
+DELETE FROM oikumenea.person_scholarship_awards WHERE person_id = @person_id;
+
 -- ============================ person languages (D-Languages, M18) — SPEAKS ============================
 
 -- name: ListPersonLanguages :many
@@ -589,14 +618,15 @@ DELETE FROM oikumenea.person_guardianships WHERE guardian_id = @person_id OR war
 -- sponsorships ----------------------------------------------------------------
 
 -- name: InsertSponsorship :one
-INSERT INTO oikumenea.person_sponsorships (sponsor_id, sponsored_id, relation_code, status, effective_from, effective_to)
-VALUES (@sponsor_id, @sponsored_id, @relation_code, @status, sqlc.narg('effective_from'), sqlc.narg('effective_to'))
+INSERT INTO oikumenea.person_sponsorships (sponsor_id, sponsored_id, relation_code, status, effective_from, effective_to, enrollment_id, education_role)
+VALUES (@sponsor_id, @sponsored_id, @relation_code, @status, sqlc.narg('effective_from'), sqlc.narg('effective_to'), sqlc.narg('enrollment_id'), sqlc.narg('education_role'))
 RETURNING *;
 
 -- name: UpdateSponsorship :one
 UPDATE oikumenea.person_sponsorships SET
   sponsor_id = @sponsor_id, sponsored_id = @sponsored_id, relation_code = @relation_code,
-  status = @status, effective_from = sqlc.narg('effective_from'), effective_to = sqlc.narg('effective_to')
+  status = @status, effective_from = sqlc.narg('effective_from'), effective_to = sqlc.narg('effective_to'),
+  enrollment_id = sqlc.narg('enrollment_id'), education_role = sqlc.narg('education_role')
 WHERE id = @id AND deleted_at IS NULL AND (sponsor_id = @sponsor_id OR sponsored_id = @sponsored_id)
 RETURNING *;
 
