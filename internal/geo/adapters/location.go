@@ -106,6 +106,20 @@ func (r *Repository) ListLocationsInBbox(ctx context.Context, minLat, minLng, ma
 	return out, nil
 }
 
+func (r *Repository) SearchLocationsByText(ctx context.Context, query string, limit, offset int) ([]domain.Location, error) {
+	rows, err := r.q.SearchLocationsByText(ctx, geosql.SearchLocationsByTextParams{
+		Query: query, Lim: int32(limit), Off: int32(offset),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Location, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, locationFromSearch(row))
+	}
+	return out, nil
+}
+
 func (r *Repository) ListLocationTypes(ctx context.Context) ([]domain.LocationType, error) {
 	rows, err := r.q.ListLocationTypes(ctx)
 	if err != nil {
@@ -144,6 +158,10 @@ func locationFromNear(row geosql.ListLocationsNearRow) domain.Location {
 }
 
 func locationFromBbox(row geosql.ListLocationsInBboxRow) domain.Location {
+	return locationFromInsert(geosql.InsertLocationRow(row))
+}
+
+func locationFromSearch(row geosql.SearchLocationsByTextRow) domain.Location {
 	return locationFromInsert(geosql.InsertLocationRow(row))
 }
 

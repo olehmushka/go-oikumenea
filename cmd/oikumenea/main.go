@@ -17,6 +17,7 @@ import (
 	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
 	"github.com/olegamysk/go-oikumenea/internal/authorization"
 	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
+	"github.com/olegamysk/go-oikumenea/internal/company"
 	"github.com/olegamysk/go-oikumenea/internal/dataimport"
 	"github.com/olegamysk/go-oikumenea/internal/document"
 	"github.com/olegamysk/go-oikumenea/internal/education"
@@ -220,6 +221,14 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// bindings (enrollments, dorm stays). Writes record via the audit service; translatable names
 	// assemble via localization.
 	if _, err := education.Register(info, pool, auditSvc, locSvc, enforcer); err != nil {
+		cleanup()
+		return nil, err
+	}
+
+	// Company (M21 / D-Companies): a legal-entity registry over person + the M19 location foundation —
+	// companies, registrations, industries, locations, positions/appointments, and the ownership/
+	// affiliation graph. Writes record via the audit service; translatable names assemble via localization.
+	if _, err := company.Register(info, pool, auditSvc, locSvc, enforcer); err != nil {
 		cleanup()
 		return nil, err
 	}

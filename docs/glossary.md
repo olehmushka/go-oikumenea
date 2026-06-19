@@ -476,6 +476,16 @@ the **ownership/affiliation graph** — founders, shareholders (stake %), and **
 **Beneficial owner (UBO).** The ultimate person behind a company through ownership layers; stored as a
 **declared** `BENEFICIARY_OF` link (computed chain-traversal is the parked DS-47).
 
+**Registration scheme.** A catalog of company-identifier kinds (LEI ISO-17442 global spine, DUNS, UA
+EDRPOU, VAT, US EIN), each with an optional validator regex — mirrors the person `PersonalCodeScheme`. A
+**Registration** is one company's identifier under a scheme, flagged `validated` against that regex.
+
+**Ownership/affiliation graph.** The company link cluster: **founding** (founder is a person or a
+company), **shareholding** (`OWNS_STAKE`, polymorphic holder, stake %; company-holder edges form the
+ownership DAG — a **subsidiary** is a company a parent holds stake in), **succession** (`SUCCEEDED_BY`
+M&A/reorganization lineage), and **branch** (`BRANCH_OF`, a non-independent sub-unit). Legal form +
+`ownership_category` are two orthogonal axes (a private LLC vs a state-owned JSC).
+
 ### Religion (M22–M25)
 
 > The **multi-faith** religion vertical (D-Religion, M22–M25). **All faith vocabulary is catalog-driven**

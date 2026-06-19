@@ -62,6 +62,17 @@ func (s *Service) ListLocationsInBbox(ctx context.Context, minLat, minLng, maxLa
 	return trimPage(rows, limit)
 }
 
+// SearchLocations returns locations whose address fields match a case-insensitive text query, ordered
+// by id (no spatial window required) — backs the typeahead picker.
+func (s *Service) SearchLocations(ctx context.Context, query string, pageSize, offset int) ([]domain.Location, bool, error) {
+	limit := clampPageSize(pageSize)
+	rows, err := s.newRepo(s.pool).SearchLocationsByText(ctx, query, limit+1, offset)
+	if err != nil {
+		return nil, false, err
+	}
+	return trimPage(rows, limit)
+}
+
 // ---------------------------------------------------------------- writes
 
 // CreateLocation resolves the supplied coordinate to canonical WGS84, derives the MGRS, inserts the

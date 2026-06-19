@@ -113,8 +113,8 @@ func (r *Repository) UpdatePerson(ctx context.Context, id string, patch domain.P
 	return toPerson(row), nil
 }
 
-func (r *Repository) ListPersons(ctx context.Context, after string, limit int) ([]domain.Person, error) {
-	rows, err := r.q.ListPersons(ctx, personsql.ListPersonsParams{After: after, Lim: int32(limit)})
+func (r *Repository) ListPersons(ctx context.Context, after, query string, limit int) ([]domain.Person, error) {
+	rows, err := r.q.ListPersons(ctx, personsql.ListPersonsParams{After: after, Query: query, Lim: int32(limit)})
 	if err != nil {
 		return nil, err
 	}
@@ -256,6 +256,20 @@ func (r *Repository) Purge(ctx context.Context, id string) (domain.Person, error
 		return domain.Person{}, err
 	}
 	if err := r.q.DeleteAllPersonScholarshipAwards(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	// company person-link rows (D-Companies, M21; pii:basic) — appointments + UBO by person_id FK, and
+	// the polymorphic person-holder founding/shareholding rows by holder_id.
+	if err := r.q.DeleteAllCompanyAppointments(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if err := r.q.DeleteAllCompanyBeneficiariesForPerson(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if err := r.q.DeleteAllCompanyFoundingsForPerson(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if err := r.q.DeleteAllCompanyShareholdingsForPerson(ctx, id); err != nil {
 		return domain.Person{}, err
 	}
 	// person↔person relationships (D-PersonRelationships) — erased on EITHER endpoint's purge.

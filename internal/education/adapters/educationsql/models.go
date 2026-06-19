@@ -135,6 +135,231 @@ type OikumeneaAuthzRolePermission struct {
 	PermissionCode string
 }
 
+type OikumeneaCompanyAppointment struct {
+	// pii:none
+	ID string
+	// pii:basic
+	PersonID string
+	// pii:none
+	PositionID string
+	// pii:none
+	Status        string
+	EffectiveFrom pgtype.Timestamptz
+	EffectiveTo   pgtype.Timestamptz
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	DeletedAt     pgtype.Timestamptz
+}
+
+type OikumeneaCompanyBeneficiary struct {
+	// pii:none
+	ID string
+	// pii:none
+	CompanyID string
+	// pii:basic
+	PersonID string
+	// pii:none
+	UltimatePct pgtype.Numeric
+	Declared    bool
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+	DeletedAt   pgtype.Timestamptz
+}
+
+type OikumeneaCompanyBranch struct {
+	// pii:none
+	ID string
+	// pii:none
+	BranchID string
+	// pii:none
+	ParentID  string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaCompanyCompany struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	LegalName string
+	// pii:none
+	ShortName pgtype.Text
+	// pii:none
+	LegalFormID string
+	// pii:none
+	OwnershipCategory string
+	// pii:none
+	CountryID   pgtype.Text
+	FoundedOn   pgtype.Date
+	DissolvedOn pgtype.Date
+	State       string
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+	DeletedAt   pgtype.Timestamptz
+}
+
+type OikumeneaCompanyFounding struct {
+	// pii:none
+	ID string
+	// pii:none
+	CompanyID string
+	// pii:none
+	HolderKind string
+	// pii:basic
+	HolderID  string
+	FoundedOn pgtype.Date
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaCompanyIndustryAssignment struct {
+	// pii:none
+	ID string
+	// pii:none
+	CompanyID string
+	// pii:none
+	IndustryClassID string
+	// pii:none
+	IsPrimary bool
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaCompanyIndustryClass struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	System    string
+	Status    string
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaCompanyLegalForm struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	Abbreviation pgtype.Text
+	// pii:none
+	CountryID pgtype.Text
+	Status    string
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaCompanyLocation struct {
+	// pii:none
+	ID string
+	// pii:none
+	CompanyID string
+	// pii:none
+	LocationID string
+	// pii:none
+	Role      string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaCompanyPosition struct {
+	// pii:none
+	ID string
+	// pii:none
+	CompanyID string
+	// pii:none
+	Code string
+	// pii:none
+	Title string
+	// pii:none
+	Status    string
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaCompanyRegistration struct {
+	// pii:none
+	ID string
+	// pii:none
+	CompanyID string
+	// pii:none
+	SchemeID string
+	// pii:none
+	Identifier string
+	Validated  bool
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
+}
+
+type OikumeneaCompanyRegistrationScheme struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	ValidatorPattern pgtype.Text
+	IsGlobal         bool
+	Status           string
+	SortOrder        pgtype.Int4
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	DeletedAt        pgtype.Timestamptz
+}
+
+type OikumeneaCompanyShareholding struct {
+	// pii:none
+	ID string
+	// pii:none
+	CompanyID string
+	// pii:none
+	HolderKind string
+	// pii:basic
+	HolderID string
+	// pii:none
+	StakePct      pgtype.Numeric
+	EffectiveFrom pgtype.Date
+	EffectiveTo   pgtype.Date
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	DeletedAt     pgtype.Timestamptz
+}
+
+type OikumeneaCompanySuccession struct {
+	// pii:none
+	ID string
+	// pii:none
+	PredecessorID string
+	// pii:none
+	SuccessorID string
+	// pii:none
+	Kind        string
+	EffectiveOn pgtype.Date
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+	DeletedAt   pgtype.Timestamptz
+}
+
 type OikumeneaDocumentDocument struct {
 	// pii:none
 	ID string

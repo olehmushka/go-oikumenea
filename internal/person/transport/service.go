@@ -143,7 +143,7 @@ func (s Service) UpdatePerson(ctx context.Context, token bearertoken.Token, pers
 	return toAPIPerson(updated), nil
 }
 
-func (s Service) ListPersons(ctx context.Context, token bearertoken.Token, pageSize *int, pageToken *string) (personapi.PersonPage, error) {
+func (s Service) ListPersons(ctx context.Context, token bearertoken.Token, pageSize *int, pageToken *string, query *string) (personapi.PersonPage, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
 		return personapi.PersonPage{}, err
 	}
@@ -155,9 +155,9 @@ func (s Service) ListPersons(ctx context.Context, token bearertoken.Token, pageS
 	}
 	var page application.Page
 	if reach.InstanceAdmin {
-		page, err = s.app.ListPersons(ctx, derefOr(pageSize, 0), derefOr(pageToken, ""))
+		page, err = s.app.ListPersons(ctx, derefOr(pageSize, 0), derefOr(pageToken, ""), derefOr(query, ""))
 	} else {
-		page, err = s.app.ListVisiblePersons(ctx, reach, derefOr(pageSize, 0), derefOr(pageToken, ""))
+		page, err = s.app.ListVisiblePersons(ctx, reach, derefOr(pageSize, 0), derefOr(pageToken, ""), derefOr(query, ""))
 	}
 	if err != nil {
 		return personapi.PersonPage{}, s.mapError(ctx, err, "")

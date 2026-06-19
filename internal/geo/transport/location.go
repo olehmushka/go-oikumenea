@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
+	"strings"
 
 	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
 	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
@@ -103,7 +104,7 @@ func (s LocationService) GetLocation(ctx context.Context, token bearertoken.Toke
 	return s.toAPI(ctx, loc)
 }
 
-func (s LocationService) ListLocations(ctx context.Context, token bearertoken.Token, lat, lng, radiusM, minLat, minLng, maxLat, maxLng *float64, pageSize *int, pageToken *string) (locationapi.LocationPage, error) {
+func (s LocationService) ListLocations(ctx context.Context, token bearertoken.Token, lat, lng, radiusM, minLat, minLng, maxLat, maxLng *float64, pageSize *int, pageToken, query *string) (locationapi.LocationPage, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, locReadPerm); err != nil {
 		return locationapi.LocationPage{}, err
 	}
@@ -119,6 +120,9 @@ func (s LocationService) ListLocations(ctx context.Context, token bearertoken.To
 		err     error
 	)
 	switch {
+	case query != nil && strings.TrimSpace(*query) != "":
+		// Text search over address fields — no spatial window required (backs the typeahead picker).
+		locs, hasMore, err = s.app.SearchLocations(ctx, strings.TrimSpace(*query), size, offset)
 	case lat != nil && lng != nil && radiusM != nil:
 		locs, hasMore, err = s.app.ListLocationsNear(ctx, *lat, *lng, *radiusM, size, offset)
 	case minLat != nil && minLng != nil && maxLat != nil && maxLng != nil:

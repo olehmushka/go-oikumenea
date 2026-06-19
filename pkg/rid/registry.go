@@ -27,6 +27,7 @@ var serviceNames = map[int]string{
 	SvcLocation:   "location",
 	SvcLanguage:   "language",
 	SvcEducation:  "education",
+	SvcCompany:    "company",
 }
 
 type typeKey struct {
@@ -134,6 +135,21 @@ var typeNames = map[typeKey]string{
 	{SvcEducation, int(KindLink), 10}:   "member_of_governance_body",
 	{SvcEducation, int(KindLink), 11}:   "awarded_qualification",
 	{SvcEducation, int(KindLink), 12}:   "awarded_scholarship",
+	// company (M21 / D-Companies)
+	{SvcCompany, int(KindObject), 1}: "company",
+	{SvcCompany, int(KindObject), 2}: "legal_form",
+	{SvcCompany, int(KindObject), 3}: "registration_scheme",
+	{SvcCompany, int(KindObject), 4}: "industry_class",
+	{SvcCompany, int(KindObject), 5}: "company_position",
+	{SvcCompany, int(KindObject), 6}: "registration",
+	{SvcCompany, int(KindLink), 1}:   "holds_company_position",
+	{SvcCompany, int(KindLink), 2}:   "founded",
+	{SvcCompany, int(KindLink), 3}:   "owns_stake",
+	{SvcCompany, int(KindLink), 4}:   "beneficiary_of",
+	{SvcCompany, int(KindLink), 5}:   "succeeded_by",
+	{SvcCompany, int(KindLink), 6}:   "branch_of",
+	{SvcCompany, int(KindLink), 7}:   "has_industry",
+	{SvcCompany, int(KindLink), 8}:   "located_at",
 }
 
 // Bare person link-type names (the dispatch tokens), derived from the registry above.

@@ -30,7 +30,7 @@ type PersonService interface {
 	// Update names, birthdate, date_of_death, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.
 	UpdatePerson(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpdatePersonRequest) (Person, error)
 	// Search/list the directory, token-paginated. (The read-scope union is applied once authz lands, M7.)
-	ListPersons(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string) (PersonPage, error)
+	ListPersons(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string, queryArg *string) (PersonPage, error)
 	// Set or clear the person's rank in one rank system (one rank per system, a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.
 	SetRank(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg SetRankRequest) (Person, error)
 	// Begin reversible deactivation (opens the grace window before purge).
@@ -402,7 +402,12 @@ func (p *personServiceHandler) HandleListPersons(rw http.ResponseWriter, req *ht
 		pageTokenArgInternal := pageTokenArgStr
 		pageTokenArg = &pageTokenArgInternal
 	}
-	respArg, err := p.impl.ListPersons(req.Context(), bearertoken.Token(authHeader), pageSizeArg, pageTokenArg)
+	var queryArg *string
+	if queryArgStr := req.URL.Query().Get("query"); queryArgStr != "" {
+		queryArgInternal := queryArgStr
+		queryArg = &queryArgInternal
+	}
+	respArg, err := p.impl.ListPersons(req.Context(), bearertoken.Token(authHeader), pageSizeArg, pageTokenArg, queryArg)
 	if err != nil {
 		return err
 	}

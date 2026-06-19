@@ -181,6 +181,45 @@ func (q *Queries) DeleteAllCitizenships(ctx context.Context, personID string) er
 	return err
 }
 
+const deleteAllCompanyAppointments = `-- name: DeleteAllCompanyAppointments :exec
+DELETE FROM oikumenea.company_appointments WHERE person_id = $1
+`
+
+// The company person-link rows (D-Companies, M21; pii:basic). Each is a company-owned table that names
+// this person — erased on person purge: appointments (employment) + beneficiary (UBO) by person_id FK,
+// and the polymorphic person-holder founding/shareholding rows by (holder_kind='person', holder_id).
+func (q *Queries) DeleteAllCompanyAppointments(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllCompanyAppointments, personID)
+	return err
+}
+
+const deleteAllCompanyBeneficiariesForPerson = `-- name: DeleteAllCompanyBeneficiariesForPerson :exec
+DELETE FROM oikumenea.company_beneficiaries WHERE person_id = $1
+`
+
+func (q *Queries) DeleteAllCompanyBeneficiariesForPerson(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllCompanyBeneficiariesForPerson, personID)
+	return err
+}
+
+const deleteAllCompanyFoundingsForPerson = `-- name: DeleteAllCompanyFoundingsForPerson :exec
+DELETE FROM oikumenea.company_foundings WHERE holder_kind = 'person' AND holder_id = $1
+`
+
+func (q *Queries) DeleteAllCompanyFoundingsForPerson(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllCompanyFoundingsForPerson, personID)
+	return err
+}
+
+const deleteAllCompanyShareholdingsForPerson = `-- name: DeleteAllCompanyShareholdingsForPerson :exec
+DELETE FROM oikumenea.company_shareholdings WHERE holder_kind = 'person' AND holder_id = $1
+`
+
+func (q *Queries) DeleteAllCompanyShareholdingsForPerson(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllCompanyShareholdingsForPerson, personID)
+	return err
+}
+
 const deleteAllEmails = `-- name: DeleteAllEmails :exec
 
 DELETE FROM oikumenea.person_emails WHERE person_id = $1
@@ -2020,18 +2059,23 @@ func (q *Queries) ListPersonRanks(ctx context.Context, personID string) ([]Oikum
 const listPersons = `-- name: ListPersons :many
 SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, birthdate, sex, country_of_birth_id, attributes, status, deactivated_at, purge_after, created_at, updated_at, deleted_at, date_of_death FROM oikumenea.person_persons
 WHERE deleted_at IS NULL AND ($1 = '' OR id::text > $1)
+  AND ($2 = '' OR display_name ILIKE '%' || $2 || '%' OR code ILIKE '%' || $2 || '%'
+       OR given ILIKE '%' || $2 || '%' OR surname ILIKE '%' || $2 || '%')
 ORDER BY id
-LIMIT $2
+LIMIT $3
 `
 
 type ListPersonsParams struct {
 	After interface{}
+	Query interface{}
 	Lim   int32
 }
 
-// Keyset pagination over the time-ordered RID (an empty cursor starts at the beginning).
+// Keyset pagination over the time-ordered RID (an empty cursor starts at the beginning). An optional
+// case-insensitive @query narrows by display name / code / given / surname (the filter sits in the
+// same WHERE so the keyset cursor stays correct).
 func (q *Queries) ListPersons(ctx context.Context, arg ListPersonsParams) ([]OikumeneaPersonPerson, error) {
-	rows, err := q.db.Query(ctx, listPersons, arg.After, arg.Lim)
+	rows, err := q.db.Query(ctx, listPersons, arg.After, arg.Query, arg.Lim)
 	if err != nil {
 		return nil, err
 	}

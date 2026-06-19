@@ -48,9 +48,13 @@ WHERE id = @id AND deleted_at IS NULL
 RETURNING *;
 
 -- name: ListPersons :many
--- Keyset pagination over the time-ordered RID (an empty cursor starts at the beginning).
+-- Keyset pagination over the time-ordered RID (an empty cursor starts at the beginning). An optional
+-- case-insensitive @query narrows by display name / code / given / surname (the filter sits in the
+-- same WHERE so the keyset cursor stays correct).
 SELECT * FROM oikumenea.person_persons
 WHERE deleted_at IS NULL AND (@after = '' OR id::text > @after)
+  AND (@query = '' OR display_name ILIKE '%' || @query || '%' OR code ILIKE '%' || @query || '%'
+       OR given ILIKE '%' || @query || '%' OR surname ILIKE '%' || @query || '%')
 ORDER BY id
 LIMIT @lim;
 
@@ -480,6 +484,21 @@ DELETE FROM oikumenea.person_education_qualifications WHERE person_id = @person_
 
 -- name: DeleteAllPersonScholarshipAwards :exec
 DELETE FROM oikumenea.person_scholarship_awards WHERE person_id = @person_id;
+
+-- The company person-link rows (D-Companies, M21; pii:basic). Each is a company-owned table that names
+-- this person — erased on person purge: appointments (employment) + beneficiary (UBO) by person_id FK,
+-- and the polymorphic person-holder founding/shareholding rows by (holder_kind='person', holder_id).
+-- name: DeleteAllCompanyAppointments :exec
+DELETE FROM oikumenea.company_appointments WHERE person_id = @person_id;
+
+-- name: DeleteAllCompanyBeneficiariesForPerson :exec
+DELETE FROM oikumenea.company_beneficiaries WHERE person_id = @person_id;
+
+-- name: DeleteAllCompanyFoundingsForPerson :exec
+DELETE FROM oikumenea.company_foundings WHERE holder_kind = 'person' AND holder_id = @person_id;
+
+-- name: DeleteAllCompanyShareholdingsForPerson :exec
+DELETE FROM oikumenea.company_shareholdings WHERE holder_kind = 'person' AND holder_id = @person_id;
 
 -- ============================ person languages (D-Languages, M18) — SPEAKS ============================
 

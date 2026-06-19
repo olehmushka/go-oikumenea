@@ -112,7 +112,7 @@ func TestReadScopeProjection_Integration(t *testing.T) {
 	}
 
 	// ListVisiblePersons: the unit-A reader's directory union contains pInA and excludes pInB / pNone.
-	page, err := svc.ListVisiblePersons(ctx, reachA, 0, "")
+	page, err := svc.ListVisiblePersons(ctx, reachA, 0, "", "")
 	if err != nil {
 		t.Fatalf("ListVisiblePersons: %v", err)
 	}

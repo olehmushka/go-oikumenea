@@ -380,6 +380,90 @@ func (q *Queries) ListLocationsNear(ctx context.Context, arg ListLocationsNearPa
 	return items, nil
 }
 
+const searchLocationsByText = `-- name: SearchLocationsByText :many
+SELECT id,
+  ST_Y(geom::geometry)::double precision AS latitude,
+  ST_X(geom::geometry)::double precision AS longitude,
+  mgrs, source_coordinate, country_id,
+  admin_area_1, admin_area_2, locality, street, house_number, postal_code, raw_address,
+  type_id, created_at, updated_at
+FROM oikumenea.location_locations
+WHERE deleted_at IS NULL
+  AND (locality ILIKE '%' || $1::text || '%'
+       OR admin_area_1 ILIKE '%' || $1::text || '%'
+       OR admin_area_2 ILIKE '%' || $1::text || '%'
+       OR street ILIKE '%' || $1::text || '%'
+       OR mgrs ILIKE '%' || $1::text || '%'
+       OR raw_address ILIKE '%' || $1::text || '%')
+ORDER BY id
+LIMIT $3::int OFFSET $2::int
+`
+
+type SearchLocationsByTextParams struct {
+	Query string
+	Off   int32
+	Lim   int32
+}
+
+type SearchLocationsByTextRow struct {
+	ID               string
+	Latitude         float64
+	Longitude        float64
+	Mgrs             pgtype.Text
+	SourceCoordinate []byte
+	CountryID        string
+	AdminArea1       pgtype.Text
+	AdminArea2       pgtype.Text
+	Locality         pgtype.Text
+	Street           pgtype.Text
+	HouseNumber      pgtype.Text
+	PostalCode       pgtype.Text
+	RawAddress       pgtype.Text
+	TypeID           pgtype.Text
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+}
+
+// Case-insensitive text search over the address fields (no spatial window required), ordered by id for
+// stable pagination. Backs the typeahead picker — a location has no `code`, so the match runs over
+// locality, the admin areas, street, mgrs, and the raw address.
+func (q *Queries) SearchLocationsByText(ctx context.Context, arg SearchLocationsByTextParams) ([]SearchLocationsByTextRow, error) {
+	rows, err := q.db.Query(ctx, searchLocationsByText, arg.Query, arg.Off, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SearchLocationsByTextRow
+	for rows.Next() {
+		var i SearchLocationsByTextRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Latitude,
+			&i.Longitude,
+			&i.Mgrs,
+			&i.SourceCoordinate,
+			&i.CountryID,
+			&i.AdminArea1,
+			&i.AdminArea2,
+			&i.Locality,
+			&i.Street,
+			&i.HouseNumber,
+			&i.PostalCode,
+			&i.RawAddress,
+			&i.TypeID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const softDeleteLocation = `-- name: SoftDeleteLocation :execrows
 UPDATE oikumenea.location_locations
 SET deleted_at = now()
