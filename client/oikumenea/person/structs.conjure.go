@@ -1022,6 +1022,10 @@ type Sponsorship struct {
 	EffectiveFrom *string `json:"effectiveFrom,omitempty"`
 	// null = ongoing.
 	EffectiveTo *string `json:"effectiveTo,omitempty"`
+	// Optional education context — the enrollment (D-Education, M20) this sponsorship relates to.
+	EnrollmentId *string `json:"enrollmentId,omitempty"`
+	// Optional education role of the sponsor — one of professor | tutor | curator | advisor.
+	EducationRole *string `json:"educationRole,omitempty"`
 }
 
 func (o Sponsorship) MarshalYAML() (interface{}, error) {
@@ -1487,6 +1491,10 @@ type UpsertSponsorshipRequest struct {
 	Status        *string `json:"status,omitempty"`
 	EffectiveFrom *string `json:"effectiveFrom,omitempty"`
 	EffectiveTo   *string `json:"effectiveTo,omitempty"`
+	// Optional education context — the enrollment (D-Education, M20) this sponsorship relates to.
+	EnrollmentId *string `json:"enrollmentId,omitempty"`
+	// Optional sponsor education role — one of professor | tutor | curator | advisor.
+	EducationRole *string `json:"educationRole,omitempty"`
 }
 
 func (o UpsertSponsorshipRequest) MarshalYAML() (interface{}, error) {

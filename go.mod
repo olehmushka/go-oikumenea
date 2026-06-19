@@ -19,6 +19,7 @@ require (
 	github.com/palantir/witchcraft-go-logging v1.67.0
 	github.com/palantir/witchcraft-go-server/v2 v2.101.0
 	github.com/palantir/witchcraft-go-tracing v1.42.0
+	github.com/wroge/wgs84 v1.1.7
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.52.0
 )

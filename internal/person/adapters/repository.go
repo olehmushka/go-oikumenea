@@ -37,22 +37,22 @@ var _ domain.Repository = (*Repository)(nil)
 
 func (r *Repository) InsertPerson(ctx context.Context, p domain.Person) (domain.Person, error) {
 	row, err := r.q.InsertPerson(ctx, personsql.InsertPersonParams{
-		Code:           text(p.Code),
-		DisplayName:    p.DisplayName,
-		Title:          text(p.Title),
-		Given:          text(p.Given),
-		Given2:         text(p.Given2),
-		Surname:        text(p.Surname),
-		SurnamePrefix:  text(p.SurnamePrefix),
-		Surname2:       text(p.Surname2),
-		Generation:     text(p.Generation),
-		Credentials:    text(p.Credentials),
-		Preferred:      text(p.Preferred),
-		Birthdate:      dateText(p.Birthdate),
-		DateOfDeath:    dateText(p.DateOfDeath),
-		Sex:            p.Sex,
+		Code:             text(p.Code),
+		DisplayName:      p.DisplayName,
+		Title:            text(p.Title),
+		Given:            text(p.Given),
+		Given2:           text(p.Given2),
+		Surname:          text(p.Surname),
+		SurnamePrefix:    text(p.SurnamePrefix),
+		Surname2:         text(p.Surname2),
+		Generation:       text(p.Generation),
+		Credentials:      text(p.Credentials),
+		Preferred:        text(p.Preferred),
+		Birthdate:        dateText(p.Birthdate),
+		DateOfDeath:      dateText(p.DateOfDeath),
+		Sex:              p.Sex,
 		CountryOfBirthID: text(p.CountryOfBirth),
-		Attributes:     p.Attributes,
+		Attributes:       p.Attributes,
 	})
 	if err != nil {
 		return domain.Person{}, mapWriteErr(err)
@@ -87,22 +87,22 @@ func (r *Repository) GetActivePersonByCode(ctx context.Context, code string) (do
 
 func (r *Repository) UpdatePerson(ctx context.Context, id string, patch domain.PersonPatch) (domain.Person, error) {
 	row, err := r.q.UpdatePerson(ctx, personsql.UpdatePersonParams{
-		DisplayName:    textPtr(patch.DisplayName),
-		Title:          textPtr(patch.Title),
-		Given:          textPtr(patch.Given),
-		Given2:         textPtr(patch.Given2),
-		Surname:        textPtr(patch.Surname),
-		SurnamePrefix:  textPtr(patch.SurnamePrefix),
-		Surname2:       textPtr(patch.Surname2),
-		Generation:     textPtr(patch.Generation),
-		Credentials:    textPtr(patch.Credentials),
-		Preferred:      textPtr(patch.Preferred),
-		Birthdate:      datePtr(patch.Birthdate),
-		DateOfDeath:    datePtr(patch.DateOfDeath),
-		Sex:            textPtr(patch.Sex),
+		DisplayName:      textPtr(patch.DisplayName),
+		Title:            textPtr(patch.Title),
+		Given:            textPtr(patch.Given),
+		Given2:           textPtr(patch.Given2),
+		Surname:          textPtr(patch.Surname),
+		SurnamePrefix:    textPtr(patch.SurnamePrefix),
+		Surname2:         textPtr(patch.Surname2),
+		Generation:       textPtr(patch.Generation),
+		Credentials:      textPtr(patch.Credentials),
+		Preferred:        textPtr(patch.Preferred),
+		Birthdate:        datePtr(patch.Birthdate),
+		DateOfDeath:      datePtr(patch.DateOfDeath),
+		Sex:              textPtr(patch.Sex),
 		CountryOfBirthID: textPtr(patch.CountryOfBirth),
-		Attributes:     patch.Attributes,
-		ID:             id,
+		Attributes:       patch.Attributes,
+		ID:               id,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -230,6 +230,32 @@ func (r *Repository) Purge(ctx context.Context, id string) (domain.Person, error
 	}
 	// person languages (D-Languages, M18) — pii:basic, erased on purge.
 	if err := r.q.DeleteAllPersonLanguages(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	// person education (D-Education, M20) — enrollments (pii:basic) + dorm stays (pii:contact).
+	if err := r.q.DeleteAllPersonEducationEnrollments(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if err := r.q.DeleteAllPersonDormitoryStays(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	// education reference-layer person links (D-Education, M20 extension; pii:basic) — erased on purge.
+	if err := r.q.DeleteAllPersonPublicationAuthorships(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if err := r.q.DeleteAllPersonResearchMemberships(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if err := r.q.DeleteAllPersonGrantHoldings(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if err := r.q.DeleteAllPersonGovernanceMemberships(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if err := r.q.DeleteAllPersonEducationQualifications(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if err := r.q.DeleteAllPersonScholarshipAwards(ctx, id); err != nil {
 		return domain.Person{}, err
 	}
 	// person↔person relationships (D-PersonRelationships) — erased on EITHER endpoint's purge.
@@ -476,11 +502,11 @@ func (r *Repository) ListEmails(ctx context.Context, personID string) ([]domain.
 func (r *Repository) UpsertPhone(ctx context.Context, p domain.Phone) (domain.Phone, error) {
 	if p.ID == "" {
 		row, err := r.q.InsertPhone(ctx, personsql.InsertPhoneParams{
-			PersonID:  p.PersonID,
-			TypeCode:  p.TypeCode,
-			Number:    p.Number,
+			PersonID:    p.PersonID,
+			TypeCode:    p.TypeCode,
+			Number:      p.Number,
 			CountryCode: text(p.Country),
-			IsPrimary: p.IsPrimary,
+			IsPrimary:   p.IsPrimary,
 		})
 		if err != nil {
 			return domain.Phone{}, mapWriteErr(err)
@@ -488,12 +514,12 @@ func (r *Repository) UpsertPhone(ctx context.Context, p domain.Phone) (domain.Ph
 		return toPhone(row), nil
 	}
 	row, err := r.q.UpdatePhone(ctx, personsql.UpdatePhoneParams{
-		TypeCode:  p.TypeCode,
-		Number:    p.Number,
+		TypeCode:    p.TypeCode,
+		Number:      p.Number,
 		CountryCode: text(p.Country),
-		IsPrimary: p.IsPrimary,
-		ID:        p.ID,
-		PersonID:  p.PersonID,
+		IsPrimary:   p.IsPrimary,
+		ID:          p.ID,
+		PersonID:    p.PersonID,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -1090,6 +1116,7 @@ func (r *Repository) UpsertSponsorship(ctx context.Context, s domain.Sponsorship
 		row, err := r.q.InsertSponsorship(ctx, personsql.InsertSponsorshipParams{
 			SponsorID: s.SponsorID, SponsoredID: s.SponsoredID, RelationCode: s.RelationCode, Status: s.Status,
 			EffectiveFrom: dateText(s.EffectiveFrom), EffectiveTo: dateText(s.EffectiveTo),
+			EnrollmentID: text(s.EnrollmentID), EducationRole: text(s.EducationRole),
 		})
 		if err != nil {
 			return domain.Sponsorship{}, mapWriteErr(err)
@@ -1099,6 +1126,7 @@ func (r *Repository) UpsertSponsorship(ctx context.Context, s domain.Sponsorship
 	row, err := r.q.UpdateSponsorship(ctx, personsql.UpdateSponsorshipParams{
 		ID: s.ID, SponsorID: s.SponsorID, SponsoredID: s.SponsoredID, RelationCode: s.RelationCode, Status: s.Status,
 		EffectiveFrom: dateText(s.EffectiveFrom), EffectiveTo: dateText(s.EffectiveTo),
+		EnrollmentID: text(s.EnrollmentID), EducationRole: text(s.EducationRole),
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -1267,6 +1295,7 @@ func toSponsorship(r personsql.OikumeneaPersonSponsorship) domain.Sponsorship {
 	return domain.Sponsorship{
 		ID: r.ID, SponsorID: r.SponsorID, SponsoredID: r.SponsoredID, RelationCode: r.RelationCode, Status: r.Status,
 		EffectiveFrom: dateStr(r.EffectiveFrom), EffectiveTo: dateStr(r.EffectiveTo),
+		EnrollmentID: strText(r.EnrollmentID), EducationRole: strText(r.EducationRole),
 	}
 }
 
@@ -1487,6 +1516,14 @@ func text(s string) pgtype.Text {
 		return pgtype.Text{}
 	}
 	return pgtype.Text{String: s, Valid: true}
+}
+
+// strText reads a nullable text column into a plain string ("" when NULL).
+func strText(t pgtype.Text) string {
+	if !t.Valid {
+		return ""
+	}
+	return t.String
 }
 
 // textPtr maps a patch pointer: nil leaves the column unchanged (NULL narg → COALESCE keeps it); a

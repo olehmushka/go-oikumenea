@@ -46,7 +46,7 @@ migrates, and demos** on its own, so the service is runnable at every step.
 | **M16** | Hermenea — ingestion & scheduler companion (**absorbs M17**) | a **second binary** `cmd/hermenea` with its **own Postgres**, HTTP-only coupling: connector (http/file/**wof-sqlite**) → raw staging → mapper (incl. a **paged** mapper) → oikumenea `POST /import/{objectType}` idempotent upsert; cron scheduler + `worker_jobs` queue; `import_runs` lineage; service-principal auth. First real connector = the **Who's-On-First geo gazetteer** (`geo_places` + PostGIS, **D-GeoPlaces**, supersedes D-GeoSubdivisions) — **supersedes D-Worker, folds D-DataIngestion; promotes DS-25** | M0, M1 |
 | ~~**M17**~~ | ~~Data ingestion & connector framework~~ → **folded into M16** | the connector/mapper/scheduler pipeline now lives in the **hermenea** service (D-Hermenea); oikumenea keeps the generic import endpoint + per-row provenance | — |
 | **M18** | Language & writing systems | full Glottolog 5.3 languoid forest + ISO-15924 writing systems; person/unit/locale language links; first new M16 consumer | M2, M5, M16 (M3 for the unit tie) |
-| **M19** | Location | standalone `location_locations`; PostGIS `GEOGRAPHY` + h3-pg, DB-derived MGRS/H3; structured address over `geo_countries` | M0 |
+| **M19** | Location | standalone `location_locations`; PostGIS `GEOGRAPHY`; app-derived MGRS; multi-format coordinate input + `source_coordinate`; structured address over `geo_countries` | M0 |
 | **M20** | Education | institutions + structure tree + buildings (Location); enrollments, mentorship, groups, dorm stays; institution positions | M5, M14, M19 (M17 for registries) |
 | **M21** | Companies | legal-entity registry: legal form + ownership, registration schemes (LEI), industry classes, positions, equity/UBO links, company↔company graph | M5, M19 (M17 for registries) |
 | **M22** | Religion core (multi-faith) | faith-agnostic taxonomy catalogs (religions→traditions→sub-traditions); org nodes reuse tenant units in `canonical`/`tradition`/`affiliation` graphs; catalog-driven org kinds, profiles, policies | M3, M5 |
@@ -96,8 +96,8 @@ Legend: `✅` done · `🚧` in progress · `⬜` not started · `➖` not appli
 | **M16** | ✅ | ✅ | ✅ | ✅ | ➖ | ✅ | verified (geo-countries + full WOF Ukraine geo-places backfill, 35k places, e2e in compose) |
 | ~~**M17**~~ | — | — | — | — | — | — | folded into M16 (D-Hermenea) |
 | **M18** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — both i18n gaps closed (`name` is now a `locale→text` map via `NamesByID`; `i18n_locale_languages` reconciled on import) and re-proven e2e (full 27k Glottolog 5.3 load + the new person/unit/locale language UI). See M18 Verdict (resolved). |
-| **M19** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — `location_locations` (PostGIS point + DB-derived MGRS/H3 via h3-pg) + audited LocationService CRUD + radius/bbox; custom Postgres image; e2e integration tests + live MGRS/H3 derivation |
-| **M20** | ✅ | 🚧 | ⬜ | ⬜ | ⬜ | ⬜ | decided |
+| **M19** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — `location_locations` (PostGIS point + app-derived MGRS + multi-format coordinate input + `source_coordinate`) + audited LocationService CRUD + radius/bbox; stock postgis image; unit + e2e integration tests (D-Location amended 2026-06-17: MGRS app-side, H3 dropped) |
+| **M20** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — `education` module (RID service 14): external reference institutions + recursive unit tree (+ closure), buildings (→M19 location), groups, positions/appointments (one-holder), person enrollments + dorm stays (purge-erased) + sponsorship education context; migration `0020_education` (ISCED-seeded degree levels); audited EducationService CRUD; `/education` web page; integration test proves the full slice (closure/cycle/reparent, fill/PositionAlreadyFilled/end, purge erasure). **Reference-layer extension** (`university_ontology.md` adoption, migration `0021_education_reference` + `EducationReferenceService`): curriculum/courses (+ prerequisite cycle guard), research (centres/groups/grants/publications), governance/policy, credentials (qualifications/`diploma` doc-type/accreditation), scholarships, and 6 person↔reference links (purge-erased); operational SIS deliberately excluded — second integration test green |
 | **M21** | ✅ | 🚧 | ⬜ | ⬜ | ⬜ | ⬜ | decided |
 | **M22** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | designed |
 | **M23** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | designed |
@@ -663,44 +663,49 @@ now closed and re-verified:
 
 ## M19 — Location
 
-**Status: verified.** Binding via **D-Location** in [roadmap-decisions.md](architecture/roadmap-decisions.md). A new
-shared **standalone** entity that M20 (education buildings/dorms) and M21 (company addresses) reference
-by FK. Re-adopts geography/PostGIS/H3 — explicitly noted as *dropped from `drafts/`* in decisions.md,
-now reversed here with rationale. Built on the existing **`location` RID service (12)** beside the
+**Status: verified.** Binding via **D-Location** in [roadmap-decisions.md](architecture/roadmap-decisions.md)
+(see its **2026-06-17 amendment** — app-derived MGRS, no H3, multi-format coordinate input). A new shared
+**standalone** entity that M20 (education buildings/dorms) and M21 (company addresses) reference by FK.
+Re-adopts geography/PostGIS — explicitly noted as *dropped from `drafts/`* in decisions.md, now reversed
+here with rationale. Built on the existing **`location` RID service (12)** beside the
 geo_countries/geo_places registry: migration `migrations/20260601000019_location.sql`
-(`location_locations` + `location_location_types`, the **MGRS plpgsql function**, the H3-deriving
-trigger, the `(12,1,3)`/`(12,1,4)`/`(12,3,0)` RID rows), the audited **LocationService** CRUD +
-radius/bbox in `internal/geo` (`api/location.conjure.yml`), the readiness-gate extension check, and the
-`/locations` web console page (browser + create-from-coordinate + radius search; `location`/
-`location_type` ontology-registry entries).
+(`location_locations` + `location_location_types`, the `(12,1,3)`/`(12,1,4)`/`(12,3,0)` RID rows), the
+**app-side coordinate converters + MGRS** (`internal/geo/domain/coordinate.go`, via `github.com/wroge/wgs84`),
+the audited **LocationService** CRUD + radius/bbox in `internal/geo` (`api/location.conjure.yml`), the
+readiness-gate PostGIS check, and the `/locations` web console page (browser + create-from-coordinate in
+any format + radius search; `location`/`location_type` ontology-registry entries).
 
-**Verification (delivered).** PostGIS + h3-pg require a custom operator image (**`Dockerfile.postgres`** —
-`postgis/postgis:16-3.4` + h3-pg, wired into both compose files), since the stock image ships neither
-h3-pg nor an MGRS function. Integration tests (`internal/geo/location_integration_test.go`, against a
-real PostGIS + h3-pg DB) prove: create derives MGRS + all four H3 cells on write; an update recomputes
-them; an out-of-range coordinate is rejected; `ListLocationsNear` includes/excludes by `ST_DWithin`;
-soft-delete removes the row from reads; each write emits exactly one `system`-actor audited Action; and
-the `location_mgrs()` function matches known fixtures (Kyiv → `36U…`, Sydney → `56H…`, London → `30U…`).
-The migration applies cleanly + idempotently and on an existing DB (non-destructive upgrade); a live
-derivation of Kyiv yields `36UUA2418291607`.
+**Verification (delivered).** The stock **`postgis/postgis:16-3.4`** image suffices (no custom image, no
+h3-pg, no cgo); MGRS is derived in pure Go and radius/bbox use PostGIS `ST_DWithin` on the GiST index.
+Unit tests (`internal/geo/domain/coordinate_test.go`) prove the MGRS derivation matches the known Kyiv
+fixture `36UUA2418291607` and round-trips MGRS/UTM/СК-42 ↔ WGS84. Integration tests
+(`internal/geo/location_integration_test.go`, against a real PostGIS DB) prove: create derives the MGRS on
+write and preserves the original input in `source_coordinate`; create from MGRS/UTM resolves to the same
+canonical point; an update recomputes the MGRS; an out-of-range coordinate is rejected
+(`CoordinateOutOfRange`) and an unparseable one rejected (`CoordinateInvalid`); `ListLocationsNear`
+includes/excludes by `ST_DWithin`; soft-delete removes the row from reads; each write emits exactly one
+`system`-actor audited Action. The migration (edited in place; the location tables had no production data)
+applies cleanly + idempotently.
 
-**Goal.** A reusable, analytics-grade place entity: a precise coordinate with derived spatial indexes
-plus a structured postal address over the existing country registry, so anything with a location
-(buildings, campuses, dormitories, company addresses) points at one shared, queryable record.
+**Goal.** A reusable, analytics-grade place entity: a precise coordinate (enterable in several formats)
+with a derived MGRS index plus a structured postal address over the existing country registry, so
+anything with a location (buildings, campuses, dormitories, company addresses) points at one shared,
+queryable record.
 
 - **Delivers:**
-  - **`location_locations`** — RID PK; **`geom GEOGRAPHY(POINT, 4326)` required** (PostGIS); derived
-    **MGRS** string + **H3 indexes** (a small set of resolutions) computed by **DB functions/triggers**
-    via the **PostGIS + h3-pg** extensions; structured address: `country_code` (NOT NULL →
-    `geo_countries`), `admin_area_1`/`admin_area_2`, `locality`, `street`, `house_number`,
-    `postal_code`, `raw_address`; soft-delete; spatial GIST index.
-  - A `LocationService` (CRUD + radius/`ST_DWithin` query) and the schema-bootstrap additions for the
-    PostGIS + h3-pg extensions (an operator-DB prerequisite, surfaced in the readiness gate).
-- **Implements:** D-Location (reverses the `drafts/` geography drop). See a new `location` module +
-  [platform](modules/platform.md) (extension bootstrap).
-- **Exit:** create a location from a coordinate; MGRS + H3 are derived on write; a structured address
-  with only `country_code` set is rejected (coordinate required); a radius query returns nearby
-  locations.
+  - **`location_locations`** — RID PK; **`geom GEOGRAPHY(POINT, 4326)` required** (PostGIS); **app-derived
+    `mgrs`** (pure Go, from the resolved WGS84 coordinate); **`source_coordinate` JSONB** (the original
+    input verbatim); structured address: `country_id` (NOT NULL → `geo_countries`),
+    `admin_area_1`/`admin_area_2`, `locality`, `street`, `house_number`, `postal_code`, `raw_address`;
+    soft-delete; spatial GIST index.
+  - A pluggable **coordinate-input registry** (WGS84 lat/lon, MGRS, UTM, СК-42 numeric + grid) that
+    converts to canonical WGS84 and derives the MGRS, a `LocationService` (CRUD + radius/`ST_DWithin`
+    query), and the readiness-gate PostGIS check (the only operator-DB spatial prerequisite).
+- **Implements:** D-Location (reverses the `drafts/` geography drop; MGRS app-side, no H3). See a new
+  `location` module + [platform](modules/platform.md) (extension bootstrap).
+- **Exit:** create a location from a coordinate in any supported format; the MGRS is derived on write and
+  the original input preserved; a payload with no coordinate is rejected (coordinate required); a radius
+  query returns nearby locations.
 
 ## M20 — Education
 
@@ -875,7 +880,7 @@ Builds on M22 + the M0 crypto seam.
 
 **Status: planned.** Binding via **D-Religion** (discovery surface) in
 [roadmap-decisions.md](architecture/roadmap-decisions.md). The discovery substrate over religious structure + the shared
-**M19 Location** (PostGIS/H3), source-of-truth in go-oikumenea; a FaithMap-style app consumes it. Builds
+**M19 Location** (PostGIS), source-of-truth in go-oikumenea; a FaithMap-style app consumes it. Builds
 on M22 + [M19 Location](#m19--location).
 
 **Goal.** Make religious organizations **discoverable** — where they meet, when they serve, under what
@@ -910,7 +915,7 @@ names — with privacy-preserving spatial search, while the CMS/rendering stays 
 **Status: planned.** Binding via **D-Vehicles** + **D-GeoSubdivisions** in
 [roadmap-decisions.md](architecture/roadmap-decisions.md). The **last `todo.md` item** — a vehicle registry
 that binds people **and** companies to vehicles in one queryable graph, bundling a shared
-`geo_subdivisions` ISO-3166-2 foundation (exactly as M19 bundled the PostGIS/h3 bootstrap with
+`geo_subdivisions` ISO-3166-2 foundation (exactly as M19 bundled its PostGIS-backed point model with
 Location). Additive over person + the M21 Company registry.
 
 **Goal.** Hold vehicles at registry grade — a brand/model/type taxonomy, the physical vehicle (VIN),

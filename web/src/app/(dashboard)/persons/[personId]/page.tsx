@@ -20,6 +20,7 @@ import {
   SetRank,
   SocialAccountManager,
 } from "./PersonForms";
+import { PersonEducationManager } from "./PersonEducation";
 import type {
   Association,
   DocumentDoc,
@@ -181,6 +182,11 @@ async function PersonRelations({ personId, person }: { personId: string; person:
           <h2 className="text-sm font-semibold text-slate-900">Documents &amp; personal codes</h2>
           <DocumentManager personId={person.id} documents={documents?.documents} />
           <PersonalCodeManager personId={person.id} codes={codes?.codes} />
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <h2 className="text-sm font-semibold text-slate-900">Education</h2>
+          <PersonEducationManager personId={person.id} />
         </Card>
       </div>
 

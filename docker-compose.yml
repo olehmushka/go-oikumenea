@@ -16,13 +16,10 @@
 # config) for any real deployment. The operator owns the database (L-OperatorDB).
 services:
   postgres:
-    # PostGIS + h3-pg enabled (D-GeoPlaces / D-Location): the bootstrap migration runs `CREATE EXTENSION
-    # postgis` for the WOF gazetteer and 0019 runs `CREATE EXTENSION h3 / h3_postgis` for the location
-    # H3 indexes. Built from Dockerfile.postgres (postgis/postgis:16-3.4 + h3-pg) — a drop-in superset
-    # of the stock postgres:16 image.
-    build:
-      context: .
-      dockerfile: Dockerfile.postgres
+    # PostGIS enabled (D-GeoPlaces / D-Location): the bootstrap migration runs `CREATE EXTENSION postgis`
+    # for the WOF gazetteer + the location point model. The stock postgis image suffices — MGRS is
+    # derived in the application (pure Go) and radius/bbox use PostGIS ST_DWithin, so no h3-pg is needed.
+    image: postgis/postgis:16-3.4
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres

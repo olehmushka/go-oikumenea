@@ -250,6 +250,54 @@ func (q *Queries) DeleteAllPartnerships(ctx context.Context, personID string) er
 	return err
 }
 
+const deleteAllPersonDormitoryStays = `-- name: DeleteAllPersonDormitoryStays :exec
+DELETE FROM oikumenea.person_dormitory_stays WHERE person_id = $1
+`
+
+// Erase the person's RESIDED_IN_DORMITORY links (D-Education, M20; pii:contact).
+func (q *Queries) DeleteAllPersonDormitoryStays(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllPersonDormitoryStays, personID)
+	return err
+}
+
+const deleteAllPersonEducationEnrollments = `-- name: DeleteAllPersonEducationEnrollments :exec
+DELETE FROM oikumenea.person_education_enrollments WHERE person_id = $1
+`
+
+// Erase the person's STUDIED_AT links (D-Education, M20). Education-owned table; person purge hard-deletes
+// it (pii:basic) — the enrollment_id FK on person_sponsorships is ON DELETE SET NULL.
+func (q *Queries) DeleteAllPersonEducationEnrollments(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllPersonEducationEnrollments, personID)
+	return err
+}
+
+const deleteAllPersonEducationQualifications = `-- name: DeleteAllPersonEducationQualifications :exec
+DELETE FROM oikumenea.person_education_qualifications WHERE person_id = $1
+`
+
+func (q *Queries) DeleteAllPersonEducationQualifications(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllPersonEducationQualifications, personID)
+	return err
+}
+
+const deleteAllPersonGovernanceMemberships = `-- name: DeleteAllPersonGovernanceMemberships :exec
+DELETE FROM oikumenea.person_governance_memberships WHERE person_id = $1
+`
+
+func (q *Queries) DeleteAllPersonGovernanceMemberships(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllPersonGovernanceMemberships, personID)
+	return err
+}
+
+const deleteAllPersonGrantHoldings = `-- name: DeleteAllPersonGrantHoldings :exec
+DELETE FROM oikumenea.person_grant_holdings WHERE person_id = $1
+`
+
+func (q *Queries) DeleteAllPersonGrantHoldings(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllPersonGrantHoldings, personID)
+	return err
+}
+
 const deleteAllPersonLanguages = `-- name: DeleteAllPersonLanguages :exec
 DELETE FROM oikumenea.person_languages WHERE person_id = $1
 `
@@ -261,12 +309,41 @@ func (q *Queries) DeleteAllPersonLanguages(ctx context.Context, personID string)
 	return err
 }
 
+const deleteAllPersonPublicationAuthorships = `-- name: DeleteAllPersonPublicationAuthorships :exec
+DELETE FROM oikumenea.person_publication_authorships WHERE person_id = $1
+`
+
+// The education reference-layer person↔reference links (D-Education, M20 extension; pii:basic). Each is
+// an education-owned table erased on person purge.
+func (q *Queries) DeleteAllPersonPublicationAuthorships(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllPersonPublicationAuthorships, personID)
+	return err
+}
+
 const deleteAllPersonRanks = `-- name: DeleteAllPersonRanks :exec
 DELETE FROM oikumenea.person_ranks WHERE person_id = $1
 `
 
 func (q *Queries) DeleteAllPersonRanks(ctx context.Context, personID string) error {
 	_, err := q.db.Exec(ctx, deleteAllPersonRanks, personID)
+	return err
+}
+
+const deleteAllPersonResearchMemberships = `-- name: DeleteAllPersonResearchMemberships :exec
+DELETE FROM oikumenea.person_research_memberships WHERE person_id = $1
+`
+
+func (q *Queries) DeleteAllPersonResearchMemberships(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllPersonResearchMemberships, personID)
+	return err
+}
+
+const deleteAllPersonScholarshipAwards = `-- name: DeleteAllPersonScholarshipAwards :exec
+DELETE FROM oikumenea.person_scholarship_awards WHERE person_id = $1
+`
+
+func (q *Queries) DeleteAllPersonScholarshipAwards(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllPersonScholarshipAwards, personID)
 	return err
 }
 
@@ -1413,9 +1490,9 @@ func (q *Queries) InsertSocialAccountHandle(ctx context.Context, arg InsertSocia
 
 const insertSponsorship = `-- name: InsertSponsorship :one
 
-INSERT INTO oikumenea.person_sponsorships (sponsor_id, sponsored_id, relation_code, status, effective_from, effective_to)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, sponsor_id, sponsored_id, relation_code, status, effective_from, effective_to, created_at, updated_at, deleted_at
+INSERT INTO oikumenea.person_sponsorships (sponsor_id, sponsored_id, relation_code, status, effective_from, effective_to, enrollment_id, education_role)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, sponsor_id, sponsored_id, relation_code, status, effective_from, effective_to, created_at, updated_at, deleted_at, enrollment_id, education_role
 `
 
 type InsertSponsorshipParams struct {
@@ -1425,6 +1502,8 @@ type InsertSponsorshipParams struct {
 	Status        string
 	EffectiveFrom pgtype.Date
 	EffectiveTo   pgtype.Date
+	EnrollmentID  pgtype.Text
+	EducationRole pgtype.Text
 }
 
 // sponsorships ----------------------------------------------------------------
@@ -1436,6 +1515,8 @@ func (q *Queries) InsertSponsorship(ctx context.Context, arg InsertSponsorshipPa
 		arg.Status,
 		arg.EffectiveFrom,
 		arg.EffectiveTo,
+		arg.EnrollmentID,
+		arg.EducationRole,
 	)
 	var i OikumeneaPersonSponsorship
 	err := row.Scan(
@@ -1449,6 +1530,8 @@ func (q *Queries) InsertSponsorship(ctx context.Context, arg InsertSponsorshipPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.EnrollmentID,
+		&i.EducationRole,
 	)
 	return i, err
 }
@@ -2295,7 +2378,7 @@ func (q *Queries) ListSocialAccounts(ctx context.Context, personID string) ([]Oi
 }
 
 const listSponsorships = `-- name: ListSponsorships :many
-SELECT id, sponsor_id, sponsored_id, relation_code, status, effective_from, effective_to, created_at, updated_at, deleted_at FROM oikumenea.person_sponsorships
+SELECT id, sponsor_id, sponsored_id, relation_code, status, effective_from, effective_to, created_at, updated_at, deleted_at, enrollment_id, education_role FROM oikumenea.person_sponsorships
 WHERE deleted_at IS NULL AND (sponsor_id = $1 OR sponsored_id = $1)
 ORDER BY created_at DESC, id
 `
@@ -2320,6 +2403,8 @@ func (q *Queries) ListSponsorships(ctx context.Context, personID string) ([]Oiku
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.EnrollmentID,
+			&i.EducationRole,
 		); err != nil {
 			return nil, err
 		}
@@ -3008,9 +3093,10 @@ func (q *Queries) UpdateSocialAccount(ctx context.Context, arg UpdateSocialAccou
 const updateSponsorship = `-- name: UpdateSponsorship :one
 UPDATE oikumenea.person_sponsorships SET
   sponsor_id = $1, sponsored_id = $2, relation_code = $3,
-  status = $4, effective_from = $5, effective_to = $6
-WHERE id = $7 AND deleted_at IS NULL AND (sponsor_id = $1 OR sponsored_id = $2)
-RETURNING id, sponsor_id, sponsored_id, relation_code, status, effective_from, effective_to, created_at, updated_at, deleted_at
+  status = $4, effective_from = $5, effective_to = $6,
+  enrollment_id = $7, education_role = $8
+WHERE id = $9 AND deleted_at IS NULL AND (sponsor_id = $1 OR sponsored_id = $2)
+RETURNING id, sponsor_id, sponsored_id, relation_code, status, effective_from, effective_to, created_at, updated_at, deleted_at, enrollment_id, education_role
 `
 
 type UpdateSponsorshipParams struct {
@@ -3020,6 +3106,8 @@ type UpdateSponsorshipParams struct {
 	Status        string
 	EffectiveFrom pgtype.Date
 	EffectiveTo   pgtype.Date
+	EnrollmentID  pgtype.Text
+	EducationRole pgtype.Text
 	ID            string
 }
 
@@ -3031,6 +3119,8 @@ func (q *Queries) UpdateSponsorship(ctx context.Context, arg UpdateSponsorshipPa
 		arg.Status,
 		arg.EffectiveFrom,
 		arg.EffectiveTo,
+		arg.EnrollmentID,
+		arg.EducationRole,
 		arg.ID,
 	)
 	var i OikumeneaPersonSponsorship
@@ -3045,6 +3135,8 @@ func (q *Queries) UpdateSponsorship(ctx context.Context, arg UpdateSponsorshipPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.EnrollmentID,
+		&i.EducationRole,
 	)
 	return i, err
 }

@@ -41,7 +41,8 @@ INSERT INTO oikumenea.document_document_types (code, name, sort_order) VALUES
   ('tax-id',           'Tax ID document',        20),
   ('social-insurance', 'Social insurance card',  30),
   ('driver-license',   'Driver''s licence',      40),
-  ('military-id',      'Military ID',            50)
+  ('military-id',      'Military ID',            50),
+  ('diploma',          'Diploma',                60)
 ON CONFLICT (code) DO NOTHING`
 
 // seedMilitaryIDSchemaSQL sets the military-id type's attribute schema (D-DocumentAttrSchema) at boot,

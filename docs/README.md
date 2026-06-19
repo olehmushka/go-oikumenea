@@ -71,7 +71,7 @@ across graphs. That — *hierarchy + inheritance + visibility, decided by a PDP*
 | Module | Responsibility |
 |---|---|
 | [language](modules/language.md) *(M18 — backend + migrated, UI deferred)* | Languages & writing systems as a Glottolog-faithful registry (the full 5.3 forest, import-loaded) + ISO-15924 scripts; person/unit/locale language ties. |
-| [location](modules/location.md) *(M19)* | A shared, standalone place entity: PostGIS coordinate + derived MGRS/H3 + structured address. Reused by education, company, and religion sites. |
+| [location](modules/location.md) *(M19)* | A shared, standalone place entity: PostGIS coordinate + app-derived MGRS + multi-format coordinate input + structured address. Reused by education, company, and religion sites. |
 | `education` *(M20)* | Educational institutions, internal structure, buildings, and person bindings (enrollment, mentorship, groups, dorm stays, positions). |
 | `company` *(M21)* | A legal-entity registry with the ownership/affiliation graph (legal form, registration, positions, founders, shareholders, UBO). |
 | [religion](modules/religion.md) *(M22–M25)* | The **multi-faith** religion vertical: faith taxonomy (religions→traditions), organizations as tenant units in religion graphs, clergy grades/credentials, lay affiliation (`pii:special`), and discovery (sites→Location, schedules, search). Catalog-driven, no hard-coded faith vocabulary. |

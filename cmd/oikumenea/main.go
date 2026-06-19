@@ -19,6 +19,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
 	"github.com/olegamysk/go-oikumenea/internal/dataimport"
 	"github.com/olegamysk/go-oikumenea/internal/document"
+	"github.com/olegamysk/go-oikumenea/internal/education"
 	"github.com/olegamysk/go-oikumenea/internal/geo"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation/bootstrap"
@@ -210,6 +211,15 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// writing systems. The registry is written by the hermenea import pipeline (language-scheme /
 	// language-scripts), not here.
 	if _, err := language.Register(info, pool, locSvc, enforcer); err != nil {
+		cleanup()
+		return nil, err
+	}
+
+	// Education (M20 / D-Education): external reference institutions + their structure tree (+ closure),
+	// buildings (→ M19 location), groups, positions/appointments (mirror membership), and the person
+	// bindings (enrollments, dorm stays). Writes record via the audit service; translatable names
+	// assemble via localization.
+	if _, err := education.Register(info, pool, auditSvc, locSvc, enforcer); err != nil {
 		cleanup()
 		return nil, err
 	}

@@ -1,19 +1,18 @@
 //go:build integration
 
-// Integration tests for the Location vertical against a real PostGIS + h3-pg Postgres (M19 exit
-// criteria, D-Location / D-Audit). They exercise the geo module's audited Location CRUD + spatial
-// queries + the DB-derived MGRS/H3 columns:
+// Integration tests for the Location vertical against a real PostGIS Postgres (M19 exit criteria,
+// D-Location / D-Audit). They exercise the geo module's audited Location CRUD + spatial queries with
+// app-derived MGRS and the multi-format coordinate input:
 //
-//   - create from a coordinate -> MGRS + all four H3 cells are derived (non-null) on write;
-//   - update the coordinate -> derived columns recompute;
-//   - out-of-range coordinate is rejected (ErrCoordinateOutOfRange);
+//   - create from a coordinate (any format) -> the app resolves WGS84 + derives the MGRS on write;
+//   - the original input is preserved verbatim in source_coordinate;
+//   - update the coordinate -> MGRS recomputes;
+//   - out-of-range coordinate is rejected (ErrCoordinateOutOfRange), unparseable -> ErrCoordinateInvalid;
 //   - ListLocationsNear returns rows within radius and excludes those outside (ST_DWithin);
 //   - soft-delete removes the row from reads (ErrLocationNotFound afterwards);
-//   - each write emits exactly one `system`-actor audited Action in the same transaction;
-//   - the location_mgrs() function matches known MGRS fixtures (incl. a southern-hemisphere point).
+//   - each write emits exactly one `system`-actor audited Action in the same transaction.
 //
-// Run against a throwaway DB that has the migrations applied (PostGIS + h3-pg required — the custom
-// Dockerfile.postgres image):
+// Run against a throwaway DB that has the migrations applied (PostGIS required — the stock postgis image):
 //
 //	OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable" \
 //	  go test -tags integration ./internal/geo/...
@@ -21,6 +20,8 @@ package geo_test
 
 import (
 	"context"
+	"encoding/json"
+	"math"
 	"os"
 	"strings"
 	"testing"
@@ -72,24 +73,33 @@ func countryID(t *testing.T, pool *pgxpool.Pool, code string) string {
 	return id
 }
 
-func ptr(s string) *string { return &s }
+func ptr(s string) *string   { return &s }
+func f64(v float64) *float64 { return &v }
+func iptr(v int) *int        { return &v }
 
-// kyiv / sydney coordinates with their expected MGRS zone+band prefixes.
+// latLonInput builds a WGS84 lat/lon LocationInput for a country.
+func latLonInput(lat, lng float64, country string) domain.LocationInput {
+	return domain.LocationInput{
+		Coordinate: domain.CoordinateInput{Format: domain.FormatLatLon, Latitude: f64(lat), Longitude: f64(lng)},
+		CountryID:  country,
+	}
+}
+
 const (
 	kyivLat, kyivLng     = 50.4501, 30.5234 // -> 36U...
 	sydneyLat, sydneyLng = -33.8688, 151.2093
 )
 
-func TestLocationCreateDerivesMGRSAndH3(t *testing.T) {
+func TestLocationCreateDerivesMGRS(t *testing.T) {
 	pool := newPool(t)
 	svc := newService(t, pool)
 	ctx := context.Background()
 	ua := countryID(t, pool, "UA")
 
-	loc, err := svc.CreateLocation(ctx, domain.LocationWrite{
-		Latitude: kyivLat, Longitude: kyivLng, CountryID: ua,
-		Locality: ptr("Kyiv"), RawAddress: ptr("Maidan Nezalezhnosti"),
-	})
+	in := latLonInput(kyivLat, kyivLng, ua)
+	in.Locality = ptr("Kyiv")
+	in.RawAddress = ptr("Maidan Nezalezhnosti")
+	loc, err := svc.CreateLocation(ctx, in)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -99,27 +109,24 @@ func TestLocationCreateDerivesMGRSAndH3(t *testing.T) {
 	if len(*loc.MGRS) != 15 { // 2-digit zone + band + 2 square letters + 5+5 digits
 		t.Fatalf("expected 15-char MGRS, got %q", *loc.MGRS)
 	}
-	for name, cell := range map[string]*string{"r5": loc.H3Res5, "r7": loc.H3Res7, "r9": loc.H3Res9, "r11": loc.H3Res11} {
-		if cell == nil || *cell == "" {
-			t.Fatalf("expected H3 %s cell derived, got %v", name, cell)
-		}
+	// the original input is preserved verbatim.
+	if got := sourceFormat(t, loc.SourceCoordinate); got != domain.FormatLatLon {
+		t.Fatalf("expected source format %q, got %q", domain.FormatLatLon, got)
 	}
-
-	// exactly one system-actor Action recorded for the create.
 	assertOneAction(t, pool, loc.ID, "location.create")
 }
 
-func TestLocationUpdateRecomputesDerived(t *testing.T) {
+func TestLocationUpdateRecomputesMGRS(t *testing.T) {
 	pool := newPool(t)
 	svc := newService(t, pool)
 	ctx := context.Background()
 	ua := countryID(t, pool, "UA")
 
-	loc, err := svc.CreateLocation(ctx, domain.LocationWrite{Latitude: kyivLat, Longitude: kyivLng, CountryID: ua})
+	loc, err := svc.CreateLocation(ctx, latLonInput(kyivLat, kyivLng, ua))
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	moved, err := svc.UpdateLocation(ctx, loc.ID, domain.LocationWrite{Latitude: sydneyLat, Longitude: sydneyLng, CountryID: ua})
+	moved, err := svc.UpdateLocation(ctx, loc.ID, latLonInput(sydneyLat, sydneyLng, ua))
 	if err != nil {
 		t.Fatalf("update: %v", err)
 	}
@@ -132,12 +139,61 @@ func TestLocationUpdateRecomputesDerived(t *testing.T) {
 	assertOneAction(t, pool, loc.ID, "location.update")
 }
 
+// TestLocationCreateFromFormats: a coordinate supplied as MGRS or UTM resolves to the same canonical
+// WGS84 point (within MGRS precision) and preserves its source format.
+func TestLocationCreateFromFormats(t *testing.T) {
+	pool := newPool(t)
+	svc := newService(t, pool)
+	ctx := context.Background()
+	ua := countryID(t, pool, "UA")
+
+	mgrs := domain.DeriveMGRS(kyivLat, kyivLng)
+	if mgrs == nil {
+		t.Fatal("nil MGRS for Kyiv")
+	}
+	cases := []struct {
+		name       string
+		coord      domain.CoordinateInput
+		wantFormat string
+	}{
+		{"mgrs", domain.CoordinateInput{Format: domain.FormatMGRS, MGRS: mgrs}, domain.FormatMGRS},
+		{"utm", domain.CoordinateInput{Format: domain.FormatUTM, Zone: iptr(36), Hemisphere: ptr("N"), Easting: f64(324182), Northing: f64(5591607)}, domain.FormatUTM},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			loc, err := svc.CreateLocation(ctx, domain.LocationInput{Coordinate: c.coord, CountryID: ua})
+			if err != nil {
+				t.Fatalf("create: %v", err)
+			}
+			if math.Abs(loc.Latitude-kyivLat) > 0.01 || math.Abs(loc.Longitude-kyivLng) > 0.01 {
+				t.Fatalf("expected ~Kyiv, got (%v,%v)", loc.Latitude, loc.Longitude)
+			}
+			if loc.MGRS == nil || !strings.HasPrefix(*loc.MGRS, "36U") {
+				t.Fatalf("expected MGRS 36U, got %v", loc.MGRS)
+			}
+			if got := sourceFormat(t, loc.SourceCoordinate); got != c.wantFormat {
+				t.Fatalf("expected source format %q, got %q", c.wantFormat, got)
+			}
+		})
+	}
+}
+
 func TestLocationCoordinateOutOfRangeRejected(t *testing.T) {
 	pool := newPool(t)
 	svc := newService(t, pool)
 	ua := countryID(t, pool, "UA")
-	if _, err := svc.CreateLocation(context.Background(), domain.LocationWrite{Latitude: 200, Longitude: 0, CountryID: ua}); err != domain.ErrCoordinateOutOfRange {
+	if _, err := svc.CreateLocation(context.Background(), latLonInput(200, 0, ua)); err != domain.ErrCoordinateOutOfRange {
 		t.Fatalf("expected ErrCoordinateOutOfRange, got %v", err)
+	}
+}
+
+func TestLocationCoordinateInvalidRejected(t *testing.T) {
+	pool := newPool(t)
+	svc := newService(t, pool)
+	ua := countryID(t, pool, "UA")
+	bad := domain.LocationInput{Coordinate: domain.CoordinateInput{Format: domain.FormatMGRS, MGRS: ptr("not-an-mgrs")}, CountryID: ua}
+	if _, err := svc.CreateLocation(context.Background(), bad); err != domain.ErrCoordinateInvalid {
+		t.Fatalf("expected ErrCoordinateInvalid, got %v", err)
 	}
 }
 
@@ -147,11 +203,11 @@ func TestLocationRadiusQuery(t *testing.T) {
 	ctx := context.Background()
 	ua := countryID(t, pool, "UA")
 
-	near, err := svc.CreateLocation(ctx, domain.LocationWrite{Latitude: kyivLat + 0.001, Longitude: kyivLng + 0.001, CountryID: ua})
+	near, err := svc.CreateLocation(ctx, latLonInput(kyivLat+0.001, kyivLng+0.001, ua))
 	if err != nil {
 		t.Fatalf("create near: %v", err)
 	}
-	far, err := svc.CreateLocation(ctx, domain.LocationWrite{Latitude: kyivLat + 1.0, Longitude: kyivLng + 1.0, CountryID: ua})
+	far, err := svc.CreateLocation(ctx, latLonInput(kyivLat+1.0, kyivLng+1.0, ua))
 	if err != nil {
 		t.Fatalf("create far: %v", err)
 	}
@@ -174,7 +230,7 @@ func TestLocationSoftDelete(t *testing.T) {
 	ctx := context.Background()
 	ua := countryID(t, pool, "UA")
 
-	loc, err := svc.CreateLocation(ctx, domain.LocationWrite{Latitude: kyivLat, Longitude: kyivLng, CountryID: ua})
+	loc, err := svc.CreateLocation(ctx, latLonInput(kyivLat, kyivLng, ua))
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -209,36 +265,16 @@ func TestLocationTypesSeeded(t *testing.T) {
 	}
 }
 
-// TestLocationMGRSFixtures validates the DB MGRS function directly against known references, incl. a
-// southern-hemisphere point and a UTM-zone boundary.
-func TestLocationMGRSFixtures(t *testing.T) {
-	pool := newPool(t)
-	ctx := context.Background()
-	cases := []struct {
-		name         string
-		lat, lng     float64
-		wantZoneBand string
-	}{
-		{"kyiv", kyivLat, kyivLng, "36U"},
-		{"sydney", sydneyLat, sydneyLng, "56H"},
-		{"london", 51.5074, -0.1278, "30U"},
+func sourceFormat(t *testing.T, raw json.RawMessage) string {
+	t.Helper()
+	if len(raw) == 0 {
+		return ""
 	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			var mgrs string
-			if err := pool.QueryRow(ctx,
-				"SELECT oikumenea.location_mgrs(ST_SetSRID(ST_MakePoint($1,$2),4326)::geography)",
-				c.lng, c.lat).Scan(&mgrs); err != nil {
-				t.Fatalf("mgrs: %v", err)
-			}
-			if !strings.HasPrefix(mgrs, c.wantZoneBand) {
-				t.Fatalf("%s: expected MGRS prefix %s, got %s", c.name, c.wantZoneBand, mgrs)
-			}
-			if len(mgrs) != 15 {
-				t.Fatalf("%s: expected 15-char MGRS, got %q", c.name, mgrs)
-			}
-		})
+	var c domain.CoordinateInput
+	if err := json.Unmarshal(raw, &c); err != nil {
+		t.Fatalf("unmarshal source_coordinate: %v", err)
 	}
+	return c.Format
 }
 
 func containsID(rows []domain.Location, id string) bool {

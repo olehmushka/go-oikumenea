@@ -450,14 +450,24 @@ recursive `language_languoids` table; a person `SPEAKS` a `language`-level langu
 **Writing system.** An ISO 15924 script (D-Languages, M18) a languoid is `WRITTEN_IN`; classified by a
 **script type** (logographic/syllabary/alphabet/abjad/abugida/featural).
 
-**Location.** A shared, standalone place (D-Location, M19): a **required** WGS84 coordinate with
-DB-derived **MGRS** + **H3** indexes (PostGIS + h3-pg) plus a structured postal address over the country
-registry. Education buildings/dorms and company addresses reference it by FK.
+**Location.** A shared, standalone place (D-Location, M19): a **required** WGS84 coordinate (PostGIS
+`GEOGRAPHY` point) with an **app-derived MGRS** and the original input preserved in `source_coordinate`,
+plus a structured postal address over the country registry. The coordinate may be supplied in several
+formats (lat/lon, MGRS, UTM, СК-42); radius/bbox search uses PostGIS `ST_DWithin`. Education
+buildings/dorms and company addresses reference it by FK.
 
 **Educational institution.** An external reference org (D-Education, M20) — kindergarten…academy — with a
 recursive internal **structure tree** (campus/faculty/department/chair), **buildings** (Locations), and
 person bindings: **enrollment** (`STUDIED_AT`), **mentorship** (reuses M14 sponsorship with an education
 context), **dorm stay**, and institution **positions**. Distinct from the deploying org's tenant units.
+
+**Education reference layer.** The M20 extension (D-Education *Extension*) adding reference-grade facts:
+**program** (degree offering), **course** (module), **curriculum version** + **curriculum item** (a
+versioned course list), **course prerequisite** (cycle-guarded), **research centre/group**, **grant**,
+**publication**, **governance body**, **policy**, **qualification** (a credential type; an awarded
+**diploma** is a qualification award + a `diploma` document), **scholarship**, **accreditation event** —
+plus person↔reference links (authorship, research/governance membership, grant holding, qualification &
+scholarship awards). Reference data only — **not** an operational SIS (no terms/sections/grades).
 
 **Company (legal entity).** A registered organization (D-Companies, M21): `legal_form` + orthogonal
 `ownership_category`, multi-scheme **registration** (LEI spine), industry classification, positions, and
@@ -534,7 +544,7 @@ ownership history; person-owned rows are `pii:basic`, holder-scoped, and purge-e
 
 Account · Action (type) · Action RID · Affiliation type · Append-only event log · Atomic permission · Audit log · Authority-bearing · Background worker · Beneficial owner (UBO) · Blind index ·
 Call sign · Canonical envelope · Canonical graph · Citizenship · Clergy credential · Clergy grade · Clergy office · Closure · Code · Company (legal entity) · Country · Data ingestion / connector · Document · Document attribute schema · Document type · Dormant seam ·
-Educational institution · Effective permissions · Email (contact) · Email type · Envelope encryption · Environment slot · Expand/contract · External identity ·
+Education reference layer · Educational institution · Effective permissions · Email (contact) · Email type · Envelope encryption · Environment slot · Expand/contract · External identity ·
 Gate · Graph (named hierarchy) · Hermenea · Instance admin · Languoid · Level · Link (type) · Link RID · Locale · Location · Membership · Name (CLDR) ·
 Object (type) · Object-set · Ontology · Order ·
 Order category · Order item · Order type · Org kind · PDP · PDP context · Person · Personal code ·

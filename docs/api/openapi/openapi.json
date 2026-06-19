@@ -701,6 +701,56 @@
         ],
         "type": "object"
       },
+      "CoordinateInput": {
+        "description": "A coordinate in one of several supported formats. The application converts it to a canonical\nWGS84 lat/lon, derives the MGRS, and preserves this input verbatim as the location's\nsourceCoordinate. `format` selects which fields are read (the others are ignored); the\nconverter set is a pluggable registry, so more formats can be added without a schema change.\n",
+        "properties": {
+          "easting": {
+            "description": "Easting in metres (format=utm|sk42).",
+            "format": "double",
+            "type": "number"
+          },
+          "format": {
+            "description": "One of latlon | mgrs | utm | sk42 | sk42grid.",
+            "type": "string"
+          },
+          "grid": {
+            "description": "СК-42 grid-square reference (format=sk42grid).",
+            "type": "string"
+          },
+          "hemisphere": {
+            "description": "N | S, the UTM hemisphere (format=utm).",
+            "type": "string"
+          },
+          "latitude": {
+            "description": "WGS84 latitude (format=latlon).",
+            "format": "double",
+            "type": "number"
+          },
+          "longitude": {
+            "description": "WGS84 longitude (format=latlon).",
+            "format": "double",
+            "type": "number"
+          },
+          "mgrs": {
+            "description": "MGRS grid reference, e.g. 36UUA2418291607 (format=mgrs).",
+            "type": "string"
+          },
+          "northing": {
+            "description": "Northing in metres (format=utm|sk42).",
+            "format": "double",
+            "type": "number"
+          },
+          "zone": {
+            "description": "UTM or СК-42 (Gauss-Krüger) zone number (format=utm|sk42).",
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "format"
+        ],
+        "type": "object"
+      },
       "Country": {
         "description": "A country in the ISO-3166-1 registry. `id` is the RID (the reference key); `code` is the stable ISO-3166-1 alpha-2 lookup code; `name` is the default-locale (English) name.",
         "properties": {
@@ -2027,7 +2077,7 @@
         "type": "object"
       },
       "Location": {
-        "description": "A shared place — a precise coordinate, DB-derived spatial indexes, and a structured postal address.",
+        "description": "A shared place — a precise coordinate, an app-derived MGRS, and a structured postal address.",
         "properties": {
           "adminArea1": {
             "type": "string"
@@ -2041,22 +2091,6 @@
           },
           "createdAt": {
             "format": "date-time",
-            "type": "string"
-          },
-          "h3Res11": {
-            "description": "DB-derived H3 cell at resolution 11 (~20m).",
-            "type": "string"
-          },
-          "h3Res5": {
-            "description": "DB-derived H3 cell at resolution 5 (~9km).",
-            "type": "string"
-          },
-          "h3Res7": {
-            "description": "DB-derived H3 cell at resolution 7 (~1.2km).",
-            "type": "string"
-          },
-          "h3Res9": {
-            "description": "DB-derived H3 cell at resolution 9 (~150m).",
             "type": "string"
           },
           "houseNumber": {
@@ -2080,7 +2114,7 @@
             "type": "number"
           },
           "mgrs": {
-            "description": "DB-derived MGRS grid reference (absent for polar UPS coordinates, out of scope).",
+            "description": "App-derived MGRS grid reference (absent for polar UPS coordinates, out of scope).",
             "type": "string"
           },
           "postalCode": {
@@ -2088,6 +2122,14 @@
           },
           "rawAddress": {
             "type": "string"
+          },
+          "sourceCoordinate": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CoordinateInput"
+              }
+            ],
+            "description": "The coordinate as originally supplied (its format + raw values), preserved verbatim."
           },
           "street": {
             "type": "string"
@@ -2181,13 +2223,21 @@
         "type": "object"
       },
       "LocationWrite": {
-        "description": "Create/replace payload for a location. latitude+longitude are the required spine (validated in\nthe application, not the wire, so a missing coordinate returns Location:CoordinateRequired\nrather than a deserialization error). MGRS + H3 are never supplied — they are DB-derived.\n",
+        "description": "Create/replace payload for a location. `coordinate` is the required spine (validated in the\napplication, not the wire, so a missing/unparseable coordinate returns Location:CoordinateRequired\nor Location:CoordinateInvalid rather than a deserialization error). MGRS is never supplied — it\nis app-derived from the resolved WGS84 coordinate.\n",
         "properties": {
           "adminArea1": {
             "type": "string"
           },
           "adminArea2": {
             "type": "string"
+          },
+          "coordinate": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CoordinateInput"
+              }
+            ],
+            "description": "The coordinate in any supported format; required (absence → Location:CoordinateRequired)."
           },
           "countryId": {
             "description": "The country's RID (required).",
@@ -2196,16 +2246,8 @@
           "houseNumber": {
             "type": "string"
           },
-          "latitude": {
-            "format": "double",
-            "type": "number"
-          },
           "locality": {
             "type": "string"
-          },
-          "longitude": {
-            "format": "double",
-            "type": "number"
           },
           "postalCode": {
             "type": "string"
@@ -3130,7 +3172,7 @@
         "type": "object"
       },
       "Position": {
-        "description": "A unit-owned billet (D-Position) — an Object that exists whether or not anyone fills it (a\nVACANCY is an active position with no active filling). Position grants no authority. The\ncurrent holder is populated by getPosition and is null in list responses.\n",
+        "description": "A unit-owned billet (D-Position) — an Object that exists whether or not anyone fills it (a\nVACANCY is an active position with no active filling). Position grants no authority. The\ncurrent holder is populated by getPosition and by listPositions (null when vacant).\n",
         "properties": {
           "code": {
             "description": "Stable, locale-agnostic identifier, unique within the unit; immutable by convention.",
@@ -3146,7 +3188,7 @@
                 "$ref": "#/components/schemas/Membership"
               }
             ],
-            "description": "The current active filling, if any. Populated by getPosition; null in list responses."
+            "description": "The current active filling, if any. Populated by getPosition and listPositions; null when vacant."
           },
           "id": {
             "description": "The position's URN RID (carried as a plain string).",
@@ -7382,7 +7424,7 @@
         ]
       },
       "post": {
-        "description": "Create a location from a coordinate (+ address); derives MGRS/H3. Location:CoordinateRequired when the coordinate is missing.",
+        "description": "Create a location from a coordinate (any supported format) + address; derives MGRS. Location:CoordinateRequired when the coordinate is missing.",
         "operationId": "LocationService_createLocation",
         "requestBody": {
           "content": {
@@ -7416,7 +7458,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
-        "summary": "Create a location from a coordinate (+ address); derives MGRS/H3. Location:CoordinateRequired when the coordinate is missing.",
+        "summary": "Create a location from a coordinate (any supported format) + address; derives MGRS. Location:CoordinateRequired when the coordinate is missing.",
         "tags": [
           "LocationService"
         ]
@@ -7497,7 +7539,7 @@
         ]
       },
       "put": {
-        "description": "Replace a location's coordinate/address/type (re-derives MGRS/H3 on the coordinate).",
+        "description": "Replace a location's coordinate/address/type (re-derives MGRS on the coordinate).",
         "operationId": "LocationService_updateLocation",
         "parameters": [
           {
@@ -7541,7 +7583,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
-        "summary": "Replace a location's coordinate/address/type (re-derives MGRS/H3 on the coordinate).",
+        "summary": "Replace a location's coordinate/address/type (re-derives MGRS on the coordinate).",
         "tags": [
           "LocationService"
         ]

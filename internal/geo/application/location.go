@@ -64,14 +64,16 @@ func (s *Service) ListLocationsInBbox(ctx context.Context, minLat, minLng, maxLa
 
 // ---------------------------------------------------------------- writes
 
-// CreateLocation validates and inserts a location (the trigger derives MGRS/H3), then records the
-// action. A bad country FK surfaces as ErrInvalidLocation.
-func (s *Service) CreateLocation(ctx context.Context, w domain.LocationWrite) (domain.Location, error) {
-	if err := w.Validate(); err != nil {
+// CreateLocation resolves the supplied coordinate to canonical WGS84, derives the MGRS, inserts the
+// location, then records the action. ErrCoordinateInvalid/ErrCoordinateOutOfRange on a bad coordinate;
+// a bad country FK surfaces as ErrInvalidLocation.
+func (s *Service) CreateLocation(ctx context.Context, in domain.LocationInput) (domain.Location, error) {
+	w, err := in.ToWrite()
+	if err != nil {
 		return domain.Location{}, err
 	}
 	var out domain.Location
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
+	err = s.inTx(ctx, func(tx pgx.Tx) error {
 		created, err := s.newRepo(tx).InsertLocation(ctx, w)
 		if err != nil {
 			return mapWriteErr(err)
@@ -82,14 +84,15 @@ func (s *Service) CreateLocation(ctx context.Context, w domain.LocationWrite) (d
 	return out, err
 }
 
-// UpdateLocation validates and replaces a location's coordinate/address/type (re-deriving MGRS/H3),
-// then records the action. ErrLocationNotFound when absent.
-func (s *Service) UpdateLocation(ctx context.Context, id string, w domain.LocationWrite) (domain.Location, error) {
-	if err := w.Validate(); err != nil {
+// UpdateLocation resolves the supplied coordinate and replaces a location's coordinate/address/type
+// (re-deriving the MGRS), then records the action. ErrLocationNotFound when absent.
+func (s *Service) UpdateLocation(ctx context.Context, id string, in domain.LocationInput) (domain.Location, error) {
+	w, err := in.ToWrite()
+	if err != nil {
 		return domain.Location{}, err
 	}
 	var out domain.Location
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
+	err = s.inTx(ctx, func(tx pgx.Tx) error {
 		updated, err := s.newRepo(tx).UpdateLocation(ctx, id, w)
 		if err != nil {
 			return mapWriteErr(err)

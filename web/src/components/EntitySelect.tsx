@@ -16,7 +16,14 @@ import { pickLabel } from "@/lib/i18n";
  *                 forms keep working unchanged.
  *  - `onChange` → controlled callback with the selected RID (used by lookup filters / EdgeManager).
  */
-export type EntityKind = "person" | "unit" | "role" | "orderType";
+export type EntityKind =
+  | "person"
+  | "unit"
+  | "role"
+  | "orderType"
+  | "institution"
+  | "publication"
+  | "scholarship";
 
 type Option = { id: string; label: string; hint?: string };
 
@@ -64,6 +71,35 @@ const REGISTRY: Record<EntityKind, KindConfig> = {
       id: str(t.id) ?? "",
       label: pickLabel(map(t.name), locale) || str(t.code) || str(t.id) || "",
       hint: str(t.code),
+    }),
+  },
+  // Education (M20/M21) globally-scoped pickers. Institution-scoped child lists (units, grants,
+  // research-groups, …) are loaded into plain <select>s by PersonEducation once an institution is chosen.
+  institution: {
+    path: "/education/v1/institutions?pageSize=200",
+    pick: (d) => (d as { institutions?: unknown[] })?.institutions ?? [],
+    toOption: (i, locale) => ({
+      id: str(i.id) ?? "",
+      label: pickLabel(map(i.name), locale) || str(i.code) || str(i.id) || "",
+      hint: str(i.code),
+    }),
+  },
+  publication: {
+    path: "/education/v1/publications",
+    pick: (d) => (d as { publications?: unknown[] })?.publications ?? [],
+    toOption: (p) => ({
+      id: str(p.id) ?? "",
+      label: str(p.title) || str(p.code) || str(p.id) || "",
+      hint: str(p.code),
+    }),
+  },
+  scholarship: {
+    path: "/education/v1/scholarships",
+    pick: (d) => (d as { scholarships?: unknown[] })?.scholarships ?? [],
+    toOption: (s) => ({
+      id: str(s.id) ?? "",
+      label: str(s.name) || str(s.code) || str(s.id) || "",
+      hint: str(s.code),
     }),
   },
 };

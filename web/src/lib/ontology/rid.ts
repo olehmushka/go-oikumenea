@@ -22,7 +22,7 @@ const APP = 1;
 const SERVICE_NAMES: Record<number, string> = {
   1: "platform", 2: "i18n", 3: "audit", 4: "tenant", 5: "rank", 6: "person",
   7: "membership", 8: "authz", 9: "account", 10: "document", 11: "order",
-  12: "geo", 13: "language",
+  12: "geo", 13: "language", 14: "education",
 };
 
 // Token by `${service}/${kind}/${typeCode}` — kind 1=object, 2=link, 3=action. Mirrors the SQL
@@ -45,6 +45,12 @@ const TYPE_TOKENS: Record<string, string> = {
   "13/1/1": "languoid", "13/1/2": "writing_system", "13/1/3": "writing_system_script_type",
   "13/2/1": "link__written_in",
   "6/2/8": "link__speaks", "4/2/2": "link__unit_language", "2/2/1": "link__locale_language",
+  // education (M20 / D-Education)
+  "14/1/1": "institution", "14/1/2": "education_unit", "14/1/3": "building", "14/1/4": "group",
+  "14/1/5": "education_position", "14/1/6": "institution_kind", "14/1/7": "unit_kind",
+  "14/1/8": "degree_level",
+  "14/2/1": "link__education_unit_parent_of", "14/2/2": "link__studied_at",
+  "14/2/3": "link__resided_in_dormitory", "14/2/4": "link__holds_education_position",
 };
 
 interface Decoded {

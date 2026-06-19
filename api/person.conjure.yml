@@ -442,6 +442,12 @@ types:
           effectiveTo:
             type: optional<string>
             docs: null = ongoing.
+          enrollmentId:
+            type: optional<string>
+            docs: Optional education context — the enrollment (D-Education, M20) this sponsorship relates to.
+          educationRole:
+            type: optional<string>
+            docs: Optional education role of the sponsor — one of professor | tutor | curator | advisor.
       NextOfKin:
         docs: An in-directory next-of-kin nomination (subject→contact, both directory persons; D-PersonRelationships; Link link__next_of_kin). A nomination, not a blood fact.
         fields:
@@ -714,6 +720,12 @@ types:
             docs: active | ended; defaults to active.
           effectiveFrom: optional<string>
           effectiveTo: optional<string>
+          enrollmentId:
+            type: optional<string>
+            docs: Optional education context — the enrollment (D-Education, M20) this sponsorship relates to.
+          educationRole:
+            type: optional<string>
+            docs: Optional sponsor education role — one of professor | tutor | curator | advisor.
       UpsertNextOfKinRequest:
         docs: Nominate or replace a next-of-kin contact for the path person (the subject). contactId must be an in-directory person.
         fields:

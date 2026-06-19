@@ -840,8 +840,8 @@ export interface paths {
         get: operations["LocationService_listLocations"];
         put?: never;
         /**
-         * Create a location from a coordinate (+ address); derives MGRS/H3. Location:CoordinateRequired when the coordinate is missing.
-         * @description Create a location from a coordinate (+ address); derives MGRS/H3. Location:CoordinateRequired when the coordinate is missing.
+         * Create a location from a coordinate (any supported format) + address; derives MGRS. Location:CoordinateRequired when the coordinate is missing.
+         * @description Create a location from a coordinate (any supported format) + address; derives MGRS. Location:CoordinateRequired when the coordinate is missing.
          */
         post: operations["LocationService_createLocation"];
         delete?: never;
@@ -863,8 +863,8 @@ export interface paths {
          */
         get: operations["LocationService_getLocation"];
         /**
-         * Replace a location's coordinate/address/type (re-derives MGRS/H3 on the coordinate).
-         * @description Replace a location's coordinate/address/type (re-derives MGRS/H3 on the coordinate).
+         * Replace a location's coordinate/address/type (re-derives MGRS on the coordinate).
+         * @description Replace a location's coordinate/address/type (re-derives MGRS on the coordinate).
          */
         put: operations["LocationService_updateLocation"];
         post?: never;
@@ -2847,6 +2847,47 @@ export interface components {
             scope?: string;
             targetUnitId?: string;
         };
+        /**
+         * @description A coordinate in one of several supported formats. The application converts it to a canonical
+         *     WGS84 lat/lon, derives the MGRS, and preserves this input verbatim as the location's
+         *     sourceCoordinate. `format` selects which fields are read (the others are ignored); the
+         *     converter set is a pluggable registry, so more formats can be added without a schema change.
+         */
+        CoordinateInput: {
+            /**
+             * Format: double
+             * @description Easting in metres (format=utm|sk42).
+             */
+            easting?: number;
+            /** @description One of latlon | mgrs | utm | sk42 | sk42grid. */
+            format: string;
+            /** @description СК-42 grid-square reference (format=sk42grid). */
+            grid?: string;
+            /** @description N | S, the UTM hemisphere (format=utm). */
+            hemisphere?: string;
+            /**
+             * Format: double
+             * @description WGS84 latitude (format=latlon).
+             */
+            latitude?: number;
+            /**
+             * Format: double
+             * @description WGS84 longitude (format=latlon).
+             */
+            longitude?: number;
+            /** @description MGRS grid reference, e.g. 36UUA2418291607 (format=mgrs). */
+            mgrs?: string;
+            /**
+             * Format: double
+             * @description Northing in metres (format=utm|sk42).
+             */
+            northing?: number;
+            /**
+             * Format: int32
+             * @description UTM or СК-42 (Gauss-Krüger) zone number (format=utm|sk42).
+             */
+            zone?: number;
+        };
         /** @description A country in the ISO-3166-1 registry. `id` is the RID (the reference key); `code` is the stable ISO-3166-1 alpha-2 lookup code; `name` is the default-locale (English) name. */
         Country: {
             /** @description ISO-3166-1 alpha-2 code (e.g. UA, PL); the stable, locale-agnostic lookup key. */
@@ -3367,7 +3408,7 @@ export interface components {
         LocaleList: {
             locales: components["schemas"]["Locale"][];
         };
-        /** @description A shared place — a precise coordinate, DB-derived spatial indexes, and a structured postal address. */
+        /** @description A shared place — a precise coordinate, an app-derived MGRS, and a structured postal address. */
         Location: {
             adminArea1?: string;
             adminArea2?: string;
@@ -3375,14 +3416,6 @@ export interface components {
             countryId: string;
             /** Format: date-time */
             createdAt: string;
-            /** @description DB-derived H3 cell at resolution 11 (~20m). */
-            h3Res11?: string;
-            /** @description DB-derived H3 cell at resolution 5 (~9km). */
-            h3Res5?: string;
-            /** @description DB-derived H3 cell at resolution 7 (~1.2km). */
-            h3Res7?: string;
-            /** @description DB-derived H3 cell at resolution 9 (~150m). */
-            h3Res9?: string;
             houseNumber?: string;
             /** @description The location's RID (location service); what owning modules reference by FK. */
             id: string;
@@ -3397,10 +3430,12 @@ export interface components {
              * @description WGS84 longitude of the authoritative coordinate.
              */
             longitude: number;
-            /** @description DB-derived MGRS grid reference (absent for polar UPS coordinates, out of scope). */
+            /** @description App-derived MGRS grid reference (absent for polar UPS coordinates, out of scope). */
             mgrs?: string;
             postalCode?: string;
             rawAddress?: string;
+            /** @description The coordinate as originally supplied (its format + raw values), preserved verbatim. */
+            sourceCoordinate?: components["schemas"]["CoordinateInput"];
             street?: string;
             /** @description Optional place-type classification (location_location_types RID). */
             typeId?: string;
@@ -3432,21 +3467,20 @@ export interface components {
             locationTypes: components["schemas"]["LocationType"][];
         };
         /**
-         * @description Create/replace payload for a location. latitude+longitude are the required spine (validated in
-         *     the application, not the wire, so a missing coordinate returns Location:CoordinateRequired
-         *     rather than a deserialization error). MGRS + H3 are never supplied — they are DB-derived.
+         * @description Create/replace payload for a location. `coordinate` is the required spine (validated in the
+         *     application, not the wire, so a missing/unparseable coordinate returns Location:CoordinateRequired
+         *     or Location:CoordinateInvalid rather than a deserialization error). MGRS is never supplied — it
+         *     is app-derived from the resolved WGS84 coordinate.
          */
         LocationWrite: {
             adminArea1?: string;
             adminArea2?: string;
+            /** @description The coordinate in any supported format; required (absence → Location:CoordinateRequired). */
+            coordinate?: components["schemas"]["CoordinateInput"];
             /** @description The country's RID (required). */
             countryId: string;
             houseNumber?: string;
-            /** Format: double */
-            latitude?: number;
             locality?: string;
-            /** Format: double */
-            longitude?: number;
             postalCode?: string;
             rawAddress?: string;
             street?: string;
@@ -3835,14 +3869,14 @@ export interface components {
         /**
          * @description A unit-owned billet (D-Position) — an Object that exists whether or not anyone fills it (a
          *     VACANCY is an active position with no active filling). Position grants no authority. The
-         *     current holder is populated by getPosition and is null in list responses.
+         *     current holder is populated by getPosition and by listPositions (null when vacant).
          */
         Position: {
             /** @description Stable, locale-agnostic identifier, unique within the unit; immutable by convention. */
             code: string;
             /** Format: date-time */
             createdAt: string;
-            /** @description The current active filling, if any. Populated by getPosition; null in list responses. */
+            /** @description The current active filling, if any. Populated by getPosition and listPositions; null when vacant. */
             holder?: components["schemas"]["Membership"];
             /** @description The position's URN RID (carried as a plain string). */
             id: string;

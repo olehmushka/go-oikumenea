@@ -26,6 +26,7 @@ var serviceNames = map[int]string{
 	SvcOrder:      "order",
 	SvcLocation:   "location",
 	SvcLanguage:   "language",
+	SvcEducation:  "education",
 }
 
 type typeKey struct {
@@ -99,6 +100,40 @@ var typeNames = map[typeKey]string{
 	// cross-module language links (M18)
 	{SvcTenant, int(KindLink), 2}: "unit_language",
 	{SvcI18n, int(KindLink), 1}:   "locale_language",
+	// education (M20 / D-Education)
+	{SvcEducation, int(KindObject), 1}: "institution",
+	{SvcEducation, int(KindObject), 2}: "education_unit",
+	{SvcEducation, int(KindObject), 3}: "building",
+	{SvcEducation, int(KindObject), 4}: "group",
+	{SvcEducation, int(KindObject), 5}: "education_position",
+	{SvcEducation, int(KindObject), 6}: "institution_kind",
+	{SvcEducation, int(KindObject), 7}: "unit_kind",
+	{SvcEducation, int(KindObject), 8}: "degree_level",
+	{SvcEducation, int(KindLink), 1}:   "education_unit_parent_of",
+	{SvcEducation, int(KindLink), 2}:   "studied_at",
+	{SvcEducation, int(KindLink), 3}:   "resided_in_dormitory",
+	{SvcEducation, int(KindLink), 4}:   "holds_education_position",
+	// education reference layer (M20 extension — university_ontology.md adoption / D-Education)
+	{SvcEducation, int(KindObject), 9}:  "program",
+	{SvcEducation, int(KindObject), 10}: "course",
+	{SvcEducation, int(KindObject), 11}: "curriculum_version",
+	{SvcEducation, int(KindObject), 12}: "research_centre",
+	{SvcEducation, int(KindObject), 13}: "research_group",
+	{SvcEducation, int(KindObject), 14}: "grant",
+	{SvcEducation, int(KindObject), 15}: "publication",
+	{SvcEducation, int(KindObject), 16}: "governance_body",
+	{SvcEducation, int(KindObject), 17}: "policy",
+	{SvcEducation, int(KindObject), 18}: "qualification",
+	{SvcEducation, int(KindObject), 19}: "scholarship",
+	{SvcEducation, int(KindObject), 20}: "accreditation_event",
+	{SvcEducation, int(KindLink), 5}:    "curriculum_item",
+	{SvcEducation, int(KindLink), 6}:    "course_prerequisite",
+	{SvcEducation, int(KindLink), 7}:    "authored_publication",
+	{SvcEducation, int(KindLink), 8}:    "member_of_research_group",
+	{SvcEducation, int(KindLink), 9}:    "holds_grant",
+	{SvcEducation, int(KindLink), 10}:   "member_of_governance_body",
+	{SvcEducation, int(KindLink), 11}:   "awarded_qualification",
+	{SvcEducation, int(KindLink), 12}:   "awarded_scholarship",
 }
 
 // Bare person link-type names (the dispatch tokens), derived from the registry above.
