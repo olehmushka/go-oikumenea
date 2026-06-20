@@ -28,6 +28,7 @@ var serviceNames = map[int]string{
 	SvcLanguage:   "language",
 	SvcEducation:  "education",
 	SvcCompany:    "company",
+	SvcReligion:   "religion",
 }
 
 type typeKey struct {
@@ -150,6 +151,21 @@ var typeNames = map[typeKey]string{
 	{SvcCompany, int(KindLink), 6}:   "branch_of",
 	{SvcCompany, int(KindLink), 7}:   "has_industry",
 	{SvcCompany, int(KindLink), 8}:   "located_at",
+	// religion (M22 / D-Religion) — taxonomy + organization slice
+	{SvcReligion, int(KindObject), 1}: "taxon",
+	{SvcReligion, int(KindObject), 2}: "taxon_rank",
+	{SvcReligion, int(KindObject), 3}: "classification",
+	{SvcReligion, int(KindObject), 4}: "org_kind",
+	{SvcReligion, int(KindObject), 5}: "policy_kind",
+	{SvcReligion, int(KindObject), 6}: "org_policy",
+	// clergy (M23) + lay affiliation (M24) catalogs + reified person↔religion links
+	{SvcReligion, int(KindObject), 7}:  "grade_category",
+	{SvcReligion, int(KindObject), 8}:  "clergy_grade",
+	{SvcReligion, int(KindObject), 9}:  "office_type",
+	{SvcReligion, int(KindObject), 10}: "affiliation_type",
+	{SvcReligion, int(KindLink), 1}:    "classified_as",
+	{SvcReligion, int(KindLink), 2}:    "clergy_credential",
+	{SvcReligion, int(KindLink), 3}:    "affiliated_with",
 }
 
 // Bare person link-type names (the dispatch tokens), derived from the registry above.

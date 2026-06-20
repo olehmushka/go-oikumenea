@@ -51,6 +51,7 @@ export interface Person {
   surname?: string;
   patronymic?: string;
   birthdate?: string;
+  dateOfDeath?: string;
   sex?: string;
   status?: string;
   ranks?: PersonRank[];
@@ -227,6 +228,82 @@ export interface Association {
   kind: string; // associate | coi | no_contact
   status: string;
 }
+// ── M23: clergy credentials (D-ClergyCredential) ────────────────────────────
+/** An ordered, per-tradition clergy grade (bishop/imam/rabbi/…). */
+export interface ClergyGrade {
+  id: string;
+  traditionTaxonId?: string;
+  gradeCategoryId: string;
+  code: string;
+  name?: LocaleMap;
+  ordinal: number;
+  status?: string;
+  sortOrder?: number;
+}
+/** A per-tradition grouping of clergy grades. */
+export interface GradeCategory {
+  id: string;
+  traditionTaxonId?: string;
+  code: string;
+  name?: LocaleMap;
+  ordinal?: number;
+  status?: string;
+  sortOrder?: number;
+}
+/** A clergy office-type label (offices are filled as membership positions). */
+export interface OfficeType {
+  id: string;
+  traditionTaxonId?: string;
+  code: string;
+  name?: LocaleMap;
+  status?: string;
+  sortOrder?: number;
+}
+/** A reified person↔religion ordination/standing link — a public directory fact. */
+export interface ClergyCredential {
+  id: string;
+  personId: string;
+  clergyGradeId: string;
+  gradeCode: string;
+  gradeName?: LocaleMap;
+  orgUnitId: string;
+  grantedOn?: string; // YYYY-MM-DD
+  conferredByPersonId?: string;
+  status: string; // active | suspended | revoked
+  effectiveFrom: string;
+  effectiveTo?: string;
+  source?: string;
+  confidence?: string;
+}
+
+// ── M24: lay affiliation (D-ReligiousAffiliation, pii:special) ───────────────
+/** A per-tradition lay-affiliation / milestone type (adherent/baptized/shahada/…). */
+export interface AffiliationType {
+  id: string;
+  traditionTaxonId?: string;
+  code: string;
+  name?: LocaleMap;
+  status?: string;
+  sortOrder?: number;
+}
+/** A reified person↔religion lay-affiliation link; the belief value is pii:special (encrypted at rest). */
+export interface Affiliation {
+  id: string;
+  personId: string;
+  religionId?: string;
+  traditionUnitId?: string;
+  communityUnitId?: string;
+  affiliationTypeId: string;
+  affiliationTypeCode: string;
+  affiliationTypeName?: LocaleMap;
+  value?: string; // decrypted belief detail
+  status: string; // active | lapsed | renounced
+  effectiveFrom: string;
+  effectiveTo?: string;
+  source?: string;
+  confidence?: string;
+}
+
 export interface NameVariant {
   id: string;
   locale: string;

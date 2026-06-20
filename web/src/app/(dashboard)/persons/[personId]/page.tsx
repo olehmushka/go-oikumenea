@@ -10,7 +10,9 @@ import {
   EmailManager,
   MessengerLinkManager,
   NameVariantManager,
+  PersonAffiliationManager,
   PersonalCodeManager,
+  PersonClergyManager,
   PersonLanguageManager,
   PersonLifecycle,
   PersonRankLabel,
@@ -82,6 +84,7 @@ export default async function PersonDetailPage({
             <Row label="Given" value={person.given} />
             <Row label="Surname" value={person.surname} />
             <Row label="Birthdate" value={person.birthdate} />
+            <Row label="Date of death" value={person.dateOfDeath} />
             <Row label="Sex" value={person.sex} />
             <Row label="Rank" value={<PersonRankLabel ranks={person.ranks} />} />
             <Row label="Country of birth" value={person.countryOfBirth} />
@@ -135,6 +138,12 @@ export default async function PersonDetailPage({
         <Card>
           <h2 className="text-sm font-semibold text-slate-900">Name variants</h2>
           <NameVariantManager personId={person.id} variants={person.nameVariants} />
+        </Card>
+
+        <Card>
+          <h2 className="text-sm font-semibold text-slate-900">Religion</h2>
+          <PersonClergyManager personId={person.id} />
+          <PersonAffiliationManager personId={person.id} />
         </Card>
       </div>
 

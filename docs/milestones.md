@@ -99,9 +99,9 @@ Legend: `✅` done · `🚧` in progress · `⬜` not started · `➖` not appli
 | **M19** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — `location_locations` (PostGIS point + app-derived MGRS + multi-format coordinate input + `source_coordinate`) + audited LocationService CRUD + radius/bbox; stock postgis image; unit + e2e integration tests (D-Location amended 2026-06-17: MGRS app-side, H3 dropped) |
 | **M20** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — `education` module (RID service 14): external reference institutions + recursive unit tree (+ closure), buildings (→M19 location), groups, positions/appointments (one-holder), person enrollments + dorm stays (purge-erased) + sponsorship education context; migration `0020_education` (ISCED-seeded degree levels); audited EducationService CRUD; `/education` web page; integration test proves the full slice (closure/cycle/reparent, fill/PositionAlreadyFilled/end, purge erasure). **Reference-layer extension** (`university_ontology.md` adoption, migration `0021_education_reference` + `EducationReferenceService`): curriculum/courses (+ prerequisite cycle guard), research (centres/groups/grants/publications), governance/policy, credentials (qualifications/`diploma` doc-type/accreditation), scholarships, and 6 person↔reference links (purge-erased); operational SIS deliberately excluded — second integration test green |
 | **M21** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — `company` module (RID service 15): legal-entity registry over person + M19 location. Catalogs (legal forms / registration schemes w/ per-scheme validators incl. LEI / NACE industry classes), companies (`legal_form` + orthogonal `ownership_category`), per-scheme registrations (validated), industry assignments (one primary), locations (→M19), positions/appointments (one-holder), and the ownership/affiliation graph — foundings/shareholdings (**polymorphic person\|company holder**, ownership DAG), beneficiaries (UBO), successions, branches. Migration `0022_company`; audited CompanyService CRUD + `GET /companies/{id}/ownership-graph` + `/persons/{id}/company-affiliations`; `/companies` web page + person companies panel; integration test proves the full exit slice (LEI+EDRPOU validation, fill/PositionAlreadyFilled, 60% corporate shareholder, UBO, subsidiary/branch, predecessor succession, ownership-graph query, person-purge erasure). DS-45/46/47 (intelligence feeds, web/contact, ownership closure) parked |
-| **M22** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | designed |
-| **M23** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | designed |
-| **M24** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | designed |
+| **M22** | ✅ | ✅ | ✅ | ✅ | ✅ | 🚧 | backend verified + UI built — recursive `religion_taxa` tree + closure (D-Religion **refined** 2026-06-19: level-marker catalog, theism classification w/ nearest-declared-wins + unit override, M:N org classifications/one primary, Wikidata anchor). Migration `0023_religion` + curated 98-taxon seed (deep Christianity incl. major historic churches + world religions) via `deploy/religion-presets`. `internal/religion` module (raw-pgx repo, audited app svc reusing tenant for canonical-graph `createChildOrg`, transport on `religion.read`/`religion.catalog.manage`/`religionorg.manage`) wired into `main.go`; `pkg/rid` service 16. **Integration tests green** (seed+inheritance+override, reparent cycle guard, profile+one-primary, effective-type taxon+unit override, `excludes_child_creation` blocks child + canonical edge). `/religion` web taxonomy browser + create + theism-tag editor (type-checks + `next build`). **Remaining: live HTTP/UI click-through + commit** |
+| **M23** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — clergy grades & credentials (D-ClergyCredential): per-tradition `religion_grade_categories`/`religion_clergy_grades`/`religion_office_types` catalogs + reified **public** `religion_clergy_credentials` link (`link__clergy_credential`, RID `16,2,2`), indelible (status flip active/suspended/revoked, never deleted). Migration `0024_religion_clergy` (per-tradition seed: bishop/imam/rabbi/bhikkhu/swami…) + RLS on `org_unit_id`; `clergy.manage` perm gated against the conferring unit over the canonical graph. `ReligionService` endpoints (`/clergy-grades`, `/grade-categories`, `/office-types`, person/unit credential lists, add, status-flip update); person-detail "Religion" card + `/religion` roster panel. Integration test green (add→list by person+unit→suspend→reject bad status) |
+| **M24** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — lay affiliation (D-ReligiousAffiliation / D-SpecialPII): `religion_affiliation_types` catalog + reified `pii:special` `religion_affiliations` link (`link__affiliated_with`, RID `16,2,3`). The belief value is **envelope-encrypted at rest** (reuses `pkg/crypto` `Cipher` Seal/Open/BlindIndex — D-SpecialPII extends the sensitive-tier envelope unchanged) and **crypto-erased** via `ErasePersonAffiliations` (shared open seam with document `ErasePersonRecords` — the `PersonPurged` subscriber is still deferred). Migration `0025_religion_affiliation`; `affiliation.manage` perm gates read+write (person data). `ReligionService` endpoints (`/affiliation-types`, person affiliation list/add/update/delete); person-detail "Religion" card (Art. 9 notice). Integration test green: **ciphertext at rest contains no plaintext + blind index present, decrypt round-trips, crypto-erase drops the envelope (row survives, value empties)** |
 | **M25** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | designed |
 | **M26** | ✅ | 🚧 | ⬜ | ⬜ | ⬜ | ⬜ | decided |
 
@@ -799,21 +799,25 @@ local worship communities — with a **catalog-driven** taxonomy that fits Chris
 Hinduism, Buddhism, Sikhism, Bahá'í, Shinto, traditional/indigenous, … with **no hard-coded faith
 vocabulary**.
 
-- **Delivers:**
-  - **Taxonomy catalogs:** `religion_religions` (top level — Christianity/Islam/Judaism/Hinduism/
-    Buddhism/Sikhism/Bahá'í/Shinto/traditional/…), `religion_tradition_families` (nested under a
-    religion — Catholic/Orthodox/Protestant; Sunni/Shia; Orthodox/Conservative/Reform; Theravada/
-    Mahayana/Vajrayana; …), `religion_sub_traditions` (optional, generic — rite/school/madhhab/
-    sampradaya). All `code` + translatable `name` (D-Code/D-i18n), parent FK where nested.
+- **Delivers** (taxonomy reshaped per the **D-Religion refinement**, 2026-06-19):
+  - **Recursive taxonomy:** a single `religion_taxa` tree (`parent_id` self-FK + `religion_taxa_closure`,
+    the `language_languoids`/`education_units` pattern) — **no** fixed 3-table shape. Each node carries a
+    catalog-driven level marker (`religion_taxon_ranks`: religion→branch→tradition→sub_tradition→
+    denomination), an optional `wikidata_id`, and a denormalized root `religion_id`. A **rich curated
+    seed** (deep Christianity incl. the major historic churches + broad world religions, 98 taxa) ships
+    in the migration via `deploy/religion-presets`.
+  - **Religion-type ("theism") classification:** a `religion_classifications` catalog tagged M:N onto
+    taxa, resolving **nearest-declared-wins** down the closure (a taxon **or** unit may override).
   - **Organization nodes reuse `tenant_units`** with a **catalog-driven** `unit_kind` via
-    `religion_org_kinds` (`code`/`name`, optional `religion_id`, `ordinal`); three **seeded religion
-    graphs** — `canonical` (governance tree, **authority-bearing**), `tradition` (taxonomic,
-    **directory-only**), `affiliation` (voluntary DAG, **directory-only**) (D-Graphs/D-DirectoryGraphs).
-  - `religion_org_profiles` (`unit_id` PK/FK → `tenant_units`, `religion_id`, optional
-    `tradition_family_id`/`sub_tradition_id`, `short_code`); `religion_org_policies` (generic,
-    data-driven eligibility/exclusion — replaces any faith-specific doctrinal flag).
-  - A `ReligionService` for the catalogs + org-profile/policy management (catalogs instance-scope;
-    org placement reuses tenant unit/edge endpoints on the religion graphs).
+    `religion_org_kinds`; three **seeded religion graphs** — `canonical` (governance tree,
+    **authority-bearing**), `tradition` (taxonomic, **directory-only**), `affiliation` (voluntary DAG,
+    **directory-only**) (D-Graphs/D-DirectoryGraphs).
+  - `religion_org_profiles` (1:1 Unit extension); `religion_org_classifications` (**M:N tradition tags,
+    one primary**); `religion_org_policies` + `religion_policy_kinds` (generic, data-driven
+    eligibility/exclusion — replaces any faith-specific doctrinal flag).
+  - A `ReligionService` for the taxonomy + catalogs + org profile/classification/policy management
+    (taxonomy/catalogs instance-scope; per-unit org ops on `religionorg.manage` over the canonical
+    graph; `POST /units/{id}/child-orgs` enforces `excludes_child_creation`).
 - **Implements:** D-Religion (taxonomy + organization), refines L-SingleDomain. Reuses D-Graphs,
   D-DirectoryGraphs, D-Code, D-i18n. See a new [religion](modules/religion.md) module.
 - **Exit:** seed **three different religions** in one deployment, each with its own org-kind names;

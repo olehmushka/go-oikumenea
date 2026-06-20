@@ -34,6 +34,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/platform/config"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/internal/rank"
+	"github.com/olegamysk/go-oikumenea/internal/religion"
 	"github.com/olegamysk/go-oikumenea/internal/tenant"
 	"github.com/olegamysk/go-oikumenea/pkg/crypto"
 	"github.com/olegamysk/go-oikumenea/pkg/events"
@@ -229,6 +230,15 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// companies, registrations, industries, locations, positions/appointments, and the ownership/
 	// affiliation graph. Writes record via the audit service; translatable names assemble via localization.
 	if _, err := company.Register(info, pool, auditSvc, locSvc, enforcer); err != nil {
+		cleanup()
+		return nil, err
+	}
+
+	// Religion (M22 / D-Religion): the multi-faith taxonomy (recursive religion_taxa + closure) with a
+	// catalog-driven level marker + theism classification, the per-faith catalogs, and the per-unit
+	// organization attributes (profile/classifications/policies). Org nodes reuse tenant units; the
+	// canonical/tradition/affiliation graphs are migration-seeded. Reuses tenantSvc for createChildOrg.
+	if _, err := religion.Register(info, pool, auditSvc, locSvc, tenantSvc, enforcer, cipher); err != nil {
 		cleanup()
 		return nil, err
 	}

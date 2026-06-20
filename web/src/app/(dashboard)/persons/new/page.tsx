@@ -38,6 +38,7 @@ export default function NewPersonPage() {
       given: str("given"),
       surname: str("surname"),
       birthdate: str("birthdate"),
+      dateOfDeath: str("dateOfDeath"),
       sex: str("sex"),
       countryOfBirth: str("countryOfBirth"),
     };
@@ -93,6 +94,10 @@ export default function NewPersonPage() {
           <div>
             <label className="label">Birthdate</label>
             <input name="birthdate" type="date" className="input" />
+          </div>
+          <div>
+            <label className="label">Date of death</label>
+            <input name="dateOfDeath" type="date" className="input" />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4">

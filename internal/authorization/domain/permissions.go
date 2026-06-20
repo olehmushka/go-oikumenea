@@ -113,6 +113,21 @@ const (
 	PermCompanyManage         Permission = "company.manage"
 	PermCompanyPositionManage Permission = "company.position.manage"
 
+	// religion (D-Religion, M22) — the multi-faith taxonomy (religion_taxa + closure) + the per-faith
+	// catalogs are instance-global reference data (read anywhere; catalog writes on the instance plane
+	// as `religion.catalog.manage`, below). The per-unit organization attributes (profile/
+	// classifications/policies) ARE tenant-unit scoped: `religionorg.manage` is checked against the
+	// religious-body unit over the canonical graph (authority cascades a governance subtree).
+	PermReligionRead      Permission = "religion.read"
+	PermReligionOrgManage Permission = "religionorg.manage"
+	// clergy/affiliation (D-ClergyCredential M23 / D-ReligiousAffiliation M24) — person↔religion links.
+	// A clergy credential is a public directory fact: `clergy.manage` is checked against the conferring
+	// organization unit over the canonical graph (parallel to `religionorg.manage`). A lay affiliation is
+	// `pii:special` person data: `affiliation.manage` is a person-data write satisfied anywhere via the
+	// PEP (parallel to person updates). Neither is ever an authorization input (parallel to D-Rank).
+	PermClergyManage      Permission = "clergy.manage"
+	PermAffiliationManage Permission = "affiliation.manage"
+
 	// i18n
 	PermLocaleRead        Permission = "locale.read"
 	PermTranslationRead   Permission = "translation.read"
@@ -130,6 +145,7 @@ const (
 	PermLocationTypesManage      Permission = "location.types.manage"
 	PermEducationCatalogManage   Permission = "education.catalog.manage"
 	PermCompanyCatalogManage     Permission = "company.catalog.manage"
+	PermReligionCatalogManage    Permission = "religion.catalog.manage"
 	PermInstanceConfig           Permission = "instance.config"
 	PermInstanceAdminManage      Permission = "instance.admin.manage"
 	// import — the generic reference-data import endpoint (M16 / D-Hermenea). Held by the
@@ -155,6 +171,7 @@ var instanceScope = map[Permission]struct{}{
 	PermLocationTypesManage:      {},
 	PermEducationCatalogManage:   {},
 	PermCompanyCatalogManage:     {},
+	PermReligionCatalogManage:    {},
 	PermLocaleManage:             {},
 	PermTranslationManage:        {},
 	PermInstanceConfig:           {},
@@ -183,9 +200,10 @@ var catalog = func() map[Permission]struct{} {
 		PermLocationRead, PermLocationCreate, PermLocationUpdate,
 		PermEducationRead, PermEducationManage, PermEducationPositionManage, PermEducationEnrollmentManage,
 		PermCompanyRead, PermCompanyManage, PermCompanyPositionManage,
+		PermReligionRead, PermReligionOrgManage, PermClergyManage, PermAffiliationManage,
 		PermLocaleRead, PermTranslationRead, PermLocaleManage, PermTranslationManage,
 		PermRankSchemeManage, PermGraphManage, PermClosureRebuild, PermDocumentTypeManage, PermOrderTypeManage,
-		PermPersonalCodeSchemeManage, PermCountryManage, PermLocationTypesManage, PermEducationCatalogManage, PermCompanyCatalogManage, PermInstanceConfig, PermInstanceAdminManage,
+		PermPersonalCodeSchemeManage, PermCountryManage, PermLocationTypesManage, PermEducationCatalogManage, PermCompanyCatalogManage, PermReligionCatalogManage, PermInstanceConfig, PermInstanceAdminManage,
 		PermImportManage,
 	}
 	m := make(map[Permission]struct{}, len(all))
@@ -246,6 +264,7 @@ var readerPerms = []Permission{
 	PermRoleRead, PermAssignmentRead,
 	PermRankSchemeRead, PermGraphRead, PermCountryRead, PermLanguageRead, PermLocationRead,
 	PermDocumentTypeRead, PermPersonalCodeSchemeRead, PermOrderTypeRead,
+	PermReligionRead,
 	PermLocaleRead, PermTranslationRead,
 }
 
@@ -258,6 +277,7 @@ var managerOnlyPerms = []Permission{
 	PermPersonalCodeCreate, PermPersonalCodeUpdate,
 	PermOrderCreate,
 	PermLocationCreate, PermLocationUpdate,
+	PermReligionOrgManage,
 }
 
 var adminOnlyPerms = []Permission{

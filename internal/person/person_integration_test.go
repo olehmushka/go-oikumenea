@@ -548,10 +548,19 @@ func TestSocialChannels(t *testing.T) {
 	p := newPerson(t, svc, "Reachable Person")
 	other := newPerson(t, svc, "Other Person")
 
-	// The platform catalog is seeded with both categories.
+	// The platform catalog is seeded with both categories, including the M13 + 0026 additions.
 	platforms, err := svc.ListPlatforms(ctx)
 	if err != nil || len(platforms) == 0 {
 		t.Fatalf("list platforms: %d err %v", len(platforms), err)
+	}
+	platformCodes := map[string]bool{}
+	for _, pl := range platforms {
+		platformCodes[pl.Code] = true
+	}
+	for _, want := range []string{"telegram", "threema", "milchat", "vkontakte", "odnoklassniki", "bluesky", "mastodon"} {
+		if !platformCodes[want] {
+			t.Fatalf("platform catalog missing %q; got %v", want, platformCodes)
+		}
 	}
 
 	// A phone to be reachable on.

@@ -26,25 +26,45 @@ in code" (refined by D-Religion).
 
 ## Entities & aggregates
 
-**Ontology kinds** (D-Ontology; [registry](../ontology-mapping.md)) —
-**Objects (catalogs):** `Religion`, `TraditionFamily`, `SubTradition`, `OrgKind`, `OrgProfile`,
-`OrgPolicy`, `ClergyGrade`, `GradeCategory`, `OfficeType`, `AffiliationType`, `SiteType`, `ServiceType`,
-`ServiceSchedule`, `Alias`. **Reuses** `Unit` ([tenant](tenant.md)) for the organization nodes and
-`Position` ([membership](membership.md)) for clergy offices.
-**Links:** `link__clergy_credential` (clergy standing), `link__affiliated_with` (lay affiliation,
-`pii:special`), `link__site_of` (organization ↔ location).
-**Actions:** `ConferCredential`, `SuspendCredential`, `AppointClergy`, `RecordAffiliation`,
-`AttachSite`, plus catalog edits — each audited, `action__<type>` RID.
+**Milestone map.** **M22 (built):** the taxonomy + organization slice below. **M23 (built):** clergy
+grades/credentials (migration `0024_religion_clergy`). **M24 (built):** lay affiliation (`pii:special`,
+migration `0025_religion_affiliation`). **M25 (designed, deferred):** discovery (sites/schedules/search)
+— described later in this doc; its tables ship in a later migration. The M23–M25 per-tradition catalogs
+FK a `religion_taxa` node (`tradition_taxon_id`) rather than a fixed `tradition_family` row.
 
-- **Taxonomy** (`Religion` → `TraditionFamily` → `SubTradition`) — the faith classification tree, all
-  instance-admin catalogs.
+**Ontology kinds** (D-Ontology; [registry](../ontology-mapping.md)) — service **16** —
+**M22 Objects:** `Taxon` (the recursive taxonomy node), `TaxonRank` (the level catalog),
+`Classification` (the theism catalog), `OrgKind`, `PolicyKind`, `OrgPolicy`. **M23 Objects (built):**
+`ClergyGrade` (16,1,8), `GradeCategory` (16,1,7), `OfficeType` (16,1,9). **M24 Objects (built):**
+`AffiliationType` (16,1,10). **M25 Objects (deferred):** `SiteType`, `ServiceType`, `ServiceSchedule`,
+`Alias`. **Reuses** `Unit` ([tenant](tenant.md)) for the organization
+nodes (an `OrgProfile` is a 1:1 extension of a Unit, keyed by the unit RID — no own RID) and `Position`
+([membership](membership.md)) for clergy offices.
+**M22 Links:** `link__classified_as` (`religion_org_classifications` — unit ↔ taxon, one primary).
+**M23 Links (built):** `link__clergy_credential` (`religion_clergy_credentials`, 16,2,2 — person ↔ grade
+within an org unit). **M24 Links (built):** `link__affiliated_with` (`religion_affiliations`, 16,2,3,
+`pii:special`). **M25 Links (deferred):** `link__site_of`. *(The taxonomy closure, the theism tags on a
+taxon, and the per-unit theism override
+are bare M:N/derived join tables with no RID, like `tenant_unit_closure` / `language_languoid_countries`.)*
+**Actions:** catalog + taxonomy + org edits (M22), each audited, `action__<type>` RID (16,3,0).
+
+- **Taxonomy** — a **single recursive `religion_taxa` tree** (`parent_id` self-FK + a maintained
+  `religion_taxa_closure`), each node carrying a catalog-driven **level marker** (`TaxonRank`:
+  religion → branch → tradition → sub-tradition → denomination) and an optional `wikidata_id` anchor.
+  Reuses the proven `language_languoids`-forest / `education_unit_closure` pattern. Instance-admin
+  managed; a rich curated seed (deep Christianity + broad world religions) ships in the migration.
+- **Religion-type ("theism") classification** — a `Classification` catalog (monotheistic/polytheistic/
+  …) tagged M:N onto taxa, resolving **nearest-declared-wins** down the closure; a unit may **override**
+  its inherited type.
 - **Organization** — a religious body (denomination/jurisdiction/community/mosque/monastery/…) is a
-  **`tenant_units` row** placed in religion graphs; `OrgProfile` holds its faith attributes and
-  `OrgPolicy` its data-driven eligibility rules.
-- **Clergy** — `ClergyGrade` (a per-tradition ordered catalog) + the reified credential link; offices
-  are `Position`s with authority from role assignments.
-- **Affiliation** — the reified lay-belief link (`pii:special`).
-- **Discovery** — `religion_sites` (link to [location](location.md)), `ServiceSchedule`, `Alias`.
+  **`tenant_units` row** placed in religion graphs; `OrgProfile` holds its 1:1 faith attributes,
+  `religion_org_classifications` its M:N tradition tags (one primary), and `OrgPolicy` its data-driven
+  eligibility rules.
+- **Clergy** *(M23, built)* — `ClergyGrade`/`GradeCategory`/`OfficeType` catalogs + the reified,
+  public `link__clergy_credential` (person ↔ grade within an org unit). **Affiliation** *(M24, built)* —
+  the reified lay-belief `link__affiliated_with` (`pii:special`, envelope-encrypted, crypto-erased on
+  purge). **Discovery** *(M25, deferred)* — `religion_sites` (→ [location](location.md)),
+  `ServiceSchedule`, `Alias`.
 
 ## Data model
 
@@ -52,63 +72,100 @@ Conventions (URN RID PKs (D-ResourceIdentifiers), `TIMESTAMPTZ`, `set_updated_at
 `TEXT`+`CHECK` only for **fixed lifecycle statuses** — never for faith vocabulary) per
 [conventions.md](../architecture/conventions.md).
 
-### Taxonomy catalogs
+### Taxonomy (recursive tree + closure)
 
-**`religion_religions`** (top-level catalog) — `id` PK; `code` (stable, unique among active);
-`name` (translatable); `description` (translatable); `icon TEXT?`; `sort_order INT`; timestamps;
-soft-delete. *Seed (examples, operator-editable):* Christianity, Islam, Judaism, Hinduism, Buddhism,
-Sikhism, Jainism, Bahá'í, Shinto, Taoism, traditional/indigenous, other.
+**`religion_taxon_ranks`** (the ordered **level scaffold** — structural, not faith vocabulary) — `id`
+PK (16,1,2); `code`; `name` (translatable); `ordinal INT`; `status`; `sort_order`; timestamps;
+soft-delete. *Seed:* `religion`(0) → `branch`(1) → `tradition`(2) → `sub_tradition`(3) →
+`denomination`(4). Extensible; a faith need not use every level (the closure carries true depth).
 
-**`religion_tradition_families`** (nested under a religion) — `id` PK; `religion_id` FK →
-`religion_religions`; `code` (unique among active **within a religion**); `name` (translatable);
-`description` (translatable); `icon TEXT?`; `sort_order`; timestamps; soft-delete. *Seed (per religion):
-Christianity →* Catholic/Orthodox/Protestant (Baptist, Methodist, Pentecostal, …); *Islam →*
-Sunni/Shia/Ibadi; *Judaism →* Orthodox/Conservative/Reform; *Buddhism →* Theravada/Mahayana/Vajrayana;
-*Hinduism →* Vaishnava/Shaiva/Shakta; …
+**`religion_taxa`** (one node in the recursive faith classification tree) —
+- `id` PK (16,1,1)
+- `parent_id TEXT REFERENCES religion_taxa(id) ON DELETE RESTRICT` — NULL = a **root religion**; a
+  strict-tree containment self-FK (the `education_units` / `language_languoids` pattern), **not** a
+  reified Link
+- `rank_id TEXT NOT NULL REFERENCES religion_taxon_ranks(id)` — the level marker
+- `religion_id TEXT REFERENCES religion_taxa(id)` — denormalized **root** (derived via the closure,
+  like `language_languoids.family_code`)
+- `code` (stable, unique among active); `name` (translatable); `description`; `wikidata_id TEXT?`
+  (external anchor, e.g. `Q5043`); `icon TEXT?`; `sort_order`; provenance (`source`, `source_version`);
+  timestamps; soft-delete.
 
-**`religion_sub_traditions`** (optional generic sub-classification — rite / school / madhhab /
-sampradaya) — `id` PK; `tradition_family_id` FK; `code`; `name` (translatable); `sort_order`;
-timestamps; soft-delete. *Seed: Christianity →* Latin/Byzantine; *Islam →* Hanafi/Maliki/Shafi'i/
-Hanbali/Ja'fari; …
+**`religion_taxa_closure`** (derived transitive closure; `ancestor_id`, `descendant_id`, `depth` PK;
+**no RID**; reflexive row) — rebuilt in SQL on every taxon insert/reparent (mirrors
+`education_unit_closure`); bulk-built from the migration seed.
+
+**`religion_classifications`** (the religion-type / "theism" catalog) — `id` PK (16,1,3); `code`;
+`name` (translatable); `description`; `status`; `sort_order`; timestamps; soft-delete. *Seed:*
+monotheistic, polytheistic, henotheistic, monistic, nontheistic, pantheistic, panentheistic,
+animistic, dualistic, deistic, agnostic, atheistic.
+
+**`religion_taxon_classifications`** (theism tags on a taxon; `taxon_id`, `classification_id` PK; **no
+RID**) — a faith may carry several (Hinduism = monotheistic + polytheistic + monistic). **Resolution is
+nearest-declared-wins:** a taxon's effective type is the set declared on the nearest ancestor (via the
+closure) that declares any — a descendant declaring its own set **overrides** the inherited one. Seeded
+at the `religion` level. A read-time projection, never stored.
+
+> **Curated seed (D-Religion refined).** The migration ships a real-world taxonomy
+> (`deploy/religion-presets/gen-presets.py`, anchored to Wikidata QIDs): **deep Christianity** (the five
+> major branches → traditions → sub-traditions, plus the globally-significant historic churches as
+> denomination-level taxa — Orthodox autocephalous churches, the Eastern Catholic sui-iuris churches,
+> Oriental Orthodox churches, major Protestant denominations) and the **major world religions** to
+> branch/tradition depth. **Boundary:** the seed stops at the major historic churches; a specific
+> *governed instance* (this diocese/parish) is a `tenant_units` row linking to the nearest taxon.
 
 ### Organization (reuses `tenant_units`)
 
-**`religion_org_kinds`** (catalog naming each organizational level, per religion) — `id` PK; optional
-`religion_id` FK (NULL = generic across faiths); `code`; `name` (translatable); `ordinal INT` (relative
-depth/rank of the level); timestamps; soft-delete. *Seed: Christianity →* denomination/jurisdiction/
-congregation/campus; *Islam →* school/community/mosque-community; *Judaism →* movement/community;
-*Buddhism →* school/monastery/sangha.
+**`religion_org_kinds`** (catalog naming each organizational level) — `id` PK (16,1,4); optional
+`religion_id` FK → `religion_taxa` (NULL = generic across faiths); `code`; `name` (translatable);
+`ordinal INT`; timestamps; soft-delete. *Seed:* denomination/jurisdiction/diocese/deanery/parish/
+congregation/mission/monastery/community/mosque-community/temple-community/council.
 
 > **Graphs.** Organization nodes are `tenant_units` placed in **three seeded religion graphs**
-> ([tenant](tenant.md) `tenant_graphs`, D-Graphs/D-DirectoryGraphs): **`canonical`** (governance /
-> jurisdictional tree, **authority-bearing** — the PDP cascades `subtree` grants here), **`tradition`**
-> (taxonomic placement, **directory-only**), **`affiliation`** (voluntary association DAG,
-> **directory-only**). A unit's `tenant_units.unit_kind` is set from a `religion_org_kinds.code` (a
-> descriptive label, never branched on).
+> ([tenant](tenant.md) `tenant_graphs`, D-Graphs/D-DirectoryGraphs, seeded idempotently by migration
+> 0023): **`canonical`** (governance / jurisdictional tree, **authority-bearing** — the PDP cascades
+> `subtree` grants here), **`tradition`** (taxonomic placement, **directory-only**), **`affiliation`**
+> (voluntary association DAG, **directory-only**). A unit's `tenant_units.unit_kind` is set from a
+> `religion_org_kinds.code` (a descriptive label, never branched on).
 
 **`religion_org_profiles`** (per-organization faith attributes; one row per religious-body unit) —
-- `unit_id TEXT PRIMARY KEY REFERENCES tenant_units(id) ON DELETE RESTRICT`
-- `religion_id TEXT NOT NULL REFERENCES religion_religions(id) ON DELETE RESTRICT`
-- `tradition_family_id TEXT REFERENCES religion_tradition_families(id) ON DELETE RESTRICT` — optional
-- `sub_tradition_id TEXT REFERENCES religion_sub_traditions(id) ON DELETE RESTRICT` — optional
+- `unit_id TEXT PRIMARY KEY REFERENCES tenant_units(id) ON DELETE RESTRICT` (a 1:1 Unit extension — no
+  own RID)
+- `org_kind_id TEXT REFERENCES religion_org_kinds(id)` — optional level label
 - `short_code TEXT` — optional abbreviation (display/search aid)
 - `created_at`, `updated_at`, `deleted_at`
-- `CHECK`: a chosen `tradition_family_id` must belong to `religion_id`; `sub_tradition_id` to that
-  family (validated in the application).
+
+**`religion_org_classifications`** *(Link `link__classified_as` (16,2,1); the M:N tradition tags on a
+unit)* — `id` PK; `unit_id` FK; `taxon_id` FK → `religion_taxa`; `is_primary BOOLEAN` (partial-unique
+**one primary per unit**); optional `source`/`confidence`; timestamps; soft-delete. A body often fits
+several at once (Reformed Baptist; Eastern Catholic = Catholic + Byzantine-rite).
+
+**`religion_unit_classifications`** (the optional per-unit **theism override**; `unit_id`,
+`classification_id` PK; **no RID**) — when a unit declares any rows here they **override** its inherited
+taxon classification (the unit branch of nearest-declared-wins).
+
+**`religion_policy_kinds`** (the data-driven org-policy vocabulary) — `id` PK (16,1,5); `code`; `name`
+(translatable); `description`; timestamps; soft-delete. *Seed:* `excludes_child_creation`,
+`excluded_body`.
 
 **`religion_org_policies`** (generic, data-driven eligibility/exclusion — replaces any faith-specific
-doctrinal flag) — `id` PK; `unit_id` FK; `policy_kind_id` → a small `religion_policy_kinds` catalog
-(e.g. `excludes_child_creation`, `excluded_body`); `reason TEXT`; `decided_by_person_id`;
-`decided_at`; timestamps. *Example:* a body marked `excludes_child_creation` blocks creating
-congregations beneath it (the generic analog of the dropped Christianity-specific "Nicene gate").
+doctrinal flag) — `id` PK (16,1,6); `unit_id` FK; `policy_kind_id` FK → `religion_policy_kinds`;
+`reason TEXT`; `decided_by_person_id`; `decided_at`; timestamps; soft-delete. *Example:* a body marked
+`excludes_child_creation` blocks creating congregations beneath it via `POST
+/units/{id}/child-orgs` (the generic analog of the dropped Christianity-specific "Nicene gate").
 
-### Clergy (D-ClergyCredential)
+> **Clergy (M23, migration `0024`) and Lay affiliation (M24, migration `0025`) are BUILT.** Discovery
+> (below) remains **designed but deferred** to **M25**. The per-tradition catalogs FK a `religion_taxa`
+> node via `tradition_taxon_id` (at `tradition`/`sub_tradition`/`religion` rank) instead of the retired
+> `religion_tradition_families` table — the column is `tradition_taxon_id` throughout the built tables.
+
+### Clergy (D-ClergyCredential) — *built (M23, migration `0024`)*
 
 **`religion_grade_categories`** (per-tradition grouping of grades — generic, replaces a fixed
-major/minor enum) — `id` PK; optional `tradition_family_id`; `code`; `name` (translatable);
+major/minor enum) — `id` PK; optional `tradition_taxon_id`; `code`; `name` (translatable);
 `ordinal`; timestamps; soft-delete.
 
-**`religion_clergy_grades`** (ordered, per-tradition catalog) — `id` PK; optional `tradition_family_id`
+**`religion_clergy_grades`** (ordered, per-tradition catalog) — `id` PK; optional `tradition_taxon_id`
 FK; `grade_category_id` FK → `religion_grade_categories`; `code` (unique among active within a
 tradition); `name` (translatable); `ordinal INT` (seniority **within the tradition**); timestamps;
 soft-delete. *Seed (per tradition): Christianity →* bishop/presbyter/deacon (+ subdeacon/reader);
@@ -138,20 +195,20 @@ tradition.
 > [authorization](authorization.md) role assignment on that unit. Conferral/appointment/transfer/
 > suspension may cite an [order](order.md) (decree) of a religion `order_type`.
 
-**`religion_office_types`** (catalog) — `id` PK; optional `tradition_family_id`; `code`; `name`
+**`religion_office_types`** (catalog) — `id` PK; optional `tradition_taxon_id`; `code`; `name`
 (translatable); timestamps; soft-delete. *Seed:* pastor, rector, chaplain, imam-of-mosque, head-rabbi,
 abbot, head-priest, …
 
-### Lay affiliation (D-ReligiousAffiliation, D-SpecialPII — `pii:special`)
+### Lay affiliation (D-ReligiousAffiliation, D-SpecialPII — `pii:special`) — *built (M24, migration `0025`)*
 
-**`religion_affiliation_types`** (catalog, per tradition) — `id` PK; optional `tradition_family_id`;
+**`religion_affiliation_types`** (catalog, per tradition) — `id` PK (16,1,10); optional `tradition_taxon_id`;
 `code`; `name` (translatable); timestamps; soft-delete. *Seed:* generic adherent/member; *Christianity →*
 catechumen/baptized/confirmed; *Islam →* shahada; *Judaism →* bar/bat-mitzvah.
 
 **`religion_affiliations`** *(Link `link__affiliated_with`, **`pii:special`**)*
-- `id` PK — RID, `link__affiliated_with` slot
+- `id` PK (16,2,3) — RID, `link__affiliated_with` slot
 - `person_id TEXT NOT NULL REFERENCES person_persons(id) ON DELETE RESTRICT`
-- `religion_id TEXT REFERENCES religion_religions(id) ON DELETE RESTRICT` — optional faith anchor
+- `religion_id TEXT REFERENCES religion_taxa(id) ON DELETE RESTRICT` — optional faith anchor
 - `tradition_unit_id TEXT REFERENCES tenant_units(id) ON DELETE RESTRICT` — optional tradition/body
 - `community_unit_id TEXT REFERENCES tenant_units(id) ON DELETE RESTRICT` — optional local community
 - `affiliation_type_id TEXT NOT NULL REFERENCES religion_affiliation_types(id) ON DELETE RESTRICT`
@@ -167,7 +224,7 @@ catechumen/baptized/confirmed; *Islam →* shahada; *Judaism →* bar/bat-mitzva
 
 ### Discovery (D-Religion discovery surface)
 
-**`religion_site_types`** (catalog, per tradition) — `id` PK; optional `tradition_family_id`; `code`;
+**`religion_site_types`** (catalog, per tradition) — `id` PK; optional `tradition_taxon_id`; `code`;
 `name` (translatable); timestamps; soft-delete. *Seed:* church/cathedral/chapel/monastery, mosque,
 synagogue, temple, gurdwara, shrine, mission, office, online.
 
@@ -187,7 +244,7 @@ synagogue, temple, gurdwara, shrine, mission, office, online.
   (`UNIQUE (org_unit_id) WHERE is_primary AND deleted_at IS NULL`)
 - `created_at`, `updated_at`, `deleted_at`
 
-**`religion_service_types`** (catalog, per tradition) — `id` PK; optional `tradition_family_id`; `code`;
+**`religion_service_types`** (catalog, per tradition) — `id` PK; optional `tradition_taxon_id`; `code`;
 `name` (translatable); timestamps; soft-delete. *Seed:* main service, youth, prayer (Friday/Jumu'ah,
 Shabbat, daily mass, puja, meditation), special.
 
@@ -213,27 +270,34 @@ Shabbat, daily mass, puja, meditation), special.
 
 ## Conjure API surface
 
-`ReligionService`:
+`ReligionService` (`/religion/v1`) — **M22–M24 surface** (`api/religion.conjure.yml`):
 
 | Op | Intent | Perm |
 |---|---|---|
-| `GET /religion/religions` · `…/tradition-families` · `…/sub-traditions` | Read the taxonomy catalogs | `religion.read` |
-| `POST/PUT/DELETE /religion/{taxonomy}` | Manage taxonomy catalogs | `religion.catalog.manage` (instance) |
-| `GET /religion/org-kinds` · `…/grade-categories` · `…/clergy-grades` · `…/office-types` · `…/affiliation-types` · `…/site-types` · `…/service-types` · `…/policy-kinds` | Read the per-tradition catalogs | `religion.read` |
-| `POST/PUT/DELETE` on the above | Manage the per-tradition catalogs | `religion.catalog.manage` (instance) |
-| `PUT /units/{unitId}/religion-profile` | Set a unit's `OrgProfile` (religion/tradition/sub-tradition) | `religionorg.manage` (on the unit) |
-| `POST /units/{unitId}/religion-policies` | Add a data-driven org policy | `religionorg.manage` (on the unit) |
-| `POST /persons/{personId}/clergy-credentials` | Confer a clergy credential | `clergy.manage` (on the org unit) |
-| `POST /clergy-credentials/{id}/suspend` · `…/revoke` | Status flip (indelible) | `clergy.manage` |
-| `POST /persons/{personId}/affiliations` | Record a lay affiliation (`pii:special`) | `affiliation.manage` (holder-scoped) |
-| `POST /units/{unitId}/sites` | Attach a site (→ a `location`) | `site.manage` (on the unit) |
-| `POST /sites/{siteId}/schedules` | Add a service schedule | `schedule.manage` (on the unit) |
-| `POST /units/{unitId}/aliases` | Add a search alias | `religionorg.manage` (on the unit) |
-| `GET /religion/search?near=&radiusM=&religion=&tradition=&serviceLanguage=&serviceDay=&online=&q=` | Discovery search (closure + PostGIS + filters) | `religion.read` + shadow gate + precision projection |
+| `GET /taxa?rank=&parent=&religion=&query=` · `GET /taxa/{id}` | Read/search the taxonomy (closure-aware) | `religion.read` |
+| `POST /taxa` · `PUT /taxa/{id}` · `DELETE /taxa/{id}` · `POST /taxa/{id}/reparent` · `POST /taxonomy/rebuild-closure` | Manage the taxonomy tree (cycle-guarded; closure recomputed) | `religion.catalog.manage` (instance) |
+| `GET /taxa/{id}/effective-classifications` · `PUT /taxa/{id}/classifications` | Read resolved / set declared theism tags | `religion.read` / `religion.catalog.manage` |
+| `GET·PUT /taxon-ranks` · `/classifications` · `/org-kinds` · `/policy-kinds` | Read / manage the catalogs | `religion.read` / `religion.catalog.manage` (instance) |
+| `GET·PUT /units/{unitId}/religion-profile` | Read / set a unit's `OrgProfile` | `religion.read` / `religionorg.manage` (on the unit) |
+| `POST·DELETE /units/{unitId}/classifications` | Add / remove a tradition tag (one primary) | `religionorg.manage` (on the unit) |
+| `PUT /units/{unitId}/type-overrides` · `GET /units/{unitId}/effective-type` | Set / read the unit theism override (resolved) | `religionorg.manage` / `religion.read` |
+| `GET·POST·DELETE /units/{unitId}/religion-policies` | Manage data-driven org policies | `religionorg.manage` (on the unit) |
+| `POST /units/{unitId}/child-orgs` | Create a child org unit + canonical edge (blocked by `excludes_child_creation`) | `religionorg.manage` (on the unit) |
+| `GET·PUT /grade-categories` · `/clergy-grades?tradition=` · `/office-types` | Read / manage the clergy catalogs (M23) | `religion.read` / `religion.catalog.manage` (instance) |
+| `GET /persons/{id}/clergy-credentials` · `GET /units/{unitId}/clergy-credentials` | List a person's / a unit's clergy credentials | `religion.read` (unit read on the unit) |
+| `POST /persons/{id}/clergy-credentials` · `PUT /clergy-credentials/{id}` | Add / status-flip a credential (indelible; no delete) | `clergy.manage` (on the conferring unit) |
+| `GET·PUT /affiliation-types` | Read / manage the lay-affiliation catalog (M24) | `religion.read` / `religion.catalog.manage` (instance) |
+| `GET /persons/{id}/affiliations` · `POST` · `PUT /affiliations/{id}` · `DELETE /affiliations/{id}` | Read (decrypted) / add / update / remove a lay affiliation (`pii:special`) | `affiliation.manage` |
 
-Translatable `name`/`description` return as `locale → text` maps. Clergy offices are created/filled via
-the existing [membership](membership.md) position/fill endpoints; appointment decrees via
-[order](order.md).
+Translatable `name` returns as a `locale → text` map (D-i18n, M18 `NamesByID`). Per-unit ops gate on
+`religionorg.manage` checked over the **canonical** graph; taxonomy/catalog ops are instance-global.
+Clergy-credential writes gate `clergy.manage` over the **canonical** graph against the conferring unit;
+lay-affiliation reads/writes gate `affiliation.manage` (person data) — the belief value is decrypted
+only for authorized readers and **crypto-erased** on person purge.
+
+**Built (M23/M24):** clergy credentials + catalogs and lay affiliations (`pii:special`) — above.
+**Deferred (M25):** discovery (sites/schedules/aliases + closure+PostGIS search) ships in a later
+migration over the same module. Clergy *offices* (membership Positions) are also still future work.
 
 ## Dependencies
 
@@ -258,20 +322,30 @@ assignments.
 
 ## Invariants & safety
 
-- **No hard-coded faith vocabulary.** Organization kinds, grades, office/affiliation/site/service types,
-  and sub-traditions are catalog rows; the only `CHECK` enums are fixed *lifecycle statuses*
-  (`active/suspended/revoked`, `public/unlisted/private`, `in_person/online/hybrid`, alias kinds) and
-  `public_precision` (a privacy mechanism, not a faith term).
+- **No hard-coded faith vocabulary.** Taxon ranks, classifications, organization kinds, policy kinds
+  (and the deferred grades/office/affiliation/site/service types) are catalog rows; the taxonomy itself
+  is data in `religion_taxa`. The only `CHECK` enums are fixed *lifecycle statuses*
+  (`active/retired`, and the deferred `active/suspended/revoked`, `public/unlisted/private`, …).
 - **Single religion domain, many faiths.** A deployment is the religion domain (L-SingleDomain refined
-  by D-Religion); many `religion_religions` coexist as data — no code branches on which.
+  by D-Religion); many root `religion`-rank taxa coexist as data — no code branches on which.
+- **Taxonomy is a strict tree with a maintained closure.** `religion_taxa.parent_id` is acyclic
+  (reparent is cycle-guarded via the closure, like `education_units`); `religion_taxa_closure` is a
+  derived relation rebuilt in the same txn; `religion_id` (root) is denormalized from it.
+- **Theism resolution is nearest-declared-wins.** A taxon/unit's effective classification is the set on
+  the nearest declaring ancestor (closure walk); a unit override (`religion_unit_classifications`) beats
+  the inherited taxon set. A read-time projection, never stored.
+- **One primary classification per unit** (`religion_org_classifications`, partial-unique on
+  `is_primary`); a unit may carry several tags.
 - **Governance vs. taxonomy vs. affiliation are separate graphs.** Admin authority cascades only over
   the **`canonical`** graph; `tradition`/`affiliation` are directory-only (D-DirectoryGraphs) — a
   community affiliating with a network inherits **no** admin.
-- **Clergy credential indelible where sacramental** — status flip, never delete; a person may hold many.
-- **One primary site per org unit** (unique partial index); a site references a shared `location` and
-  owns its own visibility/precision.
-- **Affiliation is `pii:special`** — envelope-encrypted + blind-indexed (D-SpecialPII), crypto-erased on
-  purge, holder-scoped reads, audited writes.
+- **Org-policy exclusion** (`excludes_child_creation`) blocks `POST /units/{id}/child-orgs` beneath the
+  marked body — a data-driven rule, not code.
+- **Clergy credential indelible where sacramental** *(M23, built)* — revocation/laicization is a status
+  flip (`active`/`suspended`/`revoked`), never a hard delete; a credential is never an authz input.
+- **Affiliation is `pii:special`** *(M24, built)* — envelope-encrypted at rest with a blind index,
+  decrypted only for authorized readers, crypto-erased on person purge. *(Deferred, M25:* one primary
+  site per unit; the discovery surface.)*
 - **Org-policy exclusion** (`excludes_child_creation`) blocks creating child organizations beneath the
   marked body — a data-driven rule, not code.
 - **RLS backstop.** The unit-scoped religion tables carry the defense-in-depth RLS policies keyed on

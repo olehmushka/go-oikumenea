@@ -58,14 +58,20 @@ COMMENT ON COLUMN oikumenea.person_platforms.sort_order IS 'pii:none';
 
 -- Seed the platform catalog (natural-key carve-out). The instance admin adds more via the API.
 INSERT INTO oikumenea.person_platforms (code, name, category, sort_order) VALUES
-  ('telegram',  'Telegram',  'messenger',  0),
-  ('whatsapp',  'WhatsApp',  'messenger', 10),
-  ('signal',    'Signal',    'messenger', 20),
-  ('viber',     'Viber',     'messenger', 30),
-  ('instagram', 'Instagram', 'social',    40),
-  ('linkedin',  'LinkedIn',  'social',    50),
-  ('x',         'X',         'social',    60),
-  ('facebook',  'Facebook',  'social',    70);
+  ('telegram',      'Telegram',      'messenger',  0),
+  ('whatsapp',      'WhatsApp',      'messenger', 10),
+  ('signal',        'Signal',        'messenger', 20),
+  ('viber',         'Viber',         'messenger', 30),
+  ('threema',       'Threema',       'messenger', 32),
+  ('milchat',       'MilChat',       'messenger', 34),
+  ('instagram',     'Instagram',     'social',    40),
+  ('linkedin',      'LinkedIn',      'social',    50),
+  ('x',             'X',             'social',    60),
+  ('facebook',      'Facebook',      'social',    70),
+  ('vkontakte',     'VKontakte',     'social',    80),
+  ('odnoklassniki', 'Odnoklassniki', 'social',    90),
+  ('bluesky',       'Bluesky',       'social',   100),
+  ('mastodon',      'Mastodon',      'social',   110);
 
 -- ============================ messenger links (layer a) ============================
 

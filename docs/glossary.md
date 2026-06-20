@@ -493,13 +493,20 @@ M&A/reorganization lineage), and **branch** (`BRANCH_OF`, a non-independent sub-
 > by the [religion](modules/religion.md) module (organizations reuse [tenant](modules/tenant.md) units;
 > sites reuse [location](modules/location.md)).
 
-**Religion (faith).** The top of the faith taxonomy (D-Religion, M22) — Christianity / Islam / Judaism /
-Hinduism / Buddhism / Sikhism / Bahá'í / Shinto / traditional / … A `religion_religions` catalog row;
-many coexist in one deployment (L-SingleDomain refined — the single domain is *religion*).
+**Taxon (faith taxonomy).** A node in the **recursive** faith taxonomy (D-Religion **refined**, M22) — a
+`religion_taxa` row with a `parent_id` (NULL = a root religion) and a maintained `religion_taxa_closure`.
+Each carries a catalog-driven **rank** (level marker) and an optional `wikidata_id`. Replaces the former
+fixed `religion_religions`/`religion_tradition_families`/`religion_sub_traditions` catalogs.
 
-**Tradition family.** A branch within a religion (Catholic/Orthodox/Protestant; Sunni/Shia;
-Theravada/Mahayana/…), nested under a **Religion**. **Sub-tradition** is the optional generic level below
-it (rite / school / madhhab / sampradaya — Latin/Byzantine, Hanafi/Ja'fari, …).
+**Taxon rank.** The ordered structural level a taxon sits at (a `religion_taxon_ranks` catalog row):
+**religion** → **branch** → **tradition** → **sub-tradition** → **denomination**. Structural, not faith
+vocabulary; a faith need not use every level (the closure carries true depth). E.g. *Christianity*
+(religion) → *Eastern Orthodoxy* (branch) → *Orthodox Church of Ukraine* (denomination).
+
+**Religion-type / theism classification.** A `religion_classifications` catalog row
+(monotheistic/polytheistic/nontheistic/…) tagged M:N onto taxa; resolves **nearest-declared-wins** down
+the closure, and a unit may **override** its inherited type. A faith may carry several (Hinduism =
+monotheistic + polytheistic + monistic).
 
 **Religious organization / worship community.** A religious body (denomination, jurisdiction, community,
 mosque, monastery, …) modeled as a **tenant unit** placed in the religion graphs; its faith attributes

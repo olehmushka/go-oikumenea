@@ -13,9 +13,13 @@ import { pickLabel } from "@/lib/i18n";
 import { useLocale } from "@/lib/locale";
 import { ridTail } from "@/lib/ontology/rid";
 import type {
+  Affiliation,
+  AffiliationType,
   Association,
   CallSign,
   Citizenship,
+  ClergyCredential,
+  ClergyGrade,
   DocumentDoc,
   Email,
   Guardianship,
@@ -106,6 +110,7 @@ export function EditPerson({ person }: { person: Person }) {
               given: s(f, "given"),
               surname: s(f, "surname"),
               birthdate: s(f, "birthdate"),
+              dateOfDeath: s(f, "dateOfDeath"),
               sex: s(f, "sex"),
               countryOfBirth: s(f, "countryOfBirth"),
             }),
@@ -129,11 +134,17 @@ export function EditPerson({ person }: { person: Person }) {
           <input name="surname" className="input" defaultValue={person.surname} />
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="label">Birthdate</label>
           <input name="birthdate" type="date" className="input" defaultValue={person.birthdate} />
         </div>
+        <div>
+          <label className="label">Date of death</label>
+          <input name="dateOfDeath" type="date" className="input" defaultValue={person.dateOfDeath} />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="label">Sex (ISO 5218)</label>
           <select name="sex" className="input" defaultValue={person.sex ?? ""}>
@@ -1279,6 +1290,283 @@ export function PersonLanguageManager({ personId }: { personId: string }) {
         </button>
       </form>
     </ChannelBlock>
+  );
+}
+
+/* ------------------------------------------------------------------ clergy credentials (D-ClergyCredential, M23) */
+
+// PersonClergyManager owns the public person↔religion ordination links. Add cites a grade + the
+// conferring org unit; revocation is a status flip (never a delete — indelible where sacramental).
+export function PersonClergyManager({ personId }: { personId: string }) {
+  const { locale } = useLocale();
+  const [rows, setRows] = useState<ClergyCredential[] | null>(null);
+  const [grades, setGrades] = useState<ClergyGrade[]>([]);
+  const [err, setErr] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+  const [orgUnitId, setOrgUnitId] = useState("");
+  const [unitKey, setUnitKey] = useState(0);
+
+  const load = () =>
+    bffGet<{ credentials: ClergyCredential[] }>(`/religion/v1/persons/${personId}/clergy-credentials`)
+      .then((r) => setRows(r?.credentials ?? []))
+      .catch(setErr);
+  useEffect(() => {
+    load();
+    bffGet<{ clergyGrades: ClergyGrade[] }>(`/religion/v1/clergy-grades`)
+      .then((r) => setGrades(r?.clergyGrades ?? []))
+      .catch(setErr);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personId]);
+
+  const run = async (fn: () => Promise<unknown>, after?: () => void) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await fn();
+      after?.();
+      await load();
+    } catch (e) {
+      setErr(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <ChannelBlock title="Clergy credentials" err={err}>
+      {rows && rows.length === 0 ? <p className="mt-1 text-sm text-slate-400">—</p> : null}
+      <ul className="mt-1 space-y-0.5 text-sm text-slate-700">
+        {(rows ?? []).map((c) => (
+          <li key={c.id} className="flex items-center justify-between gap-2">
+            <span>
+              {pickLabel(c.gradeName, locale) || c.gradeCode}
+              {" · "}
+              <span className="font-mono text-xs">{c.orgUnitId.slice(-8)}</span>
+              {c.grantedOn ? ` · ${c.grantedOn}` : ""}
+              <span
+                className={
+                  "ml-1 rounded-full px-1.5 text-xs " +
+                  (c.status === "active" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500")
+                }
+              >
+                {c.status}
+              </span>
+            </span>
+            <span className="flex gap-2">
+              {c.status !== "suspended" ? (
+                <button
+                  type="button"
+                  className="text-xs font-medium text-amber-600 hover:underline disabled:opacity-50"
+                  disabled={busy}
+                  onClick={() =>
+                    run(() => mutate("PUT", `/religion/v1/clergy-credentials/${c.id}`, { status: "suspended" }))
+                  }
+                >
+                  Suspend
+                </button>
+              ) : null}
+              {c.status !== "revoked" ? (
+                <button
+                  type="button"
+                  className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
+                  disabled={busy}
+                  onClick={() =>
+                    window.confirm("Revoke this credential? (indelible — recorded as a status flip)") &&
+                    run(() => mutate("PUT", `/religion/v1/clergy-credentials/${c.id}`, { status: "revoked" }))
+                  }
+                >
+                  Revoke
+                </button>
+              ) : null}
+              {c.status !== "active" ? (
+                <button
+                  type="button"
+                  className="text-xs font-medium text-green-600 hover:underline disabled:opacity-50"
+                  disabled={busy}
+                  onClick={() =>
+                    run(() => mutate("PUT", `/religion/v1/clergy-credentials/${c.id}`, { status: "active" }))
+                  }
+                >
+                  Reinstate
+                </button>
+              ) : null}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <form
+        className="mt-2 grid grid-cols-[1fr_1fr_8rem_auto] items-center gap-2"
+        onSubmit={(ev) => {
+          ev.preventDefault();
+          const f = new FormData(ev.currentTarget);
+          const gradeId = s(f, "clergyGradeId");
+          if (!gradeId || !orgUnitId) return;
+          run(
+            () =>
+              mutate("POST", `/religion/v1/persons/${personId}/clergy-credentials`, {
+                clergyGradeId: gradeId,
+                orgUnitId,
+                grantedOn: s(f, "grantedOn"),
+              }),
+            () => {
+              setOrgUnitId("");
+              setUnitKey((k) => k + 1);
+              (ev.target as HTMLFormElement).reset();
+            },
+          );
+        }}
+      >
+        <select name="clergyGradeId" className="input" defaultValue="" required>
+          <option value="">grade…</option>
+          {grades.map((g) => (
+            <option key={g.id} value={g.id}>
+              {pickLabel(g.name, locale) || g.code}
+            </option>
+          ))}
+        </select>
+        <EntitySelect key={unitKey} kind="unit" onChange={setOrgUnitId} placeholder="conferring org unit…" />
+        <input name="grantedOn" type="date" className="input" />
+        <button className="btn-ghost" disabled={busy || !orgUnitId}>
+          Add
+        </button>
+      </form>
+    </ChannelBlock>
+  );
+}
+
+/* ------------------------------------------------------------------ lay affiliation (D-ReligiousAffiliation, M24, pii:special) */
+
+// PersonAffiliationManager owns the GDPR Art. 9 person↔religion lay-affiliation links. The belief
+// `value` is envelope-encrypted server-side; the API returns it decrypted to authorized readers.
+export function PersonAffiliationManager({ personId }: { personId: string }) {
+  const { locale } = useLocale();
+  const [rows, setRows] = useState<Affiliation[] | null>(null);
+  const [types, setTypes] = useState<AffiliationType[]>([]);
+  const [err, setErr] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+  const [religionId, setReligionId] = useState("");
+  const [pickerKey, setPickerKey] = useState(0);
+
+  const load = () =>
+    bffGet<{ affiliations: Affiliation[] }>(`/religion/v1/persons/${personId}/affiliations`)
+      .then((r) => setRows(r?.affiliations ?? []))
+      .catch(setErr);
+  useEffect(() => {
+    load();
+    bffGet<{ affiliationTypes: AffiliationType[] }>(`/religion/v1/affiliation-types`)
+      .then((r) => setTypes(r?.affiliationTypes ?? []))
+      .catch(setErr);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personId]);
+
+  const run = async (fn: () => Promise<unknown>, after?: () => void) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await fn();
+      after?.();
+      await load();
+    } catch (e) {
+      setErr(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <ChannelBlock title="Religious affiliation" err={err}>
+      <p className="mt-1 text-xs text-amber-600">Special-category data (GDPR Art. 9) — encrypted at rest.</p>
+      {rows && rows.length === 0 ? <p className="mt-1 text-sm text-slate-400">—</p> : null}
+      <ul className="mt-1 space-y-0.5 text-sm text-slate-700">
+        {(rows ?? []).map((a) => (
+          <li key={a.id} className="flex items-center justify-between gap-2">
+            <span>
+              {pickLabel(a.affiliationTypeName, locale) || a.affiliationTypeCode}
+              {a.value ? ` · ${a.value}` : ""}
+              <span
+                className={
+                  "ml-1 rounded-full px-1.5 text-xs " +
+                  (a.status === "active" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500")
+                }
+              >
+                {a.status}
+              </span>
+            </span>
+            <button
+              type="button"
+              className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
+              disabled={busy}
+              onClick={() =>
+                window.confirm("Remove this affiliation?") &&
+                run(() => mutate("DELETE", `/religion/v1/affiliations/${a.id}`))
+              }
+            >
+              Remove
+            </button>
+          </li>
+        ))}
+      </ul>
+      <form
+        className="mt-2 grid grid-cols-[1fr_1fr_1fr_auto] items-center gap-2"
+        onSubmit={(ev) => {
+          ev.preventDefault();
+          const f = new FormData(ev.currentTarget);
+          const typeId = s(f, "affiliationTypeId");
+          if (!typeId) return;
+          run(
+            () =>
+              mutate("POST", `/religion/v1/persons/${personId}/affiliations`, {
+                affiliationTypeId: typeId,
+                religionId: religionId || undefined,
+                value: s(f, "value"),
+              }),
+            () => {
+              setReligionId("");
+              setPickerKey((k) => k + 1);
+              (ev.target as HTMLFormElement).reset();
+            },
+          );
+        }}
+      >
+        <select name="affiliationTypeId" className="input" defaultValue="" required>
+          <option value="">type…</option>
+          {types.map((t) => (
+            <option key={t.id} value={t.id}>
+              {pickLabel(t.name, locale) || t.code}
+            </option>
+          ))}
+        </select>
+        <ReligionTaxonSelect key={pickerKey} onChange={setReligionId} />
+        <input name="value" type="text" className="input" placeholder="detail (optional)" />
+        <button className="btn-ghost" disabled={busy}>
+          Add
+        </button>
+      </form>
+    </ChannelBlock>
+  );
+}
+
+// ReligionTaxonSelect is a lightweight typeahead over root-religion taxa for the optional faith anchor.
+function ReligionTaxonSelect({ onChange }: { onChange: (id: string) => void }) {
+  const { locale } = useLocale();
+  const [opts, setOpts] = useState<{ id: string; label: string }[]>([]);
+  useEffect(() => {
+    bffGet<{ taxa: { id: string; code: string; name?: LocaleMap }[] }>(
+      `/religion/v1/taxa?rank=religion&pageSize=100`,
+    )
+      .then((r) => setOpts((r?.taxa ?? []).map((t) => ({ id: t.id, label: pickLabel(t.name, locale) || t.code }))))
+      .catch(() => setOpts([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <select className="input" defaultValue="" onChange={(e) => onChange(e.target.value)}>
+      <option value="">faith (optional)…</option>
+      {opts.map((o) => (
+        <option key={o.id} value={o.id}>
+          {o.label}
+        </option>
+      ))}
+    </select>
   );
 }
 

@@ -1,0 +1,807 @@
+{
+  "source": "religion-presets",
+  "source_version": "2026.06",
+  "ranks": [
+    "religion",
+    "branch",
+    "tradition",
+    "sub_tradition",
+    "denomination"
+  ],
+  "taxa": [
+    {
+      "rank": "religion",
+      "code": "christianity",
+      "name": "Christianity",
+      "parent": null,
+      "wikidata": "Q5043"
+    },
+    {
+      "rank": "religion",
+      "code": "islam",
+      "name": "Islam",
+      "parent": null,
+      "wikidata": "Q432"
+    },
+    {
+      "rank": "religion",
+      "code": "judaism",
+      "name": "Judaism",
+      "parent": null,
+      "wikidata": "Q9268"
+    },
+    {
+      "rank": "religion",
+      "code": "hinduism",
+      "name": "Hinduism",
+      "parent": null,
+      "wikidata": "Q9089"
+    },
+    {
+      "rank": "religion",
+      "code": "buddhism",
+      "name": "Buddhism",
+      "parent": null,
+      "wikidata": "Q748"
+    },
+    {
+      "rank": "religion",
+      "code": "sikhism",
+      "name": "Sikhism",
+      "parent": null,
+      "wikidata": "Q9554"
+    },
+    {
+      "rank": "religion",
+      "code": "jainism",
+      "name": "Jainism",
+      "parent": null,
+      "wikidata": "Q9163"
+    },
+    {
+      "rank": "religion",
+      "code": "bahai",
+      "name": "Bahá'í Faith",
+      "parent": null,
+      "wikidata": "Q43066"
+    },
+    {
+      "rank": "religion",
+      "code": "shinto",
+      "name": "Shinto",
+      "parent": null,
+      "wikidata": "Q1409"
+    },
+    {
+      "rank": "religion",
+      "code": "taoism",
+      "name": "Taoism",
+      "parent": null,
+      "wikidata": "Q9598"
+    },
+    {
+      "rank": "religion",
+      "code": "confucianism",
+      "name": "Confucianism",
+      "parent": null,
+      "wikidata": "Q9581"
+    },
+    {
+      "rank": "religion",
+      "code": "zoroastrianism",
+      "name": "Zoroastrianism",
+      "parent": null,
+      "wikidata": "Q9601"
+    },
+    {
+      "rank": "religion",
+      "code": "atheism",
+      "name": "Atheism",
+      "parent": null,
+      "wikidata": "Q7066"
+    },
+    {
+      "rank": "religion",
+      "code": "agnosticism",
+      "name": "Agnosticism",
+      "parent": null,
+      "wikidata": "Q41719"
+    },
+    {
+      "rank": "religion",
+      "code": "traditional",
+      "name": "Traditional & indigenous religions",
+      "parent": null,
+      "wikidata": null
+    },
+    {
+      "rank": "religion",
+      "code": "other",
+      "name": "Other / unclassified",
+      "parent": null,
+      "wikidata": null
+    },
+    {
+      "rank": "branch",
+      "code": "catholicism",
+      "name": "Catholicism",
+      "parent": "christianity",
+      "wikidata": "Q1841"
+    },
+    {
+      "rank": "branch",
+      "code": "eastern_orthodoxy",
+      "name": "Eastern Orthodoxy",
+      "parent": "christianity",
+      "wikidata": "Q3333484"
+    },
+    {
+      "rank": "branch",
+      "code": "oriental_orthodoxy",
+      "name": "Oriental Orthodoxy",
+      "parent": "christianity",
+      "wikidata": "Q156954"
+    },
+    {
+      "rank": "branch",
+      "code": "church_of_the_east",
+      "name": "Church of the East",
+      "parent": "christianity",
+      "wikidata": "Q470330"
+    },
+    {
+      "rank": "branch",
+      "code": "protestantism",
+      "name": "Protestantism",
+      "parent": "christianity",
+      "wikidata": "Q23540"
+    },
+    {
+      "rank": "branch",
+      "code": "restorationism",
+      "name": "Restorationism & nontrinitarian",
+      "parent": "christianity",
+      "wikidata": "Q1140229"
+    },
+    {
+      "rank": "branch",
+      "code": "independent_christianity",
+      "name": "Independent / nondenominational",
+      "parent": "christianity",
+      "wikidata": null
+    },
+    {
+      "rank": "branch",
+      "code": "sunni",
+      "name": "Sunni Islam",
+      "parent": "islam",
+      "wikidata": "Q7444"
+    },
+    {
+      "rank": "branch",
+      "code": "shia",
+      "name": "Shia Islam",
+      "parent": "islam",
+      "wikidata": "Q9585"
+    },
+    {
+      "rank": "branch",
+      "code": "ibadi",
+      "name": "Ibadi Islam",
+      "parent": "islam",
+      "wikidata": "Q319540"
+    },
+    {
+      "rank": "branch",
+      "code": "sufism",
+      "name": "Sufism",
+      "parent": "islam",
+      "wikidata": "Q9622"
+    },
+    {
+      "rank": "branch",
+      "code": "ahmadiyya",
+      "name": "Ahmadiyya",
+      "parent": "islam",
+      "wikidata": "Q170027"
+    },
+    {
+      "rank": "branch",
+      "code": "orthodox_judaism",
+      "name": "Orthodox Judaism",
+      "parent": "judaism",
+      "wikidata": "Q170238"
+    },
+    {
+      "rank": "branch",
+      "code": "conservative_judaism",
+      "name": "Conservative Judaism",
+      "parent": "judaism",
+      "wikidata": "Q188476"
+    },
+    {
+      "rank": "branch",
+      "code": "reform_judaism",
+      "name": "Reform Judaism",
+      "parent": "judaism",
+      "wikidata": "Q102045"
+    },
+    {
+      "rank": "branch",
+      "code": "reconstructionist_judaism",
+      "name": "Reconstructionist Judaism",
+      "parent": "judaism",
+      "wikidata": "Q1150985"
+    },
+    {
+      "rank": "branch",
+      "code": "karaite_judaism",
+      "name": "Karaite Judaism",
+      "parent": "judaism",
+      "wikidata": "Q484591"
+    },
+    {
+      "rank": "branch",
+      "code": "vaishnavism",
+      "name": "Vaishnavism",
+      "parent": "hinduism",
+      "wikidata": "Q842337"
+    },
+    {
+      "rank": "branch",
+      "code": "shaivism",
+      "name": "Shaivism",
+      "parent": "hinduism",
+      "wikidata": "Q319183"
+    },
+    {
+      "rank": "branch",
+      "code": "shaktism",
+      "name": "Shaktism",
+      "parent": "hinduism",
+      "wikidata": "Q1132099"
+    },
+    {
+      "rank": "branch",
+      "code": "smartism",
+      "name": "Smartism",
+      "parent": "hinduism",
+      "wikidata": "Q707348"
+    },
+    {
+      "rank": "branch",
+      "code": "theravada",
+      "name": "Theravāda",
+      "parent": "buddhism",
+      "wikidata": "Q49003"
+    },
+    {
+      "rank": "branch",
+      "code": "mahayana",
+      "name": "Mahāyāna",
+      "parent": "buddhism",
+      "wikidata": "Q43361"
+    },
+    {
+      "rank": "branch",
+      "code": "vajrayana",
+      "name": "Vajrayāna",
+      "parent": "buddhism",
+      "wikidata": "Q489704"
+    },
+    {
+      "rank": "branch",
+      "code": "digambara",
+      "name": "Digambara",
+      "parent": "jainism",
+      "wikidata": "Q1189537"
+    },
+    {
+      "rank": "branch",
+      "code": "svetambara",
+      "name": "Śvetāmbara",
+      "parent": "jainism",
+      "wikidata": "Q726177"
+    },
+    {
+      "rank": "tradition",
+      "code": "latin_church",
+      "name": "Latin Church",
+      "parent": "catholicism",
+      "wikidata": "Q612330"
+    },
+    {
+      "rank": "tradition",
+      "code": "eastern_catholic",
+      "name": "Eastern Catholic Churches",
+      "parent": "catholicism",
+      "wikidata": "Q751392"
+    },
+    {
+      "rank": "tradition",
+      "code": "lutheranism",
+      "name": "Lutheranism",
+      "parent": "protestantism",
+      "wikidata": "Q75809"
+    },
+    {
+      "rank": "tradition",
+      "code": "reformed",
+      "name": "Reformed (Calvinism)",
+      "parent": "protestantism",
+      "wikidata": "Q101849"
+    },
+    {
+      "rank": "tradition",
+      "code": "anglicanism",
+      "name": "Anglicanism",
+      "parent": "protestantism",
+      "wikidata": "Q6423963"
+    },
+    {
+      "rank": "tradition",
+      "code": "anabaptism",
+      "name": "Anabaptism",
+      "parent": "protestantism",
+      "wikidata": "Q104088"
+    },
+    {
+      "rank": "tradition",
+      "code": "baptist",
+      "name": "Baptist",
+      "parent": "protestantism",
+      "wikidata": "Q93191"
+    },
+    {
+      "rank": "tradition",
+      "code": "methodism",
+      "name": "Methodism",
+      "parent": "protestantism",
+      "wikidata": "Q104400"
+    },
+    {
+      "rank": "tradition",
+      "code": "pentecostalism",
+      "name": "Pentecostalism",
+      "parent": "protestantism",
+      "wikidata": "Q170022"
+    },
+    {
+      "rank": "tradition",
+      "code": "adventism",
+      "name": "Adventism",
+      "parent": "protestantism",
+      "wikidata": "Q164359"
+    },
+    {
+      "rank": "tradition",
+      "code": "holiness",
+      "name": "Holiness movement",
+      "parent": "protestantism",
+      "wikidata": "Q1535557"
+    },
+    {
+      "rank": "tradition",
+      "code": "evangelicalism",
+      "name": "Evangelicalism",
+      "parent": "protestantism",
+      "wikidata": "Q170997"
+    },
+    {
+      "rank": "tradition",
+      "code": "quakerism",
+      "name": "Quakerism (Friends)",
+      "parent": "protestantism",
+      "wikidata": "Q170582"
+    },
+    {
+      "rank": "sub_tradition",
+      "code": "hanafi",
+      "name": "Hanafi",
+      "parent": "sunni",
+      "wikidata": "Q223097"
+    },
+    {
+      "rank": "sub_tradition",
+      "code": "maliki",
+      "name": "Maliki",
+      "parent": "sunni",
+      "wikidata": "Q207922"
+    },
+    {
+      "rank": "sub_tradition",
+      "code": "shafii",
+      "name": "Shafiʿi",
+      "parent": "sunni",
+      "wikidata": "Q220910"
+    },
+    {
+      "rank": "sub_tradition",
+      "code": "hanbali",
+      "name": "Hanbali",
+      "parent": "sunni",
+      "wikidata": "Q200671"
+    },
+    {
+      "rank": "sub_tradition",
+      "code": "twelver",
+      "name": "Twelver (Ithnāʿasharī)",
+      "parent": "shia",
+      "wikidata": "Q170382"
+    },
+    {
+      "rank": "sub_tradition",
+      "code": "ismailism",
+      "name": "Ismailism",
+      "parent": "shia",
+      "wikidata": "Q179872"
+    },
+    {
+      "rank": "sub_tradition",
+      "code": "zaidiyyah",
+      "name": "Zaidiyyah",
+      "parent": "shia",
+      "wikidata": "Q319618"
+    },
+    {
+      "rank": "sub_tradition",
+      "code": "hasidic",
+      "name": "Hasidic Judaism",
+      "parent": "orthodox_judaism",
+      "wikidata": "Q170581"
+    },
+    {
+      "rank": "sub_tradition",
+      "code": "modern_orthodox",
+      "name": "Modern Orthodox Judaism",
+      "parent": "orthodox_judaism",
+      "wikidata": "Q1426764"
+    },
+    {
+      "rank": "sub_tradition",
+      "code": "haredi",
+      "name": "Haredi Judaism",
+      "parent": "orthodox_judaism",
+      "wikidata": "Q208163"
+    },
+    {
+      "rank": "sub_tradition",
+      "code": "presbyterianism",
+      "name": "Presbyterianism",
+      "parent": "reformed",
+      "wikidata": "Q178169"
+    },
+    {
+      "rank": "sub_tradition",
+      "code": "congregationalism",
+      "name": "Congregationalism",
+      "parent": "reformed",
+      "wikidata": "Q1062789"
+    },
+    {
+      "rank": "sub_tradition",
+      "code": "continental_reformed",
+      "name": "Continental Reformed",
+      "parent": "reformed",
+      "wikidata": "Q1129121"
+    },
+    {
+      "rank": "denomination",
+      "code": "ecumenical_patriarchate",
+      "name": "Ecumenical Patriarchate of Constantinople",
+      "parent": "eastern_orthodoxy",
+      "wikidata": "Q656861"
+    },
+    {
+      "rank": "denomination",
+      "code": "church_of_greece",
+      "name": "Church of Greece",
+      "parent": "eastern_orthodoxy",
+      "wikidata": "Q732221"
+    },
+    {
+      "rank": "denomination",
+      "code": "russian_orthodox_church",
+      "name": "Russian Orthodox Church",
+      "parent": "eastern_orthodoxy",
+      "wikidata": "Q60150"
+    },
+    {
+      "rank": "denomination",
+      "code": "serbian_orthodox_church",
+      "name": "Serbian Orthodox Church",
+      "parent": "eastern_orthodoxy",
+      "wikidata": "Q170377"
+    },
+    {
+      "rank": "denomination",
+      "code": "romanian_orthodox_church",
+      "name": "Romanian Orthodox Church",
+      "parent": "eastern_orthodoxy",
+      "wikidata": "Q463041"
+    },
+    {
+      "rank": "denomination",
+      "code": "bulgarian_orthodox_church",
+      "name": "Bulgarian Orthodox Church",
+      "parent": "eastern_orthodoxy",
+      "wikidata": "Q463848"
+    },
+    {
+      "rank": "denomination",
+      "code": "georgian_orthodox_church",
+      "name": "Georgian Orthodox Church",
+      "parent": "eastern_orthodoxy",
+      "wikidata": "Q1129877"
+    },
+    {
+      "rank": "denomination",
+      "code": "orthodox_church_of_ukraine",
+      "name": "Orthodox Church of Ukraine",
+      "parent": "eastern_orthodoxy",
+      "wikidata": "Q30901814"
+    },
+    {
+      "rank": "denomination",
+      "code": "orthodox_church_in_america",
+      "name": "Orthodox Church in America",
+      "parent": "eastern_orthodoxy",
+      "wikidata": "Q673354"
+    },
+    {
+      "rank": "denomination",
+      "code": "coptic_orthodox_church",
+      "name": "Coptic Orthodox Church",
+      "parent": "oriental_orthodoxy",
+      "wikidata": "Q56183"
+    },
+    {
+      "rank": "denomination",
+      "code": "armenian_apostolic_church",
+      "name": "Armenian Apostolic Church",
+      "parent": "oriental_orthodoxy",
+      "wikidata": "Q102140"
+    },
+    {
+      "rank": "denomination",
+      "code": "ethiopian_orthodox_tewahedo",
+      "name": "Ethiopian Orthodox Tewahedo Church",
+      "parent": "oriental_orthodoxy",
+      "wikidata": "Q260415"
+    },
+    {
+      "rank": "denomination",
+      "code": "syriac_orthodox_church",
+      "name": "Syriac Orthodox Church",
+      "parent": "oriental_orthodoxy",
+      "wikidata": "Q464345"
+    },
+    {
+      "rank": "denomination",
+      "code": "malankara_orthodox_church",
+      "name": "Malankara Orthodox Syrian Church",
+      "parent": "oriental_orthodoxy",
+      "wikidata": "Q1815695"
+    },
+    {
+      "rank": "denomination",
+      "code": "assyrian_church_of_the_east",
+      "name": "Assyrian Church of the East",
+      "parent": "church_of_the_east",
+      "wikidata": "Q178379"
+    },
+    {
+      "rank": "denomination",
+      "code": "ancient_church_of_the_east",
+      "name": "Ancient Church of the East",
+      "parent": "church_of_the_east",
+      "wikidata": "Q1130645"
+    },
+    {
+      "rank": "denomination",
+      "code": "ukrainian_greek_catholic_church",
+      "name": "Ukrainian Greek Catholic Church",
+      "parent": "eastern_catholic",
+      "wikidata": "Q1192126"
+    },
+    {
+      "rank": "denomination",
+      "code": "maronite_church",
+      "name": "Maronite Church",
+      "parent": "eastern_catholic",
+      "wikidata": "Q827512"
+    },
+    {
+      "rank": "denomination",
+      "code": "melkite_greek_catholic_church",
+      "name": "Melkite Greek Catholic Church",
+      "parent": "eastern_catholic",
+      "wikidata": "Q1185801"
+    },
+    {
+      "rank": "denomination",
+      "code": "chaldean_catholic_church",
+      "name": "Chaldean Catholic Church",
+      "parent": "eastern_catholic",
+      "wikidata": "Q656801"
+    },
+    {
+      "rank": "denomination",
+      "code": "syro_malabar_church",
+      "name": "Syro-Malabar Church",
+      "parent": "eastern_catholic",
+      "wikidata": "Q1163901"
+    },
+    {
+      "rank": "denomination",
+      "code": "armenian_catholic_church",
+      "name": "Armenian Catholic Church",
+      "parent": "eastern_catholic",
+      "wikidata": "Q807607"
+    },
+    {
+      "rank": "denomination",
+      "code": "elca",
+      "name": "Evangelical Lutheran Church in America",
+      "parent": "lutheranism",
+      "wikidata": "Q1340004"
+    },
+    {
+      "rank": "denomination",
+      "code": "lcms",
+      "name": "Lutheran Church – Missouri Synod",
+      "parent": "lutheranism",
+      "wikidata": "Q1473773"
+    },
+    {
+      "rank": "denomination",
+      "code": "southern_baptist_convention",
+      "name": "Southern Baptist Convention",
+      "parent": "baptist",
+      "wikidata": "Q815672"
+    },
+    {
+      "rank": "denomination",
+      "code": "united_methodist_church",
+      "name": "United Methodist Church",
+      "parent": "methodism",
+      "wikidata": "Q1446703"
+    },
+    {
+      "rank": "denomination",
+      "code": "church_of_england",
+      "name": "Church of England",
+      "parent": "anglicanism",
+      "wikidata": "Q82708"
+    },
+    {
+      "rank": "denomination",
+      "code": "episcopal_church_usa",
+      "name": "Episcopal Church (USA)",
+      "parent": "anglicanism",
+      "wikidata": "Q1366000"
+    },
+    {
+      "rank": "denomination",
+      "code": "assemblies_of_god",
+      "name": "Assemblies of God",
+      "parent": "pentecostalism",
+      "wikidata": "Q598397"
+    },
+    {
+      "rank": "denomination",
+      "code": "seventh_day_adventist_church",
+      "name": "Seventh-day Adventist Church",
+      "parent": "adventism",
+      "wikidata": "Q104319"
+    },
+    {
+      "rank": "denomination",
+      "code": "lds_church",
+      "name": "Church of Jesus Christ of Latter-day Saints",
+      "parent": "restorationism",
+      "wikidata": "Q19595"
+    },
+    {
+      "rank": "denomination",
+      "code": "jehovahs_witnesses",
+      "name": "Jehovah's Witnesses",
+      "parent": "restorationism",
+      "wikidata": "Q35269"
+    }
+  ],
+  "theism": [
+    {
+      "taxon": "christianity",
+      "classification": "monotheistic"
+    },
+    {
+      "taxon": "islam",
+      "classification": "monotheistic"
+    },
+    {
+      "taxon": "judaism",
+      "classification": "monotheistic"
+    },
+    {
+      "taxon": "sikhism",
+      "classification": "monotheistic"
+    },
+    {
+      "taxon": "bahai",
+      "classification": "monotheistic"
+    },
+    {
+      "taxon": "zoroastrianism",
+      "classification": "monotheistic"
+    },
+    {
+      "taxon": "zoroastrianism",
+      "classification": "dualistic"
+    },
+    {
+      "taxon": "hinduism",
+      "classification": "monotheistic"
+    },
+    {
+      "taxon": "hinduism",
+      "classification": "polytheistic"
+    },
+    {
+      "taxon": "hinduism",
+      "classification": "henotheistic"
+    },
+    {
+      "taxon": "hinduism",
+      "classification": "monistic"
+    },
+    {
+      "taxon": "buddhism",
+      "classification": "nontheistic"
+    },
+    {
+      "taxon": "jainism",
+      "classification": "nontheistic"
+    },
+    {
+      "taxon": "jainism",
+      "classification": "polytheistic"
+    },
+    {
+      "taxon": "shinto",
+      "classification": "polytheistic"
+    },
+    {
+      "taxon": "shinto",
+      "classification": "animistic"
+    },
+    {
+      "taxon": "taoism",
+      "classification": "pantheistic"
+    },
+    {
+      "taxon": "taoism",
+      "classification": "polytheistic"
+    },
+    {
+      "taxon": "confucianism",
+      "classification": "nontheistic"
+    },
+    {
+      "taxon": "atheism",
+      "classification": "atheistic"
+    },
+    {
+      "taxon": "agnosticism",
+      "classification": "agnostic"
+    },
+    {
+      "taxon": "traditional",
+      "classification": "animistic"
+    },
+    {
+      "taxon": "traditional",
+      "classification": "polytheistic"
+    }
+  ]
+}

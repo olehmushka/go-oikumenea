@@ -17,6 +17,7 @@ const TOOLS: { href: string; label: string; hint: string }[] = [
   { href: "/locations", label: "Locations", hint: "places + radius search" },
   { href: "/education", label: "Education", hint: "institutions + structure" },
   { href: "/companies", label: "Companies", hint: "legal entities + ownership" },
+  { href: "/religion", label: "Religion", hint: "faith taxonomy + organization" },
   { href: "/localization", label: "Localization", hint: "locales" },
   { href: "/audit", label: "Audit", hint: "log" },
 ];

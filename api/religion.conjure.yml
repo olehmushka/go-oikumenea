@@ -1,0 +1,760 @@
+# Religion module API (M22 — Religion core: multi-faith taxonomy & organization).
+# docs/modules/religion.md / D-Religion (refined M22 design). This is the M22 SLICE: the recursive faith
+# taxonomy (religion_taxa + closure) with a catalog-driven level marker, the religion-type ("theism")
+# classifications, the per-faith catalogs (org kinds, policy kinds), and the per-unit organization
+# attributes (profile, classification tags, theism override, data-driven policies). Clergy (M23), lay
+# affiliation (M24) and discovery (M25) are deferred.
+#
+# RID-bearing fields are typed `string` (the canonical RID text): Conjure reserves `rid` as a built-in
+# primitive, so a type named `Rid` cannot be used. Translatable `name` labels are returned as a
+# `locale -> text` map assembled from the i18n store (D-i18n: all locales in every response, no
+# negotiation); create/update requests carry the default-locale value as a plain `string`. Taxonomy +
+# catalog reads gate on `religion.read`; catalog/taxonomy writes on `religion.catalog.manage` (instance
+# scope); per-unit organization writes on `religionorg.manage` (checked against the unit over the
+# canonical graph). Neither a classification nor an org kind is ever an authorization input. Writes are
+# audited in-process under an interim `system` actor (D-Audit). Generated Go lands in internal/conjure
+# and is never hand-edited.
+types:
+  definitions:
+    default-package: oikumenea.religion
+    objects:
+      # ---- catalogs ----
+      TaxonRank:
+        docs: An ordered structural level in the taxonomy scaffold (religion → branch → … → denomination).
+        fields:
+          id: string
+          code: string
+          name: map<string, string>
+          ordinal: integer
+          status: string
+          sortOrder: optional<integer>
+      Classification:
+        docs: A religion-type ("theism") classification (monotheistic/polytheistic/…), tagged onto taxa/units.
+        fields:
+          id: string
+          code: string
+          name: map<string, string>
+          description: optional<string>
+          status: string
+          sortOrder: optional<integer>
+      OrgKind:
+        docs: A descriptive organizational-level label for a religious-body unit (never branched on).
+        fields:
+          id: string
+          religionId:
+            type: optional<string>
+            docs: The religion taxon this kind is scoped to; null = generic across faiths.
+          code: string
+          name: map<string, string>
+          ordinal: optional<integer>
+          status: string
+          sortOrder: optional<integer>
+      PolicyKind:
+        docs: The data-driven org-policy vocabulary (e.g. excludes_child_creation).
+        fields:
+          id: string
+          code: string
+          name: map<string, string>
+          description: optional<string>
+          status: string
+          sortOrder: optional<integer>
+      # ---- taxonomy ----
+      Taxon:
+        docs: A node in the recursive faith taxonomy. parentId is null for a root religion.
+        fields:
+          id: string
+          parentId: optional<string>
+          rankId: string
+          rankCode:
+            type: string
+            docs: The level marker code (religion/branch/tradition/sub_tradition/denomination).
+          religionId:
+            type: optional<string>
+            docs: The denormalized root religion taxon (derived via the closure).
+          code: string
+          name: map<string, string>
+          description: optional<string>
+          wikidataId: optional<string>
+          sortOrder: optional<integer>
+          depth:
+            type: optional<integer>
+            docs: Distance from the queried/root ancestor (populated by list/search via the closure).
+          createdAt: datetime
+          updatedAt: datetime
+      # ---- organization (per tenant unit) ----
+      OrgClassification:
+        docs: A tradition tag on a unit (link__classified_as), one of which may be primary.
+        fields:
+          id: string
+          unitId: string
+          taxonId: string
+          taxonCode: string
+          taxonName: map<string, string>
+          isPrimary: boolean
+          source: optional<string>
+          confidence: optional<string>
+          createdAt: datetime
+          updatedAt: datetime
+      OrgProfile:
+        docs: The 1:1 faith attributes of a religious-body unit, with its classification tags.
+        fields:
+          unitId: string
+          orgKindId: optional<string>
+          shortCode: optional<string>
+          classifications: list<OrgClassification>
+          createdAt: datetime
+          updatedAt: datetime
+      OrgPolicy:
+        docs: A data-driven eligibility/exclusion rule on a unit.
+        fields:
+          id: string
+          unitId: string
+          policyKindId: string
+          policyKindCode: string
+          reason: optional<string>
+          decidedByPersonId: optional<string>
+          decidedAt: optional<datetime>
+          createdAt: datetime
+          updatedAt: datetime
+      EffectiveType:
+        docs: A unit's resolved religion-type, with the source that supplied it (nearest-declared-wins).
+        fields:
+          unitId: string
+          classifications: list<Classification>
+          source:
+            type: string
+            docs: One of "unit" (own override), "taxon:<code>" (inherited), or "none".
+      ClosureReport:
+        docs: The result of a taxonomy closure verify/rebuild.
+        fields:
+          missingCount: integer
+          extraCount: integer
+          inDrift: boolean
+      # ---- clergy (M23 — D-ClergyCredential) ----
+      GradeCategory:
+        docs: A per-tradition grouping of clergy grades (e.g. Christianity → major/minor orders).
+        fields:
+          id: string
+          traditionTaxonId:
+            type: optional<string>
+            docs: The tradition taxon this category is scoped to; null = generic across faiths.
+          code: string
+          name: map<string, string>
+          ordinal: optional<integer>
+          status: string
+          sortOrder: optional<integer>
+      ClergyGrade:
+        docs: An ordered, per-tradition clergy grade. ordinal orders ONLY within a tradition (no cross-tradition comparator).
+        fields:
+          id: string
+          traditionTaxonId: optional<string>
+          gradeCategoryId: string
+          code: string
+          name: map<string, string>
+          ordinal: integer
+          status: string
+          sortOrder: optional<integer>
+      OfficeType:
+        docs: A clergy office-type label (offices themselves are filled as membership Positions).
+        fields:
+          id: string
+          traditionTaxonId: optional<string>
+          code: string
+          name: map<string, string>
+          status: string
+          sortOrder: optional<integer>
+      ClergyCredential:
+        docs: |
+          A reified person↔religion ordination/standing link (link__clergy_credential). A PUBLIC directory
+          fact, never an authorization input (parallel to D-Rank). Indelible where sacramental — revocation
+          is a status flip (active|suspended|revoked), never a hard delete.
+        fields:
+          id: string
+          personId: string
+          clergyGradeId: string
+          gradeCode:
+            type: string
+            docs: The grade's stable code (e.g. bishop/imam/rabbi).
+          gradeName: map<string, string>
+          orgUnitId:
+            type: string
+            docs: The organization unit that conferred/recognizes the standing.
+          grantedOn:
+            type: optional<string>
+            docs: The date the standing was conferred, as a YYYY-MM-DD day string.
+          conferredByPersonId: optional<string>
+          status:
+            type: string
+            docs: active | suspended | revoked.
+          effectiveFrom: datetime
+          effectiveTo: optional<datetime>
+          source: optional<string>
+          confidence: optional<string>
+          createdAt: datetime
+          updatedAt: datetime
+      # ---- lay affiliation (M24 — D-ReligiousAffiliation, pii:special) ----
+      AffiliationType:
+        docs: A per-tradition lay-affiliation / milestone type (adherent/member; baptized; shahada; …).
+        fields:
+          id: string
+          traditionTaxonId: optional<string>
+          code: string
+          name: map<string, string>
+          status: string
+          sortOrder: optional<integer>
+      Affiliation:
+        docs: |
+          A reified person↔religion lay-affiliation link (link__affiliated_with). GDPR Art. 9 pii:special:
+          the optional free-form `value` belief detail is envelope-encrypted at rest (D-SpecialPII) and
+          returned decrypted to authorized readers (empty once crypto-erased on person purge). The
+          structural anchors (faith/tradition/community/type) are plain references.
+        fields:
+          id: string
+          personId: string
+          religionId: optional<string>
+          traditionUnitId: optional<string>
+          communityUnitId: optional<string>
+          affiliationTypeId: string
+          affiliationTypeCode: string
+          affiliationTypeName: map<string, string>
+          value:
+            type: optional<string>
+            docs: The decrypted free-form belief detail (pii:special); null when unset or crypto-erased.
+          status:
+            type: string
+            docs: active | lapsed | renounced.
+          effectiveFrom: datetime
+          effectiveTo: optional<datetime>
+          source: optional<string>
+          confidence: optional<string>
+          createdAt: datetime
+          updatedAt: datetime
+      # ---- lists / pages ----
+      TaxonRankList:
+        fields:
+          taxonRanks: list<TaxonRank>
+      ClassificationList:
+        fields:
+          classifications: list<Classification>
+      OrgKindList:
+        fields:
+          orgKinds: list<OrgKind>
+      PolicyKindList:
+        fields:
+          policyKinds: list<PolicyKind>
+      TaxonPage:
+        fields:
+          taxa: list<Taxon>
+          nextPageToken: optional<string>
+      OrgPolicyList:
+        fields:
+          policies: list<OrgPolicy>
+      GradeCategoryList:
+        fields:
+          gradeCategories: list<GradeCategory>
+      ClergyGradeList:
+        fields:
+          clergyGrades: list<ClergyGrade>
+      OfficeTypeList:
+        fields:
+          officeTypes: list<OfficeType>
+      ClergyCredentialList:
+        fields:
+          credentials: list<ClergyCredential>
+      AffiliationTypeList:
+        fields:
+          affiliationTypes: list<AffiliationType>
+      AffiliationList:
+        fields:
+          affiliations: list<Affiliation>
+      # ---- request bodies ----
+      UpsertTaxonRankRequest:
+        fields:
+          code: string
+          name: string
+          ordinal: integer
+          sortOrder: optional<integer>
+      UpsertClassificationRequest:
+        fields:
+          code: string
+          name: string
+          description: optional<string>
+          sortOrder: optional<integer>
+      UpsertOrgKindRequest:
+        fields:
+          code: string
+          name: string
+          religionId: optional<string>
+          ordinal: optional<integer>
+          sortOrder: optional<integer>
+      UpsertPolicyKindRequest:
+        fields:
+          code: string
+          name: string
+          description: optional<string>
+          sortOrder: optional<integer>
+      CreateTaxonRequest:
+        fields:
+          code: string
+          name: string
+          rankId: string
+          parentId:
+            type: optional<string>
+            docs: The parent taxon; omit for a root religion.
+          description: optional<string>
+          wikidataId: optional<string>
+          sortOrder: optional<integer>
+      UpdateTaxonRequest:
+        docs: Update name/rank/description/wikidata/sort. code and parent are changed via reparent only.
+        fields:
+          name: optional<string>
+          rankId: optional<string>
+          description: optional<string>
+          wikidataId: optional<string>
+          sortOrder: optional<integer>
+      ReparentTaxonRequest:
+        docs: Move a taxon under a new parent, recomputing the closure. Cycle-guarded.
+        fields:
+          parentId:
+            type: optional<string>
+            docs: The new parent taxon; null makes the taxon a root religion.
+      SetClassificationsRequest:
+        docs: Replace the set of classification tags (theism) on a taxon or unit, by classification id.
+        fields:
+          classificationIds: list<string>
+      SetOrgProfileRequest:
+        docs: Create or update a unit's religion profile (faith-body attributes).
+        fields:
+          orgKindId: optional<string>
+          shortCode: optional<string>
+      AddOrgClassificationRequest:
+        fields:
+          taxonId: string
+          isPrimary: optional<boolean>
+          source: optional<string>
+          confidence: optional<string>
+      AddOrgPolicyRequest:
+        fields:
+          policyKindId: string
+          reason: optional<string>
+          decidedByPersonId: optional<string>
+      CreateChildOrgRequest:
+        docs: |
+          Create a child religious-body unit under a parent in the canonical graph (a tenant unit + the
+          parent→child canonical edge + the child's profile + an optional primary classification).
+          Rejected with Religion:ChildCreationExcluded if the parent carries an excludes_child_creation policy.
+        fields:
+          code: string
+          name: string
+          orgKindId: optional<string>
+          primaryTaxonId: optional<string>
+          visibility:
+            type: optional<string>
+            docs: public | shadow (default public).
+      # ---- clergy (M23) request bodies ----
+      UpsertGradeCategoryRequest:
+        fields:
+          traditionTaxonId: optional<string>
+          code: string
+          name: string
+          ordinal: optional<integer>
+          sortOrder: optional<integer>
+      UpsertClergyGradeRequest:
+        fields:
+          traditionTaxonId: optional<string>
+          gradeCategoryId: string
+          code: string
+          name: string
+          ordinal: integer
+          sortOrder: optional<integer>
+      UpsertOfficeTypeRequest:
+        fields:
+          traditionTaxonId: optional<string>
+          code: string
+          name: string
+          sortOrder: optional<integer>
+      AddClergyCredentialRequest:
+        fields:
+          clergyGradeId: string
+          orgUnitId: string
+          grantedOn:
+            type: optional<string>
+            docs: The conferral date as a YYYY-MM-DD day string.
+          conferredByPersonId: optional<string>
+          source: optional<string>
+          confidence: optional<string>
+      UpdateClergyCredentialRequest:
+        docs: Flip status (active|suspended|revoked) and/or set effective-dating. Never a hard delete.
+        fields:
+          status: optional<string>
+          effectiveTo: optional<datetime>
+      # ---- lay affiliation (M24) request bodies ----
+      UpsertAffiliationTypeRequest:
+        fields:
+          traditionTaxonId: optional<string>
+          code: string
+          name: string
+          sortOrder: optional<integer>
+      AddAffiliationRequest:
+        fields:
+          affiliationTypeId: string
+          religionId: optional<string>
+          traditionUnitId: optional<string>
+          communityUnitId: optional<string>
+          value:
+            type: optional<string>
+            docs: An optional free-form belief detail; stored envelope-encrypted (pii:special).
+          source: optional<string>
+          confidence: optional<string>
+      UpdateAffiliationRequest:
+        docs: Flip status (active|lapsed|renounced) and/or re-encrypt a new belief value.
+        fields:
+          status: optional<string>
+          value: optional<string>
+    errors:
+      TaxonNotFound:
+        namespace: Religion
+        code: NOT_FOUND
+        safe-args:
+          taxonId: string
+      ClassificationNotFound:
+        namespace: Religion
+        code: NOT_FOUND
+        safe-args:
+          classificationId: string
+      OrgKindNotFound:
+        namespace: Religion
+        code: NOT_FOUND
+        safe-args:
+          orgKindId: string
+      PolicyKindNotFound:
+        namespace: Religion
+        code: NOT_FOUND
+        safe-args:
+          policyKindId: string
+      ProfileNotFound:
+        namespace: Religion
+        code: NOT_FOUND
+        safe-args:
+          unitId: string
+      PolicyNotFound:
+        namespace: Religion
+        code: NOT_FOUND
+        safe-args:
+          policyId: string
+      Conflict:
+        docs: A code already exists in scope (taxon/catalog), or a duplicate classification tag.
+        namespace: Religion
+        code: CONFLICT
+        safe-args:
+          reason: string
+      Invalid:
+        docs: A malformed request or an unknown referenced entity (rank/parent/taxon/classification/kind/unit).
+        namespace: Religion
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
+      TaxonCycleDetected:
+        docs: Reparenting would create a cycle in the taxonomy tree.
+        namespace: Religion
+        code: FAILED_PRECONDITION
+        safe-args:
+          taxonId: string
+      InUse:
+        docs: The entity is still referenced (e.g. a taxon with children or classified units).
+        namespace: Religion
+        code: FAILED_PRECONDITION
+        safe-args:
+          reason: string
+      ChildCreationExcluded:
+        docs: The parent unit carries an active excludes_child_creation policy.
+        namespace: Religion
+        code: FAILED_PRECONDITION
+        safe-args:
+          unitId: string
+      GradeNotFound:
+        namespace: Religion
+        code: NOT_FOUND
+        safe-args:
+          gradeId: string
+      CredentialNotFound:
+        namespace: Religion
+        code: NOT_FOUND
+        safe-args:
+          credentialId: string
+      AffiliationTypeNotFound:
+        namespace: Religion
+        code: NOT_FOUND
+        safe-args:
+          affiliationTypeId: string
+      AffiliationNotFound:
+        namespace: Religion
+        code: NOT_FOUND
+        safe-args:
+          affiliationId: string
+services:
+  ReligionService:
+    name: Religion Service
+    package: oikumenea.religion
+    base-path: /religion/v1
+    default-auth: header
+    docs: |
+      The multi-faith taxonomy (recursive religion_taxa + closure) with a catalog-driven level marker,
+      the religion-type classifications, the per-faith catalogs, and the per-unit organization attributes.
+      Reads gate on `religion.read`; taxonomy/catalog writes on `religion.catalog.manage` (instance);
+      per-unit organization writes on `religionorg.manage` (checked over the canonical graph). Writes are
+      audited in-process (D-Audit).
+    endpoints:
+      # ---- catalogs ----
+      listTaxonRanks:
+        http: GET /taxon-ranks
+        returns: TaxonRankList
+      upsertTaxonRank:
+        http: PUT /taxon-ranks
+        args:
+          request: UpsertTaxonRankRequest
+        returns: TaxonRank
+      listClassifications:
+        http: GET /classifications
+        returns: ClassificationList
+      upsertClassification:
+        http: PUT /classifications
+        args:
+          request: UpsertClassificationRequest
+        returns: Classification
+      listOrgKinds:
+        http: GET /org-kinds
+        returns: OrgKindList
+      upsertOrgKind:
+        http: PUT /org-kinds
+        args:
+          request: UpsertOrgKindRequest
+        returns: OrgKind
+      listPolicyKinds:
+        http: GET /policy-kinds
+        returns: PolicyKindList
+      upsertPolicyKind:
+        http: PUT /policy-kinds
+        args:
+          request: UpsertPolicyKindRequest
+        returns: PolicyKind
+      # ---- taxonomy ----
+      listTaxa:
+        http: GET /taxa
+        docs: Search/filter the taxonomy. Filters compose; results carry closure depth where a parent/root is given.
+        args:
+          rank:
+            type: optional<string>
+            param-type: query
+            docs: Filter by rank code (religion/branch/…).
+          parent:
+            type: optional<string>
+            param-type: query
+            docs: Restrict to descendants of this taxon (via the closure).
+          religion:
+            type: optional<string>
+            param-type: query
+            docs: Restrict to one root religion taxon.
+          query:
+            type: optional<string>
+            param-type: query
+            docs: Case-insensitive code/name filter.
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: TaxonPage
+      createTaxon:
+        http: POST /taxa
+        args:
+          request: CreateTaxonRequest
+        returns: Taxon
+      getTaxon:
+        http: GET /taxa/{taxonId}
+        args:
+          taxonId: { type: string, param-type: path }
+        returns: Taxon
+      updateTaxon:
+        http: PUT /taxa/{taxonId}
+        args:
+          taxonId: { type: string, param-type: path }
+          request: UpdateTaxonRequest
+        returns: Taxon
+      deleteTaxon:
+        http: DELETE /taxa/{taxonId}
+        args:
+          taxonId: { type: string, param-type: path }
+      reparentTaxon:
+        http: POST /taxa/{taxonId}/reparent
+        docs: Move a taxon under a new parent, recomputing the closure. Returns Religion:TaxonCycleDetected on a cycle.
+        args:
+          taxonId: { type: string, param-type: path }
+          request: ReparentTaxonRequest
+        returns: Taxon
+      rebuildClosure:
+        http: POST /taxonomy/rebuild-closure
+        docs: |
+          Recompute the whole-tree taxonomy closure (admin maintenance). Pathed under /taxonomy (not
+          /taxa) so the static segment does not collide with the /taxa/{taxonId} wildcard route.
+        returns: ClosureReport
+      getEffectiveClassifications:
+        http: GET /taxa/{taxonId}/effective-classifications
+        docs: The taxon's resolved theism classifications (nearest declaring ancestor wins).
+        args:
+          taxonId: { type: string, param-type: path }
+        returns: ClassificationList
+      setTaxonClassifications:
+        http: PUT /taxa/{taxonId}/classifications
+        docs: Replace the theism tags declared directly on this taxon.
+        args:
+          taxonId: { type: string, param-type: path }
+          request: SetClassificationsRequest
+        returns: ClassificationList
+      # ---- organization (per unit) ----
+      getOrgProfile:
+        http: GET /units/{unitId}/religion-profile
+        args:
+          unitId: { type: string, param-type: path }
+        returns: OrgProfile
+      setOrgProfile:
+        http: PUT /units/{unitId}/religion-profile
+        args:
+          unitId: { type: string, param-type: path }
+          request: SetOrgProfileRequest
+        returns: OrgProfile
+      addOrgClassification:
+        http: POST /units/{unitId}/classifications
+        args:
+          unitId: { type: string, param-type: path }
+          request: AddOrgClassificationRequest
+        returns: OrgClassification
+      removeOrgClassification:
+        http: DELETE /units/{unitId}/classifications/{linkId}
+        args:
+          unitId: { type: string, param-type: path }
+          linkId: { type: string, param-type: path }
+      setUnitTypeOverride:
+        http: PUT /units/{unitId}/type-overrides
+        docs: Replace the unit's theism override set (empty list clears it, restoring inheritance).
+        args:
+          unitId: { type: string, param-type: path }
+          request: SetClassificationsRequest
+        returns: ClassificationList
+      getEffectiveType:
+        http: GET /units/{unitId}/effective-type
+        args:
+          unitId: { type: string, param-type: path }
+        returns: EffectiveType
+      listOrgPolicies:
+        http: GET /units/{unitId}/religion-policies
+        args:
+          unitId: { type: string, param-type: path }
+        returns: OrgPolicyList
+      addOrgPolicy:
+        http: POST /units/{unitId}/religion-policies
+        args:
+          unitId: { type: string, param-type: path }
+          request: AddOrgPolicyRequest
+        returns: OrgPolicy
+      removeOrgPolicy:
+        http: DELETE /units/{unitId}/religion-policies/{policyId}
+        args:
+          unitId: { type: string, param-type: path }
+          policyId: { type: string, param-type: path }
+      createChildOrg:
+        http: POST /units/{unitId}/child-orgs
+        docs: |
+          Create a child religious-body unit under this parent in the canonical graph. Rejected with
+          Religion:ChildCreationExcluded if the parent carries an active excludes_child_creation policy.
+        args:
+          unitId: { type: string, param-type: path }
+          request: CreateChildOrgRequest
+        returns: OrgProfile
+      # ---- clergy catalogs (M23): read on religion.read, write on religion.catalog.manage (instance) ----
+      listGradeCategories:
+        http: GET /grade-categories
+        returns: GradeCategoryList
+      upsertGradeCategory:
+        http: PUT /grade-categories
+        args:
+          request: UpsertGradeCategoryRequest
+        returns: GradeCategory
+      listClergyGrades:
+        http: GET /clergy-grades
+        docs: List clergy grades, optionally filtered to a tradition taxon (RID or code), ordered by tradition then ordinal.
+        args:
+          tradition:
+            type: optional<string>
+            param-type: query
+        returns: ClergyGradeList
+      upsertClergyGrade:
+        http: PUT /clergy-grades
+        args:
+          request: UpsertClergyGradeRequest
+        returns: ClergyGrade
+      listOfficeTypes:
+        http: GET /office-types
+        returns: OfficeTypeList
+      upsertOfficeType:
+        http: PUT /office-types
+        args:
+          request: UpsertOfficeTypeRequest
+        returns: OfficeType
+      # ---- clergy credentials: read on religion.read; write on clergy.manage (against the org unit) ----
+      listPersonClergyCredentials:
+        http: GET /persons/{personId}/clergy-credentials
+        args:
+          personId: { type: string, param-type: path }
+        returns: ClergyCredentialList
+      listUnitClergyCredentials:
+        http: GET /units/{unitId}/clergy-credentials
+        docs: The clergy roster of an organization unit (people holding a credential conferred by it).
+        args:
+          unitId: { type: string, param-type: path }
+        returns: ClergyCredentialList
+      addClergyCredential:
+        http: POST /persons/{personId}/clergy-credentials
+        args:
+          personId: { type: string, param-type: path }
+          request: AddClergyCredentialRequest
+        returns: ClergyCredential
+      updateClergyCredential:
+        http: PUT /clergy-credentials/{credentialId}
+        docs: Flip a credential's status (e.g. suspend/revoke) and/or set effective-dating. Never deletes.
+        args:
+          credentialId: { type: string, param-type: path }
+          request: UpdateClergyCredentialRequest
+        returns: ClergyCredential
+      # ---- lay affiliation (M24, pii:special): read + write on affiliation.manage ----
+      listAffiliationTypes:
+        http: GET /affiliation-types
+        returns: AffiliationTypeList
+      upsertAffiliationType:
+        http: PUT /affiliation-types
+        args:
+          request: UpsertAffiliationTypeRequest
+        returns: AffiliationType
+      listPersonAffiliations:
+        http: GET /persons/{personId}/affiliations
+        docs: List a person's lay religious affiliations. pii:special — gated on affiliation.manage; the belief value is decrypted.
+        args:
+          personId: { type: string, param-type: path }
+        returns: AffiliationList
+      addAffiliation:
+        http: POST /persons/{personId}/affiliations
+        args:
+          personId: { type: string, param-type: path }
+          request: AddAffiliationRequest
+        returns: Affiliation
+      updateAffiliation:
+        http: PUT /affiliations/{affiliationId}
+        args:
+          affiliationId: { type: string, param-type: path }
+          request: UpdateAffiliationRequest
+        returns: Affiliation
+      deleteAffiliation:
+        http: DELETE /affiliations/{affiliationId}
+        args:
+          affiliationId: { type: string, param-type: path }

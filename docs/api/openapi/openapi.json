@@ -114,6 +114,36 @@
         ],
         "type": "object"
       },
+      "AddAffiliationRequest": {
+        "properties": {
+          "affiliationTypeId": {
+            "type": "string"
+          },
+          "communityUnitId": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string"
+          },
+          "religionId": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "traditionUnitId": {
+            "type": "string"
+          },
+          "value": {
+            "description": "An optional free-form belief detail; stored envelope-encrypted (pii:special).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "affiliationTypeId"
+        ],
+        "type": "object"
+      },
       "AddCategoryRequest": {
         "description": "Add a category under a system. `name` is the default-locale text; other locales via LocalizationService.",
         "properties": {
@@ -137,6 +167,34 @@
           "code",
           "name",
           "systemId"
+        ],
+        "type": "object"
+      },
+      "AddClergyCredentialRequest": {
+        "properties": {
+          "clergyGradeId": {
+            "type": "string"
+          },
+          "conferredByPersonId": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string"
+          },
+          "grantedOn": {
+            "description": "The conferral date as a YYYY-MM-DD day string.",
+            "type": "string"
+          },
+          "orgUnitId": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "clergyGradeId",
+          "orgUnitId"
         ],
         "type": "object"
       },
@@ -212,6 +270,43 @@
         "required": [
           "code",
           "name"
+        ],
+        "type": "object"
+      },
+      "AddOrgClassificationRequest": {
+        "properties": {
+          "confidence": {
+            "type": "string"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          },
+          "source": {
+            "type": "string"
+          },
+          "taxonId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "taxonId"
+        ],
+        "type": "object"
+      },
+      "AddOrgPolicyRequest": {
+        "properties": {
+          "decidedByPersonId": {
+            "type": "string"
+          },
+          "policyKindId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "policyKindId"
         ],
         "type": "object"
       },
@@ -299,6 +394,142 @@
         "required": [
           "code",
           "name"
+        ],
+        "type": "object"
+      },
+      "Affiliation": {
+        "description": "A reified person↔religion lay-affiliation link (link__affiliated_with). GDPR Art. 9 pii:special:\nthe optional free-form `value` belief detail is envelope-encrypted at rest (D-SpecialPII) and\nreturned decrypted to authorized readers (empty once crypto-erased on person purge). The\nstructural anchors (faith/tradition/community/type) are plain references.\n",
+        "properties": {
+          "affiliationTypeCode": {
+            "type": "string"
+          },
+          "affiliationTypeId": {
+            "type": "string"
+          },
+          "affiliationTypeName": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "communityUnitId": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "effectiveFrom": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "effectiveTo": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "personId": {
+            "type": "string"
+          },
+          "religionId": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "status": {
+            "description": "active | lapsed | renounced.",
+            "type": "string"
+          },
+          "traditionUnitId": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "value": {
+            "description": "The decrypted free-form belief detail (pii:special); null when unset or crypto-erased.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "affiliationTypeCode",
+          "affiliationTypeId",
+          "affiliationTypeName",
+          "createdAt",
+          "effectiveFrom",
+          "id",
+          "personId",
+          "status",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "AffiliationList": {
+        "properties": {
+          "affiliations": {
+            "items": {
+              "$ref": "#/components/schemas/Affiliation"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "affiliations"
+        ],
+        "type": "object"
+      },
+      "AffiliationType": {
+        "description": "A per-tradition lay-affiliation / milestone type (adherent/member; baptized; shahada; …).",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "traditionTaxonId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "id",
+          "name",
+          "status"
+        ],
+        "type": "object"
+      },
+      "AffiliationTypeList": {
+        "properties": {
+          "affiliationTypes": {
+            "items": {
+              "$ref": "#/components/schemas/AffiliationType"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "affiliationTypes"
         ],
         "type": "object"
       },
@@ -907,6 +1138,199 @@
         ],
         "type": "object"
       },
+      "Classification": {
+        "description": "A religion-type (\"theism\") classification (monotheistic/polytheistic/…), tagged onto taxa/units.",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "id",
+          "name",
+          "status"
+        ],
+        "type": "object"
+      },
+      "ClassificationList": {
+        "properties": {
+          "classifications": {
+            "items": {
+              "$ref": "#/components/schemas/Classification"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "classifications"
+        ],
+        "type": "object"
+      },
+      "ClergyCredential": {
+        "description": "A reified person↔religion ordination/standing link (link__clergy_credential). A PUBLIC directory\nfact, never an authorization input (parallel to D-Rank). Indelible where sacramental — revocation\nis a status flip (active|suspended|revoked), never a hard delete.\n",
+        "properties": {
+          "clergyGradeId": {
+            "type": "string"
+          },
+          "conferredByPersonId": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "effectiveFrom": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "effectiveTo": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "gradeCode": {
+            "description": "The grade's stable code (e.g. bishop/imam/rabbi).",
+            "type": "string"
+          },
+          "gradeName": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "grantedOn": {
+            "description": "The date the standing was conferred, as a YYYY-MM-DD day string.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "orgUnitId": {
+            "description": "The organization unit that conferred/recognizes the standing.",
+            "type": "string"
+          },
+          "personId": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "status": {
+            "description": "active | suspended | revoked.",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "clergyGradeId",
+          "createdAt",
+          "effectiveFrom",
+          "gradeCode",
+          "gradeName",
+          "id",
+          "orgUnitId",
+          "personId",
+          "status",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "ClergyCredentialList": {
+        "properties": {
+          "credentials": {
+            "items": {
+              "$ref": "#/components/schemas/ClergyCredential"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "credentials"
+        ],
+        "type": "object"
+      },
+      "ClergyGrade": {
+        "description": "An ordered, per-tradition clergy grade. ordinal orders ONLY within a tradition (no cross-tradition comparator).",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "gradeCategoryId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "ordinal": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "traditionTaxonId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "gradeCategoryId",
+          "id",
+          "name",
+          "ordinal",
+          "status"
+        ],
+        "type": "object"
+      },
+      "ClergyGradeList": {
+        "properties": {
+          "clergyGrades": {
+            "items": {
+              "$ref": "#/components/schemas/ClergyGrade"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "clergyGrades"
+        ],
+        "type": "object"
+      },
       "ClosureReport": {
         "description": "The result of a closure verify/rebuild for one graph (D-ClosureIntegrity / D-ClosureDriftHealth).",
         "properties": {
@@ -1434,6 +1858,32 @@
         ],
         "type": "object"
       },
+      "CreateChildOrgRequest": {
+        "description": "Create a child religious-body unit under a parent in the canonical graph (a tenant unit + the\nparent→child canonical edge + the child's profile + an optional primary classification).\nRejected with Religion:ChildCreationExcluded if the parent carries an excludes_child_creation policy.\n",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "orgKindId": {
+            "type": "string"
+          },
+          "primaryTaxonId": {
+            "type": "string"
+          },
+          "visibility": {
+            "description": "public | shadow (default public).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "type": "object"
+      },
       "CreateCompanyRequest": {
         "properties": {
           "code": {
@@ -1814,6 +2264,39 @@
           "code",
           "name",
           "permissions"
+        ],
+        "type": "object"
+      },
+      "CreateTaxonRequest": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parentId": {
+            "description": "The parent taxon; omit for a root religion.",
+            "type": "string"
+          },
+          "rankId": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "wikidataId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "rankId"
         ],
         "type": "object"
       },
@@ -2331,6 +2814,30 @@
         ],
         "type": "object"
       },
+      "EffectiveType": {
+        "description": "A unit's resolved religion-type, with the source that supplied it (nearest-declared-wins).",
+        "properties": {
+          "classifications": {
+            "items": {
+              "$ref": "#/components/schemas/Classification"
+            },
+            "type": "array"
+          },
+          "source": {
+            "description": "One of \"unit\" (own override), \"taxon:\u003ccode\u003e\" (inherited), or \"none\".",
+            "type": "string"
+          },
+          "unitId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "classifications",
+          "source",
+          "unitId"
+        ],
+        "type": "object"
+      },
       "Email": {
         "description": "A person's contact email (D-PersonContactChannels). pii:contact; distinct from the login email.",
         "properties": {
@@ -2725,6 +3232,59 @@
         },
         "required": [
           "memberships"
+        ],
+        "type": "object"
+      },
+      "GradeCategory": {
+        "description": "A per-tradition grouping of clergy grades (e.g. Christianity → major/minor orders).",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "ordinal": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "traditionTaxonId": {
+            "description": "The tradition taxon this category is scoped to; null = generic across faiths.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "id",
+          "name",
+          "status"
+        ],
+        "type": "object"
+      },
+      "GradeCategoryList": {
+        "properties": {
+          "gradeCategories": {
+            "items": {
+              "$ref": "#/components/schemas/GradeCategory"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "gradeCategories"
         ],
         "type": "object"
       },
@@ -4224,6 +4784,54 @@
         ],
         "type": "object"
       },
+      "OfficeType": {
+        "description": "A clergy office-type label (offices themselves are filled as membership Positions).",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "traditionTaxonId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "id",
+          "name",
+          "status"
+        ],
+        "type": "object"
+      },
+      "OfficeTypeList": {
+        "properties": {
+          "officeTypes": {
+            "items": {
+              "$ref": "#/components/schemas/OfficeType"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "officeTypes"
+        ],
+        "type": "object"
+      },
       "Order": {
         "description": "An order header (наказ) plus its items. Mutable while draft; locked on issue.",
         "properties": {
@@ -4446,6 +5054,203 @@
           "id",
           "name",
           "status",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "OrgClassification": {
+        "description": "A tradition tag on a unit (link__classified_as), one of which may be primary.",
+        "properties": {
+          "confidence": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          },
+          "source": {
+            "type": "string"
+          },
+          "taxonCode": {
+            "type": "string"
+          },
+          "taxonId": {
+            "type": "string"
+          },
+          "taxonName": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "unitId": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "createdAt",
+          "id",
+          "isPrimary",
+          "taxonCode",
+          "taxonId",
+          "taxonName",
+          "unitId",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "OrgKind": {
+        "description": "A descriptive organizational-level label for a religious-body unit (never branched on).",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "ordinal": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "religionId": {
+            "description": "The religion taxon this kind is scoped to; null = generic across faiths.",
+            "type": "string"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "id",
+          "name",
+          "status"
+        ],
+        "type": "object"
+      },
+      "OrgKindList": {
+        "properties": {
+          "orgKinds": {
+            "items": {
+              "$ref": "#/components/schemas/OrgKind"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "orgKinds"
+        ],
+        "type": "object"
+      },
+      "OrgPolicy": {
+        "description": "A data-driven eligibility/exclusion rule on a unit.",
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "decidedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "decidedByPersonId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "policyKindCode": {
+            "type": "string"
+          },
+          "policyKindId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "unitId": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "createdAt",
+          "id",
+          "policyKindCode",
+          "policyKindId",
+          "unitId",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "OrgPolicyList": {
+        "properties": {
+          "policies": {
+            "items": {
+              "$ref": "#/components/schemas/OrgPolicy"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "policies"
+        ],
+        "type": "object"
+      },
+      "OrgProfile": {
+        "description": "The 1:1 faith attributes of a religious-body unit, with its classification tags.",
+        "properties": {
+          "classifications": {
+            "items": {
+              "$ref": "#/components/schemas/OrgClassification"
+            },
+            "type": "array"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "orgKindId": {
+            "type": "string"
+          },
+          "shortCode": {
+            "type": "string"
+          },
+          "unitId": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "classifications",
+          "createdAt",
+          "unitId",
           "updatedAt"
         ],
         "type": "object"
@@ -5198,6 +6003,54 @@
           "status",
           "title",
           "updatedAt"
+        ],
+        "type": "object"
+      },
+      "PolicyKind": {
+        "description": "The data-driven org-policy vocabulary (e.g. excludes_child_creation).",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "id",
+          "name",
+          "status"
+        ],
+        "type": "object"
+      },
+      "PolicyKindList": {
+        "properties": {
+          "policyKinds": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyKind"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "policyKinds"
         ],
         "type": "object"
       },
@@ -6092,6 +6945,16 @@
         ],
         "type": "object"
       },
+      "ReparentTaxonRequest": {
+        "description": "Move a taxon under a new parent, recomputing the closure. Cycle-guarded.",
+        "properties": {
+          "parentId": {
+            "description": "The new parent taxon; null makes the taxon a root religion.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "ReparentUnitRequest": {
         "description": "Move a unit under a new parent (same institution), recomputing the closure. Cycle-guarded.",
         "properties": {
@@ -6559,6 +7422,33 @@
         ],
         "type": "object"
       },
+      "SetClassificationsRequest": {
+        "description": "Replace the set of classification tags (theism) on a taxon or unit, by classification id.",
+        "properties": {
+          "classificationIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "classificationIds"
+        ],
+        "type": "object"
+      },
+      "SetOrgProfileRequest": {
+        "description": "Create or update a unit's religion profile (faith-body attributes).",
+        "properties": {
+          "orgKindId": {
+            "type": "string"
+          },
+          "shortCode": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "SetRankRequest": {
         "description": "Set or clear the person's rank in ONE rank system (one rank per system — D-Rank). The rank's\nsystem is derived from the rank itself, so on set only rankId is needed; on clear, systemId\nnames the system to clear.\n",
         "properties": {
@@ -6806,6 +7696,137 @@
           "predecessorId",
           "successorId",
           "updatedAt"
+        ],
+        "type": "object"
+      },
+      "Taxon": {
+        "description": "A node in the recursive faith taxonomy. parentId is null for a root religion.",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "depth": {
+            "description": "Distance from the queried/root ancestor (populated by list/search via the closure).",
+            "format": "int32",
+            "type": "integer"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "parentId": {
+            "type": "string"
+          },
+          "rankCode": {
+            "description": "The level marker code (religion/branch/tradition/sub_tradition/denomination).",
+            "type": "string"
+          },
+          "rankId": {
+            "type": "string"
+          },
+          "religionId": {
+            "description": "The denormalized root religion taxon (derived via the closure).",
+            "type": "string"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "wikidataId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "createdAt",
+          "id",
+          "name",
+          "rankCode",
+          "rankId",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "TaxonPage": {
+        "properties": {
+          "nextPageToken": {
+            "type": "string"
+          },
+          "taxa": {
+            "items": {
+              "$ref": "#/components/schemas/Taxon"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "taxa"
+        ],
+        "type": "object"
+      },
+      "TaxonRank": {
+        "description": "An ordered structural level in the taxonomy scaffold (religion → branch → … → denomination).",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "ordinal": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "id",
+          "name",
+          "ordinal",
+          "status"
+        ],
+        "type": "object"
+      },
+      "TaxonRankList": {
+        "properties": {
+          "taxonRanks": {
+            "items": {
+              "$ref": "#/components/schemas/TaxonRank"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "taxonRanks"
         ],
         "type": "object"
       },
@@ -7079,6 +8100,18 @@
         ],
         "type": "string"
       },
+      "UpdateAffiliationRequest": {
+        "description": "Flip status (active|lapsed|renounced) and/or re-encrypt a new belief value.",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "UpdateBuildingRequest": {
         "properties": {
           "kind": {
@@ -7105,6 +8138,19 @@
           "sortOrder": {
             "format": "int32",
             "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "UpdateClergyCredentialRequest": {
+        "description": "Flip status (active|suspended|revoked) and/or set effective-dating. Never a hard delete.",
+        "properties": {
+          "effectiveTo": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
           }
         },
         "type": "object"
@@ -7450,6 +8496,28 @@
         },
         "type": "object"
       },
+      "UpdateTaxonRequest": {
+        "description": "Update name/rank/description/wikidata/sort. code and parent are changed via reparent only.",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rankId": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "wikidataId": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "UpdateTypeRequest": {
         "description": "Edit/reorder a type. Omitted fields are unchanged. `code` is immutable.",
         "properties": {
@@ -7518,6 +8586,28 @@
         },
         "required": [
           "entityKind"
+        ],
+        "type": "object"
+      },
+      "UpsertAffiliationTypeRequest": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "traditionTaxonId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name"
         ],
         "type": "object"
       },
@@ -7611,6 +8701,59 @@
         },
         "required": [
           "country"
+        ],
+        "type": "object"
+      },
+      "UpsertClassificationRequest": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "type": "object"
+      },
+      "UpsertClergyGradeRequest": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "gradeCategoryId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ordinal": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "traditionTaxonId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "gradeCategoryId",
+          "name",
+          "ordinal"
         ],
         "type": "object"
       },
@@ -7827,6 +8970,32 @@
         },
         "required": [
           "bodyId"
+        ],
+        "type": "object"
+      },
+      "UpsertGradeCategoryRequest": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ordinal": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "traditionTaxonId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name"
         ],
         "type": "object"
       },
@@ -8101,6 +9270,54 @@
         ],
         "type": "object"
       },
+      "UpsertOfficeTypeRequest": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "traditionTaxonId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "type": "object"
+      },
+      "UpsertOrgKindRequest": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ordinal": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "religionId": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "type": "object"
+      },
       "UpsertPartnershipRequest": {
         "description": "Record or replace a partnership between the path person and partnerId. The pair is stored in\ncanonical order; the path person must not be the partner. At most one active engaged/married\npartnership per person.\n",
         "properties": {
@@ -8169,6 +9386,28 @@
         "required": [
           "number",
           "typeCode"
+        ],
+        "type": "object"
+      },
+      "UpsertPolicyKindRequest": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "name"
         ],
         "type": "object"
       },
@@ -8656,6 +9895,30 @@
           "counterpartId",
           "relationCode",
           "role"
+        ],
+        "type": "object"
+      },
+      "UpsertTaxonRankRequest": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ordinal": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "ordinal"
         ],
         "type": "object"
       },
@@ -22806,6 +24069,1789 @@
         "summary": "Soft-delete a scheme node, blocked if in use (a system with active categories, a category with",
         "tags": [
           "RankService"
+        ]
+      }
+    },
+    "/religion/v1/affiliation-types": {
+      "get": {
+        "operationId": "ReligionService_listAffiliationTypes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AffiliationTypeList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      },
+      "put": {
+        "operationId": "ReligionService_upsertAffiliationType",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertAffiliationTypeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AffiliationType"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/affiliations/{affiliationId}": {
+      "delete": {
+        "operationId": "ReligionService_deleteAffiliation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "affiliationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      },
+      "put": {
+        "operationId": "ReligionService_updateAffiliation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "affiliationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAffiliationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Affiliation"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/classifications": {
+      "get": {
+        "operationId": "ReligionService_listClassifications",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassificationList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      },
+      "put": {
+        "operationId": "ReligionService_upsertClassification",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertClassificationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Classification"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/clergy-credentials/{credentialId}": {
+      "put": {
+        "description": "Flip a credential's status (e.g. suspend/revoke) and/or set effective-dating. Never deletes.",
+        "operationId": "ReligionService_updateClergyCredential",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "credentialId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateClergyCredentialRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClergyCredential"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Flip a credential's status (e.g. suspend/revoke) and/or set effective-dating. Never deletes.",
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/clergy-grades": {
+      "get": {
+        "description": "List clergy grades, optionally filtered to a tradition taxon (RID or code), ordered by tradition then ordinal.",
+        "operationId": "ReligionService_listClergyGrades",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tradition",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClergyGradeList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List clergy grades, optionally filtered to a tradition taxon (RID or code), ordered by tradition then ordinal.",
+        "tags": [
+          "ReligionService"
+        ]
+      },
+      "put": {
+        "operationId": "ReligionService_upsertClergyGrade",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertClergyGradeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClergyGrade"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/grade-categories": {
+      "get": {
+        "operationId": "ReligionService_listGradeCategories",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GradeCategoryList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      },
+      "put": {
+        "operationId": "ReligionService_upsertGradeCategory",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertGradeCategoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GradeCategory"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/office-types": {
+      "get": {
+        "operationId": "ReligionService_listOfficeTypes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfficeTypeList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      },
+      "put": {
+        "operationId": "ReligionService_upsertOfficeType",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertOfficeTypeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfficeType"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/org-kinds": {
+      "get": {
+        "operationId": "ReligionService_listOrgKinds",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgKindList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      },
+      "put": {
+        "operationId": "ReligionService_upsertOrgKind",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertOrgKindRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgKind"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/persons/{personId}/affiliations": {
+      "get": {
+        "description": "List a person's lay religious affiliations. pii:special — gated on affiliation.manage; the belief value is decrypted.",
+        "operationId": "ReligionService_listPersonAffiliations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AffiliationList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List a person's lay religious affiliations. pii:special — gated on affiliation.manage; the belief value is decrypted.",
+        "tags": [
+          "ReligionService"
+        ]
+      },
+      "post": {
+        "operationId": "ReligionService_addAffiliation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddAffiliationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Affiliation"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/persons/{personId}/clergy-credentials": {
+      "get": {
+        "operationId": "ReligionService_listPersonClergyCredentials",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClergyCredentialList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      },
+      "post": {
+        "operationId": "ReligionService_addClergyCredential",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddClergyCredentialRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClergyCredential"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/policy-kinds": {
+      "get": {
+        "operationId": "ReligionService_listPolicyKinds",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyKindList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      },
+      "put": {
+        "operationId": "ReligionService_upsertPolicyKind",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertPolicyKindRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyKind"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/taxa": {
+      "get": {
+        "description": "Search/filter the taxonomy. Filters compose; results carry closure depth where a parent/root is given.",
+        "operationId": "ReligionService_listTaxa",
+        "parameters": [
+          {
+            "description": "Filter by rank code (religion/branch/…).",
+            "in": "query",
+            "name": "rank",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Restrict to descendants of this taxon (via the closure).",
+            "in": "query",
+            "name": "parent",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Restrict to one root religion taxon.",
+            "in": "query",
+            "name": "religion",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Case-insensitive code/name filter.",
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxonPage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Search/filter the taxonomy. Filters compose; results carry closure depth where a parent/root is given.",
+        "tags": [
+          "ReligionService"
+        ]
+      },
+      "post": {
+        "operationId": "ReligionService_createTaxon",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTaxonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Taxon"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/taxa/{taxonId}": {
+      "delete": {
+        "operationId": "ReligionService_deleteTaxon",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "taxonId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      },
+      "get": {
+        "operationId": "ReligionService_getTaxon",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "taxonId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Taxon"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      },
+      "put": {
+        "operationId": "ReligionService_updateTaxon",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "taxonId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTaxonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Taxon"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/taxa/{taxonId}/classifications": {
+      "put": {
+        "description": "Replace the theism tags declared directly on this taxon.",
+        "operationId": "ReligionService_setTaxonClassifications",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "taxonId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetClassificationsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassificationList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Replace the theism tags declared directly on this taxon.",
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/taxa/{taxonId}/effective-classifications": {
+      "get": {
+        "description": "The taxon's resolved theism classifications (nearest declaring ancestor wins).",
+        "operationId": "ReligionService_getEffectiveClassifications",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "taxonId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassificationList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "The taxon's resolved theism classifications (nearest declaring ancestor wins).",
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/taxa/{taxonId}/reparent": {
+      "post": {
+        "description": "Move a taxon under a new parent, recomputing the closure. Returns Religion:TaxonCycleDetected on a cycle.",
+        "operationId": "ReligionService_reparentTaxon",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "taxonId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReparentTaxonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Taxon"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Move a taxon under a new parent, recomputing the closure. Returns Religion:TaxonCycleDetected on a cycle.",
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/taxon-ranks": {
+      "get": {
+        "operationId": "ReligionService_listTaxonRanks",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxonRankList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      },
+      "put": {
+        "operationId": "ReligionService_upsertTaxonRank",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertTaxonRankRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxonRank"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/taxonomy/rebuild-closure": {
+      "post": {
+        "description": "Recompute the whole-tree taxonomy closure (admin maintenance). Pathed under /taxonomy (not\n/taxa) so the static segment does not collide with the /taxa/{taxonId} wildcard route.\n",
+        "operationId": "ReligionService_rebuildClosure",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClosureReport"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Recompute the whole-tree taxonomy closure (admin maintenance). Pathed under /taxonomy (not",
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/units/{unitId}/child-orgs": {
+      "post": {
+        "description": "Create a child religious-body unit under this parent in the canonical graph. Rejected with\nReligion:ChildCreationExcluded if the parent carries an active excludes_child_creation policy.\n",
+        "operationId": "ReligionService_createChildOrg",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "unitId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateChildOrgRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgProfile"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Create a child religious-body unit under this parent in the canonical graph. Rejected with",
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/units/{unitId}/classifications": {
+      "post": {
+        "operationId": "ReligionService_addOrgClassification",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "unitId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddOrgClassificationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgClassification"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/units/{unitId}/classifications/{linkId}": {
+      "delete": {
+        "operationId": "ReligionService_removeOrgClassification",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "unitId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "linkId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/units/{unitId}/clergy-credentials": {
+      "get": {
+        "description": "The clergy roster of an organization unit (people holding a credential conferred by it).",
+        "operationId": "ReligionService_listUnitClergyCredentials",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "unitId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClergyCredentialList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "The clergy roster of an organization unit (people holding a credential conferred by it).",
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/units/{unitId}/effective-type": {
+      "get": {
+        "operationId": "ReligionService_getEffectiveType",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "unitId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EffectiveType"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/units/{unitId}/religion-policies": {
+      "get": {
+        "operationId": "ReligionService_listOrgPolicies",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "unitId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgPolicyList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      },
+      "post": {
+        "operationId": "ReligionService_addOrgPolicy",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "unitId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddOrgPolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgPolicy"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/units/{unitId}/religion-policies/{policyId}": {
+      "delete": {
+        "operationId": "ReligionService_removeOrgPolicy",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "unitId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "policyId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/units/{unitId}/religion-profile": {
+      "get": {
+        "operationId": "ReligionService_getOrgProfile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "unitId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgProfile"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      },
+      "put": {
+        "operationId": "ReligionService_setOrgProfile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "unitId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetOrgProfileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgProfile"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/units/{unitId}/type-overrides": {
+      "put": {
+        "description": "Replace the unit's theism override set (empty list clears it, restoring inheritance).",
+        "operationId": "ReligionService_setUnitTypeOverride",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "unitId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetClassificationsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassificationList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Replace the unit's theism override set (empty list clears it, restoring inheritance).",
+        "tags": [
+          "ReligionService"
         ]
       }
     },
