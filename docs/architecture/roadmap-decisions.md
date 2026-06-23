@@ -1,6 +1,6 @@
-# Roadmap decisions (planned tier — M16–M27)
+# Roadmap decisions (planned tier — M16–M39)
 
-The landed architectural decisions for the **planned milestones M16–M26** — verticals that are
+The landed architectural decisions for the **planned milestones M16–M39** — verticals that are
 **decided and designed but not yet built** (no `internal/` or `migrations/` artifacts exist for them
 yet). They carry the same ADR rigor as [`decisions.md`](decisions.md) and are **authoritative for
 those verticals' design**; they become **binding-against-code** as each milestone enters
@@ -20,7 +20,16 @@ D-GeoSubdivisions, pulls PostGIS forward) · **D-DataIngestion** (M17→folded i
 (M18) · **D-Location** (M19) · **D-Education** (M20) · **D-Companies** (M21) · **D-Religion** /
 **D-ClergyCredential** / **D-ReligiousAffiliation** / **D-SpecialPII** (M22–M25) · **D-GeoSubdivisions**
 (*superseded by D-GeoPlaces*) / **D-Vehicles** (M26) · **D-ClientSDK** (M27, unified Go + TypeScript
-SDKs from the Conjure contract; *in implementation*).
+SDKs from the Conjure contract; *in implementation*) · **D-UnitCodeLifecycle** (M28).
+
+The **person-intelligence / OSINT-enrichment cluster** (M29–M37, derived from
+[`draft_superbrain_schema.md`](../draft_superbrain_schema.md)): **D-OverlayFoundation** (M29, the
+provisional-entity + attribution + `legal_basis` substrate every overlay rides) · **D-ExternalOrgs**
+(M30, a registry of external organizations) · **D-PhysicalIdentity** (M31) · **D-PersonAddresses**
+(M32) · **D-InstitutionalTies** (M33) · **D-Watchlists** (M34, live-lookup via hermenea) ·
+**D-PersonOverlays** (M35, financial/behavioral/psychological) · **D-HealthVulnerability** (M36,
+`pii:special`) · **D-LoginSecurityLog** (M37). The two **deferred stubs** (M38 criminal/legal records,
+M39 compensation/payroll) carry **no** decision yet — they are designed in their own later session.
 
 > Cross-references into the **core** decisions (D-CryptoProvider, D-WebUI, D-Geo, D-Rank, D-Ontology,
 > D-PersonReadScope, …) point at [`decisions.md`](decisions.md); references among the planned-tier
@@ -944,3 +953,276 @@ becomes a pointer; `SetUnitCode` application method (uniqueness check + event ap
 `UnitCodeChanged` domain event consumed by [audit](../modules/audit.md). Web unit editor allows an
 empty code + an "Edit code" action. Consumes `todo.md` items 2 & 3. Lands as **M28**
 ([milestones](../milestones.md)).
+
+---
+
+## Person-intelligence / OSINT-enrichment cluster (M29–M37)
+
+These nine decisions promote the [`draft_superbrain_schema.md`](../draft_superbrain_schema.md)
+per-field verdicts into a buildable, foundation-first sequence. They share three rules carried from
+that draft: **declared ≠ inferred** (never merge an inferred value into a first-party assertion);
+**every overlay carries `source`+`confidence`** (the D-PersonSocialChannels attribution shape); and
+**special-category data is gated** (5-tier `pii:*` + envelope [D-SpecialPII] + an explicit
+`legal_basis` + mandatory audit). M29 builds that shared substrate; M30–M37 each ride it as a thin
+vertical slice.
+
+### D-OverlayFoundation — Provisional entities, attribution & `legal_basis` substrate (extends D-Ontology, D-PersonSocialChannels, D-PIITiers)
+
+**Decision.** Establish the cross-cutting machinery every later overlay milestone needs, so each is a
+thin slice rather than re-inventing the foundation:
+
+- **Provisional persons + manual resolution.** Relax the in-directory-only rule
+  ([D-PersonGlobal](decisions.md)): `person_persons.status` gains **`provisional`** — a minimal-PII
+  stub so every relationship/overlay edge points at a real node (an unresolved external person, an
+  emergency contact, a wallet attribution target). Resolution is **manual**: a `MergePerson` audited
+  action promotes/merges a provisional into a canonical person carrying a `confidence`, re-homing its
+  edges in one transaction. **No automatic candidate matching** (fuzzy dedup is a parked seam — it is
+  not built here).
+- **Attribution convention.** A reusable column-set — `source ∈ {self_declared, operator_verified,
+  imported}`, `confidence ∈ {confirmed, probable, possible}`, optional `as_of` — formalized from
+  D-PersonSocialChannels for use on **every** overlay/attribution row. Inferred values are stored in a
+  **separate** column-space from declared ones and **never merged**.
+- **`legal_basis` (structured).** A migration-seeded **`platform_legal_basis_kinds`** catalog
+  (GDPR Art. 6 lawful bases — consent / contract / legal_obligation / vital_interests / public_task /
+  legitimate_interest — plus the Art. 9 special-category conditions), referenced by FK from every
+  gated/special-category overlay row, with an optional free-text justification note. Adding a
+  special-category overlay implies new audited Actions; the `legal_basis` FK is **NOT NULL** on every
+  `pii:special` store.
+
+**Why.** The draft's cross-cutting principles 1–3 are prerequisites, not features: party / government /
+foreign-military / lobbying edges (M33), wallet attribution (M35), and emergency contacts all need a
+node to point at; every overlay needs uniform provenance to be query-weightable; special-category
+stores need an enforceable lawful basis, not prose. Building these once keeps M30–M37 small.
+
+**Why not** (a) *Full entity-resolution tooling now* (candidate matching, blind-index dedup, merge
+UI): a milestone of its own — the manual promote/merge covers the "edges must resolve" need; fuzzy
+dedup is parked. (b) *Free-text `legal_basis`*: not enforceable or queryable; a regulator-facing field
+must be structured. (c) *A separate `provisional_persons` table*: forks the person aggregate and
+duplicates its PII discipline/purge — a `status` value reuses the existing lifecycle + erasure path.
+(d) *Merge inferred into declared*: destroys the provenance distinction the whole cluster depends on.
+
+**Consequence.** `person_persons.status` adds `provisional`; a `MergePerson` action + `PersonMerged`
+event (edges re-homed, audited). A `platform_legal_basis_kinds` seeded catalog
+([platform](../modules/platform.md)). The attribution column-set is documented as a convention in
+[conventions.md](conventions.md) and reused verbatim by M30–M37. New person link/action RIDs allocated
+on build. Lands as **M29** ([milestones](../milestones.md)).
+
+### D-ExternalOrgs — A registry of external organizations (party / government / military / NGO / registrant) (extends D-Ontology)
+
+**Decision.** External organizations a person is tied to — political parties, government bodies,
+foreign military formations, lobbying registrants/clients, NGOs — live in a **dedicated
+`external_organizations` registry** (new module, **RID service 18**), **not** in the operator's own
+`tenant_units` and **not** in the M21 `company_companies` legal-entity registry. Each row is
+catalog-typed (`external_org_kinds`: party | government_body | military | ngo | registrant | other),
+carries the D-OverlayFoundation **provisional/resolved status + attribution**, an optional
+`country` → `geo_countries`, optional `wikidata_id`, and a translatable `name`. It is a hermenea import
+target (Wikidata / public registries).
+
+**Why.** The user-chosen model: external orgs are conceptually distinct from both the deploying org's
+own unit DAG (which is authority-bearing through the PDP) and from for-profit legal entities (M21).
+Mixing them into `tenant_units` would pollute the PDP graph with non-authoritative nodes; forcing them
+into `company_companies` mis-types a political party or a government ministry. A single faith-/sector-
+agnostic registry with a `kind` catalog keeps every M33 affiliation edge pointing at one node-space.
+
+**Why not** (a) *Reuse `tenant_units` (provisional)*: a party/ministry is not part of the operator's
+command graph; closure/PDP machinery would treat them as authority-bearing. (b) *Reuse
+`company_companies`*: legal-form/ownership-graph semantics don't fit parties/governments. (c) *Per-type
+tables (parties, gov bodies, …)*: the kinds share identity/provenance/country shape — a catalog `kind`
+is the D-Code-consistent choice, mirroring `religion_org_kinds`.
+
+**Consequence.** A new `external-organizations` module + `api/external-organizations.conjure.yml`;
+RID service **18** (`external_organization` object, `external_org_kind` catalog). M33 person↔org edges
+FK this registry (or, for corporate ties, M21 `company_companies`). Lands as **M30**
+([milestones](../milestones.md)).
+
+### D-PhysicalIdentity — Aliases, physical description & declared ethnicity (extends D-PersonNamesCLDR, D-SpecialPII)
+
+**Decision.** Add first-party physical-identity attributes (draft macro-category 1):
+
+- **Aliases** — fold AKA / former-legal / maiden / pseudonym / cover names into the existing
+  `person_name_variants` via a `variant_kind` discriminator
+  (`transliteration | aka | former_legal | maiden | pseudonym | cover`); alias rows may carry
+  `source`+`confidence`. **No new table.**
+- **Physical description** — `person_physical_descriptions` (effective-dated: `height_cm`, `weight_kg`,
+  `eye_color`, `hair_color`, `build`, **`blood_type`**; `pii:basic`) + `person_distinguishing_marks`
+  (`kind ∈ tattoo|scar|piercing|birthmark`, `body_location`, `description`) — marks are **`pii:special`
+  ceiling** (a tattoo can reveal Art. 9 data).
+- **Ethnicity** — **self-declared only**, catalog-typed (`person_ethnicity_types`, open catalog + i18n
+  name), stored as a reified `pii:special` link, **envelope-encrypted** (D-SpecialPII) + `legal_basis`
+  + audit. **No inferred storage.** Biometric data (1.5) is **excluded**.
+
+**Why.** These are authoritative, operator-asserted directory attributes the draft tags `DEVELOP`;
+they fill real gaps (no general alias today; no physique/ethnicity). Reusing `person_name_variants` for
+aliases avoids a redundant table; reusing the M24 special envelope for ethnicity avoids new crypto.
+
+**Why not** (a) *A separate aliases table*: `person_name_variants` already is the per-person alt-name
+store — a `variant_kind` is the minimal change. (b) *Store ethnicity as plain text / inferred*:
+Art. 9 — must be declared, encrypted, and lawful-basis-gated. (c) *Biometrics*: highest-risk; excluded
+pending legal review (token/reference-only if ever).
+
+**Consequence.** `person_name_variants.variant_kind` column; new `person_physical_descriptions`,
+`person_distinguishing_marks`, `person_ethnicity_types` + the encrypted `person_ethnicities` link; all
+erased/crypto-erased on purge. New person RIDs allocated on build. Lands as **M31**
+([milestones](../milestones.md)).
+
+### D-PersonAddresses — Structured, effective-dated person addresses over Location (extends D-Location)
+
+**Decision.** Replace country-level `person_residences` granularity with structured address history:
+`person_addresses` — a reified link `person` → `location_locations` (M19) with `role ∈
+{home, work, mailing, other}`, `valid_from`/`valid_to`, `is_primary`, a `privacy_seeking` flag (a
+mailing address ≠ home is itself a signal), and `source`+`confidence`; `pii:contact`, purge-erased. A
+work address may be **derived** from the person's unit location. `person_residences` (country +
+free-text region) is retained for citizenship/legal-residence semantics; addresses are the precise,
+PostGIS-backed overlay.
+
+**Why.** The draft (2.1–2.3) wants real, effective-dated, geocoded addresses; M19 Location already
+provides the PostGIS point + MGRS + structured postal fields — addresses are a thin link over it.
+
+**Why not** (a) *Extend `person_residences` in place*: conflates legal residence (country-grade,
+citizenship-adjacent) with a precise mailing/home/work point — keep both. (b) *Free-text address*:
+loses geospatial query + dedup against shared `location_locations`. (c) *GPS movement history (2.4)*:
+**excluded** — movement traces are out of fit for an authoritative directory.
+
+**Consequence.** New `person_addresses` link → `location_locations`; holder-scoped reads, audited
+writes, purge erasure. New person link RID on build. Lands as **M32**
+([milestones](../milestones.md)).
+
+### D-InstitutionalTies — Person↔organization affiliation edges (party / government / lobbying / foreign-military / references) (extends D-Ontology, D-OverlayFoundation, D-ExternalOrgs)
+
+**Decision.** Model the draft's macro-category 7 as **per-type reified person↔org links**, the org
+side being an M30 `external_organizations` row, an M21 `company_companies` row, or a `tenant_unit`:
+
+- `person_party_memberships` (party, role, dates) — **`pii:special`** (Art. 9, political opinion),
+  envelope + `legal_basis`.
+- `person_government_positions` (title, body, country, level, role_type, dates, **`pep_trigger`**
+  auto-true, persists post-office) — `pii:basic`; **feeds the M34 PEP check**.
+- `person_lobbying_relationships` (registrant, client, legislative_body, issues[], filing_id,
+  source_url) — `pii:basic`.
+- **Foreign / historical military service** — reuse [membership](../modules/membership.md) against
+  **external_organizations** military stubs + rank, with extra link attributes
+  (`units[]`, `deployments[]`, `discharge_type`, `clearance_level` — the latter two `pii:sensitive`).
+- `person_external_references` (`kind ∈ wikipedia|news|registry|…`, `url`, `external_id`,
+  `categories[]`, `last_checked`, `disputed`) — mirrors `person_social_accounts`; a hermenea target.
+- **Emergency contacts** — add an `emergency` entry to `person_relation_types` (M14); **no new
+  entity**.
+
+Every edge carries `source`+`confidence`; the inferred political-leaning **spectrum** is **not** here —
+it is a separate M35 overlay and is never merged with declared party membership.
+
+**Why.** These are person↔org affiliation edges where the org is usually external — exactly the
+node-space D-ExternalOrgs + M21 provide. Per-type links (not one generic blob) keep query semantics and
+tier discipline clean, mirroring the M14 relationship pattern.
+
+**Why not** (a) *One generic "affiliation" table*: loses per-type tier (`special` party vs `basic`
+gov) + attributes. (b) *Store declared + inferred politics together*: forbidden (declared ≠ inferred).
+(c) *A new entity for foreign military units*: external_organizations `kind=military` already covers it
++ reuses membership/rank.
+
+**Consequence.** New person link tables + the `external_references` object; PEP derivation reads
+`person_government_positions`. New person RIDs on build. Lands as **M33**
+([milestones](../milestones.md)).
+
+### D-Watchlists — Live-lookup sanctions/PEP/Interpol via hermenea + a regulatory-sanctions overlay (extends D-Hermenea)
+
+**Decision.** Watchlist screening is **never stored statically**. Two surfaces:
+
+- **Live-lookup (sanctions / PEP / INTERPOL).** A check executes **through hermenea** (the
+  external-coupling companion, D-Hermenea): oikumenea calls hermenea, **hermenea owns the outbound
+  egress** to OFAC / EU / UN / INTERPOL-Red-Notice APIs and a **short-TTL cache (≤24 h)**; only
+  **per-person match metadata** flows back and is persisted (`on_list`, `lists[]`, `program`,
+  `match_score`, `last_checked`, `next_check_due`) — never the lists themselves. PEP status is derived
+  from M33 `person_government_positions`.
+- **Regulatory-sanctions overlay.** `person_regulatory_sanctions` (regulator, action_type, amount,
+  status, date, source_url, `source`+`confidence`) — structured, API-ingestible (a hermenea import
+  target), tied to a licensed professional role; `pii:sensitive`, gated.
+
+The original **Interpol API** idea (interpol.api.bund.dev) — `todo.md` item 1, now folded into the
+[draft_superbrain_schema.md](../draft_superbrain_schema.md) §6.5 live-lookup verdict — is the first
+live-lookup connector built here.
+
+**Why.** Sanctions/PEP/Red-Notice lists are volatile and licence-encumbered; storing them statically is
+stale and legally fraught. Routing egress through hermenea keeps all external coupling in the companion
+service (consistent with D-Hermenea) and the PDP core free of outbound internet calls. Match-metadata
+is the only persistable, query-useful residue.
+
+**Why not** (a) *oikumenea calls the APIs directly*: adds outbound egress to the operator-owned PDP
+core; splits external-coupling responsibility. (b) *Ingest the full lists into a table*: stale +
+licence risk + huge. (c) *Store full match details*: only metadata is needed for a flag; full hit data
+re-fetched live.
+
+**Consequence.** A hermenea watchlist connector + cache; oikumenea `person_watchlist_matches` (metadata
+only) + `person_regulatory_sanctions` overlay; a `CheckWatchlists` audited action. New person RIDs on
+build. Criminal/arrest/court records (6.1–6.3) are **deferred** (M38, own session). Lands as **M34**
+([milestones](../milestones.md)).
+
+### D-PersonOverlays — Financial, behavioral & psychological overlays (extends D-OverlayFoundation, D-SpecialPII)
+
+**Decision.** Three gated overlays (draft macro-categories 4 + 5), each carrying attribution:
+
+- **Crypto wallets** — `person_crypto_wallets` (`address`, `chain`, `attribution_method`,
+  `first_seen`/`last_seen`, `balance_usd_approx`); `pii:sensitive`; synergy with M34 screening.
+- **Personality** — `person_personality` (MBTI / Big-Five / DISC / Enneagram), **declared survey or
+  formal HR assessment only**, `pii:sensitive` + `source`. **No NLP-from-text inference.**
+- **Inferred political leaning** — a **separate** `pii:special` overlay
+  (`spectrum ∈ [-1,1]`, `inference_sources`, `confidence`), envelope + `legal_basis` + audit, **never
+  merged** with the declared M33 party membership.
+
+Compensation/payroll is **out of scope** here — a separate operational-HR module (M39, deferred).
+
+**Why.** These are provenance-tagged overlays the draft tags `OVERLAY`/`DEVELOP`; keeping inferred
+politics gated, separate, and never-merged honours the declared-vs-inferred rule under the strictest
+tier.
+
+**Why not** (a) *Infer personality/politics from text*: forbidden — declared/assessment only for
+personality; inferred politics is isolated and never blended. (b) *Fold compensation in*: operational
+HR (the org as payer), not dossier scope.
+
+**Consequence.** New person overlay tables (crypto/personality `pii:sensitive`; inferred-leaning
+`pii:special` encrypted); audited writes, purge/crypto-erase. New person RIDs on build. Lands as
+**M35** ([milestones](../milestones.md)).
+
+### D-HealthVulnerability — Category-level health & vulnerability records (`pii:special`) (extends D-SpecialPII)
+
+**Decision.** Add the draft's macro-category 8 under the **strictest** gate:
+
+- `person_health_records` — typed `kind ∈ {hospitalization, mental_health, disability}`,
+  **category-level only (no diagnosis)**, `is_public_record`, `source`+`confidence`; `pii:special` +
+  envelope (D-SpecialPII) + app-layer **need-to-know** + **full audit** + `legal_basis`. **Never
+  inferred.**
+- `person_insurance` — `type ∈ {health, life, disability, ltc}`, provider, `employer_sponsored`,
+  dates; `pii:sensitive`, gated.
+
+**Why.** Health/vulnerability is the highest-sensitivity Art. 9 cluster; building it last lets it reuse
+the proven M24 special-PII envelope + the M29 `legal_basis`/audit substrate. Category-level-only
+storage minimizes risk while keeping the field queryable.
+
+**Why not** (a) *Store diagnoses / inferred health*: forbidden — category-level, declared/public-record
+only. (b) *A plain `pii:sensitive` health field*: special category demands the envelope + need-to-know
++ full audit.
+
+**Consequence.** New `person_health_records` (encrypted) + `person_insurance`; need-to-know read gate,
+full audit, crypto-erase on purge. New person RIDs on build. Lands as **M36**
+([milestones](../milestones.md)).
+
+### D-LoginSecurityLog — A first-party login/IP security log on the federation seam (extends L-AuthzOnly)
+
+**Decision.** Record a **first-party login security log** — `account_login_events` on the
+[identity-federation](../modules/identity-federation.md) accounts seam: `account_id`, `ip`,
+`occurred_at`, `context ∈ {login, activity, registration}`, `resolved_country`, `resolved_isp`,
+`is_vpn`, `is_tor`, `user_agent`. Fed from what the **OIDC/JWKS validation middleware already sees** on
+the `/whoami` / token-validation path — **not** OSINT breach enrichment, and **not** stored credentials
+(L-AuthzOnly holds: the service still issues no tokens). `pii:contact`, retention-bounded, purge-erased.
+
+**Why.** The draft (2.5) wants IP/login history as first-party security telemetry. The service already
+validates inbound IdP tokens, so it sees enough to log the security-relevant context without becoming
+an auth provider. Split into its **own milestone** because, with delegated auth, its value and shape
+are independent of the address work (M32).
+
+**Why not** (a) *Bundle into M32 addresses*: different seam (federation, not person), different lifetime
+(security log vs directory attribute). (b) *Treat as OSINT enrichment*: it is first-party login
+telemetry, gated like any contact-tier data. (c) *Skip it (delegated auth)*: the validation path still
+yields useful, lawful security signal.
+
+**Consequence.** New `account_login_events` on the account service (RID `account` object); IdP
+middleware emits an event per validated request; retention sweep + purge erasure. New account RID on
+build. Lands as **M37** ([milestones](../milestones.md)).

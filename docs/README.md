@@ -72,7 +72,7 @@ across graphs. That — *hierarchy + inheritance + visibility, decided by a PDP*
 |---|---|
 | [clients](modules/clients.md) *(M27, `clients/go/` + `clients/typescript/`)* | Unified **Go + TypeScript SDKs** generated from the same Conjure contract (**D-ClientSDK**); each adds a one-call façade (`client.New` / `createOikumeneaClient`) binding one base URL + token to every service, including the `hermenea`/`import` endpoints oikumenea proxies. The web console consumes the TS SDK. |
 
-**Planned modules** (designed in [milestones.md](milestones.md) M16–M26 + [roadmap-decisions.md](architecture/roadmap-decisions.md); most module docs follow at implementation time — the **religion**, shared **location**, and **company** docs already exist):
+**Planned modules** (designed in [milestones.md](milestones.md) M16–M39 + [roadmap-decisions.md](architecture/roadmap-decisions.md); most module docs follow at implementation time — the **religion**, shared **location**, **company**, and **external-organizations** docs already exist):
 
 | Module | Responsibility |
 |---|---|
@@ -82,6 +82,13 @@ across graphs. That — *hierarchy + inheritance + visibility, decided by a PDP*
 | [company](modules/company.md) *(M21)* | A legal-entity registry with the ownership/affiliation graph (legal form, registration, positions, founders, shareholders, UBO). |
 | [religion](modules/religion.md) *(M22–M25)* | The **multi-faith** religion vertical: faith taxonomy (religions→traditions), organizations as tenant units in religion graphs, clergy grades/credentials, lay affiliation (`pii:special`), and discovery (sites→Location, schedules, search). Catalog-driven, no hard-coded faith vocabulary. |
 | `vehicle` *(M26)* | A vehicle registry binding people & companies to vehicles: brand/model/type taxonomy, the vehicle (VIN), a temporal brand↔Company manufacturer link, and the ownership+plate registration (polymorphic person\|company owner, plate region via the shared `geo_subdivisions` registry). |
+| [external-organizations](modules/external-organizations.md) *(M30)* | A registry of external organizations (party / government body / foreign military / NGO / lobbying registrant) — the node-space the M33 person↔org institutional ties point at when the org is neither an operator unit nor an M21 company. Catalog-typed, provisional/resolved, hermenea-fed. |
+
+The remaining planned milestones extend existing modules rather than adding new ones: the
+**person-intelligence / OSINT-enrichment cluster** (M29, M31–M36; [draft_superbrain_schema.md](draft_superbrain_schema.md))
+enriches [person](modules/person.md); the login security log (M37) extends
+[identity-federation](modules/identity-federation.md). **M38** (criminal/legal records) and **M39**
+(compensation/payroll) are **deferred stubs** — designed in their own later sessions.
 
 A **consumer** of the above (not a backend module), documented alongside them:
 

@@ -96,6 +96,19 @@ Real-world entities with identity over time → Objects.
 | `Vehicle` *(planned, M26)* | `vehicle` | optional | soft-delete | physical vehicle; `vin` unique among active (nullable, `pii:basic`); `type_id`/`model_id`; `attributes` JSONB; D-Vehicles |
 | `VehicleBrand` / `VehicleModel` / `VehicleType` *(planned, M26)* | `vehicle` | yes (`code`/`name`) | `status` + soft-delete | brand (`country` of origin); model (`brand_id` + generation/manufacture window); type taxonomy **tree** (`parent_id` self-FK + denormalized root, no closure — the `RankType` pattern) |
 | `VehicleRegistrationNumberType` *(planned, M26)* | `vehicle` | yes (`code`/`name`) | `status` + soft-delete | plate-type catalog (regular/temporary/transit/diplomatic/military/old…) |
+| `LegalBasisKind` *(planned, M29)* | [platform](modules/platform.md) | yes (`code`/`name`) | seeded | `platform_legal_basis_kinds` — GDPR Art. 6 lawful bases + Art. 9 conditions; FK'd by every gated/special overlay; D-OverlayFoundation |
+| `ExternalOrganization` *(planned, M30)* | [external-organizations](modules/external-organizations.md) | optional | provisional/resolved + soft-delete | party/government/military/NGO/registrant; **RID service 18**; `kind`, optional `country`/`wikidata_id`; attribution; D-ExternalOrgs |
+| `ExternalOrgKind` *(planned, M30)* | [external-organizations](modules/external-organizations.md) | yes (`code`/`name`) | seeded | catalog (`party\|government_body\|military\|ngo\|registrant\|other`) |
+| `PhysicalDescription` / `DistinguishingMark` *(planned, M31)* | [person](modules/person.md) | no | effective-dated + soft-delete | `person_physical_descriptions` (height/weight/eye/hair/build/blood_type, `pii:basic`); marks (`pii:special` ceiling); D-PhysicalIdentity |
+| `EthnicityType` *(planned, M31)* | [person](modules/person.md) | yes (`code`/`name`) | catalog | open catalog for declared ethnicity (the value link is `pii:special`, encrypted); D-PhysicalIdentity |
+| `ExternalReference` *(planned, M33)* | [person](modules/person.md) | no | soft-delete | `person_external_references` (wikipedia/news/registry; mirrors `SocialAccount`); hermenea target; D-InstitutionalTies |
+| `RegulatorySanction` / `WatchlistMatch` *(planned, M34)* | [person](modules/person.md) | no | soft-delete | regulatory-sanction overlay (`pii:sensitive`); watchlist **match-metadata only** (never the lists; ≤24h via hermenea); D-Watchlists |
+| `CryptoWallet` / `Personality` / `PoliticalLeaning` *(planned, M35)* | [person](modules/person.md) | no | soft-delete | wallet attribution + declared personality (`pii:sensitive`); **inferred** political-leaning (`pii:special`, never merged with declared); D-PersonOverlays |
+| `HealthRecord` / `Insurance` *(planned, M36)* | [person](modules/person.md) | no | soft-delete | category-level health (`pii:special`, no diagnosis, never inferred) + insurance (`pii:sensitive`); D-HealthVulnerability |
+| `AccountLoginEvent` *(planned, M37)* | [identity-federation](modules/identity-federation.md) | no | retention-bounded + purge-erased | first-party login/IP security log on the account seam (`pii:contact`); D-LoginSecurityLog |
+
+(Planned-cluster RID type codes are allocated in `pkg/rid` + migration `0000` on build — person
+service object 11+ / link 9+, account/platform as noted, external-organizations = service 18.)
 
 **Non-Objects (correctly):** `Atomic permission` is **code, not data** — a closed vocabulary in Go,
 not a table ([authorization](modules/authorization.md)). `Vacancy` is a **derived predicate** (active
@@ -170,6 +183,12 @@ Links additionally carry `valid_from`/`valid_to`
 | `SITE_OF` *(M25)* | `Unit` → `Location` | [religion](modules/religion.md) | reified `religion_sites` (`16,2,4`); `site_type`, `visibility`, `public_precision`, `is_primary` (one per unit) | shared `Location` by FK; precision coarsened **app-side** at read time (H3 dropped — `domain.Coarsen` rounding) |
 | `MANUFACTURED_BY` *(planned, M26)* | `VehicleBrand` → `Company` | `vehicle` | manufacturer of a marque | **temporal** (`effective_from`/`effective_to`) — changes with acquisitions |
 | `REGISTERED_TO` *(planned, M26)* | `Vehicle` → `Person`\|`Company` | `vehicle` | **polymorphic owner** (person XOR company); `country` → `geo_countries`, `subdivision` → `geo_subdivisions` (plate region), `registration_number` (unique active per country), `number_type` | **temporal** + `status`; the ownership+plate record (re-registration = new row); person-owned rows `pii:basic`, holder-scoped, purge-erased; D-Vehicles |
+| `HAS_ETHNICITY` *(planned, M31)* | `Person` → `EthnicityType` | [person](modules/person.md) | declared-only; **`pii:special`** envelope-encrypted + `legal_basis` | crypto-erased on purge; never inferred; D-PhysicalIdentity |
+| `RESIDES_AT` *(planned, M32)* | `Person` → `Location` | [person](modules/person.md) | `role ∈ {home,work,mailing,other}`, `is_primary`, `privacy_seeking`; `pii:contact` | **temporal**; `person_addresses` → shared M19 `Location`; work address derivable from unit; purge-erased; D-PersonAddresses |
+| `PARTY_MEMBER_OF` *(planned, M33)* | `Person` → `ExternalOrganization` | [person](modules/person.md) | role/dates; **`pii:special`** (Art. 9) envelope + `legal_basis` | **temporal**; `source`/`confidence`; never merged with inferred leaning; D-InstitutionalTies |
+| `HOLDS_GOVERNMENT_POSITION` *(planned, M33)* | `Person` → `ExternalOrganization` | [person](modules/person.md) | title/body/level; **`pep_trigger`** (auto-true, persists post-office); `pii:basic` | **temporal**; feeds M34 PEP; D-InstitutionalTies |
+| `LOBBYING_FOR` *(planned, M33)* | `Person` → `ExternalOrganization` | [person](modules/person.md) | registrant/client, issues[], filing_id, source_url; `pii:basic` | `source`/`confidence`; D-InstitutionalTies |
+| `SERVED_IN` *(planned, M33)* | `Person` → `ExternalOrganization` (military) | [person](modules/person.md) / [membership](modules/membership.md) | reuse the membership shape + rank; `units[]`/`deployments[]`/`discharge_type`/`clearance_level` (latter two `pii:sensitive`) | **temporal**; foreign/historical military service against an external-org stub; D-InstitutionalTies |
 
 The `Assignment` is the centerpiece and deserves emphasis: an ontology would model it as a **reified
 Link** `(subject, role, target_unit, scope, graph)`. Two non-obvious semantics
@@ -211,6 +230,15 @@ ledger ([Identifier scheme](#identifier-scheme-rids)).
   `RecodeUnit` (**M28, D-UnitCodeLifecycle**) — the audited set/correct/clear of a unit `code`,
   recorded in the append-only `tenant_unit_code_events` ledger (RID slot `4,1,4`); `CreateUnit` now
   accepts an optional code.
+- **Planned (M29–M37 — OSINT-enrichment cluster):** `MergePerson` (**M29, D-OverlayFoundation**) — the
+  audited manual promote/merge of a `provisional` person into a canonical one, re-homing edges
+  (`PersonMerged` event); `CreateExternalOrganization` (M30); `RecordEthnicity`/`RecordPhysicalDescription`
+  (M31); `RecordAddress` (M32); `RecordPartyMembership`/`RecordGovernmentPosition`/`RecordLobbying`/
+  `RecordForeignService`/`AddExternalReference` (M33); `CheckWatchlists` (**M34** — the live-lookup that
+  persists only match-metadata) + `RecordRegulatorySanction` (M34); `RecordCryptoWallet`/
+  `RecordPersonality`/`RecordPoliticalLeaning` (M35); `RecordHealthRecord`/`RecordInsurance` (M36);
+  `RecordLoginEvent` (M37, `system`-actor). Every special-category write carries a `legal_basis` and is
+  fully audited (D-OverlayFoundation / D-SpecialPII).
 - **Order-driven effects (the strongest ontology fit):** `IssueOrder` is one Action whose effects are
   **emitted as domain events** (`AppointmentOrdered`, `RemovalOrdered`, `RankChangeOrdered`) that
   membership/person subscribers apply **in the same transaction**, citing `order_item_id` provenance.

@@ -557,3 +557,49 @@ through the holder.
 - **Languages spoken** (`person_languages`: a `SPEAKS` link to a `level='language'` languoid, with
   `cefr_level` + `is_native`; `pii:basic`, purge-erased) landed with **M18 / D-Languages** — the
   languoid catalog is owned by the [language](language.md) module; the editor UI is deferred.
+- **External (non-directory) next-of-kin** (above) is **resolved by M29** — provisional person stubs
+  (not free-text) become the node every relationship/overlay edge points at (D-OverlayFoundation).
+
+## Planned: OSINT-enrichment cluster (M29, M31–M36)
+
+> **Status: planned (designed).** The [draft_superbrain_schema.md](../draft_superbrain_schema.md)
+> per-field verdicts are the binding source; the cluster decisions live in
+> [roadmap-decisions.md](../architecture/roadmap-decisions.md). Three rules hold: **declared ≠
+> inferred** (never merged), **every overlay carries `source`+`confidence`**, **special-category data
+> is gated** (envelope [D-SpecialPII] + structured `legal_basis` + audit). Final RID type codes are
+> allocated on build (person service object 11+, link 9+).
+
+- **M29 · Foundation (D-OverlayFoundation).** `person_persons.status` gains **`provisional`** (minimal-PII
+  stubs so every relationship/overlay edge points at a node) + a manual **`MergePerson`** action
+  (re-homes edges, `confidence`, `PersonMerged` event); the reusable `source`/`confidence`/`as_of`
+  **attribution convention**; the structured **`legal_basis`** catalog
+  ([platform](platform.md) `platform_legal_basis_kinds`, GDPR Art. 6/9), NOT NULL on every
+  `pii:special` store. No automatic candidate matching (parked).
+- **M31 · Physical identity (D-PhysicalIdentity).** `person_name_variants.variant_kind`
+  (`aka|former_legal|maiden|pseudonym|cover` — aliases fold in, no new table);
+  `person_physical_descriptions` (+ `blood_type`, `pii:basic`) + `person_distinguishing_marks`
+  (`pii:special` ceiling); declared-only `person_ethnicity_types` + encrypted `person_ethnicities`
+  link (`pii:special`). Biometrics **excluded**.
+- **M32 · Addresses (D-PersonAddresses).** `person_addresses` → `location_locations`
+  ([location](location.md), M19): `role ∈ {home,work,mailing,other}`, effective-dated, `is_primary`,
+  `privacy_seeking`, `pii:contact`, purge-erased; `person_residences` retained for legal-residence.
+- **M33 · Institutional ties (D-InstitutionalTies).** Per-type person↔org links —
+  `person_party_memberships` (`pii:special`), `person_government_positions` (`pep_trigger`, feeds M34),
+  `person_lobbying_relationships`, foreign-military service (reuse [membership](membership.md) against
+  M30 [external-organizations](external-organizations.md) + rank), `person_external_references`; an
+  `emergency` `person_relation_type` (no new entity). Org side = external-org / company / unit.
+- **M34 · Watchlists (D-Watchlists).** Live-lookup sanctions/PEP/Interpol **via
+  [hermenea](hermenea.md)** — only `person_watchlist_matches` metadata persisted (≤24h cache, never the
+  lists); PEP derived from M33 government positions; `person_regulatory_sanctions` overlay
+  (`pii:sensitive`). Criminal/court records (6.1–6.3) deferred → **M38**.
+- **M35 · Overlays (D-PersonOverlays).** `person_crypto_wallets` (`pii:sensitive`); `person_personality`
+  (declared/HR-assessment only, no text-inference); **inferred** `person_political_leaning`
+  (`pii:special`, **never merged** with declared M33 party membership). Compensation/payroll deferred →
+  **M39**.
+- **M36 · Health & vulnerability (D-HealthVulnerability).** `person_health_records`
+  (hospitalization/mental-health/disability, **category-level only, no diagnosis, never inferred**,
+  `pii:special` + envelope + need-to-know + full audit) + `person_insurance` (`pii:sensitive`).
+
+All cluster tables extend the person **purge** erasure list (`pii:contact`/`pii:basic` NULLed;
+`pii:sensitive`/`pii:special` crypto-erased), per [D-PIITiers](../architecture/decisions.md). Reads on
+person-PII overlays project through D-PersonReadScope; writes are audited.

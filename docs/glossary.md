@@ -414,12 +414,13 @@ idea]`. It is not on the stage board; once promoted to a milestone it is marked 
 then deleted. `todo.md` may legitimately not exist when nothing is pending. The parked-seam
 counterpart for *known* future seams is **DS-N** in [open-questions.md](open-questions.md).
 
-## Planned domains (M16–M26)
+## Planned domains (M16–M39)
 
-> Vocabulary for the [milestones.md](milestones.md) M16–M26 cluster (derived from `todo.md`).
-> Designed and decision-backed ([decisions.md](architecture/decisions.md)); full module docs follow at
-> implementation time (the **religion** vertical's module doc, [religion](modules/religion.md), and the
-> shared [location](modules/location.md) doc already exist).
+> Vocabulary for the [milestones.md](milestones.md) M16–M39 planned cluster (derived from the
+> superbrain/OSINT draft + the original `todo.md`). Designed and decision-backed
+> ([roadmap-decisions.md](architecture/roadmap-decisions.md)); full module docs follow at
+> implementation time (the **religion** vertical, the shared [location](modules/location.md), and the
+> new [external-organizations](modules/external-organizations.md) docs already exist).
 
 **Hermenea.** The **companion service** (a second binary, `cmd/hermenea`) that performs reference-data
 ingestion + the background-job runtime **out of process**, with its **own PostgreSQL**, coupled to
@@ -557,6 +558,50 @@ temporal `MANUFACTURED_BY` link.
 **subdivision** (plate region), plate `registration_number`, and **registration number type**
 (regular/temporary/transit/…). Re-registration is a new row (the prior closed), so the link *is* the
 ownership history; person-owned rows are `pii:basic`, holder-scoped, and purge-erased.
+
+### OSINT person-intelligence enrichment (M29–M37)
+
+> The [draft_superbrain_schema.md](draft_superbrain_schema.md) verdicts are the binding source; the
+> cluster decisions are D-OverlayFoundation … D-LoginSecurityLog
+> ([roadmap-decisions.md](architecture/roadmap-decisions.md)).
+
+**Provisional person.** A minimal-PII `person_persons` row with `status=provisional` (D-OverlayFoundation,
+M29) — a stub so every relationship/overlay edge points at a real node (an unresolved external person,
+an emergency contact, a wallet-attribution target). Promoted/merged into a canonical person by the
+audited **`MergePerson`** action (carries a `confidence`, re-homes edges). No automatic dedup.
+
+**Attribution (`source`/`confidence`).** The reusable overlay column-set (D-OverlayFoundation) —
+`source ∈ {self_declared, operator_verified, imported}`, `confidence ∈ {confirmed, probable, possible}`,
+optional `as_of` — stamped on every overlay/attribution row. **Declared values and inferred values live
+in separate column-spaces and are never merged.**
+
+**Legal basis.** The structured `platform_legal_basis_kinds` catalog (GDPR Art. 6 lawful bases + Art. 9
+conditions, M29), FK'd (NOT NULL) by every `pii:special` overlay, plus an optional free-text
+justification — the queryable, enforceable lawful-processing record.
+
+**External organization.** A party / government body / foreign-military formation / NGO / lobbying
+registrant in the dedicated `external_organizations` registry (D-ExternalOrgs, M30, **RID service 18**) —
+the node-space M33 institutional ties point at when the org is neither an operator **Unit** nor an M21
+**Company**. Catalog-typed (`external_org_kinds`), provisional/resolved, hermenea-fed.
+
+**Overlay.** A provenance-tagged store carrying `source`+`confidence` (vs an authoritative
+operator-asserted attribute) — crypto wallets, inferred political leaning, regulatory sanctions,
+external references. Distinguished from **DEVELOP** attributes (physical description, declared
+ethnicity) which are first-party.
+
+**Watchlist match.** The only persistable residue of a **live-lookup** sanctions/PEP/Interpol check
+(D-Watchlists, M34): `on_list`/`lists[]`/`program`/`match_score`/`last_checked` — the lists themselves
+are **never stored**, queried at request time **through hermenea** (≤24h cache). **PEP** status derives
+from a held **government position** (M33).
+
+**Special-category overlay.** A `pii:special` (GDPR Art. 9) person store — declared ethnicity (M31),
+party membership (M33), inferred political leaning (M35), health records (M36) — **envelope-encrypted**
+(D-SpecialPII) + `legal_basis` + full audit + (for health) app-layer need-to-know; **never inferred**
+except the explicitly-isolated political-leaning spectrum.
+
+**Login security log.** First-party `account_login_events` (D-LoginSecurityLog, M37) — ip/context/
+resolved-country/vpn/tor emitted by the OIDC/JWKS validation middleware; **not** OSINT enrichment and
+**not** stored credentials (L-AuthzOnly holds).
 
 ---
 

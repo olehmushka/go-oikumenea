@@ -165,3 +165,18 @@ check.
 - Just-in-time provisioning is resolved (D-JIT): default **reject-unknown**; when enabled,
   **link-on-match only** via a configurable claim→person-key mapping — it never auto-creates a
   person. Full auto-enrolment remains out of scope.
+
+## Planned: login security log (M37 / D-LoginSecurityLog)
+
+> **Status: planned (designed).** Binding via **D-LoginSecurityLog** in
+> [roadmap-decisions.md](../architecture/roadmap-decisions.md); draft macro-category 2.5.
+
+A **first-party login/IP security log** — `account_login_events` (`account_id`, `ip`, `occurred_at`,
+`context ∈ {login, activity, registration}`, `resolved_country`, `resolved_isp`, `is_vpn`, `is_tor`,
+`user_agent`; `pii:contact`, retention-bounded, purge-erased) — emitted by the **existing OIDC/JWKS
+validation middleware** on the `/whoami` / token-validation path. It is **first-party security
+telemetry**, *not* OSINT breach enrichment, and it does **not** make the service an authenticator:
+**L-AuthzOnly holds** (no stored credentials, no issued tokens). Split into its own milestone because,
+with delegated auth, its value and shape are independent of the M32 person-address work. A retention
+sweep prunes old events; person purge erases the subject's events. RID = `account` object (allocated on
+build).
