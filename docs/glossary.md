@@ -298,9 +298,12 @@ computed by the PDP at decision time.
 ## Localization (i18n)
 
 **Code.** A **stable, locale-agnostic** machine identifier on a structural/catalog entity
-(unit, role, position, rank node, locale; optional on person). What external systems reference
+(role, position, rank node, locale; optional on person). What external systems reference
 in their own code. Operator-assigned, unique, immutable by convention. The permission string is
-the degenerate case (it *is* the code). Distinct from the translatable `name`.
+the degenerate case (it *is* the code). Distinct from the translatable `name`. **Exception
+(D-UnitCodeLifecycle, M28):** a **unit** `code` is **optional** (a codeless unit is a non-separate
+sub-unit) and **mutable** — a correctable human-readable ID; for units the stable handle external
+systems reference is the **RID**, not the code.
 
 **Locale.** A supported language for the deployment, identified by an ISO 639-3 code (e.g.
 `ukr`, `eng`). The set is **instance-admin-managed** (seeded with `ukr` + `eng`, more can be

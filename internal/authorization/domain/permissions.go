@@ -20,6 +20,7 @@ const (
 	PermUnitRead      Permission = "unit.read"
 	PermUnitCreate    Permission = "unit.create"
 	PermUnitUpdate    Permission = "unit.update"
+	PermUnitRecode    Permission = "unit.recode" // audited set/correct/clear of a unit's code (D-UnitCodeLifecycle)
 	PermUnitLifecycle Permission = "unit.lifecycle"
 
 	// unit edges — per graph (D-EdgePerms) + a broad fallback covering all graphs incl. custom.
@@ -190,7 +191,7 @@ var instanceScope = map[Permission]struct{}{
 // validation set for authz_role_permissions writes and the membership of `assignment`-level reads.
 var catalog = func() map[Permission]struct{} {
 	all := []Permission{
-		PermUnitRead, PermUnitCreate, PermUnitUpdate, PermUnitLifecycle,
+		PermUnitRead, PermUnitCreate, PermUnitUpdate, PermUnitRecode, PermUnitLifecycle,
 		PermUnitEdgesManage, PermUnitEdgesCommandManage, PermUnitEdgesOperationalManage,
 		PermPersonRead, PermPersonCreate, PermPersonUpdate, PermPersonRankAssign, PermPersonLifecycle, PermPersonPurge,
 		PermMembershipRead, PermMembershipCreate, PermMembershipUpdate,
@@ -290,6 +291,7 @@ var managerOnlyPerms = []Permission{
 var adminOnlyPerms = []Permission{
 	PermUnitEdgesManage, // broad form — covers all graphs incl. custom (D-EdgePerms)
 	PermUnitLifecycle,
+	PermUnitRecode, // changing the external handle is a privileged action (D-UnitCodeLifecycle, M28)
 	PermPersonLifecycle, PermPersonPurge,
 	PermDocumentDelete, PermPersonalCodeDelete,
 	PermOrderIssue, PermOrderRevoke,

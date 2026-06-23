@@ -466,7 +466,7 @@ func (s *Service) CreateChildOrg(ctx context.Context, parentUnitID, code, name, 
 	if visibility == string(tenantdomain.VisibilityShadow) {
 		vis = tenantdomain.VisibilityShadow
 	}
-	child, err := s.tenant.CreateUnit(ctx, tenantdomain.Unit{Code: code, Name: name, Visibility: vis})
+	child, err := s.tenant.CreateUnit(ctx, tenantdomain.Unit{Code: &code, Name: name, Visibility: vis})
 	if err != nil {
 		return domain.OrgProfile{}, err
 	}

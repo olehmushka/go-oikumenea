@@ -82,7 +82,7 @@ func uniqueCode(t *testing.T, prefix string) string {
 
 func mustCreate(t *testing.T, svc *application.Service, code string) domain.Unit {
 	t.Helper()
-	u, err := svc.CreateUnit(context.Background(), domain.Unit{Code: code, Name: code})
+	u, err := svc.CreateUnit(context.Background(), domain.Unit{Code: &code, Name: code})
 	if err != nil {
 		t.Fatalf("create unit %q: %v", code, err)
 	}
@@ -124,7 +124,7 @@ func TestCreateUnitWritesAuditRow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get unit: %v", err)
 	}
-	if got.Code != u.Code || got.State != domain.StateActive || got.Visibility != domain.VisibilityPublic {
+	if derefStr(got.Code) != derefStr(u.Code) || got.State != domain.StateActive || got.Visibility != domain.VisibilityPublic {
 		t.Fatalf("unexpected unit: %+v", got)
 	}
 
@@ -375,4 +375,80 @@ func TestUnitLanguages(t *testing.T) {
 	if ls, err := svc.ListUnitLanguages(ctx, u.ID); err != nil || len(ls) != 0 {
 		t.Fatalf("list after delete: len=%d err=%v", len(ls), err)
 	}
+}
+
+// TestUnitCodeLifecycle exercises D-UnitCodeLifecycle (M28): codeless creation + coexisting codeless
+// siblings, the audited set/correct/clear recode path with its append-only ledger, and the active
+// uniqueness conflict.
+func TestUnitCodeLifecycle(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newService(t)
+
+	// codeless create succeeds, and two codeless siblings coexist (the partial-unique index ignores NULLs).
+	a, err := svc.CreateUnit(ctx, domain.Unit{Name: "3rd Platoon"})
+	if err != nil {
+		t.Fatalf("create codeless unit a: %v", err)
+	}
+	if a.Code != nil {
+		t.Fatalf("expected codeless unit, got code=%v", *a.Code)
+	}
+	b, err := svc.CreateUnit(ctx, domain.Unit{Name: "4th Platoon"})
+	if err != nil {
+		t.Fatalf("create codeless sibling b: %v", err)
+	}
+
+	// set a code on the codeless unit a.
+	code1 := uniqueCode(t, "bn")
+	got, err := svc.SetUnitCode(ctx, a.ID, &code1, "initial designation")
+	if err != nil {
+		t.Fatalf("set code: %v", err)
+	}
+	if derefStr(got.Code) != code1 {
+		t.Fatalf("expected code %q, got %q", code1, derefStr(got.Code))
+	}
+
+	// a second unit taking the same active code -> conflict.
+	if _, err := svc.SetUnitCode(ctx, b.ID, &code1, ""); !errors.Is(err, domain.ErrUnitCodeConflict) {
+		t.Fatalf("duplicate active code should be ErrUnitCodeConflict, got %v", err)
+	}
+
+	// correct the code (value -> value), then clear it (value -> NULL).
+	code2 := uniqueCode(t, "bn")
+	if _, err := svc.SetUnitCode(ctx, a.ID, &code2, "reorg"); err != nil {
+		t.Fatalf("correct code: %v", err)
+	}
+	cleared, err := svc.SetUnitCode(ctx, a.ID, nil, "became non-separate")
+	if err != nil {
+		t.Fatalf("clear code: %v", err)
+	}
+	if cleared.Code != nil {
+		t.Fatalf("expected cleared code, got %v", *cleared.Code)
+	}
+
+	// the ledger holds one event per change, newest first: clear (code2->nil), correct (code1->code2), set (nil->code1).
+	events, err := svc.ListUnitCodeEvents(ctx, a.ID)
+	if err != nil {
+		t.Fatalf("list code events: %v", err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("expected 3 code events, got %d", len(events))
+	}
+	if events[0].OldCode == nil || derefStr(events[0].OldCode) != code2 || events[0].NewCode != nil {
+		t.Fatalf("newest event should be code2->nil, got old=%v new=%v", events[0].OldCode, events[0].NewCode)
+	}
+	if events[2].OldCode != nil || derefStr(events[2].NewCode) != code1 {
+		t.Fatalf("oldest event should be nil->code1, got old=%v new=%v", events[2].OldCode, events[2].NewCode)
+	}
+	for _, e := range events {
+		if e.RequestID == "" {
+			t.Fatalf("code event missing request id: %+v", e)
+		}
+	}
+}
+
+func derefStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

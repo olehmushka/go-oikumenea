@@ -288,6 +288,12 @@ the stable `code` from the translatable `name` makes both jobs clean.
 becomes `code` (an API-only service has no subdomains). See [conventions.md](conventions.md)
 (Code vs. name) and [patterns.md](patterns.md) (Stable code vs translatable name).
 
+**Amended by D-UnitCodeLifecycle (M28)** — for **units only**, `code` becomes **optional**
+(a codeless unit is a non-separate sub-unit) and **mutable** (a correctable human-readable ID set
+via an audited recode op). The stable machine handle external systems reference is the **RID**, not
+the unit `code`. Other structural/catalog entities keep `code TEXT NOT NULL UNIQUE`, immutable by
+convention. See [roadmap-decisions.md](roadmap-decisions.md) (D-UnitCodeLifecycle).
+
 ### D-Audit — Every write is audited; audit reads are permission-scoped
 
 **Decision.** Every **write** (state mutation) in every module — create / update / state

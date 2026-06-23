@@ -138,7 +138,7 @@ INSERT INTO oikumenea.platform_rid_types (service_code, kind, type_code, type_na
   -- i18n
   (2,1,1,'translation'),
   -- tenant
-  (4,1,1,'unit'),(4,1,2,'graph'),(4,1,3,'unit_lifecycle_event'),
+  (4,1,1,'unit'),(4,1,2,'graph'),(4,1,3,'unit_lifecycle_event'),(4,1,4,'unit_code_event'),
   (4,2,1,'parent_of'),
   -- rank
   (5,1,1,'system'),(5,1,2,'category'),(5,1,3,'type'),(5,1,4,'rank'),

@@ -6,8 +6,9 @@
 
 -- name: InsertUnit :one
 -- Create a unit. The RID PK defaults at the database; the partial-unique code guards duplicates.
+-- `code` is optional (NULL = a non-separate sub-unit; D-UnitCodeLifecycle).
 INSERT INTO oikumenea.tenant_units (code, name, unit_kind, level, visibility, metadata)
-VALUES (@code, @name, sqlc.narg('unit_kind'), sqlc.narg('level'), @visibility, @metadata)
+VALUES (sqlc.narg('code'), @name, sqlc.narg('unit_kind'), sqlc.narg('level'), @visibility, @metadata)
 RETURNING *;
 
 -- name: GetUnit :one
@@ -28,6 +29,19 @@ RETURNING *;
 UPDATE oikumenea.tenant_units SET state = @state
 WHERE id = @id AND deleted_at IS NULL
 RETURNING *;
+
+-- name: SetUnitCode :one
+-- Set/correct/clear a unit's code (D-UnitCodeLifecycle). A NULL narg clears the code; the partial
+-- unique index guards collisions among active coded units (the app pre-checks for a friendly 409).
+UPDATE oikumenea.tenant_units SET code = sqlc.narg('code')
+WHERE id = @id AND deleted_at IS NULL
+RETURNING *;
+
+-- name: CountActiveUnitsByCode :one
+-- Count active units already holding @code, excluding @exclude_id (the unit being recoded). Drives
+-- the friendly ErrUnitCodeConflict pre-check before the partial-unique index would reject the write.
+SELECT count(*)::int AS code_count FROM oikumenea.tenant_units
+WHERE code = @code AND deleted_at IS NULL AND id <> @exclude_id;
 
 -- name: ListUnits :many
 -- Keyset pagination over the time-ordered RID (id), optional level filter.
@@ -194,6 +208,20 @@ LIMIT @lim;
 INSERT INTO oikumenea.tenant_unit_lifecycle_events
   (unit_id, from_state, to_state, reason, actor_person_id, request_id)
 VALUES (@unit_id, @from_state, @to_state, sqlc.narg('reason'), sqlc.narg('actor_person_id'), @request_id);
+
+-- ============================ code events (D-UnitCodeLifecycle, M28) ============================
+
+-- name: InsertUnitCodeEvent :exec
+INSERT INTO oikumenea.tenant_unit_code_events
+  (unit_id, old_code, new_code, reason, actor_person_id, request_id)
+VALUES (@unit_id, sqlc.narg('old_code'), sqlc.narg('new_code'), sqlc.narg('reason'), sqlc.narg('actor_person_id'), @request_id);
+
+-- name: ListUnitCodeEvents :many
+-- A unit's code-change history, newest first.
+SELECT id, unit_id, old_code, new_code, reason, actor_person_id, request_id, created_at
+FROM oikumenea.tenant_unit_code_events
+WHERE unit_id = @unit_id
+ORDER BY created_at DESC, id DESC;
 
 -- ============================ unit languages (D-Languages, M18) ============================
 

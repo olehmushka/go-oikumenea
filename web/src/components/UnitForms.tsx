@@ -9,11 +9,12 @@ import { T } from "./T";
 import { useTg } from "@/lib/locale";
 import type { Unit } from "@/lib/api/types";
 
-/** Edit a unit's mutable fields (code is immutable) + lifecycle transitions. PUT /tenant/v1/units/{id}. */
+/** Edit a unit's mutable fields + code (recode) + lifecycle transitions. PUT /tenant/v1/units/{id}. */
 export function UnitAdmin({ unit }: { unit: Unit }) {
   const router = useRouter();
   const tr = useTg();
   const [open, setOpen] = useState(false);
+  const [codeOpen, setCodeOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<unknown>(null);
   const state = (unit.state ?? "").toUpperCase();
@@ -23,6 +24,9 @@ export function UnitAdmin({ unit }: { unit: Unit }) {
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className="btn-ghost" onClick={() => setOpen((o) => !o)}>
           {open ? <T>Close</T> : <T>Edit unit</T>}
+        </button>
+        <button type="button" className="btn-ghost" onClick={() => setCodeOpen((o) => !o)}>
+          {codeOpen ? <T>Close</T> : <T>Edit code</T>}
         </button>
         {state !== "SUSPENDED" && state !== "ARCHIVED" ? (
           <ActionButton
@@ -103,6 +107,50 @@ export function UnitAdmin({ unit }: { unit: Unit }) {
           </div>
           <button type="submit" className="btn-primary" disabled={busy}>
             {busy ? <T>Saving…</T> : <T>Save</T>}
+          </button>
+        </form>
+      ) : null}
+
+      {codeOpen ? (
+        <form
+          className="card space-y-3 p-5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const f = new FormData(e.currentTarget);
+            const code = String(f.get("code") || "").trim();
+            const reason = String(f.get("reason") || "").trim();
+            setBusy(true);
+            setErr(null);
+            (async () => {
+              try {
+                // An empty code clears it (the unit becomes a non-separate sub-unit; D-UnitCodeLifecycle).
+                await api.tenant.setUnitCode(unit.id, { code: code || undefined, reason: reason || undefined });
+                setCodeOpen(false);
+                router.refresh();
+              } catch (e) {
+                setErr(e);
+              } finally {
+                setBusy(false);
+              }
+            })();
+          }}
+        >
+          {err ? <ErrorBox error={err} /> : null}
+          <p className="text-sm text-muted">
+            <T>Set, correct, or clear the unit&apos;s code. Leave empty to clear it (a non-separate sub-unit). The RID stays the stable external handle.</T>
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label"><T>Code</T></label>
+              <input name="code" className="input" defaultValue={unit.code ?? ""} placeholder={tr("(none)")} />
+            </div>
+            <div>
+              <label className="label"><T>Reason</T></label>
+              <input name="reason" className="input" placeholder={tr("(optional)")} />
+            </div>
+          </div>
+          <button type="submit" className="btn-primary" disabled={busy}>
+            {busy ? <T>Saving…</T> : <T>Save code</T>}
           </button>
         </form>
       ) : null}

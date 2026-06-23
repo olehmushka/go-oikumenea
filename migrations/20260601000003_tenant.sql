@@ -14,13 +14,14 @@
 -- (boot-time idempotent seeding of RID-keyed reference rows); precedent for M7 base-roles / M8
 -- first-admin.
 
--- tenant_units: a node in the org graph (D-Graphs). `code` is the stable, locale-agnostic external
--- reference (D-Code); `name` is the default-locale fallback (translations in the i18n store, M2).
+-- tenant_units: a node in the org graph (D-Graphs). `code` is an OPTIONAL, mutable, locale-agnostic
+-- human-readable business ID (D-UnitCodeLifecycle, M28, amending D-Code); the RID is the stable
+-- external machine handle. `name` is the default-locale fallback (translations in the i18n store, M2).
 -- `level`/`unit_kind` are DIRECTORY attributes only — never PDP inputs (tenant.md). Visibility is
 -- the read-time public/shadow gate (M7). Lifecycle: active/suspended/archived (reversible).
 CREATE TABLE oikumenea.tenant_units (
   id          uuid PRIMARY KEY DEFAULT oikumenea.new_id(4,1,1),  -- tenant / object / unit
-  code        text NOT NULL,                 -- stable, locale-agnostic; unique among active (index below)
+  code        text,                          -- optional; NULL = non-separate sub-unit; mutable via the recode op; unique among active coded units (index below)
   name        text NOT NULL,                 -- default-locale display name; translatable via i18n store
   unit_kind   text,                          -- descriptive label (e.g. battalion); never branched on
   level       smallint,                      -- optional ordinal for sort/filter; never a PDP/gate input
@@ -39,9 +40,10 @@ CREATE TRIGGER tenant_units_set_updated_at
   BEFORE UPDATE ON oikumenea.tenant_units
   FOR EACH ROW EXECUTE FUNCTION oikumenea.set_updated_at();
 
--- `code` is unique among active (non-deleted) units; immutable by convention (D-Code).
+-- `code` is unique among active (non-deleted) units THAT HAVE one; codeless units (NULL) are
+-- non-separate sub-units and never collide (D-UnitCodeLifecycle, M28).
 CREATE UNIQUE INDEX tenant_units_code_active_idx
-  ON oikumenea.tenant_units (code) WHERE deleted_at IS NULL;
+  ON oikumenea.tenant_units (code) WHERE deleted_at IS NULL AND code IS NOT NULL;
 CREATE INDEX tenant_units_level_idx ON oikumenea.tenant_units (level) WHERE deleted_at IS NULL;
 
 -- Unit labels are organizational, not personal data (D-PIITiers).
@@ -194,6 +196,39 @@ COMMENT ON COLUMN oikumenea.tenant_unit_lifecycle_events.to_state IS 'pii:none';
 COMMENT ON COLUMN oikumenea.tenant_unit_lifecycle_events.reason IS 'pii:none';
 COMMENT ON COLUMN oikumenea.tenant_unit_lifecycle_events.actor_person_id IS 'pii:basic';
 COMMENT ON COLUMN oikumenea.tenant_unit_lifecycle_events.request_id IS 'pii:none';
+
+-- tenant_unit_code_events: append-only ledger of each unit `code` set/correct/clear via the audited
+-- recode op (D-UnitCodeLifecycle, M28). old_code/new_code are both nullable to record NULL<->value
+-- transitions (a codeless unit gaining a code; a code being cleared). Guarded by reject_mutation();
+-- keyed by its own event RID. The RID is the external handle, so old codes need not stay resolvable.
+CREATE TABLE oikumenea.tenant_unit_code_events (
+  id              uuid PRIMARY KEY DEFAULT oikumenea.new_id(4,1,4),  -- tenant / object / unit_code_event
+  unit_id         uuid NOT NULL REFERENCES oikumenea.tenant_units(id) ON DELETE RESTRICT,
+  old_code        text,           -- the code before the change (NULL = was codeless)
+  new_code        text,           -- the code after the change (NULL = cleared)
+  reason          text,
+  actor_person_id uuid,           -- the person who recoded the unit (nullable until M8)
+  request_id      text NOT NULL,  -- correlation key shared with logs/metrics/traces/audit
+  created_at      timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT tenant_unit_code_events_rid_shape
+    CHECK (oikumenea.rid_service(id)=4 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=4)
+);
+
+CREATE TRIGGER tenant_unit_code_events_reject_mutation
+  BEFORE UPDATE OR DELETE ON oikumenea.tenant_unit_code_events
+  FOR EACH ROW EXECUTE FUNCTION oikumenea.reject_mutation();
+
+CREATE INDEX tenant_unit_code_events_unit_idx
+  ON oikumenea.tenant_unit_code_events (unit_id, created_at DESC);
+
+COMMENT ON COLUMN oikumenea.tenant_unit_code_events.id IS 'pii:none';
+COMMENT ON COLUMN oikumenea.tenant_unit_code_events.unit_id IS 'pii:none';
+COMMENT ON COLUMN oikumenea.tenant_unit_code_events.old_code IS 'pii:none';
+COMMENT ON COLUMN oikumenea.tenant_unit_code_events.new_code IS 'pii:none';
+COMMENT ON COLUMN oikumenea.tenant_unit_code_events.reason IS 'pii:none';
+COMMENT ON COLUMN oikumenea.tenant_unit_code_events.actor_person_id IS 'pii:basic';
+COMMENT ON COLUMN oikumenea.tenant_unit_code_events.request_id IS 'pii:none';
 
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
 UPDATE oikumenea.schema_version SET revision = '0003_tenant', applied_at = now() WHERE singleton;

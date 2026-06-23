@@ -2445,6 +2445,7 @@
         "description": "Create a unit. `name` is the default-locale text; other locales are managed via LocalizationService.",
         "properties": {
           "code": {
+            "description": "Optional human-readable code (omit for a non-separate sub-unit; D-UnitCodeLifecycle, M28).",
             "type": "string"
           },
           "level": {
@@ -2468,7 +2469,6 @@
           }
         },
         "required": [
-          "code",
           "name"
         ],
         "type": "object"
@@ -7826,6 +7826,20 @@
         },
         "type": "object"
       },
+      "SetUnitCodeRequest": {
+        "description": "Set, correct, or clear a unit's code (D-UnitCodeLifecycle, M28). An omitted `code` CLEARS the\ncode (the unit becomes a non-separate sub-unit). `reason` is recorded on the append-only ledger.\n",
+        "properties": {
+          "code": {
+            "description": "The new code; omit to clear the code (NULL). Must be unique among active coded units.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Optional free-text reason recorded in the code-change ledger.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "Shareholding": {
         "description": "A holder OWNS_STAKE in a company (link__owns_stake). Polymorphic holder; company-holder edges form the ownership DAG.",
         "properties": {
@@ -8343,7 +8357,7 @@
         "description": "A node in the org graph. `code` is the stable external reference; `name` is the locale-\u003etext map.",
         "properties": {
           "code": {
-            "description": "Stable, locale-agnostic identifier external systems reference (D-Code); unique among active units.",
+            "description": "Optional human-readable business ID (D-UnitCodeLifecycle, M28); absent = a non-separate sub-unit. The RID (id) is the stable external handle. Unique among active units that have a code; set/corrected/cleared via PUT /units/{id}/code.",
             "type": "string"
           },
           "createdAt": {
@@ -8385,13 +8399,60 @@
           }
         },
         "required": [
-          "code",
           "createdAt",
           "id",
           "name",
           "state",
           "updatedAt",
           "visibility"
+        ],
+        "type": "object"
+      },
+      "UnitCodeEvent": {
+        "description": "One entry in a unit's append-only code-change ledger (D-UnitCodeLifecycle, M28).",
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "description": "The event's URN RID.",
+            "type": "string"
+          },
+          "newCode": {
+            "description": "The code after the change (absent = the code was cleared).",
+            "type": "string"
+          },
+          "oldCode": {
+            "description": "The code before the change (absent = the unit was codeless).",
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "unitId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "createdAt",
+          "id",
+          "unitId"
+        ],
+        "type": "object"
+      },
+      "UnitCodeEventList": {
+        "description": "A unit's code-change history, newest first.",
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/UnitCodeEvent"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "events"
         ],
         "type": "object"
       },
@@ -8527,6 +8588,7 @@
         "description": "A lightweight unit reference with its closure depth (ancestor/descendant listings).",
         "properties": {
           "code": {
+            "description": "Optional human-readable code (absent for a codeless sub-unit; D-UnitCodeLifecycle).",
             "type": "string"
           },
           "depth": {
@@ -8545,7 +8607,6 @@
           }
         },
         "required": [
-          "code",
           "depth",
           "id",
           "name"
@@ -9044,7 +9105,7 @@
         "type": "object"
       },
       "UpdateUnitRequest": {
-        "description": "Update name/kind/level/metadata/visibility. Omitted fields are unchanged. `code` is immutable.",
+        "description": "Update name/kind/level/metadata/visibility. Omitted fields are unchanged. `code` is excluded — set it via PUT /units/{id}/code (D-UnitCodeLifecycle).",
         "properties": {
           "level": {
             "format": "int32",
@@ -27575,7 +27636,7 @@
         ]
       },
       "put": {
-        "description": "Update name/kind/level/metadata/visibility. `code` is immutable by convention.",
+        "description": "Update name/kind/level/metadata/visibility. `code` is excluded — use setUnitCode.",
         "operationId": "TenantService_updateUnit",
         "parameters": [
           {
@@ -27619,7 +27680,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
-        "summary": "Update name/kind/level/metadata/visibility. `code` is immutable by convention.",
+        "summary": "Update name/kind/level/metadata/visibility. `code` is excluded — use setUnitCode.",
         "tags": [
           "TenantService"
         ]
@@ -27670,6 +27731,100 @@
           }
         },
         "summary": "Ancestors of the unit in graph `graph` (default command), nearest first.",
+        "tags": [
+          "TenantService"
+        ]
+      }
+    },
+    "/tenant/v1/units/{unitId}/code": {
+      "put": {
+        "description": "Set, correct, or clear the unit's code (audited; appends a tenant_unit_code_events row).\nReturns Tenant:UnitCodeConflict if the code is taken among active units. Requires unit.recode.\n",
+        "operationId": "TenantService_setUnitCode",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "unitId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetUnitCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unit"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Set, correct, or clear the unit's code (audited; appends a tenant_unit_code_events row).",
+        "tags": [
+          "TenantService"
+        ]
+      }
+    },
+    "/tenant/v1/units/{unitId}/code-events": {
+      "get": {
+        "description": "A unit's code-change history, newest first (D-UnitCodeLifecycle, M28).",
+        "operationId": "TenantService_listUnitCodeEvents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "unitId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitCodeEventList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "A unit's code-change history, newest first (D-UnitCodeLifecycle, M28).",
         "tags": [
           "TenantService"
         ]

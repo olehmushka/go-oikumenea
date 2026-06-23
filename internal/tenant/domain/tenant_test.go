@@ -36,12 +36,13 @@ func TestUnitValidate(t *testing.T) {
 		unit Unit
 		ok   bool
 	}{
-		{"valid", Unit{Code: "1-bn", Name: "1st Battalion", Visibility: VisibilityPublic}, true},
-		{"valid shadow", Unit{Code: "ghq", Name: "GHQ", Visibility: VisibilityShadow}, true},
-		{"empty code", Unit{Code: "", Name: "x", Visibility: VisibilityPublic}, false},
-		{"whitespace code", Unit{Code: "a b", Name: "x", Visibility: VisibilityPublic}, false},
-		{"empty name", Unit{Code: "a", Name: "  ", Visibility: VisibilityPublic}, false},
-		{"bad visibility", Unit{Code: "a", Name: "x", Visibility: Visibility("hidden")}, false},
+		{"valid", Unit{Code: ptr("1-bn"), Name: "1st Battalion", Visibility: VisibilityPublic}, true},
+		{"valid shadow", Unit{Code: ptr("ghq"), Name: "GHQ", Visibility: VisibilityShadow}, true},
+		{"codeless sub-unit", Unit{Code: nil, Name: "3rd Platoon", Visibility: VisibilityPublic}, true}, // D-UnitCodeLifecycle
+		{"empty code", Unit{Code: ptr(""), Name: "x", Visibility: VisibilityPublic}, false},
+		{"whitespace code", Unit{Code: ptr("a b"), Name: "x", Visibility: VisibilityPublic}, false},
+		{"empty name", Unit{Code: ptr("a"), Name: "  ", Visibility: VisibilityPublic}, false},
+		{"bad visibility", Unit{Code: ptr("a"), Name: "x", Visibility: Visibility("hidden")}, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -58,6 +59,23 @@ func TestUnitValidate(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func ptr(s string) *string { return &s }
+
+func TestValidateCode(t *testing.T) {
+	if err := ValidateCode(nil); err != nil { // clearing the code is always valid
+		t.Fatalf("nil code should be valid, got %v", err)
+	}
+	if err := ValidateCode(ptr("1-bn")); err != nil {
+		t.Fatalf("well-shaped code should be valid, got %v", err)
+	}
+	if err := ValidateCode(ptr("a b")); !errors.Is(err, ErrInvalidUnit) {
+		t.Fatalf("whitespace code should be invalid, got %v", err)
+	}
+	if err := ValidateCode(ptr("")); !errors.Is(err, ErrInvalidUnit) {
+		t.Fatalf("empty code should be invalid, got %v", err)
 	}
 }
 

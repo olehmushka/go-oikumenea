@@ -163,7 +163,7 @@ function EdgeSide({
         <ul className="mt-3 space-y-1 text-sm">
           {units.map((u) => (
             <li key={u.id} className="flex items-center justify-between gap-2">
-              <Localized map={u.name} fallback={u.code} />
+              <Localized map={u.name} fallback={u.code ?? undefined} />
               <button
                 type="button"
                 className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"

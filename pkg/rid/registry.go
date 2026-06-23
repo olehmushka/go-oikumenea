@@ -45,6 +45,7 @@ var typeNames = map[typeKey]string{
 	{SvcTenant, int(KindObject), 1}: "unit",
 	{SvcTenant, int(KindObject), 2}: "graph",
 	{SvcTenant, int(KindObject), 3}: "unit_lifecycle_event",
+	{SvcTenant, int(KindObject), 4}: "unit_code_event",
 	{SvcTenant, int(KindLink), 1}:   "parent_of",
 	// rank
 	{SvcRank, int(KindObject), 1}: "system",

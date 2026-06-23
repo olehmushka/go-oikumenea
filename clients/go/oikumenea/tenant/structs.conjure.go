@@ -128,7 +128,8 @@ func (o *ClosureReportList) UnmarshalYAML(unmarshal func(interface{}) error) err
 
 // Create a unit. `name` is the default-locale text; other locales are managed via LocalizationService.
 type CreateUnitRequest struct {
-	Code     string  `json:"code"`
+	// Optional human-readable code (omit for a non-separate sub-unit; D-UnitCodeLifecycle, M28).
+	Code     *string `json:"code,omitempty"`
 	Name     string  `json:"name"`
 	UnitKind *string `json:"unitKind,omitempty"`
 	Level    *int    `json:"level,omitempty"`
@@ -246,6 +247,33 @@ func (o *GraphList) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+/*
+Set, correct, or clear a unit's code (D-UnitCodeLifecycle, M28). An omitted `code` CLEARS the
+code (the unit becomes a non-separate sub-unit). `reason` is recorded on the append-only ledger.
+*/
+type SetUnitCodeRequest struct {
+	// The new code; omit to clear the code (NULL). Must be unique among active coded units.
+	Code *string `json:"code,omitempty"`
+	// Optional free-text reason recorded in the code-change ledger.
+	Reason *string `json:"reason,omitempty"`
+}
+
+func (o SetUnitCodeRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *SetUnitCodeRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // Transition a unit's lifecycle state (suspend/archive/restore).
 type TransitionRequest struct {
 	ToState UnitState `json:"toState"`
@@ -272,8 +300,8 @@ func (o *TransitionRequest) UnmarshalYAML(unmarshal func(interface{}) error) err
 type Unit struct {
 	// The unit's URN RID (carried as a plain string).
 	Id string `json:"id"`
-	// Stable, locale-agnostic identifier external systems reference (D-Code); unique among active units.
-	Code string `json:"code"`
+	// Optional human-readable business ID (D-UnitCodeLifecycle, M28); absent = a non-separate sub-unit. The RID (id) is the stable external handle. Unique among active units that have a code; set/corrected/cleared via PUT /units/{id}/code.
+	Code *string `json:"code,omitempty"`
 	// locale->text display name (all enabled locales; default-locale fallback + i18n store).
 	Name map[string]string `json:"name"`
 	// Descriptive instance label (e.g. battalion); never branched on in code.
@@ -318,6 +346,77 @@ func (o Unit) MarshalYAML() (interface{}, error) {
 }
 
 func (o *Unit) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// One entry in a unit's append-only code-change ledger (D-UnitCodeLifecycle, M28).
+type UnitCodeEvent struct {
+	// The event's URN RID.
+	Id     string `json:"id"`
+	UnitId string `json:"unitId"`
+	// The code before the change (absent = the unit was codeless).
+	OldCode *string `json:"oldCode,omitempty"`
+	// The code after the change (absent = the code was cleared).
+	NewCode   *string           `json:"newCode,omitempty"`
+	Reason    *string           `json:"reason,omitempty"`
+	CreatedAt datetime.DateTime `json:"createdAt"`
+}
+
+func (o UnitCodeEvent) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UnitCodeEvent) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// A unit's code-change history, newest first.
+type UnitCodeEventList struct {
+	Events []UnitCodeEvent `json:"events"`
+}
+
+func (o UnitCodeEventList) MarshalJSON() ([]byte, error) {
+	if o.Events == nil {
+		o.Events = make([]UnitCodeEvent, 0)
+	}
+	type _tmpUnitCodeEventList UnitCodeEventList
+	return safejson.Marshal(_tmpUnitCodeEventList(o))
+}
+
+func (o *UnitCodeEventList) UnmarshalJSON(data []byte) error {
+	type _tmpUnitCodeEventList UnitCodeEventList
+	var rawUnitCodeEventList _tmpUnitCodeEventList
+	if err := safejson.Unmarshal(data, &rawUnitCodeEventList); err != nil {
+		return err
+	}
+	if rawUnitCodeEventList.Events == nil {
+		rawUnitCodeEventList.Events = make([]UnitCodeEvent, 0)
+	}
+	*o = UnitCodeEventList(rawUnitCodeEventList)
+	return nil
+}
+
+func (o UnitCodeEventList) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UnitCodeEventList) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -449,8 +548,9 @@ func (o *UnitPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // A lightweight unit reference with its closure depth (ancestor/descendant listings).
 type UnitRef struct {
-	Id   string            `json:"id"`
-	Code string            `json:"code"`
+	Id string `json:"id"`
+	// Optional human-readable code (absent for a codeless sub-unit; D-UnitCodeLifecycle).
+	Code *string           `json:"code,omitempty"`
 	Name map[string]string `json:"name"`
 	// Closure distance from the queried unit (shortest path in the DAG).
 	Depth int `json:"depth"`
@@ -602,7 +702,7 @@ func (o *UpdateGraphRequest) UnmarshalYAML(unmarshal func(interface{}) error) er
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
-// Update name/kind/level/metadata/visibility. Omitted fields are unchanged. `code` is immutable.
+// Update name/kind/level/metadata/visibility. Omitted fields are unchanged. `code` is excluded — set it via PUT /units/{id}/code (D-UnitCodeLifecycle).
 type UpdateUnitRequest struct {
 	Name       *string      `json:"name,omitempty"`
 	UnitKind   *string      `json:"unitKind,omitempty"`

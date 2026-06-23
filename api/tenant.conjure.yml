@@ -36,8 +36,8 @@ types:
             type: string
             docs: The unit's URN RID (carried as a plain string).
           code:
-            type: string
-            docs: Stable, locale-agnostic identifier external systems reference (D-Code); unique among active units.
+            type: optional<string>
+            docs: Optional human-readable business ID (D-UnitCodeLifecycle, M28); absent = a non-separate sub-unit. The RID (id) is the stable external handle. Unique among active units that have a code; set/corrected/cleared via PUT /units/{id}/code.
           name:
             type: map<string, string>
             docs: locale->text display name (all enabled locales; default-locale fallback + i18n store).
@@ -104,7 +104,9 @@ types:
         docs: A lightweight unit reference with its closure depth (ancestor/descendant listings).
         fields:
           id: string
-          code: string
+          code:
+            type: optional<string>
+            docs: Optional human-readable code (absent for a codeless sub-unit; D-UnitCodeLifecycle).
           name: map<string, string>
           depth:
             type: integer
@@ -150,7 +152,9 @@ types:
       CreateUnitRequest:
         docs: Create a unit. `name` is the default-locale text; other locales are managed via LocalizationService.
         fields:
-          code: string
+          code:
+            type: optional<string>
+            docs: Optional human-readable code (omit for a non-separate sub-unit; D-UnitCodeLifecycle, M28).
           name: string
           unitKind: optional<string>
           level: optional<integer>
@@ -159,13 +163,43 @@ types:
             docs: Defaults to PUBLIC.
           metadata: optional<any>
       UpdateUnitRequest:
-        docs: Update name/kind/level/metadata/visibility. Omitted fields are unchanged. `code` is immutable.
+        docs: Update name/kind/level/metadata/visibility. Omitted fields are unchanged. `code` is excluded — set it via PUT /units/{id}/code (D-UnitCodeLifecycle).
         fields:
           name: optional<string>
           unitKind: optional<string>
           level: optional<integer>
           visibility: optional<Visibility>
           metadata: optional<any>
+      SetUnitCodeRequest:
+        docs: |
+          Set, correct, or clear a unit's code (D-UnitCodeLifecycle, M28). An omitted `code` CLEARS the
+          code (the unit becomes a non-separate sub-unit). `reason` is recorded on the append-only ledger.
+        fields:
+          code:
+            type: optional<string>
+            docs: The new code; omit to clear the code (NULL). Must be unique among active coded units.
+          reason:
+            type: optional<string>
+            docs: Optional free-text reason recorded in the code-change ledger.
+      UnitCodeEvent:
+        docs: One entry in a unit's append-only code-change ledger (D-UnitCodeLifecycle, M28).
+        fields:
+          id:
+            type: string
+            docs: The event's URN RID.
+          unitId: string
+          oldCode:
+            type: optional<string>
+            docs: The code before the change (absent = the unit was codeless).
+          newCode:
+            type: optional<string>
+            docs: The code after the change (absent = the code was cleared).
+          reason: optional<string>
+          createdAt: datetime
+      UnitCodeEventList:
+        docs: A unit's code-change history, newest first.
+        fields:
+          events: list<UnitCodeEvent>
       AddEdgeRequest:
         docs: Attach the path unit as a child of `parentId` within a graph.
         fields:
@@ -286,13 +320,32 @@ services:
         returns: Unit
       updateUnit:
         http: PUT /units/{unitId}
-        docs: Update name/kind/level/metadata/visibility. `code` is immutable by convention.
+        docs: Update name/kind/level/metadata/visibility. `code` is excluded — use setUnitCode.
         args:
           unitId:
             type: string
             param-type: path
           request: UpdateUnitRequest
         returns: Unit
+      setUnitCode:
+        http: PUT /units/{unitId}/code
+        docs: |
+          Set, correct, or clear the unit's code (audited; appends a tenant_unit_code_events row).
+          Returns Tenant:UnitCodeConflict if the code is taken among active units. Requires unit.recode.
+        args:
+          unitId:
+            type: string
+            param-type: path
+          request: SetUnitCodeRequest
+        returns: Unit
+      listUnitCodeEvents:
+        http: GET /units/{unitId}/code-events
+        docs: A unit's code-change history, newest first (D-UnitCodeLifecycle, M28).
+        args:
+          unitId:
+            type: string
+            param-type: path
+        returns: UnitCodeEventList
       listUnits:
         http: GET /units
         docs: List/search units, token-paginated, optionally filtered by level.

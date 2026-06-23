@@ -106,6 +106,11 @@ unique, immutable by convention) and a human-facing, **translatable `name`** (th
 value in the entity's own column, with other locales in the i18n store). Editing or translating
 the name never changes the code, so external references never break.
 
+**Unit exception (D-UnitCodeLifecycle, M28):** a [tenant](../modules/tenant.md) **unit** `code` is
+**optional and mutable** (a correctable human-readable ID; a codeless unit is a non-separate
+sub-unit) — for units the stable handle external systems reference is the **RID**, not the code.
+All other structural/catalog entities follow the immutable-by-convention rule above.
+
 Owners: every module with a structural/catalog entity (tenant, authorization, membership/
 position, rank, localization, document, order). See [conventions.md](conventions.md) (Code vs. name).
 

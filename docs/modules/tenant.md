@@ -17,12 +17,12 @@ reads its closure to resolve inheritance. It does **not** decide access itself.
 
 **Ontology kinds** (D-Ontology; [registry](../ontology-mapping.md)) — **Objects:** `Unit`, `Graph`.
 **Links:** `link__parent_of` (the unit edge, per graph) and the derived `link__ancestor_of` (the
-closure). **Actions:** `CreateUnit`, `TransitionUnit`, `AddEdge`/`RemoveEdge`, graph management —
-each audited and keyed by its `action__<type>` RID.
+closure). **Actions:** `CreateUnit`, `TransitionUnit`, `RecodeUnit`, `AddEdge`/`RemoveEdge`, graph
+management — each audited and keyed by its `action__<type>` RID.
 
-- **Unit** (aggregate root) — a node in the org graph: stable `code`, translatable `name`,
+- **Unit** (aggregate root) — a node in the org graph: **optional** `code`, translatable `name`,
   optional `unit_kind` label, optional ordinal `level`, `visibility`, lifecycle `state`,
-  free-form `metadata`.
+  free-form `metadata`. A **codeless** unit is a non-separate sub-unit (D-UnitCodeLifecycle, M28).
 - **Graph** — a **named hierarchy** over the units (D-Graphs): `command` (the structural /
   administrative authority chain — the default, undeletable) and `operational`
   (mission / task-organization, OPCON-like). Instance-admin-managed registry; stable `code` +
@@ -40,9 +40,13 @@ per [conventions.md](../architecture/conventions.md).
 
 **`tenant_units`**
 - `id` PK
-- `code TEXT NOT NULL` — **stable, locale-agnostic** identifier for external-system reference
-  (D-Code); unique among active units (`UNIQUE WHERE deleted_at IS NULL`); immutable by
-  convention. (Replaces drafts' `slug` — an API-only service has no subdomains.)
+- `code TEXT` — **optional**, **mutable** human-readable business identifier
+  (D-UnitCodeLifecycle, M28, amending D-Code). `NULL` ⇒ a **non-separate sub-unit** (a line
+  battalion/platoon with no independent designation); a value ⇒ a separate unit. Unique among
+  active units **that have a code** (`UNIQUE WHERE deleted_at IS NULL AND code IS NOT NULL`).
+  Set/corrected/cleared only via the audited recode op (below) — **not** the generic update patch.
+  The stable machine handle external systems reference is the **RID**, not the code. (Replaces
+  drafts' `slug` — an API-only service has no subdomains.)
 - `name TEXT NOT NULL` — default-locale display name; **translatable** via the
   [localization](localization.md) store (returned as a `locale → text` map)
 - `unit_kind TEXT` — descriptive instance label (e.g. `battalion`); **not** branched on in
@@ -113,6 +117,13 @@ not audited — D-ClosureDriftHealth)
 - `id` PK, `unit_id`, `from_state`, `to_state`, `reason TEXT`, `actor_person_id`,
   `request_id`, `created_at`
 
+**`tenant_unit_code_events`** (append-only; `reject_mutation()` guard — substrate for the
+`RecodeUnit` Action, D-UnitCodeLifecycle M28)
+- `id` PK (RID slot `4,1,4`), `unit_id`, `old_code TEXT` (nullable), `new_code TEXT` (nullable —
+  both nullable so NULL↔value transitions are recorded: give a code, fix a code, clear a code),
+  `reason TEXT`, `actor_person_id`, `request_id`, `created_at`. Appended in the **same transaction**
+  as the `tenant_units.code` update — the queryable rename history.
+
 ## Conjure API surface
 
 `TenantService` (all unit-scoped checks against the path unit):
@@ -121,7 +132,8 @@ not audited — D-ClosureDriftHealth)
 |---|---|---|
 | `POST /units` | Create a unit | `unit.create` (instance or parent-subtree) |
 | `GET /units/{id}` | Read one unit | `unit.read` at the unit (per-unit decision; reach required even for a `public` unit) |
-| `PUT /units/{id}` | Update name/kind/level/metadata/visibility | `unit.update` |
+| `PUT /units/{id}` | Update name/kind/level/metadata/visibility (**`code` excluded** — see recode) | `unit.update` |
+| `PUT /units/{id}/code` | Set / correct / clear the unit `code` (body: `code?`, `reason?`); audited, appends `tenant_unit_code_events`; `409 Tenant:UnitCodeConflict` on collision (D-UnitCodeLifecycle) | `unit.recode` |
 | `GET /units` | List/search units (token-paginated; filterable by `level`) | `unit.read` + shadow gate |
 | `POST /units/{id}/edges` | Add a parent in a graph (body: `parentId`, `graph`) | `unit.edges.<graph>.manage` OR `unit.edges.manage` (D-EdgePerms) |
 | `DELETE /units/{id}/edges?graph={g}&parentId={p}` | Detach from a parent in a graph | `unit.edges.<graph>.manage` OR `unit.edges.manage` (D-EdgePerms) |
@@ -156,7 +168,8 @@ edge's graph).
 
 ## Authorization touchpoints
 
-Defines and is gated by: `unit.create`, `unit.read`, `unit.update`,
+Defines and is gated by: `unit.create`, `unit.read`, `unit.update`, `unit.recode` (the audited
+code set/correct/clear — D-UnitCodeLifecycle),
 `unit.edges.<graph>.manage` / `unit.edges.manage` (D-EdgePerms),
 `unit.lifecycle` (all unit-scoped, the path unit) and the **graph-registry** permissions
 `graph.read` (a reference read in `unit-reader`) + `graph.manage` (instance-scope). Read results
@@ -189,7 +202,10 @@ never decides access — it calls the PDP. `level` is **not** consulted by any c
   is always safe. Graph `code` is unique among active graphs and immutable by convention.
 - **Lifecycle is reversible.** `archived` is soft (within grace) before any purge; transitions
   are append-only events.
-- Unit **`code`** is unique among active units and stable/immutable by convention; `name` is
+- Unit **`code`** is **optional** (a codeless unit is a non-separate sub-unit) and **unique among
+  active units that have a code**; it is **mutable** only through the audited recode op
+  (`PUT /units/{id}/code`), which appends a `tenant_unit_code_events` row in the same transaction
+  (D-UnitCodeLifecycle, M28). External systems reference the **RID**, not the code. `name` is
   a localized label (default-locale fallback + [localization](localization.md) store).
 - **RLS backstop.** The unit-scoped tables (`tenant_units`, `tenant_unit_edges`) carry the
   defense-in-depth RLS policies keyed on `app.readable_units` / `app.writable_units`

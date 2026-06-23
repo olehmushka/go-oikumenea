@@ -32,6 +32,8 @@ export type UnitRefList = tenant.IUnitRefList;
 export type Graph = tenant.IGraph;
 export type GraphList = tenant.IGraphList;
 export type UnitLanguage = tenant.IUnitLanguage;
+export type UnitCodeEvent = tenant.IUnitCodeEvent;
+export type UnitCodeEventList = tenant.IUnitCodeEventList;
 
 // ── person ───────────────────────────────────────────────────────────────────
 export type Person = person.IPerson;

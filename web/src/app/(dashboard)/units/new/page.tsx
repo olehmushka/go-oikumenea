@@ -22,7 +22,7 @@ export default function NewUnitPage() {
     setErr(null);
     const f = new FormData(e.currentTarget);
     const body = {
-      code: String(f.get("code") || "").trim(),
+      code: String(f.get("code") || "").trim() || undefined,
       name: String(f.get("name") || "").trim(),
       unitKind: String(f.get("unitKind") || "").trim() || undefined,
       visibility: String(f.get("visibility") || "PUBLIC"),
@@ -51,9 +51,9 @@ export default function NewUnitPage() {
       {err ? <div className="mb-4"><ErrorBox error={err} /></div> : null}
       <form onSubmit={onSubmit} className="card space-y-4 p-5">
         <div>
-          <label className="label"><T>Code *</T></label>
-          <input name="code" required className="input" placeholder="hq-1" />
-          <p className="mt-1 text-xs text-slate-400"><T>Stable, locale-agnostic identifier.</T></p>
+          <label className="label"><T>Code</T></label>
+          <input name="code" className="input" placeholder="hq-1" />
+          <p className="mt-1 text-xs text-slate-400"><T>Optional human-readable identifier. Leave empty for a non-separate sub-unit — the RID is the stable external handle.</T></p>
         </div>
         <div>
           <label className="label"><T>Name *</T></label>

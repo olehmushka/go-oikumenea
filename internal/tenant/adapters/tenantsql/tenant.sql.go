@@ -56,6 +56,25 @@ func (q *Queries) CountActiveGraphs(ctx context.Context) (int32, error) {
 	return active_count, err
 }
 
+const countActiveUnitsByCode = `-- name: CountActiveUnitsByCode :one
+SELECT count(*)::int AS code_count FROM oikumenea.tenant_units
+WHERE code = $1 AND deleted_at IS NULL AND id <> $2
+`
+
+type CountActiveUnitsByCodeParams struct {
+	Code      pgtype.Text
+	ExcludeID string
+}
+
+// Count active units already holding @code, excluding @exclude_id (the unit being recoded). Drives
+// the friendly ErrUnitCodeConflict pre-check before the partial-unique index would reject the write.
+func (q *Queries) CountActiveUnitsByCode(ctx context.Context, arg CountActiveUnitsByCodeParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countActiveUnitsByCode, arg.Code, arg.ExcludeID)
+	var code_count int32
+	err := row.Scan(&code_count)
+	return code_count, err
+}
+
 const deleteClosureForGraph = `-- name: DeleteClosureForGraph :exec
 DELETE FROM oikumenea.tenant_unit_closure WHERE graph_id = $1
 `
@@ -313,7 +332,7 @@ RETURNING id, code, name, unit_kind, level, visibility, state, metadata, created
 `
 
 type InsertUnitParams struct {
-	Code       string
+	Code       pgtype.Text
 	Name       string
 	UnitKind   pgtype.Text
 	Level      pgtype.Int2
@@ -326,6 +345,7 @@ type InsertUnitParams struct {
 // soft-delete; edges hard-delete on detach; the closure is derived (no RID).
 // ============================ units ============================
 // Create a unit. The RID PK defaults at the database; the partial-unique code guards duplicates.
+// `code` is optional (NULL = a non-separate sub-unit; D-UnitCodeLifecycle).
 func (q *Queries) InsertUnit(ctx context.Context, arg InsertUnitParams) (OikumeneaTenantUnit, error) {
 	row := q.db.QueryRow(ctx, insertUnit,
 		arg.Code,
@@ -350,6 +370,35 @@ func (q *Queries) InsertUnit(ctx context.Context, arg InsertUnitParams) (Oikumen
 		&i.DeletedAt,
 	)
 	return i, err
+}
+
+const insertUnitCodeEvent = `-- name: InsertUnitCodeEvent :exec
+
+INSERT INTO oikumenea.tenant_unit_code_events
+  (unit_id, old_code, new_code, reason, actor_person_id, request_id)
+VALUES ($1, $2, $3, $4, $5, $6)
+`
+
+type InsertUnitCodeEventParams struct {
+	UnitID        string
+	OldCode       pgtype.Text
+	NewCode       pgtype.Text
+	Reason        pgtype.Text
+	ActorPersonID pgtype.Text
+	RequestID     string
+}
+
+// ============================ code events (D-UnitCodeLifecycle, M28) ============================
+func (q *Queries) InsertUnitCodeEvent(ctx context.Context, arg InsertUnitCodeEventParams) error {
+	_, err := q.db.Exec(ctx, insertUnitCodeEvent,
+		arg.UnitID,
+		arg.OldCode,
+		arg.NewCode,
+		arg.Reason,
+		arg.ActorPersonID,
+		arg.RequestID,
+	)
+	return err
 }
 
 const insertUnitLanguage = `-- name: InsertUnitLanguage :exec
@@ -383,7 +432,7 @@ type ListAncestorsParams struct {
 
 type ListAncestorsRow struct {
 	ID         string
-	Code       string
+	Code       pgtype.Text
 	Name       string
 	Visibility string
 	Depth      int32
@@ -435,7 +484,7 @@ type ListDescendantsParams struct {
 
 type ListDescendantsRow struct {
 	ID         string
-	Code       string
+	Code       pgtype.Text
 	Name       string
 	Visibility string
 	Depth      int32
@@ -495,6 +544,43 @@ func (q *Queries) ListGraphs(ctx context.Context) ([]OikumeneaTenantGraph, error
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUnitCodeEvents = `-- name: ListUnitCodeEvents :many
+SELECT id, unit_id, old_code, new_code, reason, actor_person_id, request_id, created_at
+FROM oikumenea.tenant_unit_code_events
+WHERE unit_id = $1
+ORDER BY created_at DESC, id DESC
+`
+
+// A unit's code-change history, newest first.
+func (q *Queries) ListUnitCodeEvents(ctx context.Context, unitID string) ([]OikumeneaTenantUnitCodeEvent, error) {
+	rows, err := q.db.Query(ctx, listUnitCodeEvents, unitID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaTenantUnitCodeEvent
+	for rows.Next() {
+		var i OikumeneaTenantUnitCodeEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.UnitID,
+			&i.OldCode,
+			&i.NewCode,
+			&i.Reason,
+			&i.ActorPersonID,
+			&i.RequestID,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -627,6 +713,38 @@ GROUP BY ancestor_id, descendant_id
 func (q *Queries) RebuildClosureForGraph(ctx context.Context, graphID string) error {
 	_, err := q.db.Exec(ctx, rebuildClosureForGraph, graphID)
 	return err
+}
+
+const setUnitCode = `-- name: SetUnitCode :one
+UPDATE oikumenea.tenant_units SET code = $1
+WHERE id = $2 AND deleted_at IS NULL
+RETURNING id, code, name, unit_kind, level, visibility, state, metadata, created_at, updated_at, deleted_at
+`
+
+type SetUnitCodeParams struct {
+	Code pgtype.Text
+	ID   string
+}
+
+// Set/correct/clear a unit's code (D-UnitCodeLifecycle). A NULL narg clears the code; the partial
+// unique index guards collisions among active coded units (the app pre-checks for a friendly 409).
+func (q *Queries) SetUnitCode(ctx context.Context, arg SetUnitCodeParams) (OikumeneaTenantUnit, error) {
+	row := q.db.QueryRow(ctx, setUnitCode, arg.Code, arg.ID)
+	var i OikumeneaTenantUnit
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.UnitKind,
+		&i.Level,
+		&i.Visibility,
+		&i.State,
+		&i.Metadata,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
 }
 
 const setUnitState = `-- name: SetUnitState :one

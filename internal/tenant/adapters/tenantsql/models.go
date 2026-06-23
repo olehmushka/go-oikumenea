@@ -1881,6 +1881,368 @@ type OikumeneaRankType struct {
 	DeletedAt pgtype.Timestamptz
 }
 
+type OikumeneaReligionAffiliation struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:none
+	ReligionID pgtype.Text
+	// pii:none
+	TraditionUnitID pgtype.Text
+	// pii:none
+	CommunityUnitID pgtype.Text
+	// pii:none
+	AffiliationTypeID string
+	// pii:special
+	ValueCiphertext []byte
+	// pii:special
+	WrappedDek []byte
+	KeyRef     pgtype.Text
+	// pii:special
+	ValueBlindIndex []byte
+	Status          string
+	EffectiveFrom   pgtype.Timestamptz
+	EffectiveTo     pgtype.Timestamptz
+	Source          pgtype.Text
+	Confidence      pgtype.Text
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+	DeletedAt       pgtype.Timestamptz
+}
+
+type OikumeneaReligionAffiliationType struct {
+	// pii:none
+	ID string
+	// pii:none
+	TraditionTaxonID pgtype.Text
+	// pii:none
+	Code string
+	// pii:none
+	Name      string
+	Status    string
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaReligionAlias struct {
+	// pii:none
+	ID string
+	// pii:none
+	UnitID string
+	// pii:none
+	AliasText string
+	AliasType string
+	Locale    pgtype.Text
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaReligionClassification struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name        string
+	Description pgtype.Text
+	Status      string
+	SortOrder   pgtype.Int4
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+	DeletedAt   pgtype.Timestamptz
+}
+
+type OikumeneaReligionClergyCredential struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:none
+	ClergyGradeID string
+	// pii:none
+	OrgUnitID string
+	// pii:none
+	GrantedOn pgtype.Date
+	// pii:none
+	ConferredByPersonID pgtype.Text
+	Status              string
+	EffectiveFrom       pgtype.Timestamptz
+	EffectiveTo         pgtype.Timestamptz
+	Source              pgtype.Text
+	Confidence          pgtype.Text
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+	DeletedAt           pgtype.Timestamptz
+}
+
+type OikumeneaReligionClergyGrade struct {
+	// pii:none
+	ID string
+	// pii:none
+	TraditionTaxonID pgtype.Text
+	// pii:none
+	GradeCategoryID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	Ordinal   int32
+	Status    string
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaReligionGradeCategory struct {
+	// pii:none
+	ID string
+	// pii:none
+	TraditionTaxonID pgtype.Text
+	// pii:none
+	Code string
+	// pii:none
+	Name      string
+	Ordinal   pgtype.Int4
+	Status    string
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaReligionOfficeType struct {
+	// pii:none
+	ID string
+	// pii:none
+	TraditionTaxonID pgtype.Text
+	// pii:none
+	Code string
+	// pii:none
+	Name      string
+	Status    string
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaReligionOrgClassification struct {
+	// pii:none
+	ID string
+	// pii:none
+	UnitID string
+	// pii:none
+	TaxonID string
+	// pii:none
+	IsPrimary  bool
+	Source     pgtype.Text
+	Confidence pgtype.Text
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
+}
+
+type OikumeneaReligionOrgKind struct {
+	// pii:none
+	ID string
+	// pii:none
+	ReligionID pgtype.Text
+	// pii:none
+	Code string
+	// pii:none
+	Name      string
+	Ordinal   pgtype.Int4
+	Status    string
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaReligionOrgPolicy struct {
+	// pii:none
+	ID string
+	// pii:none
+	UnitID string
+	// pii:none
+	PolicyKindID string
+	Reason       pgtype.Text
+	// pii:none
+	DecidedByPersonID pgtype.Text
+	DecidedAt         pgtype.Timestamptz
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+	DeletedAt         pgtype.Timestamptz
+}
+
+type OikumeneaReligionOrgProfile struct {
+	// pii:none
+	UnitID string
+	// pii:none
+	OrgKindID pgtype.Text
+	// pii:none
+	ShortCode pgtype.Text
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaReligionPolicyKind struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name        string
+	Description pgtype.Text
+	Status      string
+	SortOrder   pgtype.Int4
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+	DeletedAt   pgtype.Timestamptz
+}
+
+type OikumeneaReligionServiceSchedule struct {
+	// pii:none
+	ID string
+	// pii:none
+	SiteID        string
+	ServiceTypeID string
+	DayOfWeek     pgtype.Int2
+	Rrule         pgtype.Text
+	StartTime     pgtype.Time
+	EndTime       pgtype.Time
+	Timezone      string
+	Language      pgtype.Text
+	Mode          string
+	MeetingUrl    pgtype.Text
+	Description   pgtype.Text
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	DeletedAt     pgtype.Timestamptz
+}
+
+type OikumeneaReligionServiceType struct {
+	// pii:none
+	ID string
+	// pii:none
+	TraditionTaxonID pgtype.Text
+	// pii:none
+	Code string
+	// pii:none
+	Name      string
+	Status    string
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaReligionSite struct {
+	// pii:none
+	ID string
+	// pii:none
+	OrgUnitID string
+	// pii:none
+	LocationID string
+	// pii:none
+	SiteTypeID      string
+	Visibility      string
+	PublicPrecision string
+	IsPrimary       bool
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+	DeletedAt       pgtype.Timestamptz
+}
+
+type OikumeneaReligionSiteType struct {
+	// pii:none
+	ID string
+	// pii:none
+	TraditionTaxonID pgtype.Text
+	// pii:none
+	Code string
+	// pii:none
+	Name      string
+	Status    string
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaReligionTaxa struct {
+	// pii:none
+	ID string
+	// pii:none
+	ParentID pgtype.Text
+	// pii:none
+	RankID string
+	// pii:none
+	ReligionID pgtype.Text
+	// pii:none
+	Code string
+	// pii:none
+	Name        string
+	Description pgtype.Text
+	// pii:none
+	WikidataID    pgtype.Text
+	Icon          pgtype.Text
+	SortOrder     pgtype.Int4
+	Source        pgtype.Text
+	SourceVersion pgtype.Text
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	DeletedAt     pgtype.Timestamptz
+}
+
+type OikumeneaReligionTaxaClosure struct {
+	// pii:none
+	AncestorID string
+	// pii:none
+	DescendantID string
+	// pii:none
+	Depth int32
+}
+
+type OikumeneaReligionTaxonClassification struct {
+	// pii:none
+	TaxonID string
+	// pii:none
+	ClassificationID string
+	CreatedAt        pgtype.Timestamptz
+}
+
+type OikumeneaReligionTaxonRank struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	Ordinal   int32
+	Status    string
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaReligionUnitClassification struct {
+	// pii:none
+	UnitID string
+	// pii:none
+	ClassificationID string
+	CreatedAt        pgtype.Timestamptz
+}
+
 type OikumeneaSchemaVersion struct {
 	Singleton bool
 	Revision  string
@@ -1922,7 +2284,7 @@ type OikumeneaTenantUnit struct {
 	// pii:none
 	ID string
 	// pii:none
-	Code string
+	Code pgtype.Text
 	// pii:none
 	Name string
 	// pii:none
@@ -1949,6 +2311,24 @@ type OikumeneaTenantUnitClosure struct {
 	DescendantID string
 	// pii:none
 	Depth int32
+}
+
+type OikumeneaTenantUnitCodeEvent struct {
+	// pii:none
+	ID string
+	// pii:none
+	UnitID string
+	// pii:none
+	OldCode pgtype.Text
+	// pii:none
+	NewCode pgtype.Text
+	// pii:none
+	Reason pgtype.Text
+	// pii:basic
+	ActorPersonID pgtype.Text
+	// pii:none
+	RequestID string
+	CreatedAt pgtype.Timestamptz
 }
 
 type OikumeneaTenantUnitEdge struct {

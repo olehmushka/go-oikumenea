@@ -46,7 +46,7 @@ Real-world entities with identity over time → Objects.
 
 | Object Type | Module | `code`/`name`? | Lifecycle / removal | Notes |
 |---|---|---|---|---|
-| `Unit` | [tenant](modules/tenant.md) | yes (`code` unique among active) | `state` (active/suspended/archived) + soft-delete | `visibility` public/shadow; `level` & `unit_kind` are **directory attributes**, never PDP inputs |
+| `Unit` | [tenant](modules/tenant.md) | **optional**, **mutable** `code` (unique among active **coded** units) | `state` (active/suspended/archived) + soft-delete | codeless ⇒ non-separate sub-unit; code set/cleared via audited `RecodeUnit` (history in `tenant_unit_code_events`, RID `4,1,4`); external ref is the **RID**, not `code` (D-UnitCodeLifecycle, M28); `visibility` public/shadow; `level` & `unit_kind` are **directory attributes**, never PDP inputs |
 | `Graph` | [tenant](modules/tenant.md) | yes | soft-delete (`command` undeletable) | named hierarchy; `is_authority_bearing` gates PDP cascade |
 | `Person` | [person](modules/person.md) | optional `code` | `status` (active/deactivated/purged) + soft-delete; **crypto-erase on purge** | instance-global; CLDR structured names (patronymic in `given2`); `birthdate`, ISO-5218 `sex` |
 | `PersonEmail` / `PersonPhone` / `PersonCallSign` | [person](modules/person.md) | no | soft-delete; **erased on purge** | effective person child rows; email/phone `pii:contact`, call sign `pii:basic`; each unique per person among active; `is_primary` |
@@ -207,7 +207,10 @@ ledger ([Identifier scheme](#identifier-scheme-rids)).
   `ConferCredential`/`SuspendCredential`/`AppointClergy` (M23), `RecordAffiliation` (M24),
   `AddSite`/`AddSchedule`/`AddAlias` (M25, built) — the religion vertical (D-Religion);
   `CreateVehicle`/`RegisterVehicle`/`TransferRegistration` + `geo_subdivisions`/vehicle-catalog edits
-  (M26 — D-Vehicles / D-GeoSubdivisions).
+  (M26 — D-Vehicles / D-GeoSubdivisions);
+  `RecodeUnit` (**M28, D-UnitCodeLifecycle**) — the audited set/correct/clear of a unit `code`,
+  recorded in the append-only `tenant_unit_code_events` ledger (RID slot `4,1,4`); `CreateUnit` now
+  accepts an optional code.
 - **Order-driven effects (the strongest ontology fit):** `IssueOrder` is one Action whose effects are
   **emitted as domain events** (`AppointmentOrdered`, `RemovalOrdered`, `RankChangeOrdered`) that
   membership/person subscribers apply **in the same transaction**, citing `order_item_id` provenance.

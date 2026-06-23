@@ -40,7 +40,7 @@ func (r *Repository) InsertUnit(ctx context.Context, u domain.Unit) (domain.Unit
 		metadata = json.RawMessage("{}") // the column is NOT NULL; default empty object
 	}
 	row, err := r.q.InsertUnit(ctx, tenantsql.InsertUnitParams{
-		Code:       u.Code,
+		Code:       textPtr(u.Code),
 		Name:       u.Name,
 		UnitKind:   textPtr(strPtrOrNil(u.UnitKind)),
 		Level:      int2Ptr(u.Level),
@@ -291,7 +291,7 @@ func (r *Repository) ListAncestors(ctx context.Context, graphID, unitID string) 
 	}
 	refs := make([]domain.UnitRef, 0, len(rows))
 	for _, row := range rows {
-		refs = append(refs, domain.UnitRef{ID: row.ID, Code: row.Code, Name: row.Name, Depth: int(row.Depth), Visibility: domain.Visibility(row.Visibility)})
+		refs = append(refs, domain.UnitRef{ID: row.ID, Code: textToPtr(row.Code), Name: row.Name, Depth: int(row.Depth), Visibility: domain.Visibility(row.Visibility)})
 	}
 	return refs, nil
 }
@@ -308,9 +308,65 @@ func (r *Repository) ListDescendants(ctx context.Context, graphID, unitID, after
 	}
 	refs := make([]domain.UnitRef, 0, len(rows))
 	for _, row := range rows {
-		refs = append(refs, domain.UnitRef{ID: row.ID, Code: row.Code, Name: row.Name, Depth: int(row.Depth), Visibility: domain.Visibility(row.Visibility)})
+		refs = append(refs, domain.UnitRef{ID: row.ID, Code: textToPtr(row.Code), Name: row.Name, Depth: int(row.Depth), Visibility: domain.Visibility(row.Visibility)})
 	}
 	return refs, nil
+}
+
+// ---------------------------------------------------------------- code lifecycle (D-UnitCodeLifecycle, M28)
+
+func (r *Repository) SetUnitCode(ctx context.Context, id string, code *string) (domain.Unit, error) {
+	row, err := r.q.SetUnitCode(ctx, tenantsql.SetUnitCodeParams{ID: id, Code: textPtr(code)})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Unit{}, domain.ErrUnitNotFound
+		}
+		if isUniqueViolation(err) {
+			return domain.Unit{}, domain.ErrUnitCodeConflict
+		}
+		return domain.Unit{}, err
+	}
+	return toUnit(row), nil
+}
+
+func (r *Repository) CountActiveUnitsByCode(ctx context.Context, code, excludeID string) (int, error) {
+	n, err := r.q.CountActiveUnitsByCode(ctx, tenantsql.CountActiveUnitsByCodeParams{
+		Code:      pgtype.Text{String: code, Valid: true},
+		ExcludeID: excludeID,
+	})
+	return int(n), err
+}
+
+func (r *Repository) InsertUnitCodeEvent(ctx context.Context, e domain.UnitCodeEvent) error {
+	return r.q.InsertUnitCodeEvent(ctx, tenantsql.InsertUnitCodeEventParams{
+		UnitID:        e.UnitID,
+		OldCode:       textPtr(e.OldCode),
+		NewCode:       textPtr(e.NewCode),
+		Reason:        textPtr(strPtrOrNil(e.Reason)),
+		ActorPersonID: textPtr(strPtrOrNil(e.ActorPersonID)),
+		RequestID:     e.RequestID,
+	})
+}
+
+func (r *Repository) ListUnitCodeEvents(ctx context.Context, unitID string) ([]domain.UnitCodeEvent, error) {
+	rows, err := r.q.ListUnitCodeEvents(ctx, unitID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.UnitCodeEvent, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, domain.UnitCodeEvent{
+			ID:            row.ID,
+			UnitID:        row.UnitID,
+			OldCode:       textToPtr(row.OldCode),
+			NewCode:       textToPtr(row.NewCode),
+			Reason:        row.Reason.String,
+			ActorPersonID: row.ActorPersonID.String,
+			RequestID:     row.RequestID,
+			CreatedAt:     row.CreatedAt.Time,
+		})
+	}
+	return out, nil
 }
 
 // ---------------------------------------------------------------- lifecycle
@@ -331,7 +387,7 @@ func (r *Repository) InsertLifecycleEvent(ctx context.Context, unitID string, fr
 func toUnit(row tenantsql.OikumeneaTenantUnit) domain.Unit {
 	return domain.Unit{
 		ID:         row.ID,
-		Code:       row.Code,
+		Code:       textToPtr(row.Code),
 		Name:       row.Name,
 		UnitKind:   row.UnitKind.String, // "" when not valid
 		Level:      int2ToPtr(row.Level),
@@ -459,6 +515,15 @@ func textPtr(s *string) pgtype.Text {
 		return pgtype.Text{}
 	}
 	return pgtype.Text{String: *s, Valid: true}
+}
+
+// textToPtr is the inverse: an invalid pgtype.Text (SQL NULL) becomes nil, a valid one a *string.
+func textToPtr(t pgtype.Text) *string {
+	if !t.Valid {
+		return nil
+	}
+	s := t.String
+	return &s
 }
 
 func boolPtr(b *bool) pgtype.Bool {

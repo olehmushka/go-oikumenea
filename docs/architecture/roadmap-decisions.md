@@ -898,3 +898,49 @@ build context moves to the repo root so the `file:` SDK dep is in scope, and `ou
 set so the standalone bundle includes it. No schema, contract, or server-behavior change — **additive /
 tooling-only**. Publishing tags (npm / pkg.go.dev) are a follow-up; in-repo consumption verifies the
 SDKs. Lands as **M27** ([milestones](../milestones.md)).
+
+### D-UnitCodeLifecycle — Unit codes are optional, mutable, human-readable IDs (amends D-Code)
+
+**Decision.** For **units** ([tenant](../modules/tenant.md)), the `code` is an **optional, mutable,
+human-readable** business identifier — not the external machine handle. The **RID** (the UUIDv8
+packing app/service/kind/type, F-014) is the stable handle external systems reference. Two changes
+follow:
+
+- **Codeless units.** A unit may be created with **no code** (`code` is nullable). A codeless unit is
+  a **non-separate sub-unit** — a line battalion / platoon that is part of a parent unit but has no
+  independent external designation (Ukr. *підрозділ* vs *окрема частина*). A unit *with* a code is a
+  separate unit. Presence of a code *is* the signal — there is **no redundant `is_separate` flag**.
+- **Editable codes.** A unit's code may be **set, corrected, or cleared** through a single **audited**
+  operation (`PUT /units/{id}/code`, perm `unit.recode`). Each change appends a row to the append-only
+  `tenant_unit_code_events` ledger (`old_code` → `new_code`, actor, reason, request_id). This is the
+  `RecodeUnit` audited Action ([ontology-mapping](../ontology-mapping.md)). It is **not** part of the
+  generic `PUT /units/{id}` patch.
+
+Code **uniqueness** still holds **among active units that have a code** (the partial unique index is
+`WHERE deleted_at IS NULL AND code IS NOT NULL` — many NULLs coexist). This amends **D-Code**
+([decisions.md](decisions.md)) for the unit scope only; roles, ranks, graphs, locales, etc. keep their
+`code TEXT NOT NULL UNIQUE`, immutable-by-convention.
+
+**Why.** Two real needs from `todo.md` (items 2 & 3): (a) org graphs contain sub-units with no
+external code, yet `code TEXT NOT NULL` forced a synthetic one; (b) operators must be able to fix a
+code typo or a reorganization. Codes were never the machine contract — the RID is — so neither
+optionality nor correction threatens external integrations that follow the RID guidance.
+
+**Why not** (a) *Auto-generate a code when omitted*: pollutes the external namespace with synthetic
+handles for units that legitimately have none; loses the *підрозділ*/*окрема частина* distinction.
+(b) *Code aliases / keep the old code resolvable after a rename*: unnecessary once external callers
+key on the RID; adds an alias table + cross-uniqueness burden for no real consumer. (c) *Fold `code`
+into the plain `PUT /units/{id}` patch*: loses the dedicated audit Action and the isolated 409
+conflict surface; muddies the common update path. (d) *A redundant `is_separate` boolean*: can
+disagree with code presence — derive separateness from the code instead.
+
+**Consequence.** `tenant_units.code` becomes nullable (the **existing** `20260601000003_tenant.sql`
+migration is edited in place — dev DB reset + `atlas migrate hash` — per the design session; no new
+file); the unique-index predicate gains `AND code IS NOT NULL`; a new append-only
+`tenant_unit_code_events` table (RID slot `4,1,4`, `reject_mutation()` guard) lands in the same
+migration. `CreateUnitRequest.code` becomes `optional<string>`; a new `setUnitCode` →
+`PUT /units/{id}/code` endpoint + `Tenant:UnitCodeConflict` (409). `internal/tenant` domain `Unit.Code`
+becomes a pointer; `SetUnitCode` application method (uniqueness check + event append, one txn) emits a
+`UnitCodeChanged` domain event consumed by [audit](../modules/audit.md). Web unit editor allows an
+empty code + an "Edit code" action. Consumes `todo.md` items 2 & 3. Lands as **M28**
+([milestones](../milestones.md)).

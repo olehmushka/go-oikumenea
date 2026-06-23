@@ -55,10 +55,11 @@ const (
 
 // Unit is a node in the org graph. Name is the default-locale text (the i18n store holds the other
 // locales; the transport assembles the response map). UnitKind/Level are directory attributes only
-// — never PDP or shadow-gate inputs.
+// — never PDP or shadow-gate inputs. Code is an OPTIONAL, mutable human-readable business ID
+// (D-UnitCodeLifecycle, M28): nil ⇒ a non-separate sub-unit; the RID (ID) is the external handle.
 type Unit struct {
 	ID         string
-	Code       string
+	Code       *string // nil = no code (a non-separate sub-unit)
 	Name       string
 	UnitKind   string // "" = none
 	Level      *int   // nil = unset
@@ -67,6 +68,20 @@ type Unit struct {
 	Metadata   json.RawMessage
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+}
+
+// UnitCodeEvent is one entry in a unit's append-only code-change ledger (D-UnitCodeLifecycle, M28).
+// OldCode/NewCode are nil to record NULL↔value transitions (a codeless unit gaining a code; a code
+// being cleared).
+type UnitCodeEvent struct {
+	ID            string
+	UnitID        string
+	OldCode       *string
+	NewCode       *string
+	Reason        string
+	ActorPersonID string
+	RequestID     string
+	CreatedAt     time.Time
 }
 
 // UnitPatch is a partial update of a unit: a nil field leaves the stored value unchanged. Code is
@@ -106,9 +121,10 @@ type Edge struct {
 }
 
 // UnitRef is a lightweight unit reference with its closure depth (ancestor/descendant listings).
+// Code is optional (nil for a codeless sub-unit; D-UnitCodeLifecycle).
 type UnitRef struct {
 	ID         string
-	Code       string
+	Code       *string
 	Name       string
 	Depth      int
 	Visibility Visibility // public/shadow, for the read-time shadow-visibility gate
@@ -123,10 +139,10 @@ type ClosureReport struct {
 	Sample       json.RawMessage
 }
 
-// Validate enforces the unit invariants before insert: a non-empty, whitespace-free code, a
-// non-empty name, and a known visibility.
+// Validate enforces the unit invariants before insert: an OPTIONAL code (well-shaped if present;
+// D-UnitCodeLifecycle), a non-empty name, and a known visibility.
 func (u Unit) Validate() error {
-	if !validCode(u.Code) {
+	if u.Code != nil && !validCode(*u.Code) {
 		return wrapInvalid("code must be non-empty and contain no whitespace")
 	}
 	if strings.TrimSpace(u.Name) == "" {
@@ -134,6 +150,15 @@ func (u Unit) Validate() error {
 	}
 	if u.Visibility != VisibilityPublic && u.Visibility != VisibilityShadow {
 		return wrapInvalid("visibility must be public or shadow")
+	}
+	return nil
+}
+
+// ValidateCode checks a proposed recode value (D-UnitCodeLifecycle): nil clears the code; a present
+// value must be well-shaped (non-empty, ≤128, no whitespace).
+func ValidateCode(code *string) error {
+	if code != nil && !validCode(*code) {
+		return wrapInvalid("code must be non-empty and contain no whitespace")
 	}
 	return nil
 }
@@ -193,6 +218,12 @@ type Repository interface {
 	UpdateUnit(ctx context.Context, id string, patch UnitPatch) (Unit, error)
 	SetUnitState(ctx context.Context, id string, state State) (Unit, error)
 	ListUnits(ctx context.Context, level *int, after string, limit int) ([]Unit, error)
+
+	// code lifecycle (D-UnitCodeLifecycle, M28)
+	SetUnitCode(ctx context.Context, id string, code *string) (Unit, error)
+	CountActiveUnitsByCode(ctx context.Context, code, excludeID string) (int, error)
+	InsertUnitCodeEvent(ctx context.Context, e UnitCodeEvent) error
+	ListUnitCodeEvents(ctx context.Context, unitID string) ([]UnitCodeEvent, error)
 
 	// graphs
 	InsertGraph(ctx context.Context, code, name string, authorityBearing bool) (Graph, error)

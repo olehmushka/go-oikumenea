@@ -15,7 +15,7 @@ import { EdgeManager } from "@/components/EdgeManager";
 import { CreatePosition, FillPosition, PersonLink, PositionAdmin } from "@/components/PositionForms";
 import { UnitAdmin } from "@/components/UnitForms";
 import { UnitLanguageManager } from "@/components/UnitLanguageForms";
-import type { Position, Unit, UnitRefList } from "@/lib/api/types";
+import type { Position, Unit, UnitCodeEventList, UnitRefList } from "@/lib/api/types";
 
 export default async function UnitDetailPage({
   params,
@@ -27,14 +27,16 @@ export default async function UnitDetailPage({
   let ancestors: UnitRefList | null = null;
   let descendants: UnitRefList | null = null;
   let positions: { positions: Position[] } | null = null;
+  let codeEvents: UnitCodeEventList | null = null;
   let error: unknown = null;
   try {
     const ok = await oikumenea();
     unit = await ok.tenant.getUnit(unitId);
-    [ancestors, descendants, positions] = await Promise.all([
+    [ancestors, descendants, positions, codeEvents] = await Promise.all([
       ok.tenant.unitAncestors(unitId).catch(() => null),
       ok.tenant.unitDescendants(unitId).catch(() => null),
       ok.membership.listPositions(unitId).catch(() => null),
+      ok.tenant.listUnitCodeEvents(unitId).catch(() => null),
     ]);
   } catch (e) {
     error = e;
@@ -66,7 +68,10 @@ export default async function UnitDetailPage({
           <h2 className="text-sm font-semibold text-slate-900"><T>Details</T></h2>
           <dl className="mt-3 space-y-2 text-sm">
             <Row label={<T>Name</T>} value={<Localized map={unit?.name} />} />
-            <Row label={<T>Code</T>} value={<Mono>{unit?.code}</Mono>} />
+            <Row
+              label={<T>Code</T>}
+              value={unit?.code ? <Mono>{unit.code}</Mono> : <span className="text-slate-400"><T>none (sub-unit)</T></span>}
+            />
             <Row label={<T>Kind</T>} value={unit?.unitKind ?? "—"} />
             <Row label={<T>Level</T>} value={unit?.level ?? "—"} />
             <Row
@@ -107,6 +112,34 @@ export default async function UnitDetailPage({
         </p>
         {unit ? <UnitAdmin unit={unit} /> : null}
       </Card>
+
+      {codeEvents && codeEvents.events.length > 0 ? (
+        <Card className="mt-4">
+          <h2 className="text-sm font-semibold text-slate-900"><T>Code history</T></h2>
+          <p className="mb-3 mt-1 text-xs text-slate-500">
+            <T>Every set / correct / clear of this unit's code (newest first; D-UnitCodeLifecycle).</T>
+          </p>
+          <Table
+            head={
+              <>
+                <th className="th"><T>When</T></th>
+                <th className="th"><T>From</T></th>
+                <th className="th"><T>To</T></th>
+                <th className="th"><T>Reason</T></th>
+              </>
+            }
+          >
+            {codeEvents.events.map((e) => (
+              <tr key={e.id}>
+                <td className="td">{new Date(e.createdAt).toLocaleString()}</td>
+                <td className="td">{e.oldCode ? <Mono>{e.oldCode}</Mono> : <span className="text-slate-400">—</span>}</td>
+                <td className="td">{e.newCode ? <Mono>{e.newCode}</Mono> : <span className="text-slate-400">—</span>}</td>
+                <td className="td text-slate-600">{e.reason ?? "—"}</td>
+              </tr>
+            ))}
+          </Table>
+        </Card>
+      ) : null}
 
       <Card className="mt-4">
         <h2 className="text-sm font-semibold text-slate-900"><T>Edges</T></h2>
@@ -176,13 +209,7 @@ export default async function UnitDetailPage({
   );
 }
 
-function UnitRefs({
-  refs,
-  empty,
-}: {
-  refs?: { id: string; code: string; name?: Record<string, string> }[];
-  empty: string;
-}) {
+function UnitRefs({ refs, empty }: { refs?: UnitRefList["units"]; empty: string }) {
   if (!refs || refs.length === 0)
     return <p className="mt-3 text-sm text-slate-400"><T>{empty}</T></p>;
   return (
@@ -190,7 +217,7 @@ function UnitRefs({
       {refs.map((r) => (
         <li key={r.id}>
           <Link href={`/units/${r.id}`} className="text-indigo-600 hover:underline">
-            <Localized map={r.name} fallback={r.code} />
+            <Localized map={r.name} fallback={r.code ?? undefined} />
           </Link>
         </li>
       ))}

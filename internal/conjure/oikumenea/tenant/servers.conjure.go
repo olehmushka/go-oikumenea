@@ -27,8 +27,15 @@ type TenantService interface {
 	CreateUnit(ctx context.Context, authHeader bearertoken.Token, requestArg CreateUnitRequest) (Unit, error)
 	// Read one unit by RID (shadow-gated once authz lands).
 	GetUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (Unit, error)
-	// Update name/kind/level/metadata/visibility. `code` is immutable by convention.
+	// Update name/kind/level/metadata/visibility. `code` is excluded — use setUnitCode.
 	UpdateUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg UpdateUnitRequest) (Unit, error)
+	/*
+	   Set, correct, or clear the unit's code (audited; appends a tenant_unit_code_events row).
+	   Returns Tenant:UnitCodeConflict if the code is taken among active units. Requires unit.recode.
+	*/
+	SetUnitCode(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg SetUnitCodeRequest) (Unit, error)
+	// A unit's code-change history, newest first (D-UnitCodeLifecycle, M28).
+	ListUnitCodeEvents(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (UnitCodeEventList, error)
 	// List/search units, token-paginated, optionally filtered by level.
 	ListUnits(ctx context.Context, authHeader bearertoken.Token, levelArg *int, pageSizeArg *int, pageTokenArg *string) (UnitPage, error)
 	// Attach the path unit as a child of parentId within a graph (default command). Returns Tenant:UnitCycleDetected on a cycle.
@@ -79,6 +86,12 @@ func RegisterRoutesTenantService(router wrouter.Router, impl TenantService, rout
 	}
 	if err := resource.Put("UpdateUnit", "/tenant/v1/units/{unitId}", httpserver.NewJSONHandler(handler.HandleUpdateUnit, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add updateUnit route")
+	}
+	if err := resource.Put("SetUnitCode", "/tenant/v1/units/{unitId}/code", httpserver.NewJSONHandler(handler.HandleSetUnitCode, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add setUnitCode route")
+	}
+	if err := resource.Get("ListUnitCodeEvents", "/tenant/v1/units/{unitId}/code-events", httpserver.NewJSONHandler(handler.HandleListUnitCodeEvents, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listUnitCodeEvents route")
 	}
 	if err := resource.Get("ListUnits", "/tenant/v1/units", httpserver.NewJSONHandler(handler.HandleListUnits, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listUnits route")
@@ -188,6 +201,52 @@ func (t *tenantServiceHandler) HandleUpdateUnit(rw http.ResponseWriter, req *htt
 		return errors.WrapWithInvalidArgument(err)
 	}
 	respArg, err := t.impl.UpdateUnit(req.Context(), bearertoken.Token(authHeader), unitIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (t *tenantServiceHandler) HandleSetUnitCode(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	unitIdArg, ok := pathParams["unitId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"unitId\" not present")
+	}
+	var requestArg SetUnitCodeRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := t.impl.SetUnitCode(req.Context(), bearertoken.Token(authHeader), unitIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (t *tenantServiceHandler) HandleListUnitCodeEvents(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	unitIdArg, ok := pathParams["unitId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"unitId\" not present")
+	}
+	respArg, err := t.impl.ListUnitCodeEvents(req.Context(), bearertoken.Token(authHeader), unitIdArg)
 	if err != nil {
 		return err
 	}

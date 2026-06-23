@@ -75,7 +75,7 @@ func (s Service) CreateUnit(ctx context.Context, token bearertoken.Token, req te
 	}
 	created, err := s.app.CreateUnit(ctx, u)
 	if err != nil {
-		return tenantapi.Unit{}, s.mapError(ctx, err, errCtx{code: req.Code})
+		return tenantapi.Unit{}, s.mapError(ctx, err, errCtx{code: derefOr(req.Code, "")})
 	}
 	return s.unitToAPI(ctx, created)
 }
@@ -110,6 +110,42 @@ func (s Service) UpdateUnit(ctx context.Context, token bearertoken.Token, unitID
 		return tenantapi.Unit{}, s.mapError(ctx, err, errCtx{unitID: unitID})
 	}
 	return s.unitToAPI(ctx, updated)
+}
+
+// SetUnitCode implements PUT /units/{unitId}/code — the audited set/correct/clear of a unit's code
+// (D-UnitCodeLifecycle, M28). An omitted code clears it. Gated by unit.recode at the path unit.
+func (s Service) SetUnitCode(ctx context.Context, token bearertoken.Token, unitID string, req tenantapi.SetUnitCodeRequest) (tenantapi.Unit, error) {
+	if err := s.pep.Require(ctx, token, string(authzdomain.PermUnitRecode), unitID); err != nil {
+		return tenantapi.Unit{}, err
+	}
+	updated, err := s.app.SetUnitCode(ctx, unitID, req.Code, derefOr(req.Reason, ""))
+	if err != nil {
+		return tenantapi.Unit{}, s.mapError(ctx, err, errCtx{unitID: unitID, code: derefOr(req.Code, "")})
+	}
+	return s.unitToAPI(ctx, updated)
+}
+
+// ListUnitCodeEvents implements GET /units/{unitId}/code-events — a unit's code-change history.
+func (s Service) ListUnitCodeEvents(ctx context.Context, token bearertoken.Token, unitID string) (tenantapi.UnitCodeEventList, error) {
+	if err := s.pep.Require(ctx, token, string(authzdomain.PermUnitRead), unitID); err != nil {
+		return tenantapi.UnitCodeEventList{}, err
+	}
+	events, err := s.app.ListUnitCodeEvents(ctx, unitID)
+	if err != nil {
+		return tenantapi.UnitCodeEventList{}, s.mapError(ctx, err, errCtx{unitID: unitID})
+	}
+	out := make([]tenantapi.UnitCodeEvent, 0, len(events))
+	for _, e := range events {
+		out = append(out, tenantapi.UnitCodeEvent{
+			Id:        e.ID,
+			UnitId:    e.UnitID,
+			OldCode:   e.OldCode,
+			NewCode:   e.NewCode,
+			Reason:    strPtrOrNil(e.Reason),
+			CreatedAt: datetime.DateTime(e.CreatedAt),
+		})
+	}
+	return tenantapi.UnitCodeEventList{Events: out}, nil
 }
 
 func (s Service) ListUnits(ctx context.Context, token bearertoken.Token, level *int, pageSize *int, pageToken *string) (tenantapi.UnitPage, error) {

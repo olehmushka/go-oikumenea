@@ -4,8 +4,10 @@ import { IClosureReportList } from "./closureReportList";
 import { ICreateUnitRequest } from "./createUnitRequest";
 import { IGraph } from "./graph";
 import { IGraphList } from "./graphList";
+import { ISetUnitCodeRequest } from "./setUnitCodeRequest";
 import { ITransitionRequest } from "./transitionRequest";
 import { IUnit } from "./unit";
+import { IUnitCodeEventList } from "./unitCodeEventList";
 import { IUnitEdge } from "./unitEdge";
 import { IUnitLanguage } from "./unitLanguage";
 import { IUnitPage } from "./unitPage";
@@ -31,8 +33,16 @@ export interface ITenantService {
     createUnit(request: ICreateUnitRequest): Promise<IUnit>;
     /** Read one unit by RID (shadow-gated once authz lands). */
     getUnit(unitId: string): Promise<IUnit>;
-    /** Update name/kind/level/metadata/visibility. `code` is immutable by convention. */
+    /** Update name/kind/level/metadata/visibility. `code` is excluded — use setUnitCode. */
     updateUnit(unitId: string, request: IUpdateUnitRequest): Promise<IUnit>;
+    /**
+     * Set, correct, or clear the unit's code (audited; appends a tenant_unit_code_events row).
+     * Returns Tenant:UnitCodeConflict if the code is taken among active units. Requires unit.recode.
+     *
+     */
+    setUnitCode(unitId: string, request: ISetUnitCodeRequest): Promise<IUnit>;
+    /** A unit's code-change history, newest first (D-UnitCodeLifecycle, M28). */
+    listUnitCodeEvents(unitId: string): Promise<IUnitCodeEventList>;
     /** List/search units, token-paginated, optionally filtered by level. */
     listUnits(level?: number | null, pageSize?: number | null, pageToken?: string | null): Promise<IUnitPage>;
     /** Attach the path unit as a child of parentId within a graph (default command). Returns Tenant:UnitCycleDetected on a cycle. */
@@ -107,7 +117,7 @@ export class TenantService implements ITenantService {
         );
     }
 
-    /** Update name/kind/level/metadata/visibility. `code` is immutable by convention. */
+    /** Update name/kind/level/metadata/visibility. `code` is excluded — use setUnitCode. */
     public updateUnit(unitId: string, request: IUpdateUnitRequest): Promise<IUnit> {
         return this.bridge.call<IUnit>(
             "TenantService",
@@ -115,6 +125,46 @@ export class TenantService implements ITenantService {
             "PUT",
             "/tenant/v1/units/{unitId}",
             request,
+            __undefined,
+            __undefined,
+            [
+                unitId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Set, correct, or clear the unit's code (audited; appends a tenant_unit_code_events row).
+     * Returns Tenant:UnitCodeConflict if the code is taken among active units. Requires unit.recode.
+     *
+     */
+    public setUnitCode(unitId: string, request: ISetUnitCodeRequest): Promise<IUnit> {
+        return this.bridge.call<IUnit>(
+            "TenantService",
+            "setUnitCode",
+            "PUT",
+            "/tenant/v1/units/{unitId}/code",
+            request,
+            __undefined,
+            __undefined,
+            [
+                unitId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** A unit's code-change history, newest first (D-UnitCodeLifecycle, M28). */
+    public listUnitCodeEvents(unitId: string): Promise<IUnitCodeEventList> {
+        return this.bridge.call<IUnitCodeEventList>(
+            "TenantService",
+            "listUnitCodeEvents",
+            "GET",
+            "/tenant/v1/units/{unitId}/code-events",
+            __undefined,
             __undefined,
             __undefined,
             [

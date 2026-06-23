@@ -223,6 +223,61 @@ func (s *Service) TransitionUnit(ctx context.Context, id string, to domain.State
 	return out, err
 }
 
+// SetUnitCode sets, corrects, or clears a unit's code (D-UnitCodeLifecycle, M28) — all in one
+// transaction: validate the new shape, reject a collision with another active coded unit, update the
+// row, append the append-only code-change event, and record the audit action. newCode nil clears the
+// code (the unit becomes a non-separate sub-unit). A no-op (same code) still records an event so the
+// ledger reflects every recode request; callers that want to skip no-ops can compare before calling.
+func (s *Service) SetUnitCode(ctx context.Context, unitID string, newCode *string, reason string) (domain.Unit, error) {
+	if err := domain.ValidateCode(newCode); err != nil {
+		return domain.Unit{}, err
+	}
+	var out domain.Unit
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		repo := s.newRepo(tx)
+		current, err := repo.GetUnit(ctx, unitID)
+		if err != nil {
+			return err
+		}
+		if newCode != nil {
+			n, err := repo.CountActiveUnitsByCode(ctx, *newCode, unitID)
+			if err != nil {
+				return err
+			}
+			if n > 0 {
+				return domain.ErrUnitCodeConflict
+			}
+		}
+		updated, err := repo.SetUnitCode(ctx, unitID, newCode)
+		if err != nil {
+			return err
+		}
+		if err := repo.InsertUnitCodeEvent(ctx, domain.UnitCodeEvent{
+			UnitID:    unitID,
+			OldCode:   current.Code,
+			NewCode:   newCode,
+			Reason:    reason,
+			RequestID: requestID(ctx),
+		}); err != nil {
+			return err
+		}
+		out = updated
+		return s.record(ctx, tx, "unit.recode", "unit", unitID, unitID, map[string]any{
+			"oldCode": current.Code, "newCode": newCode, "reason": reason,
+		})
+	})
+	return out, err
+}
+
+// ListUnitCodeEvents returns a unit's code-change history, newest first (the unit must exist).
+func (s *Service) ListUnitCodeEvents(ctx context.Context, unitID string) ([]domain.UnitCodeEvent, error) {
+	repo := s.newRepo(s.querier(ctx))
+	if _, err := repo.GetUnit(ctx, unitID); err != nil {
+		return nil, err
+	}
+	return repo.ListUnitCodeEvents(ctx, unitID)
+}
+
 // ---------------------------------------------------------------- edges
 
 // AddEdge attaches childID as a child of parentID within a graph (default command), guarding

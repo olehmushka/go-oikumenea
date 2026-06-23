@@ -24,8 +24,15 @@ type TenantServiceClient interface {
 	CreateUnit(ctx context.Context, authHeader bearertoken.Token, requestArg CreateUnitRequest) (Unit, error)
 	// Read one unit by RID (shadow-gated once authz lands).
 	GetUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (Unit, error)
-	// Update name/kind/level/metadata/visibility. `code` is immutable by convention.
+	// Update name/kind/level/metadata/visibility. `code` is excluded — use setUnitCode.
 	UpdateUnit(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg UpdateUnitRequest) (Unit, error)
+	/*
+	   Set, correct, or clear the unit's code (audited; appends a tenant_unit_code_events row).
+	   Returns Tenant:UnitCodeConflict if the code is taken among active units. Requires unit.recode.
+	*/
+	SetUnitCode(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg SetUnitCodeRequest) (Unit, error)
+	// A unit's code-change history, newest first (D-UnitCodeLifecycle, M28).
+	ListUnitCodeEvents(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (UnitCodeEventList, error)
 	// List/search units, token-paginated, optionally filtered by level.
 	ListUnits(ctx context.Context, authHeader bearertoken.Token, levelArg *int, pageSizeArg *int, pageTokenArg *string) (UnitPage, error)
 	// Attach the path unit as a child of parentId within a graph (default command). Returns Tenant:UnitCycleDetected on a cycle.
@@ -118,6 +125,41 @@ func (c *tenantServiceClient) UpdateUnit(ctx context.Context, authHeader bearert
 	}
 	if returnVal == nil {
 		return *new(Unit), werror.ErrorWithContextParams(ctx, "updateUnit response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *tenantServiceClient) SetUnitCode(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg SetUnitCodeRequest) (Unit, error) {
+	var returnVal *Unit
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("SetUnitCode"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/tenant/v1/units/%s/code", url.PathEscape(fmt.Sprint(unitIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(Unit), werror.WrapWithContextParams(ctx, err, "setUnitCode failed")
+	}
+	if returnVal == nil {
+		return *new(Unit), werror.ErrorWithContextParams(ctx, "setUnitCode response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *tenantServiceClient) ListUnitCodeEvents(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (UnitCodeEventList, error) {
+	var returnVal *UnitCodeEventList
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListUnitCodeEvents"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/tenant/v1/units/%s/code-events", url.PathEscape(fmt.Sprint(unitIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(UnitCodeEventList), werror.WrapWithContextParams(ctx, err, "listUnitCodeEvents failed")
+	}
+	if returnVal == nil {
+		return *new(UnitCodeEventList), werror.ErrorWithContextParams(ctx, "listUnitCodeEvents response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -421,8 +463,15 @@ type TenantServiceClientWithAuth interface {
 	CreateUnit(ctx context.Context, requestArg CreateUnitRequest) (Unit, error)
 	// Read one unit by RID (shadow-gated once authz lands).
 	GetUnit(ctx context.Context, unitIdArg string) (Unit, error)
-	// Update name/kind/level/metadata/visibility. `code` is immutable by convention.
+	// Update name/kind/level/metadata/visibility. `code` is excluded — use setUnitCode.
 	UpdateUnit(ctx context.Context, unitIdArg string, requestArg UpdateUnitRequest) (Unit, error)
+	/*
+	   Set, correct, or clear the unit's code (audited; appends a tenant_unit_code_events row).
+	   Returns Tenant:UnitCodeConflict if the code is taken among active units. Requires unit.recode.
+	*/
+	SetUnitCode(ctx context.Context, unitIdArg string, requestArg SetUnitCodeRequest) (Unit, error)
+	// A unit's code-change history, newest first (D-UnitCodeLifecycle, M28).
+	ListUnitCodeEvents(ctx context.Context, unitIdArg string) (UnitCodeEventList, error)
 	// List/search units, token-paginated, optionally filtered by level.
 	ListUnits(ctx context.Context, levelArg *int, pageSizeArg *int, pageTokenArg *string) (UnitPage, error)
 	// Attach the path unit as a child of parentId within a graph (default command). Returns Tenant:UnitCycleDetected on a cycle.
@@ -477,6 +526,14 @@ func (c *tenantServiceClientWithAuth) GetUnit(ctx context.Context, unitIdArg str
 
 func (c *tenantServiceClientWithAuth) UpdateUnit(ctx context.Context, unitIdArg string, requestArg UpdateUnitRequest) (Unit, error) {
 	return c.client.UpdateUnit(ctx, c.authHeader, unitIdArg, requestArg)
+}
+
+func (c *tenantServiceClientWithAuth) SetUnitCode(ctx context.Context, unitIdArg string, requestArg SetUnitCodeRequest) (Unit, error) {
+	return c.client.SetUnitCode(ctx, c.authHeader, unitIdArg, requestArg)
+}
+
+func (c *tenantServiceClientWithAuth) ListUnitCodeEvents(ctx context.Context, unitIdArg string) (UnitCodeEventList, error) {
+	return c.client.ListUnitCodeEvents(ctx, c.authHeader, unitIdArg)
 }
 
 func (c *tenantServiceClientWithAuth) ListUnits(ctx context.Context, levelArg *int, pageSizeArg *int, pageTokenArg *string) (UnitPage, error) {
@@ -570,6 +627,22 @@ func (c *tenantServiceClientWithTokenProvider) UpdateUnit(ctx context.Context, u
 		return *new(Unit), err
 	}
 	return c.client.UpdateUnit(ctx, bearertoken.Token(token), unitIdArg, requestArg)
+}
+
+func (c *tenantServiceClientWithTokenProvider) SetUnitCode(ctx context.Context, unitIdArg string, requestArg SetUnitCodeRequest) (Unit, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Unit), err
+	}
+	return c.client.SetUnitCode(ctx, bearertoken.Token(token), unitIdArg, requestArg)
+}
+
+func (c *tenantServiceClientWithTokenProvider) ListUnitCodeEvents(ctx context.Context, unitIdArg string) (UnitCodeEventList, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(UnitCodeEventList), err
+	}
+	return c.client.ListUnitCodeEvents(ctx, bearertoken.Token(token), unitIdArg)
 }
 
 func (c *tenantServiceClientWithTokenProvider) ListUnits(ctx context.Context, levelArg *int, pageSizeArg *int, pageTokenArg *string) (UnitPage, error) {

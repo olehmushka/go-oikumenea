@@ -164,6 +164,13 @@ personal-code scheme) carries two distinct things (D-Code):
 `person` carries an **optional** `code` (e.g. a personnel/service number); person *names* are
 not codes and not admin-translated (see i18n below).
 
+**Unit exception (D-UnitCodeLifecycle, M28).** For [units](../modules/tenant.md), `code` is
+**optional** (a codeless unit is a non-separate sub-unit) and **mutable** — a correctable
+human-readable ID set/cleared via an audited recode op, not the external machine contract. The
+stable machine handle is the **RID**. The unique index is therefore partial on a present code
+(`WHERE deleted_at IS NULL AND code IS NOT NULL`). All other structural/catalog entities keep
+`code TEXT NOT NULL UNIQUE`, immutable by convention.
+
 ### i18n
 
 i18n is a required feature (D-i18n), owned by [localization](../modules/localization.md):
