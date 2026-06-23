@@ -1,4 +1,4 @@
-import { apiGet } from "@/lib/api/server";
+import { oikumenea } from "@/lib/api/server";
 import { EmptyState, ErrorNotice, Mono, Pager, PageHeader, Pill, Table } from "@/components/ui";
 import { LookupForm } from "@/components/LookupForm";
 import { T } from "@/components/T";
@@ -13,11 +13,21 @@ export default async function AuditPage({
   let page: AuditEntryPage | null = null;
   let error: unknown = null;
   try {
-    const qs = new URLSearchParams({ pageSize: "50" });
-    if (action) qs.set("action", action);
-    if (outcome) qs.set("outcome", outcome);
-    if (pageToken) qs.set("pageToken", pageToken);
-    page = await apiGet<AuditEntryPage>("/audit/v1/audit", `?${qs}`);
+    page = await oikumenea().then((ok) =>
+      ok.audit.query(
+        undefined, // actorPersonId
+        undefined, // actorType
+        undefined, // targetType
+        undefined, // targetId
+        undefined, // unitId
+        action ?? undefined,
+        (outcome ?? undefined) as never, // AuditOutcome enum; value is the wire string
+        undefined, // since
+        undefined, // until
+        50,
+        pageToken ?? undefined,
+      ),
+    );
   } catch (e) {
     error = e;
   }

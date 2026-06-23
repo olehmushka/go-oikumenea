@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { mutate } from "@/lib/api/client";
+import { api } from "@/lib/api/client";
 import { ErrorBox } from "@/components/ErrorBox";
 import { ActionButton } from "@/components/ActionButton";
 import { T } from "@/components/T";
@@ -64,12 +64,12 @@ export function RankSchemeManager({ scheme, grades }: { scheme: RankScheme; grad
     if (i < 0 || j < 0 || j >= sorted.length) return;
     [sorted[i], sorted[j]] = [sorted[j], sorted[i]];
     const writes = sorted
-      .map((x, idx) => ((x.sortOrder ?? idx) === idx ? null : mutate("PUT", putPath(x.id), { sortOrder: idx })))
+      .map((x, idx) => ((x.sortOrder ?? idx) === idx ? null : api.request("PUT", putPath(x.id), { body: { sortOrder: idx } })))
       .filter((p): p is Promise<unknown> => p !== null);
     if (writes.length) run(() => Promise.all(writes));
   };
 
-  const setPriority = (putPath: string, n: number) => run(() => mutate("PUT", putPath, { sortOrder: n }));
+  const setPriority = (putPath: string, n: number) => run(() => api.request("PUT", putPath, { body: { sortOrder: n } }));
 
   // STANAG grade options for the rank forms (junior → senior within tier).
   const gradeOptions: Option[] = [
@@ -96,7 +96,7 @@ export function RankSchemeManager({ scheme, grades }: { scheme: RankScheme; grad
                 { name: "name", placeholder: "name", value: pickLabel(t.name, locale) },
                 { name: "sortOrder", placeholder: "priority", type: "number", value: numStr(t.sortOrder) },
               ]}
-              onSave={(b) => run(() => mutate("PUT", typePath, b), () => setEditing(null))}
+              onSave={(b) => run(() => api.request("PUT", typePath, { body: b }), () => setEditing(null))}
               onCancel={() => setEditing(null)}
               busy={busy}
             />
@@ -141,7 +141,7 @@ export function RankSchemeManager({ scheme, grades }: { scheme: RankScheme; grad
                     { name: "gradeCode", placeholder: "grade", value: r.gradeCode ?? "", options: gradeOptions },
                     { name: "sortOrder", placeholder: "priority", type: "number", value: numStr(r.sortOrder) },
                   ]}
-                  onSave={(b) => run(() => mutate("PUT", rankPath, b), () => setEditing(null))}
+                  onSave={(b) => run(() => api.request("PUT", rankPath, { body: b }), () => setEditing(null))}
                   onCancel={() => setEditing(null)}
                   busy={busy}
                 />
@@ -172,7 +172,7 @@ export function RankSchemeManager({ scheme, grades }: { scheme: RankScheme; grad
                       className="text-xs font-medium text-red-500 hover:text-red-700"
                       onClick={() =>
                         window.confirm(`Delete rank ${r.code}?`) &&
-                        run(() => mutate("DELETE", `/rank/v1/rank-scheme/rank/${r.id}`))
+                        run(() => api.rank.deleteNode("rank", r.id))
                       }
                     >
                       <T>Delete</T>
@@ -193,7 +193,7 @@ export function RankSchemeManager({ scheme, grades }: { scheme: RankScheme; grad
                 ]}
                 label="Add sub-type"
                 busy={busy}
-                onAdd={(b) => run(() => mutate("POST", "/rank/v1/rank-scheme/types", { ...b, parentTypeId: t.id }))}
+                onAdd={(b) => run(() => api.rank.addType({ ...b, parentTypeId: t.id } as never))}
               />
             </div>
           ) : null}
@@ -211,7 +211,7 @@ export function RankSchemeManager({ scheme, grades }: { scheme: RankScheme; grad
                 ]}
                 label="Add rank"
                 busy={busy}
-                onAdd={(b) => run(() => mutate("POST", "/rank/v1/rank-scheme/ranks", { ...b, typeId: t.id }))}
+                onAdd={(b) => run(() => api.rank.addRank({ ...b, typeId: t.id } as never))}
               />
             </div>
           ) : null}
@@ -232,7 +232,7 @@ export function RankSchemeManager({ scheme, grades }: { scheme: RankScheme; grad
                 { name: "name", placeholder: "name", value: pickLabel(cat.name, locale) },
                 { name: "sortOrder", placeholder: "priority", type: "number", value: numStr(cat.sortOrder) },
               ]}
-              onSave={(b) => run(() => mutate("PUT", catPath, b), () => setEditing(null))}
+              onSave={(b) => run(() => api.request("PUT", catPath, { body: b }), () => setEditing(null))}
               onCancel={() => setEditing(null)}
               busy={busy}
             />
@@ -275,7 +275,7 @@ export function RankSchemeManager({ scheme, grades }: { scheme: RankScheme; grad
               ]}
               label="Add type"
               busy={busy}
-              onAdd={(b) => run(() => mutate("POST", "/rank/v1/rank-scheme/types", { ...b, categoryId: cat.id }))}
+              onAdd={(b) => run(() => api.rank.addType({ ...b, categoryId: cat.id } as never))}
             />
           </div>
         </div>
@@ -303,7 +303,7 @@ export function RankSchemeManager({ scheme, grades }: { scheme: RankScheme; grad
                     { name: "country", placeholder: "country", type: "country", value: sys.country ?? "" },
                     { name: "sortOrder", placeholder: "priority", type: "number", value: numStr(sys.sortOrder) },
                   ]}
-                  onSave={(b) => run(() => mutate("PUT", sysPath, b), () => setEditing(null))}
+                  onSave={(b) => run(() => api.request("PUT", sysPath, { body: b }), () => setEditing(null))}
                   onCancel={() => setEditing(null)}
                   busy={busy}
                 />
@@ -351,7 +351,7 @@ export function RankSchemeManager({ scheme, grades }: { scheme: RankScheme; grad
                   ]}
                   label="Add category"
                   busy={busy}
-                  onAdd={(b) => run(() => mutate("POST", "/rank/v1/rank-scheme/categories", { ...b, systemId: sys.id }))}
+                  onAdd={(b) => run(() => api.rank.addCategory({ ...b, systemId: sys.id } as never))}
                 />
               </div>
             </div>
@@ -370,7 +370,7 @@ export function RankSchemeManager({ scheme, grades }: { scheme: RankScheme; grad
           ]}
           label="Add system"
           busy={busy}
-          onAdd={(b) => run(() => mutate("POST", "/rank/v1/rank-scheme/systems", b))}
+          onAdd={(b) => run(() => api.rank.addSystem(b as never))}
         />
       </div>
     </div>
@@ -398,7 +398,7 @@ export function ImportRankScheme() {
       setBusy(false);
       return;
     }
-    mutate("POST", "/rank/v1/rank-scheme/import", body)
+    api.rank.importRankScheme(body as never)
       .then((r) => {
         setResult(r as { created: number; updated: number; skipped: number });
         router.refresh();

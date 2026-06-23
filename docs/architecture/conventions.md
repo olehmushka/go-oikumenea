@@ -249,11 +249,16 @@ See [decisions.md](decisions.md) D-NoRLS + D-RLSDefenseInDepth.
   Object, Link, and Action references all carry the full RID, never a bare uuid.
 - **Errors** are declared as Conjure error types (see below) with safe-arg params.
 - Generated code lands under **`internal/conjure`** (server interfaces + `RegisterRoutes` + clients,
-  consumed in-repo) and, for the **publishable Go SDK**, a **nested module `client/`** (module path
-  `…/go-oikumenea/client`) emitted client-only from the same IR by a second `conjure-plugin` project —
-  so external code can `go get` it (the `internal/` copy is import-restricted). Both derive from the
-  same `api/*.conjure.yml`, so they cannot drift. **Generated files are never hand-edited.** See
-  [../api/README.md](../api/README.md) and [client/README.md](../../client/README.md).
+  consumed in-repo) and, for the **publishable Go SDK**, a **nested module `clients/go/`** (module path
+  `…/go-oikumenea/clients/go`) emitted client-only from the same IR by a second `conjure-plugin` project —
+  so external code can `go get` it (the `internal/` copy is import-restricted). A third surface, the
+  **publishable TypeScript SDK** `clients/typescript/`, is generated from the **same IR** by
+  `conjure-typescript` (**D-ClientSDK**; `scripts/gen-ts-client.sh`). All three derive from the same
+  `api/*.conjure.yml`, so they cannot drift. Both SDKs add a **hand-written unified façade** over the
+  generated per-service clients (`clients/go/client.go`, `clients/typescript/src/index.ts`) — the only
+  hand-written client code. **Generated files are never hand-edited.** See
+  [../api/README.md](../api/README.md), [clients/go/README.md](../../clients/go/README.md) and the
+  [clients module doc](../modules/clients.md).
 - The transport layer implements the generated server interface; the compiler enforces the
   contract.
 

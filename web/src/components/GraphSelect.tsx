@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { api } from "@/lib/api/client";
 import { useLocale, useTg } from "@/lib/locale";
 import { pickLabel } from "@/lib/i18n";
 import type { Graph } from "@/lib/api/types";
@@ -34,10 +35,10 @@ export function GraphSelect({
 
   useEffect(() => {
     let alive = true;
-    fetch("/api/oikumenea/tenant/v1/graphs")
-      .then((r) => (r.ok ? r.json() : null))
+    api
+      .request<{ graphs?: Graph[] }>("GET", "/tenant/v1/graphs")
       .then((d) => {
-        if (alive) setGraphs((d as { graphs?: Graph[] } | null)?.graphs ?? []);
+        if (alive) setGraphs(d?.graphs ?? []);
       })
       .catch(() => {});
     return () => {
@@ -56,7 +57,7 @@ export function GraphSelect({
       {graphs.map((g) => (
         <option key={g.id} value={g.code}>
           {pickLabel(g.name, locale) || g.code}
-          {g.isDirectoryOnly ? " (directory-only)" : ""}
+          {!g.isAuthorityBearing ? " (directory-only)" : ""}
         </option>
       ))}
     </select>

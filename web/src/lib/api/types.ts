@@ -1,569 +1,117 @@
-// Hand-written projections of the API responses the screens render. These mirror
-// docs/api/openapi/openapi.json; the fully-typed surface is the generated schema.d.ts used by
-// the browser client. Kept narrow on purpose — only the fields the console reads.
+// API response types for the console — now thin aliases over the generated TS SDK (oikumenea-client),
+// so the UI shares the contract's types and typed SDK method returns flow through pages/components
+// without re-projection. Only genuinely web-local shapes stay hand-written here.
 
+import type {
+  audit,
+  authorization,
+  document,
+  hermenea,
+  identityfederation,
+  localization,
+  membership,
+  order,
+  person,
+  platform,
+  rank,
+  religion,
+  tenant,
+} from "oikumenea-client";
+
+/** Translatable label map (locale → text) — the i18n shape the contract returns for `name`. */
 export type LocaleMap = Record<string, string>;
 
-export interface Whoami {
-  personId?: string;
-  accountId?: string;
-  email?: string;
-}
+// ── identity / whoami ────────────────────────────────────────────────────────
+export type Whoami = identityfederation.IWhoami;
 
-export interface Unit {
-  id: string;
-  code: string;
-  name?: LocaleMap;
-  unitKind?: string;
-  level?: number;
-  visibility?: string;
-  state?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
-export interface UnitPage {
-  units: Unit[];
-  nextPageToken?: string;
-}
-export interface UnitRef {
-  id: string;
-  code: string;
-  name?: LocaleMap;
-}
-export interface UnitRefList {
-  units: UnitRef[];
-}
-export interface Graph {
-  id: string;
-  code: string;
-  name?: LocaleMap;
-  isDirectoryOnly?: boolean;
-}
-export interface GraphList {
-  graphs: Graph[];
-}
+// ── tenant ───────────────────────────────────────────────────────────────────
+export type Unit = tenant.IUnit;
+export type UnitPage = tenant.IUnitPage;
+export type UnitRef = tenant.IUnitRef;
+export type UnitRefList = tenant.IUnitRefList;
+export type Graph = tenant.IGraph;
+export type GraphList = tenant.IGraphList;
+export type UnitLanguage = tenant.IUnitLanguage;
 
-export interface Person {
-  id: string;
-  code: string;
-  displayName?: string;
-  given?: string;
-  surname?: string;
-  patronymic?: string;
-  birthdate?: string;
-  dateOfDeath?: string;
-  sex?: string;
-  status?: string;
-  ranks?: PersonRank[];
-  countryOfBirth?: string;
-  citizenships?: Citizenship[];
-  residences?: Residence[];
-  emails?: Email[];
-  phones?: Phone[];
-  callSigns?: CallSign[];
-  messengerLinks?: MessengerLink[];
-  socialAccounts?: SocialAccount[];
-  nameVariants?: NameVariant[];
-  createdAt?: string;
-  deactivatedAt?: string;
-  purgeAfter?: string;
-}
-export interface PersonPage {
-  persons: Person[];
-  nextPageToken?: string;
-}
-export interface Citizenship {
-  id: string;
-  country: string;
-  isPrimary?: boolean;
-  basis?: string;
-}
-export interface Residence {
-  id: string;
-  country: string;
-  region?: string;
-  validFrom?: string;
-  validTo?: string;
-}
-export interface Email {
-  id: string;
-  address: string;
-  typeCode?: string;
-  isPrimary?: boolean;
-}
-export interface Phone {
-  id: string;
-  number: string;
-  country?: string;
-  typeCode?: string;
-  isPrimary?: boolean;
-}
-export interface CallSign {
-  id: string;
-  callSign: string;
-  isPrimary?: boolean;
-}
+// ── person ───────────────────────────────────────────────────────────────────
+export type Person = person.IPerson;
+export type PersonPage = person.IPersonPage;
+export type Citizenship = person.ICitizenship;
+export type Residence = person.IResidence;
+export type Email = person.IEmail;
+export type Phone = person.IPhone;
+export type CallSign = person.ICallSign;
+export type Platform = person.IPlatform;
+export type MessengerLink = person.IMessengerLink;
+export type SocialAccount = person.ISocialAccount;
+export type SocialAccountHandle = person.ISocialAccountHandle;
+export type PersonLanguage = person.IPersonLanguage;
+export type RelationType = person.IRelationType;
+export type Partnership = person.IPartnership;
+export type Kinship = person.IKinship;
+export type Guardianship = person.IGuardianship;
+export type Sponsorship = person.ISponsorship;
+export type NextOfKin = person.INextOfKin;
+export type Association = person.IAssociation;
+export type NameVariant = person.INameVariant;
+export type PersonRank = person.IPersonRank;
 
-// ── M13: social & messenger channels ────────────────────────────────────────
-/** Instance-admin catalog of messenger/social platforms (category gates which links are allowed). */
-export interface Platform {
-  code: string;
-  name?: LocaleMap;
-  category: string; // messenger | social
-  status?: string;
-  sortOrder?: number;
-}
-/** A reachability annotation over a person's phone XOR email on a messenger platform. */
-export interface MessengerLink {
-  id: string;
-  phoneId?: string;
-  emailId?: string;
-  platformCode: string;
-  isPrimary?: boolean;
-  verifiedAt?: string;
-}
-/** A person's account on a social/messenger platform; the handle is mutable (history kept). */
-export interface SocialAccount {
-  id: string;
-  personId: string;
-  platformCode: string;
-  platformUserId?: string;
-  handle: string;
-  displayName?: string;
-  profileUrl?: string;
-  language?: string;
-  platformVerified?: boolean;
-  verifiedByOperatorAt?: string;
-  source: string; // self_declared | operator_verified | imported
-  confidence: string; // confirmed | probable | possible
-  isPrimary?: boolean;
-}
+// ── localization / language ──────────────────────────────────────────────────
+export type LocaleLanguage = localization.ILocaleLanguage;
+export type Locale = localization.ILocale;
+export type LocaleList = localization.ILocaleList;
 
-// D-Languages (M18)
-export interface PersonLanguage {
-  id: string;
-  personId: string;
-  languageId: string;
-  name?: LocaleMap; // the languoid's display name
-  cefrLevel?: string; // A1..C2
-  isNative: boolean;
-}
+// ── religion (M22–M25) ───────────────────────────────────────────────────────
+export type ClergyGrade = religion.IClergyGrade;
+export type GradeCategory = religion.IGradeCategory;
+export type OfficeType = religion.IOfficeType;
+export type ClergyCredential = religion.IClergyCredential;
+export type AffiliationType = religion.IAffiliationType;
+export type Affiliation = religion.IAffiliation;
 
-export interface UnitLanguage {
-  id: string;
-  unitId: string;
-  languageId: string;
-  name?: LocaleMap;
-  isOfficial: boolean;
-}
+// ── membership ───────────────────────────────────────────────────────────────
+export type Membership = membership.IMembership;
+export type MembershipPage = membership.IMembershipPage;
+export type Position = membership.IPosition;
+export type PositionPage = membership.IPositionPage;
 
-export interface LocaleLanguage {
-  locale: string;
-  languageId: string;
-  name?: LocaleMap;
-}
-/** A historical @handle for a social account (validTo null = current). */
-export interface SocialAccountHandle {
-  id: string;
-  accountId: string;
-  handle: string;
-  validFrom: string;
-  validTo?: string;
-}
+// ── rank ─────────────────────────────────────────────────────────────────────
+export type Rank = rank.IRank;
+export type RankType = rank.IRankType;
+export type RankCategory = rank.IRankCategory;
+export type RankSystem = rank.IRankSystem;
+export type RankScheme = rank.IRankScheme;
+export type RankGrade = rank.IRankGrade;
 
-// ── M14: person↔person relationships ────────────────────────────────────────
-/** Instance-admin catalog of relation kinds (category scopes which family may reference it). */
-export interface RelationType {
-  code: string;
-  name?: LocaleMap;
-  category: string; // sponsorship | association | next_of_kin
-  status?: string;
-  sortOrder?: number;
-}
-export interface Partnership {
-  id: string;
-  personIdA: string;
-  personIdB: string;
-  status: string;
-  effectiveFrom?: string;
-  effectiveTo?: string;
-}
-export interface Kinship {
-  id: string;
-  parentId: string;
-  childId: string;
-  status: string;
-}
-export interface Guardianship {
-  id: string;
-  guardianId: string;
-  wardId: string;
-  relationCode?: string;
-  status: string;
-  effectiveFrom?: string;
-  effectiveTo?: string;
-}
-export interface Sponsorship {
-  id: string;
-  sponsorId: string;
-  sponsoredId: string;
-  relationCode: string;
-  status: string;
-  effectiveFrom?: string;
-  effectiveTo?: string;
-}
-export interface NextOfKin {
-  id: string;
-  subjectId: string;
-  contactId: string;
-  relationCode?: string;
-  priority: number;
-  status: string;
-}
-export interface Association {
-  id: string;
-  personIdA: string;
-  personIdB: string;
-  relationCode?: string;
-  kind: string; // associate | coi | no_contact
-  status: string;
-}
-// ── M23: clergy credentials (D-ClergyCredential) ────────────────────────────
-/** An ordered, per-tradition clergy grade (bishop/imam/rabbi/…). */
-export interface ClergyGrade {
-  id: string;
-  traditionTaxonId?: string;
-  gradeCategoryId: string;
-  code: string;
-  name?: LocaleMap;
-  ordinal: number;
-  status?: string;
-  sortOrder?: number;
-}
-/** A per-tradition grouping of clergy grades. */
-export interface GradeCategory {
-  id: string;
-  traditionTaxonId?: string;
-  code: string;
-  name?: LocaleMap;
-  ordinal?: number;
-  status?: string;
-  sortOrder?: number;
-}
-/** A clergy office-type label (offices are filled as membership positions). */
-export interface OfficeType {
-  id: string;
-  traditionTaxonId?: string;
-  code: string;
-  name?: LocaleMap;
-  status?: string;
-  sortOrder?: number;
-}
-/** A reified person↔religion ordination/standing link — a public directory fact. */
-export interface ClergyCredential {
-  id: string;
-  personId: string;
-  clergyGradeId: string;
-  gradeCode: string;
-  gradeName?: LocaleMap;
-  orgUnitId: string;
-  grantedOn?: string; // YYYY-MM-DD
-  conferredByPersonId?: string;
-  status: string; // active | suspended | revoked
-  effectiveFrom: string;
-  effectiveTo?: string;
-  source?: string;
-  confidence?: string;
-}
+// ── authorization ────────────────────────────────────────────────────────────
+export type Role = authorization.IRole;
+export type RolePage = authorization.IRolePage;
+export type Assignment = authorization.IAssignment;
+export type AssignmentPage = authorization.IAssignmentPage;
+export type Contribution = authorization.IContribution;
+export type Explanation = authorization.IExplanation;
+export type AuthorizeResponse = authorization.IAuthorizeResponse;
 
-// ── M24: lay affiliation (D-ReligiousAffiliation, pii:special) ───────────────
-/** A per-tradition lay-affiliation / milestone type (adherent/baptized/shahada/…). */
-export interface AffiliationType {
-  id: string;
-  traditionTaxonId?: string;
-  code: string;
-  name?: LocaleMap;
-  status?: string;
-  sortOrder?: number;
-}
-/** A reified person↔religion lay-affiliation link; the belief value is pii:special (encrypted at rest). */
-export interface Affiliation {
-  id: string;
-  personId: string;
-  religionId?: string;
-  traditionUnitId?: string;
-  communityUnitId?: string;
-  affiliationTypeId: string;
-  affiliationTypeCode: string;
-  affiliationTypeName?: LocaleMap;
-  value?: string; // decrypted belief detail
-  status: string; // active | lapsed | renounced
-  effectiveFrom: string;
-  effectiveTo?: string;
-  source?: string;
-  confidence?: string;
-}
+// ── document ─────────────────────────────────────────────────────────────────
+export type DocumentType = document.IDocumentType;
+export type PersonalCodeScheme = document.IPersonalCodeScheme;
+export type DocumentDoc = document.IDocument;
 
-export interface NameVariant {
-  id: string;
-  locale: string;
-  displayName?: string;
-  given?: string;
-  surname?: string;
-  isPrimary?: boolean;
-}
+// ── order ────────────────────────────────────────────────────────────────────
+export type OrderItem = order.IOrderItem;
+export type Order = order.IOrder;
+export type OrderPage = order.IOrderPage;
+export type OrderType = order.IOrderType;
 
-export interface Membership {
-  id: string;
-  personId: string;
-  unitId: string;
-  positionId?: string;
-  status?: string;
-  effectiveFrom?: string;
-  effectiveTo?: string;
-}
-export interface MembershipPage {
-  memberships: Membership[];
-  nextPageToken?: string;
-}
-export interface Position {
-  id: string;
-  code: string;
-  title?: LocaleMap;
-  unitId: string;
-  status?: string;
-  requiredRankId?: string;
-  sortOrder?: number;
-  holder?: Membership;
-}
-export interface PositionPage {
-  positions: Position[];
-  nextPageToken?: string;
-}
+// ── audit ────────────────────────────────────────────────────────────────────
+export type AuditEntry = audit.IAuditEntry;
+export type AuditEntryPage = audit.IAuditEntryPage;
 
-/** One rank a person holds, scoped to a rank system (at most one per system — D-Rank). */
-export interface PersonRank {
-  systemId: string;
-  rankId: string;
-}
-export interface Rank {
-  id: string;
-  code: string;
-  name?: LocaleMap;
-  abbreviation?: string;
-  gradeCode?: string;
-  sortOrder?: number;
-  systemId?: string;
-  typeId: string;
-}
-export interface RankType {
-  id: string;
-  code: string;
-  name?: LocaleMap;
-  sortOrder?: number;
-  systemId?: string;
-  categoryId: string;
-  parentTypeId?: string;
-  children?: RankType[];
-  ranks: Rank[];
-}
-export interface RankCategory {
-  id: string;
-  code: string;
-  name?: LocaleMap;
-  sortOrder?: number;
-  systemId?: string;
-  types: RankType[];
-}
-/** A rank system (e.g. us-armed-forces, nato-generic): the top level of the scheme tree. */
-export interface RankSystem {
-  id: string;
-  code: string;
-  name?: LocaleMap;
-  sortOrder?: number;
-  country?: string;
-  categories: RankCategory[];
-}
-export interface RankScheme {
-  systems: RankSystem[];
-}
-/** A NATO STANAG-2116 grade — reference data for cross-system rank equivalence (not translatable). */
-export interface RankGrade {
-  code: string;
-  tier: string; // officer | warrant | enlisted
-  ordinal: number;
-  name: string;
-}
+// ── platform ─────────────────────────────────────────────────────────────────
+export type VersionInfo = platform.IVersionInfo;
 
-export interface Role {
-  id: string;
-  code: string;
-  name?: LocaleMap;
-  description?: LocaleMap;
-  permissions: string[];
-  isBase?: boolean;
-}
-export interface RolePage {
-  roles: Role[];
-  nextPageToken?: string;
-}
-export interface Assignment {
-  id: string;
-  subjectPersonId: string;
-  roleId: string;
-  targetUnitId: string;
-  graphId?: string;
-  scope: string;
-  grantedAt?: string;
-  expiresAt?: string;
-  revokedAt?: string;
-}
-export interface AssignmentPage {
-  assignments: Assignment[];
-  nextPageToken?: string;
-}
-
-export interface Contribution {
-  assignmentId?: string;
-  roleCode?: string;
-  scope?: string;
-  graphId?: string;
-  viaUnitId?: string;
-}
-export interface Explanation {
-  reason?: string;
-  instanceAdmin?: boolean;
-  contributions?: Contribution[];
-}
-export interface AuthorizeResponse {
-  allow: boolean;
-  explanation?: Explanation;
-}
-
-export interface DocumentType {
-  id: string;
-  code: string;
-  name?: LocaleMap;
-  status?: string;
-  attrSchema?: unknown;
-}
-export interface PersonalCodeScheme {
-  id?: string;
-  code: string;
-  name?: LocaleMap;
-  country?: string;
-  status?: string;
-}
-export interface DocumentDoc {
-  id: string;
-  personId: string;
-  typeId: string;
-  number?: string;
-  issuer?: string;
-  issuingCountry?: string;
-  issuedOn?: string;
-  expiresOn?: string;
-  status?: string;
-}
-
-export interface OrderItem {
-  id?: string;
-  kind?: string;
-  personId?: string;
-  unitId?: string;
-}
-export interface Order {
-  id: string;
-  number?: string;
-  issuingUnitId?: string;
-  issuedOn?: string;
-  status?: string;
-  items?: OrderItem[];
-  revokedAt?: string;
-}
-export interface OrderPage {
-  orders: Order[];
-  nextPageToken?: string;
-}
-export interface OrderType {
-  id: string;
-  code: string;
-  name?: LocaleMap;
-  status?: string;
-}
-
-export interface Locale {
-  code: string;
-  name: string;
-  enabled?: boolean;
-  isDefault?: boolean;
-  sortOrder?: number;
-}
-export interface LocaleList {
-  locales: Locale[];
-}
-
-export interface AuditEntry {
-  id: string;
-  action: string;
-  subsystem?: string;
-  outcome?: string;
-  actorType?: string;
-  actorPersonId?: string;
-  targetType?: string;
-  targetId?: string;
-  unitId?: string;
-  requestId?: string;
-  createdAt?: string;
-}
-export interface AuditEntryPage {
-  entries?: AuditEntry[];
-  nextPageToken?: string;
-}
-
-export interface VersionInfo {
-  version?: string;
-  schemaVersion?: string;
-  [k: string]: unknown;
-}
-
-// ── M16 (D-Hermenea): import control, proxied by oikumenea to the hermenea companion ─────────────
-/** A registered external dataset hermenea can sync into oikumenea. */
-export interface ImportSource {
-  code: string;
-  name: string;
-  objectType: string;
-  connectorType: string; // http | file | http-files | wof-sqlite
-  locator: string;
-  cron?: string; // absent => trigger-only
-  enabled: boolean;
-}
-/** A completed/in-flight import-run lineage record (one per job). */
-export interface ImportRun {
-  id: string;
-  sourceCode: string;
-  sourceVersion?: string;
-  status: string; // running | succeeded | failed
-  created: number;
-  updated: number;
-  skipped: number;
-  error?: string;
-  startedAt: string;
-  finishedAt?: string;
-}
-/** One unit of queued work in hermenea's runtime (the job queue). */
-export interface WorkerJob {
-  id: string;
-  jobType: string;
-  sourceCode?: string;
-  status: string; // queued | running | succeeded | failed | dead
-  attempts: number;
-  maxAttempts: number;
-  runAfter: string;
-  lastError?: string;
-}
-/** The enqueue acknowledgement returned by a trigger. */
-export interface JobRef {
-  jobId: string;
-  status: string;
-}
+// ── hermenea import control (M16) ────────────────────────────────────────────
+export type ImportSource = hermenea.IImportSource;
+export type ImportRun = hermenea.IImportRun;
+export type WorkerJob = hermenea.IWorkerJob;
+export type JobRef = hermenea.IJobRef;

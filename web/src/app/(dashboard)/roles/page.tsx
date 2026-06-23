@@ -1,4 +1,4 @@
-import { apiGet } from "@/lib/api/server";
+import { oikumenea } from "@/lib/api/server";
 import {
   Card,
   EmptyState,
@@ -38,14 +38,18 @@ export default async function RolesPage({
   let error: unknown = null;
   let assignmentError: unknown = null;
   try {
-    roles = await apiGet<RolePage>("/authorization/v1/roles", "?pageSize=100");
+    roles = await oikumenea().then((ok) => ok.authorization.listRoles(100));
   } catch (e) {
     error = e;
   }
   if (assignmentFilter) {
     try {
-      const aq = new URLSearchParams({ pageSize: "50", [assignmentFilter[0]]: assignmentFilter[1] });
-      assignments = await apiGet<AssignmentPage>("/authorization/v1/assignments", `?${aq}`);
+      const ok = await oikumenea();
+      assignments = await ok.authorization.listAssignments(
+        assignmentFilter[0] === "subjectPersonId" ? assignmentFilter[1] : undefined,
+        assignmentFilter[0] === "targetUnitId" ? assignmentFilter[1] : undefined,
+        50,
+      );
     } catch (e) {
       assignmentError = e;
     }

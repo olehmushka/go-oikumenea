@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { mutate } from "@/lib/api/client";
+import { api } from "@/lib/api/client";
 import { ErrorBox } from "./ErrorBox";
 import { ActionButton } from "./ActionButton";
 import { Localized } from "./Localized";
@@ -43,7 +43,7 @@ export function GraphManager({ graphs }: { graphs: Graph[] }) {
               const f = new FormData(e.currentTarget);
               run(
                 () =>
-                  mutate("PUT", `/tenant/v1/graphs/${g.id}`, {
+                  api.tenant.updateGraph(g.id, {
                     name: String(f.get("name") || "").trim() || undefined,
                   }),
                 () => setEditing(null),
@@ -63,7 +63,7 @@ export function GraphManager({ graphs }: { graphs: Graph[] }) {
             <span>
               <Localized map={g.name} fallback={g.code} />{" "}
               <span className="font-mono text-xs text-slate-400">{g.code}</span>
-              {g.isDirectoryOnly ? (
+              {!g.isAuthorityBearing ? (
                 <span className="ml-1 text-slate-400"><T>(directory-only)</T></span>
               ) : null}
             </span>
@@ -95,7 +95,7 @@ export function GraphManager({ graphs }: { graphs: Graph[] }) {
           const form = e.currentTarget;
           run(
             () =>
-              mutate("POST", "/tenant/v1/graphs", {
+              api.tenant.addGraph({
                 code: String(f.get("code") || "").trim(),
                 name: String(f.get("name") || "").trim(),
               }),

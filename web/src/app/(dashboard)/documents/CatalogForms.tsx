@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { mutate } from "@/lib/api/client";
+import { api } from "@/lib/api/client";
 import { ErrorBox } from "@/components/ErrorBox";
 import { Localized } from "@/components/Localized";
 import { CountrySelect, useCountryMap } from "@/components/CountrySelect";
@@ -46,9 +46,9 @@ export function DocTypeManager({ types }: { types: DocumentType[] }) {
               const f = new FormData(e.currentTarget);
               run(
                 () =>
-                  mutate("PUT", `/document/v1/document-types/${t.id}`, {
-                    name: String(f.get("name") || "").trim() || undefined,
-                    status: String(f.get("status") || "").trim() || undefined,
+                  api.document.updateDocumentType(t.id, {
+                    name: (String(f.get("name") || "").trim() || undefined) as never,
+                    status: (String(f.get("status") || "").trim() || undefined) as never,
                   }),
                 () => setEditing(null),
               );
@@ -95,9 +95,9 @@ export function DocTypeManager({ types }: { types: DocumentType[] }) {
           const form = e.currentTarget;
           run(
             () =>
-              mutate("POST", "/document/v1/document-types", {
+              api.document.createDocumentType({
                 code: String(f.get("code") || "").trim(),
-                name: String(f.get("name") || "").trim(),
+                name: String(f.get("name") || "").trim() as never,
               }),
             () => form.reset(),
           );
@@ -132,10 +132,10 @@ export function SchemeManager({ schemes }: { schemes: PersonalCodeScheme[] }) {
               const f = new FormData(e.currentTarget);
               run(
                 () =>
-                  mutate("PUT", `/document/v1/personal-code-schemes/${s.code}`, {
-                    name: String(f.get("name") || "").trim() || undefined,
+                  api.document.updatePersonalCodeScheme(s.code, {
+                    name: (String(f.get("name") || "").trim() || undefined) as never,
                     validationRegex: String(f.get("validationRegex") || "").trim() || undefined,
-                    status: String(f.get("status") || "").trim() || undefined,
+                    status: (String(f.get("status") || "").trim() || undefined) as never,
                   }),
                 () => setEditing(null),
               );
@@ -163,7 +163,7 @@ export function SchemeManager({ schemes }: { schemes: PersonalCodeScheme[] }) {
               <span className="font-mono text-xs text-slate-400">{s.code}</span>
             </div>
             <span className="flex items-center gap-3">
-              {s.country ? <span className="text-xs text-slate-400">{countryCode(s.country) || s.country}</span> : null}
+              {s.countryIso ? <span className="text-xs text-slate-400">{countryCode(s.countryIso) || s.countryIso}</span> : null}
               <span className="text-xs text-slate-400">{s.status}</span>
               <button
                 type="button"
@@ -184,9 +184,9 @@ export function SchemeManager({ schemes }: { schemes: PersonalCodeScheme[] }) {
           const form = e.currentTarget;
           run(
             () =>
-              mutate("POST", "/document/v1/personal-code-schemes", {
+              api.document.createPersonalCodeScheme({
                 code: String(f.get("code") || "").trim(),
-                name: String(f.get("name") || "").trim(),
+                name: String(f.get("name") || "").trim() as never,
                 genericCategory: String(f.get("genericCategory") || "").trim(),
                 countryIso: String(f.get("countryIso") || "").trim() || undefined,
               }),

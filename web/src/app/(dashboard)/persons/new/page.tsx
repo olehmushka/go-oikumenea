@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
-import { mutate } from "@/lib/api/client";
+import { api } from "@/lib/api/client";
 import { PageHeader } from "@/components/ui";
 import { ErrorBox } from "@/components/ErrorBox";
 import { CountrySelect } from "@/components/CountrySelect";
@@ -46,7 +46,7 @@ export default function NewPersonPage() {
       countryOfBirth: str("countryOfBirth"),
     };
     try {
-      const p = await mutate<{ id: string }>("POST", "/person/v1/persons", body);
+      const p = await api.person.createPerson(body as never);
       router.push(`/persons/${p.id}`);
     } catch (e) {
       setErr(e);

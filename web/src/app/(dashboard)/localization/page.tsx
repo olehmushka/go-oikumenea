@@ -1,4 +1,4 @@
-import { apiGet } from "@/lib/api/server";
+import { oikumenea } from "@/lib/api/server";
 import { EmptyState, ErrorNotice, Mono, PageHeader, Pill, Table } from "@/components/ui";
 import { Localized } from "@/components/Localized";
 import { T } from "@/components/T";
@@ -10,10 +10,9 @@ export default async function LocalizationPage() {
   let localeLanguages: { localeLanguages: LocaleLanguage[] } | null = null;
   let error: unknown = null;
   try {
-    list = await apiGet<LocaleList>("/localization/v1/locales");
-    localeLanguages = await apiGet<{ localeLanguages: LocaleLanguage[] }>(
-      "/localization/v1/locale-languages",
-    ).catch(() => null);
+    const ok = await oikumenea();
+    list = await ok.localization.listLocales();
+    localeLanguages = await ok.localization.listLocaleLanguages().catch(() => null);
   } catch (e) {
     error = e;
   }

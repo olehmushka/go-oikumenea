@@ -6,7 +6,7 @@
 // proxy (GET /geo/v1/countries; the proxy injects the bearer).
 
 import { useEffect, useState } from "react";
-import { bffGet } from "@/lib/api/browser";
+import { api } from "@/lib/api/client";
 
 export type Country = { id: string; code: string; name: string; status: string };
 
@@ -20,7 +20,8 @@ export function useCountryMap(): (id: string | undefined) => string {
   );
   useEffect(() => {
     if (cache) return;
-    bffGet<{ countries: Country[] }>("/geo/v1/countries")
+    api.geo
+      .listCountries()
       .then((r) => {
         cache = r.countries ?? [];
         setMap(Object.fromEntries(cache.map((c) => [c.id, c.code])));
@@ -45,7 +46,8 @@ export function CountrySelect({
 
   useEffect(() => {
     if (cache) return;
-    bffGet<{ countries: Country[] }>("/geo/v1/countries")
+    api.geo
+      .listCountries()
       .then((r) => {
         cache = r.countries ?? [];
         setCountries(cache);

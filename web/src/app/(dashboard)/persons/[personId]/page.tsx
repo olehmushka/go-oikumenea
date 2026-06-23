@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { apiGet } from "@/lib/api/server";
+import { oikumenea } from "@/lib/api/server";
 import { Card, EmptyState, ErrorNotice, Mono, PageHeader, Pill } from "@/components/ui";
 import { T } from "@/components/T";
 import {
@@ -50,7 +50,7 @@ export default async function PersonDetailPage({
   let person: Person | null = null;
   let error: unknown = null;
   try {
-    person = await apiGet<Person>(`/person/v1/persons/${personId}`);
+    person = await oikumenea().then((ok) => ok.person.getPerson(personId));
   } catch (e) {
     error = e;
   }
@@ -168,18 +168,19 @@ export default async function PersonDetailPage({
 // relationships, memberships, orders). It is streamed under <Suspense> so the page shell paints as
 // soon as the person resolves — the create→navigate path no longer blocks on this batch.
 async function PersonRelations({ personId, person }: { personId: string; person: Person }) {
+  const ok = await oikumenea();
   const [documents, codes, memberships, orders, partnerships, kinships, guardianships, sponsorships, nextOfKin, associations] =
     await Promise.all([
-      apiGet<{ documents: DocumentDoc[] }>(`/document/v1/persons/${personId}/documents`).catch(() => null),
-      apiGet<{ codes?: CodeRow[] }>(`/document/v1/persons/${personId}/personal-codes`).catch(() => null),
-      apiGet<{ memberships: Membership[] }>(`/membership/v1/persons/${personId}/memberships`).catch(() => null),
-      apiGet<{ orders: Order[] }>(`/order/v1/persons/${personId}/orders`).catch(() => null),
-      apiGet<Partnership[]>(`/person/v1/persons/${personId}/partnerships`).catch(() => []),
-      apiGet<Kinship[]>(`/person/v1/persons/${personId}/kinships`).catch(() => []),
-      apiGet<Guardianship[]>(`/person/v1/persons/${personId}/guardianships`).catch(() => []),
-      apiGet<Sponsorship[]>(`/person/v1/persons/${personId}/sponsorships`).catch(() => []),
-      apiGet<NextOfKin[]>(`/person/v1/persons/${personId}/next-of-kin`).catch(() => []),
-      apiGet<Association[]>(`/person/v1/persons/${personId}/associations`).catch(() => []),
+      ok.document.listPersonDocuments(personId).catch(() => null),
+      ok.document.listPersonPersonalCodes(personId).catch(() => null),
+      ok.membership.listPersonMemberships(personId).catch(() => null),
+      ok.order.listPersonOrders(personId).catch(() => null),
+      ok.person.listPartnerships(personId).catch(() => []),
+      ok.person.listKinships(personId).catch(() => []),
+      ok.person.listGuardianships(personId).catch(() => []),
+      ok.person.listSponsorships(personId).catch(() => []),
+      ok.person.listNextOfKin(personId).catch(() => []),
+      ok.person.listAssociations(personId).catch(() => []),
     ]);
 
   return (
@@ -201,7 +202,7 @@ async function PersonRelations({ personId, person }: { personId: string; person:
         <Card className="lg:col-span-2">
           <h2 className="text-sm font-semibold text-slate-900"><T>Documents &amp; personal codes</T></h2>
           <DocumentManager personId={person.id} documents={documents?.documents} />
-          <PersonalCodeManager personId={person.id} codes={codes?.codes} />
+          <PersonalCodeManager personId={person.id} codes={codes ?? undefined} />
         </Card>
 
         <Card className="lg:col-span-2">

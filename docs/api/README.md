@@ -5,17 +5,17 @@ module (D-Conjure / D-Stack). The gödel `conjure-plugin` compiles those to IR a
 server interfaces + clients into `internal/conjure` (never hand-edited). Two consumable artifacts are
 derived from that **same** contract, so neither can drift from the running server:
 
-- a **Go client SDK** — the publishable nested module [`client/`](../../client) (see below);
+- a **Go client SDK** — the publishable nested module [`clients/go/`](../../clients/go) (see below);
 - an **OpenAPI v3** document — the human-facing rendering (see *Generating the OpenAPI documents*).
 
 ## Go client SDK
 
 A typed Go client is generated client-only into the nested module
-[`client/`](../../client/README.md) (module path `github.com/olegamysk/go-oikumenea/client`) by a second
+[`clients/go/`](../../clients/go/README.md) (module path `github.com/olegamysk/go-oikumenea/clients/go`) by a second
 `conjure-plugin` project (`godel/config/conjure-plugin.yml`). External code imports it directly:
 
 ```bash
-go get github.com/olegamysk/go-oikumenea/client@latest
+go get github.com/olegamysk/go-oikumenea/clients/go@latest
 ```
 
 ```go
@@ -23,8 +23,8 @@ hc, _ := client.Dial("https://host:8443")             // + client.WithInsecureSk
 who, _ := identityfederation.NewIdentityFederationServiceClient(hc).Whoami(ctx, token)
 ```
 
-The `internal/conjure` copy stays for in-repo use (it is import-restricted); the `client/` module is the
-public one. Full usage + auth notes in [`client/README.md`](../../client/README.md).
+The `internal/conjure` copy stays for in-repo use (it is import-restricted); the `clients/go/` module is the
+public one. Full usage + auth notes in [`clients/go/README.md`](../../clients/go/README.md).
 
 ## Conjure sources
 
@@ -67,7 +67,7 @@ GitHub Pages**. Render locally with:
 npx @redocly/cli build-docs docs/api/openapi/openapi.json -o openapi.html
 ```
 
-> The Go server interfaces (`internal/conjure`) and the [client SDK](../../client) are generated from
+> The Go server interfaces (`internal/conjure`) and the [client SDK](../../clients/go) are generated from
 > the same contract, so the spec, the SDK, and the running server cannot drift.
 
 ## Conventions reflected in every endpoint

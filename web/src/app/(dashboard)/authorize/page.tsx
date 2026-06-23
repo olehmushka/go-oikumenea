@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { mutate } from "@/lib/api/client";
+import { api } from "@/lib/api/client";
 import { PageHeader } from "@/components/ui";
 import { ErrorBox } from "@/components/ErrorBox";
 import { EntitySelect } from "@/components/EntitySelect";
@@ -28,11 +28,7 @@ export default function AuthorizePage() {
       explain: true,
     };
     try {
-      const r = await mutate<AuthorizeResponse>(
-        "POST",
-        "/authorization/v1/authorize",
-        body,
-      );
+      const r = await api.authorization.authorize(body as never);
       setResult(r);
     } catch (e) {
       setErr(e);
@@ -84,12 +80,12 @@ export default function AuthorizePage() {
             >
               {result.allow ? <T>ALLOW</T> : <T>DENY</T>}
             </div>
-            {result.explanation?.reason && (
+            {result.explanation?.denyReason && (
               <div className="mt-1 text-sm text-slate-600">
-                {result.explanation.reason}
+                {result.explanation.denyReason}
               </div>
             )}
-            {result.explanation?.instanceAdmin && (
+            {result.explanation?.contributions?.some((c) => c.instanceAdmin) && (
               <div className="mt-1 text-sm text-indigo-700">
                 <T>Granted via the instance-admin plane.</T>
               </div>
@@ -104,8 +100,8 @@ export default function AuthorizePage() {
                     {result.explanation.contributions.map((c, i) => (
                       <li key={i} className="font-mono text-xs">
                         role={c.roleCode ?? c.assignmentId} · scope={c.scope}
-                        {c.viaUnitId ? ` · via ${c.viaUnitId.slice(-8)}` : ""}
-                        {c.graphId ? ` · graph ${c.graphId.slice(-8)}` : ""}
+                        {c.targetUnitId ? ` · via ${c.targetUnitId.slice(-8)}` : ""}
+                        {c.graphCode ? ` · graph ${c.graphCode}` : ""}
                       </li>
                     ))}
                   </ul>

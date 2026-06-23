@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { mutate } from "@/lib/api/client";
+import { api } from "@/lib/api/client";
 import { ErrorBox } from "@/components/ErrorBox";
 import { EntitySelect } from "@/components/EntitySelect";
 import { Localized } from "@/components/Localized";
@@ -54,11 +54,7 @@ export function OrderCreate({
         };
         (async () => {
           try {
-            const o = await mutate<{ id: string }>(
-              "POST",
-              `/order/v1/units/${unitId}/orders`,
-              body,
-            );
+            const o = await api.order.createOrder(unitId, body as never);
             router.push(`/orders/${o.id}`);
           } catch (e) {
             setErr(e);
@@ -125,7 +121,7 @@ export function EditOrder({ order }: { order: Order }) {
         setErr(null);
         (async () => {
           try {
-            await mutate("PUT", `/order/v1/orders/${order.id}`, {
+            await api.order.updateOrder(order.id, {
               number: String(f.get("number") || "").trim() || undefined,
               issuedOn: String(f.get("issuedOn") || "").trim() || undefined,
             });
@@ -140,8 +136,8 @@ export function EditOrder({ order }: { order: Order }) {
       }}
     >
       {err ? <ErrorBox error={err} /> : null}
-      <input name="number" className="input" placeholder={tr("number")} defaultValue={order.number} />
-      <input name="issuedOn" type="date" className="input" defaultValue={order.issuedOn} />
+      <input name="number" className="input" placeholder={tr("number")} defaultValue={order.number ?? ""} />
+      <input name="issuedOn" type="date" className="input" defaultValue={order.issuedOn ?? ""} />
       <div className="flex gap-2">
         <button className="btn-primary" disabled={busy}>
           <T>Save</T>
@@ -187,9 +183,9 @@ export function OrderTypeManager({ types }: { types: OrderType[] }) {
                   const f = new FormData(e.currentTarget);
                   run(
                     () =>
-                      mutate("PUT", `/order/v1/order-types/${t.id}`, {
-                        name: String(f.get("name") || "").trim() || undefined,
-                        status: String(f.get("status") || "").trim() || undefined,
+                      api.order.updateOrderType(t.id, {
+                        name: (String(f.get("name") || "").trim() || undefined) as never,
+                        status: (String(f.get("status") || "").trim() || undefined) as never,
                       }),
                     () => setEditing(null),
                   );
@@ -236,11 +232,11 @@ export function OrderTypeManager({ types }: { types: OrderType[] }) {
           const form = e.currentTarget;
           run(
             () =>
-              mutate("POST", "/order/v1/order-types", {
+              api.order.createOrderType({
                 code: String(f.get("code") || "").trim(),
-                name: String(f.get("name") || "").trim(),
-                category: String(f.get("category") || ""),
-                effect: String(f.get("effect") || ""),
+                name: String(f.get("name") || "").trim() as never,
+                category: String(f.get("category") || "") as never,
+                effect: String(f.get("effect") || "") as never,
               }),
             () => form.reset(),
           );
@@ -287,7 +283,8 @@ export function OrderActions({ orderId, status }: { orderId: string; status?: st
     setBusy(true);
     setErr(null);
     try {
-      await mutate("POST", `/order/v1/orders/${orderId}/${verb}`, body);
+      if (verb === "issue") await api.order.issueOrder(orderId);
+      else await api.order.revokeOrder(orderId, (body ?? {}) as never);
       router.refresh();
     } catch (e) {
       setErr(e);

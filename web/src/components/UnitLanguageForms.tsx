@@ -3,8 +3,7 @@
 // Unit official/working-language editor (D-Languages, M18). The link is its own sub-resource (not part
 // of the Unit aggregate), so the component fetches its list and refreshes after each write.
 import { useEffect, useState } from "react";
-import { mutate } from "@/lib/api/client";
-import { bffGet } from "@/lib/api/browser";
+import { api } from "@/lib/api/client";
 import { ErrorBox } from "@/components/ErrorBox";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { T } from "@/components/T";
@@ -22,7 +21,8 @@ export function UnitLanguageManager({ unitId }: { unitId: string }) {
   const [pickerKey, setPickerKey] = useState(0);
 
   const load = () =>
-    bffGet<UnitLanguage[]>(`/tenant/v1/units/${unitId}/languages`)
+    api.tenant
+      .listUnitLanguages(unitId)
       .then((r) => setRows(r ?? []))
       .catch(setErr);
   useEffect(() => {
@@ -61,7 +61,7 @@ export function UnitLanguageManager({ unitId }: { unitId: string }) {
               disabled={busy}
               onClick={() =>
                 window.confirm("Remove this language?") &&
-                run(() => mutate("DELETE", `/tenant/v1/units/${unitId}/languages/${l.languageId}`))
+                run(() => api.tenant.deleteUnitLanguage(unitId, l.languageId))
               }
             >
               <T>Remove</T>
@@ -77,7 +77,7 @@ export function UnitLanguageManager({ unitId }: { unitId: string }) {
           const f = new FormData(ev.currentTarget);
           run(
             () =>
-              mutate("PUT", `/tenant/v1/units/${unitId}/languages`, {
+              api.tenant.upsertUnitLanguage(unitId, {
                 languageId: langId,
                 isOfficial: f.get("isOfficial") === "on",
               }),

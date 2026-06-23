@@ -1,8 +1,8 @@
-import { apiGet } from "@/lib/api/server";
+import { oikumenea } from "@/lib/api/server";
 import { PageHeader, ErrorNotice } from "@/components/ui";
 import { T } from "@/components/T";
 import { ImportsClient } from "./ImportsClient";
-import type { ImportSource, ImportRun, WorkerJob } from "@/lib/api/types";
+import type { hermenea } from "oikumenea-client";
 
 // Always render fresh: the import control plane is live operational state, not a cacheable view.
 export const dynamic = "force-dynamic";
@@ -14,15 +14,16 @@ export const dynamic = "force-dynamic";
  * secret and never talks to :9443 directly.
  */
 export default async function ImportsPage() {
-  let sources: ImportSource[] = [];
-  let runs: ImportRun[] = [];
-  let jobs: WorkerJob[] = [];
+  let sources: hermenea.IImportSource[] = [];
+  let runs: hermenea.IImportRun[] = [];
+  let jobs: hermenea.IWorkerJob[] = [];
   let error: unknown = null;
   try {
+    const ok = await oikumenea();
     [sources, runs, jobs] = await Promise.all([
-      apiGet<ImportSource[]>("/hermenea/v1/sources"),
-      apiGet<ImportRun[]>("/hermenea/v1/runs"),
-      apiGet<WorkerJob[]>("/hermenea/v1/jobs"),
+      ok.hermenea.listSources(),
+      ok.hermenea.listRuns(),
+      ok.hermenea.listJobs(),
     ]);
   } catch (e) {
     error = e;

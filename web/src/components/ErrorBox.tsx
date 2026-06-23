@@ -1,20 +1,13 @@
 "use client";
 
-/** Client-side render of a thrown error or Conjure SerializableError body. */
+import { errorInfo } from "@/lib/api/errors";
+
+/** Client-side render of a thrown error (SDK ConjureError, or any other). */
 export function ErrorBox({ error }: { error: unknown }) {
-  let name = "Request failed";
-  let detail = "";
-  let params: Record<string, unknown> | undefined;
-  const b = error as
-    | { errorName?: string; errorCode?: string; parameters?: Record<string, unknown> }
-    | undefined;
-  if (b && typeof b === "object" && (b.errorName || b.errorCode)) {
-    name = b.errorName ?? "Error";
-    detail = b.errorCode ?? "";
-    params = b.parameters;
-  } else if (error instanceof Error) {
-    detail = error.message;
-  }
+  const info = errorInfo(error);
+  const name = info.errorName ?? (info.status ? `${info.status}` : info.message);
+  const detail = info.errorCode ?? (info.errorName ? "" : info.message === name ? "" : info.message);
+  const params = info.parameters;
   return (
     <div className="card border-red-200 bg-red-50 p-4">
       <div className="text-sm font-semibold text-red-800">{name}</div>

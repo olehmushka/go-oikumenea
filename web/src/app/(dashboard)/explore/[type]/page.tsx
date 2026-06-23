@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { apiGet } from "@/lib/api/server";
+import { oikumenea } from "@/lib/api/server";
 import { EmptyState, ErrorNotice, PageHeader, Pager } from "@/components/ui";
 import { DataTable } from "@/components/ontology/DataTable";
 import { TypeBadge } from "@/components/ontology/TypeBadge";
@@ -39,7 +39,8 @@ export default async function ExplorePage({
     if (pageToken) {
       search += `${search ? "&" : "?"}pageToken=${encodeURIComponent(pageToken)}`;
     }
-    const res = await apiGet(def.list.path, search);
+    const listPath = def.list.path;
+    const res = await oikumenea().then((ok) => ok.request("GET", listPath, { query: search }));
     const parsed = def.list.parse(res);
     rows = parsed.rows;
     nextPageToken = parsed.nextPageToken;

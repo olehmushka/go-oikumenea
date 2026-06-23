@@ -146,7 +146,10 @@ services:
   #   docker compose --profile ui up --build
   #   open http://localhost:8445
   web:
-    build: ./web
+    build:
+      # Repo-root context: web consumes the SDK at ../clients/typescript (a file: dep outside web/).
+      context: .
+      dockerfile: web/Dockerfile
     profiles: ["ui"]
     depends_on:
       - app

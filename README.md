@@ -184,11 +184,14 @@ editing a migration.
 
 ## Client SDK & API reference
 
-The API is Conjure-first (`api/*.conjure.yml`). A typed **Go client SDK** is generated from that same
-contract into the nested module [`client/`](client/README.md) — `go get
-github.com/olegamysk/go-oikumenea/client`. An **OpenAPI** reference is generated from the same IR in CI
-(see [`docs/api/README.md`](docs/api/README.md)). Both derive from one contract, so they cannot drift
-from the server.
+The API is Conjure-first (`api/*.conjure.yml`). Two typed client SDKs are generated from that same
+contract: a **Go SDK** in the nested module [`clients/go/`](clients/go/README.md) — `go get
+github.com/olegamysk/go-oikumenea/clients/go` — and a **TypeScript SDK** in
+[`clients/typescript/`](clients/typescript/README.md) (D-ClientSDK). Each adds a one-call façade
+(`client.New` / `createOikumeneaClient`) over every service, including the `hermenea` endpoints
+oikumenea proxies. An **OpenAPI** reference is generated from the same IR in CI (see
+[`docs/api/README.md`](docs/api/README.md)). All derive from one contract, so they cannot drift from
+the server.
 
 ## Web UI (optional)
 

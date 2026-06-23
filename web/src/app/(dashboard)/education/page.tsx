@@ -6,8 +6,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { mutate } from "@/lib/api/client";
-import { bffGet } from "@/lib/api/browser";
+import { api } from "@/lib/api/client";
 import { CountrySelect } from "@/components/CountrySelect";
 import { PageHeader, Card, Table, Mono } from "@/components/ui";
 import { ErrorBox } from "@/components/ErrorBox";
@@ -29,14 +28,14 @@ export default function EducationPage() {
   const [err, setErr] = useState<unknown>(null);
 
   function reload() {
-    bffGet<{ institutions: Institution[] }>("/education/v1/institutions?pageSize=100")
+    api.education.listInstitutions(undefined, 100)
       .then((r) => setInstitutions(r.institutions ?? []))
       .catch(setErr);
   }
 
   useEffect(() => {
-    bffGet<{ institutionKinds: Kind[] }>("/education/v1/institution-kinds").then((r) => setInstitutionKinds(r.institutionKinds ?? [])).catch(() => {});
-    bffGet<{ unitKinds: Kind[] }>("/education/v1/unit-kinds").then((r) => setUnitKinds(r.unitKinds ?? [])).catch(() => {});
+    api.education.listInstitutionKinds().then((r) => setInstitutionKinds(r.institutionKinds ?? [])).catch(() => {});
+    api.education.listUnitKinds().then((r) => setUnitKinds(r.unitKinds ?? [])).catch(() => {});
     reload();
   }, []);
 
@@ -87,7 +86,7 @@ function ReferencePanel({ institution }: { institution: Institution }) {
   const codeValue = codeTouched ? code : slug ? `${slug}-${suffix.current}` : "";
 
   function reload() {
-    bffGet<Record<string, RefRow[]>>(`/education/v1/institutions/${institution.id}/${kind.key}`)
+    api.request<Record<string, RefRow[]>>("GET", `/education/v1/institutions/${institution.id}/${kind.key}`)
       .then((r) => setRows(r[kind.listKey] ?? []))
       .catch(setErr);
   }
@@ -100,7 +99,7 @@ function ReferencePanel({ institution }: { institution: Institution }) {
     try {
       const body: Record<string, string> = { code: codeValue.trim() };
       body[kind.nameField] = name.trim();
-      await mutate("POST", `/education/v1/institutions/${institution.id}/${kind.key}`, body);
+      await api.request("POST", `/education/v1/institutions/${institution.id}/${kind.key}`, { body });
       setName(""); setCode(""); setCodeTouched(false); suffix.current = newSuffix();
       reload();
     } catch (e) { setErr(e); } finally { setBusy(false); }
@@ -156,7 +155,7 @@ function CreateInstitution({ kinds, onCreated }: { kinds: Kind[]; onCreated: () 
     const f = new FormData(e.currentTarget);
     const str = (k: string) => { const v = String(f.get(k) || "").trim(); return v === "" ? undefined : v; };
     try {
-      const inst = await mutate<Institution>("POST", "/education/v1/institutions", {
+      const inst = await api.education.createInstitution({
         code: codeValue.trim(),
         name: name.trim(),
         kindId: String(f.get("kindId") || "").trim(),
@@ -241,8 +240,8 @@ function InstitutionDetail({ institution, unitKinds }: { institution: Institutio
   const codeValue = codeTouched ? code : slug ? `${slug}-${suffix.current}` : "";
 
   function reload() {
-    bffGet<{ units: Unit[] }>(`/education/v1/institutions/${institution.id}/units`).then((r) => setUnits(r.units ?? [])).catch(setErr);
-    bffGet<{ positions: Position[] }>(`/education/v1/institutions/${institution.id}/positions`).then((r) => setPositions(r.positions ?? [])).catch(() => {});
+    api.education.listUnits(institution.id).then((r) => setUnits((r.units ?? []) as unknown as Unit[])).catch(setErr);
+    api.education.listPositions(institution.id).then((r) => setPositions((r.positions ?? []) as unknown as Position[])).catch(() => {});
   }
   useEffect(reload, [institution.id]);
 
@@ -253,7 +252,7 @@ function InstitutionDetail({ institution, unitKinds }: { institution: Institutio
     const f = new FormData(e.currentTarget);
     const parent = String(f.get("parentId") || "").trim();
     try {
-      await mutate("POST", `/education/v1/institutions/${institution.id}/units`, {
+      await api.education.createUnit(institution.id, {
         code: codeValue.trim(),
         name: name.trim(),
         kindId: String(f.get("kindId") || "").trim(),

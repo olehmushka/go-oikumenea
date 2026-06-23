@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ApiError } from "@/lib/api/errors";
+import { errorInfo } from "@/lib/api/errors";
 
 export function PageHeader({
   title,
@@ -39,20 +39,10 @@ export function EmptyState({ children }: { children: React.ReactNode }) {
 
 /** Renders an API failure (incl. the Conjure SerializableError envelope) readably. */
 export function ErrorNotice({ error }: { error: unknown }) {
-  let name = "Request failed";
-  let detail = "";
-  let params: Record<string, unknown> | undefined;
-  if (error instanceof ApiError) {
-    name = `${error.status}`;
-    const b = error.body as
-      | { errorName?: string; errorCode?: string; parameters?: Record<string, unknown> }
-      | undefined;
-    if (b?.errorName) name = b.errorName;
-    if (b?.errorCode) detail = b.errorCode;
-    params = b?.parameters;
-  } else if (error instanceof Error) {
-    detail = error.message;
-  }
+  const info = errorInfo(error);
+  const name = info.errorName ?? (info.status ? `${info.status}` : info.message);
+  const detail = info.errorCode ?? (info.errorName ? "" : info.message === name ? "" : info.message);
+  const params = info.parameters;
   return (
     <div className="card border-red-200 bg-red-50 p-5">
       <div className="text-sm font-semibold text-red-800">{name}</div>

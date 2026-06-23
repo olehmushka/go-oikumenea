@@ -1,4 +1,4 @@
-import { apiGet } from "@/lib/api/server";
+import { oikumenea } from "@/lib/api/server";
 import { EmptyState, ErrorNotice, PageHeader } from "@/components/ui";
 import { T } from "@/components/T";
 import { ImportRankScheme, RankSchemeManager } from "./RankSchemeManager";
@@ -9,9 +9,10 @@ export default async function RanksPage() {
   let grades: RankGrade[] = [];
   let error: unknown = null;
   try {
+    const ok = await oikumenea();
     [scheme, grades] = await Promise.all([
-      apiGet<RankScheme>("/rank/v1/rank-scheme"),
-      apiGet<RankGrade[]>("/rank/v1/rank-grades").catch(() => []),
+      ok.rank.getRankScheme(),
+      ok.rank.getRankGrades().catch(() => []),
     ]);
   } catch (e) {
     error = e;

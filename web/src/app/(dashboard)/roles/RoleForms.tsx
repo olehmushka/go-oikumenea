@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { mutate } from "@/lib/api/client";
+import { api } from "@/lib/api/client";
 import { ErrorBox } from "@/components/ErrorBox";
 import { EntitySelect } from "@/components/EntitySelect";
 import { GraphSelect } from "@/components/GraphSelect";
@@ -37,7 +37,7 @@ export function RoleCreate() {
         const f = new FormData(e.currentTarget);
         const form = e.currentTarget;
         run(async () => {
-          await mutate("POST", "/authorization/v1/roles", {
+          await api.authorization.createRole({
             code: String(f.get("code") || "").trim(),
             name: String(f.get("name") || "").trim(),
             description: String(f.get("description") || "").trim() || undefined,
@@ -96,7 +96,7 @@ export function EditRole({ role }: { role: Role }) {
             .split(/[\s,]+/)
             .map((x) => x.trim())
             .filter(Boolean);
-          await mutate("PUT", `/authorization/v1/roles/${role.id}`, {
+          await api.authorization.updateRole(role.id, {
             name: String(f.get("name") || "").trim() || undefined,
             description: String(f.get("description") || "").trim() || undefined,
             permissions: perms.length ? perms : undefined,
@@ -136,11 +136,11 @@ export function AssignmentGrant({ roles }: { roles: Role[] }) {
         const f = new FormData(e.currentTarget);
         const form = e.currentTarget;
         run(async () => {
-          await mutate("POST", "/authorization/v1/assignments", {
+          await api.authorization.grantAssignment({
             subjectPersonId: String(f.get("subjectPersonId") || "").trim(),
             roleId: String(f.get("roleId") || "").trim(),
             targetUnitId: String(f.get("targetUnitId") || "").trim(),
-            scope: String(f.get("scope") || "subtree"),
+            scope: String(f.get("scope") || "subtree") as never,
             graph: String(f.get("graph") || "").trim() || undefined,
             expiresAt: String(f.get("expiresAt") || "").trim() || undefined,
           });
@@ -199,7 +199,7 @@ export function InstanceAdminGrant() {
         const f = new FormData(e.currentTarget);
         const form = e.currentTarget;
         run(async () => {
-          await mutate("POST", "/authorization/v1/instance-admins", {
+          await api.authorization.grantInstanceAdmin({
             personId: String(f.get("personId") || "").trim(),
           });
           form.reset();

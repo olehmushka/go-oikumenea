@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { mutate } from "@/lib/api/client";
+import { api } from "@/lib/api/client";
 import { OBJECT_TYPES, type ActionDef, type Row } from "@/lib/ontology/registry";
 
 /** Registry-declared actions for an object, rendered as buttons (object view). The object is passed
@@ -18,7 +18,7 @@ export function ObjectActions({ type, obj }: { type: string; obj: Row }) {
     if (a.confirm && !window.confirm(a.confirm)) return;
     setBusy(true);
     try {
-      await mutate(a.method, a.path(obj.id), a.body?.());
+      await api.request(a.method, a.path(obj.id), { body: a.body?.() });
       router.refresh();
     } finally {
       setBusy(false);

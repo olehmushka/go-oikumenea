@@ -4,15 +4,14 @@
 // person object view. The education backend exposes 8 person-path link types under /education/v1 plus a
 // read-only view of the teaching/admin appointments a person holds. Layout: one card with a type
 // switcher (mirrors the education page's ReferencePanel); each type owns its fetch + list + upsert form,
-// following the PersonLanguageManager pattern (self-fetch via bffGet, run() that writes then reloads).
+// following the PersonLanguageManager pattern (self-fetch via api.request, run() that writes then reloads).
 //
 // Most links target an institution-scoped entity, so the forms pick an institution (EntitySelect) and
 // then cascade its child list (units / groups / buildings / research-groups / grants / governance-bodies
 // / qualifications) into a plain <select>. Publications and scholarships are globally scoped pickers.
 
 import { useCallback, useEffect, useState } from "react";
-import { bffGet } from "@/lib/api/browser";
-import { mutate } from "@/lib/api/client";
+import { api } from "@/lib/api/client";
 import { EntitySelect } from "@/components/EntitySelect";
 import { ErrorBox } from "@/components/ErrorBox";
 import { T } from "@/components/T";
@@ -65,7 +64,7 @@ function useLinks<T>(path: string, key: string) {
   const [busy, setBusy] = useState(false);
 
   const reload = useCallback(() => {
-    bffGet<Record<string, T[]>>(path)
+    api.request<Record<string, T[]>>("GET", path)
       .then((r) => setRows(r[key] ?? []))
       .catch(setErr);
   }, [path, key]);
@@ -111,7 +110,7 @@ function ScopedSelect({
       return;
     }
     let alive = true;
-    bffGet<Record<string, Record<string, unknown>[]>>(path)
+    api.request<Record<string, Record<string, unknown>[]>>("GET", path)
       .then((r) => {
         if (alive) setOpts(r[listKey] ?? []);
       })
@@ -206,7 +205,7 @@ function EnrollmentSection({ personId }: { personId: string }) {
   const tr = useTg();
 
   useEffect(() => {
-    bffGet<{ degreeLevels: Record<string, unknown>[] }>(`${EDU}/degree-levels`)
+    api.request<{ degreeLevels: Record<string, unknown>[] }>("GET", `${EDU}/degree-levels`)
       .then((r) => setDegrees(r.degreeLevels ?? []))
       .catch(() => {});
   }, []);
@@ -230,7 +229,7 @@ function EnrollmentSection({ personId }: { personId: string }) {
       degreeLevelId: opt(degree), fieldOfStudy: opt(field), studentNumber: opt(student),
       status: opt(status), qualification: opt(qual), effectiveFrom: opt(from), effectiveTo: opt(to),
     };
-    run(() => mutate(editId ? "PUT" : "POST", editId ? `${base}/${editId}` : base, body), reset);
+    run(() => api.request(editId ? "PUT" : "POST", editId ? `${base}/${editId}` : base, { body }), reset);
   }
 
   return (
@@ -240,7 +239,7 @@ function EnrollmentSection({ personId }: { personId: string }) {
       <ul className={listCls}>
         {(rows ?? []).map((e) => (
           <RowLine key={e.id} busy={busy} onEdit={() => edit(e)}
-            onRemove={() => window.confirm("Remove this enrollment?") && run(() => mutate("DELETE", `${base}/${e.id}`))}>
+            onRemove={() => window.confirm("Remove this enrollment?") && run(() => api.request("DELETE", `${base}/${e.id}`))}>
             {e.fieldOfStudy || tail(e.institutionId)} · {e.status}
             {e.qualification ? ` · ${e.qualification}` : ""}{dates(e.effectiveFrom, e.effectiveTo)}
           </RowLine>
@@ -304,7 +303,7 @@ function DormitorySection({ personId }: { personId: string }) {
     ev.preventDefault();
     if (!building) return;
     const body = { buildingId: building, room: opt(room), status: opt(status), effectiveFrom: opt(from), effectiveTo: opt(to) };
-    run(() => mutate(editId ? "PUT" : "POST", editId ? `${base}/${editId}` : base, body), reset);
+    run(() => api.request(editId ? "PUT" : "POST", editId ? `${base}/${editId}` : base, { body }), reset);
   }
 
   return (
@@ -314,7 +313,7 @@ function DormitorySection({ personId }: { personId: string }) {
       <ul className={listCls}>
         {(rows ?? []).map((d) => (
           <RowLine key={d.id} busy={busy} onEdit={() => edit(d)}
-            onRemove={() => window.confirm("Remove this dormitory stay?") && run(() => mutate("DELETE", `${base}/${d.id}`))}>
+            onRemove={() => window.confirm("Remove this dormitory stay?") && run(() => api.request("DELETE", `${base}/${d.id}`))}>
             {tail(d.buildingId)}{d.room ? ` · room ${d.room}` : ""} · {d.status}{dates(d.effectiveFrom, d.effectiveTo)}
           </RowLine>
         ))}
@@ -370,7 +369,7 @@ function PublicationSection({ personId }: { personId: string }) {
       publicationId: pub, authorOrder: order.trim() === "" ? undefined : Number(order),
       corresponding, effectiveFrom: opt(from), effectiveTo: opt(to),
     };
-    run(() => mutate(editId ? "PUT" : "POST", editId ? `${base}/${editId}` : base, body), reset);
+    run(() => api.request(editId ? "PUT" : "POST", editId ? `${base}/${editId}` : base, { body }), reset);
   }
 
   return (
@@ -380,7 +379,7 @@ function PublicationSection({ personId }: { personId: string }) {
       <ul className={listCls}>
         {(rows ?? []).map((a) => (
           <RowLine key={a.id} busy={busy} onEdit={() => edit(a)}
-            onRemove={() => window.confirm("Remove this authorship?") && run(() => mutate("DELETE", `${base}/${a.id}`))}>
+            onRemove={() => window.confirm("Remove this authorship?") && run(() => api.request("DELETE", `${base}/${a.id}`))}>
             {tail(a.publicationId)}{a.authorOrder != null ? ` · #${a.authorOrder}` : ""}{a.corresponding ? " · corresponding" : ""}
           </RowLine>
         ))}
@@ -450,7 +449,7 @@ function RoleLinkSection({
     const body: Record<string, unknown> = {
       [idField]: target, [roleField]: opt(role), status: opt(status), effectiveFrom: opt(from), effectiveTo: opt(to),
     };
-    run(() => mutate(editId ? "PUT" : "POST", editId ? `${base}/${editId}` : base, body), reset);
+    run(() => api.request(editId ? "PUT" : "POST", editId ? `${base}/${editId}` : base, { body }), reset);
   }
 
   return (
@@ -460,7 +459,7 @@ function RoleLinkSection({
       <ul className={listCls}>
         {(rows ?? []).map((r) => (
           <RowLine key={r.id} busy={busy} onEdit={() => edit(r)}
-            onRemove={() => window.confirm(removeMsg) && run(() => mutate("DELETE", `${base}/${r.id}`))}>
+            onRemove={() => window.confirm(removeMsg) && run(() => api.request("DELETE", `${base}/${r.id}`))}>
             {tail(sv(r[idField]))}{sv(r[roleField]) ? ` · ${sv(r[roleField])}` : ""} · {r.status}{dates(r.effectiveFrom, r.effectiveTo)}
           </RowLine>
         ))}
@@ -511,7 +510,7 @@ function QualificationSection({ personId }: { personId: string }) {
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
 
   useEffect(() => {
-    bffGet<{ enrollments: Enrollment[] }>(`${EDU}/persons/${personId}/enrollments`)
+    api.request<{ enrollments: Enrollment[] }>("GET", `${EDU}/persons/${personId}/enrollments`)
       .then((r) => setEnrollments(r.enrollments ?? []))
       .catch(() => {});
   }, [personId]);
@@ -531,7 +530,7 @@ function QualificationSection({ personId }: { personId: string }) {
       qualificationId: qualId, enrollmentId: opt(enrollment), awardedOn: opt(awardedOn),
       withDistinction: distinction, gpa: opt(gpa), status: opt(status),
     };
-    run(() => mutate(editId ? "PUT" : "POST", editId ? `${base}/${editId}` : base, body), reset);
+    run(() => api.request(editId ? "PUT" : "POST", editId ? `${base}/${editId}` : base, { body }), reset);
   }
 
   return (
@@ -541,7 +540,7 @@ function QualificationSection({ personId }: { personId: string }) {
       <ul className={listCls}>
         {(rows ?? []).map((a) => (
           <RowLine key={a.id} busy={busy} onEdit={() => edit(a)}
-            onRemove={() => window.confirm("Remove this qualification award?") && run(() => mutate("DELETE", `${base}/${a.id}`))}>
+            onRemove={() => window.confirm("Remove this qualification award?") && run(() => api.request("DELETE", `${base}/${a.id}`))}>
             {tail(a.qualificationId)} · {a.status}{a.withDistinction ? " · distinction" : ""}{a.awardedOn ? ` · ${a.awardedOn}` : ""}
           </RowLine>
         ))}
@@ -595,7 +594,7 @@ function ScholarshipSection({ personId }: { personId: string }) {
     ev.preventDefault();
     if (!scholarship) return;
     const body = { scholarshipId: scholarship, status: opt(status), effectiveFrom: opt(from), effectiveTo: opt(to) };
-    run(() => mutate(editId ? "PUT" : "POST", editId ? `${base}/${editId}` : base, body), reset);
+    run(() => api.request(editId ? "PUT" : "POST", editId ? `${base}/${editId}` : base, { body }), reset);
   }
 
   return (
@@ -605,7 +604,7 @@ function ScholarshipSection({ personId }: { personId: string }) {
       <ul className={listCls}>
         {(rows ?? []).map((a) => (
           <RowLine key={a.id} busy={busy} onEdit={() => edit(a)}
-            onRemove={() => window.confirm("Remove this scholarship award?") && run(() => mutate("DELETE", `${base}/${a.id}`))}>
+            onRemove={() => window.confirm("Remove this scholarship award?") && run(() => api.request("DELETE", `${base}/${a.id}`))}>
             {tail(a.scholarshipId)} · {a.status}{dates(a.effectiveFrom, a.effectiveTo)}
           </RowLine>
         ))}

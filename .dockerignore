@@ -9,3 +9,8 @@
 /docs/
 README.md
 UPGRADING.md
+# Node/Next host artifacts (the web image rebuilds these in-container; never ship host copies).
+/web/node_modules/
+/web/.next/
+/clients/typescript/node_modules/
+/clients/typescript/dist/

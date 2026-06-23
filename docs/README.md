@@ -66,6 +66,12 @@ across graphs. That — *hierarchy + inheritance + visibility, decided by a PDP*
 |---|---|
 | [hermenea](modules/hermenea.md) *(M16, `cmd/hermenea`)* | Out-of-process **ingestion + scheduler**, its **own Postgres**, HTTP-only coupling: fetch (http/file connector) → raw staging → mapper → oikumenea `POST /import/{objectType}` idempotent upsert; cron + `worker_jobs` queue; `import_runs` lineage. **D-Hermenea** supersedes D-Worker and folds the M17 data-ingestion framework. |
 
+**Client SDKs** (generated build outputs + thin hand-written façades, not `internal/` modules):
+
+| SDK | Responsibility |
+|---|---|
+| [clients](modules/clients.md) *(M27, `clients/go/` + `clients/typescript/`)* | Unified **Go + TypeScript SDKs** generated from the same Conjure contract (**D-ClientSDK**); each adds a one-call façade (`client.New` / `createOikumeneaClient`) binding one base URL + token to every service, including the `hermenea`/`import` endpoints oikumenea proxies. The web console consumes the TS SDK. |
+
 **Planned modules** (designed in [milestones.md](milestones.md) M16–M26 + [roadmap-decisions.md](architecture/roadmap-decisions.md); most module docs follow at implementation time — the **religion**, shared **location**, and **company** docs already exist):
 
 | Module | Responsibility |

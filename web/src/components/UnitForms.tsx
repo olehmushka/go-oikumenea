@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { mutate } from "@/lib/api/client";
+import { api } from "@/lib/api/client";
 import { ErrorBox } from "./ErrorBox";
 import { ActionButton } from "./ActionButton";
 import { T } from "./T";
@@ -63,11 +63,11 @@ export function UnitAdmin({ unit }: { unit: Unit }) {
             setErr(null);
             (async () => {
               try {
-                await mutate("PUT", `/tenant/v1/units/${unit.id}`, {
+                await api.tenant.updateUnit(unit.id, {
                   name: String(f.get("name") || "").trim() || undefined,
                   unitKind: String(f.get("unitKind") || "").trim() || undefined,
                   level: f.get("level") ? Number(f.get("level")) : undefined,
-                  visibility: String(f.get("visibility") || "").trim() || undefined,
+                  visibility: (String(f.get("visibility") || "").trim() || undefined) as never,
                 });
                 setOpen(false);
                 router.refresh();
@@ -87,11 +87,11 @@ export function UnitAdmin({ unit }: { unit: Unit }) {
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="label"><T>Kind</T></label>
-              <input name="unitKind" className="input" defaultValue={unit.unitKind} />
+              <input name="unitKind" className="input" defaultValue={unit.unitKind ?? ""} />
             </div>
             <div>
               <label className="label"><T>Level</T></label>
-              <input name="level" type="number" className="input" defaultValue={unit.level} />
+              <input name="level" type="number" className="input" defaultValue={unit.level ?? ""} />
             </div>
             <div>
               <label className="label"><T>Visibility</T></label>

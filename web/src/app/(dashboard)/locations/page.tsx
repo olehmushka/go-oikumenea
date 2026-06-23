@@ -7,8 +7,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { mutate } from "@/lib/api/client";
-import { bffGet } from "@/lib/api/browser";
+import { api } from "@/lib/api/client";
 import { CountrySelect } from "@/components/CountrySelect";
 import { PageHeader, Card, Table, Mono } from "@/components/ui";
 import { ErrorBox } from "@/components/ErrorBox";
@@ -50,7 +49,7 @@ const FORMATS: { value: string; label: string }[] = [
 export default function LocationsPage() {
   const [types, setTypes] = useState<LocationType[]>([]);
   useEffect(() => {
-    bffGet<{ locationTypes: LocationType[] }>("/location/v1/location/types")
+    api.location.listLocationTypes()
       .then((r) => setTypes(r.locationTypes ?? []))
       .catch(() => setTypes([]));
   }, []);
@@ -121,8 +120,8 @@ function CreateLocation({ types }: { types: LocationType[] }) {
       rawAddress: str("rawAddress"),
     };
     try {
-      const loc = await mutate<Location>("POST", "/location/v1/locations", body);
-      setCreated(loc);
+      const loc = await api.location.createLocation(body as never);
+      setCreated(loc as unknown as Location);
     } catch (e) {
       setErr(e);
     } finally {
@@ -302,7 +301,7 @@ function RadiusSearch() {
       pageSize: "50",
     });
     try {
-      const res = await bffGet<{ locations: Location[] }>(`/location/v1/locations?${q.toString()}`);
+      const res = await api.request<{ locations: Location[] }>("GET", `/location/v1/locations?${q.toString()}`);
       setRows(res.locations ?? []);
     } catch (e) {
       setErr(e);

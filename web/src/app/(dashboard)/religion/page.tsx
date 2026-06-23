@@ -6,8 +6,7 @@
 // Per-unit religion profiles/classifications are managed from the unit object view.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { mutate } from "@/lib/api/client";
-import { bffGet } from "@/lib/api/browser";
+import { api } from "@/lib/api/client";
 import { PageHeader, Card, Table, Mono, Pill } from "@/components/ui";
 import { ErrorBox } from "@/components/ErrorBox";
 import { T } from "@/components/T";
@@ -42,9 +41,9 @@ export default function ReligionPage() {
   const [err, setErr] = useState<unknown>(null);
 
   useEffect(() => {
-    bffGet<{ taxonRanks: Rank[] }>("/religion/v1/taxon-ranks").then((r) => setRanks(r.taxonRanks ?? [])).catch(() => {});
-    bffGet<{ classifications: Classification[] }>("/religion/v1/classifications").then((r) => setClassifications(r.classifications ?? [])).catch(() => {});
-    bffGet<{ taxa: Taxon[] }>("/religion/v1/taxa?rank=religion&pageSize=100").then((r) => setReligions(r.taxa ?? [])).catch(() => {});
+    api.religion.listTaxonRanks().then((r) => setRanks((r.taxonRanks ?? []) as unknown as Rank[])).catch(() => {});
+    api.religion.listClassifications().then((r) => setClassifications((r.classifications ?? []) as unknown as Classification[])).catch(() => {});
+    api.religion.listTaxa("religion", undefined, undefined, undefined, 100).then((r) => setReligions((r.taxa ?? []) as unknown as Taxon[])).catch(() => {});
   }, []);
 
   function reload() {
@@ -52,7 +51,7 @@ export default function ReligionPage() {
     if (rankFilter) params.set("rank", rankFilter);
     if (religionFilter) params.set("religion", religionFilter);
     if (query.trim()) params.set("query", query.trim());
-    bffGet<{ taxa: Taxon[] }>(`/religion/v1/taxa?${params.toString()}`)
+    api.request<{ taxa: Taxon[] }>("GET", `/religion/v1/taxa?${params.toString()}`)
       .then((r) => setTaxa(r.taxa ?? []))
       .catch(setErr);
   }
@@ -136,8 +135,8 @@ function ClergyGradesPanel() {
   const [grades, setGrades] = useState<ClergyGrade[]>([]);
   const [err, setErr] = useState<unknown>(null);
   useEffect(() => {
-    bffGet<{ clergyGrades: ClergyGrade[] }>("/religion/v1/clergy-grades")
-      .then((r) => setGrades(r.clergyGrades ?? []))
+    api.religion.listClergyGrades()
+      .then((r) => setGrades((r.clergyGrades ?? []) as unknown as ClergyGrade[]))
       .catch(setErr);
   }, []);
   return (
@@ -162,8 +161,8 @@ function AffiliationTypesPanel() {
   const [types, setTypes] = useState<AffiliationType[]>([]);
   const [err, setErr] = useState<unknown>(null);
   useEffect(() => {
-    bffGet<{ affiliationTypes: AffiliationType[] }>("/religion/v1/affiliation-types")
-      .then((r) => setTypes(r.affiliationTypes ?? []))
+    api.religion.listAffiliationTypes()
+      .then((r) => setTypes((r.affiliationTypes ?? []) as unknown as AffiliationType[]))
       .catch(setErr);
   }, []);
   return (
@@ -194,7 +193,7 @@ function ClergyRosterPanel() {
     e.preventDefault();
     setErr(null);
     if (!unitId.trim()) return;
-    bffGet<{ credentials: ClergyCredential[] }>(`/religion/v1/units/${unitId.trim()}/clergy-credentials`)
+    api.request<{ credentials: ClergyCredential[] }>("GET", `/religion/v1/units/${unitId.trim()}/clergy-credentials`)
       .then((r) => setRows(r.credentials ?? []))
       .catch(setErr);
   }
@@ -259,7 +258,7 @@ function CreateTaxon({ ranks, taxa, religions, onCreated }: { ranks: Rank[]; tax
     e.preventDefault();
     setBusy(true); setErr(null);
     try {
-      await mutate("POST", "/religion/v1/taxa", {
+      await api.religion.createTaxon({
         code: codeValue.trim(),
         name: name.trim(),
         rankId,
@@ -300,8 +299,8 @@ function TaxonDetail({ taxon, classifications, onChanged }: { taxon: Taxon; clas
   const [err, setErr] = useState<unknown>(null);
 
   useEffect(() => {
-    bffGet<{ classifications: Classification[] }>(`/religion/v1/taxa/${taxon.id}/effective-classifications`)
-      .then((r) => setEffective(r.classifications ?? []))
+    api.religion.getEffectiveClassifications(taxon.id)
+      .then((r) => setEffective((r.classifications ?? []) as unknown as Classification[]))
       .catch(setErr);
     setSelectedIds([]);
   }, [taxon.id]);
@@ -313,8 +312,8 @@ function TaxonDetail({ taxon, classifications, onChanged }: { taxon: Taxon; clas
   async function save() {
     setBusy(true); setErr(null);
     try {
-      const r = await mutate<{ classifications: Classification[] }>("PUT", `/religion/v1/taxa/${taxon.id}/classifications`, { classificationIds: selectedIds });
-      setEffective(r.classifications ?? []);
+      const r = await api.religion.setTaxonClassifications(taxon.id, { classificationIds: selectedIds });
+      setEffective((r.classifications ?? []) as unknown as Classification[]);
       onChanged();
     } catch (e) { setErr(e); } finally { setBusy(false); }
   }
@@ -378,7 +377,7 @@ function CatalogPanel<R extends { id: string; code: string; name: LocaleMap }>({
   const [rows, setRows] = useState<R[]>([]);
   const [err, setErr] = useState<unknown>(null);
   useEffect(() => {
-    bffGet<Record<string, R[]>>(path).then((r) => setRows(r[dataKey] ?? [])).catch(setErr);
+    api.request<Record<string, R[]>>("GET", path).then((r) => setRows(r[dataKey] ?? [])).catch(setErr);
   }, [path, dataKey]);
   return (
     <Card>
@@ -431,7 +430,7 @@ function DiscoverySearchPanel() {
     if (day !== "") p.set("dayOfWeek", day);
     if (online) p.set("onlineOnly", "true");
     if (query.trim()) p.set("query", query.trim());
-    bffGet<{ sites: DiscoverySite[] }>(`/religion/v1/discovery/sites?${p.toString()}`)
+    api.request<{ sites: DiscoverySite[] }>("GET", `/religion/v1/discovery/sites?${p.toString()}`)
       .then((r) => setHits(r.sites ?? []))
       .catch(setErr);
   }
@@ -493,22 +492,22 @@ function UnitSitesPanel() {
   const [aliasType, setAliasType] = useState("transliteration");
 
   useEffect(() => {
-    bffGet<{ siteTypes: SiteType[] }>("/religion/v1/site-types").then((r) => setSiteTypes(r.siteTypes ?? [])).catch(() => {});
+    api.religion.listSiteTypes().then((r) => setSiteTypes((r.siteTypes ?? []) as unknown as SiteType[])).catch(() => {});
   }, []);
 
   function load() {
     if (!unitId.trim()) return;
     setErr(null);
     const u = unitId.trim();
-    bffGet<{ sites: Site[] }>(`/religion/v1/units/${u}/sites`).then((r) => setSites(r.sites ?? [])).catch(setErr);
-    bffGet<{ aliases: Alias[] }>(`/religion/v1/units/${u}/aliases`).then((r) => setAliases(r.aliases ?? [])).catch(() => {});
+    api.religion.listUnitSites(u).then((r) => setSites((r.sites ?? []) as unknown as Site[])).catch(setErr);
+    api.religion.listUnitAliases(u).then((r) => setAliases((r.aliases ?? []) as unknown as Alias[])).catch(() => {});
   }
 
   async function addSite(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
     try {
-      await mutate("POST", `/religion/v1/units/${unitId.trim()}/sites`, {
+      await api.religion.createSite(unitId.trim(), {
         locationId: locationId.trim(), siteTypeId, publicPrecision: precision, isPrimary,
       });
       setLocationId(""); setIsPrimary(false);
@@ -520,7 +519,7 @@ function UnitSitesPanel() {
     e.preventDefault();
     setErr(null);
     try {
-      await mutate("POST", `/religion/v1/units/${unitId.trim()}/aliases`, { aliasText: aliasText.trim(), aliasType });
+      await api.religion.createAlias(unitId.trim(), { aliasText: aliasText.trim(), aliasType } as never);
       setAliasText("");
       load();
     } catch (e) { setErr(e); }

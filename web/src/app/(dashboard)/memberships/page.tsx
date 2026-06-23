@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { apiGet } from "@/lib/api/server";
+import { oikumenea } from "@/lib/api/server";
 import { EmptyState, ErrorNotice, Mono, PageHeader, Pill, Table } from "@/components/ui";
 import { LookupForm } from "@/components/LookupForm";
 import { T } from "@/components/T";
@@ -15,14 +15,12 @@ export default async function MembershipsPage({
   let rows: Membership[] | null = null;
   let positions: Position[] = [];
   let error: unknown = null;
-  const target = unitId
-    ? `/membership/v1/units/${unitId}/members`
-    : personId
-      ? `/membership/v1/persons/${personId}/memberships`
-      : null;
-  if (target) {
+  if (unitId || personId) {
     try {
-      const r = await apiGet<{ memberships: Membership[] }>(target);
+      const ok = await oikumenea();
+      const r = unitId
+        ? await ok.membership.listMembers(unitId)
+        : await ok.membership.listPersonMemberships(personId!);
       rows = r.memberships ?? [];
     } catch (e) {
       error = e;
@@ -30,9 +28,8 @@ export default async function MembershipsPage({
   }
   // When viewing a unit, load its positions so the Add-membership form can assign to a billet.
   if (unitId) {
-    positions = await apiGet<{ positions: Position[] }>(
-      `/membership/v1/units/${unitId}/positions`,
-    )
+    positions = await oikumenea()
+      .then((ok) => ok.membership.listPositions(unitId))
       .then((r) => r.positions ?? [])
       .catch(() => []);
   }

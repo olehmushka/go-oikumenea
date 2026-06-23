@@ -7,7 +7,6 @@
 *.tsbuildinfo
 next-env.d.ts.bak
 
-# NOTE: src/lib/api/schema.d.ts is GENERATED from docs/api/openapi/openapi.json
-# (scripts/gen-api-types.sh) but is COMMITTED — like the repo's other generated artifacts
-# (client/, openapi.json) — so the Docker build (context ./web) has it without the spec.
-# Never hand-edit it; run `npm run gen:api` to refresh.
+# The API layer is the typed TS SDK oikumenea-client (../clients/typescript, a file: dep generated
+# from the Conjure contract — D-ClientSDK). The Docker build uses a repo-root context so that package
+# is in scope; see web/Dockerfile.

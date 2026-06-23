@@ -12,6 +12,7 @@ import {
   type Row,
 } from "@/lib/ontology/registry";
 import { parseRid } from "@/lib/ontology/rid";
+import { api } from "@/lib/api/client";
 import { pushRecent } from "@/lib/ontology/recents";
 import { useLocale } from "@/lib/locale";
 import { setActiveLocale } from "@/lib/i18n";
@@ -24,12 +25,6 @@ let CACHE: Cache | null = null;
 let INFLIGHT: Promise<Cache> | null = null;
 const TTL_MS = 60_000;
 
-async function bffGet(path: string): Promise<unknown> {
-  const res = await fetch(`/api/oikumenea${path}`, { headers: { Accept: "application/json" } });
-  if (!res.ok) throw new Error(String(res.status));
-  return res.json();
-}
-
 async function loadIndex(): Promise<Cache> {
   if (CACHE && Date.now() - CACHE.at < TTL_MS) return CACHE;
   if (INFLIGHT) return INFLIGHT;
@@ -39,7 +34,7 @@ async function loadIndex(): Promise<Cache> {
       EXPLORABLE_TYPES.map(async (def) => {
         try {
           const search = def.list!.search ?? "?pageSize=100";
-          const res = await bffGet(`${def.list!.path}${search}`);
+          const res = await api.request(`GET`, `${def.list!.path}${search}`);
           byType[def.type] = def.list!.parse(res).rows;
         } catch {
           byType[def.type] = [];
@@ -68,7 +63,7 @@ const QUICK_ACTIONS: QuickAction[] = [
     label: "Rebuild unit closure",
     hint: "tenant",
     run: async ({ router }) => {
-      await fetch("/api/oikumenea/tenant/v1/closure/rebuild", { method: "POST" });
+      await api.tenant.rebuildClosure();
       router.refresh();
     },
   },

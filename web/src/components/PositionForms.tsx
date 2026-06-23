@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { mutate } from "@/lib/api/client";
-import { bffGet } from "@/lib/api/browser";
+import { api } from "@/lib/api/client";
+import { errorMessage } from "@/lib/api/errors";
 import { ErrorBox } from "./ErrorBox";
 import { EntitySelect } from "./EntitySelect";
 import { ActionButton } from "./ActionButton";
@@ -26,7 +26,8 @@ export function PersonLink({ personId }: { personId: string }) {
       return;
     }
     let alive = true;
-    bffGet<{ displayName?: string; code?: string }>(`/person/v1/persons/${personId}`)
+    api.person
+      .getPerson(personId)
       .then((p) => {
         const label = p.displayName || p.code || "";
         personNameCache.set(personId, label);
@@ -68,7 +69,7 @@ export function CreatePosition({ unitId }: { unitId: string }) {
         setErr(null);
         (async () => {
           try {
-            await mutate("POST", `/membership/v1/units/${unitId}/positions`, {
+            await api.membership.createPosition(unitId, {
               code: codeValue.trim(),
               title: title.trim(),
             });
@@ -153,7 +154,7 @@ export function PositionAdmin({ position }: { position: Position }) {
             setErr(null);
             (async () => {
               try {
-                await mutate("PUT", `/membership/v1/positions/${position.id}`, {
+                await api.membership.updatePosition(position.id, {
                   title: String(f.get("title") || "").trim() || undefined,
                   sortOrder: f.get("sortOrder") ? Number(f.get("sortOrder")) : undefined,
                 });
@@ -228,11 +229,11 @@ export function FillPosition({ positionId }: { positionId: string }) {
           setBusy(true);
           setErr(null);
           try {
-            await mutate("POST", `/membership/v1/positions/${positionId}/fill`, { personId });
+            await api.membership.fillPosition(positionId, { personId });
             setOpen(false);
             router.refresh();
           } catch (e) {
-            setErr((e as { errorName?: string })?.errorName ?? "Failed");
+            setErr(errorMessage(e));
             setBusy(false);
           }
         }}

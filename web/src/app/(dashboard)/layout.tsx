@@ -5,8 +5,7 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { SearchTrigger } from "@/components/SearchTrigger";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 import { signOutAction } from "@/lib/actions";
-import { apiGet } from "@/lib/api/server";
-import type { LocaleList } from "@/lib/api/types";
+import { oikumenea } from "@/lib/api/server";
 import { T } from "@/components/T";
 
 export default async function DashboardLayout({
@@ -17,7 +16,9 @@ export default async function DashboardLayout({
   const session = await auth();
   const name = session?.user?.name ?? session?.user?.email ?? "signed in";
   // Populate the switcher from the instance-admin-managed locale list (falls back to eng/ukr).
-  const localeList = await apiGet<LocaleList>("/localization/v1/locales").catch(() => null);
+  const localeList = await oikumenea()
+    .then((ok) => ok.localization.listLocales())
+    .catch(() => null);
   const supportedLocales = (localeList?.locales ?? [])
     .filter((l) => l.enabled !== false)
     .map((l) => ({ code: l.code, name: l.name }));

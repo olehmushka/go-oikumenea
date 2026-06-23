@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { apiGet } from "@/lib/api/server";
+import { oikumenea } from "@/lib/api/server";
 import { Card, ErrorNotice, PageHeader } from "@/components/ui";
 import { ObjectHeader } from "@/components/ontology/ObjectHeader";
 import { ObjectActions } from "@/components/ontology/ObjectActions";
@@ -47,12 +47,13 @@ export default async function ObjectPage({ params }: { params: Promise<{ rid: st
   let error: unknown = null;
   let groups: LinkGroup[] = [];
   try {
-    obj = await apiGet<Row>(def.get(rid));
+    const ok = await oikumenea();
+    obj = await ok.request<Row>("GET", def.get(rid));
     const linkDefs = (def.links ?? []).filter((l) => l.path(rid) !== "");
     groups = await Promise.all(
       linkDefs.map(async (l): Promise<LinkGroup> => {
         try {
-          const res = await apiGet(l.path(rid));
+          const res = await ok.request("GET", l.path(rid));
           return { label: l.label, targetType: l.targetType, rows: l.parse(res, rid) };
         } catch {
           return { label: l.label, targetType: l.targetType, rows: [] };

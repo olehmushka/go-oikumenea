@@ -35,6 +35,7 @@ func main() {
 	godelw := flag.String("godelw", "./godelw", "path to the godelw wrapper (for IR extraction)")
 	apiVersion := flag.String("version", "0.0.0-dev", "value for info.version")
 	server := flag.String("server", "https://localhost:8443", "default servers[].url")
+	dumpIR := flag.String("dump-ir", "", "write the raw Conjure IR JSON to this path and exit (skips OpenAPI conversion). Feeds conjure-typescript, which needs the IR — see scripts/gen-ts-client.sh.")
 	flag.Parse()
 
 	var raw []byte
@@ -46,6 +47,19 @@ func main() {
 	}
 	if err != nil {
 		fatal("obtain IR: %v", err)
+	}
+
+	// -dump-ir short-circuits before OpenAPI conversion: the TypeScript SDK is generated from the
+	// Conjure IR directly (conjure-typescript), the same source the Go SDK is generated from.
+	if *dumpIR != "" {
+		if err := os.MkdirAll(filepath.Dir(*dumpIR), 0o755); err != nil {
+			fatal("mkdir %s: %v", filepath.Dir(*dumpIR), err)
+		}
+		if err := os.WriteFile(*dumpIR, raw, 0o644); err != nil {
+			fatal("write %s: %v", *dumpIR, err)
+		}
+		fmt.Printf("wrote %s (%d bytes of Conjure IR)\n", *dumpIR, len(raw))
+		return
 	}
 
 	var doc ir

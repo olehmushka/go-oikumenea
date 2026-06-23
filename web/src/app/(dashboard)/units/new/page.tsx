@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { mutate } from "@/lib/api/client";
+import { api } from "@/lib/api/client";
 import { PageHeader } from "@/components/ui";
 import { ErrorBox } from "@/components/ErrorBox";
 import { EntitySelect } from "@/components/EntitySelect";
@@ -30,10 +30,10 @@ export default function NewUnitPage() {
     const parentId = String(f.get("parentId") || "").trim();
     const graph = String(f.get("graph") || "").trim();
     try {
-      const u = await mutate<{ id: string }>("POST", "/tenant/v1/units", body);
+      const u = await api.tenant.createUnit(body as never);
       // If a parent was picked, attach this new unit as its child (a child/"descending" unit).
       if (parentId) {
-        await mutate("POST", `/tenant/v1/units/${u.id}/edges`, {
+        await api.tenant.addEdge(u.id, {
           parentId,
           graph: graph || undefined,
         });

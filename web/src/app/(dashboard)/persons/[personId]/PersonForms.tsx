@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { mutate } from "@/lib/api/client";
-import { bffGet } from "@/lib/api/browser";
+import { api } from "@/lib/api/client";
 import { useCatalog } from "@/lib/catalog";
 import { ErrorBox } from "@/components/ErrorBox";
 import { EntitySelect } from "@/components/EntitySelect";
@@ -80,7 +79,7 @@ function RowDelete({ path, confirm }: { path: string; confirm: string }) {
       type="button"
       className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
       disabled={busy}
-      onClick={() => window.confirm(confirm) && run(() => mutate("DELETE", path))}
+      onClick={() => window.confirm(confirm) && run(() => api.request("DELETE", path))}
     >
       <T>Remove</T>
     </button>
@@ -108,7 +107,7 @@ export function EditPerson({ person }: { person: Person }) {
         const f = new FormData(e.currentTarget);
         run(
           () =>
-            mutate("PUT", `/person/v1/persons/${person.id}`, {
+            api.person.updatePerson(person.id, {
               displayName: s(f, "displayName"),
               given: s(f, "given"),
               surname: s(f, "surname"),
@@ -130,21 +129,21 @@ export function EditPerson({ person }: { person: Person }) {
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="label"><T>Given</T></label>
-          <input name="given" className="input" defaultValue={person.given} />
+          <input name="given" className="input" defaultValue={person.given ?? ""} />
         </div>
         <div>
           <label className="label"><T>Surname</T></label>
-          <input name="surname" className="input" defaultValue={person.surname} />
+          <input name="surname" className="input" defaultValue={person.surname ?? ""} />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="label"><T>Birthdate</T></label>
-          <input name="birthdate" type="date" className="input" defaultValue={person.birthdate} />
+          <input name="birthdate" type="date" className="input" defaultValue={person.birthdate ?? ""} />
         </div>
         <div>
           <label className="label"><T>Date of death</T></label>
-          <input name="dateOfDeath" type="date" className="input" defaultValue={person.dateOfDeath} />
+          <input name="dateOfDeath" type="date" className="input" defaultValue={person.dateOfDeath ?? ""} />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -160,7 +159,7 @@ export function EditPerson({ person }: { person: Person }) {
         </div>
         <div>
           <label className="label"><T>Country of birth</T></label>
-          <CountrySelect name="countryOfBirth" defaultValue={person.countryOfBirth} />
+          <CountrySelect name="countryOfBirth" defaultValue={person.countryOfBirth ?? undefined} />
         </div>
       </div>
       <div className="flex gap-2">
@@ -189,7 +188,7 @@ export function PersonLifecycle({ person }: { person: Person }) {
           disabled={busy}
           onClick={() =>
             window.confirm("Deactivate this person? (reversible, opens a purge grace window)") &&
-            run(() => mutate("POST", `/person/v1/persons/${person.id}/deactivate`, {}))
+            run(() => api.person.deactivatePerson(person.id, {}))
           }
         >
           <T>Deactivate</T>
@@ -200,7 +199,7 @@ export function PersonLifecycle({ person }: { person: Person }) {
             type="button"
             className="btn-ghost"
             disabled={busy}
-            onClick={() => run(() => mutate("POST", `/person/v1/persons/${person.id}/reactivate`, {}))}
+            onClick={() => run(() => api.person.reactivatePerson(person.id))}
           >
             <T>Reactivate</T>
           </button>
@@ -211,7 +210,7 @@ export function PersonLifecycle({ person }: { person: Person }) {
             onClick={() =>
               window.confirm(
                 "Purge this person? This irreversibly erases PII (only allowed after the grace window).",
-              ) && run(() => mutate("POST", `/person/v1/persons/${person.id}/purge`, {}))
+              ) && run(() => api.person.purgePerson(person.id))
             }
           >
             <T>Purge</T>
@@ -236,8 +235,8 @@ function useRankIndex(): { options: { id: string; label: string }[]; labelOf: (i
       setScheme(rankSchemeCache);
       return;
     }
-    fetch("/api/oikumenea/rank/v1/rank-scheme")
-      .then((r) => (r.ok ? r.json() : null))
+    api
+      .request("GET", "/rank/v1/rank-scheme")
       .then((d) => {
         rankSchemeCache = d;
         setScheme(d);
@@ -305,7 +304,7 @@ export function SetRank({ personId, ranks }: { personId: string; ranks?: PersonR
         disabled={busy}
         onClick={() =>
           run(() =>
-            mutate("PUT", `/person/v1/persons/${personId}/rank`, {
+            api.person.setRank(personId, {
               rankId: value || undefined,
               // On clear (no rank chosen) the system must be supplied; reuse the currently held one.
               systemId: value ? undefined : ranks?.[0]?.systemId,
@@ -342,9 +341,9 @@ export function EmailManager({ personId, emails }: { personId: string; emails?: 
           const form = ev.currentTarget;
           run(
             () =>
-              mutate("PUT", `/person/v1/persons/${personId}/emails`, {
-                address: s(f, "address"),
-                typeCode: s(f, "typeCode"),
+              api.person.upsertEmail(personId, {
+                address: s(f, "address")!,
+                typeCode: s(f, "typeCode")!,
                 isPrimary: f.get("isPrimary") === "on",
               }),
             () => form.reset(),
@@ -387,9 +386,9 @@ export function PhoneManager({ personId, phones }: { personId: string; phones?: 
           const form = ev.currentTarget;
           run(
             () =>
-              mutate("PUT", `/person/v1/persons/${personId}/phones`, {
-                number: s(f, "number"),
-                typeCode: s(f, "typeCode"),
+              api.person.upsertPhone(personId, {
+                number: s(f, "number")!,
+                typeCode: s(f, "typeCode")!,
                 isPrimary: f.get("isPrimary") === "on",
               }),
             () => form.reset(),
@@ -431,8 +430,8 @@ export function CallSignManager({ personId, callSigns }: { personId: string; cal
           const form = ev.currentTarget;
           run(
             () =>
-              mutate("PUT", `/person/v1/persons/${personId}/call-signs`, {
-                callSign: s(f, "callSign"),
+              api.person.upsertCallSign(personId, {
+                callSign: s(f, "callSign")!,
                 isPrimary: f.get("isPrimary") === "on",
               }),
             () => form.reset(),
@@ -476,8 +475,8 @@ export function CitizenshipManager({
           const form = ev.currentTarget;
           run(
             () =>
-              mutate("PUT", `/person/v1/persons/${personId}/citizenships`, {
-                country: s(f, "country"),
+              api.person.upsertCitizenship(personId, {
+                country: s(f, "country")!,
                 basis: s(f, "basis"),
                 isPrimary: f.get("isPrimary") === "on",
               }),
@@ -527,8 +526,8 @@ export function ResidenceManager({
           const form = ev.currentTarget;
           run(
             () =>
-              mutate("PUT", `/person/v1/persons/${personId}/residences`, {
-                country: s(f, "country"),
+              api.person.upsertResidence(personId, {
+                country: s(f, "country")!,
                 region: s(f, "region"),
                 validFrom: s(f, "validFrom") ?? new Date().toISOString().slice(0, 10),
               }),
@@ -573,9 +572,9 @@ export function NameVariantManager({
           const form = ev.currentTarget;
           run(
             () =>
-              mutate("PUT", `/person/v1/persons/${personId}/name-variants`, {
-                locale: s(f, "locale"),
-                displayName: s(f, "displayName"),
+              api.person.upsertNameVariant(personId, {
+                locale: s(f, "locale")!,
+                displayName: s(f, "displayName")!,
               }),
             () => form.reset(),
           );
@@ -609,7 +608,7 @@ export function DocumentManager({
     <ChannelBlock title="Documents" err={err}>
       <ItemList
         items={documents}
-        render={(d) => `${d.number ?? d.id.slice(-8)} · ${countryCode(d.issuingCountry) || d.issuingCountry || ""} · ${d.status ?? ""}`}
+        render={(d) => `${d.number ?? d.id.slice(-8)} · ${countryCode(d.issuingCountry ?? undefined) || d.issuingCountry || ""} · ${d.status ?? ""}`}
         del={(d) => `/document/v1/documents/${d.id}`}
         delConfirm="Delete this document?"
       />
@@ -621,8 +620,8 @@ export function DocumentManager({
           const form = ev.currentTarget;
           run(
             () =>
-              mutate("POST", `/document/v1/persons/${personId}/documents`, {
-                typeId: s(f, "typeId"),
+              api.document.attachDocument(personId, {
+                typeId: s(f, "typeId")!,
                 number: s(f, "number"),
                 issuingCountry: s(f, "issuingCountry"),
               }),
@@ -677,9 +676,9 @@ export function PersonalCodeManager({
           const form = ev.currentTarget;
           run(
             () =>
-              mutate("POST", `/document/v1/persons/${personId}/personal-codes`, {
-                schemeCode: s(f, "schemeCode"),
-                value: s(f, "value"),
+              api.document.attachPersonalCode(personId, {
+                schemeCode: s(f, "schemeCode")!,
+                value: s(f, "value")!,
               }),
             () => form.reset(),
           );
@@ -759,10 +758,10 @@ export function SocialAccountManager({
           const form = ev.currentTarget;
           run(
             () =>
-              mutate("PUT", `/person/v1/persons/${personId}/social-accounts`, {
-                platformCode: s(f, "platformCode"),
-                handle: s(f, "handle"),
-                source: s(f, "source"),
+              api.person.upsertSocialAccount(personId, {
+                platformCode: s(f, "platformCode")!,
+                handle: s(f, "handle")!,
+                source: s(f, "source")!,
                 confidence: s(f, "confidence"),
                 displayName: s(f, "displayName"),
                 profileUrl: s(f, "profileUrl"),
@@ -814,7 +813,7 @@ function HandleHistory({ personId, accountId }: { personId: string; accountId: s
     const next = !open;
     setOpen(next);
     if (next && rows === null)
-      bffGet<SocialAccountHandle[]>(`/person/v1/persons/${personId}/social-accounts/${accountId}/handles`)
+      api.person.listSocialAccountHandles(personId, accountId)
         .then(setRows)
         .catch(() => setRows([]));
   };
@@ -887,8 +886,8 @@ export function MessengerLinkManager({
           const [kind, id] = String(f.get("channel") || "").split(":");
           run(
             () =>
-              mutate("PUT", `/person/v1/persons/${personId}/messenger-links`, {
-                platformCode: s(f, "platformCode"),
+              api.person.upsertMessengerLink(personId, {
+                platformCode: s(f, "platformCode")!,
                 phoneId: kind === "phone" ? id : undefined,
                 emailId: kind === "email" ? id : undefined,
                 isPrimary: f.get("isPrimary") === "on",
@@ -1195,7 +1194,7 @@ function RelFamily({
           }
           const prio = s(f, "priority");
           if (prio) body.priority = parseInt(prio, 10);
-          run(() => mutate("PUT", `/person/v1/persons/${personId}${upsertPath}`, body), () => form.reset());
+          run(() => api.request("PUT", `/person/v1/persons/${personId}${upsertPath}`, { body }), () => form.reset());
         }}
       >
         <div className="min-w-[14rem] flex-1">
@@ -1226,7 +1225,7 @@ export function PersonLanguageManager({ personId }: { personId: string }) {
   const [pickerKey, setPickerKey] = useState(0);
 
   const load = () =>
-    bffGet<PersonLanguage[]>(`/person/v1/persons/${personId}/languages`)
+    api.person.listPersonLanguages(personId)
       .then((r) => setRows(r ?? []))
       .catch(setErr);
   useEffect(() => {
@@ -1265,7 +1264,7 @@ export function PersonLanguageManager({ personId }: { personId: string }) {
               disabled={busy}
               onClick={() =>
                 window.confirm("Remove this language?") &&
-                run(() => mutate("DELETE", `/person/v1/persons/${personId}/languages/${l.languageId}`))
+                run(() => api.person.deletePersonLanguage(personId, l.languageId))
               }
             >
               <T>Remove</T>
@@ -1281,7 +1280,7 @@ export function PersonLanguageManager({ personId }: { personId: string }) {
           const f = new FormData(ev.currentTarget);
           run(
             () =>
-              mutate("PUT", `/person/v1/persons/${personId}/languages`, {
+              api.person.upsertPersonLanguage(personId, {
                 languageId: langId,
                 cefrLevel: s(f, "cefrLevel"),
                 isNative: f.get("isNative") === "on",
@@ -1328,12 +1327,12 @@ export function PersonClergyManager({ personId }: { personId: string }) {
   const [unitKey, setUnitKey] = useState(0);
 
   const load = () =>
-    bffGet<{ credentials: ClergyCredential[] }>(`/religion/v1/persons/${personId}/clergy-credentials`)
+    api.religion.listPersonClergyCredentials(personId)
       .then((r) => setRows(r?.credentials ?? []))
       .catch(setErr);
   useEffect(() => {
     load();
-    bffGet<{ clergyGrades: ClergyGrade[] }>(`/religion/v1/clergy-grades`)
+    api.religion.listClergyGrades()
       .then((r) => setGrades(r?.clergyGrades ?? []))
       .catch(setErr);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1380,7 +1379,7 @@ export function PersonClergyManager({ personId }: { personId: string }) {
                   className="text-xs font-medium text-amber-600 hover:underline disabled:opacity-50"
                   disabled={busy}
                   onClick={() =>
-                    run(() => mutate("PUT", `/religion/v1/clergy-credentials/${c.id}`, { status: "suspended" }))
+                    run(() => api.religion.updateClergyCredential(c.id, { status: "suspended" as never }))
                   }
                 >
                   <T>Suspend</T>
@@ -1393,7 +1392,7 @@ export function PersonClergyManager({ personId }: { personId: string }) {
                   disabled={busy}
                   onClick={() =>
                     window.confirm("Revoke this credential? (indelible — recorded as a status flip)") &&
-                    run(() => mutate("PUT", `/religion/v1/clergy-credentials/${c.id}`, { status: "revoked" }))
+                    run(() => api.religion.updateClergyCredential(c.id, { status: "revoked" as never }))
                   }
                 >
                   <T>Revoke</T>
@@ -1405,7 +1404,7 @@ export function PersonClergyManager({ personId }: { personId: string }) {
                   className="text-xs font-medium text-green-600 hover:underline disabled:opacity-50"
                   disabled={busy}
                   onClick={() =>
-                    run(() => mutate("PUT", `/religion/v1/clergy-credentials/${c.id}`, { status: "active" }))
+                    run(() => api.religion.updateClergyCredential(c.id, { status: "active" as never }))
                   }
                 >
                   <T>Reinstate</T>
@@ -1424,7 +1423,7 @@ export function PersonClergyManager({ personId }: { personId: string }) {
           if (!gradeId || !orgUnitId) return;
           run(
             () =>
-              mutate("POST", `/religion/v1/persons/${personId}/clergy-credentials`, {
+              api.religion.addClergyCredential(personId, {
                 clergyGradeId: gradeId,
                 orgUnitId,
                 grantedOn: s(f, "grantedOn"),
@@ -1470,12 +1469,12 @@ export function PersonAffiliationManager({ personId }: { personId: string }) {
   const [pickerKey, setPickerKey] = useState(0);
 
   const load = () =>
-    bffGet<{ affiliations: Affiliation[] }>(`/religion/v1/persons/${personId}/affiliations`)
+    api.religion.listPersonAffiliations(personId)
       .then((r) => setRows(r?.affiliations ?? []))
       .catch(setErr);
   useEffect(() => {
     load();
-    bffGet<{ affiliationTypes: AffiliationType[] }>(`/religion/v1/affiliation-types`)
+    api.religion.listAffiliationTypes()
       .then((r) => setTypes(r?.affiliationTypes ?? []))
       .catch(setErr);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1520,7 +1519,7 @@ export function PersonAffiliationManager({ personId }: { personId: string }) {
               disabled={busy}
               onClick={() =>
                 window.confirm("Remove this affiliation?") &&
-                run(() => mutate("DELETE", `/religion/v1/affiliations/${a.id}`))
+                run(() => api.religion.deleteAffiliation(a.id))
               }
             >
               <T>Remove</T>
@@ -1537,7 +1536,7 @@ export function PersonAffiliationManager({ personId }: { personId: string }) {
           if (!typeId) return;
           run(
             () =>
-              mutate("POST", `/religion/v1/persons/${personId}/affiliations`, {
+              api.religion.addAffiliation(personId, {
                 affiliationTypeId: typeId,
                 religionId: religionId || undefined,
                 value: s(f, "value"),
@@ -1574,9 +1573,8 @@ function ReligionTaxonSelect({ onChange }: { onChange: (id: string) => void }) {
   const tr = useTg();
   const [opts, setOpts] = useState<{ id: string; label: string }[]>([]);
   useEffect(() => {
-    bffGet<{ taxa: { id: string; code: string; name?: LocaleMap }[] }>(
-      `/religion/v1/taxa?rank=religion&pageSize=100`,
-    )
+    api.religion
+      .listTaxa("religion", undefined, undefined, undefined, 100)
       .then((r) => setOpts((r?.taxa ?? []).map((t) => ({ id: t.id, label: pickLabel(t.name, locale) || t.code }))))
       .catch(() => setOpts([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps

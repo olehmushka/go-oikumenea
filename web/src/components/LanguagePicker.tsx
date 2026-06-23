@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { api } from "@/lib/api/client";
 import { useLocale, useTg } from "@/lib/locale";
 import { pickLabel } from "@/lib/i18n";
 
@@ -50,11 +51,14 @@ export function LanguagePicker({
     let alive = true;
     setLoading(true);
     const t = setTimeout(() => {
-      fetch(`/api/oikumenea/language/v1/languages?level=language&query=${encodeURIComponent(q)}&limit=20`)
-        .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+      api
+        .request<{ languoids?: Languoid[] }>(
+          "GET",
+          `/language/v1/languages?level=language&query=${encodeURIComponent(q)}&limit=20`,
+        )
         .then((d) => {
           if (!alive) return;
-          setResults((d?.languoids ?? []) as Languoid[]);
+          setResults(d?.languoids ?? []);
           setLoading(false);
         })
         .catch(() => alive && setLoading(false));

@@ -6,7 +6,7 @@
 // only surface them on the person object view (mirrors the read-only AppointmentSection of education).
 
 import { useEffect, useState } from "react";
-import { bffGet } from "@/lib/api/browser";
+import { api } from "@/lib/api/client";
 import { ErrorBox } from "@/components/ErrorBox";
 import { T } from "@/components/T";
 import { useTg } from "@/lib/locale";
@@ -26,7 +26,10 @@ export function PersonCompaniesManager({ personId }: { personId: string }) {
   const [err, setErr] = useState<unknown>(null);
 
   useEffect(() => {
-    bffGet<Affiliations>(`/company/v1/persons/${personId}/company-affiliations`).then(setAff).catch(setErr);
+    api.company
+      .listPersonCompanyAffiliations(personId)
+      .then((d) => setAff(d as unknown as Affiliations))
+      .catch(setErr);
   }, [personId]);
 
   if (err) return <ErrorBox error={err} />;

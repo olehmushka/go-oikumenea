@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { mutate } from "@/lib/api/client";
+import { api } from "@/lib/api/client";
 import { ErrorBox } from "./ErrorBox";
 import { T } from "./T";
 
@@ -17,7 +17,7 @@ export function ClosureTools() {
     setBusy(true);
     setErr(null);
     setResult(null);
-    mutate<unknown>("POST", path)
+    api.request("POST", path)
       .then((r) => {
         setResult(`${label}: ${typeof r === "object" ? JSON.stringify(r) : "ok"}`);
         router.refresh();

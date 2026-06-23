@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { api } from "@/lib/api/client";
 import { useLocale, useTg } from "@/lib/locale";
 import { pickLabel } from "@/lib/i18n";
 
@@ -141,8 +142,8 @@ export function EntitySelect({
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    fetch(`/api/oikumenea${cfg.path}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+    api
+      .request(`GET`, cfg.path)
       .then((d) => {
         if (!alive) return;
         setItems(cfg.pick(d).map((it) => cfg.toOption(it as Record<string, unknown>, locale)));

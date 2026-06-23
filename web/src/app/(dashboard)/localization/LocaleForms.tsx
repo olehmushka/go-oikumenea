@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { mutate } from "@/lib/api/client";
+import { api } from "@/lib/api/client";
 import { ErrorBox } from "@/components/ErrorBox";
 import { T } from "@/components/T";
 import { useTg } from "@/lib/locale";
@@ -23,7 +23,7 @@ export function AddLocale() {
         setErr(null);
         (async () => {
           try {
-            await mutate("POST", "/localization/v1/locales", {
+            await api.localization.addLocale({
               code: String(f.get("code") || "").trim(),
               name: String(f.get("name") || "").trim(),
               enabled: true,
@@ -62,7 +62,7 @@ export function ToggleLocale({ code, enabled }: { code: string; enabled?: boolea
       onClick={async () => {
         setBusy(true);
         try {
-          await mutate("PUT", `/localization/v1/locales/${code}`, { enabled: !enabled });
+          await api.localization.updateLocale(code, { enabled: !enabled });
           router.refresh();
         } finally {
           setBusy(false);

@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { mutate } from "@/lib/api/client";
+import { api } from "@/lib/api/client";
+import { errorMessage } from "@/lib/api/errors";
 import { useTg } from "@/lib/locale";
 
 /**
@@ -48,10 +49,10 @@ export function ActionButton({
           setBusy(true);
           setErr(null);
           try {
-            await mutate(method, path, body);
+            await api.request(method, path, { body });
             router.refresh();
           } catch (e) {
-            setErr((e as { errorName?: string })?.errorName ?? "Failed");
+            setErr(errorMessage(e));
             setBusy(false);
           }
         }}

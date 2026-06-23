@@ -1,4 +1,4 @@
-import { apiGet } from "@/lib/api/server";
+import { oikumenea } from "@/lib/api/server";
 import { EmptyState, ErrorNotice, PageHeader } from "@/components/ui";
 import { T } from "@/components/T";
 import { DocTypeManager, SchemeManager } from "./CatalogForms";
@@ -9,9 +9,10 @@ export default async function DocumentsPage() {
   let schemes: PersonalCodeScheme[] | null = null;
   let error: unknown = null;
   try {
+    const ok = await oikumenea();
     [types, schemes] = await Promise.all([
-      apiGet<DocumentType[]>("/document/v1/document-types"),
-      apiGet<PersonalCodeScheme[]>("/document/v1/personal-code-schemes"),
+      ok.document.listDocumentTypes(),
+      ok.document.listPersonalCodeSchemes(),
     ]);
   } catch (e) {
     error = e;

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { apiGet } from "@/lib/api/server";
+import { oikumenea } from "@/lib/api/server";
 import {
   Card,
   EmptyState,
@@ -29,13 +29,12 @@ export default async function UnitDetailPage({
   let positions: { positions: Position[] } | null = null;
   let error: unknown = null;
   try {
-    unit = await apiGet<Unit>(`/tenant/v1/units/${unitId}`);
+    const ok = await oikumenea();
+    unit = await ok.tenant.getUnit(unitId);
     [ancestors, descendants, positions] = await Promise.all([
-      apiGet<UnitRefList>(`/tenant/v1/units/${unitId}/ancestors`).catch(() => null),
-      apiGet<UnitRefList>(`/tenant/v1/units/${unitId}/descendants`).catch(() => null),
-      apiGet<{ positions: Position[] }>(
-        `/membership/v1/units/${unitId}/positions`,
-      ).catch(() => null),
+      ok.tenant.unitAncestors(unitId).catch(() => null),
+      ok.tenant.unitDescendants(unitId).catch(() => null),
+      ok.membership.listPositions(unitId).catch(() => null),
     ]);
   } catch (e) {
     error = e;

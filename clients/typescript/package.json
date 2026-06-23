@@ -1,0 +1,33 @@
+{
+  "name": "oikumenea-client",
+  "version": "0.0.0",
+  "description": "Typed TypeScript SDK for the go-oikumenea API, generated from the same Conjure contract as the server and the Go SDK (D-ClientSDK). Includes the hermenea endpoints oikumenea proxies.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "gen": "bash ../../scripts/gen-ts-client.sh",
+    "gen:verify": "bash ../../scripts/gen-ts-client.sh --verify",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "conjure-client": "^2.19.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

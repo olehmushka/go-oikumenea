@@ -10,11 +10,11 @@ projects:
     # Emit Conjure server interfaces + RegisterRoutes (transport implements these; D-Conjure).
     server: true
   # Publishable Go CLIENT SDK: the same Conjure contract emitted as client + types only (no server)
-  # into the nested module client/ (own go.mod, path .../go-oikumenea/client) so external code can
-  # `go get` it. godel computes import paths as <main-module>/client/..., which equals the nested
-  # module's own path, so generated cross-imports resolve under client/go.mod. Generated, committed,
-  # never hand-edited. See client/README.md.
+  # into the nested module clients/go/ (own go.mod, path .../go-oikumenea/clients/go) so external code
+  # can `go get` it. godel computes import paths as <main-module>/clients/go/..., which equals the
+  # nested module's own path, so generated cross-imports resolve under clients/go/go.mod. Generated,
+  # committed, never hand-edited. See clients/go/README.md.
   client:
-    output-dir: client
+    output-dir: clients/go
     ir-locator: api
     # server omitted -> client + structs + errors + enums only.

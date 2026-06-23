@@ -15,8 +15,9 @@ browser ──(httpOnly session)──▶ Next.js (:8445) ──(Bearer)──�
   **server-side**. The browser never holds a token.
 - A single **BFF proxy** (`/api/oikumenea/[...path]`) attaches the bearer and forwards to the
   API — so there is **no CORS** on the Go app.
-- Types are **generated** from `../docs/api/openapi/openapi.json`
-  (`src/lib/api/schema.d.ts`, via `npm run gen:api`) — the UI cannot drift from the contract.
+- The API layer is the **typed TypeScript SDK** `oikumenea-client` (`../clients/typescript`, a
+  `file:` dep generated from the Conjure contract — D-ClientSDK), so the UI cannot drift from the
+  contract. Build it with `npm run gen:sdk` (also run by `predev`/`prebuild`).
 - **No client-side authorization**: the console asks the PDP (`/authorization/v1/authorize`)
   and renders what the API returns; it never filters for visibility itself.
 
@@ -74,4 +75,5 @@ See [`.env.example`](.env.example). Keys: `API_BASE_URL`, `AUTH_SECRET`, `AUTH_U
   from the Next.js server (dev sidesteps this by running the UI on the host).
 - **Non-admin logins.** The dev `admin` resolves via the fixed-`sub` bootstrap binding. Other
   users need provisioned accounts or JIT enabled (D-JIT) on the service.
-- `src/lib/api/schema.d.ts` is generated; refresh with `npm run gen:api` after the API changes.
+- The TS SDK (`../clients/typescript`) is generated from the contract; rebuild it with `npm run
+  gen:sdk` after the API changes (regenerate its sources via `scripts/gen-ts-client.sh`).

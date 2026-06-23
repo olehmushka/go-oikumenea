@@ -10,7 +10,8 @@ import {
   type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { bffGet, resolveLinkGroups } from "@/lib/api/browser";
+import { resolveLinkGroups } from "@/lib/api/browser";
+import { api } from "@/lib/api/client";
 import { OBJECT_TYPES, type Row } from "@/lib/ontology/registry";
 import { parseRid } from "@/lib/ontology/rid";
 import { useLocale } from "@/lib/locale";
@@ -98,7 +99,7 @@ export function GraphExplorer({ rid }: { rid: string }) {
       let label = parsed.uuid.slice(-8);
       try {
         if (def?.get) {
-          const o = await bffGet<Row>(def.get(rid));
+          const o = await api.request<Row>("GET", def.get(rid));
           label = def.title(o);
         }
       } catch {

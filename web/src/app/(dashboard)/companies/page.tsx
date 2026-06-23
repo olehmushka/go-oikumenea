@@ -7,8 +7,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { mutate } from "@/lib/api/client";
-import { bffGet } from "@/lib/api/browser";
+import { api } from "@/lib/api/client";
 import { CountrySelect } from "@/components/CountrySelect";
 import { SearchSelect, type SearchKind } from "@/components/SearchSelect";
 import { PersonLink } from "@/components/PositionForms";
@@ -45,10 +44,10 @@ export default function CompaniesPage() {
   const [err, setErr] = useState<unknown>(null);
 
   function reload() {
-    bffGet<{ companies: Company[] }>(`${C}/companies?pageSize=100`).then((r) => setCompanies(r.companies ?? [])).catch(setErr);
+    api.company.listCompanies(undefined, 100).then((r) => setCompanies((r.companies ?? []) as unknown as Company[])).catch(setErr);
   }
   useEffect(() => {
-    bffGet<{ legalForms: Catalog[] }>(`${C}/legal-forms`).then((r) => setLegalForms(r.legalForms ?? [])).catch(() => {});
+    api.company.listLegalForms().then((r) => setLegalForms((r.legalForms ?? []) as unknown as Catalog[])).catch(() => {});
     reload();
   }, []);
 
@@ -91,12 +90,12 @@ function CreateCompany({ legalForms, onCreated }: { legalForms: Catalog[]; onCre
     const f = new FormData(e.currentTarget);
     const str = (k: string) => { const v = String(f.get(k) || "").trim(); return v === "" ? undefined : v; };
     try {
-      const c = await mutate<Company>("POST", `${C}/companies`, {
+      const c = await api.company.createCompany({
         code: codeValue.trim(), legalName: name.trim(), shortName: str("shortName"),
         legalFormId: String(f.get("legalFormId") || "").trim(),
         ownershipCategory: str("ownershipCategory"), countryId: str("countryId"), foundedOn: str("foundedOn"),
       });
-      setCreated(c);
+      setCreated(c as unknown as Company);
       (e.target as HTMLFormElement).reset();
       setName(""); setCode(""); setCodeTouched(false); suffix.current = newSuffix();
       onCreated();
@@ -190,14 +189,14 @@ function CompanyDetail({ company }: { company: Company }) {
   const [nonce, setNonce] = useState(0);
 
   function reload() {
-    bffGet<{ registrations: Registration[] }>(`${C}/companies/${company.id}/registrations`).then((r) => setRegs(r.registrations ?? [])).catch(setErr);
-    bffGet<{ industries: IndustryAssignment[] }>(`${C}/companies/${company.id}/industries`).then((r) => setInds(r.industries ?? [])).catch(() => {});
-    bffGet<{ locations: CompanyLocation[] }>(`${C}/companies/${company.id}/locations`).then((r) => setLocs(r.locations ?? [])).catch(() => {});
-    bffGet<{ positions: Position[] }>(`${C}/companies/${company.id}/positions`).then((r) => setPositions(r.positions ?? [])).catch(() => {});
+    api.company.listRegistrations(company.id).then((r) => setRegs((r.registrations ?? []) as unknown as Registration[])).catch(setErr);
+    api.company.listIndustries(company.id).then((r) => setInds((r.industries ?? []) as unknown as IndustryAssignment[])).catch(() => {});
+    api.company.listCompanyLocations(company.id).then((r) => setLocs((r.locations ?? []) as unknown as CompanyLocation[])).catch(() => {});
+    api.company.listPositions(company.id).then((r) => setPositions((r.positions ?? []) as unknown as Position[])).catch(() => {});
   }
   useEffect(() => {
-    bffGet<{ registrationSchemes: Catalog[] }>(`${C}/registration-schemes`).then((r) => setSchemes(r.registrationSchemes ?? [])).catch(() => {});
-    bffGet<{ industryClasses: Catalog[] }>(`${C}/industry-classes`).then((r) => setIndustries(r.industryClasses ?? [])).catch(() => {});
+    api.company.listRegistrationSchemes().then((r) => setSchemes((r.registrationSchemes ?? []) as unknown as Catalog[])).catch(() => {});
+    api.company.listIndustryClasses().then((r) => setIndustries((r.industryClasses ?? []) as unknown as Catalog[])).catch(() => {});
   }, []);
   useEffect(reload, [company.id]);
 
@@ -212,7 +211,7 @@ function CompanyDetail({ company }: { company: Company }) {
   async function addReg(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
-    await run(() => mutate("POST", `${C}/companies/${company.id}/registrations`, {
+    await run(() => api.company.addRegistration(company.id, {
       schemeId: String(f.get("schemeId") || ""), identifier: String(f.get("identifier") || "").trim(),
     }));
     (e.target as HTMLFormElement).reset();
@@ -220,7 +219,7 @@ function CompanyDetail({ company }: { company: Company }) {
   async function addIndustry(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
-    await run(() => mutate("POST", `${C}/companies/${company.id}/industries`, {
+    await run(() => api.company.assignIndustry(company.id, {
       industryClassId: String(f.get("industryClassId") || ""), isPrimary: f.get("isPrimary") === "on",
     }));
     (e.target as HTMLFormElement).reset();
@@ -230,17 +229,17 @@ function CompanyDetail({ company }: { company: Company }) {
     const f = new FormData(e.currentTarget);
     const locationId = String(f.get("locationId") || "").trim();
     if (!locationId) return;
-    await run(() => mutate("POST", `${C}/companies/${company.id}/locations`, {
+    await run(() => api.company.addCompanyLocation(company.id, {
       locationId, role: String(f.get("role") || "registered"),
     }));
     (e.target as HTMLFormElement).reset();
   }
   async function addPosition(code: string, title: string) {
-    await run(() => mutate("POST", `${C}/companies/${company.id}/positions`, { code, title }));
+    await run(() => api.company.createPosition(company.id, { code, title } as never));
   }
   async function fill(positionId: string, personId: string) {
     if (!personId) return;
-    await run(() => mutate("POST", `${C}/positions/${positionId}/fill`, { personId }));
+    await run(() => api.company.fillPosition(positionId, { personId }));
   }
 
   return (
@@ -255,7 +254,7 @@ function CompanyDetail({ company }: { company: Company }) {
               {regs.map((r) => (
                 <li key={r.id} className="flex items-center justify-between">
                   <span><Mono>{schemeName(r.schemeId)}</Mono> {r.identifier} {r.validated ? <span className="text-green-600">✓</span> : <span className="text-amber-600">{tr("unvalidated")}</span>}</span>
-                  <button className="text-xs text-red-600 hover:underline" disabled={busy} onClick={() => run(() => mutate("DELETE", `${C}/registrations/${r.id}`))}>{tr("remove")}</button>
+                  <button className="text-xs text-red-600 hover:underline" disabled={busy} onClick={() => run(() => api.company.deleteRegistration(r.id))}>{tr("remove")}</button>
                 </li>
               ))}
             </ul>
@@ -272,7 +271,7 @@ function CompanyDetail({ company }: { company: Company }) {
               {inds.map((a) => (
                 <li key={a.id} className="flex items-center justify-between">
                   <span>{industryName(a.industryClassId)}{a.isPrimary ? <span className="ml-1 text-indigo-600">{tr("(primary)")}</span> : ""}</span>
-                  <button className="text-xs text-red-600 hover:underline" disabled={busy} onClick={() => run(() => mutate("DELETE", `${C}/industries/${a.id}`))}>{tr("remove")}</button>
+                  <button className="text-xs text-red-600 hover:underline" disabled={busy} onClick={() => run(() => api.company.removeIndustry(a.id))}>{tr("remove")}</button>
                 </li>
               ))}
             </ul>
@@ -289,7 +288,7 @@ function CompanyDetail({ company }: { company: Company }) {
               {locs.map((l) => (
                 <li key={l.id} className="flex items-center justify-between">
                   <span><LocationLabel id={l.locationId} /> · {l.role}</span>
-                  <button className="text-xs text-red-600 hover:underline" disabled={busy} onClick={() => run(() => mutate("DELETE", `${C}/company-locations/${l.id}`))}>{tr("remove")}</button>
+                  <button className="text-xs text-red-600 hover:underline" disabled={busy} onClick={() => run(() => api.company.removeCompanyLocation(l.id))}>{tr("remove")}</button>
                 </li>
               ))}
             </ul>
@@ -314,7 +313,7 @@ function LocationLabel({ id }: { id: string }) {
   useEffect(() => {
     if (locationLabelCache.has(id)) { setLabel(locationLabelCache.get(id) ?? ""); return; }
     let alive = true;
-    bffGet<{ locality?: string; mgrs?: string; latitude?: number; longitude?: number }>(`/location/v1/locations/${id}`)
+    api.request<{ locality?: string; mgrs?: string; latitude?: number; longitude?: number }>("GET", `/location/v1/locations/${id}`)
       .then((l) => {
         const coords = l.latitude != null && l.longitude != null ? `${l.latitude.toFixed(4)}, ${l.longitude.toFixed(4)}` : "";
         const text = l.locality || l.mgrs || coords || "";
@@ -400,7 +399,7 @@ function OwnershipPanel({ company, companies }: { company: Company; companies: C
   const [nonce, setNonce] = useState(0);
 
   function reload() {
-    bffGet<Graph & { companyId: string }>(`${C}/companies/${company.id}/ownership-graph`).then(setG).catch(setErr);
+    api.company.getOwnershipGraph(company.id).then((g) => setG(g as unknown as Graph & { companyId: string })).catch(setErr);
   }
   useEffect(reload, [company.id]);
 
@@ -414,7 +413,7 @@ function OwnershipPanel({ company, companies }: { company: Company; companies: C
     const holderId = String(f.get("holderId") || "").trim();
     if (!holderId) return;
     const pct = String(f.get("stakePct") || "").trim();
-    await run(() => mutate("POST", `${C}/companies/${company.id}/shareholdings`, {
+    await run(() => api.company.recordShareholding(company.id, {
       holderKind: String(f.get("holderKind") || "company"), holderId,
       stakePct: pct === "" ? undefined : Number(pct),
     }));
@@ -425,7 +424,7 @@ function OwnershipPanel({ company, companies }: { company: Company; companies: C
     const f = new FormData(e.currentTarget);
     const holderId = String(f.get("holderId") || "").trim();
     if (!holderId) return;
-    await run(() => mutate("POST", `${C}/companies/${company.id}/foundings`, {
+    await run(() => api.company.recordFounding(company.id, {
       holderKind: String(f.get("holderKind") || "person"), holderId,
     }));
     (e.target as HTMLFormElement).reset();
@@ -436,7 +435,7 @@ function OwnershipPanel({ company, companies }: { company: Company; companies: C
     const personId = String(f.get("personId") || "").trim();
     if (!personId) return;
     const pct = String(f.get("ultimatePct") || "").trim();
-    await run(() => mutate("POST", `${C}/companies/${company.id}/beneficiaries`, {
+    await run(() => api.company.recordBeneficiary(company.id, {
       personId, ultimatePct: pct === "" ? undefined : Number(pct),
     }));
     (e.target as HTMLFormElement).reset();
@@ -444,12 +443,12 @@ function OwnershipPanel({ company, companies }: { company: Company; companies: C
   async function addBranch(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
-    await run(() => mutate("POST", `${C}/companies/${company.id}/branches`, { branchId: String(f.get("branchId") || "") }));
+    await run(() => api.company.recordBranch(company.id, { branchId: String(f.get("branchId") || "") }));
   }
   async function addSuccession(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
-    await run(() => mutate("POST", `${C}/companies/${company.id}/successions`, {
+    await run(() => api.company.recordSuccession(company.id, {
       successorId: String(f.get("successorId") || ""), kind: String(f.get("kind") || "reorganization"),
     }));
   }

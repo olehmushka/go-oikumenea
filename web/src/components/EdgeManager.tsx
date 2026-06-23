@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { mutate } from "@/lib/api/client";
+import { api } from "@/lib/api/client";
 import { EntitySelect } from "./EntitySelect";
 import { GraphSelect } from "./GraphSelect";
 import { Localized } from "./Localized";
@@ -33,9 +33,11 @@ export function EdgeManager({ unitId }: { unitId: string }) {
     const gq = graph ? `?graph=${encodeURIComponent(graph)}` : "";
     const get = async (rel: "ancestors" | "descendants") => {
       try {
-        const r = await fetch(`/api/oikumenea/tenant/v1/units/${unitId}/${rel}${gq}`);
-        const d = r.ok ? await r.json() : { units: [] };
-        return (d as { units?: UnitRef[] }).units ?? [];
+        const d =
+          rel === "ancestors"
+            ? await api.tenant.unitAncestors(unitId, graph || undefined)
+            : await api.tenant.unitDescendants(unitId, graph || undefined);
+        return d.units ?? [];
       } catch {
         return [];
       }
@@ -67,27 +69,14 @@ export function EdgeManager({ unitId }: { unitId: string }) {
 
   const addParent = () =>
     parentId &&
-    run(() =>
-      mutate("POST", `/tenant/v1/units/${unitId}/edges`, { parentId, graph: graph || undefined }),
-    );
+    run(() => api.tenant.addEdge(unitId, { parentId, graph: graph || undefined }));
   const addChild = () =>
     childId &&
-    run(() =>
-      mutate("POST", `/tenant/v1/units/${childId}/edges`, {
-        parentId: unitId,
-        graph: graph || undefined,
-      }),
-    );
+    run(() => api.tenant.addEdge(childId, { parentId: unitId, graph: graph || undefined }));
 
   const removeEdge = (childUnit: string, parentUnit: string) => {
     if (!window.confirm("Remove this edge?")) return;
-    const gq = graph ? `&graph=${encodeURIComponent(graph)}` : "";
-    run(() =>
-      mutate(
-        "DELETE",
-        `/tenant/v1/units/${childUnit}/edges?parentId=${encodeURIComponent(parentUnit)}${gq}`,
-      ),
-    );
+    run(() => api.tenant.removeEdge(childUnit, parentUnit, graph || undefined));
   };
 
   return (

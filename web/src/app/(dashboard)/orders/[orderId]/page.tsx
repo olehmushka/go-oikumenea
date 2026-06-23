@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { apiGet } from "@/lib/api/server";
+import { oikumenea } from "@/lib/api/server";
 import { Card, EmptyState, ErrorNotice, Mono, PageHeader, Pill } from "@/components/ui";
 import { T } from "@/components/T";
 import { EditOrder, OrderActions } from "../OrderForms";
@@ -14,7 +14,7 @@ export default async function OrderDetailPage({
   let order: Order | null = null;
   let error: unknown = null;
   try {
-    order = await apiGet<Order>(`/order/v1/orders/${orderId}`);
+    order = await oikumenea().then((ok) => ok.order.getOrder(orderId));
   } catch (e) {
     error = e;
   }
@@ -46,7 +46,7 @@ export default async function OrderDetailPage({
               {order.items.map((it, i) => (
                 <li key={it.id ?? i} className="rounded border border-slate-100 p-2">
                   <div className="flex gap-2">
-                    <Pill tone="indigo">{it.kind ?? <T>item</T>}</Pill>
+                    <Pill tone="indigo"><T>item</T></Pill>
                     {it.personId && (
                       <Link
                         href={`/persons/${it.personId}`}

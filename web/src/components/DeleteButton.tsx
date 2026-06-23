@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { mutate } from "@/lib/api/client";
+import { api } from "@/lib/api/client";
+import { errorMessage } from "@/lib/api/errors";
 import { useTg } from "@/lib/locale";
 
 /** Generic confirm-then-DELETE button that refreshes the route on success. */
@@ -30,11 +31,10 @@ export function DeleteButton({
           setBusy(true);
           setErr(null);
           try {
-            await mutate("DELETE", path);
+            await api.request("DELETE", path);
             router.refresh();
           } catch (e) {
-            const b = e as { errorName?: string };
-            setErr(b?.errorName ?? "Failed");
+            setErr(errorMessage(e));
             setBusy(false);
           }
         }}

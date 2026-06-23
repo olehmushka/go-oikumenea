@@ -8,7 +8,7 @@
 // triggers a single fetch.
 
 import { useEffect, useState } from "react";
-import { bffGet } from "@/lib/api/browser";
+import { api } from "@/lib/api/client";
 
 const cache = new Map<string, unknown[]>();
 const inflight = new Map<string, Promise<unknown[]>>();
@@ -24,7 +24,7 @@ export function useCatalog<T = unknown>(path: string): T[] {
     let active = true;
     let p = inflight.get(path);
     if (!p) {
-      p = bffGet<T[]>(path)
+      p = api.request<T[]>("GET", path)
         .then((r) => {
           const arr = (r ?? []) as unknown[];
           cache.set(path, arr);

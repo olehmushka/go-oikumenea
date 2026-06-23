@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { mutate } from "@/lib/api/client";
+import { api } from "@/lib/api/client";
 import { useLocale } from "@/lib/locale";
 import { setActiveLocale } from "@/lib/i18n";
 import { tg } from "@/lib/messages";
@@ -82,7 +82,7 @@ export function DataTable({
     if (!window.confirm(`${a.label} ${ids.length} ${def.label.toLowerCase()}(s)?`)) return;
     setBusy(true);
     try {
-      await Promise.allSettled(ids.map((id) => mutate(a.method, a.path(id), a.body?.())));
+      await Promise.allSettled(ids.map((id) => api.request(a.method, a.path(id), { body: a.body?.() })));
       setSelected(new Set());
       router.refresh();
     } finally {

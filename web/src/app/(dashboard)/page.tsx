@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { apiGet } from "@/lib/api/server";
+import { oikumenea } from "@/lib/api/server";
 import { Card, ErrorNotice, Mono, PageHeader } from "@/components/ui";
 import { RecentsPanel } from "@/components/ontology/RecentsPanel";
 import { T } from "@/components/T";
@@ -10,9 +10,10 @@ export default async function OverviewPage() {
   let version: VersionInfo | null = null;
   let error: unknown = null;
   try {
+    const ok = await oikumenea();
     [whoami, version] = await Promise.all([
-      apiGet<Whoami>("/identity/v1/whoami"),
-      apiGet<VersionInfo>("/platform/v1/status/version").catch(() => null),
+      ok.identityFederation.whoami(),
+      ok.platform.version().catch(() => null),
     ]);
   } catch (e) {
     error = e;
@@ -60,8 +61,8 @@ export default async function OverviewPage() {
           <Card>
             <h2 className="text-sm font-semibold text-slate-900"><T>Service</T></h2>
             <dl className="mt-3 space-y-2 text-sm">
-              <Row label={<T>Version</T>} value={version?.version ?? "—"} />
-              <Row label={<T>Schema</T>} value={version?.schemaVersion ?? "—"} />
+              <Row label={<T>Version</T>} value={version?.binaryRevision ?? "—"} />
+              <Row label={<T>Schema</T>} value={version?.schemaRevision ?? "—"} />
             </dl>
           </Card>
         </div>

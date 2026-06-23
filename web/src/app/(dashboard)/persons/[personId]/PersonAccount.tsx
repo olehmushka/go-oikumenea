@@ -9,7 +9,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { mutate } from "@/lib/api/client";
+import { api } from "@/lib/api/client";
+import { isConjureError } from "oikumenea-client";
 import { ErrorBox } from "@/components/ErrorBox";
 import { Pill } from "@/components/ui";
 import { T } from "@/components/T";
@@ -56,19 +57,11 @@ export function AccountManager({ personId }: { personId: string }) {
   // Read the person's active account; a 404 means roster-only (no account) — not an error.
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`/api/oikumenea/identity/v1/persons/${personId}/account`, {
-        headers: { Accept: "application/json" },
-      });
-      if (res.status === 404) {
-        setAccount(null);
-      } else if (!res.ok) {
-        setErr((await res.json().catch(() => null)) ?? new Error(`Request failed (${res.status})`));
-      } else {
-        setAccount((await res.json()) as Account);
-        setErr(null);
-      }
+      setAccount(await api.request<Account>("GET", `/identity/v1/persons/${personId}/account`));
+      setErr(null);
     } catch (e) {
-      setErr(e);
+      if (isConjureError(e) && e.status === 404) setAccount(null);
+      else setErr(e);
     } finally {
       setLoaded(true);
     }
@@ -81,8 +74,8 @@ export function AccountManager({ personId }: { personId: string }) {
   // The configured issuers are static instance config; fetch once for the dropdown. A failure just
   // leaves the field as free text — non-fatal.
   useEffect(() => {
-    fetch(`/api/oikumenea/identity/v1/issuers`, { headers: { Accept: "application/json" } })
-      .then((res) => (res.ok ? res.json() : []))
+    api
+      .request<unknown>("GET", "/identity/v1/issuers")
       .then((rows) => setIssuers(Array.isArray(rows) ? rows : []))
       .catch(() => setIssuers([]));
   }, []);
@@ -143,7 +136,7 @@ function ExistingAccount({
             disabled={busy}
             onClick={() =>
               window.confirm("Disable login on this account?") &&
-              run(() => mutate("POST", `/identity/v1/accounts/${account.id}/disable`, {}))
+              run(() => api.identityFederation.disableAccount(account.id))
             }
           >
             <T>Disable login</T>
@@ -168,7 +161,7 @@ function ExistingAccount({
                   disabled={busy}
                   onClick={() =>
                     window.confirm("Unlink this login identity?") &&
-                    run(() => mutate("DELETE", `/identity/v1/accounts/${account.id}/identities/${i.id}`))
+                    run(() => api.identityFederation.unlinkIdentity(account.id, i.id))
                   }
                 >
                   <T>Unlink</T>
@@ -183,7 +176,7 @@ function ExistingAccount({
         issuers={issuers}
         busy={busy}
         onSubmit={(issuer, subject, reset) =>
-          run(() => mutate("POST", `/identity/v1/accounts/${account.id}/identities`, { issuer, subject }), reset)
+          run(() => api.identityFederation.linkIdentity(account.id, { issuer, subject }), reset)
         }
       />
     </div>
@@ -216,7 +209,7 @@ function CreateAccount({
           const body: { personId: string; email?: string; identity?: { issuer: string; subject: string } } = { personId };
           if (email) body.email = email;
           if (issuer && subject) body.identity = { issuer, subject };
-          run(() => mutate("POST", `/identity/v1/accounts`, body), () => form.reset());
+          run(() => api.identityFederation.createAccount(body), () => form.reset());
         }}
       >
         <input name="email" type="email" className="input w-full" placeholder="email@example.com (optional)" />

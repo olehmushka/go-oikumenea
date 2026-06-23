@@ -1,11 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { bffGet } from "@/lib/api/browser";
-import { mutate } from "@/lib/api/client";
+import { api } from "@/lib/api/client";
+import { errorMessage } from "@/lib/api/errors";
 import { Table, Pill, Mono, EmptyState } from "@/components/ui";
 import { T } from "@/components/T";
-import type { ImportSource, ImportRun, WorkerJob, JobRef } from "@/lib/api/types";
+import type { hermenea } from "oikumenea-client";
+
+type ImportSource = hermenea.IImportSource;
+type ImportRun = hermenea.IImportRun;
+type WorkerJob = hermenea.IWorkerJob;
 
 type Tone = "green" | "red" | "indigo" | "amber" | "slate";
 
@@ -53,14 +57,14 @@ export function ImportsClient({
   const refresh = useCallback(async () => {
     try {
       const [r, j] = await Promise.all([
-        bffGet<ImportRun[]>("/hermenea/v1/runs"),
-        bffGet<WorkerJob[]>("/hermenea/v1/jobs"),
+        api.hermenea.listRuns(),
+        api.hermenea.listJobs(),
       ]);
       setRuns(r);
       setJobs(j);
       setPollErr(null);
     } catch (e) {
-      setPollErr(e instanceof Error ? e.message : "refresh failed");
+      setPollErr(errorMessage(e));
     }
   }, []);
 
@@ -75,11 +79,10 @@ export function ImportsClient({
     setBusy(code);
     setTrigErr(null);
     try {
-      await mutate<JobRef>("POST", `/hermenea/v1/sync/${encodeURIComponent(code)}`);
+      await api.hermenea.triggerSync(code);
       await refresh();
     } catch (e) {
-      const b = e as { errorName?: string };
-      setTrigErr(b?.errorName ?? (e instanceof Error ? e.message : "Trigger failed"));
+      setTrigErr(errorMessage(e));
     } finally {
       setBusy(null);
     }

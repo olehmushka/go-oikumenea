@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { apiGet } from "@/lib/api/server";
+import { oikumenea } from "@/lib/api/server";
 import { EmptyState, ErrorNotice, Mono, Pager, PageHeader, Pill, Table } from "@/components/ui";
 import { LookupForm } from "@/components/LookupForm";
 import { T } from "@/components/T";
@@ -14,12 +14,11 @@ export default async function OrdersPage({
   const { unitId, pageToken } = await searchParams;
   let page: OrderPage | null = null;
   let error: unknown = null;
-  const orderTypes = await apiGet<OrderType[]>("/order/v1/order-types").catch(() => []);
+  const ok = await oikumenea();
+  const orderTypes = await ok.order.listOrderTypes().catch(() => []);
   if (unitId) {
     try {
-      const qs = new URLSearchParams({ pageSize: "50" });
-      if (pageToken) qs.set("pageToken", pageToken);
-      page = await apiGet<OrderPage>(`/order/v1/units/${unitId}/orders`, `?${qs}`);
+      page = await ok.order.listUnitOrders(unitId, 50, pageToken ?? undefined);
     } catch (e) {
       error = e;
     }

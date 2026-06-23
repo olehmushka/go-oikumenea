@@ -1,25 +1,32 @@
-# Optional admin console (D-WebUI). Build context is ./web (the repo-root .dockerignore
-# excludes /docs/, so the spec is not available here — the committed src/lib/api/schema.d.ts
-# is used instead; see scripts/gen-api-types.sh). Produces a lean standalone Next.js server.
+# Optional admin console (D-WebUI). Build context is the REPO ROOT (not ./web) because the typed
+# SDK it consumes — oikumenea-client — is a local file: dependency at ../clients/typescript, outside
+# the web/ dir. The SDK's per-service clients are generated from the Conjure contract (D-ClientSDK);
+# here we just compile the committed sources and let Next bundle them. Produces a lean standalone
+# Next.js server.
 #
 #   docker compose --profile ui up --build      # brings this up on :8445
 
 # --- deps ---------------------------------------------------------------------------------
 FROM node:22-alpine AS deps
 WORKDIR /app
-COPY package.json ./
-RUN npm install
+# The SDK is a file: dep of web; its package.json must be present so `npm install` can link it.
+COPY clients/typescript/package.json clients/typescript/package.json
+COPY web/package.json web/package.json
+RUN npm install --prefix web
 
 # --- build --------------------------------------------------------------------------------
 FROM node:22-alpine AS build
 WORKDIR /app
 RUN apk add --no-cache bash
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+COPY --from=deps /app/web/node_modules web/node_modules
+COPY clients/typescript clients/typescript
+COPY web web
 ENV NEXT_TELEMETRY_DISABLED=1
-# prebuild runs gen-api-types.sh; with no spec in context it falls back to the committed
-# schema.d.ts (copied above). Then next build emits the standalone server.
-RUN npm run build
+# Build the SDK (its own deps + tsc) so the file: link resolves to compiled dist, then build web
+# (its prebuild rebuilds the SDK too — idempotent). next build emits the standalone server, rooted
+# at the repo (outputFileTracingRoot) so the SDK is bundled in.
+RUN npm install --prefix clients/typescript && npm run build --prefix clients/typescript
+RUN npm run build --prefix web
 
 # --- runner -------------------------------------------------------------------------------
 FROM node:22-alpine AS runner
@@ -28,8 +35,9 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
-COPY --from=build /app/public ./public
-COPY --from=build /app/.next/standalone ./
-COPY --from=build /app/.next/static ./.next/static
+# The standalone bundle is rooted at the repo, so server.js lives under web/.
+COPY --from=build /app/web/public web/public
+COPY --from=build /app/web/.next/standalone ./
+COPY --from=build /app/web/.next/static web/.next/static
 EXPOSE 3000
-CMD ["node", "server.js"]
+CMD ["node", "web/server.js"]

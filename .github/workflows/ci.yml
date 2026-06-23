@@ -31,10 +31,10 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      # The publishable client SDK is a nested module (client/go.mod), excluded from the parent
+      # The publishable Go client SDK is a nested module (clients/go/go.mod), excluded from the parent
       # module's `go build ./...`, so it is checked here.
       - name: build + vet + test client SDK
-        working-directory: client
+        working-directory: clients/go
         run: |
           go build ./...
           go vet ./...

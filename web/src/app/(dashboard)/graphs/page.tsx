@@ -1,4 +1,4 @@
-import { apiGet } from "@/lib/api/server";
+import { oikumenea } from "@/lib/api/server";
 import { Card, ErrorNotice, PageHeader } from "@/components/ui";
 import { GraphManager } from "@/components/GraphManager";
 import { ClosureTools } from "@/components/ClosureTools";
@@ -11,7 +11,7 @@ export default async function GraphsPage() {
   let graphs: GraphList | null = null;
   let error: unknown = null;
   try {
-    graphs = await apiGet<GraphList>("/tenant/v1/graphs");
+    graphs = await oikumenea().then((ok) => ok.tenant.listGraphs());
   } catch (e) {
     error = e;
   }

@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { mutate } from "@/lib/api/client";
+import { api } from "@/lib/api/client";
+import { errorMessage } from "@/lib/api/errors";
 import { ErrorBox } from "./ErrorBox";
 import { EntitySelect } from "./EntitySelect";
 import { T } from "./T";
@@ -38,7 +39,7 @@ export function AddMembership({
     setBusy(true);
     setErr(null);
     try {
-      await mutate("POST", "/membership/v1/memberships", {
+      await api.membership.createMembership({
         personId,
         unitId,
         positionId: positionId || undefined,
@@ -123,10 +124,10 @@ export function EndMembershipButton({ membershipId }: { membershipId: string }) 
           setBusy(true);
           setErr(null);
           try {
-            await mutate("POST", `/membership/v1/memberships/${membershipId}/end`, {});
+            await api.membership.endMembership(membershipId, {});
             router.refresh();
           } catch (e) {
-            setErr((e as { errorName?: string })?.errorName ?? "Failed");
+            setErr(errorMessage(e));
             setBusy(false);
           }
         }}

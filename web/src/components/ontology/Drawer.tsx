@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { mutate } from "@/lib/api/client";
-import { bffGet, resolveLinkGroups } from "@/lib/api/browser";
+import { api } from "@/lib/api/client";
+import { resolveLinkGroups } from "@/lib/api/browser";
 import { OBJECT_TYPES, type ActionDef, type Row } from "@/lib/ontology/registry";
 import { pushRecent } from "@/lib/ontology/recents";
 import { useLocale } from "@/lib/locale";
@@ -45,7 +45,7 @@ export function Drawer({
       setErr("This type has no detail endpoint.");
       return;
     }
-    bffGet<Row>(def.get(id))
+    api.request<Row>("GET", def.get(id))
       .then((o) => {
         if (!alive) return;
         setObj(o);
@@ -70,10 +70,10 @@ export function Drawer({
     setBusy(true);
     setErr(null);
     try {
-      await mutate(a.method, a.path(id), a.body?.());
+      await api.request(a.method, a.path(id), { body: a.body?.() });
       onActed?.();
       // refresh the object after acting
-      if (def?.get) setObj(await bffGet<Row>(def.get(id)));
+      if (def?.get) setObj(await api.request<Row>("GET", def.get(id)));
     } catch {
       setErr("Action failed.");
     } finally {
