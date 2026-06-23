@@ -3,23 +3,27 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { EXPLORABLE_TYPES } from "@/lib/ontology/registry";
+import { useT } from "@/lib/locale";
+import { tg } from "@/lib/messages";
 
-// Tools are surfaces that aren't object-table shaped (PDP check, tree editors, the log).
-const TOOLS: { href: string; label: string; hint: string }[] = [
-  { href: "/ontology", label: "Ontology", hint: "type registry" },
-  { href: "/authorize", label: "Authorize", hint: "PDP check" },
-  { href: "/roles", label: "Roles & access", hint: "RBAC + assignments" },
-  { href: "/graphs", label: "Graph admin", hint: "hierarchies + closure" },
-  { href: "/memberships", label: "Memberships", hint: "person ↔ unit" },
-  { href: "/orders", label: "Orders", hint: "наказ" },
-  { href: "/documents", label: "Documents", hint: "papers & catalogs" },
-  { href: "/ranks", label: "Ranks", hint: "rank scheme" },
-  { href: "/locations", label: "Locations", hint: "places + radius search" },
-  { href: "/education", label: "Education", hint: "institutions + structure" },
-  { href: "/companies", label: "Companies", hint: "legal entities + ownership" },
-  { href: "/religion", label: "Religion", hint: "faith taxonomy + organization" },
-  { href: "/localization", label: "Localization", hint: "locales" },
-  { href: "/audit", label: "Audit", hint: "log" },
+// Tools are surfaces that aren't object-table shaped (PDP check, tree editors, the log). Label/hint
+// are message-catalog keys (translated via useT) so the nav follows the UI locale.
+const TOOLS: { href: string; key: string }[] = [
+  { href: "/ontology", key: "nav.ontology" },
+  { href: "/authorize", key: "nav.authorize" },
+  { href: "/roles", key: "nav.roles" },
+  { href: "/graphs", key: "nav.graphs" },
+  { href: "/memberships", key: "nav.memberships" },
+  { href: "/orders", key: "nav.orders" },
+  { href: "/documents", key: "nav.documents" },
+  { href: "/ranks", key: "nav.ranks" },
+  { href: "/locations", key: "nav.locations" },
+  { href: "/education", key: "nav.education" },
+  { href: "/companies", key: "nav.companies" },
+  { href: "/religion", key: "nav.religion" },
+  { href: "/localization", key: "nav.localization" },
+  { href: "/imports", key: "nav.imports" },
+  { href: "/audit", key: "nav.audit" },
 ];
 
 function Item({
@@ -48,35 +52,36 @@ function Item({
 
 export function Nav() {
   const pathname = usePathname();
+  const tr = useT();
   return (
     <nav className="flex flex-col gap-0.5 p-3">
-      <Item href="/" label="Overview" hint="whoami & recents" active={pathname === "/"} />
+      <Item href="/" label={tr("nav.overview")} hint={tr("nav.overview.hint")} active={pathname === "/"} />
 
       <div className="mt-4 mb-1 px-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
-        Explore
+        {tr("nav.section.explore")}
       </div>
-      {EXPLORABLE_TYPES.map((t) => {
-        const href = `/explore/${t.type}`;
+      {EXPLORABLE_TYPES.map((type) => {
+        const href = `/explore/${type.type}`;
         return (
           <Item
-            key={t.type}
+            key={type.type}
             href={href}
-            label={t.labelPlural}
+            label={tg(type.labelPlural)}
             active={pathname.startsWith(href)}
           />
         );
       })}
 
       <div className="mt-4 mb-1 px-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
-        Tools
+        {tr("nav.section.tools")}
       </div>
-      {TOOLS.map((t) => (
+      {TOOLS.map((item) => (
         <Item
-          key={t.href}
-          href={t.href}
-          label={t.label}
-          hint={t.hint}
-          active={pathname.startsWith(t.href)}
+          key={item.href}
+          href={item.href}
+          label={tr(item.key)}
+          hint={tr(`${item.key}.hint`)}
+          active={pathname.startsWith(item.href)}
         />
       ))}
     </nav>

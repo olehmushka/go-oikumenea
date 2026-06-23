@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import { mutate } from "@/lib/api/client";
 import { ErrorBox } from "@/components/ErrorBox";
 import { ActionButton } from "@/components/ActionButton";
+import { T } from "@/components/T";
 import { pickLabel } from "@/lib/i18n";
-import { useLocale } from "@/lib/locale";
+import { useLocale, useTg } from "@/lib/locale";
 import { CountrySelect, useCountryMap } from "@/components/CountrySelect";
 import type { RankCategory, RankGrade, RankScheme, RankSystem, RankType } from "@/lib/api/types";
 
@@ -29,6 +30,7 @@ type Field = {
  * grade code for cross-system equivalence. */
 export function RankSchemeManager({ scheme, grades }: { scheme: RankScheme; grades: RankGrade[] }) {
   const { locale } = useLocale();
+  const tr = useTg();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<unknown>(null);
@@ -71,7 +73,7 @@ export function RankSchemeManager({ scheme, grades }: { scheme: RankScheme; grad
 
   // STANAG grade options for the rank forms (junior → senior within tier).
   const gradeOptions: Option[] = [
-    { value: "", label: "grade…" },
+    { value: "", label: tr("grade…") },
     ...grades.map((g) => ({ value: g.code, label: `${g.code} — ${g.tier}` })),
   ];
 
@@ -173,7 +175,7 @@ export function RankSchemeManager({ scheme, grades }: { scheme: RankScheme; grad
                         run(() => mutate("DELETE", `/rank/v1/rank-scheme/rank/${r.id}`))
                       }
                     >
-                      Delete
+                      <T>Delete</T>
                     </button>
                   </span>
                 </div>
@@ -182,7 +184,7 @@ export function RankSchemeManager({ scheme, grades }: { scheme: RankScheme; grad
 
           {canAddChild ? (
             <div className="flex items-center gap-2 pt-1">
-              <span className="text-xs font-medium text-slate-400">New sub-type:</span>
+              <span className="text-xs font-medium text-slate-400"><T>New sub-type:</T></span>
               <AddInline
                 fields={[
                   { name: "code", placeholder: "code" },
@@ -198,7 +200,7 @@ export function RankSchemeManager({ scheme, grades }: { scheme: RankScheme; grad
 
           {canHoldRanks ? (
             <div className="flex items-center gap-2 pt-1">
-              <span className="text-xs font-medium text-slate-400">New rank:</span>
+              <span className="text-xs font-medium text-slate-400"><T>New rank:</T></span>
               <AddInline
                 fields={[
                   { name: "code", placeholder: "code" },
@@ -264,7 +266,7 @@ export function RankSchemeManager({ scheme, grades }: { scheme: RankScheme; grad
           {types.map((t, ti) => renderType(t, types, ti))}
 
           <div className="flex items-center gap-2 pt-1">
-            <span className="text-xs font-medium text-slate-400">New type:</span>
+            <span className="text-xs font-medium text-slate-400"><T>New type:</T></span>
             <AddInline
               fields={[
                 { name: "code", placeholder: "code" },
@@ -313,7 +315,7 @@ export function RankSchemeManager({ scheme, grades }: { scheme: RankScheme; grad
                   {sys.country ? (
                     <span className="rounded bg-slate-100 px-1.5 text-xs text-slate-500">{countryCode(sys.country) || sys.country}</span>
                   ) : (
-                    <span className="rounded bg-slate-100 px-1.5 text-xs text-slate-500">supranational</span>
+                    <span className="rounded bg-slate-100 px-1.5 text-xs text-slate-500"><T>supranational</T></span>
                   )}
                 </h2>
               )}
@@ -340,7 +342,7 @@ export function RankSchemeManager({ scheme, grades }: { scheme: RankScheme; grad
               {cats.map((cat, ci) => renderCategory(cat, cats, ci))}
 
               <div className="flex items-center gap-2 pt-1">
-                <span className="text-xs font-medium text-slate-400">New category:</span>
+                <span className="text-xs font-medium text-slate-400"><T>New category:</T></span>
                 <AddInline
                   fields={[
                     { name: "code", placeholder: "code" },
@@ -358,7 +360,7 @@ export function RankSchemeManager({ scheme, grades }: { scheme: RankScheme; grad
       })}
 
       <div className="card p-5">
-        <h3 className="mb-2 text-sm font-semibold text-slate-900">Add system</h3>
+        <h3 className="mb-2 text-sm font-semibold text-slate-900"><T>Add system</T></h3>
         <AddInline
           fields={[
             { name: "code", placeholder: "code" },
@@ -408,26 +410,26 @@ export function ImportRankScheme() {
   if (!open)
     return (
       <button type="button" className="btn-ghost mt-4" onClick={() => setOpen(true)}>
-        Import preset…
+        <T>Import preset…</T>
       </button>
     );
   return (
     <div className="card mt-4 space-y-3 p-5">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-slate-900">Import rank-system preset</h3>
+        <h3 className="text-sm font-semibold text-slate-900"><T>Import rank-system preset</T></h3>
         <button type="button" className="btn-ghost" onClick={() => setOpen(false)}>
-          Close
+          <T>Close</T>
         </button>
       </div>
       <p className="text-xs text-slate-500">
-        Paste a preset of shape{" "}
-        <code className="font-mono">{`{ "system": { "code", "name", "categories": [ … ] } }`}</code>. Import is
-        idempotent: existing codes are updated, new ones created.
+        <T>Paste a preset of shape</T>{" "}
+        <code className="font-mono">{`{ "system": { "code", "name", "categories": [ … ] } }`}</code>.{" "}
+        <T>Import is idempotent: existing codes are updated, new ones created.</T>
       </p>
       {err ? <ErrorBox error={err} /> : null}
       {result ? (
         <p className="text-sm text-green-700">
-          Imported — created {result.created}, updated {result.updated}, skipped {result.skipped}.
+          <T>Imported — created</T> {result.created}, <T>updated</T> {result.updated}, <T>skipped</T> {result.skipped}.
         </p>
       ) : null}
       <textarea
@@ -437,7 +439,7 @@ export function ImportRankScheme() {
         onChange={(e) => setText(e.target.value)}
       />
       <button type="button" className="btn-primary" disabled={busy || !text.trim()} onClick={submit}>
-        {busy ? "Importing…" : "Import"}
+        {busy ? <T>Importing…</T> : <T>Import</T>}
       </button>
     </div>
   );
@@ -531,12 +533,13 @@ function EditToggle({
       className="text-xs font-medium text-indigo-600 hover:underline"
       onClick={() => setEditing(editing === id ? null : id)}
     >
-      {editing === id ? "Close" : "Edit"}
+      {editing === id ? <T>Close</T> : <T>Edit</T>}
     </button>
   );
 }
 
 function FieldInput({ fld }: { fld: Field }) {
+  const tr = useTg();
   if (fld.type === "country")
     return <CountrySelect name={fld.name} defaultValue={fld.value} />;
   if (fld.options)
@@ -545,7 +548,7 @@ function FieldInput({ fld }: { fld: Field }) {
         name={fld.name}
         className="input w-28"
         defaultValue={fld.value ?? ""}
-        title={fld.placeholder}
+        title={tr(fld.placeholder)}
       >
         {fld.options.map((o) => (
           <option key={o.value} value={o.value}>
@@ -559,7 +562,7 @@ function FieldInput({ fld }: { fld: Field }) {
       name={fld.name}
       type={fld.type === "number" ? "number" : "text"}
       className={fld.type === "number" ? "input w-20" : "input w-40"}
-      placeholder={fld.placeholder}
+      placeholder={tr(fld.placeholder)}
       defaultValue={fld.value}
     />
   );
@@ -595,10 +598,10 @@ function NodeEdit({
         <FieldInput key={fld.name} fld={fld} />
       ))}
       <button className="btn-primary" disabled={busy}>
-        Save
+        <T>Save</T>
       </button>
       <button type="button" className="btn-ghost" onClick={onCancel}>
-        Cancel
+        <T>Cancel</T>
       </button>
     </form>
   );
@@ -615,6 +618,7 @@ function AddInline({
   busy: boolean;
   onAdd: (body: Record<string, string | number>) => void;
 }) {
+  const tr = useTg();
   return (
     <form
       className="inline-flex flex-wrap items-center gap-1"
@@ -643,7 +647,7 @@ function AddInline({
             key={fld.name}
             name={fld.name}
             defaultValue=""
-            title={fld.placeholder}
+            title={tr(fld.placeholder)}
             className="w-24 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs outline-none focus:border-indigo-500"
           >
             {fld.options.map((o) => (
@@ -659,7 +663,7 @@ function AddInline({
             type={fld.type === "number" ? "number" : "text"}
             required={i < 2}
             className={`${fld.type === "number" ? "w-16" : "w-28"} rounded-md border border-slate-300 bg-white px-2 py-1 text-xs outline-none focus:border-indigo-500`}
-            placeholder={fld.placeholder}
+            placeholder={tr(fld.placeholder)}
           />
         ),
       )}
@@ -667,7 +671,7 @@ function AddInline({
         className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50"
         disabled={busy}
       >
-        {label}
+        {tr(label)}
       </button>
     </form>
   );

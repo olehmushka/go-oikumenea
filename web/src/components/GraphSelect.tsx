@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useLocale } from "@/lib/locale";
+import { useLocale, useTg } from "@/lib/locale";
 import { pickLabel } from "@/lib/i18n";
 import type { Graph } from "@/lib/api/types";
 
@@ -28,6 +28,7 @@ export function GraphSelect({
   emptyLabel?: string;
 }) {
   const { locale } = useLocale();
+  const tr = useTg();
   const [graphs, setGraphs] = useState<Graph[]>([]);
   const controlled = value !== undefined;
 
@@ -51,7 +52,7 @@ export function GraphSelect({
       {...(controlled ? { value } : { defaultValue })}
       onChange={(e) => onChange?.(e.target.value)}
     >
-      {includeEmpty ? <option value="">{emptyLabel}</option> : null}
+      {includeEmpty ? <option value="">{tr(emptyLabel)}</option> : null}
       {graphs.map((g) => (
         <option key={g.id} value={g.code}>
           {pickLabel(g.name, locale) || g.code}

@@ -9,8 +9,10 @@ import { ErrorBox } from "@/components/ErrorBox";
 import { EntitySelect } from "@/components/EntitySelect";
 import { CountrySelect, useCountryMap } from "@/components/CountrySelect";
 import { LanguagePicker } from "@/components/LanguagePicker";
+import { PersonLink } from "@/components/PositionForms";
+import { T } from "@/components/T";
 import { pickLabel } from "@/lib/i18n";
-import { useLocale } from "@/lib/locale";
+import { useLocale, useTg } from "@/lib/locale";
 import { ridTail } from "@/lib/ontology/rid";
 import type {
   Affiliation,
@@ -80,7 +82,7 @@ function RowDelete({ path, confirm }: { path: string; confirm: string }) {
       disabled={busy}
       onClick={() => window.confirm(confirm) && run(() => mutate("DELETE", path))}
     >
-      Remove
+      <T>Remove</T>
     </button>
   );
 }
@@ -89,11 +91,12 @@ function RowDelete({ path, confirm }: { path: string; confirm: string }) {
 
 export function EditPerson({ person }: { person: Person }) {
   const { busy, err, run } = useRun();
+  const tr = useTg();
   const [open, setOpen] = useState(false);
   if (!open) {
     return (
       <button type="button" className="btn-ghost" onClick={() => setOpen(true)}>
-        Edit
+        <T>Edit</T>
       </button>
     );
   }
@@ -118,54 +121,54 @@ export function EditPerson({ person }: { person: Person }) {
         );
       }}
     >
-      <h3 className="text-sm font-semibold text-slate-900">Edit person</h3>
+      <h3 className="text-sm font-semibold text-slate-900"><T>Edit person</T></h3>
       {err ? <ErrorBox error={err} /> : null}
       <div>
-        <label className="label">Display name</label>
+        <label className="label"><T>Display name</T></label>
         <input name="displayName" className="input" defaultValue={person.displayName} />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="label">Given</label>
+          <label className="label"><T>Given</T></label>
           <input name="given" className="input" defaultValue={person.given} />
         </div>
         <div>
-          <label className="label">Surname</label>
+          <label className="label"><T>Surname</T></label>
           <input name="surname" className="input" defaultValue={person.surname} />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="label">Birthdate</label>
+          <label className="label"><T>Birthdate</T></label>
           <input name="birthdate" type="date" className="input" defaultValue={person.birthdate} />
         </div>
         <div>
-          <label className="label">Date of death</label>
+          <label className="label"><T>Date of death</T></label>
           <input name="dateOfDeath" type="date" className="input" defaultValue={person.dateOfDeath} />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="label">Sex (ISO 5218)</label>
+          <label className="label"><T>Sex (ISO 5218)</T></label>
           <select name="sex" className="input" defaultValue={person.sex ?? ""}>
             <option value="">—</option>
-            <option value="0">0 — not known</option>
-            <option value="1">1 — male</option>
-            <option value="2">2 — female</option>
-            <option value="9">9 — not applicable</option>
+            <option value="0">{tr("0 — not known")}</option>
+            <option value="1">{tr("1 — male")}</option>
+            <option value="2">{tr("2 — female")}</option>
+            <option value="9">{tr("9 — not applicable")}</option>
           </select>
         </div>
         <div>
-          <label className="label">Country of birth</label>
+          <label className="label"><T>Country of birth</T></label>
           <CountrySelect name="countryOfBirth" defaultValue={person.countryOfBirth} />
         </div>
       </div>
       <div className="flex gap-2">
         <button type="submit" className="btn-primary" disabled={busy}>
-          {busy ? "Saving…" : "Save"}
+          {busy ? <T>Saving…</T> : <T>Save</T>}
         </button>
         <button type="button" className="btn-ghost" onClick={() => setOpen(false)}>
-          Cancel
+          <T>Cancel</T>
         </button>
       </div>
     </form>
@@ -189,7 +192,7 @@ export function PersonLifecycle({ person }: { person: Person }) {
             run(() => mutate("POST", `/person/v1/persons/${person.id}/deactivate`, {}))
           }
         >
-          Deactivate
+          <T>Deactivate</T>
         </button>
       ) : (
         <>
@@ -199,7 +202,7 @@ export function PersonLifecycle({ person }: { person: Person }) {
             disabled={busy}
             onClick={() => run(() => mutate("POST", `/person/v1/persons/${person.id}/reactivate`, {}))}
           >
-            Reactivate
+            <T>Reactivate</T>
           </button>
           <button
             type="button"
@@ -211,7 +214,7 @@ export function PersonLifecycle({ person }: { person: Person }) {
               ) && run(() => mutate("POST", `/person/v1/persons/${person.id}/purge`, {}))
             }
           >
-            Purge
+            <T>Purge</T>
           </button>
         </>
       )}
@@ -274,6 +277,7 @@ export function PersonRankLabel({ ranks }: { ranks?: PersonRank[] }) {
 /** Set or clear the person's single rank (flattened from the rank scheme). */
 export function SetRank({ personId, ranks }: { personId: string; ranks?: PersonRank[] }) {
   const { busy, err, run } = useRun();
+  const tr = useTg();
   const { options } = useRankIndex();
   const [value, setValue] = useState(ranks?.[0]?.rankId ?? "");
 
@@ -285,9 +289,9 @@ export function SetRank({ personId, ranks }: { personId: string; ranks?: PersonR
   return (
     <div className="flex items-end gap-2">
       <div className="flex-1">
-        <label className="label">Rank</label>
+        <label className="label"><T>Rank</T></label>
         <select className="input" value={value} onChange={(e) => setValue(e.target.value)}>
-          <option value="">— none —</option>
+          <option value="">{tr("— none —")}</option>
           {options.map((r) => (
             <option key={r.id} value={r.id}>
               {r.label}
@@ -309,7 +313,7 @@ export function SetRank({ personId, ranks }: { personId: string; ranks?: PersonR
           )
         }
       >
-        {busy ? "…" : "Set rank"}
+        {busy ? "…" : <T>Set rank</T>}
       </button>
       {err ? <ErrorBox error={err} /> : null}
     </div>
@@ -356,7 +360,7 @@ export function EmailManager({ personId, emails }: { personId: string; emails?: 
           ))}
         </select>
         <button className="btn-ghost" disabled={busy}>
-          Add
+          <T>Add</T>
         </button>
       </form>
     </ChannelBlock>
@@ -401,7 +405,7 @@ export function PhoneManager({ personId, phones }: { personId: string; phones?: 
           ))}
         </select>
         <button className="btn-ghost" disabled={busy}>
-          Add
+          <T>Add</T>
         </button>
       </form>
     </ChannelBlock>
@@ -410,6 +414,7 @@ export function PhoneManager({ personId, phones }: { personId: string; phones?: 
 
 export function CallSignManager({ personId, callSigns }: { personId: string; callSigns?: CallSign[] }) {
   const { busy, err, run } = useRun();
+  const tr = useTg();
   return (
     <ChannelBlock title="Call signs" err={err}>
       <ItemList
@@ -434,9 +439,9 @@ export function CallSignManager({ personId, callSigns }: { personId: string; cal
           );
         }}
       >
-        <input name="callSign" required className="input" placeholder="call sign" />
+        <input name="callSign" required className="input" placeholder={tr("call sign")} />
         <button className="btn-ghost" disabled={busy}>
-          Add
+          <T>Add</T>
         </button>
       </form>
     </ChannelBlock>
@@ -453,6 +458,7 @@ export function CitizenshipManager({
   citizenships?: Citizenship[];
 }) {
   const { busy, err, run } = useRun();
+  const tr = useTg();
   const countryCode = useCountryMap();
   return (
     <ChannelBlock title="Citizenships" err={err}>
@@ -481,14 +487,14 @@ export function CitizenshipManager({
       >
         <CountrySelect name="country" required includeEmpty={false} />
         <select name="basis" className="input" defaultValue="">
-          <option value="">basis…</option>
-          <option value="birth">birth</option>
-          <option value="descent">descent</option>
-          <option value="naturalization">naturalization</option>
-          <option value="other">other</option>
+          <option value="">{tr("basis…")}</option>
+          <option value="birth">{tr("birth")}</option>
+          <option value="descent">{tr("descent")}</option>
+          <option value="naturalization">{tr("naturalization")}</option>
+          <option value="other">{tr("other")}</option>
         </select>
         <button className="btn-ghost" disabled={busy}>
-          Add
+          <T>Add</T>
         </button>
       </form>
     </ChannelBlock>
@@ -503,6 +509,7 @@ export function ResidenceManager({
   residences?: Residence[];
 }) {
   const { busy, err, run } = useRun();
+  const tr = useTg();
   const countryCode = useCountryMap();
   return (
     <ChannelBlock title="Residences" err={err}>
@@ -530,10 +537,10 @@ export function ResidenceManager({
         }}
       >
         <CountrySelect name="country" required includeEmpty={false} />
-        <input name="region" className="input" placeholder="region (optional)" />
+        <input name="region" className="input" placeholder={tr("region (optional)")} />
         <input name="validFrom" type="date" className="input" />
         <button className="btn-ghost" disabled={busy}>
-          Add
+          <T>Add</T>
         </button>
       </form>
     </ChannelBlock>
@@ -577,7 +584,7 @@ export function NameVariantManager({
         <input name="locale" required className="input" placeholder="ukr" />
         <input name="displayName" required className="input" placeholder="Іван Петренко" />
         <button className="btn-ghost" disabled={busy}>
-          Add
+          <T>Add</T>
         </button>
       </form>
     </ChannelBlock>
@@ -594,6 +601,7 @@ export function DocumentManager({
   documents?: DocumentDoc[];
 }) {
   const { locale } = useLocale();
+  const tr = useTg();
   const { busy, err, run } = useRun();
   const countryCode = useCountryMap();
   const types = useCatalog<Catalog>("/document/v1/document-types");
@@ -624,7 +632,7 @@ export function DocumentManager({
       >
         <select name="typeId" required className="input" defaultValue="">
           <option value="" disabled>
-            type…
+            {tr("type…")}
           </option>
           {types.map((t) => (
             <option key={t.id} value={t.id}>
@@ -632,10 +640,10 @@ export function DocumentManager({
             </option>
           ))}
         </select>
-        <input name="number" className="input" placeholder="number" />
+        <input name="number" className="input" placeholder={tr("number")} />
         <CountrySelect name="issuingCountry" />
         <button className="btn-ghost" disabled={busy}>
-          Add
+          <T>Add</T>
         </button>
       </form>
     </ChannelBlock>
@@ -650,6 +658,7 @@ export function PersonalCodeManager({
   codes?: CodeRow[];
 }) {
   const { locale } = useLocale();
+  const tr = useTg();
   const { busy, err, run } = useRun();
   const schemes = useCatalog<{ code: string; name?: LocaleMap }>("/document/v1/personal-code-schemes");
   return (
@@ -678,7 +687,7 @@ export function PersonalCodeManager({
       >
         <select name="schemeCode" required className="input" defaultValue="">
           <option value="" disabled>
-            scheme…
+            {tr("scheme…")}
           </option>
           {schemes.map((sch) => (
             <option key={sch.code} value={sch.code}>
@@ -686,9 +695,9 @@ export function PersonalCodeManager({
             </option>
           ))}
         </select>
-        <input name="value" required className="input" placeholder="identifier value" />
+        <input name="value" required className="input" placeholder={tr("identifier value")} />
         <button className="btn-ghost" disabled={busy}>
-          Add
+          <T>Add</T>
         </button>
       </form>
     </ChannelBlock>
@@ -709,6 +718,7 @@ export function SocialAccountManager({
   accounts?: SocialAccount[];
 }) {
   const { locale } = useLocale();
+  const tr = useTg();
   const { busy, err, run } = useRun();
   const platforms = useCatalog<Platform>("/person/v1/person/platforms");
   return (
@@ -765,7 +775,7 @@ export function SocialAccountManager({
       >
         <select name="platformCode" required className="input" defaultValue="">
           <option value="" disabled>
-            platform…
+            {tr("platform…")}
           </option>
           {platforms.map((p) => (
             <option key={p.code} value={p.code}>
@@ -773,21 +783,21 @@ export function SocialAccountManager({
             </option>
           ))}
         </select>
-        <input name="handle" required className="input" placeholder="handle" />
+        <input name="handle" required className="input" placeholder={tr("handle")} />
         <select name="source" required className="input" defaultValue="self_declared">
-          <option value="self_declared">self-declared</option>
-          <option value="operator_verified">operator-verified</option>
-          <option value="imported">imported</option>
+          <option value="self_declared">{tr("self-declared")}</option>
+          <option value="operator_verified">{tr("operator-verified")}</option>
+          <option value="imported">{tr("imported")}</option>
         </select>
         <button className="btn-ghost" disabled={busy}>
-          Add
+          <T>Add</T>
         </button>
         <label className="col-span-4 flex items-center gap-3 text-xs text-slate-500">
           <span className="inline-flex items-center gap-1">
-            <input type="checkbox" name="platformVerified" /> platform-verified
+            <input type="checkbox" name="platformVerified" /> {tr("platform-verified")}
           </span>
           <span className="inline-flex items-center gap-1">
-            <input type="checkbox" name="isPrimary" /> primary
+            <input type="checkbox" name="isPrimary" /> {tr("primary")}
           </span>
         </label>
       </form>
@@ -797,6 +807,7 @@ export function SocialAccountManager({
 
 /** Inline disclosure that lazy-loads a social account's @handle rename history. */
 function HandleHistory({ personId, accountId }: { personId: string; accountId: string }) {
+  const tr = useTg();
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<SocialAccountHandle[] | null>(null);
   const toggle = () => {
@@ -810,14 +821,14 @@ function HandleHistory({ personId, accountId }: { personId: string; accountId: s
   return (
     <>
       <button type="button" className="text-indigo-600 hover:underline" onClick={toggle}>
-        · {open ? "hide" : "history"}
+        · {open ? tr("hide") : tr("history")}
       </button>
       {open ? (
         <ul className="mt-1 w-full pl-3 text-xs text-slate-500">
           {rows === null ? (
-            <li>loading…</li>
+            <li>{tr("loading…")}</li>
           ) : rows.length === 0 ? (
-            <li>no rename history</li>
+            <li>{tr("no rename history")}</li>
           ) : (
             rows.map((h) => (
               <li key={h.id}>
@@ -845,6 +856,7 @@ export function MessengerLinkManager({
   phones?: Phone[];
 }) {
   const { locale } = useLocale();
+  const tr = useTg();
   const { busy, err, run } = useRun();
   const platforms = useCatalog<Platform>("/person/v1/person/platforms");
   const messengers = platforms.filter((p) => p.category === "messenger");
@@ -887,7 +899,7 @@ export function MessengerLinkManager({
       >
         <select name="platformCode" required className="input" defaultValue="">
           <option value="" disabled>
-            messenger…
+            {tr("messenger…")}
           </option>
           {messengers.map((p) => (
             <option key={p.code} value={p.code}>
@@ -897,7 +909,7 @@ export function MessengerLinkManager({
         </select>
         <select name="channel" required className="input" defaultValue="">
           <option value="" disabled>
-            phone or email…
+            {tr("phone or email…")}
           </option>
           {phones && phones.length ? (
             <optgroup label="Phones">
@@ -919,7 +931,7 @@ export function MessengerLinkManager({
           ) : null}
         </select>
         <button className="btn-ghost" disabled={busy}>
-          Add
+          <T>Add</T>
         </button>
       </form>
     </ChannelBlock>
@@ -931,7 +943,9 @@ export function MessengerLinkManager({
 // One row per relation family, sharing the ChannelBlock + EntitySelect + status pattern. Each family
 // upserts to its own collection; all share the DELETE .../relationships/{id} sink. The counterpart
 // person is picked via EntitySelect; relation-code <select>s are fed by category-filtered RelationTypes.
-type RelRow = { id: string; counterpart: string; sub: string; tone?: "green" | "amber" | "slate" };
+// counterpartId is the RID of the OTHER person (resolved to a clickable name by PersonLink); prefix is
+// an optional role qualifier ("child" / "guardian" / …) shown ahead of the name.
+type RelRow = { id: string; counterpartId: string; prefix?: string; sub: string; tone?: "green" | "amber" | "slate" };
 
 export function RelationshipManager({
   personId,
@@ -967,7 +981,7 @@ export function RelationshipManager({
         personId={personId}
         rows={(partnerships ?? []).map((r) => ({
           id: r.id,
-          counterpart: other(r.personIdA, r.personIdB),
+          counterpartId: other(r.personIdA, r.personIdB),
           sub: [r.status, r.effectiveFrom].filter(Boolean).join(" · "),
           tone: relTone(r.status),
         }))}
@@ -991,7 +1005,8 @@ export function RelationshipManager({
         personId={personId}
         rows={(kinships ?? []).map((r) => ({
           id: r.id,
-          counterpart: `${r.parentId === personId ? "child" : "parent"}: ${other(r.parentId, r.childId)}`,
+          counterpartId: other(r.parentId, r.childId),
+          prefix: r.parentId === personId ? "child" : "parent",
           sub: r.status,
           tone: relTone(r.status),
         }))}
@@ -1009,7 +1024,8 @@ export function RelationshipManager({
         personId={personId}
         rows={(guardianships ?? []).map((r) => ({
           id: r.id,
-          counterpart: `${r.guardianId === personId ? "ward" : "guardian"}: ${other(r.guardianId, r.wardId)}`,
+          counterpartId: other(r.guardianId, r.wardId),
+          prefix: r.guardianId === personId ? "ward" : "guardian",
           sub: [r.status, r.relationCode].filter(Boolean).join(" · "),
           tone: relTone(r.status),
         }))}
@@ -1030,7 +1046,8 @@ export function RelationshipManager({
         personId={personId}
         rows={(sponsorships ?? []).map((r) => ({
           id: r.id,
-          counterpart: `${r.sponsorId === personId ? "sponsored" : "sponsor"}: ${other(r.sponsorId, r.sponsoredId)}`,
+          counterpartId: other(r.sponsorId, r.sponsoredId),
+          prefix: r.sponsorId === personId ? "sponsored" : "sponsor",
           sub: [r.status, r.relationCode].filter(Boolean).join(" · "),
           tone: relTone(r.status),
         }))}
@@ -1052,7 +1069,7 @@ export function RelationshipManager({
         personId={personId}
         rows={(nextOfKin ?? []).map((r) => ({
           id: r.id,
-          counterpart: other(r.subjectId, r.contactId),
+          counterpartId: other(r.subjectId, r.contactId),
           sub: [`#${r.priority}`, r.status, r.relationCode].filter(Boolean).join(" · "),
           tone: relTone(r.status),
         }))}
@@ -1070,7 +1087,7 @@ export function RelationshipManager({
         personId={personId}
         rows={(associations ?? []).map((r) => ({
           id: r.id,
-          counterpart: other(r.personIdA, r.personIdB),
+          counterpartId: other(r.personIdA, r.personIdB),
           sub: [r.kind, r.status, r.relationCode].filter(Boolean).join(" · "),
           tone: r.kind === "no_contact" ? "slate" : relTone(r.status),
         }))}
@@ -1112,10 +1129,11 @@ function RelationCodeSelect({
   required?: boolean;
 }) {
   const { locale } = useLocale();
+  const tr = useTg();
   const opts = types.filter((t) => t.category === category);
   return (
     <select name="relationCode" required={required} className="input" defaultValue="">
-      <option value="">{required ? "relation…" : "relation (optional)"}</option>
+      <option value="">{required ? tr("relation…") : tr("relation (optional)")}</option>
       {opts.map((t) => (
         <option key={t.code} value={t.code}>
           {pickLabel(t.name, locale) || t.code}
@@ -1147,9 +1165,10 @@ function RelFamily({
         <ul className="mt-1 space-y-0.5 text-sm text-slate-700">
           {rows.map((r) => (
             <li key={r.id} className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-2">
-                <span className="font-mono text-xs">{r.counterpart.replace(/(urn:[^ ]+)/, (m) => ridTail(m))}</span>
-                <span className="rounded-full bg-slate-100 px-1.5 text-xs text-slate-500">{r.sub}</span>
+              <span className="flex items-center gap-2 text-xs">
+                {r.prefix ? <span className="text-slate-400">{r.prefix}:</span> : null}
+                <PersonLink personId={r.counterpartId} />
+                <span className="rounded-full bg-slate-100 px-1.5 text-slate-500">{r.sub}</span>
               </span>
               <RowDelete
                 path={`/person/v1/persons/${personId}/relationships/${r.id}`}
@@ -1184,7 +1203,7 @@ function RelFamily({
         </div>
         {extra}
         <button className="btn-ghost" disabled={busy}>
-          Add
+          <T>Add</T>
         </button>
       </form>
     </ChannelBlock>
@@ -1199,6 +1218,7 @@ function RelFamily({
 // is not part of the Person aggregate, so it fetches its own list and refreshes it after each write.
 export function PersonLanguageManager({ personId }: { personId: string }) {
   const { locale } = useLocale();
+  const tr = useTg();
   const [rows, setRows] = useState<PersonLanguage[] | null>(null);
   const [err, setErr] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
@@ -1236,7 +1256,7 @@ export function PersonLanguageManager({ personId }: { personId: string }) {
           <li key={l.id} className="flex items-center justify-between gap-2">
             <span>
               {pickLabel(l.name, locale) || l.languageId}
-              {l.isNative ? " · native" : ""}
+              {l.isNative ? tr(" · native") : ""}
               {l.cefrLevel ? ` · ${l.cefrLevel}` : ""}
             </span>
             <button
@@ -1248,7 +1268,7 @@ export function PersonLanguageManager({ personId }: { personId: string }) {
                 run(() => mutate("DELETE", `/person/v1/persons/${personId}/languages/${l.languageId}`))
               }
             >
-              Remove
+              <T>Remove</T>
             </button>
           </li>
         ))}
@@ -1275,7 +1295,7 @@ export function PersonLanguageManager({ personId }: { personId: string }) {
       >
         <LanguagePicker key={pickerKey} onChange={setLangId} />
         <select name="cefrLevel" className="input" defaultValue="">
-          <option value="">CEFR…</option>
+          <option value="">{tr("CEFR…")}</option>
           {["A1", "A2", "B1", "B2", "C1", "C2"].map((c) => (
             <option key={c} value={c}>
               {c}
@@ -1283,10 +1303,10 @@ export function PersonLanguageManager({ personId }: { personId: string }) {
           ))}
         </select>
         <label className="flex items-center gap-1 text-xs text-slate-600">
-          <input type="checkbox" name="isNative" /> native
+          <input type="checkbox" name="isNative" /> {tr("native")}
         </label>
         <button className="btn-ghost" disabled={busy || !langId}>
-          Add
+          <T>Add</T>
         </button>
       </form>
     </ChannelBlock>
@@ -1299,6 +1319,7 @@ export function PersonLanguageManager({ personId }: { personId: string }) {
 // conferring org unit; revocation is a status flip (never a delete — indelible where sacramental).
 export function PersonClergyManager({ personId }: { personId: string }) {
   const { locale } = useLocale();
+  const tr = useTg();
   const [rows, setRows] = useState<ClergyCredential[] | null>(null);
   const [grades, setGrades] = useState<ClergyGrade[]>([]);
   const [err, setErr] = useState<unknown>(null);
@@ -1362,7 +1383,7 @@ export function PersonClergyManager({ personId }: { personId: string }) {
                     run(() => mutate("PUT", `/religion/v1/clergy-credentials/${c.id}`, { status: "suspended" }))
                   }
                 >
-                  Suspend
+                  <T>Suspend</T>
                 </button>
               ) : null}
               {c.status !== "revoked" ? (
@@ -1375,7 +1396,7 @@ export function PersonClergyManager({ personId }: { personId: string }) {
                     run(() => mutate("PUT", `/religion/v1/clergy-credentials/${c.id}`, { status: "revoked" }))
                   }
                 >
-                  Revoke
+                  <T>Revoke</T>
                 </button>
               ) : null}
               {c.status !== "active" ? (
@@ -1387,7 +1408,7 @@ export function PersonClergyManager({ personId }: { personId: string }) {
                     run(() => mutate("PUT", `/religion/v1/clergy-credentials/${c.id}`, { status: "active" }))
                   }
                 >
-                  Reinstate
+                  <T>Reinstate</T>
                 </button>
               ) : null}
             </span>
@@ -1417,7 +1438,7 @@ export function PersonClergyManager({ personId }: { personId: string }) {
         }}
       >
         <select name="clergyGradeId" className="input" defaultValue="" required>
-          <option value="">grade…</option>
+          <option value="">{tr("grade…")}</option>
           {grades.map((g) => (
             <option key={g.id} value={g.id}>
               {pickLabel(g.name, locale) || g.code}
@@ -1427,7 +1448,7 @@ export function PersonClergyManager({ personId }: { personId: string }) {
         <EntitySelect key={unitKey} kind="unit" onChange={setOrgUnitId} placeholder="conferring org unit…" />
         <input name="grantedOn" type="date" className="input" />
         <button className="btn-ghost" disabled={busy || !orgUnitId}>
-          Add
+          <T>Add</T>
         </button>
       </form>
     </ChannelBlock>
@@ -1440,6 +1461,7 @@ export function PersonClergyManager({ personId }: { personId: string }) {
 // `value` is envelope-encrypted server-side; the API returns it decrypted to authorized readers.
 export function PersonAffiliationManager({ personId }: { personId: string }) {
   const { locale } = useLocale();
+  const tr = useTg();
   const [rows, setRows] = useState<Affiliation[] | null>(null);
   const [types, setTypes] = useState<AffiliationType[]>([]);
   const [err, setErr] = useState<unknown>(null);
@@ -1475,7 +1497,7 @@ export function PersonAffiliationManager({ personId }: { personId: string }) {
 
   return (
     <ChannelBlock title="Religious affiliation" err={err}>
-      <p className="mt-1 text-xs text-amber-600">Special-category data (GDPR Art. 9) — encrypted at rest.</p>
+      <p className="mt-1 text-xs text-amber-600"><T>Special-category data (GDPR Art. 9) — encrypted at rest.</T></p>
       {rows && rows.length === 0 ? <p className="mt-1 text-sm text-slate-400">—</p> : null}
       <ul className="mt-1 space-y-0.5 text-sm text-slate-700">
         {(rows ?? []).map((a) => (
@@ -1501,7 +1523,7 @@ export function PersonAffiliationManager({ personId }: { personId: string }) {
                 run(() => mutate("DELETE", `/religion/v1/affiliations/${a.id}`))
               }
             >
-              Remove
+              <T>Remove</T>
             </button>
           </li>
         ))}
@@ -1529,7 +1551,7 @@ export function PersonAffiliationManager({ personId }: { personId: string }) {
         }}
       >
         <select name="affiliationTypeId" className="input" defaultValue="" required>
-          <option value="">type…</option>
+          <option value="">{tr("type…")}</option>
           {types.map((t) => (
             <option key={t.id} value={t.id}>
               {pickLabel(t.name, locale) || t.code}
@@ -1537,9 +1559,9 @@ export function PersonAffiliationManager({ personId }: { personId: string }) {
           ))}
         </select>
         <ReligionTaxonSelect key={pickerKey} onChange={setReligionId} />
-        <input name="value" type="text" className="input" placeholder="detail (optional)" />
+        <input name="value" type="text" className="input" placeholder={tr("detail (optional)")} />
         <button className="btn-ghost" disabled={busy}>
-          Add
+          <T>Add</T>
         </button>
       </form>
     </ChannelBlock>
@@ -1549,6 +1571,7 @@ export function PersonAffiliationManager({ personId }: { personId: string }) {
 // ReligionTaxonSelect is a lightweight typeahead over root-religion taxa for the optional faith anchor.
 function ReligionTaxonSelect({ onChange }: { onChange: (id: string) => void }) {
   const { locale } = useLocale();
+  const tr = useTg();
   const [opts, setOpts] = useState<{ id: string; label: string }[]>([]);
   useEffect(() => {
     bffGet<{ taxa: { id: string; code: string; name?: LocaleMap }[] }>(
@@ -1560,7 +1583,7 @@ function ReligionTaxonSelect({ onChange }: { onChange: (id: string) => void }) {
   }, []);
   return (
     <select className="input" defaultValue="" onChange={(e) => onChange(e.target.value)}>
-      <option value="">faith (optional)…</option>
+      <option value="">{tr("faith (optional)…")}</option>
       {opts.map((o) => (
         <option key={o.id} value={o.id}>
           {o.label}
@@ -1579,9 +1602,10 @@ function ChannelBlock({
   err: unknown;
   children: React.ReactNode;
 }) {
+  const tr = useTg();
   return (
     <div className="mt-3">
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-400">{title}</div>
+      <div className="text-xs font-medium uppercase tracking-wide text-slate-400">{tr(title)}</div>
       {err ? <div className="mt-1"><ErrorBox error={err} /></div> : null}
       {children}
     </div>

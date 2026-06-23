@@ -46,3 +46,11 @@ bootstrap-admin:
   subject: "local-admin"
   display-name: "Local Admin"
   person-code: "admin"
+
+# Import-control proxy to the hermenea companion (D-Hermenea): oikumenea forwards UI-triggered
+# /hermenea/v1/* calls to base-url with the OIKUMENEA_HERMENEA_TOKEN env secret, gated on import.manage.
+# In compose, hermenea is reachable at the service hostname `hermenea`; insecure-skip-verify accepts its
+# self-signed cert.
+hermenea:
+  base-url: "https://hermenea:9443"
+  insecure-skip-verify: true

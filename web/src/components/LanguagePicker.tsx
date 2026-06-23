@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useLocale } from "@/lib/locale";
+import { useLocale, useTg } from "@/lib/locale";
 import { pickLabel } from "@/lib/i18n";
 
 /**
@@ -25,6 +25,7 @@ export function LanguagePicker({
   placeholder?: string;
 }) {
   const { locale } = useLocale();
+  const tr = useTg();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Languoid[]>([]);
   const [selected, setSelected] = useState<{ id: string; label: string } | null>(null);
@@ -84,13 +85,13 @@ export function LanguagePicker({
         <div className="flex items-center gap-2">
           <span className="input flex-1 truncate bg-slate-50">{selected.label}</span>
           <button type="button" className="text-xs text-red-600 hover:underline" onClick={clear}>
-            clear
+            {tr("clear")}
           </button>
         </div>
       ) : (
         <input
           className="input"
-          placeholder={placeholder}
+          placeholder={tr(placeholder)}
           value={query}
           autoComplete="off"
           onFocus={() => setOpen(true)}
@@ -103,9 +104,9 @@ export function LanguagePicker({
       {open && !selected && (query.trim().length >= 2 || results.length > 0) ? (
         <div className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md border border-slate-200 bg-white shadow-lg">
           {loading ? (
-            <div className="px-3 py-2 text-sm text-slate-400">Searching…</div>
+            <div className="px-3 py-2 text-sm text-slate-400">{tr("Searching…")}</div>
           ) : results.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-slate-400">No matches</div>
+            <div className="px-3 py-2 text-sm text-slate-400">{tr("No matches")}</div>
           ) : (
             results.map((l) => (
               <button

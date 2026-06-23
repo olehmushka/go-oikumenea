@@ -8,8 +8,9 @@ import { bffGet } from "@/lib/api/browser";
 import { ErrorBox } from "./ErrorBox";
 import { EntitySelect } from "./EntitySelect";
 import { ActionButton } from "./ActionButton";
+import { T } from "./T";
 import { pickLabel } from "@/lib/i18n";
-import { useLocale } from "@/lib/locale";
+import { useLocale, useTg } from "@/lib/locale";
 import { newSuffix, slugify } from "@/lib/code";
 import { ridTail } from "@/lib/ontology/rid";
 import type { Position } from "@/lib/api/types";
@@ -46,6 +47,7 @@ export function PersonLink({ personId }: { personId: string }) {
 /** Create a (vacant) billet in a unit. POST /membership/v1/units/{unitId}/positions. */
 export function CreatePosition({ unitId }: { unitId: string }) {
   const router = useRouter();
+  const tr = useTg();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<unknown>(null);
 
@@ -83,14 +85,14 @@ export function CreatePosition({ unitId }: { unitId: string }) {
         })();
       }}
     >
-      <h3 className="text-sm font-semibold text-slate-900">Create position</h3>
+      <h3 className="text-sm font-semibold text-slate-900"><T>Create position</T></h3>
       {err ? <ErrorBox error={err} /> : null}
       <div className="grid grid-cols-2 gap-3">
         <input
           name="code"
           required
           className="input"
-          placeholder="auto from title"
+          placeholder={tr("auto from title")}
           value={codeValue}
           onChange={(e) => {
             setCode(e.target.value);
@@ -101,13 +103,13 @@ export function CreatePosition({ unitId }: { unitId: string }) {
           name="title"
           required
           className="input"
-          placeholder="title (e.g. Commanding Officer)"
+          placeholder={tr("title (e.g. Commanding Officer)")}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
         />
       </div>
       <button type="submit" className="btn-primary" disabled={busy}>
-        {busy ? "Creating…" : "Create position"}
+        {busy ? <T>Creating…</T> : <T>Create position</T>}
       </button>
     </form>
   );
@@ -116,6 +118,7 @@ export function CreatePosition({ unitId }: { unitId: string }) {
 /** Edit a position's title / sort order, and abolish/restore it. */
 export function PositionAdmin({ position }: { position: Position }) {
   const { locale } = useLocale();
+  const tr = useTg();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -129,7 +132,7 @@ export function PositionAdmin({ position }: { position: Position }) {
         className="text-xs font-medium text-indigo-600 hover:underline"
         onClick={() => setOpen((o) => !o)}
       >
-        Edit
+        <T>Edit</T>
       </button>
       {!abolished ? (
         <ActionButton
@@ -168,22 +171,22 @@ export function PositionAdmin({ position }: { position: Position }) {
           <input
             name="title"
             className="input"
-            placeholder="title"
+            placeholder={tr("title")}
             defaultValue={pickLabel(position.title, locale)}
           />
           <input
             name="sortOrder"
             type="number"
             className="input"
-            placeholder="sort order"
+            placeholder={tr("sort order")}
             defaultValue={position.sortOrder ?? undefined}
           />
           <div className="flex gap-2">
             <button className="btn-primary" disabled={busy}>
-              Save
+              <T>Save</T>
             </button>
             <button type="button" className="btn-ghost" onClick={() => setOpen(false)}>
-              Cancel
+              <T>Cancel</T>
             </button>
           </div>
         </form>
@@ -195,6 +198,7 @@ export function PositionAdmin({ position }: { position: Position }) {
 /** Assign a person to a vacant position. POST /membership/v1/positions/{positionId}/fill. */
 export function FillPosition({ positionId }: { positionId: string }) {
   const router = useRouter();
+  const tr = useTg();
   const [open, setOpen] = useState(false);
   const [personId, setPersonId] = useState("");
   const [busy, setBusy] = useState(false);
@@ -207,14 +211,14 @@ export function FillPosition({ positionId }: { positionId: string }) {
         className="text-xs font-medium text-indigo-600 hover:underline"
         onClick={() => setOpen(true)}
       >
-        Fill
+        <T>Fill</T>
       </button>
     );
   }
   return (
     <div className="flex items-center gap-2">
       <div className="w-56">
-        <EntitySelect kind="person" placeholder="person…" onChange={setPersonId} allowEmpty />
+        <EntitySelect kind="person" placeholder={tr("person…")} onChange={setPersonId} allowEmpty />
       </div>
       <button
         type="button"
@@ -233,10 +237,10 @@ export function FillPosition({ positionId }: { positionId: string }) {
           }
         }}
       >
-        {busy ? "…" : "Assign"}
+        {busy ? "…" : <T>Assign</T>}
       </button>
       <button type="button" className="btn-ghost" onClick={() => setOpen(false)}>
-        Cancel
+        <T>Cancel</T>
       </button>
       {err && <span className="text-xs text-red-500">{err}</span>}
     </div>

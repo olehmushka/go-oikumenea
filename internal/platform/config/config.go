@@ -34,6 +34,23 @@ type Install struct {
 	// Crypto configures envelope encryption for pii:sensitive data (D-CryptoProvider, M9): the KMS
 	// backend and the blind-index key the document module uses for personal-code values.
 	Crypto Crypto `yaml:"crypto"`
+
+	// Hermenea points the import-control proxy at the out-of-process hermenea companion (D-Hermenea).
+	// The UI/operator calls oikumenea's /hermenea/v1/* with a normal OIDC bearer (gated on import.manage);
+	// when allowed, oikumenea re-issues the call to BaseURL with the OIKUMENEA_HERMENEA_TOKEN runtime
+	// secret — so the trigger token lives only in oikumenea, never in the web tier. Empty BaseURL
+	// disables the proxy (the routes are not served).
+	Hermenea Hermenea `yaml:"hermenea"`
+}
+
+// Hermenea is the import-control proxy target: oikumenea forwards UI-triggered sync/list calls to the
+// hermenea companion's control API (D-Hermenea). The shared trigger secret is a RUNTIME env var
+// (OIKUMENEA_HERMENEA_TOKEN), not in this file.
+type Hermenea struct {
+	// BaseURL is the hermenea companion's HTTPS base (e.g. https://hermenea:9443). Empty disables the proxy.
+	BaseURL string `yaml:"base-url"`
+	// InsecureSkipVerify disables TLS verification (for the self-signed local-dev cert). Never in prod.
+	InsecureSkipVerify bool `yaml:"insecure-skip-verify"`
 }
 
 // Postgres holds the operator-supplied connection string.

@@ -6,6 +6,8 @@ import { mutate } from "@/lib/api/client";
 import { ErrorBox } from "@/components/ErrorBox";
 import { EntitySelect } from "@/components/EntitySelect";
 import { Localized } from "@/components/Localized";
+import { T } from "@/components/T";
+import { useTg } from "@/lib/locale";
 import type { Order, OrderType } from "@/lib/api/types";
 
 const ORDER_CATEGORIES = [
@@ -26,6 +28,7 @@ export function OrderCreate({
   orderTypes: OrderType[];
 }) {
   const router = useRouter();
+  const tr = useTg();
   const [err, setErr] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -64,19 +67,19 @@ export function OrderCreate({
         })();
       }}
     >
-      <h3 className="text-sm font-semibold text-slate-900">New order (наказ)</h3>
+      <h3 className="text-sm font-semibold text-slate-900"><T>New order (наказ)</T></h3>
       <p className="text-xs text-slate-500">
-        Created in DRAFT. Effects apply only when you <em>issue</em> it.
+        <T>Created in DRAFT. Effects apply only when you issue it.</T>
       </p>
       {err ? <ErrorBox error={err} /> : null}
       <div className="grid grid-cols-2 gap-3">
-        <input name="number" className="input" placeholder="order number" />
+        <input name="number" className="input" placeholder={tr("order number")} />
         <input name="issuedOn" type="date" className="input" />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <select name="typeId" required className="input" defaultValue="">
           <option value="" disabled>
-            item type…
+            {tr("item type…")}
           </option>
           {orderTypes.map((t) => (
             <option key={t.id} value={t.id}>
@@ -84,14 +87,14 @@ export function OrderCreate({
             </option>
           ))}
         </select>
-        <EntitySelect name="personId" kind="person" required placeholder="subject person…" />
+        <EntitySelect name="personId" kind="person" required placeholder={tr("subject person…")} />
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <EntitySelect name="itemUnitId" kind="unit" allowEmpty placeholder="item unit (optional)…" />
-        <input name="note" className="input" placeholder="note (optional)" />
+        <EntitySelect name="itemUnitId" kind="unit" allowEmpty placeholder={tr("item unit (optional)…")} />
+        <input name="note" className="input" placeholder={tr("note (optional)")} />
       </div>
       <button type="submit" className="btn-primary" disabled={busy}>
-        {busy ? "Creating…" : "Create order"}
+        {busy ? <T>Creating…</T> : <T>Create order</T>}
       </button>
     </form>
   );
@@ -100,6 +103,7 @@ export function OrderCreate({
 /** Edit a DRAFT order's number / issued-on. PUT /order/v1/orders/{id} (rejected once issued). */
 export function EditOrder({ order }: { order: Order }) {
   const router = useRouter();
+  const tr = useTg();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<unknown>(null);
@@ -107,7 +111,7 @@ export function EditOrder({ order }: { order: Order }) {
   if (!open) {
     return (
       <button type="button" className="btn-ghost" onClick={() => setOpen(true)}>
-        Edit draft
+        <T>Edit draft</T>
       </button>
     );
   }
@@ -136,14 +140,14 @@ export function EditOrder({ order }: { order: Order }) {
       }}
     >
       {err ? <ErrorBox error={err} /> : null}
-      <input name="number" className="input" placeholder="number" defaultValue={order.number} />
+      <input name="number" className="input" placeholder={tr("number")} defaultValue={order.number} />
       <input name="issuedOn" type="date" className="input" defaultValue={order.issuedOn} />
       <div className="flex gap-2">
         <button className="btn-primary" disabled={busy}>
-          Save
+          <T>Save</T>
         </button>
         <button type="button" className="btn-ghost" onClick={() => setOpen(false)}>
-          Cancel
+          <T>Cancel</T>
         </button>
       </div>
     </form>
@@ -153,6 +157,7 @@ export function EditOrder({ order }: { order: Order }) {
 /** Create / edit / retire order types (the catalog). */
 export function OrderTypeManager({ types }: { types: OrderType[] }) {
   const router = useRouter();
+  const tr = useTg();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<unknown>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -169,7 +174,7 @@ export function OrderTypeManager({ types }: { types: OrderType[] }) {
   };
   return (
     <div className="card space-y-3 p-5">
-      <h3 className="text-sm font-semibold text-slate-900">Order types</h3>
+      <h3 className="text-sm font-semibold text-slate-900"><T>Order types</T></h3>
       {err ? <ErrorBox error={err} /> : null}
       <ul className="space-y-1 text-sm">
         {types.map((t) =>
@@ -190,16 +195,16 @@ export function OrderTypeManager({ types }: { types: OrderType[] }) {
                   );
                 }}
               >
-                <input name="name" className="input" defaultValue={t.code} placeholder="name" />
+                <input name="name" className="input" defaultValue={t.code} placeholder={tr("name")} />
                 <select name="status" className="input" defaultValue={t.status ?? "active"}>
-                  <option value="active">active</option>
-                  <option value="retired">retired</option>
+                  <option value="active">{tr("active")}</option>
+                  <option value="retired">{tr("retired")}</option>
                 </select>
                 <button className="btn-primary" disabled={busy}>
-                  Save
+                  <T>Save</T>
                 </button>
                 <button type="button" className="btn-ghost" onClick={() => setEditing(null)}>
-                  Cancel
+                  <T>Cancel</T>
                 </button>
               </form>
             </li>
@@ -216,7 +221,7 @@ export function OrderTypeManager({ types }: { types: OrderType[] }) {
                   className="text-xs font-medium text-indigo-600 hover:underline"
                   onClick={() => setEditing(t.id)}
                 >
-                  Edit
+                  <T>Edit</T>
                 </button>
               </span>
             </li>
@@ -241,11 +246,11 @@ export function OrderTypeManager({ types }: { types: OrderType[] }) {
           );
         }}
       >
-        <input name="code" required className="input" placeholder="code" />
-        <input name="name" required className="input" placeholder="name" />
+        <input name="code" required className="input" placeholder={tr("code")} />
+        <input name="name" required className="input" placeholder={tr("name")} />
         <select name="category" required className="input" defaultValue="">
           <option value="" disabled>
-            category…
+            {tr("category…")}
           </option>
           {ORDER_CATEGORIES.map((c) => (
             <option key={c} value={c}>
@@ -255,7 +260,7 @@ export function OrderTypeManager({ types }: { types: OrderType[] }) {
         </select>
         <select name="effect" required className="input" defaultValue="">
           <option value="" disabled>
-            effect…
+            {tr("effect…")}
           </option>
           {ORDER_EFFECTS.map((x) => (
             <option key={x} value={x}>
@@ -264,7 +269,7 @@ export function OrderTypeManager({ types }: { types: OrderType[] }) {
           ))}
         </select>
         <button className="btn-ghost col-span-2" disabled={busy}>
-          Add order type
+          <T>Add order type</T>
         </button>
       </form>
     </div>
@@ -299,14 +304,14 @@ export function OrderActions({ orderId, status }: { orderId: string; status?: st
           disabled={busy || status === "ISSUED" || status === "REVOKED"}
           onClick={() => act("issue")}
         >
-          Issue
+          <T>Issue</T>
         </button>
         <button
           className="btn-ghost"
           disabled={busy || status === "REVOKED"}
           onClick={() => act("revoke", {})}
         >
-          Revoke
+          <T>Revoke</T>
         </button>
       </div>
       {err ? <ErrorBox error={err} /> : null}

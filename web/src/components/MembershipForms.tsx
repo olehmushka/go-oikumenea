@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { mutate } from "@/lib/api/client";
 import { ErrorBox } from "./ErrorBox";
 import { EntitySelect } from "./EntitySelect";
-import { useLocale } from "@/lib/locale";
+import { T } from "./T";
+import { useLocale, useTg } from "@/lib/locale";
 import { pickLabel } from "@/lib/i18n";
 import type { Position } from "@/lib/api/types";
 
@@ -23,6 +24,7 @@ export function AddMembership({
 }) {
   const router = useRouter();
   const { locale } = useLocale();
+  const tr = useTg();
   const [personId, setPersonId] = useState("");
   const [positionId, setPositionId] = useState("");
   const [effectiveFrom, setEffectiveFrom] = useState("");
@@ -56,30 +58,29 @@ export function AddMembership({
 
   return (
     <form className="card space-y-3 p-5" onSubmit={submit}>
-      <h3 className="text-sm font-semibold text-slate-900">Add membership</h3>
+      <h3 className="text-sm font-semibold text-slate-900"><T>Add membership</T></h3>
       <p className="text-xs text-slate-500">
-        Belong this person to the unit. Pick a position to assign them to that billet, or leave it
-        empty for plain belonging.
+        <T>Belong this person to the unit. Pick a position to assign them to that billet, or leave it empty for plain belonging.</T>
       </p>
       {err ? <ErrorBox error={err} /> : null}
       <div>
-        <label className="label">Person</label>
+        <label className="label"><T>Person</T></label>
         <EntitySelect
           key={pickerKey}
           kind="person"
-          placeholder="Search a person…"
+          placeholder={tr("Search a person…")}
           onChange={setPersonId}
         />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="label">Position (optional)</label>
+          <label className="label"><T>Position (optional)</T></label>
           <select
             className="input"
             value={positionId}
             onChange={(e) => setPositionId(e.target.value)}
           >
-            <option value="">— plain belonging —</option>
+            <option value="">{tr("— plain belonging —")}</option>
             {positions
               .filter((p) => p.status !== "abolished")
               .map((p) => (
@@ -90,7 +91,7 @@ export function AddMembership({
           </select>
         </div>
         <div>
-          <label className="label">Effective from (optional)</label>
+          <label className="label"><T>Effective from (optional)</T></label>
           <input
             type="datetime-local"
             className="input"
@@ -100,7 +101,7 @@ export function AddMembership({
         </div>
       </div>
       <button type="submit" className="btn-primary" disabled={busy || !personId}>
-        {busy ? "Adding…" : "Add membership"}
+        {busy ? <T>Adding…</T> : <T>Add membership</T>}
       </button>
     </form>
   );
@@ -130,7 +131,7 @@ export function EndMembershipButton({ membershipId }: { membershipId: string }) 
           }
         }}
       >
-        {busy ? "…" : "End"}
+        {busy ? "…" : <T>End</T>}
       </button>
       {err && <span className="text-xs text-red-500">{err}</span>}
     </span>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { apiGet } from "@/lib/api/server";
 import { EmptyState, ErrorNotice, Mono, Pager, PageHeader, Pill, Table } from "@/components/ui";
 import { LookupForm } from "@/components/LookupForm";
+import { T } from "@/components/T";
 import { OrderCreate, OrderTypeManager } from "./OrderForms";
 import type { OrderPage, OrderType } from "@/lib/api/types";
 
@@ -27,8 +28,8 @@ export default async function OrdersPage({
   return (
     <div>
       <PageHeader
-        title="Orders"
-        description="Administrative orders (наказ) — the legal basis for status changes. Effects apply on issue, with provenance."
+        title={<T>Orders</T>}
+        description={<T>Administrative orders (наказ) — the legal basis for status changes. Effects apply on issue, with provenance.</T>}
       />
 
       <div className="mb-5 max-w-md">
@@ -49,10 +50,10 @@ export default async function OrdersPage({
             <Table
               head={
                 <>
-                  <th className="th">Number</th>
-                  <th className="th">Issued on</th>
-                  <th className="th">Items</th>
-                  <th className="th">Status</th>
+                  <th className="th"><T>Number</T></th>
+                  <th className="th"><T>Issued on</T></th>
+                  <th className="th"><T>Items</T></th>
+                  <th className="th"><T>Status</T></th>
                 </>
               }
             >
@@ -77,7 +78,7 @@ export default async function OrdersPage({
               ))}
             </Table>
           ) : (
-            <EmptyState>No orders for this unit.</EmptyState>
+            <EmptyState><T>No orders for this unit.</T></EmptyState>
           )}
           <Pager
             basePath="/orders"
@@ -91,7 +92,7 @@ export default async function OrdersPage({
       )}
 
       {!unitId && (
-        <EmptyState>Pick an issuing unit above to list or create orders.</EmptyState>
+        <EmptyState><T>Pick an issuing unit above to list or create orders.</T></EmptyState>
       )}
 
       <div className="mt-8 max-w-xl">

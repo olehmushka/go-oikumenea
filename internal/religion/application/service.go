@@ -87,6 +87,25 @@ type Repo interface {
 	UpdateAffiliation(ctx context.Context, id string, up domain.AffiliationUpdate) (domain.StoredAffiliation, error)
 	SoftDeleteAffiliation(ctx context.Context, id string) error
 	CryptoEraseAffiliations(ctx context.Context, personID string) (int64, error)
+	// discovery (M25)
+	ListSiteTypes(ctx context.Context) ([]domain.SiteType, error)
+	UpsertSiteType(ctx context.Context, traditionTaxonID *string, code, name string, sortOrder *int) (domain.SiteType, error)
+	ListServiceTypes(ctx context.Context) ([]domain.ServiceType, error)
+	UpsertServiceType(ctx context.Context, traditionTaxonID *string, code, name string, sortOrder *int) (domain.ServiceType, error)
+	ListSitesByUnit(ctx context.Context, unitID string) ([]domain.Site, error)
+	GetSite(ctx context.Context, id string) (domain.Site, error)
+	ClearPrimarySite(ctx context.Context, unitID string) error
+	InsertSite(ctx context.Context, in domain.SiteInput) (domain.Site, error)
+	UpdateSite(ctx context.Context, id string, up domain.SiteUpdate) (domain.Site, error)
+	SoftDeleteSite(ctx context.Context, id string) error
+	ListSchedulesBySite(ctx context.Context, siteID string) ([]domain.ServiceSchedule, error)
+	GetSchedule(ctx context.Context, id string) (domain.ServiceSchedule, error)
+	InsertSchedule(ctx context.Context, in domain.ScheduleInput) (domain.ServiceSchedule, error)
+	SoftDeleteSchedule(ctx context.Context, id string) error
+	ListAliasesByUnit(ctx context.Context, unitID string) ([]domain.Alias, error)
+	InsertAlias(ctx context.Context, in domain.AliasInput) (domain.Alias, error)
+	SoftDeleteAlias(ctx context.Context, id string) error
+	SearchSites(ctx context.Context, q domain.DiscoveryQuery) ([]domain.Site, error)
 }
 
 // RepositoryFactory binds a Repo to a command surface (pool for reads, tx for writes).

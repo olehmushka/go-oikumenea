@@ -59,6 +59,13 @@ crypto:
   local-dev:
     kek: "bG9jYWwtZGV2LWluc2VjdXJlLWtlay1jaGFuZ2UtbWU="
 
+# Import-control proxy to the hermenea companion (D-Hermenea): oikumenea forwards UI-triggered
+# /hermenea/v1/* calls to BaseURL with the OIKUMENEA_HERMENEA_TOKEN env secret, gated on import.manage.
+# insecure-skip-verify accepts hermenea's self-signed local-dev cert; empty base-url disables the proxy.
+hermenea:
+  base-url: "https://localhost:9443"
+  insecure-skip-verify: true
+
 # First instance admin seeded at first boot (D-Bootstrap), bound to the LOCAL KEYCLOAK identity so the
 # imported realm user (admin/admin) is the instance admin from first boot. `subject` is that user's
 # fixed `sub` UUID from deploy/keycloak/realm-oikumenea.json. Idempotent: skipped once any instance

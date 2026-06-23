@@ -31,12 +31,15 @@ import (
 type Service struct {
 	app *application.Service
 	pep *pep.Enforcer
+	// issuers is the static set of accepted IdP issuers (install config, public fields only — never
+	// the HS256 secrets), surfaced by ListIssuers so binding UIs offer a choice instead of free text.
+	issuers []identityapi.IssuerOption
 }
 
-// NewService builds the transport adapter over the identity-federation application service and the
-// PEP enforcer.
-func NewService(app *application.Service, enforcer *pep.Enforcer) Service {
-	return Service{app: app, pep: enforcer}
+// NewService builds the transport adapter over the identity-federation application service, the PEP
+// enforcer, and the configured issuers (public fields only) offered to binding UIs via ListIssuers.
+func NewService(app *application.Service, enforcer *pep.Enforcer, issuers []identityapi.IssuerOption) Service {
+	return Service{app: app, pep: enforcer, issuers: issuers}
 }
 
 // compile-time assertion that the transport satisfies the generated server interface.
@@ -49,6 +52,29 @@ func (s Service) GetAccount(ctx context.Context, token bearertoken.Token, accoun
 	a, err := s.app.GetAccount(ctx, accountID)
 	if err != nil {
 		return identityapi.Account{}, s.mapError(ctx, err, errCtx{accountID: accountID})
+	}
+	return toAPIAccount(a), nil
+}
+
+// ListIssuers returns the instance's accepted IdP issuers (public fields only) for binding UIs. It is
+// a read of static config gated on person.read — the same surface the binding views already require.
+func (s Service) ListIssuers(ctx context.Context, token bearertoken.Token) ([]identityapi.IssuerOption, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermPersonRead)); err != nil {
+		return nil, err
+	}
+	if s.issuers == nil {
+		return []identityapi.IssuerOption{}, nil
+	}
+	return s.issuers, nil
+}
+
+func (s Service) GetAccountByPerson(ctx context.Context, token bearertoken.Token, personID string) (identityapi.Account, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermPersonRead)); err != nil {
+		return identityapi.Account{}, err
+	}
+	a, err := s.app.GetAccountByPerson(ctx, personID)
+	if err != nil {
+		return identityapi.Account{}, s.mapError(ctx, err, errCtx{})
 	}
 	return toAPIAccount(a), nil
 }

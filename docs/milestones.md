@@ -102,7 +102,7 @@ Legend: `✅` done · `🚧` in progress · `⬜` not started · `➖` not appli
 | **M22** | ✅ | ✅ | ✅ | ✅ | ✅ | 🚧 | backend verified + UI built — recursive `religion_taxa` tree + closure (D-Religion **refined** 2026-06-19: level-marker catalog, theism classification w/ nearest-declared-wins + unit override, M:N org classifications/one primary, Wikidata anchor). Migration `0023_religion` + curated 98-taxon seed (deep Christianity incl. major historic churches + world religions) via `deploy/religion-presets`. `internal/religion` module (raw-pgx repo, audited app svc reusing tenant for canonical-graph `createChildOrg`, transport on `religion.read`/`religion.catalog.manage`/`religionorg.manage`) wired into `main.go`; `pkg/rid` service 16. **Integration tests green** (seed+inheritance+override, reparent cycle guard, profile+one-primary, effective-type taxon+unit override, `excludes_child_creation` blocks child + canonical edge). `/religion` web taxonomy browser + create + theism-tag editor (type-checks + `next build`). **Remaining: live HTTP/UI click-through + commit** |
 | **M23** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — clergy grades & credentials (D-ClergyCredential): per-tradition `religion_grade_categories`/`religion_clergy_grades`/`religion_office_types` catalogs + reified **public** `religion_clergy_credentials` link (`link__clergy_credential`, RID `16,2,2`), indelible (status flip active/suspended/revoked, never deleted). Migration `0024_religion_clergy` (per-tradition seed: bishop/imam/rabbi/bhikkhu/swami…) + RLS on `org_unit_id`; `clergy.manage` perm gated against the conferring unit over the canonical graph. `ReligionService` endpoints (`/clergy-grades`, `/grade-categories`, `/office-types`, person/unit credential lists, add, status-flip update); person-detail "Religion" card + `/religion` roster panel. Integration test green (add→list by person+unit→suspend→reject bad status) |
 | **M24** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — lay affiliation (D-ReligiousAffiliation / D-SpecialPII): `religion_affiliation_types` catalog + reified `pii:special` `religion_affiliations` link (`link__affiliated_with`, RID `16,2,3`). The belief value is **envelope-encrypted at rest** (reuses `pkg/crypto` `Cipher` Seal/Open/BlindIndex — D-SpecialPII extends the sensitive-tier envelope unchanged) and **crypto-erased** via `ErasePersonAffiliations` (shared open seam with document `ErasePersonRecords` — the `PersonPurged` subscriber is still deferred). Migration `0025_religion_affiliation`; `affiliation.manage` perm gates read+write (person data). `ReligionService` endpoints (`/affiliation-types`, person affiliation list/add/update/delete); person-detail "Religion" card (Art. 9 notice). Integration test green: **ciphertext at rest contains no plaintext + blind index present, decrypt round-trips, crypto-erase drops the envelope (row survives, value empties)** |
-| **M25** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | designed |
+| **M25** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — religious discovery (D-Religion discovery surface): `religion_site_types`/`religion_service_types` catalogs, the reified `religion_sites` link (`link__site_of`, `16,2,4` — org unit ↔ shared `location_locations`, one-primary-per-unit), `religion_service_schedules` (weekly day / RRULE, IANA tz, language, mode, meeting-url guard), and search-only `religion_aliases`. Migration `0026_religion_discovery` (per-tradition seed) + RLS on the unit-scoped tables; `site.manage`/`schedule.manage` perms gated over the canonical graph. `ReligionService` discovery endpoints incl. `GET /discovery/sites` (closure filter via `religion_taxa_closure` + PostGIS `ST_DWithin`/`ST_Intersects`) with **app-side `public_precision` coarsening** (H3 dropped per D-Location 2026-06-17 → `domain.Coarsen` rounding). `/religion` web panels (site/service-type catalogs, discovery search, per-unit sites/aliases). Integration test green (radius+language+day search returns the site, exact/city/hidden coarsening, transliteration alias match, one-primary invariant, online-requires-meeting-url) |
 | **M26** | ✅ | 🚧 | ⬜ | ⬜ | ⬜ | ⬜ | decided |
 
 Notes on the planned tier (M16–M26): all have a landed `D-<Name>` decision (in
@@ -884,10 +884,17 @@ Builds on M22 + the M0 crypto seam.
 
 ## M25 — Religious discovery (sites, schedules, search)
 
-**Status: planned.** Binding via **D-Religion** (discovery surface) in
+**Status: verified.** Binding via **D-Religion** (discovery surface) in
 [roadmap-decisions.md](architecture/roadmap-decisions.md). The discovery substrate over religious structure + the shared
-**M19 Location** (PostGIS), source-of-truth in go-oikumenea; a FaithMap-style app consumes it. Builds
-on M22 + [M19 Location](#m19--location).
+**M19 Location** (PostGIS), source-of-truth in go-oikumenea; a FaithMap-style app consumes it. Built
+on M22 + [M19 Location](#m19--location) (migration `0026_religion_discovery`, `internal/religion`
+discovery layer, `ReligionService` discovery endpoints, `/religion` web panels, integration test).
+
+> **Coarsening is app-side (H3 dropped).** The design below sketched `public_precision` as a coarsening
+> to an **H3 cell**, but **D-Location was amended 2026-06-17 to drop H3 entirely** (stock PostGIS image;
+> `ST_DWithin`/GiST already serves radius search). M25 therefore coarsens **in Go by coordinate
+> rounding** (`domain.Coarsen`: `exact`→full, `street`→4 dp, `neighborhood`→3 dp, `city`→2 dp,
+> `hidden`→omitted), never via a DB cell.
 
 **Goal.** Make religious organizations **discoverable** — where they meet, when they serve, under what
 names — with privacy-preserving spatial search, while the CMS/rendering stays in the consuming app.
@@ -897,8 +904,8 @@ names — with privacy-preserving spatial search, while the CMS/rendering stays 
     (D-Location); `site_type_id` → generic `religion_site_types` catalog — church/cathedral/chapel/
     monastery, mosque, synagogue, temple, gurdwara, shrine, mission, office, online; `visibility ∈
     {public,unlisted,private}`; `public_precision ∈ {exact,street,neighborhood,city,hidden}`;
-    `is_primary` one-per-unit). Precision projection (coarsen a coordinate to an H3 cell) lives on the
-    **site link**, so one shared location may be published at different precisions by different owners.
+    `is_primary` one-per-unit). The precision projection (app-side coarsening — see the note above) lives
+    on the **site link**, so one shared location may be published at different precisions by different owners.
   - `religion_service_schedules` — per site: `day_of_week`/RRULE subset, start/end time, IANA `timezone`,
     service `language` (ISO 639-3), `service_type_id` → generic `religion_service_types` catalog
     (main/youth/prayer — Friday-Jumu'ah/Shabbat/daily-mass/puja/meditation/…), `mode ∈ {in_person,

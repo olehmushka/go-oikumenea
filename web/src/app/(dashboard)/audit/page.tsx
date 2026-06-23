@@ -1,6 +1,7 @@
 import { apiGet } from "@/lib/api/server";
 import { EmptyState, ErrorNotice, Mono, Pager, PageHeader, Pill, Table } from "@/components/ui";
 import { LookupForm } from "@/components/LookupForm";
+import { T } from "@/components/T";
 import type { AuditEntryPage } from "@/lib/api/types";
 
 export default async function AuditPage({
@@ -31,8 +32,8 @@ export default async function AuditPage({
   return (
     <div>
       <PageHeader
-        title="Audit log"
-        description="Append-only trail of permission-sensitive actions. Reads are themselves permission-scoped."
+        title={<T>Audit log</T>}
+        description={<T>Append-only trail of permission-sensitive actions. Reads are themselves permission-scoped.</T>}
       />
 
       <div className="mb-5 max-w-md">
@@ -46,17 +47,17 @@ export default async function AuditPage({
       </div>
 
       {error ? <ErrorNotice error={error} /> : null}
-      {page && (page.entries?.length ?? 0) === 0 && <EmptyState>No audit entries.</EmptyState>}
+      {page && (page.entries?.length ?? 0) === 0 && <EmptyState><T>No audit entries.</T></EmptyState>}
       {page && (page.entries?.length ?? 0) > 0 && (
         <>
           <Table
             head={
               <>
-                <th className="th">Time</th>
-                <th className="th">Action</th>
-                <th className="th">Actor</th>
-                <th className="th">Target</th>
-                <th className="th">Outcome</th>
+                <th className="th"><T>Time</T></th>
+                <th className="th"><T>Action</T></th>
+                <th className="th"><T>Actor</T></th>
+                <th className="th"><T>Target</T></th>
+                <th className="th"><T>Outcome</T></th>
               </>
             }
           >
@@ -70,7 +71,7 @@ export default async function AuditPage({
                 </td>
                 <td className="td">
                   {e.actorType === "SYSTEM" ? (
-                    <Pill>system</Pill>
+                    <Pill><T>system</T></Pill>
                   ) : (
                     <Mono>{e.actorPersonId?.slice(-8) ?? "—"}</Mono>
                   )}

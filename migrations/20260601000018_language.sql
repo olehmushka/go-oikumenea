@@ -433,5 +433,74 @@ FROM oikumenea.i18n_locales loc
 JOIN oikumenea.language_languoids x ON x.iso639_3 = loc.code
 ON CONFLICT (locale) DO UPDATE SET language_id = EXCLUDED.language_id, updated_at = now();
 
+-- Localized names for the writing-system catalog (D-i18n: all locales in every response). eng = the
+-- catalog's English `name` made explicit (the default locale is ukr, so the `name` column is not
+-- implicitly the eng label); ukr = hand-authored. entity_id is the RID `id` (the transport assembles
+-- writing-system names keyed by id under entity_type 'writing_system'). Untranslated scripts keep
+-- their English name in both locales (graceful fallback). Idempotent: re-running is a no-op.
+INSERT INTO oikumenea.i18n_translations (entity_type, entity_id, field, locale, text)
+SELECT 'writing_system', w.id::text, 'name', 'eng', w.name
+FROM oikumenea.writing_systems w
+ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
+
+INSERT INTO oikumenea.i18n_translations (entity_type, entity_id, field, locale, text)
+SELECT 'writing_system', w.id::text, 'name', 'ukr', v.text
+FROM (VALUES
+  ('Latn','Латиниця'),
+  ('Cyrl','Кирилиця'),
+  ('Grek','Грецьке письмо'),
+  ('Armn','Вірменське письмо'),
+  ('Geor','Грузинське письмо'),
+  ('Glag','Глаголиця'),
+  ('Runr','Руни'),
+  ('Ogam','Огам'),
+  ('Goth','Готське письмо'),
+  ('Nkoo','Н’Ко'),
+  ('Adlm','Адлам'),
+  ('Arab','Арабиця'),
+  ('Hebr','Єврейське письмо'),
+  ('Syrc','Сирійське письмо'),
+  ('Samr','Самаритянське письмо'),
+  ('Mand','Мандейське письмо'),
+  ('Phnx','Фінікійське письмо'),
+  ('Thaa','Тана'),
+  ('Deva','Деванагарі'),
+  ('Beng','Бенгальське письмо'),
+  ('Guru','Гурмукхі'),
+  ('Gujr','Гуджараті'),
+  ('Orya','Орія'),
+  ('Taml','Тамільське письмо'),
+  ('Telu','Телугу'),
+  ('Knda','Каннада'),
+  ('Mlym','Малаялам'),
+  ('Sinh','Сингальське письмо'),
+  ('Thai','Тайське письмо'),
+  ('Laoo','Лаоське письмо'),
+  ('Tibt','Тибетське письмо'),
+  ('Mymr','Бірманське письмо'),
+  ('Khmr','Кхмерське письмо'),
+  ('Ethi','Ефіопське письмо'),
+  ('Cans','Канадське складове письмо'),
+  ('Tfng','Тіфінаг'),
+  ('Java','Яванське письмо'),
+  ('Bali','Балійське письмо'),
+  ('Hira','Хіраґана'),
+  ('Kana','Катакана'),
+  ('Bopo','Бопомофо'),
+  ('Yiii','Письмо ї'),
+  ('Cher','Черокі'),
+  ('Vaii','Письмо ваї'),
+  ('Hani','Ієрогліфи хань'),
+  ('Hans','Спрощені ієрогліфи'),
+  ('Hant','Традиційні ієрогліфи'),
+  ('Jpan','Японське письмо'),
+  ('Egyp','Єгипетські ієрогліфи'),
+  ('Xsux','Клинопис'),
+  ('Hang','Хангиль'),
+  ('Kore','Корейське письмо')
+) AS v(code, text)
+JOIN oikumenea.writing_systems w ON w.code = v.code
+ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
+
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
 UPDATE oikumenea.schema_version SET revision = '0018_language', applied_at = now() WHERE singleton;

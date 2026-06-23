@@ -32,6 +32,8 @@ const (
 	entClergyGrade     = "religion_clergy_grade"
 	entOfficeType      = "religion_office_type"
 	entAffiliationType = "religion_affiliation_type"
+	entSiteType        = "religion_site_type"
+	entServiceType     = "religion_service_type"
 )
 
 const (
@@ -40,6 +42,8 @@ const (
 	orgPerm         = string(authzdomain.PermReligionOrgManage)
 	clergyPerm      = string(authzdomain.PermClergyManage)
 	affiliationPerm = string(authzdomain.PermAffiliationManage)
+	sitePerm        = string(authzdomain.PermSiteManage)
+	schedulePerm    = string(authzdomain.PermScheduleManage)
 )
 
 // ReligionService adapts *application.Service to the generated religionapi.ReligionService interface.
@@ -584,6 +588,16 @@ func (s ReligionService) mapError(ctx context.Context, err error) error {
 		return religionapi.NewAffiliationTypeNotFound("")
 	case errors.Is(err, domain.ErrAffiliationNotFound):
 		return religionapi.NewAffiliationNotFound("")
+	case errors.Is(err, domain.ErrSiteTypeNotFound):
+		return religionapi.NewSiteTypeNotFound("")
+	case errors.Is(err, domain.ErrServiceTypeNotFound):
+		return religionapi.NewServiceTypeNotFound("")
+	case errors.Is(err, domain.ErrSiteNotFound):
+		return religionapi.NewSiteNotFound("")
+	case errors.Is(err, domain.ErrScheduleNotFound):
+		return religionapi.NewScheduleNotFound("")
+	case errors.Is(err, domain.ErrAliasNotFound):
+		return religionapi.NewAliasNotFound("")
 	case errors.Is(err, domain.ErrInvalid):
 		return religionapi.NewInvalid("invalid request or unknown reference")
 	}

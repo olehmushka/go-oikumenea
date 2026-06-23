@@ -163,9 +163,15 @@ var typeNames = map[typeKey]string{
 	{SvcReligion, int(KindObject), 8}:  "clergy_grade",
 	{SvcReligion, int(KindObject), 9}:  "office_type",
 	{SvcReligion, int(KindObject), 10}: "affiliation_type",
+	// discovery (M25) — site/service-type catalogs + per-site schedules + search-only aliases
+	{SvcReligion, int(KindObject), 11}: "site_type",
+	{SvcReligion, int(KindObject), 12}: "service_type",
+	{SvcReligion, int(KindObject), 13}: "service_schedule",
+	{SvcReligion, int(KindObject), 14}: "alias",
 	{SvcReligion, int(KindLink), 1}:    "classified_as",
 	{SvcReligion, int(KindLink), 2}:    "clergy_credential",
 	{SvcReligion, int(KindLink), 3}:    "affiliated_with",
+	{SvcReligion, int(KindLink), 4}:    "site_of",
 }
 
 // Bare person link-type names (the dispatch tokens), derived from the registry above.

@@ -77,6 +77,9 @@ services:
       # authenticates the `hermenea-importer` principal (exactly import.manage) on POST /import/{type}.
       # hermenea presents the SAME secret outbound. INSECURE local default — replace for any real use.
       HERMENEA_OIKUMENEA_TOKEN: "dev-hermenea-importer-token-change-me"
+      # The trigger secret oikumenea presents OUTBOUND when proxying UI-triggered /hermenea/v1/* calls to
+      # the companion's control API (D-Hermenea). Must match hermenea's OIKUMENEA_HERMENEA_TOKEN below.
+      OIKUMENEA_HERMENEA_TOKEN: "dev-oikumenea-trigger-token-change-me"
     ports:
       - "8443:8443"
       - "8444:8444"

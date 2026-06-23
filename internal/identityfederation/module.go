@@ -28,11 +28,11 @@ import (
 // person's `person.*` permissions), and the linking-enabled config accessor. It seeds nothing
 // (accounts are created via the API or the first-admin bootstrap) and owns no resources of its own,
 // so there is no module-level cleanup.
-func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, enforcer *pep.Enforcer, linkingEnabled func() bool) (*application.Service, error) {
+func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, enforcer *pep.Enforcer, linkingEnabled func() bool, issuers []identityapi.IssuerOption) (*application.Service, error) {
 	repoFor := func(conn db.DBTX) domain.Repository { return adapters.NewRepository(conn) }
 	svc := application.NewService(pool, repoFor, audit, linkingEnabled)
 
-	if err := identityapi.RegisterRoutesIdentityFederationService(info.Router, transport.NewService(svc, enforcer)); err != nil {
+	if err := identityapi.RegisterRoutesIdentityFederationService(info.Router, transport.NewService(svc, enforcer, issuers)); err != nil {
 		return nil, werror.Wrap(err, "register identity-federation service routes")
 	}
 	return svc, nil

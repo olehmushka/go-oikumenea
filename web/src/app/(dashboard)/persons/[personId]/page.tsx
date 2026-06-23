@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { apiGet } from "@/lib/api/server";
 import { Card, EmptyState, ErrorNotice, Mono, PageHeader, Pill } from "@/components/ui";
+import { T } from "@/components/T";
 import {
   CallSignManager,
   CitizenshipManager,
@@ -24,6 +25,7 @@ import {
 } from "./PersonForms";
 import { PersonEducationManager } from "./PersonEducation";
 import { PersonCompaniesManager } from "./PersonCompanies";
+import { AccountManager } from "./PersonAccount";
 import type {
   Association,
   DocumentDoc,
@@ -56,7 +58,7 @@ export default async function PersonDetailPage({
   if (error || !person) {
     return (
       <div>
-        <PageHeader title="Person" />
+        <PageHeader title={<T>Person</T>} />
         <ErrorNotice error={error} />
       </div>
     );
@@ -66,10 +68,10 @@ export default async function PersonDetailPage({
     <div>
       <PageHeader
         title={person.displayName ?? personId}
-        description={person.code ? `code ${person.code}` : undefined}
+        description={person.code ? <><T>code</T> {person.code}</> : undefined}
         action={
           <Link href="/persons" className="btn-ghost">
-            ← All persons
+            ← <T>All persons</T>
           </Link>
         }
       />
@@ -77,26 +79,26 @@ export default async function PersonDetailPage({
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <div className="flex items-start justify-between">
-            <h2 className="text-sm font-semibold text-slate-900">Identity</h2>
+            <h2 className="text-sm font-semibold text-slate-900"><T>Identity</T></h2>
             <EditPerson person={person} />
           </div>
           <dl className="mt-3 space-y-2 text-sm">
-            <Row label="Given" value={person.given} />
-            <Row label="Surname" value={person.surname} />
-            <Row label="Birthdate" value={person.birthdate} />
-            <Row label="Date of death" value={person.dateOfDeath} />
-            <Row label="Sex" value={person.sex} />
-            <Row label="Rank" value={<PersonRankLabel ranks={person.ranks} />} />
-            <Row label="Country of birth" value={person.countryOfBirth} />
+            <Row label={<T>Given</T>} value={person.given} />
+            <Row label={<T>Surname</T>} value={person.surname} />
+            <Row label={<T>Birthdate</T>} value={person.birthdate} />
+            <Row label={<T>Date of death</T>} value={person.dateOfDeath} />
+            <Row label={<T>Sex</T>} value={person.sex} />
+            <Row label={<T>Rank</T>} value={<PersonRankLabel ranks={person.ranks} />} />
+            <Row label={<T>Country of birth</T>} value={person.countryOfBirth} />
             <Row
-              label="Status"
+              label={<T>Status</T>}
               value={
                 <Pill tone={(person.status ?? "").toUpperCase() === "ACTIVE" ? "green" : "slate"}>
                   {person.status ?? "—"}
                 </Pill>
               }
             />
-            <Row label="ID" value={<Mono>{person.id}</Mono>} />
+            <Row label={<T>ID</T>} value={<Mono>{person.id}</Mono>} />
           </dl>
           <div className="mt-4 border-t border-slate-100 pt-3">
             <SetRank personId={person.id} ranks={person.ranks} />
@@ -107,14 +109,22 @@ export default async function PersonDetailPage({
         </Card>
 
         <Card>
-          <h2 className="text-sm font-semibold text-slate-900">Contact channels</h2>
+          <h2 className="text-sm font-semibold text-slate-900"><T>Contact channels</T></h2>
           <EmailManager personId={person.id} emails={person.emails} />
           <PhoneManager personId={person.id} phones={person.phones} />
           <CallSignManager personId={person.id} callSigns={person.callSigns} />
         </Card>
 
         <Card>
-          <h2 className="text-sm font-semibold text-slate-900">Social &amp; messenger</h2>
+          <h2 className="text-sm font-semibold text-slate-900"><T>Account &amp; login</T></h2>
+          <p className="mt-1 text-xs text-slate-400">
+            <T>Bind this person to an external IdP (Keycloak) login. issuer = realm URL (token `iss`); subject = the user&apos;s `sub` UUID.</T>
+          </p>
+          <AccountManager personId={person.id} />
+        </Card>
+
+        <Card>
+          <h2 className="text-sm font-semibold text-slate-900"><T>Social &amp; messenger</T></h2>
           <SocialAccountManager personId={person.id} accounts={person.socialAccounts} />
           <MessengerLinkManager
             personId={person.id}
@@ -125,23 +135,23 @@ export default async function PersonDetailPage({
         </Card>
 
         <Card>
-          <h2 className="text-sm font-semibold text-slate-900">Languages</h2>
+          <h2 className="text-sm font-semibold text-slate-900"><T>Languages</T></h2>
           <PersonLanguageManager personId={person.id} />
         </Card>
 
         <Card>
-          <h2 className="text-sm font-semibold text-slate-900">Citizenship &amp; residence</h2>
+          <h2 className="text-sm font-semibold text-slate-900"><T>Citizenship &amp; residence</T></h2>
           <CitizenshipManager personId={person.id} citizenships={person.citizenships} />
           <ResidenceManager personId={person.id} residences={person.residences} />
         </Card>
 
         <Card>
-          <h2 className="text-sm font-semibold text-slate-900">Name variants</h2>
+          <h2 className="text-sm font-semibold text-slate-900"><T>Name variants</T></h2>
           <NameVariantManager personId={person.id} variants={person.nameVariants} />
         </Card>
 
         <Card>
-          <h2 className="text-sm font-semibold text-slate-900">Religion</h2>
+          <h2 className="text-sm font-semibold text-slate-900"><T>Religion</T></h2>
           <PersonClergyManager personId={person.id} />
           <PersonAffiliationManager personId={person.id} />
         </Card>
@@ -176,7 +186,7 @@ async function PersonRelations({ personId, person }: { personId: string; person:
     <>
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <Card className="lg:col-span-2">
-          <h2 className="text-sm font-semibold text-slate-900">Relationships</h2>
+          <h2 className="text-sm font-semibold text-slate-900"><T>Relationships</T></h2>
           <RelationshipManager
             personId={person.id}
             partnerships={partnerships}
@@ -189,23 +199,23 @@ async function PersonRelations({ personId, person }: { personId: string; person:
         </Card>
 
         <Card className="lg:col-span-2">
-          <h2 className="text-sm font-semibold text-slate-900">Documents &amp; personal codes</h2>
+          <h2 className="text-sm font-semibold text-slate-900"><T>Documents &amp; personal codes</T></h2>
           <DocumentManager personId={person.id} documents={documents?.documents} />
           <PersonalCodeManager personId={person.id} codes={codes?.codes} />
         </Card>
 
         <Card className="lg:col-span-2">
-          <h2 className="text-sm font-semibold text-slate-900">Education</h2>
+          <h2 className="text-sm font-semibold text-slate-900"><T>Education</T></h2>
           <PersonEducationManager personId={person.id} />
         </Card>
 
         <Card className="lg:col-span-2">
-          <h2 className="text-sm font-semibold text-slate-900">Companies</h2>
+          <h2 className="text-sm font-semibold text-slate-900"><T>Companies</T></h2>
           <PersonCompaniesManager personId={person.id} />
         </Card>
       </div>
 
-      <Section title="Memberships">
+      <Section title={<T>Memberships</T>}>
         {memberships?.memberships?.length ? (
           <ul className="space-y-1 text-sm">
             {memberships.memberships.map((m) => (
@@ -219,11 +229,11 @@ async function PersonRelations({ personId, person }: { personId: string; person:
             ))}
           </ul>
         ) : (
-          <EmptyState>No memberships.</EmptyState>
+          <EmptyState><T>No memberships.</T></EmptyState>
         )}
       </Section>
 
-      <Section title="Orders">
+      <Section title={<T>Orders</T>}>
         {orders?.orders?.length ? (
           <ul className="space-y-1 text-sm">
             {orders.orders.map((o) => (
@@ -236,7 +246,7 @@ async function PersonRelations({ personId, person }: { personId: string; person:
             ))}
           </ul>
         ) : (
-          <EmptyState>No orders reference this person.</EmptyState>
+          <EmptyState><T>No orders reference this person.</T></EmptyState>
         )}
       </Section>
     </>
@@ -244,10 +254,10 @@ async function PersonRelations({ personId, person }: { personId: string; person:
 }
 
 function StreamFallback() {
-  return <div className="mt-4 text-sm text-slate-400">Loading relationships, documents, memberships…</div>;
+  return <div className="mt-4 text-sm text-slate-400"><T>Loading relationships, documents, memberships…</T></div>;
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="mt-8">
       <h2 className="mb-3 text-sm font-semibold text-slate-900">{title}</h2>
@@ -256,7 +266,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Row({ label, value }: { label: string; value?: React.ReactNode }) {
+function Row({ label, value }: { label: React.ReactNode; value?: React.ReactNode }) {
   return (
     <div className="flex justify-between gap-4">
       <dt className="text-slate-500">{label}</dt>

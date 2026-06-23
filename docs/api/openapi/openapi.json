@@ -533,6 +533,58 @@
         ],
         "type": "object"
       },
+      "Alias": {
+        "description": "A search-only alternative name for an org unit (never displayed).",
+        "properties": {
+          "aliasText": {
+            "type": "string"
+          },
+          "aliasType": {
+            "description": "nickname | abbreviation | historical | misspelling | transliteration.",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "locale": {
+            "type": "string"
+          },
+          "unitId": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "aliasText",
+          "aliasType",
+          "createdAt",
+          "id",
+          "unitId",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "AliasList": {
+        "properties": {
+          "aliases": {
+            "items": {
+              "$ref": "#/components/schemas/Alias"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "aliases"
+        ],
+        "type": "object"
+      },
       "Appointment": {
         "description": "A person filling an education position (link__holds_education_position), one-holder, effective-dated.",
         "properties": {
@@ -1833,6 +1885,25 @@
         ],
         "type": "object"
       },
+      "CreateAliasRequest": {
+        "properties": {
+          "aliasText": {
+            "type": "string"
+          },
+          "aliasType": {
+            "description": "nickname | abbreviation | historical | misspelling | transliteration.",
+            "type": "string"
+          },
+          "locale": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "aliasText",
+          "aliasType"
+        ],
+        "type": "object"
+      },
       "CreateBuildingRequest": {
         "properties": {
           "code": {
@@ -2267,6 +2338,76 @@
         ],
         "type": "object"
       },
+      "CreateScheduleRequest": {
+        "description": "A recurring service time — supply dayOfWeek (0=Sunday…6=Saturday) OR an rrule. meetingUrl is required when mode is online/hybrid.",
+        "properties": {
+          "dayOfWeek": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "description": {
+            "type": "string"
+          },
+          "endTime": {
+            "description": "Local end time as HH:MM.",
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "meetingUrl": {
+            "type": "string"
+          },
+          "mode": {
+            "description": "in_person | online | hybrid (default in_person).",
+            "type": "string"
+          },
+          "rrule": {
+            "type": "string"
+          },
+          "serviceTypeId": {
+            "type": "string"
+          },
+          "startTime": {
+            "description": "Local start time as HH:MM.",
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serviceTypeId",
+          "timezone"
+        ],
+        "type": "object"
+      },
+      "CreateSiteRequest": {
+        "properties": {
+          "isPrimary": {
+            "type": "boolean"
+          },
+          "locationId": {
+            "type": "string"
+          },
+          "publicPrecision": {
+            "description": "exact | street | neighborhood | city | hidden (default exact).",
+            "type": "string"
+          },
+          "siteTypeId": {
+            "type": "string"
+          },
+          "visibility": {
+            "description": "public | unlisted | private (default public).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "locationId",
+          "siteTypeId"
+        ],
+        "type": "object"
+      },
       "CreateTaxonRequest": {
         "properties": {
           "code": {
@@ -2503,6 +2644,67 @@
         },
         "required": [
           "degreeLevels"
+        ],
+        "type": "object"
+      },
+      "DiscoverySite": {
+        "description": "A public discovery hit: a site with its coordinate coarsened per publicPrecision (latitude/\nlongitude are null when the precision is `hidden`).\n",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          },
+          "latitude": {
+            "format": "double",
+            "type": "number"
+          },
+          "longitude": {
+            "format": "double",
+            "type": "number"
+          },
+          "orgUnitId": {
+            "type": "string"
+          },
+          "publicPrecision": {
+            "type": "string"
+          },
+          "siteTypeCode": {
+            "type": "string"
+          },
+          "siteTypeId": {
+            "type": "string"
+          },
+          "siteTypeName": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "isPrimary",
+          "orgUnitId",
+          "publicPrecision",
+          "siteTypeCode",
+          "siteTypeId",
+          "siteTypeName"
+        ],
+        "type": "object"
+      },
+      "DiscoverySitePage": {
+        "properties": {
+          "sites": {
+            "items": {
+              "$ref": "#/components/schemas/DiscoverySite"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sites"
         ],
         "type": "object"
       },
@@ -4122,6 +4324,28 @@
         },
         "required": [
           "institutions"
+        ],
+        "type": "object"
+      },
+      "IssuerOption": {
+        "description": "One IdP issuer accepted by this instance (from install config), offered to binding UIs so an\noperator picks an issuer rather than typing it. PUBLIC fields only — verification secrets\n(HS256 keys) are never exposed. An external identity's `issuer` must match one of these for a\ntoken from it to ever validate.\n",
+        "properties": {
+          "audience": {
+            "description": "The expected `aud`, if the instance pins one.",
+            "type": "string"
+          },
+          "issuer": {
+            "description": "The `iss` value (also the OIDC discovery base URL).",
+            "type": "string"
+          },
+          "type": {
+            "description": "One of oidc | hs256 (hs256 is local/dev only).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "issuer",
+          "type"
         ],
         "type": "object"
       },
@@ -7422,6 +7646,145 @@
         ],
         "type": "object"
       },
+      "ServiceSchedule": {
+        "description": "A per-site recurring service time (a weekly day or an RRULE subset).",
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "dayOfWeek": {
+            "description": "0=Sunday … 6=Saturday; null when rrule-driven.",
+            "format": "int32",
+            "type": "integer"
+          },
+          "description": {
+            "type": "string"
+          },
+          "endTime": {
+            "description": "Local end time as HH:MM.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "language": {
+            "description": "Service language (ISO 639-3).",
+            "type": "string"
+          },
+          "meetingUrl": {
+            "type": "string"
+          },
+          "mode": {
+            "description": "in_person | online | hybrid.",
+            "type": "string"
+          },
+          "rrule": {
+            "type": "string"
+          },
+          "serviceTypeCode": {
+            "type": "string"
+          },
+          "serviceTypeId": {
+            "type": "string"
+          },
+          "serviceTypeName": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "siteId": {
+            "type": "string"
+          },
+          "startTime": {
+            "description": "Local start time as HH:MM.",
+            "type": "string"
+          },
+          "timezone": {
+            "description": "IANA zone (e.g. Europe/Kyiv), not a UTC offset.",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "createdAt",
+          "id",
+          "mode",
+          "serviceTypeCode",
+          "serviceTypeId",
+          "serviceTypeName",
+          "siteId",
+          "timezone",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "ServiceScheduleList": {
+        "properties": {
+          "schedules": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceSchedule"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "schedules"
+        ],
+        "type": "object"
+      },
+      "ServiceType": {
+        "description": "A per-tradition service/observance type (main/youth/prayer/jumua/shabbat/…).",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "traditionTaxonId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "id",
+          "name",
+          "status"
+        ],
+        "type": "object"
+      },
+      "ServiceTypeList": {
+        "properties": {
+          "serviceTypes": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceType"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "serviceTypes"
+        ],
+        "type": "object"
+      },
       "SetClassificationsRequest": {
         "description": "Replace the set of classification tags (theism) on a taxon or unit, by classification id.",
         "properties": {
@@ -7510,6 +7873,137 @@
           "holderKind",
           "id",
           "updatedAt"
+        ],
+        "type": "object"
+      },
+      "Site": {
+        "description": "A worship-community unit's place: the reified link__site_of (Unit ↔ a shared Location,\nD-Location). latitude/longitude carry the EXACT coordinate, returned to authorized owners; the\ndiscovery search coarsens them per publicPrecision.\n",
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          },
+          "latitude": {
+            "format": "double",
+            "type": "number"
+          },
+          "locationId": {
+            "type": "string"
+          },
+          "longitude": {
+            "format": "double",
+            "type": "number"
+          },
+          "orgUnitId": {
+            "type": "string"
+          },
+          "publicPrecision": {
+            "description": "exact | street | neighborhood | city | hidden — the app-side publish-precision projection.",
+            "type": "string"
+          },
+          "siteTypeCode": {
+            "type": "string"
+          },
+          "siteTypeId": {
+            "type": "string"
+          },
+          "siteTypeName": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "visibility": {
+            "description": "public | unlisted | private.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "createdAt",
+          "id",
+          "isPrimary",
+          "latitude",
+          "locationId",
+          "longitude",
+          "orgUnitId",
+          "publicPrecision",
+          "siteTypeCode",
+          "siteTypeId",
+          "siteTypeName",
+          "updatedAt",
+          "visibility"
+        ],
+        "type": "object"
+      },
+      "SiteList": {
+        "properties": {
+          "sites": {
+            "items": {
+              "$ref": "#/components/schemas/Site"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sites"
+        ],
+        "type": "object"
+      },
+      "SiteType": {
+        "description": "A per-tradition place/site type (church/cathedral/mosque/synagogue/temple/…).",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "traditionTaxonId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "id",
+          "name",
+          "status"
+        ],
+        "type": "object"
+      },
+      "SiteTypeList": {
+        "properties": {
+          "siteTypes": {
+            "items": {
+              "$ref": "#/components/schemas/SiteType"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "siteTypes"
         ],
         "type": "object"
       },
@@ -8476,6 +8970,24 @@
               "type": "string"
             },
             "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "UpdateSiteRequest": {
+        "description": "Patch a site's type/visibility/precision/primary flag. Promoting to primary clears any existing primary.",
+        "properties": {
+          "isPrimary": {
+            "type": "boolean"
+          },
+          "publicPrecision": {
+            "type": "string"
+          },
+          "siteTypeId": {
+            "type": "string"
+          },
+          "visibility": {
+            "type": "string"
           }
         },
         "type": "object"
@@ -9794,6 +10306,50 @@
             "type": "boolean"
           },
           "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "type": "object"
+      },
+      "UpsertServiceTypeRequest": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "traditionTaxonId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "type": "object"
+      },
+      "UpsertSiteTypeRequest": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "traditionTaxonId": {
             "type": "string"
           }
         },
@@ -19268,6 +19824,83 @@
         ]
       }
     },
+    "/identity/v1/issuers": {
+      "get": {
+        "description": "List the IdP issuers configured for this instance (public fields only — no secrets), for\nbinding UIs to offer as a choice when linking an external identity. Gates on `person.read`.\n",
+        "operationId": "IdentityFederationService_listIssuers",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IssuerOption"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List the IdP issuers configured for this instance (public fields only — no secrets), for",
+        "tags": [
+          "IdentityFederationService"
+        ]
+      }
+    },
+    "/identity/v1/persons/{personId}/account": {
+      "get": {
+        "description": "Read the person's single active account (with its linked identities), or\nAccount:AccountNotFound when the person is roster-only (has no account). Gates on\n`person.read`. The console uses this to surface a person's login/account state.\n",
+        "operationId": "IdentityFederationService_getAccountByPerson",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Read the person's single active account (with its linked identities), or",
+        "tags": [
+          "IdentityFederationService"
+        ]
+      }
+    },
     "/identity/v1/whoami": {
       "get": {
         "description": "Resolve the caller's own PDP context (person + account) from the validated inbound token.",
@@ -24421,6 +25054,153 @@
         ]
       }
     },
+    "/religion/v1/discovery/sites": {
+      "get": {
+        "description": "Closure-aware PostGIS discovery search over PUBLIC sites. Supply a radius (lat+lng+radiusM via\nST_DWithin) or a bounding box (minLat/minLng/maxLat/maxLng via ST_Intersects); optionally filter\nby a religion taxon (org units classified under it via the taxonomy closure), a service language/\nweekday/online toggle, and a fuzzy match on the unit code/name or an alias. Coordinates are\ncoarsened per each site's publicPrecision.\n",
+        "operationId": "ReligionService_searchSites",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "lat",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lng",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "radiusM",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "minLat",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "minLng",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "maxLat",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "maxLng",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "religion",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "language",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dayOfWeek",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "onlineOnly",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoverySitePage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Closure-aware PostGIS discovery search over PUBLIC sites. Supply a radius (lat+lng+radiusM via",
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
     "/religion/v1/grade-categories": {
       "get": {
         "operationId": "ReligionService_listGradeCategories",
@@ -24850,6 +25630,344 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PolicyKind"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/schedules/{scheduleId}": {
+      "delete": {
+        "operationId": "ReligionService_deleteSchedule",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scheduleId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/service-types": {
+      "get": {
+        "operationId": "ReligionService_listServiceTypes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceTypeList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      },
+      "put": {
+        "operationId": "ReligionService_upsertServiceType",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertServiceTypeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceType"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/site-types": {
+      "get": {
+        "operationId": "ReligionService_listSiteTypes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteTypeList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      },
+      "put": {
+        "operationId": "ReligionService_upsertSiteType",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertSiteTypeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteType"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/sites/{siteId}": {
+      "delete": {
+        "operationId": "ReligionService_deleteSite",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "siteId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      },
+      "put": {
+        "operationId": "ReligionService_updateSite",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "siteId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSiteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Site"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/sites/{siteId}/schedules": {
+      "get": {
+        "operationId": "ReligionService_listSiteSchedules",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "siteId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceScheduleList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      },
+      "post": {
+        "operationId": "ReligionService_createSchedule",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "siteId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateScheduleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceSchedule"
                 }
               }
             },
@@ -25361,6 +26479,135 @@
         ]
       }
     },
+    "/religion/v1/units/{unitId}/aliases": {
+      "get": {
+        "operationId": "ReligionService_listUnitAliases",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "unitId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AliasList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      },
+      "post": {
+        "operationId": "ReligionService_createAlias",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "unitId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAliasRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Alias"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/units/{unitId}/aliases/{aliasId}": {
+      "delete": {
+        "operationId": "ReligionService_deleteAlias",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "unitId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "aliasId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
     "/religion/v1/units/{unitId}/child-orgs": {
       "post": {
         "description": "Create a child religious-body unit under this parent in the canonical graph. Rejected with\nReligion:ChildCreationExcluded if the parent carries an active excludes_child_creation policy.\n",
@@ -25782,6 +27029,96 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/OrgProfile"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/units/{unitId}/sites": {
+      "get": {
+        "description": "List an org unit's sites (exact coordinates, for authorized owners).",
+        "operationId": "ReligionService_listUnitSites",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "unitId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List an org unit's sites (exact coordinates, for authorized owners).",
+        "tags": [
+          "ReligionService"
+        ]
+      },
+      "post": {
+        "operationId": "ReligionService_createSite",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "unitId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSiteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Site"
                 }
               }
             },

@@ -105,6 +105,8 @@ no credentials in staging/prod).
 | Op | Intent | Perm |
 |---|---|---|
 | `GET /accounts/{id}` | Read an account (+ linked identities) | `person.read` (the linked person) |
+| `GET /persons/{id}/account` | Read a person's single active account (+ identities); `NotFound` if roster-only | `person.read` (the linked person) |
+| `GET /issuers` | List the instance's configured IdP issuers (public fields only) for binding UIs | `person.read` |
 | `POST /accounts` | Create an account for a person | `person.update` |
 | `POST /accounts/{id}/disable` | Disable login (reversible) | `person.update` |
 | `POST /accounts/{id}/identities` | Link an external identity (additional login point) | `person.update` |

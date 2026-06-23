@@ -7,12 +7,14 @@ import { mutate } from "@/lib/api/client";
 import { bffGet } from "@/lib/api/browser";
 import { ErrorBox } from "@/components/ErrorBox";
 import { LanguagePicker } from "@/components/LanguagePicker";
+import { T } from "@/components/T";
 import { pickLabel } from "@/lib/i18n";
-import { useLocale } from "@/lib/locale";
+import { useLocale, useTg } from "@/lib/locale";
 import type { UnitLanguage } from "@/lib/api/types";
 
 export function UnitLanguageManager({ unitId }: { unitId: string }) {
   const { locale } = useLocale();
+  const tr = useTg();
   const [rows, setRows] = useState<UnitLanguage[] | null>(null);
   const [err, setErr] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
@@ -45,13 +47,13 @@ export function UnitLanguageManager({ unitId }: { unitId: string }) {
   return (
     <div>
       {err ? <div className="mb-2"><ErrorBox error={err} /></div> : null}
-      {rows && rows.length === 0 ? <p className="text-sm text-slate-400">No languages set.</p> : null}
+      {rows && rows.length === 0 ? <p className="text-sm text-slate-400"><T>No languages set.</T></p> : null}
       <ul className="space-y-0.5 text-sm text-slate-700">
         {(rows ?? []).map((l) => (
           <li key={l.id} className="flex items-center justify-between gap-2">
             <span>
               {pickLabel(l.name, locale) || l.languageId}
-              {l.isOfficial ? " · official" : " · working"}
+              {l.isOfficial ? tr(" · official") : tr(" · working")}
             </span>
             <button
               type="button"
@@ -62,7 +64,7 @@ export function UnitLanguageManager({ unitId }: { unitId: string }) {
                 run(() => mutate("DELETE", `/tenant/v1/units/${unitId}/languages/${l.languageId}`))
               }
             >
-              Remove
+              <T>Remove</T>
             </button>
           </li>
         ))}
@@ -88,10 +90,10 @@ export function UnitLanguageManager({ unitId }: { unitId: string }) {
       >
         <LanguagePicker key={pickerKey} onChange={setLangId} />
         <label className="flex items-center gap-1 text-xs text-slate-600">
-          <input type="checkbox" name="isOfficial" defaultChecked /> official
+          <input type="checkbox" name="isOfficial" defaultChecked /> {tr("official")}
         </label>
         <button className="btn-ghost" disabled={busy || !langId}>
-          Add
+          <T>Add</T>
         </button>
       </form>
     </div>

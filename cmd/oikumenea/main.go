@@ -18,6 +18,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/authorization"
 	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
 	"github.com/olegamysk/go-oikumenea/internal/company"
+	identityapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/identityfederation"
 	"github.com/olegamysk/go-oikumenea/internal/dataimport"
 	"github.com/olegamysk/go-oikumenea/internal/document"
 	"github.com/olegamysk/go-oikumenea/internal/education"
@@ -195,7 +196,7 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// Data import (M16 / D-Hermenea): the generic POST /import/{objectType} endpoint the out-of-process
 	// hermenea companion calls to load reference data (it never touches this DB). Idempotent,
 	// non-destructive, audited as a `system` actor; the enforcer it holds is bound by authorization.
-	if _, err := dataimport.Register(info, pool, auditSvc, enforcer); err != nil {
+	if _, err := dataimport.Register(info, pool, auditSvc, enforcer, install.Hermenea.BaseURL, os.Getenv("OIKUMENEA_HERMENEA_TOKEN"), install.Hermenea.InsecureSkipVerify); err != nil {
 		cleanup()
 		return nil, err
 	}
@@ -245,7 +246,7 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 
 	// Identity-federation: the external-IdP seam. Its application service is the (issuer, subject)
 	// resolver the validation middleware binds to.
-	identitySvc, err := identityfederation.Register(info, pool, auditSvc, enforcer, install.IdentityLinkingEnabled)
+	identitySvc, err := identityfederation.Register(info, pool, auditSvc, enforcer, install.IdentityLinkingEnabled, issuerOptions(install))
 	if err != nil {
 		cleanup()
 		return nil, err
@@ -281,6 +282,26 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 
 // validatorConfig maps the install IDP config into the middleware's validator config, applying the
 // documented defaults (60s clock skew, "person_code" JIT claim).
+// issuerOptions projects the install issuer config to the PUBLIC fields the identity-federation
+// ListIssuers endpoint exposes to binding UIs. The HS256 verification secret is deliberately dropped —
+// it is credential-equivalent and never leaves the process.
+func issuerOptions(install config.Install) []identityapi.IssuerOption {
+	opts := make([]identityapi.IssuerOption, 0, len(install.IDP.Issuers))
+	for _, is := range install.IDP.Issuers {
+		var audience *string
+		if is.Audience != "" {
+			a := is.Audience
+			audience = &a
+		}
+		typ := is.Type
+		if typ == "" {
+			typ = middleware.IssuerOIDC
+		}
+		opts = append(opts, identityapi.IssuerOption{Issuer: is.Issuer, Audience: audience, Type: typ})
+	}
+	return opts
+}
+
 func validatorConfig(install config.Install) middleware.Config {
 	issuers := make([]middleware.IssuerConfig, 0, len(install.IDP.Issuers))
 	for _, is := range install.IDP.Issuers {

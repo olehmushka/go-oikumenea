@@ -5,9 +5,12 @@ import { mutate } from "@/lib/api/client";
 import { PageHeader } from "@/components/ui";
 import { ErrorBox } from "@/components/ErrorBox";
 import { EntitySelect } from "@/components/EntitySelect";
+import { T } from "@/components/T";
+import { useTg } from "@/lib/locale";
 import type { AuthorizeResponse } from "@/lib/api/types";
 
 export default function AuthorizePage() {
+  const tr = useTg();
   const [result, setResult] = useState<AuthorizeResponse | null>(null);
   const [err, setErr] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
@@ -41,27 +44,27 @@ export default function AuthorizePage() {
   return (
     <div className="max-w-2xl">
       <PageHeader
-        title="Authorize"
-        description="Ask the PDP a single question: may this person perform this action on this unit? This is the same decision the service makes for every API request."
+        title={<T>Authorize</T>}
+        description={<T>Ask the PDP a single question: may this person perform this action on this unit? This is the same decision the service makes for every API request.</T>}
       />
 
       <form onSubmit={onSubmit} className="card space-y-4 p-5">
         <div>
-          <label className="label">Subject person *</label>
-          <EntitySelect name="subjectPersonId" kind="person" required placeholder="Search a person…" />
+          <label className="label"><T>Subject person *</T></label>
+          <EntitySelect name="subjectPersonId" kind="person" required placeholder={tr("Search a person…")} />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="label">Action (permission code) *</label>
+            <label className="label"><T>Action (permission code) *</T></label>
             <input name="action" required className="input font-mono" placeholder="person.read" />
           </div>
           <div>
-            <label className="label">Unit</label>
-            <EntitySelect name="unitId" kind="unit" allowEmpty placeholder="(optional) search a unit…" />
+            <label className="label"><T>Unit</T></label>
+            <EntitySelect name="unitId" kind="unit" allowEmpty placeholder={tr("(optional) search a unit…")} />
           </div>
         </div>
         <button type="submit" className="btn-primary" disabled={busy}>
-          {busy ? "Deciding…" : "Run decision"}
+          {busy ? <T>Deciding…</T> : <T>Run decision</T>}
         </button>
       </form>
 
@@ -79,7 +82,7 @@ export default function AuthorizePage() {
                 result.allow ? "text-green-800" : "text-red-800"
               }`}
             >
-              {result.allow ? "ALLOW" : "DENY"}
+              {result.allow ? <T>ALLOW</T> : <T>DENY</T>}
             </div>
             {result.explanation?.reason && (
               <div className="mt-1 text-sm text-slate-600">
@@ -88,14 +91,14 @@ export default function AuthorizePage() {
             )}
             {result.explanation?.instanceAdmin && (
               <div className="mt-1 text-sm text-indigo-700">
-                Granted via the instance-admin plane.
+                <T>Granted via the instance-admin plane.</T>
               </div>
             )}
             {result.explanation?.contributions &&
               result.explanation.contributions.length > 0 && (
                 <div className="mt-3">
                   <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Contributing assignments
+                    <T>Contributing assignments</T>
                   </div>
                   <ul className="mt-1 space-y-1 text-sm text-slate-700">
                     {result.explanation.contributions.map((c, i) => (

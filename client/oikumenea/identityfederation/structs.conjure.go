@@ -127,6 +127,37 @@ func (o *ExternalIdentity) UnmarshalYAML(unmarshal func(interface{}) error) erro
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+/*
+One IdP issuer accepted by this instance (from install config), offered to binding UIs so an
+operator picks an issuer rather than typing it. PUBLIC fields only — verification secrets
+(HS256 keys) are never exposed. An external identity's `issuer` must match one of these for a
+token from it to ever validate.
+*/
+type IssuerOption struct {
+	// The `iss` value (also the OIDC discovery base URL).
+	Issuer string `json:"issuer"`
+	// The expected `aud`, if the instance pins one.
+	Audience *string `json:"audience,omitempty"`
+	// One of oidc | hs256 (hs256 is local/dev only).
+	Type string `json:"type"`
+}
+
+func (o IssuerOption) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *IssuerOption) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // Link a verified (issuer, subject) login point to an account.
 type LinkIdentityRequest struct {
 	Issuer  string `json:"issuer"`

@@ -11,6 +11,7 @@ import {
 import { Localized } from "@/components/Localized";
 import { DeleteButton } from "@/components/DeleteButton";
 import { LookupForm } from "@/components/LookupForm";
+import { T } from "@/components/T";
 import {
   AssignmentGrant,
   EditRole,
@@ -55,21 +56,21 @@ export default async function RolesPage({
   return (
     <div>
       <PageHeader
-        title="Roles &amp; access"
-        description="RBAC: code-defined permissions packaged into roles, then granted as scoped assignments. Authority comes only from assignments — never rank or position."
+        title={<T>Roles &amp; access</T>}
+        description={<T>RBAC: code-defined permissions packaged into roles, then granted as scoped assignments. Authority comes only from assignments — never rank or position.</T>}
       />
       {error ? <ErrorNotice error={error} /> : null}
 
       {/* Roles */}
-      <h2 className="mb-3 text-sm font-semibold text-slate-900">Roles</h2>
+      <h2 className="mb-3 text-sm font-semibold text-slate-900"><T>Roles</T></h2>
       {roles && roles.roles.length > 0 ? (
         <Table
           head={
             <>
-              <th className="th">Code</th>
-              <th className="th">Name</th>
-              <th className="th">Permissions</th>
-              <th className="th">Base</th>
+              <th className="th"><T>Code</T></th>
+              <th className="th"><T>Name</T></th>
+              <th className="th"><T>Permissions</T></th>
+              <th className="th"><T>Base</T></th>
               <th className="th"></th>
             </>
           }
@@ -92,7 +93,7 @@ export default async function RolesPage({
                 </div>
               </td>
               <td className="td">
-                {r.isBase ? <Pill tone="indigo">base</Pill> : "—"}
+                {r.isBase ? <Pill tone="indigo"><T>base</T></Pill> : "—"}
               </td>
               <td className="td text-right">
                 {!r.isBase && (
@@ -110,14 +111,14 @@ export default async function RolesPage({
           ))}
         </Table>
       ) : (
-        <EmptyState>No roles.</EmptyState>
+        <EmptyState><T>No roles.</T></EmptyState>
       )}
       <div className="mt-4">
         <RoleCreate />
       </div>
 
       {/* Assignments */}
-      <h2 className="mb-3 mt-8 text-sm font-semibold text-slate-900">Assignments</h2>
+      <h2 className="mb-3 mt-8 text-sm font-semibold text-slate-900"><T>Assignments</T></h2>
       <div className="mb-4 grid gap-4 sm:grid-cols-2">
         <LookupForm
           basePath="/roles"
@@ -137,17 +138,17 @@ export default async function RolesPage({
       {assignmentError ? <ErrorNotice error={assignmentError} /> : null}
       {!assignmentFilter ? (
         <EmptyState>
-          Pick a subject person <em>or</em> a target unit (exactly one) to list assignments.
+          <T>Pick a subject person or a target unit (exactly one) to list assignments.</T>
         </EmptyState>
       ) : assignments && assignments.assignments.length > 0 ? (
         <Table
           head={
             <>
-              <th className="th">Subject</th>
-              <th className="th">Role</th>
-              <th className="th">Target unit</th>
-              <th className="th">Scope</th>
-              <th className="th">Expires</th>
+              <th className="th"><T>Subject</T></th>
+              <th className="th"><T>Role</T></th>
+              <th className="th"><T>Target unit</T></th>
+              <th className="th"><T>Scope</T></th>
+              <th className="th"><T>Expires</T></th>
               <th className="th"></th>
             </>
           }
@@ -178,7 +179,7 @@ export default async function RolesPage({
           ))}
         </Table>
       ) : (
-        <EmptyState>No assignments match.</EmptyState>
+        <EmptyState><T>No assignments match.</T></EmptyState>
       )}
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <AssignmentGrant roles={roles?.roles ?? []} />

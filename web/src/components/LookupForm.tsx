@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { EntitySelect, type EntityKind } from "./EntitySelect";
+import { useTg } from "@/lib/locale";
 
 /**
  * A lookup box that navigates to `<basePath>?<param>=<value>`.
@@ -26,6 +27,7 @@ export function LookupForm({
   current?: string;
 }) {
   const router = useRouter();
+  const tr = useTg();
   const [value, setValue] = useState(current ?? "");
   const go = (v: string) =>
     router.push(v ? `${basePath}?${param}=${encodeURIComponent(v)}` : basePath);
@@ -33,12 +35,12 @@ export function LookupForm({
   if (kind) {
     return (
       <div className="card p-4">
-        <label className="label">{label}</label>
+        <label className="label">{tr(label)}</label>
         <EntitySelect
           kind={kind}
           defaultValue={current}
           allowEmpty
-          placeholder={placeholder ?? "Search…"}
+          placeholder={tr(placeholder ?? "Search…")}
           onChange={go}
         />
       </div>
@@ -53,16 +55,16 @@ export function LookupForm({
         go(value.trim());
       }}
     >
-      <label className="label">{label}</label>
+      <label className="label">{tr(label)}</label>
       <div className="flex gap-2">
         <input
           className="input"
-          placeholder={placeholder}
+          placeholder={tr(placeholder ?? "")}
           value={value}
           onChange={(e) => setValue(e.target.value)}
         />
         <button type="submit" className="btn-ghost">
-          Go
+          {tr("Go")}
         </button>
       </div>
     </form>

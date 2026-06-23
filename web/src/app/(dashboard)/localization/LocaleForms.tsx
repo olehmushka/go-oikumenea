@@ -4,9 +4,12 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { mutate } from "@/lib/api/client";
 import { ErrorBox } from "@/components/ErrorBox";
+import { T } from "@/components/T";
+import { useTg } from "@/lib/locale";
 
 export function AddLocale() {
   const router = useRouter();
+  const tr = useTg();
   const [err, setErr] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   return (
@@ -35,15 +38,15 @@ export function AddLocale() {
         })();
       }}
     >
-      <h3 className="text-sm font-semibold text-slate-900">Add locale</h3>
-      <p className="text-xs text-slate-500">ISO 639-3 code (e.g. <code>pol</code>, <code>deu</code>).</p>
+      <h3 className="text-sm font-semibold text-slate-900"><T>Add locale</T></h3>
+      <p className="text-xs text-slate-500"><T>ISO 639-3 code, e.g.</T> <code>pol</code>, <code>deu</code>.</p>
       {err ? <ErrorBox error={err} /> : null}
       <div className="grid grid-cols-2 gap-3">
-        <input name="code" required maxLength={3} className="input" placeholder="code" />
-        <input name="name" required className="input" placeholder="display name" />
+        <input name="code" required maxLength={3} className="input" placeholder={tr("code")} />
+        <input name="name" required className="input" placeholder={tr("display name")} />
       </div>
       <button type="submit" className="btn-primary" disabled={busy}>
-        {busy ? "Adding…" : "Add locale"}
+        {busy ? <T>Adding…</T> : <T>Add locale</T>}
       </button>
     </form>
   );
@@ -66,7 +69,7 @@ export function ToggleLocale({ code, enabled }: { code: string; enabled?: boolea
         }
       }}
     >
-      {busy ? "…" : enabled ? "Disable" : "Enable"}
+      {busy ? "…" : enabled ? <T>Disable</T> : <T>Enable</T>}
     </button>
   );
 }

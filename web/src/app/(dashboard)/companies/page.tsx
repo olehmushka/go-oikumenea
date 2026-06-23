@@ -14,6 +14,8 @@ import { SearchSelect, type SearchKind } from "@/components/SearchSelect";
 import { PersonLink } from "@/components/PositionForms";
 import { PageHeader, Card, Table, Mono } from "@/components/ui";
 import { ErrorBox } from "@/components/ErrorBox";
+import { T } from "@/components/T";
+import { useTg } from "@/lib/locale";
 import { newSuffix, slugify } from "@/lib/code";
 import { pickLabel, type LocaleMap } from "@/lib/i18n";
 
@@ -53,8 +55,8 @@ export default function CompaniesPage() {
   return (
     <div>
       <PageHeader
-        title="Companies"
-        description="A legal-entity registry — identity, legal form, registrations, locations, positions, and the ownership/affiliation graph. External reference data, independent of the deploying org's units."
+        title={<T>Companies</T>}
+        description={<T>A legal-entity registry — identity, legal form, registrations, locations, positions, and the ownership/affiliation graph. External reference data, independent of the deploying org's units.</T>}
       />
       {err ? <div className="mb-4"><ErrorBox error={err} /></div> : null}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -72,6 +74,7 @@ export default function CompaniesPage() {
 }
 
 function CreateCompany({ legalForms, onCreated }: { legalForms: Catalog[]; onCreated: () => void }) {
+  const tr = useTg();
   const [err, setErr] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<Company | null>(null);
@@ -102,17 +105,17 @@ function CreateCompany({ legalForms, onCreated }: { legalForms: Catalog[]; onCre
 
   return (
     <Card>
-      <h2 className="mb-3 text-sm font-semibold text-slate-700">Register a company</h2>
+      <h2 className="mb-3 text-sm font-semibold text-slate-700"><T>Register a company</T></h2>
       {err ? <div className="mb-3"><ErrorBox error={err} /></div> : null}
       <form onSubmit={onSubmit} className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
-          <div><label className="label">Legal name *</label><input required className="input" placeholder="Acme LLC" value={name} onChange={(e) => setName(e.target.value)} /></div>
-          <div><label className="label">Code *</label><input name="code" required className="input" placeholder="auto from name" value={codeValue} onChange={(e) => { setCode(e.target.value); setCodeTouched(true); }} /></div>
+          <div><label className="label"><T>Legal name *</T></label><input required className="input" placeholder={tr("Acme LLC")} value={name} onChange={(e) => setName(e.target.value)} /></div>
+          <div><label className="label"><T>Code *</T></label><input name="code" required className="input" placeholder={tr("auto from name")} value={codeValue} onChange={(e) => { setCode(e.target.value); setCodeTouched(true); }} /></div>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <div><label className="label">Short name</label><input name="shortName" className="input" placeholder="Acme" /></div>
+          <div><label className="label"><T>Short name</T></label><input name="shortName" className="input" placeholder={tr("Acme")} /></div>
           <div>
-            <label className="label">Legal form *</label>
+            <label className="label"><T>Legal form *</T></label>
             <select name="legalFormId" required className="input" defaultValue="">
               <option value="" disabled>—</option>
               {legalForms.map((k) => <option key={k.id} value={k.id}>{pickLabel(k.name) || k.code}</option>)}
@@ -121,19 +124,19 @@ function CreateCompany({ legalForms, onCreated }: { legalForms: Catalog[]; onCre
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label">Ownership</label>
+            <label className="label"><T>Ownership</T></label>
             <select name="ownershipCategory" className="input" defaultValue="private">
               {OWNERSHIP.map((o) => <option key={o} value={o}>{o}</option>)}
             </select>
           </div>
-          <div><label className="label">Country</label><CountrySelect name="countryId" /></div>
+          <div><label className="label"><T>Country</T></label><CountrySelect name="countryId" /></div>
         </div>
-        <div><label className="label">Founded</label><input name="foundedOn" type="date" className="input" /></div>
-        <button type="submit" className="btn" disabled={busy}>{busy ? "Creating…" : "Register company"}</button>
+        <div><label className="label"><T>Founded</T></label><input name="foundedOn" type="date" className="input" /></div>
+        <button type="submit" className="btn" disabled={busy}>{busy ? <T>Creating…</T> : <T>Register company</T>}</button>
       </form>
       {created ? (
         <div className="mt-4 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800">
-          Created <Mono>{created.code}</Mono> — <Link href={`/o/${created.id}`} className="underline">open</Link>
+          <T>Created</T> <Mono>{created.code}</Mono> — <Link href={`/o/${created.id}`} className="underline"><T>open</T></Link>
         </div>
       ) : null}
     </Card>
@@ -141,6 +144,7 @@ function CreateCompany({ legalForms, onCreated }: { legalForms: Catalog[]; onCre
 }
 
 function CompanyList({ companies, selected, onSelect }: { companies: Company[]; selected: Company | null; onSelect: (c: Company) => void }) {
+  const tr = useTg();
   const [q, setQ] = useState("");
   const shown = companies.filter((c) => {
     if (!q.trim()) return true;
@@ -150,13 +154,13 @@ function CompanyList({ companies, selected, onSelect }: { companies: Company[]; 
   return (
     <Card>
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-slate-700">Companies</h2>
-        <input className="input w-48" placeholder="filter…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <h2 className="text-sm font-semibold text-slate-700"><T>Companies</T></h2>
+        <input className="input w-48" placeholder={tr("filter…")} value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       {shown.length === 0 ? (
-        <p className="text-sm text-slate-400">No companies.</p>
+        <p className="text-sm text-slate-400"><T>No companies.</T></p>
       ) : (
-        <Table head={<><th className="th">Code</th><th className="th">Legal name</th><th className="th">Ownership</th><th className="th">State</th></>}>
+        <Table head={<><th className="th"><T>Code</T></th><th className="th"><T>Legal name</T></th><th className="th"><T>Ownership</T></th><th className="th"><T>State</T></th></>}>
           {shown.map((c) => (
             <tr key={c.id} className={`cursor-pointer hover:bg-slate-50 ${selected?.id === c.id ? "bg-indigo-50" : ""}`} onClick={() => onSelect(c)}>
               <td className="td"><Mono>{c.code}</Mono></td>
@@ -172,6 +176,7 @@ function CompanyList({ companies, selected, onSelect }: { companies: Company[]; 
 }
 
 function CompanyDetail({ company }: { company: Company }) {
+  const tr = useTg();
   const [schemes, setSchemes] = useState<Catalog[]>([]);
   const [industries, setIndustries] = useState<Catalog[]>([]);
   const [regs, setRegs] = useState<Registration[]>([]);
@@ -240,59 +245,59 @@ function CompanyDetail({ company }: { company: Company }) {
 
   return (
     <Card>
-      <h2 className="mb-3 text-sm font-semibold text-slate-700">{pickLabel(company.legalName) || company.code} — registry</h2>
+      <h2 className="mb-3 text-sm font-semibold text-slate-700">{pickLabel(company.legalName) || company.code} <T>— registry</T></h2>
       {err ? <div className="mb-3"><ErrorBox error={err} /></div> : null}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div>
-          <h3 className="mb-2 text-xs font-semibold uppercase text-slate-500">Registrations</h3>
-          {regs.length === 0 ? <p className="text-sm text-slate-400">None.</p> : (
+          <h3 className="mb-2 text-xs font-semibold uppercase text-slate-500"><T>Registrations</T></h3>
+          {regs.length === 0 ? <p className="text-sm text-slate-400"><T>None.</T></p> : (
             <ul className="space-y-1 text-sm">
               {regs.map((r) => (
                 <li key={r.id} className="flex items-center justify-between">
-                  <span><Mono>{schemeName(r.schemeId)}</Mono> {r.identifier} {r.validated ? <span className="text-green-600">✓</span> : <span className="text-amber-600">unvalidated</span>}</span>
-                  <button className="text-xs text-red-600 hover:underline" disabled={busy} onClick={() => run(() => mutate("DELETE", `${C}/registrations/${r.id}`))}>remove</button>
+                  <span><Mono>{schemeName(r.schemeId)}</Mono> {r.identifier} {r.validated ? <span className="text-green-600">✓</span> : <span className="text-amber-600">{tr("unvalidated")}</span>}</span>
+                  <button className="text-xs text-red-600 hover:underline" disabled={busy} onClick={() => run(() => mutate("DELETE", `${C}/registrations/${r.id}`))}>{tr("remove")}</button>
                 </li>
               ))}
             </ul>
           )}
           <form onSubmit={addReg} className="mt-3 grid grid-cols-[1fr_1fr_auto] gap-2">
-            <select name="schemeId" required className="input"><option value="" disabled>scheme…</option>{schemes.map((s) => <option key={s.id} value={s.id}>{pickLabel(s.name) || s.code}</option>)}</select>
-            <input name="identifier" required className="input" placeholder="identifier" />
-            <button className="btn" disabled={busy}>Add</button>
+            <select name="schemeId" required className="input"><option value="" disabled>{tr("scheme…")}</option>{schemes.map((s) => <option key={s.id} value={s.id}>{pickLabel(s.name) || s.code}</option>)}</select>
+            <input name="identifier" required className="input" placeholder={tr("identifier")} />
+            <button className="btn" disabled={busy}><T>Add</T></button>
           </form>
 
-          <h3 className="mb-2 mt-5 text-xs font-semibold uppercase text-slate-500">Industries</h3>
-          {inds.length === 0 ? <p className="text-sm text-slate-400">None.</p> : (
+          <h3 className="mb-2 mt-5 text-xs font-semibold uppercase text-slate-500"><T>Industries</T></h3>
+          {inds.length === 0 ? <p className="text-sm text-slate-400"><T>None.</T></p> : (
             <ul className="space-y-1 text-sm">
               {inds.map((a) => (
                 <li key={a.id} className="flex items-center justify-between">
-                  <span>{industryName(a.industryClassId)}{a.isPrimary ? <span className="ml-1 text-indigo-600">(primary)</span> : ""}</span>
-                  <button className="text-xs text-red-600 hover:underline" disabled={busy} onClick={() => run(() => mutate("DELETE", `${C}/industries/${a.id}`))}>remove</button>
+                  <span>{industryName(a.industryClassId)}{a.isPrimary ? <span className="ml-1 text-indigo-600">{tr("(primary)")}</span> : ""}</span>
+                  <button className="text-xs text-red-600 hover:underline" disabled={busy} onClick={() => run(() => mutate("DELETE", `${C}/industries/${a.id}`))}>{tr("remove")}</button>
                 </li>
               ))}
             </ul>
           )}
           <form onSubmit={addIndustry} className="mt-3 grid grid-cols-[1fr_auto_auto] items-center gap-2">
-            <select name="industryClassId" required className="input"><option value="" disabled>class…</option>{industries.map((s) => <option key={s.id} value={s.id}>{pickLabel(s.name) || s.code}</option>)}</select>
-            <label className="flex items-center gap-1 text-xs text-slate-600"><input type="checkbox" name="isPrimary" /> primary</label>
-            <button className="btn" disabled={busy}>Add</button>
+            <select name="industryClassId" required className="input"><option value="" disabled>{tr("class…")}</option>{industries.map((s) => <option key={s.id} value={s.id}>{pickLabel(s.name) || s.code}</option>)}</select>
+            <label className="flex items-center gap-1 text-xs text-slate-600"><input type="checkbox" name="isPrimary" /> {tr("primary")}</label>
+            <button className="btn" disabled={busy}><T>Add</T></button>
           </form>
 
-          <h3 className="mb-2 mt-5 text-xs font-semibold uppercase text-slate-500">Locations</h3>
-          {locs.length === 0 ? <p className="text-sm text-slate-400">None.</p> : (
+          <h3 className="mb-2 mt-5 text-xs font-semibold uppercase text-slate-500"><T>Locations</T></h3>
+          {locs.length === 0 ? <p className="text-sm text-slate-400"><T>None.</T></p> : (
             <ul className="space-y-1 text-sm">
               {locs.map((l) => (
                 <li key={l.id} className="flex items-center justify-between">
                   <span><LocationLabel id={l.locationId} /> · {l.role}</span>
-                  <button className="text-xs text-red-600 hover:underline" disabled={busy} onClick={() => run(() => mutate("DELETE", `${C}/company-locations/${l.id}`))}>remove</button>
+                  <button className="text-xs text-red-600 hover:underline" disabled={busy} onClick={() => run(() => mutate("DELETE", `${C}/company-locations/${l.id}`))}>{tr("remove")}</button>
                 </li>
               ))}
             </ul>
           )}
           <form key={`loc-${nonce}`} onSubmit={addLocation} className="mt-3 grid grid-cols-[1fr_auto_auto] gap-2">
-            <SearchSelect kind="location" name="locationId" required placeholder="Search a location…" />
+            <SearchSelect kind="location" name="locationId" required placeholder={tr("Search a location…")} />
             <select name="role" className="input">{["registered", "operating", "branch"].map((r) => <option key={r} value={r}>{r}</option>)}</select>
-            <button className="btn" disabled={busy}>Add</button>
+            <button className="btn" disabled={busy}><T>Add</T></button>
           </form>
         </div>
         <PositionsSection positions={positions} busy={busy} onFill={fill} onAdd={addPosition} />
@@ -333,6 +338,7 @@ function PositionsSection({
   onFill: (positionId: string, personId: string) => void;
   onAdd: (code: string, title: string) => void;
 }) {
+  const tr = useTg();
   const [fillingId, setFillingId] = useState<string | null>(null);
   const [personId, setPersonId] = useState("");
   const filling = positions.find((p) => p.id === fillingId) || null;
@@ -353,38 +359,39 @@ function PositionsSection({
 
   return (
     <div>
-      <h3 className="mb-2 text-xs font-semibold uppercase text-slate-500">Positions</h3>
-      {positions.length === 0 ? <p className="text-sm text-slate-400">None.</p> : (
-        <Table head={<><th className="th">Title</th><th className="th">Holder</th><th className="th"></th></>}>
+      <h3 className="mb-2 text-xs font-semibold uppercase text-slate-500"><T>Positions</T></h3>
+      {positions.length === 0 ? <p className="text-sm text-slate-400"><T>None.</T></p> : (
+        <Table head={<><th className="th"><T>Title</T></th><th className="th"><T>Holder</T></th><th className="th"></th></>}>
           {positions.map((p) => (
             <tr key={p.id} className="hover:bg-slate-50">
               <td className="td"><Link href={`/o/${p.id}`} className="text-indigo-600 hover:underline">{pickLabel(p.title) || p.code}</Link></td>
-              <td className="td">{p.holder ? <PersonLink personId={p.holder.personId} /> : <span className="text-amber-600">vacant</span>}</td>
-              <td className="td">{p.holder ? null : <button className="text-xs text-indigo-600 hover:underline" disabled={busy} onClick={() => { setFillingId(p.id); setPersonId(""); }}>fill</button>}</td>
+              <td className="td">{p.holder ? <PersonLink personId={p.holder.personId} /> : <span className="text-amber-600"><T>vacant</T></span>}</td>
+              <td className="td">{p.holder ? null : <button className="text-xs text-indigo-600 hover:underline" disabled={busy} onClick={() => { setFillingId(p.id); setPersonId(""); }}>{tr("fill")}</button>}</td>
             </tr>
           ))}
         </Table>
       )}
       {filling ? (
         <div className="mt-3 rounded-md border border-indigo-200 bg-indigo-50/50 p-3">
-          <div className="mb-2 text-xs text-slate-600">Appoint to <span className="font-semibold">{pickLabel(filling.title) || filling.code}</span></div>
+          <div className="mb-2 text-xs text-slate-600"><T>Appoint to</T> <span className="font-semibold">{pickLabel(filling.title) || filling.code}</span></div>
           <div className="flex items-center gap-2">
-            <div className="flex-1"><SearchSelect kind="person" onChange={setPersonId} placeholder="Search a person…" /></div>
-            <button className="btn disabled:opacity-40" disabled={busy || !personId} onClick={() => { onFill(filling.id, personId); setFillingId(null); setPersonId(""); }}>Appoint</button>
-            <button className="text-xs text-slate-500 hover:underline" onClick={() => { setFillingId(null); setPersonId(""); }}>cancel</button>
+            <div className="flex-1"><SearchSelect kind="person" onChange={setPersonId} placeholder={tr("Search a person…")} /></div>
+            <button className="btn disabled:opacity-40" disabled={busy || !personId} onClick={() => { onFill(filling.id, personId); setFillingId(null); setPersonId(""); }}><T>Appoint</T></button>
+            <button className="text-xs text-slate-500 hover:underline" onClick={() => { setFillingId(null); setPersonId(""); }}>{tr("cancel")}</button>
           </div>
         </div>
       ) : null}
       <form onSubmit={submit} className="mt-3 grid grid-cols-[1fr_1fr_auto] gap-2">
-        <input className="input" placeholder="title (CEO)" value={title} onChange={(e) => setTitle(e.target.value)} />
-        <input className="input" placeholder="auto from title" value={codeValue} onChange={(e) => { setCode(e.target.value); setCodeTouched(true); }} />
-        <button type="submit" className="btn" disabled={busy}>Add</button>
+        <input className="input" placeholder={tr("title (CEO)")} value={title} onChange={(e) => setTitle(e.target.value)} />
+        <input className="input" placeholder={tr("auto from title")} value={codeValue} onChange={(e) => { setCode(e.target.value); setCodeTouched(true); }} />
+        <button type="submit" className="btn" disabled={busy}><T>Add</T></button>
       </form>
     </div>
   );
 }
 
 function OwnershipPanel({ company, companies }: { company: Company; companies: Company[] }) {
+  const tr = useTg();
   const [g, setG] = useState<Graph | null>(null);
   const [err, setErr] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
@@ -452,52 +459,52 @@ function OwnershipPanel({ company, companies }: { company: Company; companies: C
 
   return (
     <Card>
-      <h2 className="mb-3 text-sm font-semibold text-slate-700">Ownership &amp; affiliation graph</h2>
+      <h2 className="mb-3 text-sm font-semibold text-slate-700"><T>Ownership &amp; affiliation graph</T></h2>
       {err ? <div className="mb-3"><ErrorBox error={err} /></div> : null}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="space-y-4">
-          <GraphList title="Shareholders (stakes held IN this company)" rows={(g?.shareholders ?? []).map((s) => `${s.holderKind}: ${s.holderLabel || s.holderId.slice(-8)}${pct(s.stakePct)}`)} />
+          <GraphList title={tr("Shareholders (stakes held IN this company)")} rows={(g?.shareholders ?? []).map((s) => `${s.holderKind}: ${s.holderLabel || s.holderId.slice(-8)}${pct(s.stakePct)}`)} />
           <form key={`sh-${nonce}`} onSubmit={addShareholding} className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-2">
             <HolderPicker defaultKind="company" />
             <input name="stakePct" type="number" step="0.01" className="input w-20" placeholder="%" />
-            <button className="btn" disabled={busy}>Add</button>
+            <button className="btn" disabled={busy}><T>Add</T></button>
           </form>
 
-          <GraphList title="Holdings (subsidiaries — stakes this company holds)" rows={(g?.holdings ?? []).map((s) => `${s.companyLabel || s.companyId.slice(-8)}${pct(s.stakePct)}`)} />
-          <GraphList title="Founders" rows={(g?.founders ?? []).map((s) => `${s.holderKind}: ${s.holderLabel || s.holderId.slice(-8)}`)} />
+          <GraphList title={tr("Holdings (subsidiaries — stakes this company holds)")} rows={(g?.holdings ?? []).map((s) => `${s.companyLabel || s.companyId.slice(-8)}${pct(s.stakePct)}`)} />
+          <GraphList title={tr("Founders")} rows={(g?.founders ?? []).map((s) => `${s.holderKind}: ${s.holderLabel || s.holderId.slice(-8)}`)} />
           <form key={`fd-${nonce}`} onSubmit={addFounding} className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
             <HolderPicker defaultKind="person" />
-            <button className="btn" disabled={busy}>Add</button>
+            <button className="btn" disabled={busy}><T>Add</T></button>
           </form>
         </div>
         <div className="space-y-4">
           <div>
-            <h3 className="mb-1 text-xs font-semibold uppercase text-slate-500">Beneficial owners (UBO)</h3>
-            {(g?.beneficiaries ?? []).length === 0 ? <p className="text-sm text-slate-400">None.</p> : (
+            <h3 className="mb-1 text-xs font-semibold uppercase text-slate-500"><T>Beneficial owners (UBO)</T></h3>
+            {(g?.beneficiaries ?? []).length === 0 ? <p className="text-sm text-slate-400"><T>None.</T></p> : (
               <ul className="space-y-0.5 text-sm text-slate-700">
                 {(g?.beneficiaries ?? []).map((b) => (
-                  <li key={b.id} className="flex items-center gap-1"><PersonLink personId={b.personId} /><span>{pct(b.ultimatePct)}{b.declared ? " · declared" : " · computed"}</span></li>
+                  <li key={b.id} className="flex items-center gap-1"><PersonLink personId={b.personId} /><span>{pct(b.ultimatePct)}{b.declared ? tr(" · declared") : tr(" · computed")}</span></li>
                 ))}
               </ul>
             )}
           </div>
           <form key={`bn-${nonce}`} onSubmit={addBeneficiary} className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
-            <SearchSelect kind="person" name="personId" required placeholder="Search a person…" />
+            <SearchSelect kind="person" name="personId" required placeholder={tr("Search a person…")} />
             <input name="ultimatePct" type="number" step="0.01" className="input w-20" placeholder="%" />
-            <button className="btn" disabled={busy}>Add</button>
+            <button className="btn" disabled={busy}><T>Add</T></button>
           </form>
 
-          <GraphList title="Branches" rows={(g?.branches ?? []).map((b) => b.branchLabel || b.branchId.slice(-8))} />
+          <GraphList title={tr("Branches")} rows={(g?.branches ?? []).map((b) => b.branchLabel || b.branchId.slice(-8))} />
           <form onSubmit={addBranch} className="grid grid-cols-[1fr_auto] gap-2">
-            <select name="branchId" required className="input"><option value="" disabled>branch company…</option>{others.map((c) => <option key={c.id} value={c.id}>{pickLabel(c.legalName) || c.code}</option>)}</select>
-            <button className="btn" disabled={busy}>Add</button>
+            <select name="branchId" required className="input"><option value="" disabled>{tr("branch company…")}</option>{others.map((c) => <option key={c.id} value={c.id}>{pickLabel(c.legalName) || c.code}</option>)}</select>
+            <button className="btn" disabled={busy}><T>Add</T></button>
           </form>
 
-          <GraphList title="Successions" rows={(g?.successions ?? []).map((s) => `${s.predecessorLabel || s.predecessorId.slice(-8)} → ${s.successorLabel || s.successorId.slice(-8)} (${s.kind})`)} />
+          <GraphList title={tr("Successions")} rows={(g?.successions ?? []).map((s) => `${s.predecessorLabel || s.predecessorId.slice(-8)} → ${s.successorLabel || s.successorId.slice(-8)} (${s.kind})`)} />
           <form onSubmit={addSuccession} className="grid grid-cols-[1fr_auto_auto] gap-2">
-            <select name="successorId" required className="input"><option value="" disabled>successor…</option>{others.map((c) => <option key={c.id} value={c.id}>{pickLabel(c.legalName) || c.code}</option>)}</select>
+            <select name="successorId" required className="input"><option value="" disabled>{tr("successor…")}</option>{others.map((c) => <option key={c.id} value={c.id}>{pickLabel(c.legalName) || c.code}</option>)}</select>
             <select name="kind" className="input">{["merger", "reorganization", "rename", "acquisition", "spinoff"].map((k) => <option key={k} value={k}>{k}</option>)}</select>
-            <button className="btn" disabled={busy}>Add</button>
+            <button className="btn" disabled={busy}><T>Add</T></button>
           </form>
         </div>
       </div>
@@ -509,14 +516,15 @@ function OwnershipPanel({ company, companies }: { company: Company; companies: C
 // re-keyed on kind change (a company selection is invalid as a person, so reset). Both submit via hidden
 // inputs (holderKind, holderId), so the FormData submit handlers stay unchanged.
 function HolderPicker({ defaultKind }: { defaultKind: "company" | "person" }) {
+  const tr = useTg();
   const [hk, setHk] = useState<"company" | "person">(defaultKind);
   return (
     <>
       <select name="holderKind" className="input" value={hk} onChange={(e) => setHk(e.target.value as "company" | "person")}>
-        <option value="company">company</option>
-        <option value="person">person</option>
+        <option value="company">{tr("company")}</option>
+        <option value="person">{tr("person")}</option>
       </select>
-      <SearchSelect key={hk} kind={hk as SearchKind} name="holderId" required placeholder={`Search a ${hk}…`} />
+      <SearchSelect key={hk} kind={hk as SearchKind} name="holderId" required placeholder={hk === "person" ? tr("Search a person…") : tr("Search a company…")} />
     </>
   );
 }
@@ -525,7 +533,7 @@ function GraphList({ title, rows }: { title: string; rows: string[] }) {
   return (
     <div>
       <h3 className="mb-1 text-xs font-semibold uppercase text-slate-500">{title}</h3>
-      {rows.length === 0 ? <p className="text-sm text-slate-400">None.</p> : (
+      {rows.length === 0 ? <p className="text-sm text-slate-400"><T>None.</T></p> : (
         <ul className="space-y-0.5 text-sm text-slate-700">{rows.map((r, i) => <li key={i}>{r}</li>)}</ul>
       )}
     </div>

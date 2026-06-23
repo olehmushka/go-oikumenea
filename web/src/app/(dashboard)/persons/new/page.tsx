@@ -6,10 +6,13 @@ import { mutate } from "@/lib/api/client";
 import { PageHeader } from "@/components/ui";
 import { ErrorBox } from "@/components/ErrorBox";
 import { CountrySelect } from "@/components/CountrySelect";
+import { T } from "@/components/T";
+import { useTg } from "@/lib/locale";
 import { newSuffix, slugify } from "@/lib/code";
 
 export default function NewPersonPage() {
   const router = useRouter();
+  const tr = useTg();
   const [err, setErr] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -53,37 +56,37 @@ export default function NewPersonPage() {
 
   return (
     <div className="max-w-xl">
-      <PageHeader title="New person" description="Create a directory entry. A login account is optional and attached later." />
+      <PageHeader title={<T>New person</T>} description={<T>Create a directory entry. A login account is optional and attached later.</T>} />
       {err ? <div className="mb-4"><ErrorBox error={err} /></div> : null}
       <form onSubmit={onSubmit} className="card space-y-4 p-5">
         <div>
-          <label className="label">Display name *</label>
+          <label className="label"><T>Display name *</T></label>
           <input
             name="displayName"
             required
             className="input"
-            placeholder="Ivan Petrenko"
+            placeholder={tr("Ivan Petrenko")}
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
           />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="label">Given</label>
+            <label className="label"><T>Given</T></label>
             <input name="given" className="input" />
           </div>
           <div>
-            <label className="label">Surname</label>
+            <label className="label"><T>Surname</T></label>
             <input name="surname" className="input" />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="label">Code</label>
+            <label className="label"><T>Code</T></label>
             <input
               name="code"
               className="input"
-              placeholder="auto from name"
+              placeholder={tr("auto from name")}
               value={codeValue}
               onChange={(e) => {
                 setCode(e.target.value);
@@ -92,36 +95,36 @@ export default function NewPersonPage() {
             />
           </div>
           <div>
-            <label className="label">Birthdate</label>
+            <label className="label"><T>Birthdate</T></label>
             <input name="birthdate" type="date" className="input" />
           </div>
           <div>
-            <label className="label">Date of death</label>
+            <label className="label"><T>Date of death</T></label>
             <input name="dateOfDeath" type="date" className="input" />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="label">Sex (ISO 5218)</label>
+            <label className="label"><T>Sex (ISO 5218)</T></label>
             <select name="sex" className="input" defaultValue="">
               <option value="">—</option>
-              <option value="0">0 — not known</option>
-              <option value="1">1 — male</option>
-              <option value="2">2 — female</option>
-              <option value="9">9 — not applicable</option>
+              <option value="0">{tr("0 — not known")}</option>
+              <option value="1">{tr("1 — male")}</option>
+              <option value="2">{tr("2 — female")}</option>
+              <option value="9">{tr("9 — not applicable")}</option>
             </select>
           </div>
           <div>
-            <label className="label">Country of birth</label>
+            <label className="label"><T>Country of birth</T></label>
             <CountrySelect name="countryOfBirth" />
           </div>
         </div>
         <div className="flex gap-2">
           <button type="submit" className="btn-primary" disabled={busy}>
-            {busy ? "Creating…" : "Create person"}
+            {busy ? <T>Creating…</T> : <T>Create person</T>}
           </button>
           <button type="button" className="btn-ghost" onClick={() => router.back()}>
-            Cancel
+            <T>Cancel</T>
           </button>
         </div>
       </form>

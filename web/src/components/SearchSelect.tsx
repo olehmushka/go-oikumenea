@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useLocale } from "@/lib/locale";
+import { useLocale, useTg } from "@/lib/locale";
 import { pickLabel } from "@/lib/i18n";
 
 /**
@@ -77,6 +77,7 @@ export function SearchSelect({
   placeholder?: string;
 }) {
   const { locale } = useLocale();
+  const tr = useTg();
   const cfg = REGISTRY[kind];
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Result[]>([]);
@@ -141,13 +142,13 @@ export function SearchSelect({
             ) : null}
           </span>
           <button type="button" className="text-xs text-red-600 hover:underline" onClick={clear}>
-            clear
+            {tr("clear")}
           </button>
         </div>
       ) : (
         <input
           className="input"
-          placeholder={placeholder}
+          placeholder={tr(placeholder)}
           value={query}
           required={required}
           autoComplete="off"
@@ -161,9 +162,9 @@ export function SearchSelect({
       {open && !selected && (query.trim().length >= 1 || results.length > 0) ? (
         <div className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md border border-slate-200 bg-white shadow-lg">
           {loading ? (
-            <div className="px-3 py-2 text-sm text-slate-400">Searching…</div>
+            <div className="px-3 py-2 text-sm text-slate-400">{tr("Searching…")}</div>
           ) : results.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-slate-400">No matches</div>
+            <div className="px-3 py-2 text-sm text-slate-400">{tr("No matches")}</div>
           ) : (
             results.map((r) => (
               <button

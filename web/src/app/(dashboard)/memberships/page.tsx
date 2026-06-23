@@ -2,6 +2,7 @@ import Link from "next/link";
 import { apiGet } from "@/lib/api/server";
 import { EmptyState, ErrorNotice, Mono, PageHeader, Pill, Table } from "@/components/ui";
 import { LookupForm } from "@/components/LookupForm";
+import { T } from "@/components/T";
 import { AddMembership, EndMembershipButton } from "@/components/MembershipForms";
 import type { Membership, Position } from "@/lib/api/types";
 
@@ -39,8 +40,8 @@ export default async function MembershipsPage({
   return (
     <div>
       <PageHeader
-        title="Memberships"
-        description="person ↔ unit belonging and the positions they hold. Look up by unit or by person."
+        title={<T>Memberships</T>}
+        description={<T>person ↔ unit belonging and the positions they hold. Look up by unit or by person.</T>}
       />
 
       <div className="mb-5 grid gap-4 sm:grid-cols-2">
@@ -61,16 +62,16 @@ export default async function MembershipsPage({
       </div>
 
       {error ? <ErrorNotice error={error} /> : null}
-      {rows && rows.length === 0 && <EmptyState>No memberships found.</EmptyState>}
+      {rows && rows.length === 0 && <EmptyState><T>No memberships found.</T></EmptyState>}
       {rows && rows.length > 0 && (
         <Table
           head={
             <>
-              <th className="th">Person</th>
-              <th className="th">Unit</th>
-              <th className="th">Position</th>
-              <th className="th">Status</th>
-              <th className="th">From</th>
+              <th className="th"><T>Person</T></th>
+              <th className="th"><T>Unit</T></th>
+              <th className="th"><T>Position</T></th>
+              <th className="th"><T>Status</T></th>
+              <th className="th"><T>From</T></th>
               <th className="th"></th>
             </>
           }

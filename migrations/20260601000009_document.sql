@@ -186,5 +186,28 @@ FROM (VALUES
 ) AS v(code, country_iso, generic_category, name, validation_regex, sort_order)
 JOIN oikumenea.geo_countries c ON c.code = v.country_iso;
 
+-- Localized names for the personal-code scheme catalog (D-i18n: all locales in every response). The
+-- catalog `name` column carries the native label; we seed explicit eng + ukr translations so both UI
+-- locales resolve correctly. entity_id is the scheme `code` (the transport assembles scheme names
+-- keyed by code under entity_type 'personal_code_scheme'). Idempotent: re-running is a no-op.
+INSERT INTO oikumenea.i18n_translations (entity_type, entity_id, field, locale, text)
+SELECT 'personal_code_scheme', v.code, 'name', v.locale, v.text
+FROM (VALUES
+  ('ua-rnokpp',         'eng', 'Individual Tax Number (RNOKPP)'),
+  ('ua-rnokpp',         'ukr', 'РНОКПП'),
+  ('ua-unzr',           'eng', 'Unique Record Number (UNZR)'),
+  ('ua-unzr',           'ukr', 'УНЗР'),
+  ('us-ssn',            'eng', 'Social Security Number'),
+  ('us-ssn',            'ukr', 'Номер соціального страхування'),
+  ('de-steuer-id',      'eng', 'Tax ID (Steuer-ID)'),
+  ('de-steuer-id',      'ukr', 'Податковий номер (Steuer-ID)'),
+  ('it-codice-fiscale', 'eng', 'Tax Code (Codice Fiscale)'),
+  ('it-codice-fiscale', 'ukr', 'Податковий код (Codice Fiscale)'),
+  ('pl-pesel',          'eng', 'PESEL'),
+  ('pl-pesel',          'ukr', 'PESEL')
+) AS v(code, locale, text)
+JOIN oikumenea.document_personal_code_schemes s ON s.code = v.code
+ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
+
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
 UPDATE oikumenea.schema_version SET revision = '0009_document', applied_at = now() WHERE singleton;

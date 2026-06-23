@@ -229,6 +229,105 @@ types:
           confidence: optional<string>
           createdAt: datetime
           updatedAt: datetime
+      # ---- discovery (M25) ----
+      SiteType:
+        docs: A per-tradition place/site type (church/cathedral/mosque/synagogue/temple/…).
+        fields:
+          id: string
+          traditionTaxonId: optional<string>
+          code: string
+          name: map<string, string>
+          status: string
+          sortOrder: optional<integer>
+      ServiceType:
+        docs: A per-tradition service/observance type (main/youth/prayer/jumua/shabbat/…).
+        fields:
+          id: string
+          traditionTaxonId: optional<string>
+          code: string
+          name: map<string, string>
+          status: string
+          sortOrder: optional<integer>
+      Site:
+        docs: |
+          A worship-community unit's place: the reified link__site_of (Unit ↔ a shared Location,
+          D-Location). latitude/longitude carry the EXACT coordinate, returned to authorized owners; the
+          discovery search coarsens them per publicPrecision.
+        fields:
+          id: string
+          orgUnitId: string
+          locationId: string
+          siteTypeId: string
+          siteTypeCode: string
+          siteTypeName: map<string, string>
+          visibility:
+            type: string
+            docs: public | unlisted | private.
+          publicPrecision:
+            type: string
+            docs: exact | street | neighborhood | city | hidden — the app-side publish-precision projection.
+          isPrimary: boolean
+          latitude: double
+          longitude: double
+          createdAt: datetime
+          updatedAt: datetime
+      ServiceSchedule:
+        docs: A per-site recurring service time (a weekly day or an RRULE subset).
+        fields:
+          id: string
+          siteId: string
+          serviceTypeId: string
+          serviceTypeCode: string
+          serviceTypeName: map<string, string>
+          dayOfWeek:
+            type: optional<integer>
+            docs: 0=Sunday … 6=Saturday; null when rrule-driven.
+          rrule: optional<string>
+          startTime:
+            type: optional<string>
+            docs: Local start time as HH:MM.
+          endTime:
+            type: optional<string>
+            docs: Local end time as HH:MM.
+          timezone:
+            type: string
+            docs: IANA zone (e.g. Europe/Kyiv), not a UTC offset.
+          language:
+            type: optional<string>
+            docs: Service language (ISO 639-3).
+          mode:
+            type: string
+            docs: in_person | online | hybrid.
+          meetingUrl: optional<string>
+          description: optional<string>
+          createdAt: datetime
+          updatedAt: datetime
+      Alias:
+        docs: A search-only alternative name for an org unit (never displayed).
+        fields:
+          id: string
+          unitId: string
+          aliasText: string
+          aliasType:
+            type: string
+            docs: nickname | abbreviation | historical | misspelling | transliteration.
+          locale: optional<string>
+          createdAt: datetime
+          updatedAt: datetime
+      DiscoverySite:
+        docs: |
+          A public discovery hit: a site with its coordinate coarsened per publicPrecision (latitude/
+          longitude are null when the precision is `hidden`).
+        fields:
+          id: string
+          orgUnitId: string
+          siteTypeId: string
+          siteTypeCode: string
+          siteTypeName: map<string, string>
+          publicPrecision: string
+          isPrimary: boolean
+          latitude: optional<double>
+          longitude: optional<double>
       # ---- lists / pages ----
       TaxonRankList:
         fields:
@@ -267,6 +366,24 @@ types:
       AffiliationList:
         fields:
           affiliations: list<Affiliation>
+      SiteTypeList:
+        fields:
+          siteTypes: list<SiteType>
+      ServiceTypeList:
+        fields:
+          serviceTypes: list<ServiceType>
+      SiteList:
+        fields:
+          sites: list<Site>
+      ServiceScheduleList:
+        fields:
+          schedules: list<ServiceSchedule>
+      AliasList:
+        fields:
+          aliases: list<Alias>
+      DiscoverySitePage:
+        fields:
+          sites: list<DiscoverySite>
       # ---- request bodies ----
       UpsertTaxonRankRequest:
         fields:
@@ -411,6 +528,63 @@ types:
         fields:
           status: optional<string>
           value: optional<string>
+      # ---- discovery (M25) request bodies ----
+      UpsertSiteTypeRequest:
+        fields:
+          traditionTaxonId: optional<string>
+          code: string
+          name: string
+          sortOrder: optional<integer>
+      UpsertServiceTypeRequest:
+        fields:
+          traditionTaxonId: optional<string>
+          code: string
+          name: string
+          sortOrder: optional<integer>
+      CreateSiteRequest:
+        fields:
+          locationId: string
+          siteTypeId: string
+          visibility:
+            type: optional<string>
+            docs: public | unlisted | private (default public).
+          publicPrecision:
+            type: optional<string>
+            docs: exact | street | neighborhood | city | hidden (default exact).
+          isPrimary: optional<boolean>
+      UpdateSiteRequest:
+        docs: Patch a site's type/visibility/precision/primary flag. Promoting to primary clears any existing primary.
+        fields:
+          siteTypeId: optional<string>
+          visibility: optional<string>
+          publicPrecision: optional<string>
+          isPrimary: optional<boolean>
+      CreateScheduleRequest:
+        docs: A recurring service time — supply dayOfWeek (0=Sunday…6=Saturday) OR an rrule. meetingUrl is required when mode is online/hybrid.
+        fields:
+          serviceTypeId: string
+          dayOfWeek: optional<integer>
+          rrule: optional<string>
+          startTime:
+            type: optional<string>
+            docs: Local start time as HH:MM.
+          endTime:
+            type: optional<string>
+            docs: Local end time as HH:MM.
+          timezone: string
+          language: optional<string>
+          mode:
+            type: optional<string>
+            docs: in_person | online | hybrid (default in_person).
+          meetingUrl: optional<string>
+          description: optional<string>
+      CreateAliasRequest:
+        fields:
+          aliasText: string
+          aliasType:
+            type: string
+            docs: nickname | abbreviation | historical | misspelling | transliteration.
+          locale: optional<string>
     errors:
       TaxonNotFound:
         namespace: Religion
@@ -492,6 +666,31 @@ types:
         code: NOT_FOUND
         safe-args:
           affiliationId: string
+      SiteTypeNotFound:
+        namespace: Religion
+        code: NOT_FOUND
+        safe-args:
+          siteTypeId: string
+      ServiceTypeNotFound:
+        namespace: Religion
+        code: NOT_FOUND
+        safe-args:
+          serviceTypeId: string
+      SiteNotFound:
+        namespace: Religion
+        code: NOT_FOUND
+        safe-args:
+          siteId: string
+      ScheduleNotFound:
+        namespace: Religion
+        code: NOT_FOUND
+        safe-args:
+          scheduleId: string
+      AliasNotFound:
+        namespace: Religion
+        code: NOT_FOUND
+        safe-args:
+          aliasId: string
 services:
   ReligionService:
     name: Religion Service
@@ -758,3 +957,100 @@ services:
         http: DELETE /affiliations/{affiliationId}
         args:
           affiliationId: { type: string, param-type: path }
+      # ---- discovery catalogs (M25): read on religion.read, write on religion.catalog.manage (instance) ----
+      listSiteTypes:
+        http: GET /site-types
+        returns: SiteTypeList
+      upsertSiteType:
+        http: PUT /site-types
+        args:
+          request: UpsertSiteTypeRequest
+        returns: SiteType
+      listServiceTypes:
+        http: GET /service-types
+        returns: ServiceTypeList
+      upsertServiceType:
+        http: PUT /service-types
+        args:
+          request: UpsertServiceTypeRequest
+        returns: ServiceType
+      # ---- sites: read on religion.read (against the unit); write on site.manage (against the unit) ----
+      listUnitSites:
+        http: GET /units/{unitId}/sites
+        docs: List an org unit's sites (exact coordinates, for authorized owners).
+        args:
+          unitId: { type: string, param-type: path }
+        returns: SiteList
+      createSite:
+        http: POST /units/{unitId}/sites
+        args:
+          unitId: { type: string, param-type: path }
+          request: CreateSiteRequest
+        returns: Site
+      updateSite:
+        http: PUT /sites/{siteId}
+        args:
+          siteId: { type: string, param-type: path }
+          request: UpdateSiteRequest
+        returns: Site
+      deleteSite:
+        http: DELETE /sites/{siteId}
+        args:
+          siteId: { type: string, param-type: path }
+      # ---- service schedules: read on religion.read; write on schedule.manage (against the site's unit) ----
+      listSiteSchedules:
+        http: GET /sites/{siteId}/schedules
+        args:
+          siteId: { type: string, param-type: path }
+        returns: ServiceScheduleList
+      createSchedule:
+        http: POST /sites/{siteId}/schedules
+        args:
+          siteId: { type: string, param-type: path }
+          request: CreateScheduleRequest
+        returns: ServiceSchedule
+      deleteSchedule:
+        http: DELETE /schedules/{scheduleId}
+        args:
+          scheduleId: { type: string, param-type: path }
+      # ---- aliases (search-only): read on religion.read; write on site.manage (against the unit) ----
+      listUnitAliases:
+        http: GET /units/{unitId}/aliases
+        args:
+          unitId: { type: string, param-type: path }
+        returns: AliasList
+      createAlias:
+        http: POST /units/{unitId}/aliases
+        args:
+          unitId: { type: string, param-type: path }
+          request: CreateAliasRequest
+        returns: Alias
+      deleteAlias:
+        http: DELETE /units/{unitId}/aliases/{aliasId}
+        args:
+          unitId: { type: string, param-type: path }
+          aliasId: { type: string, param-type: path }
+      # ---- discovery search (public-facing; coarsened coordinates) ----
+      searchSites:
+        http: GET /discovery/sites
+        docs: |
+          Closure-aware PostGIS discovery search over PUBLIC sites. Supply a radius (lat+lng+radiusM via
+          ST_DWithin) or a bounding box (minLat/minLng/maxLat/maxLng via ST_Intersects); optionally filter
+          by a religion taxon (org units classified under it via the taxonomy closure), a service language/
+          weekday/online toggle, and a fuzzy match on the unit code/name or an alias. Coordinates are
+          coarsened per each site's publicPrecision.
+        args:
+          lat: { type: optional<double>, param-type: query }
+          lng: { type: optional<double>, param-type: query }
+          radiusM: { type: optional<double>, param-type: query }
+          minLat: { type: optional<double>, param-type: query }
+          minLng: { type: optional<double>, param-type: query }
+          maxLat: { type: optional<double>, param-type: query }
+          maxLng: { type: optional<double>, param-type: query }
+          religion: { type: optional<string>, param-type: query }
+          language: { type: optional<string>, param-type: query }
+          dayOfWeek: { type: optional<integer>, param-type: query }
+          onlineOnly: { type: optional<boolean>, param-type: query }
+          query: { type: optional<string>, param-type: query }
+          pageSize: { type: optional<integer>, param-type: query }
+        returns: DiscoverySitePage

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Mono } from "@/components/ui";
 import { TypeBadge } from "./TypeBadge";
 import type { ObjectTypeDef, Row } from "@/lib/ontology/registry";
+import { T } from "@/components/T";
 
 /** The header band of an object view/drawer: type badge, title, subtitle, RID, and a graph link. */
 export function ObjectHeader({
@@ -26,7 +27,7 @@ export function ObjectHeader({
         <div className="mt-1 flex items-center gap-3">
           <Mono>{obj.id}</Mono>
           <Link href={`/graph/${encodeURIComponent(obj.id)}`} className="text-xs text-indigo-600 hover:underline">
-            Open in graph →
+            <T>Open in graph →</T>
           </Link>
         </div>
       </div>

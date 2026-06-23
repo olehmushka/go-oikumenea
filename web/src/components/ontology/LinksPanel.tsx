@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Mono, Pill } from "@/components/ui";
 import { TypeBadge } from "./TypeBadge";
 import type { LinkRow } from "@/lib/ontology/registry";
+import { T } from "@/components/T";
 
 export interface LinkGroup {
   label: string;
@@ -13,14 +14,14 @@ export interface LinkGroup {
 export function LinksPanel({ groups }: { groups: LinkGroup[] }) {
   const nonEmpty = groups.filter((g) => g.rows.length > 0);
   if (nonEmpty.length === 0)
-    return <p className="text-sm text-slate-400">No links.</p>;
+    return <p className="text-sm text-slate-400"><T>No links.</T></p>;
   return (
     <div className="space-y-5">
       {nonEmpty.map((g) => (
         <div key={g.label}>
           <div className="mb-2 flex items-center gap-2">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              {g.label}
+              <T>{g.label}</T>
             </h3>
             <span className="text-xs text-slate-400">{g.rows.length}</span>
             {g.targetType ? <TypeBadge type={g.targetType} /> : null}

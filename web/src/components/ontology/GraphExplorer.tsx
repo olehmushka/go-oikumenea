@@ -13,6 +13,8 @@ import "@xyflow/react/dist/style.css";
 import { bffGet, resolveLinkGroups } from "@/lib/api/browser";
 import { OBJECT_TYPES, type Row } from "@/lib/ontology/registry";
 import { parseRid } from "@/lib/ontology/rid";
+import { useLocale } from "@/lib/locale";
+import { setActiveLocale } from "@/lib/i18n";
 
 interface NodeData extends Record<string, unknown> {
   type: string;
@@ -44,6 +46,9 @@ function nodeStyle(type: string): React.CSSProperties {
  *  to fan out its declared links; double-click to open its object view. Built on @xyflow/react. */
 export function GraphExplorer({ rid }: { rid: string }) {
   const router = useRouter();
+  // Subscribe to the UI locale so node labels rebuild in the chosen locale on switch.
+  const { locale } = useLocale();
+  setActiveLocale(locale);
   const [nodes, setNodes] = useState<Node<NodeData>[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const expanded = useRef<Set<string>>(new Set());
@@ -80,12 +85,15 @@ export function GraphExplorer({ rid }: { rid: string }) {
     });
   }, []);
 
-  // Seed with the center object, then auto-expand one level.
+  // Seed with the center object, then auto-expand one level. Re-runs on locale switch so node labels
+  // (resolved here, then cached in node data) rebuild in the chosen locale; reset the expansion state.
   useEffect(() => {
     const parsed = parseRid(rid);
     if (!parsed) return;
     const def = OBJECT_TYPES[parsed.type];
     let alive = true;
+    expanded.current = new Set();
+    setEdges([]);
     (async () => {
       let label = parsed.uuid.slice(-8);
       try {
@@ -110,7 +118,7 @@ export function GraphExplorer({ rid }: { rid: string }) {
     return () => {
       alive = false;
     };
-  }, [rid, addNeighbors]);
+  }, [rid, addNeighbors, locale]);
 
   return (
     <div className="h-[70vh] overflow-hidden rounded-lg border border-slate-200 bg-white">

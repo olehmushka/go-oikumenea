@@ -2,6 +2,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/ui";
 import { TypeBadge } from "@/components/ontology/TypeBadge";
 import { OBJECT_TYPES, type ObjectTypeDef } from "@/lib/ontology/registry";
+import { T } from "@/components/T";
 
 // The human-facing mirror of D-Ontology (docs/ontology-mapping.md): the Object/Link type registry the
 // whole console is built on. Each type links to its explorer (when globally listable).
@@ -13,16 +14,16 @@ export default function OntologyPage() {
   return (
     <div>
       <PageHeader
-        title="Ontology"
-        description="Every entity is a typed Object or reified Link, keyed by a self-describing RID. This is the registry that powers search, the explorer, and link traversal."
+        title={<T>Ontology</T>}
+        description={<T>Every entity is a typed Object or reified Link, keyed by a self-describing RID. This is the registry that powers search, the explorer, and link traversal.</T>}
       />
-      <Section title="Objects" defs={objects} />
-      <Section title="Links" defs={links} />
+      <Section title={<T>Objects</T>} defs={objects} />
+      <Section title={<T>Links</T>} defs={links} />
     </div>
   );
 }
 
-function Section({ title, defs }: { title: string; defs: ObjectTypeDef[] }) {
+function Section({ title, defs }: { title: React.ReactNode; defs: ObjectTypeDef[] }) {
   if (defs.length === 0) return null;
   return (
     <div className="mb-8">
@@ -32,7 +33,7 @@ function Section({ title, defs }: { title: string; defs: ObjectTypeDef[] }) {
           const card = (
             <div className="card h-full p-4 transition-colors hover:border-indigo-300">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <span className="font-medium text-slate-900">{d.label}</span>
+                <span className="font-medium text-slate-900"><T>{d.label}</T></span>
                 <TypeBadge type={d.type} />
               </div>
               <p className="text-xs text-slate-500">{d.blurb}</p>
@@ -40,7 +41,7 @@ function Section({ title, defs }: { title: string; defs: ObjectTypeDef[] }) {
                 <span className="font-mono">{d.type}</span>
                 <span>·</span>
                 <span>{d.module}</span>
-                {d.list ? <span className="ml-auto text-indigo-600">Browse →</span> : null}
+                {d.list ? <span className="ml-auto text-indigo-600"><T>Browse →</T></span> : null}
               </div>
             </div>
           );

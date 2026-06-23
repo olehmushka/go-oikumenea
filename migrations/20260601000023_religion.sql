@@ -622,5 +622,208 @@ CREATE POLICY religion_org_policies_reach ON oikumenea.religion_org_policies
   WITH CHECK (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
          OR unit_id = ANY (string_to_array(nullif(current_setting('app.writable_units', true), ''), ',')::uuid[]));
 
+-- ── Localized names (D-i18n: all locales in every response) ─────────────────────────────────────────
+-- For every religion catalog + the taxonomy tree, seed eng (the English `name` made explicit, since
+-- the default locale is ukr) + hand-authored ukr translations into the i18n store. entity_id is the
+-- RID `id` of each row (the religion transport assembles names keyed by id under the entity_type shown
+-- below). Untranslated taxa keep their English name in both locales (graceful fallback). Idempotent.
+
+-- Taxon ranks.
+INSERT INTO oikumenea.i18n_translations (entity_type, entity_id, field, locale, text)
+SELECT 'religion_taxon_rank', r.id::text, 'name', 'eng', r.name
+FROM oikumenea.religion_taxon_ranks r
+ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
+INSERT INTO oikumenea.i18n_translations (entity_type, entity_id, field, locale, text)
+SELECT 'religion_taxon_rank', r.id::text, 'name', 'ukr', v.text
+FROM (VALUES
+  ('religion','Релігія'),
+  ('branch','Гілка'),
+  ('tradition','Традиція'),
+  ('sub_tradition','Піднапрям'),
+  ('denomination','Деномінація')
+) AS v(code, text)
+JOIN oikumenea.religion_taxon_ranks r ON r.code = v.code
+ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
+
+-- Classifications (theism types).
+INSERT INTO oikumenea.i18n_translations (entity_type, entity_id, field, locale, text)
+SELECT 'religion_classification', c.id::text, 'name', 'eng', c.name
+FROM oikumenea.religion_classifications c
+ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
+INSERT INTO oikumenea.i18n_translations (entity_type, entity_id, field, locale, text)
+SELECT 'religion_classification', c.id::text, 'name', 'ukr', v.text
+FROM (VALUES
+  ('monotheistic','Монотеїстична'),
+  ('polytheistic','Політеїстична'),
+  ('henotheistic','Генотеїстична'),
+  ('monistic','Моністична'),
+  ('nontheistic','Нетеїстична'),
+  ('pantheistic','Пантеїстична'),
+  ('panentheistic','Панентеїстична'),
+  ('animistic','Анімістична'),
+  ('dualistic','Дуалістична'),
+  ('deistic','Деїстична'),
+  ('agnostic','Агностична'),
+  ('atheistic','Атеїстична')
+) AS v(code, text)
+JOIN oikumenea.religion_classifications c ON c.code = v.code
+ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
+
+-- Organization kinds.
+INSERT INTO oikumenea.i18n_translations (entity_type, entity_id, field, locale, text)
+SELECT 'religion_org_kind', k.id::text, 'name', 'eng', k.name
+FROM oikumenea.religion_org_kinds k
+ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
+INSERT INTO oikumenea.i18n_translations (entity_type, entity_id, field, locale, text)
+SELECT 'religion_org_kind', k.id::text, 'name', 'ukr', v.text
+FROM (VALUES
+  ('denomination','Деномінація'),
+  ('jurisdiction','Юрисдикція'),
+  ('diocese','Єпархія'),
+  ('deanery','Деканат'),
+  ('parish','Парафія'),
+  ('congregation','Конгрегація'),
+  ('mission','Місія'),
+  ('monastery','Монастир'),
+  ('community','Спільнота'),
+  ('mosque_community','Мусульманська громада'),
+  ('temple_community','Храмова громада'),
+  ('council','Рада / Асоціація')
+) AS v(code, text)
+JOIN oikumenea.religion_org_kinds k ON k.code = v.code
+ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
+
+-- Policy kinds.
+INSERT INTO oikumenea.i18n_translations (entity_type, entity_id, field, locale, text)
+SELECT 'religion_policy_kind', p.id::text, 'name', 'eng', p.name
+FROM oikumenea.religion_policy_kinds p
+ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
+INSERT INTO oikumenea.i18n_translations (entity_type, entity_id, field, locale, text)
+SELECT 'religion_policy_kind', p.id::text, 'name', 'ukr', v.text
+FROM (VALUES
+  ('excludes_child_creation','Виключає створення дочірніх'),
+  ('excluded_body','Виключений орган')
+) AS v(code, text)
+JOIN oikumenea.religion_policy_kinds p ON p.code = v.code
+ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
+
+-- Taxonomy tree (religions, branches, traditions, sub-traditions, denominations). Codes are globally
+-- unique across the waves, so we join on code to resolve the generated RID.
+INSERT INTO oikumenea.i18n_translations (entity_type, entity_id, field, locale, text)
+SELECT 'religion_taxon', t.id::text, 'name', 'eng', t.name
+FROM oikumenea.religion_taxa t
+ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
+INSERT INTO oikumenea.i18n_translations (entity_type, entity_id, field, locale, text)
+SELECT 'religion_taxon', t.id::text, 'name', 'ukr', v.text
+FROM (VALUES
+  -- Religions (roots)
+  ('christianity','Християнство'),
+  ('islam','Іслам'),
+  ('judaism','Юдаїзм'),
+  ('hinduism','Індуїзм'),
+  ('buddhism','Буддизм'),
+  ('sikhism','Сикхізм'),
+  ('jainism','Джайнізм'),
+  ('bahai','Віра Багаї'),
+  ('shinto','Синтоїзм'),
+  ('taoism','Даосизм'),
+  ('confucianism','Конфуціанство'),
+  ('zoroastrianism','Зороастризм'),
+  ('atheism','Атеїзм'),
+  ('agnosticism','Агностицизм'),
+  ('traditional','Традиційні та корінні релігії'),
+  ('other','Інше / некласифіковане'),
+  -- Branches
+  ('catholicism','Католицтво'),
+  ('eastern_orthodoxy','Православ’я'),
+  ('oriental_orthodoxy','Давньосхідні церкви'),
+  ('church_of_the_east','Церква Сходу'),
+  ('protestantism','Протестантизм'),
+  ('restorationism','Реставраціонізм'),
+  ('independent_christianity','Незалежне християнство'),
+  ('sunni','Сунізм'),
+  ('shia','Шиїзм'),
+  ('ibadi','Ібадизм'),
+  ('sufism','Суфізм'),
+  ('ahmadiyya','Ахмадія'),
+  ('orthodox_judaism','Ортодоксальний юдаїзм'),
+  ('conservative_judaism','Консервативний юдаїзм'),
+  ('reform_judaism','Реформістський юдаїзм'),
+  ('reconstructionist_judaism','Реконструктивістський юдаїзм'),
+  ('karaite_judaism','Караїмський юдаїзм'),
+  ('vaishnavism','Вайшнавізм'),
+  ('shaivism','Шиваїзм'),
+  ('shaktism','Шактизм'),
+  ('smartism','Смартизм'),
+  ('theravada','Тхеравада'),
+  ('mahayana','Махаяна'),
+  ('vajrayana','Ваджраяна'),
+  ('digambara','Дигамбара'),
+  ('svetambara','Шветамбара'),
+  -- Traditions
+  ('latin_church','Латинська церква'),
+  ('eastern_catholic','Східнокатолицькі церкви'),
+  ('lutheranism','Лютеранство'),
+  ('reformed','Реформатство (кальвінізм)'),
+  ('anglicanism','Англіканство'),
+  ('anabaptism','Анабаптизм'),
+  ('baptist','Баптизм'),
+  ('methodism','Методизм'),
+  ('pentecostalism','П’ятдесятництво'),
+  ('adventism','Адвентизм'),
+  ('holiness','Рух святості'),
+  ('evangelicalism','Євангелізм'),
+  ('quakerism','Квакерство'),
+  -- Sub-traditions
+  ('hanafi','Ханафітський мазгаб'),
+  ('maliki','Малікітський мазгаб'),
+  ('shafii','Шафіїтський мазгаб'),
+  ('hanbali','Ханбалітський мазгаб'),
+  ('twelver','Дванадесятники'),
+  ('ismailism','Ісмаїлізм'),
+  ('zaidiyyah','Зейдизм'),
+  ('hasidic','Хасидизм'),
+  ('modern_orthodox','Сучасний ортодоксальний юдаїзм'),
+  ('haredi','Харедим'),
+  ('presbyterianism','Пресвітеріанство'),
+  ('congregationalism','Конгрегаціоналізм'),
+  ('continental_reformed','Континентальне реформатство'),
+  -- Denominations
+  ('ecumenical_patriarchate','Вселенський патріархат Константинополя'),
+  ('church_of_greece','Елладська православна церква'),
+  ('russian_orthodox_church','Російська православна церква'),
+  ('serbian_orthodox_church','Сербська православна церква'),
+  ('romanian_orthodox_church','Румунська православна церква'),
+  ('bulgarian_orthodox_church','Болгарська православна церква'),
+  ('georgian_orthodox_church','Грузинська православна церква'),
+  ('orthodox_church_of_ukraine','Православна церква України'),
+  ('orthodox_church_in_america','Православна церква в Америці'),
+  ('coptic_orthodox_church','Коптська православна церква'),
+  ('armenian_apostolic_church','Вірменська апостольська церква'),
+  ('ethiopian_orthodox_tewahedo','Ефіопська православна церква Тевахедо'),
+  ('syriac_orthodox_church','Сирійська православна церква'),
+  ('malankara_orthodox_church','Маланкарська православна сирійська церква'),
+  ('assyrian_church_of_the_east','Ассирійська церква Сходу'),
+  ('ancient_church_of_the_east','Давня церква Сходу'),
+  ('ukrainian_greek_catholic_church','Українська греко-католицька церква'),
+  ('maronite_church','Маронітська церква'),
+  ('melkite_greek_catholic_church','Мелькітська греко-католицька церква'),
+  ('chaldean_catholic_church','Халдейська католицька церква'),
+  ('syro_malabar_church','Сиро-малабарська церква'),
+  ('armenian_catholic_church','Вірменська католицька церква'),
+  ('elca','Євангелічно-лютеранська церква в Америці'),
+  ('lcms','Лютеранська церква — Міссурійський синод'),
+  ('southern_baptist_convention','Південна баптистська конвенція'),
+  ('united_methodist_church','Об’єднана методистська церква'),
+  ('church_of_england','Церква Англії'),
+  ('episcopal_church_usa','Єпископальна церква (США)'),
+  ('assemblies_of_god','Асамблеї Бога'),
+  ('seventh_day_adventist_church','Церква адвентистів сьомого дня'),
+  ('lds_church','Церква Ісуса Христа Святих останніх днів'),
+  ('jehovahs_witnesses','Свідки Єгови')
+) AS v(code, text)
+JOIN oikumenea.religion_taxa t ON t.code = v.code AND t.deleted_at IS NULL
+ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
+
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
 UPDATE oikumenea.schema_version SET revision = '0023_religion', applied_at = now() WHERE singleton;

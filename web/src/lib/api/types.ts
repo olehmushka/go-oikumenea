@@ -526,3 +526,44 @@ export interface VersionInfo {
   schemaVersion?: string;
   [k: string]: unknown;
 }
+
+// ── M16 (D-Hermenea): import control, proxied by oikumenea to the hermenea companion ─────────────
+/** A registered external dataset hermenea can sync into oikumenea. */
+export interface ImportSource {
+  code: string;
+  name: string;
+  objectType: string;
+  connectorType: string; // http | file | http-files | wof-sqlite
+  locator: string;
+  cron?: string; // absent => trigger-only
+  enabled: boolean;
+}
+/** A completed/in-flight import-run lineage record (one per job). */
+export interface ImportRun {
+  id: string;
+  sourceCode: string;
+  sourceVersion?: string;
+  status: string; // running | succeeded | failed
+  created: number;
+  updated: number;
+  skipped: number;
+  error?: string;
+  startedAt: string;
+  finishedAt?: string;
+}
+/** One unit of queued work in hermenea's runtime (the job queue). */
+export interface WorkerJob {
+  id: string;
+  jobType: string;
+  sourceCode?: string;
+  status: string; // queued | running | succeeded | failed | dead
+  attempts: number;
+  maxAttempts: number;
+  runAfter: string;
+  lastError?: string;
+}
+/** The enqueue acknowledgement returned by a trigger. */
+export interface JobRef {
+  jobId: string;
+  status: string;
+}

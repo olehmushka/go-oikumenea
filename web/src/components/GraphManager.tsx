@@ -6,11 +6,14 @@ import { mutate } from "@/lib/api/client";
 import { ErrorBox } from "./ErrorBox";
 import { ActionButton } from "./ActionButton";
 import { Localized } from "./Localized";
+import { T } from "./T";
+import { useTg } from "@/lib/locale";
 import type { Graph } from "@/lib/api/types";
 
 /** Add / edit / delete tenant graphs (instance-admin; graph.manage). */
 export function GraphManager({ graphs }: { graphs: Graph[] }) {
   const router = useRouter();
+  const tr = useTg();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<unknown>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -47,12 +50,12 @@ export function GraphManager({ graphs }: { graphs: Graph[] }) {
               );
             }}
           >
-            <input name="name" className="input" defaultValue={g.code} placeholder="name" />
+            <input name="name" className="input" defaultValue={g.code} placeholder={tr("name")} />
             <button className="btn-primary" disabled={busy}>
-              Save
+              <T>Save</T>
             </button>
             <button type="button" className="btn-ghost" onClick={() => setEditing(null)}>
-              Cancel
+              <T>Cancel</T>
             </button>
           </form>
         ) : (
@@ -61,7 +64,7 @@ export function GraphManager({ graphs }: { graphs: Graph[] }) {
               <Localized map={g.name} fallback={g.code} />{" "}
               <span className="font-mono text-xs text-slate-400">{g.code}</span>
               {g.isDirectoryOnly ? (
-                <span className="ml-1 text-slate-400">(directory-only)</span>
+                <span className="ml-1 text-slate-400"><T>(directory-only)</T></span>
               ) : null}
             </span>
             <span className="flex items-center gap-3">
@@ -70,7 +73,7 @@ export function GraphManager({ graphs }: { graphs: Graph[] }) {
                 className="text-xs font-medium text-indigo-600 hover:underline"
                 onClick={() => setEditing(g.id)}
               >
-                Edit
+                <T>Edit</T>
               </button>
               <ActionButton
                 method="DELETE"
@@ -100,10 +103,10 @@ export function GraphManager({ graphs }: { graphs: Graph[] }) {
           );
         }}
       >
-        <input name="code" required className="input" placeholder="code" />
-        <input name="name" required className="input" placeholder="name" />
+        <input name="code" required className="input" placeholder={tr("code")} />
+        <input name="name" required className="input" placeholder={tr("name")} />
         <button className="btn-ghost" disabled={busy}>
-          Add graph
+          <T>Add graph</T>
         </button>
       </form>
     </div>

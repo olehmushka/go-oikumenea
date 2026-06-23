@@ -75,6 +75,22 @@ types:
         fields:
           issuer: string
           subject: string
+      IssuerOption:
+        docs: |
+          One IdP issuer accepted by this instance (from install config), offered to binding UIs so an
+          operator picks an issuer rather than typing it. PUBLIC fields only — verification secrets
+          (HS256 keys) are never exposed. An external identity's `issuer` must match one of these for a
+          token from it to ever validate.
+        fields:
+          issuer:
+            type: string
+            docs: The `iss` value (also the OIDC discovery base URL).
+          audience:
+            type: optional<string>
+            docs: The expected `aud`, if the instance pins one.
+          type:
+            type: string
+            docs: One of oidc | hs256 (hs256 is local/dev only).
       CreateAccountRequest:
         docs: |
           Create an account for a person, optionally linking its first external identity in the same
@@ -142,6 +158,23 @@ services:
         docs: Read an account with its linked identities. Gates on `person.read` of the linked person.
         args:
           accountId:
+            type: string
+            param-type: path
+        returns: Account
+      listIssuers:
+        http: GET /issuers
+        docs: |
+          List the IdP issuers configured for this instance (public fields only — no secrets), for
+          binding UIs to offer as a choice when linking an external identity. Gates on `person.read`.
+        returns: list<IssuerOption>
+      getAccountByPerson:
+        http: GET /persons/{personId}/account
+        docs: |
+          Read the person's single active account (with its linked identities), or
+          Account:AccountNotFound when the person is roster-only (has no account). Gates on
+          `person.read`. The console uses this to surface a person's login/account state.
+        args:
+          personId:
             type: string
             param-type: path
         returns: Account

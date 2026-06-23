@@ -7,6 +7,7 @@ import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 import { signOutAction } from "@/lib/actions";
 import { apiGet } from "@/lib/api/server";
 import type { LocaleList } from "@/lib/api/types";
+import { T } from "@/components/T";
 
 export default async function DashboardLayout({
   children,
@@ -27,7 +28,7 @@ export default async function DashboardLayout({
       <aside className="flex w-60 shrink-0 flex-col border-r border-slate-200 bg-white">
         <Link href="/" className="border-b border-slate-200 px-4 py-4">
           <div className="text-sm font-semibold text-slate-900">go-oikumenea</div>
-          <div className="text-xs text-slate-400">admin console</div>
+          <div className="text-xs text-slate-400"><T msg="app.console" /></div>
         </Link>
         <div className="flex-1 overflow-y-auto">
           <Nav />
@@ -42,7 +43,7 @@ export default async function DashboardLayout({
             <span className="text-sm text-slate-600">{name}</span>
             <form action={signOutAction}>
               <button type="submit" className="btn-ghost">
-                Sign out
+                <T msg="nav.signOut" />
               </button>
             </form>
           </div>

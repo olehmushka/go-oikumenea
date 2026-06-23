@@ -5,11 +5,14 @@ import { useRouter } from "next/navigation";
 import { mutate } from "@/lib/api/client";
 import { ErrorBox } from "./ErrorBox";
 import { ActionButton } from "./ActionButton";
+import { T } from "./T";
+import { useTg } from "@/lib/locale";
 import type { Unit } from "@/lib/api/types";
 
 /** Edit a unit's mutable fields (code is immutable) + lifecycle transitions. PUT /tenant/v1/units/{id}. */
 export function UnitAdmin({ unit }: { unit: Unit }) {
   const router = useRouter();
+  const tr = useTg();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<unknown>(null);
@@ -19,7 +22,7 @@ export function UnitAdmin({ unit }: { unit: Unit }) {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className="btn-ghost" onClick={() => setOpen((o) => !o)}>
-          {open ? "Close" : "Edit unit"}
+          {open ? <T>Close</T> : <T>Edit unit</T>}
         </button>
         {state !== "SUSPENDED" && state !== "ARCHIVED" ? (
           <ActionButton
@@ -78,20 +81,20 @@ export function UnitAdmin({ unit }: { unit: Unit }) {
         >
           {err ? <ErrorBox error={err} /> : null}
           <div>
-            <label className="label">Name</label>
-            <input name="name" className="input" placeholder="(unchanged)" />
+            <label className="label"><T>Name</T></label>
+            <input name="name" className="input" placeholder={tr("(unchanged)")} />
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="label">Kind</label>
+              <label className="label"><T>Kind</T></label>
               <input name="unitKind" className="input" defaultValue={unit.unitKind} />
             </div>
             <div>
-              <label className="label">Level</label>
+              <label className="label"><T>Level</T></label>
               <input name="level" type="number" className="input" defaultValue={unit.level} />
             </div>
             <div>
-              <label className="label">Visibility</label>
+              <label className="label"><T>Visibility</T></label>
               <select name="visibility" className="input" defaultValue={unit.visibility ?? "PUBLIC"}>
                 <option value="PUBLIC">PUBLIC</option>
                 <option value="SHADOW">SHADOW</option>
@@ -99,7 +102,7 @@ export function UnitAdmin({ unit }: { unit: Unit }) {
             </div>
           </div>
           <button type="submit" className="btn-primary" disabled={busy}>
-            {busy ? "Saving…" : "Save"}
+            {busy ? <T>Saving…</T> : <T>Save</T>}
           </button>
         </form>
       ) : null}

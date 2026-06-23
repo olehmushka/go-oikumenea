@@ -10,11 +10,13 @@ import (
 	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
 	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
 	dataimportapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/dataimport"
+	hermeneaapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/hermenea"
 	"github.com/olegamysk/go-oikumenea/internal/dataimport/adapters"
 	"github.com/olegamysk/go-oikumenea/internal/dataimport/application"
 	"github.com/olegamysk/go-oikumenea/internal/dataimport/domain"
 	"github.com/olegamysk/go-oikumenea/internal/dataimport/transport"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/palantir/conjure-go-runtime/v2/conjure-go-client/httpclient"
 	werror "github.com/palantir/witchcraft-go-error"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
 )
@@ -22,7 +24,12 @@ import (
 // Register builds the data-import module over the platform pool + audit service (writes record
 // in-transaction — D-Audit), registers the geo-countries upsert handler, and registers the
 // ImportService routes onto the witchcraft router. It owns no resources of its own.
-func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, enforcer *pep.Enforcer) (*application.Service, error) {
+//
+// hermeneaBaseURL/hermeneaToken/hermeneaInsecureTLS configure the import-control PROXY (the reverse of
+// the import endpoint): when hermeneaBaseURL is set, oikumenea also serves the HermeneaService routes
+// (/hermenea/v1/*) and forwards UI-triggered sync/list calls to the companion using the trigger token,
+// gated on import.manage (D-Hermenea). Empty hermeneaBaseURL leaves the proxy unregistered.
+func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, enforcer *pep.Enforcer, hermeneaBaseURL, hermeneaToken string, hermeneaInsecureTLS bool) (*application.Service, error) {
 	svc := application.NewService(pool, audit)
 
 	// geo-countries: the first importable catalog (M16). The store factory binds the sqlc adapter to
@@ -51,6 +58,29 @@ func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Serv
 
 	if err := dataimportapi.RegisterRoutesImportService(info.Router, transport.NewService(svc, enforcer)); err != nil {
 		return nil, werror.Wrap(err, "register import service routes")
+	}
+
+	// Import-control proxy (D-Hermenea): only when an operator configured the companion's base URL.
+	// oikumenea re-issues UI-triggered calls to hermenea with the trigger secret; callers are gated on
+	// import.manage in the proxy handler. The HTTP client mirrors hermenea's loader (no retries — the
+	// companion owns retry/backoff; no fixed deadline — list/trigger are quick but a sync enqueue must
+	// not race conjure's default).
+	if hermeneaBaseURL != "" {
+		params := []httpclient.ClientParam{
+			httpclient.WithBaseURLs([]string{hermeneaBaseURL}),
+			httpclient.WithMaxRetries(0),
+		}
+		if hermeneaInsecureTLS {
+			params = append(params, httpclient.WithTLSInsecureSkipVerify())
+		}
+		hc, err := httpclient.NewClient(params...)
+		if err != nil {
+			return nil, werror.Wrap(err, "build hermenea control client")
+		}
+		proxy := transport.NewHermeneaProxy(enforcer, hermeneaapi.NewHermeneaServiceClient(hc), hermeneaToken)
+		if err := hermeneaapi.RegisterRoutesHermeneaService(info.Router, proxy); err != nil {
+			return nil, werror.Wrap(err, "register hermenea control proxy routes")
+		}
 	}
 	return svc, nil
 }

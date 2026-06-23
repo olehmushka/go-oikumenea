@@ -10,6 +10,7 @@ import {
   Table,
 } from "@/components/ui";
 import { Localized } from "@/components/Localized";
+import { T } from "@/components/T";
 import { EdgeManager } from "@/components/EdgeManager";
 import { CreatePosition, FillPosition, PersonLink, PositionAdmin } from "@/components/PositionForms";
 import { UnitAdmin } from "@/components/UnitForms";
@@ -43,7 +44,7 @@ export default async function UnitDetailPage({
   if (error) {
     return (
       <div>
-        <PageHeader title="Unit" />
+        <PageHeader title={<T>Unit</T>} />
         <ErrorNotice error={error} />
       </div>
     );
@@ -53,24 +54,24 @@ export default async function UnitDetailPage({
     <div>
       <PageHeader
         title={unit?.code ?? unitId}
-        description="Unit detail, graph neighbourhood, and positions."
+        description={<T>Unit detail, graph neighbourhood, and positions.</T>}
         action={
           <Link href="/units" className="btn-ghost">
-            ← All units
+            ← <T>All units</T>
           </Link>
         }
       />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card>
-          <h2 className="text-sm font-semibold text-slate-900">Details</h2>
+          <h2 className="text-sm font-semibold text-slate-900"><T>Details</T></h2>
           <dl className="mt-3 space-y-2 text-sm">
-            <Row label="Name" value={<Localized map={unit?.name} />} />
-            <Row label="Code" value={<Mono>{unit?.code}</Mono>} />
-            <Row label="Kind" value={unit?.unitKind ?? "—"} />
-            <Row label="Level" value={unit?.level ?? "—"} />
+            <Row label={<T>Name</T>} value={<Localized map={unit?.name} />} />
+            <Row label={<T>Code</T>} value={<Mono>{unit?.code}</Mono>} />
+            <Row label={<T>Kind</T>} value={unit?.unitKind ?? "—"} />
+            <Row label={<T>Level</T>} value={unit?.level ?? "—"} />
             <Row
-              label="Visibility"
+              label={<T>Visibility</T>}
               value={
                 <Pill tone={unit?.visibility === "SHADOW" ? "amber" : "green"}>
                   {unit?.visibility ?? "—"}
@@ -78,61 +79,61 @@ export default async function UnitDetailPage({
               }
             />
             <Row
-              label="State"
+              label={<T>State</T>}
               value={
                 <Pill tone={unit?.state === "ACTIVE" ? "green" : "slate"}>
                   {unit?.state ?? "—"}
                 </Pill>
               }
             />
-            <Row label="ID" value={<Mono>{unit?.id}</Mono>} />
+            <Row label={<T>ID</T>} value={<Mono>{unit?.id}</Mono>} />
           </dl>
         </Card>
 
         <Card>
-          <h2 className="text-sm font-semibold text-slate-900">Ancestors</h2>
+          <h2 className="text-sm font-semibold text-slate-900"><T>Ancestors</T></h2>
           <UnitRefs refs={ancestors?.units} empty="No parents (a root unit)." />
         </Card>
 
         <Card>
-          <h2 className="text-sm font-semibold text-slate-900">Descendants</h2>
+          <h2 className="text-sm font-semibold text-slate-900"><T>Descendants</T></h2>
           <UnitRefs refs={descendants?.units} empty="No descendants." />
         </Card>
       </div>
 
       <Card className="mt-4">
-        <h2 className="text-sm font-semibold text-slate-900">Manage unit</h2>
+        <h2 className="text-sm font-semibold text-slate-900"><T>Manage unit</T></h2>
         <p className="mb-3 mt-1 text-xs text-slate-500">
-          Edit details, or move it through its lifecycle (archive is the equivalent of delete).
+          <T>Edit details, or move it through its lifecycle (archive is the equivalent of delete).</T>
         </p>
         {unit ? <UnitAdmin unit={unit} /> : null}
       </Card>
 
       <Card className="mt-4">
-        <h2 className="text-sm font-semibold text-slate-900">Edges</h2>
+        <h2 className="text-sm font-semibold text-slate-900"><T>Edges</T></h2>
         <p className="mb-3 mt-1 text-xs text-slate-500">
-          Nest this unit under a parent (creates a child relationship in the chosen graph).
+          <T>Nest this unit under a parent (creates a child relationship in the chosen graph).</T>
         </p>
         <EdgeManager unitId={unitId} />
       </Card>
 
       <Card className="mt-4">
-        <h2 className="text-sm font-semibold text-slate-900">Languages</h2>
+        <h2 className="text-sm font-semibold text-slate-900"><T>Languages</T></h2>
         <p className="mb-2 mt-1 text-xs text-slate-500">
-          The unit&apos;s official / working languages (D-Languages).
+          <T>The unit's official / working languages (D-Languages).</T>
         </p>
         <UnitLanguageManager unitId={unitId} />
       </Card>
 
-      <h2 className="mb-3 mt-8 text-sm font-semibold text-slate-900">Positions</h2>
+      <h2 className="mb-3 mt-8 text-sm font-semibold text-slate-900"><T>Positions</T></h2>
       {positions && positions.positions?.length > 0 ? (
         <Table
           head={
             <>
-              <th className="th">Code</th>
-              <th className="th">Title</th>
-              <th className="th">Holder</th>
-              <th className="th">Status</th>
+              <th className="th"><T>Code</T></th>
+              <th className="th"><T>Title</T></th>
+              <th className="th"><T>Holder</T></th>
+              <th className="th"><T>Status</T></th>
               <th className="th"></th>
             </>
           }
@@ -149,12 +150,12 @@ export default async function UnitDetailPage({
                 {p.holder?.personId ? (
                   <PersonLink personId={p.holder.personId} />
                 ) : (
-                  <span className="text-slate-400">vacant</span>
+                  <span className="text-slate-400"><T>vacant</T></span>
                 )}
               </td>
               <td className="td">
                 <Pill tone={p.holder ? "green" : p.status === "abolished" ? "slate" : "amber"}>
-                  {p.status === "abolished" ? "abolished" : p.holder ? "filled" : "vacant"}
+                  {p.status === "abolished" ? <T>abolished</T> : p.holder ? <T>filled</T> : <T>vacant</T>}
                 </Pill>
               </td>
               <td className="td">
@@ -167,7 +168,7 @@ export default async function UnitDetailPage({
           ))}
         </Table>
       ) : (
-        <EmptyState>No positions defined for this unit.</EmptyState>
+        <EmptyState><T>No positions defined for this unit.</T></EmptyState>
       )}
       <div className="mt-4 max-w-xl">
         <CreatePosition unitId={unitId} />
@@ -184,7 +185,7 @@ function UnitRefs({
   empty: string;
 }) {
   if (!refs || refs.length === 0)
-    return <p className="mt-3 text-sm text-slate-400">{empty}</p>;
+    return <p className="mt-3 text-sm text-slate-400"><T>{empty}</T></p>;
   return (
     <ul className="mt-3 space-y-1 text-sm">
       {refs.map((r) => (
@@ -198,7 +199,7 @@ function UnitRefs({
   );
 }
 
-function Row({ label, value }: { label: string; value?: React.ReactNode }) {
+function Row({ label, value }: { label: React.ReactNode; value?: React.ReactNode }) {
   return (
     <div className="flex justify-between gap-4">
       <dt className="text-slate-500">{label}</dt>

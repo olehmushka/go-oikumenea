@@ -3,6 +3,9 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { mutate } from "@/lib/api/client";
+import { useLocale } from "@/lib/locale";
+import { setActiveLocale } from "@/lib/i18n";
+import { tg } from "@/lib/messages";
 import { OBJECT_TYPES, rowSearchText, type Row } from "@/lib/ontology/registry";
 import { Value } from "./Value";
 import { Drawer } from "./Drawer";
@@ -18,6 +21,9 @@ export function DataTable({
 }) {
   const def = OBJECT_TYPES[type];
   const router = useRouter();
+  // Subscribe to the UI locale so the table re-renders (and re-reads name maps) when it switches.
+  const { locale } = useLocale();
+  setActiveLocale(locale);
   const [filter, setFilter] = useState("");
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<1 | -1>(1);
@@ -46,7 +52,7 @@ export function DataTable({
       }
     }
     return out;
-  }, [rows, filter, sortKey, sortDir, cols, def]);
+  }, [rows, filter, sortKey, sortDir, cols, def, locale]);
 
   if (!def) return <p className="text-sm text-red-600">Unknown type: {type}</p>;
 
@@ -89,18 +95,18 @@ export function DataTable({
       <div className="mb-3 flex items-center gap-3">
         <input
           className="input max-w-xs"
-          placeholder={`Filter ${def.labelPlural.toLowerCase()}…`}
+          placeholder={`${tg("Filter")} ${tg(def.labelPlural).toLowerCase()}…`}
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
         <span className="text-xs text-slate-400">
-          {view.length} of {rows.length}
+          {view.length} {tg("of")} {rows.length}
         </span>
       </div>
 
       {selected.size > 0 && (def.actions?.length ?? 0) > 0 ? (
         <div className="mb-3 flex items-center gap-2 rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm">
-          <span className="font-medium text-indigo-800">{selected.size} selected</span>
+          <span className="font-medium text-indigo-800">{selected.size} {tg("selected")}</span>
           <div className="ml-2 flex gap-2">
             {def.actions!.map((a) => (
               <button
@@ -109,12 +115,12 @@ export function DataTable({
                 onClick={() => runBulk(a.key)}
                 className={a.danger ? "btn-ghost border-red-300 text-red-700" : "btn-ghost"}
               >
-                {a.label}
+                {tg(a.label)}
               </button>
             ))}
           </div>
           <button className="ml-auto text-xs text-slate-500 hover:underline" onClick={() => setSelected(new Set())}>
-            Clear
+            {tg("Clear")}
           </button>
         </div>
       ) : null}
@@ -134,7 +140,7 @@ export function DataTable({
                   className="th cursor-pointer select-none hover:text-slate-700"
                   onClick={() => toggleSort(c.key)}
                 >
-                  {c.header}
+                  {tg(c.header)}
                   {sortKey === c.key ? <span className="ml-1">{sortDir === 1 ? "▲" : "▼"}</span> : null}
                 </th>
               ))}
@@ -161,7 +167,7 @@ export function DataTable({
             {view.length === 0 ? (
               <tr>
                 <td className="td text-slate-400" colSpan={cols.length + ((def.actions?.length ?? 0) > 0 ? 1 : 0)}>
-                  No matching rows.
+                  {tg("No matching rows.")}
                 </td>
               </tr>
             ) : null}

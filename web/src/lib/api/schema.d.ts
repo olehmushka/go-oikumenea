@@ -2114,6 +2114,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/identity/v1/issuers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the IdP issuers configured for this instance (public fields only — no secrets), for
+         * @description List the IdP issuers configured for this instance (public fields only — no secrets), for
+         *     binding UIs to offer as a choice when linking an external identity. Gates on `person.read`.
+         */
+        get: operations["IdentityFederationService_listIssuers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/identity/v1/persons/{personId}/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the person's single active account (with its linked identities), or
+         * @description Read the person's single active account (with its linked identities), or
+         *     Account:AccountNotFound when the person is roster-only (has no account). Gates on
+         *     `person.read`. The console uses this to surface a person's login/account state.
+         */
+        get: operations["IdentityFederationService_getAccountByPerson"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/identity/v1/whoami": {
         parameters: {
             query?: never;
@@ -3872,6 +3915,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/religion/v1/discovery/sites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Closure-aware PostGIS discovery search over PUBLIC sites. Supply a radius (lat+lng+radiusM via
+         * @description Closure-aware PostGIS discovery search over PUBLIC sites. Supply a radius (lat+lng+radiusM via
+         *     ST_DWithin) or a bounding box (minLat/minLng/maxLat/maxLng via ST_Intersects); optionally filter
+         *     by a religion taxon (org units classified under it via the taxonomy closure), a service language/
+         *     weekday/online toggle, and a fuzzy match on the unit code/name or an alias. Coordinates are
+         *     coarsened per each site's publicPrecision.
+         */
+        get: operations["ReligionService_searchSites"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/religion/v1/grade-categories": {
         parameters: {
             query?: never;
@@ -3966,6 +4033,86 @@ export interface paths {
         get: operations["ReligionService_listPolicyKinds"];
         put: operations["ReligionService_upsertPolicyKind"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/religion/v1/schedules/{scheduleId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["ReligionService_deleteSchedule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/religion/v1/service-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ReligionService_listServiceTypes"];
+        put: operations["ReligionService_upsertServiceType"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/religion/v1/site-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ReligionService_listSiteTypes"];
+        put: operations["ReligionService_upsertSiteType"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/religion/v1/sites/{siteId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["ReligionService_updateSite"];
+        post?: never;
+        delete: operations["ReligionService_deleteSite"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/religion/v1/sites/{siteId}/schedules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ReligionService_listSiteSchedules"];
+        put?: never;
+        post: operations["ReligionService_createSchedule"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4105,6 +4252,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/religion/v1/units/{unitId}/aliases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ReligionService_listUnitAliases"];
+        put?: never;
+        post: operations["ReligionService_createAlias"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/religion/v1/units/{unitId}/aliases/{aliasId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["ReligionService_deleteAlias"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/religion/v1/units/{unitId}/child-orgs": {
         parameters: {
             query?: never;
@@ -4236,6 +4415,26 @@ export interface paths {
         get: operations["ReligionService_getOrgProfile"];
         put: operations["ReligionService_setOrgProfile"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/religion/v1/units/{unitId}/sites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List an org unit's sites (exact coordinates, for authorized owners).
+         * @description List an org unit's sites (exact coordinates, for authorized owners).
+         */
+        get: operations["ReligionService_listUnitSites"];
+        put?: never;
+        post: operations["ReligionService_createSite"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4737,6 +4936,22 @@ export interface components {
         AffiliationTypeList: {
             affiliationTypes: components["schemas"]["AffiliationType"][];
         };
+        /** @description A search-only alternative name for an org unit (never displayed). */
+        Alias: {
+            aliasText: string;
+            /** @description nickname | abbreviation | historical | misspelling | transliteration. */
+            aliasType: string;
+            /** Format: date-time */
+            createdAt: string;
+            id: string;
+            locale?: string;
+            unitId: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        AliasList: {
+            aliases: components["schemas"]["Alias"][];
+        };
         /** @description A person filling an education position (link__holds_education_position), one-holder, effective-dated. */
         Appointment: {
             /** Format: date-time */
@@ -5236,6 +5451,12 @@ export interface components {
             identity?: components["schemas"]["LinkIdentityRequest"];
             personId: string;
         };
+        CreateAliasRequest: {
+            aliasText: string;
+            /** @description nickname | abbreviation | historical | misspelling | transliteration. */
+            aliasType: string;
+            locale?: string;
+        };
         CreateBuildingRequest: {
             code: string;
             kind: string;
@@ -5390,6 +5611,32 @@ export interface components {
             /** @description Permission codes from the catalog; instance-scope and unknown codes are rejected. */
             permissions: string[];
         };
+        /** @description A recurring service time — supply dayOfWeek (0=Sunday…6=Saturday) OR an rrule. meetingUrl is required when mode is online/hybrid. */
+        CreateScheduleRequest: {
+            /** Format: int32 */
+            dayOfWeek?: number;
+            description?: string;
+            /** @description Local end time as HH:MM. */
+            endTime?: string;
+            language?: string;
+            meetingUrl?: string;
+            /** @description in_person | online | hybrid (default in_person). */
+            mode?: string;
+            rrule?: string;
+            serviceTypeId: string;
+            /** @description Local start time as HH:MM. */
+            startTime?: string;
+            timezone: string;
+        };
+        CreateSiteRequest: {
+            isPrimary?: boolean;
+            locationId: string;
+            /** @description exact | street | neighborhood | city | hidden (default exact). */
+            publicPrecision?: string;
+            siteTypeId: string;
+            /** @description public | unlisted | private (default public). */
+            visibility?: string;
+        };
         CreateTaxonRequest: {
             code: string;
             description?: string;
@@ -5468,6 +5715,28 @@ export interface components {
         };
         DegreeLevelList: {
             degreeLevels: components["schemas"]["DegreeLevel"][];
+        };
+        /**
+         * @description A public discovery hit: a site with its coordinate coarsened per publicPrecision (latitude/
+         *     longitude are null when the precision is `hidden`).
+         */
+        DiscoverySite: {
+            id: string;
+            isPrimary: boolean;
+            /** Format: double */
+            latitude?: number;
+            /** Format: double */
+            longitude?: number;
+            orgUnitId: string;
+            publicPrecision: string;
+            siteTypeCode: string;
+            siteTypeId: string;
+            siteTypeName: {
+                [key: string]: string;
+            };
+        };
+        DiscoverySitePage: {
+            sites: components["schemas"]["DiscoverySite"][];
         };
         /** @description A person-held paper of some type — metadata only (no binaries). number/issuer are pii:basic. */
         Document: {
@@ -6052,6 +6321,20 @@ export interface components {
         InstitutionPage: {
             institutions: components["schemas"]["Institution"][];
             nextPageToken?: string;
+        };
+        /**
+         * @description One IdP issuer accepted by this instance (from install config), offered to binding UIs so an
+         *     operator picks an issuer rather than typing it. PUBLIC fields only — verification secrets
+         *     (HS256 keys) are never exposed. An external identity's `issuer` must match one of these for a
+         *     token from it to ever validate.
+         */
+        IssuerOption: {
+            /** @description The expected `aud`, if the instance pins one. */
+            audience?: string;
+            /** @description The `iss` value (also the OIDC discovery base URL). */
+            issuer: string;
+            /** @description One of oidc | hs256 (hs256 is local/dev only). */
+            type: string;
         };
         /** @description A reference to an enqueued worker job (the result of a sync trigger). */
         JobRef: {
@@ -7276,6 +7559,56 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** @description A per-site recurring service time (a weekly day or an RRULE subset). */
+        ServiceSchedule: {
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: int32
+             * @description 0=Sunday … 6=Saturday; null when rrule-driven.
+             */
+            dayOfWeek?: number;
+            description?: string;
+            /** @description Local end time as HH:MM. */
+            endTime?: string;
+            id: string;
+            /** @description Service language (ISO 639-3). */
+            language?: string;
+            meetingUrl?: string;
+            /** @description in_person | online | hybrid. */
+            mode: string;
+            rrule?: string;
+            serviceTypeCode: string;
+            serviceTypeId: string;
+            serviceTypeName: {
+                [key: string]: string;
+            };
+            siteId: string;
+            /** @description Local start time as HH:MM. */
+            startTime?: string;
+            /** @description IANA zone (e.g. Europe/Kyiv), not a UTC offset. */
+            timezone: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        ServiceScheduleList: {
+            schedules: components["schemas"]["ServiceSchedule"][];
+        };
+        /** @description A per-tradition service/observance type (main/youth/prayer/jumua/shabbat/…). */
+        ServiceType: {
+            code: string;
+            id: string;
+            name: {
+                [key: string]: string;
+            };
+            /** Format: int32 */
+            sortOrder?: number;
+            status: string;
+            traditionTaxonId?: string;
+        };
+        ServiceTypeList: {
+            serviceTypes: components["schemas"]["ServiceType"][];
+        };
         /** @description Replace the set of classification tags (theism) on a taxon or unit, by classification id. */
         SetClassificationsRequest: {
             classificationIds: string[];
@@ -7312,6 +7645,52 @@ export interface components {
             stakePct?: number;
             /** Format: date-time */
             updatedAt: string;
+        };
+        /**
+         * @description A worship-community unit's place: the reified link__site_of (Unit ↔ a shared Location,
+         *     D-Location). latitude/longitude carry the EXACT coordinate, returned to authorized owners; the
+         *     discovery search coarsens them per publicPrecision.
+         */
+        Site: {
+            /** Format: date-time */
+            createdAt: string;
+            id: string;
+            isPrimary: boolean;
+            /** Format: double */
+            latitude: number;
+            locationId: string;
+            /** Format: double */
+            longitude: number;
+            orgUnitId: string;
+            /** @description exact | street | neighborhood | city | hidden — the app-side publish-precision projection. */
+            publicPrecision: string;
+            siteTypeCode: string;
+            siteTypeId: string;
+            siteTypeName: {
+                [key: string]: string;
+            };
+            /** Format: date-time */
+            updatedAt: string;
+            /** @description public | unlisted | private. */
+            visibility: string;
+        };
+        SiteList: {
+            sites: components["schemas"]["Site"][];
+        };
+        /** @description A per-tradition place/site type (church/cathedral/mosque/synagogue/temple/…). */
+        SiteType: {
+            code: string;
+            id: string;
+            name: {
+                [key: string]: string;
+            };
+            /** Format: int32 */
+            sortOrder?: number;
+            status: string;
+            traditionTaxonId?: string;
+        };
+        SiteTypeList: {
+            siteTypes: components["schemas"]["SiteType"][];
         };
         /**
          * @description A person's standalone social-network account (D-PersonSocialChannels). platformUserId is the
@@ -7699,6 +8078,13 @@ export interface components {
             name?: string;
             /** @description When present, fully replaces the permission set. Omit to leave permissions unchanged. */
             permissions?: string[];
+        };
+        /** @description Patch a site's type/visibility/precision/primary flag. Promoting to primary clears any existing primary. */
+        UpdateSiteRequest: {
+            isPrimary?: boolean;
+            publicPrecision?: string;
+            siteTypeId?: string;
+            visibility?: string;
         };
         /** @description Edit/reorder a system. Omitted fields are unchanged. `code` is immutable; `country` cannot be cleared (open seam). */
         UpdateSystemRequest: {
@@ -8159,6 +8545,20 @@ export interface components {
             name: string;
             renewable?: boolean;
             status?: string;
+        };
+        UpsertServiceTypeRequest: {
+            code: string;
+            name: string;
+            /** Format: int32 */
+            sortOrder?: number;
+            traditionTaxonId?: string;
+        };
+        UpsertSiteTypeRequest: {
+            code: string;
+            name: string;
+            /** Format: int32 */
+            sortOrder?: number;
+            traditionTaxonId?: string;
         };
         /** @description Add a social account, or replace one when id is supplied. handle is normalized and profileUrl derived when omitted. */
         UpsertSocialAccountRequest: {
@@ -15163,6 +15563,66 @@ export interface operations {
             };
         };
     };
+    IdentityFederationService_listIssuers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssuerOption"][];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    IdentityFederationService_getAccountByPerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
     IdentityFederationService_whoami: {
         parameters: {
             query?: never;
@@ -18812,6 +19272,49 @@ export interface operations {
             };
         };
     };
+    ReligionService_searchSites: {
+        parameters: {
+            query?: {
+                lat?: number;
+                lng?: number;
+                radiusM?: number;
+                minLat?: number;
+                minLng?: number;
+                maxLat?: number;
+                maxLng?: number;
+                religion?: string;
+                language?: string;
+                dayOfWeek?: number;
+                onlineOnly?: boolean;
+                query?: string;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoverySitePage"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
     ReligionService_listGradeCategories: {
         parameters: {
             query?: never;
@@ -19192,6 +19695,289 @@ export interface operations {
             };
         };
     };
+    ReligionService_deleteSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scheduleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    ReligionService_listServiceTypes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceTypeList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    ReligionService_upsertServiceType: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertServiceTypeRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceType"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    ReligionService_listSiteTypes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteTypeList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    ReligionService_upsertSiteType: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertSiteTypeRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteType"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    ReligionService_updateSite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                siteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSiteRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Site"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    ReligionService_deleteSite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                siteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    ReligionService_listSiteSchedules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                siteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceScheduleList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    ReligionService_createSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                siteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateScheduleRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceSchedule"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
     ReligionService_listTaxa: {
         parameters: {
             query?: {
@@ -19552,6 +20338,102 @@ export interface operations {
             };
         };
     };
+    ReligionService_listUnitAliases: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                unitId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AliasList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    ReligionService_createAlias: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                unitId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAliasRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Alias"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    ReligionService_deleteAlias: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                unitId: string;
+                aliasId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
     ReligionService_createChildOrg: {
         parameters: {
             query?: never;
@@ -19863,6 +20745,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrgProfile"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    ReligionService_listUnitSites: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                unitId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteList"];
+                };
+            };
+            /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerializableError"];
+                };
+            };
+        };
+    };
+    ReligionService_createSite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                unitId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSiteRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Site"];
                 };
             };
             /** @description Conjure SerializableError envelope (errorCode/errorName/parameters). */

@@ -12,6 +12,8 @@ import { bffGet } from "@/lib/api/browser";
 import { CountrySelect } from "@/components/CountrySelect";
 import { PageHeader, Card, Table, Mono } from "@/components/ui";
 import { ErrorBox } from "@/components/ErrorBox";
+import { T } from "@/components/T";
+import { useTg } from "@/lib/locale";
 import { pickLabel, type LocaleMap } from "@/lib/i18n";
 
 type CoordinateInput = {
@@ -56,8 +58,8 @@ export default function LocationsPage() {
   return (
     <div>
       <PageHeader
-        title="Locations"
-        description="The shared place entity (D-Location): a precise coordinate with a structured address. The coordinate can be entered in several formats (lat/lon, MGRS, UTM, СК-42); the server converts it to WGS84 and derives the MGRS in the application."
+        title={<T>Locations</T>}
+        description={<T>The shared place entity (D-Location): a precise coordinate with a structured address. The coordinate can be entered in several formats (lat/lon, MGRS, UTM, СК-42); the server converts it to WGS84 and derives the MGRS in the application.</T>}
       />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <CreateLocation types={types} />
@@ -68,6 +70,7 @@ export default function LocationsPage() {
 }
 
 function CreateLocation({ types }: { types: LocationType[] }) {
+  const tr = useTg();
   const [err, setErr] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<Location | null>(null);
@@ -129,11 +132,11 @@ function CreateLocation({ types }: { types: LocationType[] }) {
 
   return (
     <Card>
-      <h2 className="mb-3 text-sm font-semibold text-slate-700">Create a location</h2>
+      <h2 className="mb-3 text-sm font-semibold text-slate-700"><T>Create a location</T></h2>
       {err ? <div className="mb-3"><ErrorBox error={err} /></div> : null}
       <form onSubmit={onSubmit} className="space-y-3">
         <div>
-          <label className="label">Coordinate format</label>
+          <label className="label"><T>Coordinate format</T></label>
           <select className="input" value={format} onChange={(e) => setFormat(e.target.value)}>
             {FORMATS.map((f) => (
               <option key={f.value} value={f.value}>{f.label}</option>
@@ -144,11 +147,11 @@ function CreateLocation({ types }: { types: LocationType[] }) {
         <CoordinateFields format={format} />
 
         <div>
-          <label className="label">Country *</label>
+          <label className="label"><T>Country *</T></label>
           <CountrySelect name="countryId" required />
         </div>
         <div>
-          <label className="label">Type</label>
+          <label className="label"><T>Type</T></label>
           <select name="typeId" className="input" defaultValue="">
             <option value="">—</option>
             {types.map((t) => (
@@ -160,44 +163,44 @@ function CreateLocation({ types }: { types: LocationType[] }) {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label">Locality</label>
-            <input name="locality" className="input" placeholder="Kyiv" />
+            <label className="label"><T>Locality</T></label>
+            <input name="locality" className="input" placeholder={tr("Kyiv")} />
           </div>
           <div>
-            <label className="label">Admin area</label>
-            <input name="adminArea1" className="input" placeholder="Kyiv City" />
+            <label className="label"><T>Admin area</T></label>
+            <input name="adminArea1" className="input" placeholder={tr("Kyiv City")} />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label">Street</label>
-            <input name="street" className="input" placeholder="Maidan Nezalezhnosti" />
+            <label className="label"><T>Street</T></label>
+            <input name="street" className="input" placeholder={tr("Maidan Nezalezhnosti")} />
           </div>
           <div>
-            <label className="label">House no.</label>
+            <label className="label"><T>House no.</T></label>
             <input name="houseNumber" className="input" placeholder="1" />
           </div>
         </div>
         <div>
-          <label className="label">Postal code</label>
+          <label className="label"><T>Postal code</T></label>
           <input name="postalCode" className="input" placeholder="01001" />
         </div>
         <button type="submit" className="btn" disabled={busy}>
-          {busy ? "Creating…" : "Create location"}
+          {busy ? <T>Creating…</T> : <T>Create location</T>}
         </button>
       </form>
 
       {created ? (
         <div className="mt-4 rounded-md border border-green-200 bg-green-50 p-3 text-sm">
           <div className="mb-2 font-medium text-green-800">
-            Created — <Link href={`/o/${created.id}`} className="underline">open</Link>
+            <T>Created —</T> <Link href={`/o/${created.id}`} className="underline"><T>open</T></Link>
           </div>
           <dl className="grid grid-cols-[8rem_1fr] gap-y-1">
             <dt className="text-slate-500">MGRS</dt>
             <dd><Mono>{created.mgrs ?? "—"}</Mono></dd>
             <dt className="text-slate-500">WGS84</dt>
             <dd><Mono>{created.latitude}, {created.longitude}</Mono></dd>
-            <dt className="text-slate-500">Source</dt>
+            <dt className="text-slate-500"><T>Source</T></dt>
             <dd><Mono>{created.sourceCoordinate?.format ?? "—"}</Mono></dd>
           </dl>
         </div>
@@ -213,7 +216,7 @@ function CoordinateFields({ format }: { format: string }) {
     case "mgrs":
       return (
         <div>
-          <label className="label">MGRS *</label>
+          <label className="label"><T>MGRS *</T></label>
           <input name="mgrs" required className="input" placeholder="36UUA2418291607" />
         </div>
       );
@@ -221,22 +224,22 @@ function CoordinateFields({ format }: { format: string }) {
       return (
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label">Zone *</label>
+            <label className="label"><T>Zone *</T></label>
             <input name="zone" required className="input" placeholder="36" inputMode="numeric" />
           </div>
           <div>
-            <label className="label">Hemisphere</label>
+            <label className="label"><T>Hemisphere</T></label>
             <select name="hemisphere" className="input" defaultValue="N">
               <option value="N">N</option>
               <option value="S">S</option>
             </select>
           </div>
           <div>
-            <label className="label">Easting *</label>
+            <label className="label"><T>Easting *</T></label>
             <input name="easting" required className="input" placeholder="324182" inputMode="decimal" />
           </div>
           <div>
-            <label className="label">Northing *</label>
+            <label className="label"><T>Northing *</T></label>
             <input name="northing" required className="input" placeholder="5591607" inputMode="decimal" />
           </div>
         </div>
@@ -245,15 +248,15 @@ function CoordinateFields({ format }: { format: string }) {
       return (
         <div className="grid grid-cols-3 gap-3">
           <div>
-            <label className="label">Zone *</label>
+            <label className="label"><T>Zone *</T></label>
             <input name="zone" required className="input" placeholder="6" inputMode="numeric" />
           </div>
           <div>
-            <label className="label">Easting (Y) *</label>
+            <label className="label"><T>Easting (Y) *</T></label>
             <input name="easting" required className="input" placeholder="388000" inputMode="decimal" />
           </div>
           <div>
-            <label className="label">Northing (X) *</label>
+            <label className="label"><T>Northing (X) *</T></label>
             <input name="northing" required className="input" placeholder="5590000" inputMode="decimal" />
           </div>
         </div>
@@ -261,20 +264,20 @@ function CoordinateFields({ format }: { format: string }) {
     case "sk42grid":
       return (
         <div>
-          <label className="label">СК-42 grid *</label>
+          <label className="label"><T>СК-42 grid *</T></label>
           <input name="grid" required className="input" placeholder="6 5590000 388000" />
-          <p className="mt-1 text-xs text-slate-400">Full numeric reference: zone northing easting (metres).</p>
+          <p className="mt-1 text-xs text-slate-400"><T>Full numeric reference: zone northing easting (metres).</T></p>
         </div>
       );
     default:
       return (
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label">Latitude *</label>
+            <label className="label"><T>Latitude *</T></label>
             <input name="latitude" required className="input" placeholder="50.4501" inputMode="decimal" />
           </div>
           <div>
-            <label className="label">Longitude *</label>
+            <label className="label"><T>Longitude *</T></label>
             <input name="longitude" required className="input" placeholder="30.5234" inputMode="decimal" />
           </div>
         </div>
@@ -311,38 +314,38 @@ function RadiusSearch() {
 
   return (
     <Card>
-      <h2 className="mb-3 text-sm font-semibold text-slate-700">Radius search</h2>
+      <h2 className="mb-3 text-sm font-semibold text-slate-700"><T>Radius search</T></h2>
       {err ? <div className="mb-3"><ErrorBox error={err} /></div> : null}
       <form onSubmit={onSubmit} className="mb-4 grid grid-cols-3 gap-3">
         <div>
-          <label className="label">Lat</label>
+          <label className="label"><T>Lat</T></label>
           <input name="lat" required className="input" placeholder="50.4501" inputMode="decimal" />
         </div>
         <div>
-          <label className="label">Lng</label>
+          <label className="label"><T>Lng</T></label>
           <input name="lng" required className="input" placeholder="30.5234" inputMode="decimal" />
         </div>
         <div>
-          <label className="label">Radius (m)</label>
+          <label className="label"><T>Radius (m)</T></label>
           <input name="radiusM" required className="input" placeholder="5000" inputMode="numeric" />
         </div>
         <button type="submit" className="btn col-span-3" disabled={busy}>
-          {busy ? "Searching…" : "Search nearby"}
+          {busy ? <T>Searching…</T> : <T>Search nearby</T>}
         </button>
       </form>
 
       {rows == null ? (
-        <p className="text-sm text-slate-400">Enter a centre point and radius to find nearby locations.</p>
+        <p className="text-sm text-slate-400"><T>Enter a centre point and radius to find nearby locations.</T></p>
       ) : rows.length === 0 ? (
-        <p className="text-sm text-slate-400">No locations within the radius.</p>
+        <p className="text-sm text-slate-400"><T>No locations within the radius.</T></p>
       ) : (
         <Table
           head={
             <>
-              <th className="th">MGRS</th>
-              <th className="th">Locality</th>
-              <th className="th text-right">Lat</th>
-              <th className="th text-right">Lng</th>
+              <th className="th"><T>MGRS</T></th>
+              <th className="th"><T>Locality</T></th>
+              <th className="th text-right"><T>Lat</T></th>
+              <th className="th text-right"><T>Lng</T></th>
             </>
           }
         >

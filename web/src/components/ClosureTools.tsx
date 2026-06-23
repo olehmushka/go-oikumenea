@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { mutate } from "@/lib/api/client";
 import { ErrorBox } from "./ErrorBox";
+import { T } from "./T";
 
 /** Rebuild / verify the unit transitive-closure table (tenant; closure.manage). */
 export function ClosureTools() {
@@ -34,14 +35,14 @@ export function ClosureTools() {
           disabled={busy}
           onClick={() => run("Rebuild", "/tenant/v1/closure/rebuild")}
         >
-          Rebuild
+          <T>Rebuild</T>
         </button>
         <button
           className="btn-ghost"
           disabled={busy}
           onClick={() => run("Verify", "/tenant/v1/closure/verify")}
         >
-          Verify
+          <T>Verify</T>
         </button>
       </div>
       {result ? (

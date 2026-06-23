@@ -15,8 +15,9 @@ import { bffGet } from "@/lib/api/browser";
 import { mutate } from "@/lib/api/client";
 import { EntitySelect } from "@/components/EntitySelect";
 import { ErrorBox } from "@/components/ErrorBox";
+import { T } from "@/components/T";
 import { pickLabel, type LocaleMap } from "@/lib/i18n";
-import { useLocale } from "@/lib/locale";
+import { useLocale, useTg } from "@/lib/locale";
 
 /* ------------------------------------------------------------------ row types (display) */
 
@@ -102,6 +103,7 @@ function ScopedSelect({
   filter?: (o: Record<string, unknown>) => boolean;
 }) {
   const { locale } = useLocale();
+  const tr = useTg();
   const [opts, setOpts] = useState<Record<string, unknown>[]>([]);
   useEffect(() => {
     if (!path) {
@@ -133,8 +135,8 @@ function ScopedSelect({
       required={required}
       disabled={!path}
     >
-      <option value="">{path ? `${placeholder}…` : "pick institution first"}</option>
-      {missing ? <option value={value}>{tail(value)} (current)</option> : null}
+      <option value="">{path ? `${tr(placeholder)}…` : tr("pick institution first")}</option>
+      {missing ? <option value={value}>{tail(value)} {tr("(current)")}</option> : null}
       {shown.map((o) => (
         <option key={sv(o.id)} value={sv(o.id)}>
           {lbl(o.name, locale) || lbl(o.title, locale) || sv(o.code) || tail(sv(o.id))}
@@ -158,10 +160,10 @@ function RowLine({
       <span className="min-w-0 truncate">{children}</span>
       <span className="flex shrink-0 gap-2">
         <button type="button" className="text-xs font-medium text-indigo-600 hover:underline disabled:opacity-50" disabled={busy} onClick={onEdit}>
-          Edit
+          <T>Edit</T>
         </button>
         <button type="button" className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50" disabled={busy} onClick={onRemove}>
-          Remove
+          <T>Remove</T>
         </button>
       </span>
     </li>
@@ -201,6 +203,7 @@ function EnrollmentSection({ personId }: { personId: string }) {
   const [to, setTo] = useState("");
   const [degrees, setDegrees] = useState<Record<string, unknown>[]>([]);
   const { locale } = useLocale();
+  const tr = useTg();
 
   useEffect(() => {
     bffGet<{ degreeLevels: Record<string, unknown>[] }>(`${EDU}/degree-levels`)
@@ -249,25 +252,25 @@ function EnrollmentSection({ personId }: { personId: string }) {
         <ScopedSelect path={unit ? `${EDU}/units/${unit}/groups` : ""} listKey="groups" value={group} onChange={setGroup} placeholder="Group" />
         <ScopedSelect path={inst ? `${EDU}/institutions/${inst}/programs` : ""} listKey="programs" value={program} onChange={setProgram} placeholder="Program" />
         <select className="input" value={degree} onChange={(e) => setDegree(e.target.value)}>
-          <option value="">Degree level…</option>
+          <option value="">{tr("Degree level…")}</option>
           {degrees.map((d) => (
             <option key={sv(d.id)} value={sv(d.id)}>{lbl(d.name, locale) || sv(d.code)}</option>
           ))}
         </select>
         <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">Status…</option>
+          <option value="">{tr("Status…")}</option>
           {["enrolled", "graduated", "withdrawn", "expelled", "on_leave"].map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
-        <input className="input" placeholder="Field of study" value={field} onChange={(e) => setField(e.target.value)} />
-        <input className="input" placeholder="Student number" value={student} onChange={(e) => setStudent(e.target.value)} />
-        <input className="input" placeholder="Qualification awarded" value={qual} onChange={(e) => setQual(e.target.value)} />
+        <input className="input" placeholder={tr("Field of study")} value={field} onChange={(e) => setField(e.target.value)} />
+        <input className="input" placeholder={tr("Student number")} value={student} onChange={(e) => setStudent(e.target.value)} />
+        <input className="input" placeholder={tr("Qualification awarded")} value={qual} onChange={(e) => setQual(e.target.value)} />
         <div className="grid grid-cols-2 gap-2">
           <input className="input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} title="from" />
           <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} title="to" />
         </div>
         <div className="flex gap-2 sm:col-span-2">
-          <button className="btn" disabled={busy || !inst}>{editId ? "Save enrollment" : "Add enrollment"}</button>
-          {editId ? <button type="button" className="btn-ghost" onClick={reset}>Cancel</button> : null}
+          <button className="btn" disabled={busy || !inst}>{editId ? <T>Save enrollment</T> : <T>Add enrollment</T>}</button>
+          {editId ? <button type="button" className="btn-ghost" onClick={reset}><T>Cancel</T></button> : null}
         </div>
       </form>
     </div>
@@ -277,6 +280,7 @@ function EnrollmentSection({ personId }: { personId: string }) {
 /* ------------------------------------------------------------------ dormitory stays */
 
 function DormitorySection({ personId }: { personId: string }) {
+  const tr = useTg();
   const base = `${EDU}/persons/${personId}/dormitory-stays`;
   const { rows, err, busy, run } = useLinks<DormitoryStay>(base, "dormitoryStays");
   const [editId, setEditId] = useState<string | null>(null);
@@ -319,9 +323,9 @@ function DormitorySection({ personId }: { personId: string }) {
         <EntitySelect kind="institution" defaultValue={inst} onChange={(v) => { setInst(v); setBuilding(""); }} placeholder="Institution" />
         <ScopedSelect path={inst ? `${EDU}/institutions/${inst}/buildings` : ""} listKey="buildings" value={building} onChange={setBuilding}
           placeholder="Dormitory" required filter={(o) => o.kind === "dormitory"} />
-        <input className="input" placeholder="Room" value={room} onChange={(e) => setRoom(e.target.value)} />
+        <input className="input" placeholder={tr("Room")} value={room} onChange={(e) => setRoom(e.target.value)} />
         <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">Status…</option>
+          <option value="">{tr("Status…")}</option>
           {["active", "ended"].map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
         <div className="grid grid-cols-2 gap-2">
@@ -329,8 +333,8 @@ function DormitorySection({ personId }: { personId: string }) {
           <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} title="to" />
         </div>
         <div className="flex gap-2 sm:col-span-2">
-          <button className="btn" disabled={busy || !building}>{editId ? "Save stay" : "Add stay"}</button>
-          {editId ? <button type="button" className="btn-ghost" onClick={reset}>Cancel</button> : null}
+          <button className="btn" disabled={busy || !building}>{editId ? <T>Save stay</T> : <T>Add stay</T>}</button>
+          {editId ? <button type="button" className="btn-ghost" onClick={reset}><T>Cancel</T></button> : null}
         </div>
       </form>
     </div>
@@ -340,6 +344,7 @@ function DormitorySection({ personId }: { personId: string }) {
 /* ------------------------------------------------------------------ publication authorships */
 
 function PublicationSection({ personId }: { personId: string }) {
+  const tr = useTg();
   const base = `${EDU}/persons/${personId}/publication-authorships`;
   const { rows, err, busy, run } = useLinks<PublicationAuthorship>(base, "authorships");
   const [editId, setEditId] = useState<string | null>(null);
@@ -382,17 +387,17 @@ function PublicationSection({ personId }: { personId: string }) {
       </ul>
       <form key={formKey} className={formCls} onSubmit={submit}>
         <EntitySelect kind="publication" defaultValue={pub} onChange={setPub} placeholder="Publication *" />
-        <input className="input" type="number" placeholder="Author order" value={order} onChange={(e) => setOrder(e.target.value)} />
+        <input className="input" type="number" placeholder={tr("Author order")} value={order} onChange={(e) => setOrder(e.target.value)} />
         <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input type="checkbox" checked={corresponding} onChange={(e) => setCorresponding(e.target.checked)} /> corresponding author
+          <input type="checkbox" checked={corresponding} onChange={(e) => setCorresponding(e.target.checked)} /> {tr("corresponding author")}
         </label>
         <div className="grid grid-cols-2 gap-2">
           <input className="input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} title="from" />
           <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} title="to" />
         </div>
         <div className="flex gap-2 sm:col-span-2">
-          <button className="btn" disabled={busy || !pub}>{editId ? "Save authorship" : "Add authorship"}</button>
-          {editId ? <button type="button" className="btn-ghost" onClick={reset}>Cancel</button> : null}
+          <button className="btn" disabled={busy || !pub}>{editId ? <T>Save authorship</T> : <T>Add authorship</T>}</button>
+          {editId ? <button type="button" className="btn-ghost" onClick={reset}><T>Cancel</T></button> : null}
         </div>
       </form>
     </div>
@@ -418,6 +423,7 @@ function RoleLinkSection({
   removeMsg: string;
   addLabel: string;
 }) {
+  const tr = useTg();
   const base = `${EDU}/persons/${personId}/${type}`;
   type Row = { id: string; role?: string; roleInBody?: string; status: string; effectiveFrom?: string; effectiveTo?: string } & Record<string, string | undefined>;
   const { rows, err, busy, run } = useLinks<Row>(base, listKey);
@@ -464,14 +470,14 @@ function RoleLinkSection({
         <ScopedSelect path={inst ? `${EDU}/institutions/${inst}/${childPath}` : ""} listKey={childKey} value={target} onChange={setTarget} placeholder={pickPlaceholder} required />
         {roleOptions ? (
           <select className="input" value={role} onChange={(e) => setRole(e.target.value)}>
-            <option value="">Role…</option>
+            <option value="">{tr("Role…")}</option>
             {roleOptions.map((o) => <option key={o} value={o}>{o}</option>)}
           </select>
         ) : (
-          <input className="input" placeholder="Role" value={role} onChange={(e) => setRole(e.target.value)} />
+          <input className="input" placeholder={tr("Role")} value={role} onChange={(e) => setRole(e.target.value)} />
         )}
         <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">Status…</option>
+          <option value="">{tr("Status…")}</option>
           {["active", "ended"].map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
         <div className="grid grid-cols-2 gap-2">
@@ -479,8 +485,8 @@ function RoleLinkSection({
           <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} title="to" />
         </div>
         <div className="flex gap-2 sm:col-span-2">
-          <button className="btn" disabled={busy || !target}>{editId ? "Save" : addLabel}</button>
-          {editId ? <button type="button" className="btn-ghost" onClick={reset}>Cancel</button> : null}
+          <button className="btn" disabled={busy || !target}>{editId ? <T>Save</T> : tr(addLabel)}</button>
+          {editId ? <button type="button" className="btn-ghost" onClick={reset}><T>Cancel</T></button> : null}
         </div>
       </form>
     </div>
@@ -490,6 +496,7 @@ function RoleLinkSection({
 /* ------------------------------------------------------------------ qualification awards */
 
 function QualificationSection({ personId }: { personId: string }) {
+  const tr = useTg();
   const base = `${EDU}/persons/${personId}/qualification-awards`;
   const { rows, err, busy, run } = useLinks<QualificationAward>(base, "awards");
   const [editId, setEditId] = useState<string | null>(null);
@@ -543,21 +550,21 @@ function QualificationSection({ personId }: { personId: string }) {
         <EntitySelect kind="institution" defaultValue={inst} onChange={(v) => { setInst(v); setQualId(""); }} placeholder="Institution" />
         <ScopedSelect path={inst ? `${EDU}/institutions/${inst}/qualifications` : ""} listKey="qualifications" value={qualId} onChange={setQualId} placeholder="Qualification" required />
         <select className="input" value={enrollment} onChange={(e) => setEnrollment(e.target.value)}>
-          <option value="">Link enrollment…</option>
+          <option value="">{tr("Link enrollment…")}</option>
           {enrollments.map((e) => <option key={e.id} value={e.id}>{e.fieldOfStudy || tail(e.institutionId)}</option>)}
         </select>
         <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">Status…</option>
+          <option value="">{tr("Status…")}</option>
           {["awarded", "revoked"].map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
         <input className="input" type="date" value={awardedOn} onChange={(e) => setAwardedOn(e.target.value)} title="awarded on" />
-        <input className="input" placeholder="GPA" value={gpa} onChange={(e) => setGpa(e.target.value)} />
+        <input className="input" placeholder={tr("GPA")} value={gpa} onChange={(e) => setGpa(e.target.value)} />
         <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input type="checkbox" checked={distinction} onChange={(e) => setDistinction(e.target.checked)} /> with distinction
+          <input type="checkbox" checked={distinction} onChange={(e) => setDistinction(e.target.checked)} /> {tr("with distinction")}
         </label>
         <div className="flex gap-2 sm:col-span-2">
-          <button className="btn" disabled={busy || !qualId}>{editId ? "Save award" : "Add award"}</button>
-          {editId ? <button type="button" className="btn-ghost" onClick={reset}>Cancel</button> : null}
+          <button className="btn" disabled={busy || !qualId}>{editId ? <T>Save award</T> : <T>Add award</T>}</button>
+          {editId ? <button type="button" className="btn-ghost" onClick={reset}><T>Cancel</T></button> : null}
         </div>
       </form>
     </div>
@@ -567,6 +574,7 @@ function QualificationSection({ personId }: { personId: string }) {
 /* ------------------------------------------------------------------ scholarship awards */
 
 function ScholarshipSection({ personId }: { personId: string }) {
+  const tr = useTg();
   const base = `${EDU}/persons/${personId}/scholarship-awards`;
   const { rows, err, busy, run } = useLinks<ScholarshipAward>(base, "awards");
   const [editId, setEditId] = useState<string | null>(null);
@@ -605,7 +613,7 @@ function ScholarshipSection({ personId }: { personId: string }) {
       <form key={formKey} className={formCls} onSubmit={submit}>
         <EntitySelect kind="scholarship" defaultValue={scholarship} onChange={setScholarship} placeholder="Scholarship *" />
         <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">Status…</option>
+          <option value="">{tr("Status…")}</option>
           {["active", "suspended", "terminated", "completed"].map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
         <div className="grid grid-cols-2 gap-2">
@@ -613,8 +621,8 @@ function ScholarshipSection({ personId }: { personId: string }) {
           <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} title="to" />
         </div>
         <div className="flex gap-2 sm:col-span-2">
-          <button className="btn" disabled={busy || !scholarship}>{editId ? "Save award" : "Add award"}</button>
-          {editId ? <button type="button" className="btn-ghost" onClick={reset}>Cancel</button> : null}
+          <button className="btn" disabled={busy || !scholarship}>{editId ? <T>Save award</T> : <T>Add award</T>}</button>
+          {editId ? <button type="button" className="btn-ghost" onClick={reset}><T>Cancel</T></button> : null}
         </div>
       </form>
     </div>
@@ -639,7 +647,7 @@ function AppointmentSection({ personId }: { personId: string }) {
         ))}
       </ul>
       <p className="mt-2 text-xs text-slate-400">
-        Read-only. Teaching/admin positions are filled and ended from the Education institution view.
+        <T>Read-only. Teaching/admin positions are filled and ended from the Education institution view.</T>
       </p>
     </div>
   );
@@ -662,13 +670,14 @@ const TABS = [
 type TabKey = (typeof TABS)[number]["key"];
 
 export function PersonEducationManager({ personId }: { personId: string }) {
+  const tr = useTg();
   const [tab, setTab] = useState<TabKey>("enrollments");
   return (
     <div>
       <div className="mb-3 flex items-center justify-between gap-2">
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Education relationships</p>
+        <p className="text-xs font-medium uppercase tracking-wide text-slate-400"><T>Education relationships</T></p>
         <select className="input w-56" value={tab} onChange={(e) => setTab(e.target.value as TabKey)}>
-          {TABS.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+          {TABS.map((t) => <option key={t.key} value={t.key}>{tr(t.label)}</option>)}
         </select>
       </div>
       {tab === "enrollments" && <EnrollmentSection personId={personId} />}

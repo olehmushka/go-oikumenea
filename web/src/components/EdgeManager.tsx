@@ -7,6 +7,8 @@ import { EntitySelect } from "./EntitySelect";
 import { GraphSelect } from "./GraphSelect";
 import { Localized } from "./Localized";
 import { ErrorBox } from "./ErrorBox";
+import { T } from "./T";
+import { useTg } from "@/lib/locale";
 import type { UnitRef } from "@/lib/api/types";
 
 /**
@@ -91,7 +93,7 @@ export function EdgeManager({ unitId }: { unitId: string }) {
   return (
     <div className="space-y-4">
       <div className="max-w-xs">
-        <label className="label">Graph</label>
+        <label className="label"><T>Graph</T></label>
         <GraphSelect value={graph} onChange={setGraph} />
       </div>
 
@@ -125,8 +127,7 @@ export function EdgeManager({ unitId }: { unitId: string }) {
 
       {err ? <ErrorBox error={err} /> : null}
       <p className="text-xs text-slate-400">
-        Lists show the graph&apos;s ancestors / descendants; remove targets a direct edge (a
-        transitive relation must be detached at its own edge).
+        <T>Lists show the graph's ancestors / descendants; remove targets a direct edge (a transitive relation must be detached at its own edge).</T>
       </p>
     </div>
   );
@@ -157,15 +158,16 @@ function EdgeSide({
   emptyText: string;
   onRemove: (unitId: string) => void;
 }) {
+  const tr = useTg();
   return (
     <div className="rounded-md border border-slate-200 p-3">
       <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-        {title}
+        {tr(title)}
       </div>
       <div className="grid items-end gap-2 sm:grid-cols-[1fr_auto]">
-        <EntitySelect key={selKey} kind="unit" placeholder={placeholder} allowEmpty onChange={onPick} />
+        <EntitySelect key={selKey} kind="unit" placeholder={tr(placeholder)} allowEmpty onChange={onPick} />
         <button type="button" className="btn-primary" disabled={busy || !value} onClick={onAdd}>
-          {busy ? "…" : addLabel}
+          {busy ? "…" : tr(addLabel)}
         </button>
       </div>
       {units.length > 0 ? (
@@ -179,13 +181,13 @@ function EdgeSide({
                 disabled={busy}
                 onClick={() => onRemove(u.id)}
               >
-                Remove
+                <T>Remove</T>
               </button>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="mt-3 text-sm text-slate-400">{emptyText}</p>
+        <p className="mt-3 text-sm text-slate-400">{tr(emptyText)}</p>
       )}
     </div>
   );

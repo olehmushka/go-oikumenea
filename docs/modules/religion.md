@@ -28,22 +28,23 @@ in code" (refined by D-Religion).
 
 **Milestone map.** **M22 (built):** the taxonomy + organization slice below. **M23 (built):** clergy
 grades/credentials (migration `0024_religion_clergy`). **M24 (built):** lay affiliation (`pii:special`,
-migration `0025_religion_affiliation`). **M25 (designed, deferred):** discovery (sites/schedules/search)
-— described later in this doc; its tables ship in a later migration. The M23–M25 per-tradition catalogs
+migration `0025_religion_affiliation`). **M25 (built):** discovery (sites/schedules/search,
+migration `0026_religion_discovery`) — described later in this doc. The M23–M25 per-tradition catalogs
 FK a `religion_taxa` node (`tradition_taxon_id`) rather than a fixed `tradition_family` row.
 
 **Ontology kinds** (D-Ontology; [registry](../ontology-mapping.md)) — service **16** —
 **M22 Objects:** `Taxon` (the recursive taxonomy node), `TaxonRank` (the level catalog),
 `Classification` (the theism catalog), `OrgKind`, `PolicyKind`, `OrgPolicy`. **M23 Objects (built):**
 `ClergyGrade` (16,1,8), `GradeCategory` (16,1,7), `OfficeType` (16,1,9). **M24 Objects (built):**
-`AffiliationType` (16,1,10). **M25 Objects (deferred):** `SiteType`, `ServiceType`, `ServiceSchedule`,
-`Alias`. **Reuses** `Unit` ([tenant](tenant.md)) for the organization
+`AffiliationType` (16,1,10). **M25 Objects (built):** `SiteType` (16,1,11), `ServiceType` (16,1,12),
+`ServiceSchedule` (16,1,13), `Alias` (16,1,14). **Reuses** `Unit` ([tenant](tenant.md)) for the organization
 nodes (an `OrgProfile` is a 1:1 extension of a Unit, keyed by the unit RID — no own RID) and `Position`
 ([membership](membership.md)) for clergy offices.
 **M22 Links:** `link__classified_as` (`religion_org_classifications` — unit ↔ taxon, one primary).
 **M23 Links (built):** `link__clergy_credential` (`religion_clergy_credentials`, 16,2,2 — person ↔ grade
 within an org unit). **M24 Links (built):** `link__affiliated_with` (`religion_affiliations`, 16,2,3,
-`pii:special`). **M25 Links (deferred):** `link__site_of`. *(The taxonomy closure, the theism tags on a
+`pii:special`). **M25 Links (built):** `link__site_of` (`religion_sites`, 16,2,4 — org unit ↔ a shared
+location). *(The taxonomy closure, the theism tags on a
 taxon, and the per-unit theism override
 are bare M:N/derived join tables with no RID, like `tenant_unit_closure` / `language_languoid_countries`.)*
 **Actions:** catalog + taxonomy + org edits (M22), each audited, `action__<type>` RID (16,3,0).
@@ -63,8 +64,8 @@ are bare M:N/derived join tables with no RID, like `tenant_unit_closure` / `lang
 - **Clergy** *(M23, built)* — `ClergyGrade`/`GradeCategory`/`OfficeType` catalogs + the reified,
   public `link__clergy_credential` (person ↔ grade within an org unit). **Affiliation** *(M24, built)* —
   the reified lay-belief `link__affiliated_with` (`pii:special`, envelope-encrypted, crypto-erased on
-  purge). **Discovery** *(M25, deferred)* — `religion_sites` (→ [location](location.md)),
-  `ServiceSchedule`, `Alias`.
+  purge). **Discovery** *(M25, built)* — `religion_sites` (→ [location](location.md)),
+  `religion_service_schedules`, `religion_aliases` + the closure-aware PostGIS discovery search.
 
 ## Data model
 
@@ -222,7 +223,7 @@ catechumen/baptized/confirmed; *Islam →* shahada; *Judaism →* bar/bat-mitzva
 - **Crypto-erased on purge** (the `PersonPurged` subscriber destroys the wrapped DEK); reads project
   through [D-PersonReadScope](../architecture/decisions.md); writes audited.
 
-### Discovery (D-Religion discovery surface)
+### Discovery (D-Religion discovery surface) — *built (M25, migration `0026`)*
 
 **`religion_site_types`** (catalog, per tradition) — `id` PK; optional `tradition_taxon_id`; `code`;
 `name` (translatable); timestamps; soft-delete. *Seed:* church/cathedral/chapel/monastery, mosque,
@@ -236,10 +237,12 @@ synagogue, temple, gurdwara, shrine, mission, office, online.
 - `site_type_id TEXT NOT NULL REFERENCES religion_site_types(id) ON DELETE RESTRICT`
 - `visibility TEXT NOT NULL DEFAULT 'public' CHECK (visibility IN ('public','unlisted','private'))`
 - `public_precision TEXT NOT NULL DEFAULT 'exact' CHECK (public_precision IN ('exact','street','neighborhood','city','hidden'))`
-  — the **publish-precision projection**: a public read returns the coordinate coarsened to the matching
-  H3 cell (`exact` → point, `street` → res-9, `neighborhood` → res-7, `city` → res-5, `hidden` → none),
-  the persecuted-community use case. The full coordinate stays in [location](location.md); coarsening is
-  a read-time projection here, never a stored loss.
+  — the **publish-precision projection**: a public read returns the coordinate coarsened **app-side in Go**
+  by coordinate rounding (`exact` → full point, `street` → 4 dp ≈ 11 m, `neighborhood` → 3 dp ≈ 110 m,
+  `city` → 2 dp ≈ 1.1 km, `hidden` → omitted), the persecuted-community use case. (The original sketch
+  coarsened to an **H3 cell**, but D-Location dropped H3 entirely on 2026-06-17 — stock PostGIS image, no
+  h3-pg — so coarsening is app-side rounding via `domain.Coarsen`, not a DB cell.) The full coordinate
+  stays in [location](location.md); coarsening is a read-time projection here, never a stored loss.
 - `is_primary BOOLEAN NOT NULL DEFAULT FALSE` — exactly one primary site per org unit
   (`UNIQUE (org_unit_id) WHERE is_primary AND deleted_at IS NULL`)
 - `created_at`, `updated_at`, `deleted_at`
@@ -288,6 +291,11 @@ Shabbat, daily mass, puja, meditation), special.
 | `POST /persons/{id}/clergy-credentials` · `PUT /clergy-credentials/{id}` | Add / status-flip a credential (indelible; no delete) | `clergy.manage` (on the conferring unit) |
 | `GET·PUT /affiliation-types` | Read / manage the lay-affiliation catalog (M24) | `religion.read` / `religion.catalog.manage` (instance) |
 | `GET /persons/{id}/affiliations` · `POST` · `PUT /affiliations/{id}` · `DELETE /affiliations/{id}` | Read (decrypted) / add / update / remove a lay affiliation (`pii:special`) | `affiliation.manage` |
+| `GET·PUT /site-types` · `/service-types` | Read / manage the discovery catalogs (M25) | `religion.read` / `religion.catalog.manage` (instance) |
+| `GET·POST /units/{unitId}/sites` · `PUT /sites/{id}` · `DELETE /sites/{id}` | List / attach / edit / remove a unit's sites (over a shared location) | `religion.read` / `site.manage` (on the unit) |
+| `GET·POST /sites/{id}/schedules` · `DELETE /schedules/{id}` | List / add / remove a site's service schedules | `religion.read` / `schedule.manage` (on the site's unit) |
+| `GET·POST /units/{unitId}/aliases` · `DELETE /units/{unitId}/aliases/{id}` | List / add / remove search-only aliases | `religion.read` / `site.manage` (on the unit) |
+| `GET /discovery/sites?lat=&lng=&radiusM=&minLat=…&religion=&language=&dayOfWeek=&onlineOnly=&query=` | Closure+PostGIS discovery search (coarsened coords) | `religion.read` |
 
 Translatable `name` returns as a `locale → text` map (D-i18n, M18 `NamesByID`). Per-unit ops gate on
 `religionorg.manage` checked over the **canonical** graph; taxonomy/catalog ops are instance-global.
@@ -296,8 +304,9 @@ lay-affiliation reads/writes gate `affiliation.manage` (person data) — the bel
 only for authorized readers and **crypto-erased** on person purge.
 
 **Built (M23/M24):** clergy credentials + catalogs and lay affiliations (`pii:special`) — above.
-**Deferred (M25):** discovery (sites/schedules/aliases + closure+PostGIS search) ships in a later
-migration over the same module. Clergy *offices* (membership Positions) are also still future work.
+**Built (M25):** discovery — site/service-type catalogs, sites (over a shared location), per-site service
+schedules, search-only aliases, and the closure-aware PostGIS discovery search (`/discovery/sites`) with
+app-side `public_precision` coarsening. Clergy *offices* (membership Positions) are still future work.
 
 ## Dependencies
 
@@ -344,8 +353,12 @@ assignments.
 - **Clergy credential indelible where sacramental** *(M23, built)* — revocation/laicization is a status
   flip (`active`/`suspended`/`revoked`), never a hard delete; a credential is never an authz input.
 - **Affiliation is `pii:special`** *(M24, built)* — envelope-encrypted at rest with a blind index,
-  decrypted only for authorized readers, crypto-erased on person purge. *(Deferred, M25:* one primary
-  site per unit; the discovery surface.)*
+  decrypted only for authorized readers, crypto-erased on person purge.
+- **Discovery** *(M25, built)* — exactly **one primary site per org unit** (`religion_sites`
+  partial-unique on `is_primary`); a site reuses a shared [location](location.md) by FK (RESTRICT), never
+  duplicating coordinates; `public_precision` coarsening is an **app-side** read projection
+  (`domain.Coarsen` rounding — H3 dropped); `religion_aliases` are **search-only**, never displayed; an
+  online/hybrid schedule requires a `meeting_url`.
 - **Org-policy exclusion** (`excludes_child_creation`) blocks creating child organizations beneath the
   marked body — a data-driven rule, not code.
 - **RLS backstop.** The unit-scoped religion tables carry the defense-in-depth RLS policies keyed on

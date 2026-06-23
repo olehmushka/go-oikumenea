@@ -1,6 +1,7 @@
 import { apiGet } from "@/lib/api/server";
 import { EmptyState, ErrorNotice, Mono, PageHeader, Pill, Table } from "@/components/ui";
 import { Localized } from "@/components/Localized";
+import { T } from "@/components/T";
 import { AddLocale, ToggleLocale } from "./LocaleForms";
 import type { LocaleLanguage, LocaleList } from "@/lib/api/types";
 
@@ -20,8 +21,8 @@ export default async function LocalizationPage() {
   return (
     <div>
       <PageHeader
-        title="Localization"
-        description="Instance-admin-managed supported locales. Every translatable label is returned in all locales — there is no Accept-Language negotiation."
+        title={<T>Localization</T>}
+        description={<T>Instance-admin-managed supported locales. Every translatable label is returned in all locales — there is no Accept-Language negotiation.</T>}
       />
       {error ? <ErrorNotice error={error} /> : null}
 
@@ -29,10 +30,10 @@ export default async function LocalizationPage() {
         <Table
           head={
             <>
-              <th className="th">Code</th>
-              <th className="th">Name</th>
-              <th className="th">Default</th>
-              <th className="th">Enabled</th>
+              <th className="th"><T>Code</T></th>
+              <th className="th"><T>Name</T></th>
+              <th className="th"><T>Default</T></th>
+              <th className="th"><T>Enabled</T></th>
               <th className="th"></th>
             </>
           }
@@ -46,10 +47,10 @@ export default async function LocalizationPage() {
                   <Mono>{l.code}</Mono>
                 </td>
                 <td className="td">{l.name}</td>
-                <td className="td">{l.isDefault ? <Pill tone="indigo">default</Pill> : "—"}</td>
+                <td className="td">{l.isDefault ? <Pill tone="indigo"><T>default</T></Pill> : "—"}</td>
                 <td className="td">
                   <Pill tone={l.enabled ? "green" : "slate"}>
-                    {l.enabled ? "enabled" : "disabled"}
+                    {l.enabled ? <T>enabled</T> : <T>disabled</T>}
                   </Pill>
                 </td>
                 <td className="td text-right">
@@ -59,25 +60,24 @@ export default async function LocalizationPage() {
             ))}
         </Table>
       ) : (
-        <EmptyState>No locales.</EmptyState>
+        <EmptyState><T>No locales.</T></EmptyState>
       )}
 
       <div className="mt-6 max-w-md">
         <AddLocale />
       </div>
 
-      <h2 className="mb-2 mt-8 text-sm font-semibold text-slate-900">Canonical languages</h2>
+      <h2 className="mb-2 mt-8 text-sm font-semibold text-slate-900"><T>Canonical languages</T></h2>
       <p className="mb-3 text-xs text-slate-500">
-        Each locale&apos;s canonical Glottolog language (D-Languages). Read-only — reconciled by the
-        language-scheme import (matching the locale&apos;s ISO 639-3 code to a languoid).
+        <T>Each locale's canonical Glottolog language (D-Languages). Read-only — reconciled by the language-scheme import (matching the locale's ISO 639-3 code to a languoid).</T>
       </p>
       {localeLanguages && localeLanguages.localeLanguages.length > 0 ? (
         <Table
           head={
             <>
-              <th className="th">Locale</th>
-              <th className="th">Language</th>
-              <th className="th">Languoid</th>
+              <th className="th"><T>Locale</T></th>
+              <th className="th"><T>Language</T></th>
+              <th className="th"><T>Languoid</T></th>
             </>
           }
         >
@@ -96,7 +96,7 @@ export default async function LocalizationPage() {
           ))}
         </Table>
       ) : (
-        <EmptyState>No canonical languages linked yet — run the language-scheme import.</EmptyState>
+        <EmptyState><T>No canonical languages linked yet — run the language-scheme import.</T></EmptyState>
       )}
     </div>
   );

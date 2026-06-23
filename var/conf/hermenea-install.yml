@@ -83,7 +83,7 @@ sources:
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-ua-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   # --- Europe (WOF admin gazetteer per country; Ukraine is above). Some micro-states / Kosovo (xk)
   # may not have a WOF dist and will simply fail their run (logged, retried, dead-lettered) — harmless.
   - code: wof-geo-al
@@ -92,315 +92,315 @@ sources:
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-al-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-ad
     name: "Who's On First — Andorra (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-ad-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-at
     name: "Who's On First — Austria (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-at-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-by
     name: "Who's On First — Belarus (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-by-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-be
     name: "Who's On First — Belgium (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-be-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-ba
     name: "Who's On First — Bosnia and Herzegovina (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-ba-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-bg
     name: "Who's On First — Bulgaria (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-bg-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-hr
     name: "Who's On First — Croatia (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-hr-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-cy
     name: "Who's On First — Cyprus (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-cy-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-cz
     name: "Who's On First — Czechia (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-cz-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-dk
     name: "Who's On First — Denmark (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-dk-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-ee
     name: "Who's On First — Estonia (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-ee-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-fi
     name: "Who's On First — Finland (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-fi-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-fr
     name: "Who's On First — France (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-fr-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-de
     name: "Who's On First — Germany (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-de-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-gr
     name: "Who's On First — Greece (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-gr-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-hu
     name: "Who's On First — Hungary (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-hu-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-is
     name: "Who's On First — Iceland (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-is-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-ie
     name: "Who's On First — Ireland (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-ie-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-it
     name: "Who's On First — Italy (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-it-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-xk
     name: "Who's On First — Kosovo (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-xk-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-lv
     name: "Who's On First — Latvia (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-lv-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-li
     name: "Who's On First — Liechtenstein (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-li-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-lt
     name: "Who's On First — Lithuania (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-lt-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-lu
     name: "Who's On First — Luxembourg (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-lu-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-mt
     name: "Who's On First — Malta (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-mt-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-md
     name: "Who's On First — Moldova (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-md-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-mc
     name: "Who's On First — Monaco (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-mc-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-me
     name: "Who's On First — Montenegro (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-me-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-nl
     name: "Who's On First — Netherlands (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-nl-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-mk
     name: "Who's On First — North Macedonia (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-mk-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-no
     name: "Who's On First — Norway (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-no-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-pl
     name: "Who's On First — Poland (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-pl-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-pt
     name: "Who's On First — Portugal (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-pt-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-ro
     name: "Who's On First — Romania (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-ro-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-ru
     name: "Who's On First — Russia (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-ru-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-sm
     name: "Who's On First — San Marino (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-sm-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-rs
     name: "Who's On First — Serbia (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-rs-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-sk
     name: "Who's On First — Slovakia (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-sk-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-si
     name: "Who's On First — Slovenia (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-si-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-es
     name: "Who's On First — Spain (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-es-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-se
     name: "Who's On First — Sweden (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-se-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-ch
     name: "Who's On First — Switzerland (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-ch-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-gb
     name: "Who's On First — United Kingdom (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-gb-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-va
     name: "Who's On First — Vatican City (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-va-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   # --- Americas
   - code: wof-geo-us
     name: "Who's On First — United States (admin)"
@@ -408,42 +408,42 @@ sources:
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-us-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-ca
     name: "Who's On First — Canada (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-ca-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-mx
     name: "Who's On First — Mexico (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-mx-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-br
     name: "Who's On First — Brazil (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-br-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-co
     name: "Who's On First — Colombia (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-co-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
   - code: wof-geo-ar
     name: "Who's On First — Argentina (admin)"
     connector-type: wof-sqlite
     object-type: geo-places
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-ar-latest.db.bz2"
     cron: "@weekly"
-    enabled: true
+    enabled: false
 
 # Background-runtime tunables (milliseconds; zero => documented default).
 worker:

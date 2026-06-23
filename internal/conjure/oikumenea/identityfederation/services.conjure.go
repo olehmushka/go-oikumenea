@@ -23,6 +23,17 @@ type IdentityFederationServiceClient interface {
 	// Read an account with its linked identities. Gates on `person.read` of the linked person.
 	GetAccount(ctx context.Context, authHeader bearertoken.Token, accountIdArg string) (Account, error)
 	/*
+	   List the IdP issuers configured for this instance (public fields only — no secrets), for
+	   binding UIs to offer as a choice when linking an external identity. Gates on `person.read`.
+	*/
+	ListIssuers(ctx context.Context, authHeader bearertoken.Token) ([]IssuerOption, error)
+	/*
+	   Read the person's single active account (with its linked identities), or
+	   Account:AccountNotFound when the person is roster-only (has no account). Gates on
+	   `person.read`. The console uses this to surface a person's login/account state.
+	*/
+	GetAccountByPerson(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (Account, error)
+	/*
 	   Create an account for a person, optionally linking its first identity. Gates on
 	   `person.update`. Returns Account:AccountConflict if the person already has an active
 	   account, Identity:IdentityConflict if the initial (issuer, subject) is already linked.
@@ -63,6 +74,40 @@ func (c *identityFederationServiceClient) GetAccount(ctx context.Context, authHe
 	}
 	if returnVal == nil {
 		return *new(Account), werror.ErrorWithContextParams(ctx, "getAccount response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *identityFederationServiceClient) ListIssuers(ctx context.Context, authHeader bearertoken.Token) ([]IssuerOption, error) {
+	var returnVal []IssuerOption
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListIssuers"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/identity/v1/issuers"))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listIssuers failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listIssuers response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *identityFederationServiceClient) GetAccountByPerson(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (Account, error) {
+	var returnVal *Account
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("GetAccountByPerson"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/identity/v1/persons/%s/account", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(Account), werror.WrapWithContextParams(ctx, err, "getAccountByPerson failed")
+	}
+	if returnVal == nil {
+		return *new(Account), werror.ErrorWithContextParams(ctx, "getAccountByPerson response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -159,6 +204,17 @@ type IdentityFederationServiceClientWithAuth interface {
 	// Read an account with its linked identities. Gates on `person.read` of the linked person.
 	GetAccount(ctx context.Context, accountIdArg string) (Account, error)
 	/*
+	   List the IdP issuers configured for this instance (public fields only — no secrets), for
+	   binding UIs to offer as a choice when linking an external identity. Gates on `person.read`.
+	*/
+	ListIssuers(ctx context.Context) ([]IssuerOption, error)
+	/*
+	   Read the person's single active account (with its linked identities), or
+	   Account:AccountNotFound when the person is roster-only (has no account). Gates on
+	   `person.read`. The console uses this to surface a person's login/account state.
+	*/
+	GetAccountByPerson(ctx context.Context, personIdArg string) (Account, error)
+	/*
 	   Create an account for a person, optionally linking its first identity. Gates on
 	   `person.update`. Returns Account:AccountConflict if the person already has an active
 	   account, Identity:IdentityConflict if the initial (issuer, subject) is already linked.
@@ -189,6 +245,14 @@ type identityFederationServiceClientWithAuth struct {
 
 func (c *identityFederationServiceClientWithAuth) GetAccount(ctx context.Context, accountIdArg string) (Account, error) {
 	return c.client.GetAccount(ctx, c.authHeader, accountIdArg)
+}
+
+func (c *identityFederationServiceClientWithAuth) ListIssuers(ctx context.Context) ([]IssuerOption, error) {
+	return c.client.ListIssuers(ctx, c.authHeader)
+}
+
+func (c *identityFederationServiceClientWithAuth) GetAccountByPerson(ctx context.Context, personIdArg string) (Account, error) {
+	return c.client.GetAccountByPerson(ctx, c.authHeader, personIdArg)
 }
 
 func (c *identityFederationServiceClientWithAuth) CreateAccount(ctx context.Context, requestArg CreateAccountRequest) (Account, error) {
@@ -226,6 +290,22 @@ func (c *identityFederationServiceClientWithTokenProvider) GetAccount(ctx contex
 		return *new(Account), err
 	}
 	return c.client.GetAccount(ctx, bearertoken.Token(token), accountIdArg)
+}
+
+func (c *identityFederationServiceClientWithTokenProvider) ListIssuers(ctx context.Context) ([]IssuerOption, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListIssuers(ctx, bearertoken.Token(token))
+}
+
+func (c *identityFederationServiceClientWithTokenProvider) GetAccountByPerson(ctx context.Context, personIdArg string) (Account, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Account), err
+	}
+	return c.client.GetAccountByPerson(ctx, bearertoken.Token(token), personIdArg)
 }
 
 func (c *identityFederationServiceClientWithTokenProvider) CreateAccount(ctx context.Context, requestArg CreateAccountRequest) (Account, error) {

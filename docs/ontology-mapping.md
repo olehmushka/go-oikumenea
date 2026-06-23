@@ -89,8 +89,8 @@ Real-world entities with identity over time → Objects.
 | `OrgKind` / `PolicyKind` / `OrgPolicy` *(M22)* | [religion](modules/religion.md) | kinds have `code`/`name` | soft-delete | org nodes **reuse `Unit`**; `OrgKind` (`16,1,4`), `PolicyKind` (`16,1,5`), `OrgPolicy` (`16,1,6`); `OrgProfile` is a 1:1 Unit extension keyed by the unit RID (no own RID) |
 | `ClergyGrade` / `GradeCategory` / `OfficeType` *(M23)* | [religion](modules/religion.md) | yes (`code`/`name`) | soft-delete | **per-tradition** ordered clergy catalog (`16,1,8` / `16,1,7` / `16,1,9`; `tradition_taxon_id` → `religion_taxa`); no cross-tradition comparator (DS-43); offices **reuse `Position`**; D-ClergyCredential |
 | `AffiliationType` *(M24)* | [religion](modules/religion.md) | yes (`code`/`name`) | soft-delete | per-tradition lay-affiliation catalog (`16,1,10`); D-ReligiousAffiliation |
-| `SiteType` / `ServiceType` *(planned, M25)* | `religion` | yes (`code`/`name`) | soft-delete | per-tradition discovery catalogs (church/mosque/synagogue/temple…; main/prayer…) |
-| `ServiceSchedule` / `Alias` *(planned, M25)* | `religion` | no | soft-delete | per-site recurring service times; search-only alternative names (never displayed) |
+| `SiteType` / `ServiceType` *(M25)* | [religion](modules/religion.md) | yes (`code`/`name`) | soft-delete | per-tradition discovery catalogs (`16,1,11` / `16,1,12`; church/mosque/synagogue/temple…; main/prayer…) |
+| `ServiceSchedule` / `Alias` *(M25)* | [religion](modules/religion.md) | no | soft-delete | per-site recurring service times (`16,1,13`); search-only alternative names (`16,1,14`, never displayed) |
 | `GeoPlace` *(M16)* | [location](modules/location.md) | **RID** (location svc); `wof_id` (Who's-On-First id) is a `UNIQUE` concordance key | status (`active`/`retired`) | WOF admin gazetteer (country/region/county/locality); RID-keyed (F-014); `parent_id uuid` self-FK (tree), denormalized `country_id` → `Country`; PostGIS `geom`/`centroid`/`bbox`; import resolves `wof_id`/`code` → RID in SQL; import-loaded via hermenea `wof-sqlite` connector; D-GeoPlaces |
 | ~~`GeoSubdivision`~~ *(superseded by `GeoPlace`/D-GeoPlaces)* | [platform](modules/platform.md) | ~~`code` = ISO 3166-2~~ | — | **not built** — ISO-3166-2 subdivisions are subsumed by the richer WOF `geo_places` (D-GeoPlaces); D-GeoSubdivisions |
 | `Vehicle` *(planned, M26)* | `vehicle` | optional | soft-delete | physical vehicle; `vin` unique among active (nullable, `pii:basic`); `type_id`/`model_id`; `attributes` JSONB; D-Vehicles |
@@ -167,7 +167,7 @@ Links additionally carry `valid_from`/`valid_to`
 | `CLASSIFIED_AS` *(M22)* | `Unit` → `Taxon` | [religion](modules/religion.md) | M:N, one primary (`is_primary` partial-unique); `source`/`confidence` | reified `religion_org_classifications` (`16,2,1`); a unit's faith classification tags; **never an authz input** |
 | `CLERGY_CREDENTIAL` *(M23)* | `Person` → `ClergyGrade` (in an org `Unit`) | [religion](modules/religion.md) | reified `religion_clergy_credentials` (`16,2,2`); `granted_on`, conferrer, `status ∈ active\|suspended\|revoked`, `source`/`confidence` | **temporal**; indelible where sacramental; **never an authz input** (parallels `HOLDS_RANK`) |
 | `AFFILIATED_WITH` *(M24)* | `Person` → religion/tradition/community `Unit` | [religion](modules/religion.md) | reified `religion_affiliations` (`16,2,3`); `affiliation_type`, **`pii:special`** envelope-encrypted value + blind index, `source`/`confidence` | **temporal**; crypto-erased on purge; never an authz input; D-ReligiousAffiliation / D-SpecialPII |
-| `SITE_OF` *(planned, M25)* | `Unit` → `Location` | `religion` | `site_type`, `visibility`, `public_precision`, `is_primary` (one per unit) | — (shared `Location`; precision projected at read time) |
+| `SITE_OF` *(M25)* | `Unit` → `Location` | [religion](modules/religion.md) | reified `religion_sites` (`16,2,4`); `site_type`, `visibility`, `public_precision`, `is_primary` (one per unit) | shared `Location` by FK; precision coarsened **app-side** at read time (H3 dropped — `domain.Coarsen` rounding) |
 | `MANUFACTURED_BY` *(planned, M26)* | `VehicleBrand` → `Company` | `vehicle` | manufacturer of a marque | **temporal** (`effective_from`/`effective_to`) — changes with acquisitions |
 | `REGISTERED_TO` *(planned, M26)* | `Vehicle` → `Person`\|`Company` | `vehicle` | **polymorphic owner** (person XOR company); `country` → `geo_countries`, `subdivision` → `geo_subdivisions` (plate region), `registration_number` (unique active per country), `number_type` | **temporal** + `status`; the ownership+plate record (re-registration = new row); person-owned rows `pii:basic`, holder-scoped, purge-erased; D-Vehicles |
 
@@ -205,7 +205,7 @@ ledger ([Identifier scheme](#identifier-scheme-rids)).
   `CreateInstitution`/`CreateEnrollment`/`RecordDormStay`/`AppointEducationPosition` (M20);
   `CreateCompany`/`RecordShareholding`/`RecordBeneficiary`/`AppointCompanyPosition` (M21);
   `ConferCredential`/`SuspendCredential`/`AppointClergy` (M23), `RecordAffiliation` (M24),
-  `AttachSite`/`AddServiceSchedule` (M25) — the religion vertical (D-Religion);
+  `AddSite`/`AddSchedule`/`AddAlias` (M25, built) — the religion vertical (D-Religion);
   `CreateVehicle`/`RegisterVehicle`/`TransferRegistration` + `geo_subdivisions`/vehicle-catalog edits
   (M26 — D-Vehicles / D-GeoSubdivisions).
 - **Order-driven effects (the strongest ontology fit):** `IssueOrder` is one Action whose effects are

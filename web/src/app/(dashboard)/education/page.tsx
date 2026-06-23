@@ -11,6 +11,8 @@ import { bffGet } from "@/lib/api/browser";
 import { CountrySelect } from "@/components/CountrySelect";
 import { PageHeader, Card, Table, Mono } from "@/components/ui";
 import { ErrorBox } from "@/components/ErrorBox";
+import { T } from "@/components/T";
+import { useTg } from "@/lib/locale";
 import { newSuffix, slugify } from "@/lib/code";
 import { pickLabel, type LocaleMap } from "@/lib/i18n";
 
@@ -41,8 +43,8 @@ export default function EducationPage() {
   return (
     <div>
       <PageHeader
-        title="Education"
-        description="External reference institutions (where people studied/taught) and their internal structure tree. Distinct from the deploying org's tenant units."
+        title={<T>Education</T>}
+        description={<T>External reference institutions (where people studied/taught) and their internal structure tree. Distinct from the deploying org's tenant units.</T>}
       />
       {err ? <div className="mb-4"><ErrorBox error={err} /></div> : null}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -72,6 +74,7 @@ const REF_TYPES = [
 ] as const;
 
 function ReferencePanel({ institution }: { institution: Institution }) {
+  const tr = useTg();
   const [kind, setKind] = useState<(typeof REF_TYPES)[number]>(REF_TYPES[0]);
   const [rows, setRows] = useState<RefRow[]>([]);
   const [err, setErr] = useState<unknown>(null);
@@ -106,19 +109,19 @@ function ReferencePanel({ institution }: { institution: Institution }) {
   return (
     <Card>
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-700">Reference layer</h2>
+        <h2 className="text-sm font-semibold text-slate-700"><T>Reference layer</T></h2>
         <select className="input w-48" value={kind.key} onChange={(e) => setKind(REF_TYPES.find((t) => t.key === e.target.value) ?? REF_TYPES[0])}>
-          {REF_TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+          {REF_TYPES.map((t) => <option key={t.key} value={t.key}>{tr(t.label)}</option>)}
         </select>
       </div>
       {err ? <div className="mb-3"><ErrorBox error={err} /></div> : null}
       <form onSubmit={onSubmit} className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
-        <input required className="input" placeholder={kind.nameField === "title" ? "title" : "name"} value={name} onChange={(e) => setName(e.target.value)} />
-        <input required className="input" placeholder="auto from name" value={codeValue} onChange={(e) => { setCode(e.target.value); setCodeTouched(true); }} />
-        <button type="submit" className="btn" disabled={busy}>{busy ? "Adding…" : "Add"}</button>
+        <input required className="input" placeholder={tr(kind.nameField === "title" ? "title" : "name")} value={name} onChange={(e) => setName(e.target.value)} />
+        <input required className="input" placeholder={tr("auto from name")} value={codeValue} onChange={(e) => { setCode(e.target.value); setCodeTouched(true); }} />
+        <button type="submit" className="btn" disabled={busy}>{busy ? <T>Adding…</T> : <T>Add</T>}</button>
       </form>
-      {rows.length === 0 ? <p className="text-sm text-slate-400">None yet.</p> : (
-        <Table head={<><th className="th">Code</th><th className="th">Name</th></>}>
+      {rows.length === 0 ? <p className="text-sm text-slate-400"><T>None yet.</T></p> : (
+        <Table head={<><th className="th"><T>Code</T></th><th className="th"><T>Name</T></th></>}>
           {rows.map((r) => (
             <tr key={r.id} className="hover:bg-slate-50">
               <td className="td"><Mono>{r.code}</Mono></td>
@@ -132,6 +135,7 @@ function ReferencePanel({ institution }: { institution: Institution }) {
 }
 
 function CreateInstitution({ kinds, onCreated }: { kinds: Kind[]; onCreated: () => void }) {
+  const tr = useTg();
   const [err, setErr] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<Institution | null>(null);
@@ -171,29 +175,29 @@ function CreateInstitution({ kinds, onCreated }: { kinds: Kind[]; onCreated: () 
 
   return (
     <Card>
-      <h2 className="mb-3 text-sm font-semibold text-slate-700">Create an institution</h2>
+      <h2 className="mb-3 text-sm font-semibold text-slate-700"><T>Create an institution</T></h2>
       {err ? <div className="mb-3"><ErrorBox error={err} /></div> : null}
       <form onSubmit={onSubmit} className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
-          <div><label className="label">Name *</label><input name="name" required className="input" placeholder="KPI" value={name} onChange={(e) => setName(e.target.value)} /></div>
-          <div><label className="label">Code *</label><input name="code" required className="input" placeholder="auto from name" value={codeValue} onChange={(e) => { setCode(e.target.value); setCodeTouched(true); }} /></div>
+          <div><label className="label"><T>Name *</T></label><input name="name" required className="input" placeholder={tr("KPI")} value={name} onChange={(e) => setName(e.target.value)} /></div>
+          <div><label className="label"><T>Code *</T></label><input name="code" required className="input" placeholder={tr("auto from name")} value={codeValue} onChange={(e) => { setCode(e.target.value); setCodeTouched(true); }} /></div>
         </div>
         <div>
-          <label className="label">Kind *</label>
+          <label className="label"><T>Kind *</T></label>
           <select name="kindId" required className="input" defaultValue="">
             <option value="" disabled>—</option>
             {kinds.map((k) => <option key={k.id} value={k.id}>{pickLabel(k.name) || k.code}</option>)}
           </select>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <div><label className="label">Country</label><CountrySelect name="countryId" /></div>
-          <div><label className="label">Founded</label><input name="foundedOn" type="date" className="input" /></div>
+          <div><label className="label"><T>Country</T></label><CountrySelect name="countryId" /></div>
+          <div><label className="label"><T>Founded</T></label><input name="foundedOn" type="date" className="input" /></div>
         </div>
-        <button type="submit" className="btn" disabled={busy}>{busy ? "Creating…" : "Create institution"}</button>
+        <button type="submit" className="btn" disabled={busy}>{busy ? <T>Creating…</T> : <T>Create institution</T>}</button>
       </form>
       {created ? (
         <div className="mt-4 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800">
-          Created <Mono>{created.code}</Mono> — <Link href={`/o/${created.id}`} className="underline">open</Link>
+          <T>Created</T> <Mono>{created.code}</Mono> — <Link href={`/o/${created.id}`} className="underline"><T>open</T></Link>
         </div>
       ) : null}
     </Card>
@@ -203,11 +207,11 @@ function CreateInstitution({ kinds, onCreated }: { kinds: Kind[]; onCreated: () 
 function InstitutionList({ institutions, selected, onSelect }: { institutions: Institution[]; selected: Institution | null; onSelect: (i: Institution) => void }) {
   return (
     <Card>
-      <h2 className="mb-3 text-sm font-semibold text-slate-700">Institutions</h2>
+      <h2 className="mb-3 text-sm font-semibold text-slate-700"><T>Institutions</T></h2>
       {institutions.length === 0 ? (
-        <p className="text-sm text-slate-400">No institutions yet.</p>
+        <p className="text-sm text-slate-400"><T>No institutions yet.</T></p>
       ) : (
-        <Table head={<><th className="th">Code</th><th className="th">Name</th><th className="th">State</th></>}>
+        <Table head={<><th className="th"><T>Code</T></th><th className="th"><T>Name</T></th><th className="th"><T>State</T></th></>}>
           {institutions.map((i) => (
             <tr key={i.id} className={`cursor-pointer hover:bg-slate-50 ${selected?.id === i.id ? "bg-indigo-50" : ""}`} onClick={() => onSelect(i)}>
               <td className="td"><Mono>{i.code}</Mono></td>
@@ -222,6 +226,7 @@ function InstitutionList({ institutions, selected, onSelect }: { institutions: I
 }
 
 function InstitutionDetail({ institution, unitKinds }: { institution: Institution; unitKinds: Kind[] }) {
+  const tr = useTg();
   const [units, setUnits] = useState<Unit[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
   const [err, setErr] = useState<unknown>(null);
@@ -266,13 +271,13 @@ function InstitutionDetail({ institution, unitKinds }: { institution: Institutio
   return (
     <Card>
       <h2 className="mb-3 text-sm font-semibold text-slate-700">
-        {pickLabel(institution.name) || institution.code} — structure
+        {pickLabel(institution.name) || institution.code} <T>— structure</T>
       </h2>
       {err ? <div className="mb-3"><ErrorBox error={err} /></div> : null}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div>
-          <h3 className="mb-2 text-xs font-semibold uppercase text-slate-500">Units (tree)</h3>
-          {units.length === 0 ? <p className="text-sm text-slate-400">No units.</p> : (
+          <h3 className="mb-2 text-xs font-semibold uppercase text-slate-500"><T>Units (tree)</T></h3>
+          {units.length === 0 ? <p className="text-sm text-slate-400"><T>No units.</T></p> : (
             <ul className="space-y-1 text-sm">
               {units.map((u) => (
                 <li key={u.id} style={{ paddingLeft: `${(u.depth ?? 0) * 16}px` }}>
@@ -284,30 +289,30 @@ function InstitutionDetail({ institution, unitKinds }: { institution: Institutio
           )}
           <form onSubmit={addUnit} className="mt-4 space-y-2 border-t border-slate-100 pt-3">
             <div className="grid grid-cols-2 gap-2">
-              <input name="name" required className="input" placeholder="name (FIOT)" value={name} onChange={(e) => setName(e.target.value)} />
-              <input name="code" required className="input" placeholder="auto from name" value={codeValue} onChange={(e) => { setCode(e.target.value); setCodeTouched(true); }} />
+              <input name="name" required className="input" placeholder={tr("name (FIOT)")} value={name} onChange={(e) => setName(e.target.value)} />
+              <input name="code" required className="input" placeholder={tr("auto from name")} value={codeValue} onChange={(e) => { setCode(e.target.value); setCodeTouched(true); }} />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <select name="kindId" required className="input" defaultValue="">
-                <option value="" disabled>kind…</option>
+                <option value="" disabled>{tr("kind…")}</option>
                 {unitKinds.map((k) => <option key={k.id} value={k.id}>{pickLabel(k.name) || k.code}</option>)}
               </select>
               <select name="parentId" className="input" defaultValue="">
-                <option value="">— top-level —</option>
+                <option value="">{tr("— top-level —")}</option>
                 {units.map((u) => <option key={u.id} value={u.id}>{pickLabel(u.name) || u.code}</option>)}
               </select>
             </div>
-            <button type="submit" className="btn" disabled={busy}>{busy ? "Adding…" : "Add unit"}</button>
+            <button type="submit" className="btn" disabled={busy}>{busy ? <T>Adding…</T> : <T>Add unit</T>}</button>
           </form>
         </div>
         <div>
-          <h3 className="mb-2 text-xs font-semibold uppercase text-slate-500">Positions</h3>
-          {positions.length === 0 ? <p className="text-sm text-slate-400">No positions.</p> : (
-            <Table head={<><th className="th">Title</th><th className="th">Holder</th></>}>
+          <h3 className="mb-2 text-xs font-semibold uppercase text-slate-500"><T>Positions</T></h3>
+          {positions.length === 0 ? <p className="text-sm text-slate-400"><T>No positions.</T></p> : (
+            <Table head={<><th className="th"><T>Title</T></th><th className="th"><T>Holder</T></th></>}>
               {positions.map((p) => (
                 <tr key={p.id} className="hover:bg-slate-50">
                   <td className="td"><Link href={`/o/${p.id}`} className="text-indigo-600 hover:underline">{pickLabel(p.title) || p.code}</Link></td>
-                  <td className="td">{p.holder ? <Mono>{p.holder.personId.slice(-6)}</Mono> : <span className="text-amber-600">vacant</span>}</td>
+                  <td className="td">{p.holder ? <Mono>{p.holder.personId.slice(-6)}</Mono> : <span className="text-amber-600"><T>vacant</T></span>}</td>
                 </tr>
               ))}
             </Table>

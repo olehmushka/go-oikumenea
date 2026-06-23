@@ -127,6 +127,13 @@ const (
 	// PEP (parallel to person updates). Neither is ever an authorization input (parallel to D-Rank).
 	PermClergyManage      Permission = "clergy.manage"
 	PermAffiliationManage Permission = "affiliation.manage"
+	// discovery (D-Religion discovery surface, M25) — a site (worship-community unit ↔ a shared
+	// location) and its service schedules are unit-scoped directory data: `site.manage` /
+	// `schedule.manage` are checked against the organization unit over the canonical graph (parallel
+	// to `religionorg.manage`, so authority cascades a governance subtree). Site/service-type catalog
+	// writes ride the instance-plane `religion.catalog.manage`; discovery reads ride `religion.read`.
+	PermSiteManage     Permission = "site.manage"
+	PermScheduleManage Permission = "schedule.manage"
 
 	// i18n
 	PermLocaleRead        Permission = "locale.read"
@@ -200,7 +207,7 @@ var catalog = func() map[Permission]struct{} {
 		PermLocationRead, PermLocationCreate, PermLocationUpdate,
 		PermEducationRead, PermEducationManage, PermEducationPositionManage, PermEducationEnrollmentManage,
 		PermCompanyRead, PermCompanyManage, PermCompanyPositionManage,
-		PermReligionRead, PermReligionOrgManage, PermClergyManage, PermAffiliationManage,
+		PermReligionRead, PermReligionOrgManage, PermClergyManage, PermAffiliationManage, PermSiteManage, PermScheduleManage,
 		PermLocaleRead, PermTranslationRead, PermLocaleManage, PermTranslationManage,
 		PermRankSchemeManage, PermGraphManage, PermClosureRebuild, PermDocumentTypeManage, PermOrderTypeManage,
 		PermPersonalCodeSchemeManage, PermCountryManage, PermLocationTypesManage, PermEducationCatalogManage, PermCompanyCatalogManage, PermReligionCatalogManage, PermInstanceConfig, PermInstanceAdminManage,
@@ -277,7 +284,7 @@ var managerOnlyPerms = []Permission{
 	PermPersonalCodeCreate, PermPersonalCodeUpdate,
 	PermOrderCreate,
 	PermLocationCreate, PermLocationUpdate,
-	PermReligionOrgManage,
+	PermReligionOrgManage, PermSiteManage, PermScheduleManage,
 }
 
 var adminOnlyPerms = []Permission{

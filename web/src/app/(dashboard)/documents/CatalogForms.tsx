@@ -6,6 +6,8 @@ import { mutate } from "@/lib/api/client";
 import { ErrorBox } from "@/components/ErrorBox";
 import { Localized } from "@/components/Localized";
 import { CountrySelect, useCountryMap } from "@/components/CountrySelect";
+import { T } from "@/components/T";
+import { useTg } from "@/lib/locale";
 import type { DocumentType, PersonalCodeScheme } from "@/lib/api/types";
 
 function useRun() {
@@ -29,6 +31,7 @@ function useRun() {
 /** Create / edit (rename, retire) document types. No hard delete — status flips to retired. */
 export function DocTypeManager({ types }: { types: DocumentType[] }) {
   const { busy, err, run } = useRun();
+  const tr = useTg();
   const [editing, setEditing] = useState<string | null>(null);
   return (
     <div className="space-y-2">
@@ -51,16 +54,16 @@ export function DocTypeManager({ types }: { types: DocumentType[] }) {
               );
             }}
           >
-            <input name="name" className="input" defaultValue={t.code} placeholder="name" />
+            <input name="name" className="input" defaultValue={t.code} placeholder={tr("name")} />
             <select name="status" className="input" defaultValue={t.status ?? "active"}>
-              <option value="active">active</option>
-              <option value="retired">retired</option>
+              <option value="active">{tr("active")}</option>
+              <option value="retired">{tr("retired")}</option>
             </select>
             <button className="btn-primary" disabled={busy}>
-              Save
+              <T>Save</T>
             </button>
             <button type="button" className="btn-ghost" onClick={() => setEditing(null)}>
-              Cancel
+              <T>Cancel</T>
             </button>
           </form>
         ) : (
@@ -78,7 +81,7 @@ export function DocTypeManager({ types }: { types: DocumentType[] }) {
                 className="text-xs font-medium text-indigo-600 hover:underline"
                 onClick={() => setEditing(t.id)}
               >
-                Edit
+                <T>Edit</T>
               </button>
             </span>
           </div>
@@ -100,10 +103,10 @@ export function DocTypeManager({ types }: { types: DocumentType[] }) {
           );
         }}
       >
-        <input name="code" required className="input" placeholder="code" />
-        <input name="name" required className="input" placeholder="name" />
+        <input name="code" required className="input" placeholder={tr("code")} />
+        <input name="name" required className="input" placeholder={tr("name")} />
         <button className="btn-ghost" disabled={busy}>
-          Add type
+          <T>Add type</T>
         </button>
       </form>
     </div>
@@ -113,6 +116,7 @@ export function DocTypeManager({ types }: { types: DocumentType[] }) {
 /** Create / edit (rename, retire, set regex) personal-code schemes. Keyed by code. */
 export function SchemeManager({ schemes }: { schemes: PersonalCodeScheme[] }) {
   const { busy, err, run } = useRun();
+  const tr = useTg();
   const [editing, setEditing] = useState<string | null>(null);
   const countryCode = useCountryMap();
   return (
@@ -137,17 +141,17 @@ export function SchemeManager({ schemes }: { schemes: PersonalCodeScheme[] }) {
               );
             }}
           >
-            <input name="name" className="input" defaultValue={s.code} placeholder="name" />
-            <input name="validationRegex" className="input font-mono" placeholder="regex (optional)" />
+            <input name="name" className="input" defaultValue={s.code} placeholder={tr("name")} />
+            <input name="validationRegex" className="input font-mono" placeholder={tr("regex (optional)")} />
             <select name="status" className="input" defaultValue={s.status ?? "active"}>
-              <option value="active">active</option>
-              <option value="retired">retired</option>
+              <option value="active">{tr("active")}</option>
+              <option value="retired">{tr("retired")}</option>
             </select>
             <button className="btn-primary" disabled={busy}>
-              Save
+              <T>Save</T>
             </button>
             <button type="button" className="btn-ghost" onClick={() => setEditing(null)}>
-              Cancel
+              <T>Cancel</T>
             </button>
           </form>
         ) : (
@@ -166,7 +170,7 @@ export function SchemeManager({ schemes }: { schemes: PersonalCodeScheme[] }) {
                 className="text-xs font-medium text-indigo-600 hover:underline"
                 onClick={() => setEditing(s.code)}
               >
-                Edit
+                <T>Edit</T>
               </button>
             </span>
           </div>
@@ -190,12 +194,12 @@ export function SchemeManager({ schemes }: { schemes: PersonalCodeScheme[] }) {
           );
         }}
       >
-        <input name="code" required className="input" placeholder="code (e.g. ua-rnokpp)" />
-        <input name="name" required className="input" placeholder="name" />
-        <input name="genericCategory" required className="input" placeholder="category (e.g. tax-id)" />
+        <input name="code" required className="input" placeholder={tr("code (e.g. ua-rnokpp)")} />
+        <input name="name" required className="input" placeholder={tr("name")} />
+        <input name="genericCategory" required className="input" placeholder={tr("category (e.g. tax-id)")} />
         <CountrySelect name="countryIso" />
         <button className="btn-ghost col-span-2" disabled={busy}>
-          Add scheme
+          <T>Add scheme</T>
         </button>
       </form>
     </div>

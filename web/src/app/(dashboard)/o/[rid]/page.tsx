@@ -9,6 +9,7 @@ import { LinksPanel, type LinkGroup } from "@/components/ontology/LinksPanel";
 import { RecordVisit } from "@/components/ontology/RecordVisit";
 import { OBJECT_TYPES, type Row } from "@/lib/ontology/registry";
 import { parseRid } from "@/lib/ontology/rid";
+import { T } from "@/components/T";
 
 // Types that already have a richer bespoke editor page — land traversal there; the generic view below
 // covers every other type (role, assignment, position, document, catalogs, graph…).
@@ -65,7 +66,7 @@ export default async function ObjectPage({ params }: { params: Promise<{ rid: st
   if (error || !obj) {
     return (
       <div>
-        <PageHeader title={def.label} />
+        <PageHeader title={<T>{def.label}</T>} />
         <ErrorNotice error={error} />
       </div>
     );
@@ -76,7 +77,7 @@ export default async function ObjectPage({ params }: { params: Promise<{ rid: st
       <RecordVisit id={obj.id} type={def.type} label={def.title(obj)} />
       <div className="mb-4 flex items-center justify-between">
         <Link href={`/explore/${def.type}`} className="text-sm text-indigo-600 hover:underline">
-          ← All {def.labelPlural.toLowerCase()}
+          ← <T>All</T> <span className="lowercase"><T>{def.labelPlural}</T></span>
         </Link>
       </div>
 
@@ -86,11 +87,11 @@ export default async function ObjectPage({ params }: { params: Promise<{ rid: st
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <Card>
-          <h2 className="mb-3 text-sm font-semibold text-slate-900">Properties</h2>
+          <h2 className="mb-3 text-sm font-semibold text-slate-900"><T>Properties</T></h2>
           <PropertyList def={def} obj={obj} />
         </Card>
         <Card>
-          <h2 className="mb-3 text-sm font-semibold text-slate-900">Links</h2>
+          <h2 className="mb-3 text-sm font-semibold text-slate-900"><T>Links</T></h2>
           <LinksPanel groups={groups} />
         </Card>
       </div>

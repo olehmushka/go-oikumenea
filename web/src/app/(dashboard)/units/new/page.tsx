@@ -7,9 +7,12 @@ import { PageHeader } from "@/components/ui";
 import { ErrorBox } from "@/components/ErrorBox";
 import { EntitySelect } from "@/components/EntitySelect";
 import { GraphSelect } from "@/components/GraphSelect";
+import { T } from "@/components/T";
+import { useTg } from "@/lib/locale";
 
 export default function NewUnitPage() {
   const router = useRouter();
+  const tr = useTg();
   const [err, setErr] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -44,24 +47,24 @@ export default function NewUnitPage() {
 
   return (
     <div className="max-w-lg">
-      <PageHeader title="New unit" description="Create a unit. Optionally pick a parent to nest it under (you can also manage edges later from the unit's detail page)." />
+      <PageHeader title={<T>New unit</T>} description={<T>Create a unit. Optionally pick a parent to nest it under (you can also manage edges later from the unit&apos;s detail page).</T>} />
       {err ? <div className="mb-4"><ErrorBox error={err} /></div> : null}
       <form onSubmit={onSubmit} className="card space-y-4 p-5">
         <div>
-          <label className="label">Code *</label>
+          <label className="label"><T>Code *</T></label>
           <input name="code" required className="input" placeholder="hq-1" />
-          <p className="mt-1 text-xs text-slate-400">Stable, locale-agnostic identifier.</p>
+          <p className="mt-1 text-xs text-slate-400"><T>Stable, locale-agnostic identifier.</T></p>
         </div>
         <div>
-          <label className="label">Name *</label>
-          <input name="name" required className="input" placeholder="Headquarters" />
+          <label className="label"><T>Name *</T></label>
+          <input name="name" required className="input" placeholder={tr("Headquarters")} />
         </div>
         <div>
-          <label className="label">Kind</label>
-          <input name="unitKind" className="input" placeholder="command / department / faculty" />
+          <label className="label"><T>Kind</T></label>
+          <input name="unitKind" className="input" placeholder={tr("command / department / faculty")} />
         </div>
         <div>
-          <label className="label">Visibility</label>
+          <label className="label"><T>Visibility</T></label>
           <select name="visibility" className="input" defaultValue="PUBLIC">
             <option value="PUBLIC">PUBLIC</option>
             <option value="SHADOW">SHADOW</option>
@@ -69,21 +72,21 @@ export default function NewUnitPage() {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label">Parent unit (optional)</label>
-            <EntitySelect name="parentId" kind="unit" allowEmpty placeholder="Search a parent…" />
-            <p className="mt-1 text-xs text-slate-400">Nests this unit under the chosen parent.</p>
+            <label className="label"><T>Parent unit (optional)</T></label>
+            <EntitySelect name="parentId" kind="unit" allowEmpty placeholder={tr("Search a parent…")} />
+            <p className="mt-1 text-xs text-slate-400"><T>Nests this unit under the chosen parent.</T></p>
           </div>
           <div>
-            <label className="label">Graph</label>
+            <label className="label"><T>Graph</T></label>
             <GraphSelect name="graph" />
           </div>
         </div>
         <div className="flex gap-2">
           <button type="submit" className="btn-primary" disabled={busy}>
-            {busy ? "Creating…" : "Create unit"}
+            {busy ? <T>Creating…</T> : <T>Create unit</T>}
           </button>
           <button type="button" className="btn-ghost" onClick={() => router.back()}>
-            Cancel
+            <T>Cancel</T>
           </button>
         </div>
       </form>

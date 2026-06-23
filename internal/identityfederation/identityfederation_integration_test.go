@@ -153,6 +153,40 @@ func TestAccountLifecycleAndResolution(t *testing.T) {
 	}
 }
 
+func TestGetAccountByPerson(t *testing.T) {
+	linking := true
+	svc, pool := newService(t, &linking)
+	ctx := context.Background()
+	personID := makePerson(t, pool, uniq("p"))
+	issuer, subject := "https://idp.example", uniq("sub")
+
+	// A roster-only person (no account) surfaces ErrAccountNotFound.
+	if _, err := svc.GetAccountByPerson(ctx, personID); !errors.Is(err, domain.ErrAccountNotFound) {
+		t.Fatalf("by-person before create: want ErrAccountNotFound, got %v", err)
+	}
+
+	acct, err := svc.CreateAccount(ctx, domain.Account{PersonID: personID}, &domain.ExternalIdentity{Issuer: issuer, Subject: subject})
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+
+	got, err := svc.GetAccountByPerson(ctx, personID)
+	if err != nil {
+		t.Fatalf("by-person after create: %v", err)
+	}
+	if got.ID != acct.ID || got.PersonID != personID {
+		t.Fatalf("by-person mismatch: %+v (want account %s person %s)", got, acct.ID, personID)
+	}
+	if len(got.Identities) != 1 || got.Identities[0].Subject != subject {
+		t.Fatalf("by-person identities not loaded: %+v", got.Identities)
+	}
+
+	// An unknown person resolves to ErrAccountNotFound, not some other error.
+	if _, err := svc.GetAccountByPerson(ctx, makePerson(t, pool, uniq("p2"))); !errors.Is(err, domain.ErrAccountNotFound) {
+		t.Fatalf("by-person unknown: want ErrAccountNotFound, got %v", err)
+	}
+}
+
 func TestUnlinkIdentity(t *testing.T) {
 	linking := true
 	svc, pool := newService(t, &linking)

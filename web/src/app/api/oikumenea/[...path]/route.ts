@@ -27,7 +27,10 @@ async function handle(req: Request, ctx: { params: Promise<{ path: string[] }> }
   });
 
   // Relay status + JSON body (incl. the Conjure SerializableError envelope) unchanged.
-  const text = await res.text();
+  // Null-body statuses (204 No Content from a delete, 205, 304) MUST NOT carry a body — the Response
+  // constructor throws "Invalid response status code" otherwise — so relay them bodyless.
+  const nullBody = res.status === 204 || res.status === 205 || res.status === 304;
+  const text = nullBody ? null : await res.text();
   return new Response(text, {
     status: res.status,
     headers: {

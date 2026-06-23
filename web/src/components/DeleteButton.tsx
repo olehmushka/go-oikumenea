@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { mutate } from "@/lib/api/client";
+import { useTg } from "@/lib/locale";
 
 /** Generic confirm-then-DELETE button that refreshes the route on success. */
 export function DeleteButton({
@@ -15,6 +16,7 @@ export function DeleteButton({
   confirm?: string;
 }) {
   const router = useRouter();
+  const tr = useTg();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   return (
@@ -37,7 +39,7 @@ export function DeleteButton({
           }
         }}
       >
-        {busy ? "…" : label}
+        {busy ? "…" : tr(label)}
       </button>
       {err && <span className="text-xs text-red-500">{err}</span>}
     </span>

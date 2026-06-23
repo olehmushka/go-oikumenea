@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useLocale } from "@/lib/locale";
+import { useLocale, useTg } from "@/lib/locale";
 import { pickLabel } from "@/lib/i18n";
 
 /**
@@ -122,6 +122,7 @@ export function EntitySelect({
   onChange?: (id: string) => void;
 }) {
   const { locale } = useLocale();
+  const tr = useTg();
   const cfg = REGISTRY[kind];
   const [items, setItems] = useState<Option[]>([]);
   const [loading, setLoading] = useState(true);
@@ -223,7 +224,7 @@ export function EntitySelect({
       <input
         ref={inputRef}
         className="input"
-        placeholder={loading ? "Loading…" : loadErr ? "(failed to load list)" : placeholder}
+        placeholder={loading ? tr("Loading…") : loadErr ? tr("(failed to load list)") : tr(placeholder)}
         value={display}
         required={required}
         autoComplete="off"
@@ -275,7 +276,7 @@ export function EntitySelect({
             >
               {filtered.length === 0 ? (
                 <div className="px-3 py-2 text-sm text-slate-400">
-                  {loading ? "Loading…" : "No matches"}
+                  {loading ? tr("Loading…") : tr("No matches")}
                 </div>
               ) : (
                 filtered.map((o, i) => (

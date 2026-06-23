@@ -90,6 +90,13 @@ in-process via the localization application service (below).
   for batch list endpoints.
 - On entity create/update, the owning module writes the default-locale value to its own `name`
   column; translations are managed separately by the instance admin via `LocalizationService`.
+- **Seeded reference catalogs ship translations.** The reference catalogs that are seeded in
+  migrations also seed `eng` + `ukr` `i18n_translations` rows for their `name` (the migration adds an
+  explicit `eng` row equal to the English `name` column — needed because the default locale is `ukr`
+  — plus a hand-authored `ukr` row). Covered today: personal-code schemes (`0009`), writing systems
+  (`0018`), and the religion catalogs + the full faith-taxonomy tree (`0023`). Rows are inserted
+  idempotently (`ON CONFLICT DO NOTHING`); untranslated entries fall back to their English `name` in
+  both locales. The seeds are appended to the **existing** catalog migrations (re-hash `atlas.sum`).
 
 ## Dependencies
 

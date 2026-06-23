@@ -8,7 +8,7 @@
 // it exposes string/number accessors + render hints, and the components do the rendering. This also
 // keeps it serialization-safe: the server calls these accessors and passes plain data to clients.
 
-import { pickLabel, type LocaleMap } from "@/lib/i18n";
+import { pickLabel, getActiveLocale, type LocaleMap } from "@/lib/i18n";
 import { ridTail } from "./rid";
 
 export type Tone = "slate" | "green" | "amber" | "red" | "indigo";
@@ -67,6 +67,12 @@ export interface ListDef {
   path: string;
   /** default query string incl. leading "?", e.g. "?pageSize=50" */
   search?: string;
+  /**
+   * when set, the explore page shows a search box whose text is sent to the backend as this query
+   * param for a name/code substring match (e.g. "query" for languoids). Use for large catalogs whose
+   * list endpoint isn't paginated and can't be browsed past its limit.
+   */
+  searchParam?: string;
   parse: (res: unknown) => { rows: Row[]; nextPageToken?: string };
 }
 
@@ -93,7 +99,10 @@ export interface ObjectTypeDef {
 
 // ── small accessors ─────────────────────────────────────────────────────────
 const s = (v: unknown): string | undefined => (v == null ? undefined : String(v));
-const loc = (v: unknown): string => pickLabel(v as LocaleMap);
+// Resolves a `locale → text` map against the module-global active UI locale (set by the root layout
+// on the server and by LocaleProvider on the client). Switching the UI locale re-renders the views
+// that read this, so names re-render in the chosen locale (D-i18n).
+const loc = (v: unknown): string => pickLabel(v as LocaleMap, getActiveLocale());
 const arr = (res: unknown, key: string): Row[] =>
   (((res as Record<string, unknown>)?.[key] as Row[]) ?? []);
 const pageParse = (key: string) => (res: unknown) => ({
@@ -680,7 +689,7 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
     labelPlural: "Languages",
     module: "language",
     blurb: "A Glottolog languoid (family/language/dialect), keyed by glottocode; the genealogical catalog.",
-    list: { path: "/language/v1/languages", search: "?limit=100", parse: pageParse("languoids") },
+    list: { path: "/language/v1/languages", search: "?limit=100", searchParam: "query", parse: pageParse("languoids") },
     get: (id) => `/language/v1/languages/${id}`,
     title: (l) => loc(l.name) || s(l.code) || ridTail(l.id),
     subtitle: (l) => s(l.code),

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { apiGet } from "@/lib/api/server";
 import { Card, EmptyState, ErrorNotice, Mono, PageHeader, Pill } from "@/components/ui";
+import { T } from "@/components/T";
 import { EditOrder, OrderActions } from "../OrderForms";
 import type { Order } from "@/lib/api/types";
 
@@ -21,7 +22,7 @@ export default async function OrderDetailPage({
   if (error) {
     return (
       <div>
-        <PageHeader title="Order" />
+        <PageHeader title={<T>Order</T>} />
         <ErrorNotice error={error} />
       </div>
     );
@@ -30,22 +31,22 @@ export default async function OrderDetailPage({
   return (
     <div>
       <PageHeader
-        title={`Order ${order?.number ?? orderId.slice(-8)}`}
+        title={<><T>Order</T> {order?.number ?? orderId.slice(-8)}</>}
         action={
           <Link href="/orders" className="btn-ghost">
-            ← Orders
+            ← <T>Orders</T>
           </Link>
         }
       />
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
-          <h2 className="text-sm font-semibold text-slate-900">Items</h2>
+          <h2 className="text-sm font-semibold text-slate-900"><T>Items</T></h2>
           {order?.items && order.items.length > 0 ? (
             <ul className="mt-3 space-y-2 text-sm">
               {order.items.map((it, i) => (
                 <li key={it.id ?? i} className="rounded border border-slate-100 p-2">
                   <div className="flex gap-2">
-                    <Pill tone="indigo">{it.kind ?? "item"}</Pill>
+                    <Pill tone="indigo">{it.kind ?? <T>item</T>}</Pill>
                     {it.personId && (
                       <Link
                         href={`/persons/${it.personId}`}
@@ -67,15 +68,15 @@ export default async function OrderDetailPage({
               ))}
             </ul>
           ) : (
-            <EmptyState>No items.</EmptyState>
+            <EmptyState><T>No items.</T></EmptyState>
           )}
         </Card>
 
         <Card>
-          <h2 className="text-sm font-semibold text-slate-900">Status</h2>
+          <h2 className="text-sm font-semibold text-slate-900"><T>Status</T></h2>
           <div className="mt-3 space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-slate-500">State</span>
+              <span className="text-slate-500"><T>State</T></span>
               <Pill
                 tone={
                   order?.status === "ISSUED"
@@ -89,7 +90,7 @@ export default async function OrderDetailPage({
               </Pill>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-500">Issued on</span>
+              <span className="text-slate-500"><T>Issued on</T></span>
               <span>{order?.issuedOn ?? "—"}</span>
             </div>
           </div>
@@ -98,8 +99,7 @@ export default async function OrderDetailPage({
           </div>
           {order ? <EditOrder order={order} /> : null}
           <p className="mt-3 text-xs text-slate-400">
-            Issuing an order applies its effects synchronously and records provenance; revoking
-            is the legal counter-act.
+            <T>Issuing an order applies its effects synchronously and records provenance; revoking is the legal counter-act.</T>
           </p>
         </Card>
       </div>

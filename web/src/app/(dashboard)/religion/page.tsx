@@ -10,6 +10,8 @@ import { mutate } from "@/lib/api/client";
 import { bffGet } from "@/lib/api/browser";
 import { PageHeader, Card, Table, Mono, Pill } from "@/components/ui";
 import { ErrorBox } from "@/components/ErrorBox";
+import { T } from "@/components/T";
+import { useTg } from "@/lib/locale";
 import { newSuffix, slugify } from "@/lib/code";
 import { pickLabel, type LocaleMap } from "@/lib/i18n";
 
@@ -28,6 +30,7 @@ type Taxon = {
 };
 
 export default function ReligionPage() {
+  const tr = useTg();
   const [ranks, setRanks] = useState<Rank[]>([]);
   const [classifications, setClassifications] = useState<Classification[]>([]);
   const [religions, setReligions] = useState<Taxon[]>([]);
@@ -58,8 +61,8 @@ export default function ReligionPage() {
   return (
     <div>
       <PageHeader
-        title="Religion"
-        description="The multi-faith taxonomy (religion → branch → tradition → sub-tradition → denomination) and the religion-type classifications. Organizations reuse tenant units; per-unit faith profiles live on the unit object view."
+        title={<T>Religion</T>}
+        description={<T>The multi-faith taxonomy (religion → branch → tradition → sub-tradition → denomination) and the religion-type classifications. Organizations reuse tenant units; per-unit faith profiles live on the unit object view.</T>}
       />
       {err ? <div className="mb-4"><ErrorBox error={err} /></div> : null}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -67,22 +70,22 @@ export default function ReligionPage() {
           <Card>
             <div className="mb-3 flex flex-wrap items-end gap-2">
               <div>
-                <label className="block text-xs text-slate-500">Rank</label>
+                <label className="block text-xs text-slate-500"><T>Rank</T></label>
                 <select className="input w-40" value={rankFilter} onChange={(e) => setRankFilter(e.target.value)}>
-                  <option value="">all ranks</option>
+                  <option value="">{tr("all ranks")}</option>
                   {ranks.map((r) => <option key={r.id} value={r.code}>{pickLabel(r.name)}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-slate-500">Religion</label>
+                <label className="block text-xs text-slate-500"><T>Religion</T></label>
                 <select className="input w-44" value={religionFilter} onChange={(e) => setReligionFilter(e.target.value)}>
-                  <option value="">all faiths</option>
+                  <option value="">{tr("all faiths")}</option>
                   {religions.map((r) => <option key={r.id} value={r.code}>{pickLabel(r.name)}</option>)}
                 </select>
               </div>
               <div className="flex-1 min-w-[12rem]">
-                <label className="block text-xs text-slate-500">Search</label>
-                <input className="input w-full" placeholder="code or name" value={query} onChange={(e) => setQuery(e.target.value)} />
+                <label className="block text-xs text-slate-500"><T>Search</T></label>
+                <input className="input w-full" placeholder={tr("code or name")} value={query} onChange={(e) => setQuery(e.target.value)} />
               </div>
             </div>
             <TaxaTable taxa={taxa} selected={selected} onSelect={setSelected} />
@@ -91,7 +94,7 @@ export default function ReligionPage() {
         </div>
         <div className="space-y-6">
           {selected ? <TaxonDetail taxon={selected} classifications={classifications} onChanged={reload} /> : (
-            <Card><p className="text-sm text-slate-400">Select a taxon to see its resolved classification and edit its theism tags.</p></Card>
+            <Card><p className="text-sm text-slate-400"><T>Select a taxon to see its resolved classification and edit its theism tags.</T></p></Card>
           )}
         </div>
       </div>
@@ -100,6 +103,16 @@ export default function ReligionPage() {
         <ClergyGradesPanel />
         <AffiliationTypesPanel />
         <ClergyRosterPanel />
+      </div>
+
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <SiteTypesPanel />
+        <ServiceTypesPanel />
+        <DiscoverySearchPanel />
+      </div>
+
+      <div className="mt-6">
+        <UnitSitesPanel />
       </div>
     </div>
   );
@@ -129,9 +142,9 @@ function ClergyGradesPanel() {
   }, []);
   return (
     <Card>
-      <h2 className="mb-3 text-sm font-semibold text-slate-700">Clergy grades</h2>
+      <h2 className="mb-3 text-sm font-semibold text-slate-700"><T>Clergy grades</T></h2>
       {err ? <div className="mb-3"><ErrorBox error={err} /></div> : null}
-      {grades.length === 0 ? <p className="text-sm text-slate-400">No grades.</p> : (
+      {grades.length === 0 ? <p className="text-sm text-slate-400"><T>No grades.</T></p> : (
         <ul className="space-y-0.5 text-sm text-slate-700">
           {grades.map((g) => (
             <li key={g.id} className="flex items-center justify-between gap-2">
@@ -155,9 +168,9 @@ function AffiliationTypesPanel() {
   }, []);
   return (
     <Card>
-      <h2 className="mb-3 text-sm font-semibold text-slate-700">Affiliation types</h2>
+      <h2 className="mb-3 text-sm font-semibold text-slate-700"><T>Affiliation types</T></h2>
       {err ? <div className="mb-3"><ErrorBox error={err} /></div> : null}
-      {types.length === 0 ? <p className="text-sm text-slate-400">No types.</p> : (
+      {types.length === 0 ? <p className="text-sm text-slate-400"><T>No types.</T></p> : (
         <ul className="space-y-0.5 text-sm text-slate-700">
           {types.map((t) => (
             <li key={t.id} className="flex items-center justify-between gap-2">
@@ -173,6 +186,7 @@ function AffiliationTypesPanel() {
 
 // ClergyRosterPanel lists the people holding a credential conferred by a given organization unit.
 function ClergyRosterPanel() {
+  const tr = useTg();
   const [unitId, setUnitId] = useState("");
   const [rows, setRows] = useState<ClergyCredential[] | null>(null);
   const [err, setErr] = useState<unknown>(null);
@@ -186,14 +200,14 @@ function ClergyRosterPanel() {
   }
   return (
     <Card>
-      <h2 className="mb-3 text-sm font-semibold text-slate-700">Clergy roster (by org unit)</h2>
+      <h2 className="mb-3 text-sm font-semibold text-slate-700"><T>Clergy roster (by org unit)</T></h2>
       {err ? <div className="mb-3"><ErrorBox error={err} /></div> : null}
       <form onSubmit={lookup} className="mb-3 flex gap-2">
-        <input className="input flex-1" placeholder="org unit RID" value={unitId} onChange={(e) => setUnitId(e.target.value)} />
-        <button className="btn" type="submit">Lookup</button>
+        <input className="input flex-1" placeholder={tr("org unit RID")} value={unitId} onChange={(e) => setUnitId(e.target.value)} />
+        <button className="btn" type="submit"><T>Lookup</T></button>
       </form>
-      {rows === null ? <p className="text-sm text-slate-400">Enter a unit RID.</p> : rows.length === 0 ? (
-        <p className="text-sm text-slate-400">No credentials conferred by this unit.</p>
+      {rows === null ? <p className="text-sm text-slate-400"><T>Enter a unit RID.</T></p> : rows.length === 0 ? (
+        <p className="text-sm text-slate-400"><T>No credentials conferred by this unit.</T></p>
       ) : (
         <ul className="space-y-0.5 text-sm text-slate-700">
           {rows.map((c) => (
@@ -211,9 +225,10 @@ function ClergyRosterPanel() {
 }
 
 function TaxaTable({ taxa, selected, onSelect }: { taxa: Taxon[]; selected: Taxon | null; onSelect: (t: Taxon) => void }) {
-  if (taxa.length === 0) return <p className="text-sm text-slate-400">No taxa match.</p>;
+  const tr = useTg();
+  if (taxa.length === 0) return <p className="text-sm text-slate-400"><T>No taxa match.</T></p>;
   return (
-    <Table head={["Name", "Rank", "Code", "Wikidata"]}>
+    <Table head={["Name", "Rank", "Code", "Wikidata"].map(tr)}>
       {taxa.map((t) => (
         <tr key={t.id} className={`cursor-pointer hover:bg-slate-50 ${selected?.id === t.id ? "bg-slate-50" : ""}`} onClick={() => onSelect(t)}>
           <td className="py-1.5">{pickLabel(t.name)}</td>
@@ -227,6 +242,7 @@ function TaxaTable({ taxa, selected, onSelect }: { taxa: Taxon[]; selected: Taxo
 }
 
 function CreateTaxon({ ranks, taxa, religions, onCreated }: { ranks: Rank[]; taxa: Taxon[]; religions: Taxon[]; onCreated: () => void }) {
+  const tr = useTg();
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [codeTouched, setCodeTouched] = useState(false);
@@ -256,21 +272,21 @@ function CreateTaxon({ ranks, taxa, religions, onCreated }: { ranks: Rank[]; tax
 
   return (
     <Card>
-      <h2 className="mb-3 text-sm font-semibold text-slate-700">Add taxon</h2>
+      <h2 className="mb-3 text-sm font-semibold text-slate-700"><T>Add taxon</T></h2>
       {err ? <div className="mb-3"><ErrorBox error={err} /></div> : null}
       <form onSubmit={onSubmit} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <input required className="input" placeholder="name" value={name} onChange={(e) => setName(e.target.value)} />
-        <input required className="input" placeholder="auto from name" value={codeValue} onChange={(e) => { setCode(e.target.value); setCodeTouched(true); }} />
+        <input required className="input" placeholder={tr("name")} value={name} onChange={(e) => setName(e.target.value)} />
+        <input required className="input" placeholder={tr("auto from name")} value={codeValue} onChange={(e) => { setCode(e.target.value); setCodeTouched(true); }} />
         <select required className="input" value={rankId} onChange={(e) => setRankId(e.target.value)}>
-          <option value="">— rank —</option>
+          <option value="">{tr("— rank —")}</option>
           {ranks.map((r) => <option key={r.id} value={r.id}>{pickLabel(r.name)}</option>)}
         </select>
         <select className="input" value={parentId} onChange={(e) => setParentId(e.target.value)}>
-          <option value="">— root religion (no parent) —</option>
+          <option value="">{tr("— root religion (no parent) —")}</option>
           {parents.map((p) => <option key={p.id} value={p.id}>{pickLabel(p.name)} ({p.rankCode})</option>)}
         </select>
         <div className="sm:col-span-2">
-          <button type="submit" className="btn" disabled={busy}>{busy ? "Adding…" : "Add taxon"}</button>
+          <button type="submit" className="btn" disabled={busy}>{busy ? <T>Adding…</T> : <T>Add taxon</T>}</button>
         </div>
       </form>
     </Card>
@@ -309,12 +325,12 @@ function TaxonDetail({ taxon, classifications, onChanged }: { taxon: Taxon; clas
       <p className="mb-3 text-xs text-slate-400"><Pill>{taxon.rankCode}</Pill> <Mono>{taxon.code}</Mono></p>
       {err ? <div className="mb-3"><ErrorBox error={err} /></div> : null}
       <div className="mb-4">
-        <div className="mb-1 text-xs font-medium text-slate-500">Effective religion-type (resolved)</div>
-        {effective.length === 0 ? <p className="text-sm text-slate-400">none (no ancestor declares one)</p> : (
+        <div className="mb-1 text-xs font-medium text-slate-500"><T>Effective religion-type (resolved)</T></div>
+        {effective.length === 0 ? <p className="text-sm text-slate-400"><T>none (no ancestor declares one)</T></p> : (
           <div className="flex flex-wrap gap-1">{effective.map((c) => <Pill key={c.id}>{pickLabel(c.name)}</Pill>)}</div>
         )}
       </div>
-      <div className="mb-2 text-xs font-medium text-slate-500">Declare tags on this taxon (overrides inherited)</div>
+      <div className="mb-2 text-xs font-medium text-slate-500"><T>Declare tags on this taxon (overrides inherited)</T></div>
       <div className="mb-3 flex flex-wrap gap-2">
         {classifications.map((c) => (
           <label key={c.id} className="flex items-center gap-1 text-sm">
@@ -323,7 +339,255 @@ function TaxonDetail({ taxon, classifications, onChanged }: { taxon: Taxon; clas
           </label>
         ))}
       </div>
-      <button className="btn" onClick={save} disabled={busy}>{busy ? "Saving…" : "Set declared tags"}</button>
+      <button className="btn" onClick={save} disabled={busy}>{busy ? <T>Saving…</T> : <T>Set declared tags</T>}</button>
+    </Card>
+  );
+}
+
+// ── M25 discovery: site/service catalogs, search, and per-unit sites/aliases ─────────────────────────
+
+type SiteType = { id: string; code: string; name: LocaleMap; traditionTaxonId?: string };
+type ServiceType = { id: string; code: string; name: LocaleMap; traditionTaxonId?: string };
+type Site = {
+  id: string;
+  orgUnitId: string;
+  locationId: string;
+  siteTypeId: string;
+  siteTypeCode: string;
+  siteTypeName: LocaleMap;
+  visibility: string;
+  publicPrecision: string;
+  isPrimary: boolean;
+  latitude: number;
+  longitude: number;
+};
+type DiscoverySite = {
+  id: string;
+  orgUnitId: string;
+  siteTypeCode: string;
+  siteTypeName: LocaleMap;
+  publicPrecision: string;
+  isPrimary: boolean;
+  latitude?: number;
+  longitude?: number;
+};
+type Alias = { id: string; aliasText: string; aliasType: string; locale?: string };
+
+function CatalogPanel<R extends { id: string; code: string; name: LocaleMap }>({ title, path, dataKey }: { title: string; path: string; dataKey: string }) {
+  const tr = useTg();
+  const [rows, setRows] = useState<R[]>([]);
+  const [err, setErr] = useState<unknown>(null);
+  useEffect(() => {
+    bffGet<Record<string, R[]>>(path).then((r) => setRows(r[dataKey] ?? [])).catch(setErr);
+  }, [path, dataKey]);
+  return (
+    <Card>
+      <h2 className="mb-3 text-sm font-semibold text-slate-700">{tr(title)}</h2>
+      {err ? <div className="mb-3"><ErrorBox error={err} /></div> : null}
+      {rows.length === 0 ? <p className="text-sm text-slate-400"><T>None.</T></p> : (
+        <ul className="space-y-0.5 text-sm text-slate-700">
+          {rows.map((r) => (
+            <li key={r.id} className="flex items-center justify-between gap-2">
+              <span>{pickLabel(r.name)}</span>
+              <Mono>{r.code}</Mono>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+function SiteTypesPanel() {
+  return <CatalogPanel<SiteType> title="Site types" path="/religion/v1/site-types" dataKey="siteTypes" />;
+}
+function ServiceTypesPanel() {
+  return <CatalogPanel<ServiceType> title="Service types" path="/religion/v1/service-types" dataKey="serviceTypes" />;
+}
+// (title strings are translated inside CatalogPanel via the glossary)
+
+const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+// DiscoverySearchPanel runs the public discovery search (radius + religion/language/day/online filters)
+// and shows hits with COARSENED coordinates per each site's publish precision.
+function DiscoverySearchPanel() {
+  const tr = useTg();
+  const [lat, setLat] = useState("");
+  const [lng, setLng] = useState("");
+  const [radiusM, setRadiusM] = useState("5000");
+  const [language, setLanguage] = useState("");
+  const [day, setDay] = useState("");
+  const [online, setOnline] = useState(false);
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<DiscoverySite[] | null>(null);
+  const [err, setErr] = useState<unknown>(null);
+
+  function search(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    const p = new URLSearchParams();
+    if (lat && lng) { p.set("lat", lat); p.set("lng", lng); if (radiusM) p.set("radiusM", radiusM); }
+    if (language.trim()) p.set("language", language.trim());
+    if (day !== "") p.set("dayOfWeek", day);
+    if (online) p.set("onlineOnly", "true");
+    if (query.trim()) p.set("query", query.trim());
+    bffGet<{ sites: DiscoverySite[] }>(`/religion/v1/discovery/sites?${p.toString()}`)
+      .then((r) => setHits(r.sites ?? []))
+      .catch(setErr);
+  }
+
+  return (
+    <Card>
+      <h2 className="mb-3 text-sm font-semibold text-slate-700"><T>Discovery search</T></h2>
+      {err ? <div className="mb-3"><ErrorBox error={err} /></div> : null}
+      <form onSubmit={search} className="grid grid-cols-2 gap-2">
+        <input className="input" placeholder={tr("lat")} value={lat} onChange={(e) => setLat(e.target.value)} />
+        <input className="input" placeholder={tr("lng")} value={lng} onChange={(e) => setLng(e.target.value)} />
+        <input className="input" placeholder={tr("radius m")} value={radiusM} onChange={(e) => setRadiusM(e.target.value)} />
+        <input className="input" placeholder={tr("language (ISO 639-3)")} value={language} onChange={(e) => setLanguage(e.target.value)} />
+        <select className="input" value={day} onChange={(e) => setDay(e.target.value)}>
+          <option value="">{tr("any day")}</option>
+          {DAYS.map((d, i) => <option key={d} value={i}>{tr(d)}</option>)}
+        </select>
+        <input className="input" placeholder={tr("name / alias")} value={query} onChange={(e) => setQuery(e.target.value)} />
+        <label className="col-span-2 flex items-center gap-1 text-sm text-slate-600">
+          <input type="checkbox" checked={online} onChange={(e) => setOnline(e.target.checked)} /> {tr("online / hybrid only")}
+        </label>
+        <div className="col-span-2"><button className="btn" type="submit"><T>Search</T></button></div>
+      </form>
+      {hits !== null && (
+        <div className="mt-3">
+          {hits.length === 0 ? <p className="text-sm text-slate-400"><T>No public sites match.</T></p> : (
+            <ul className="space-y-0.5 text-sm text-slate-700">
+              {hits.map((h) => (
+                <li key={h.id} className="flex items-center justify-between gap-2">
+                  <span>{pickLabel(h.siteTypeName) || h.siteTypeCode}{h.isPrimary ? " ★" : ""}</span>
+                  <Mono>{h.latitude != null ? `${h.latitude.toFixed(4)}, ${h.longitude?.toFixed(4)} (${h.publicPrecision})` : `hidden`}</Mono>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// UnitSitesPanel manages an org unit's sites (list + add over a shared location) and its search-only
+// aliases. Per-site schedule management is reachable from the unit object view; this is the directory editor.
+function UnitSitesPanel() {
+  const tr = useTg();
+  const [unitId, setUnitId] = useState("");
+  const [sites, setSites] = useState<Site[] | null>(null);
+  const [aliases, setAliases] = useState<Alias[]>([]);
+  const [siteTypes, setSiteTypes] = useState<SiteType[]>([]);
+  const [err, setErr] = useState<unknown>(null);
+
+  // add-site form
+  const [locationId, setLocationId] = useState("");
+  const [siteTypeId, setSiteTypeId] = useState("");
+  const [precision, setPrecision] = useState("exact");
+  const [isPrimary, setIsPrimary] = useState(false);
+  // add-alias form
+  const [aliasText, setAliasText] = useState("");
+  const [aliasType, setAliasType] = useState("transliteration");
+
+  useEffect(() => {
+    bffGet<{ siteTypes: SiteType[] }>("/religion/v1/site-types").then((r) => setSiteTypes(r.siteTypes ?? [])).catch(() => {});
+  }, []);
+
+  function load() {
+    if (!unitId.trim()) return;
+    setErr(null);
+    const u = unitId.trim();
+    bffGet<{ sites: Site[] }>(`/religion/v1/units/${u}/sites`).then((r) => setSites(r.sites ?? [])).catch(setErr);
+    bffGet<{ aliases: Alias[] }>(`/religion/v1/units/${u}/aliases`).then((r) => setAliases(r.aliases ?? [])).catch(() => {});
+  }
+
+  async function addSite(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    try {
+      await mutate("POST", `/religion/v1/units/${unitId.trim()}/sites`, {
+        locationId: locationId.trim(), siteTypeId, publicPrecision: precision, isPrimary,
+      });
+      setLocationId(""); setIsPrimary(false);
+      load();
+    } catch (e) { setErr(e); }
+  }
+
+  async function addAlias(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    try {
+      await mutate("POST", `/religion/v1/units/${unitId.trim()}/aliases`, { aliasText: aliasText.trim(), aliasType });
+      setAliasText("");
+      load();
+    } catch (e) { setErr(e); }
+  }
+
+  return (
+    <Card>
+      <h2 className="mb-3 text-sm font-semibold text-slate-700"><T>Sites &amp; aliases (by org unit)</T></h2>
+      {err ? <div className="mb-3"><ErrorBox error={err} /></div> : null}
+      <div className="mb-3 flex gap-2">
+        <input className="input flex-1" placeholder={tr("org unit RID")} value={unitId} onChange={(e) => setUnitId(e.target.value)} />
+        <button className="btn" onClick={load}><T>Load</T></button>
+      </div>
+      {sites !== null && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div>
+            <div className="mb-1 text-xs font-medium text-slate-500"><T>Sites</T></div>
+            {sites.length === 0 ? <p className="text-sm text-slate-400"><T>No sites.</T></p> : (
+              <Table head={["Type", "Visibility", "Precision", "Primary", "Coord"].map(tr)}>
+                {sites.map((s) => (
+                  <tr key={s.id}>
+                    <td className="py-1.5">{pickLabel(s.siteTypeName) || s.siteTypeCode}</td>
+                    <td><Pill>{s.visibility}</Pill></td>
+                    <td><Mono>{s.publicPrecision}</Mono></td>
+                    <td>{s.isPrimary ? "★" : ""}</td>
+                    <td><Mono>{s.latitude.toFixed(4)}, {s.longitude.toFixed(4)}</Mono></td>
+                  </tr>
+                ))}
+              </Table>
+            )}
+            <form onSubmit={addSite} className="mt-3 grid grid-cols-1 gap-2">
+              <input required className="input" placeholder="location RID" value={locationId} onChange={(e) => setLocationId(e.target.value)} />
+              <select required className="input" value={siteTypeId} onChange={(e) => setSiteTypeId(e.target.value)}>
+                <option value="">{tr("— site type —")}</option>
+                {siteTypes.map((t) => <option key={t.id} value={t.id}>{pickLabel(t.name)} ({t.code})</option>)}
+              </select>
+              <select className="input" value={precision} onChange={(e) => setPrecision(e.target.value)}>
+                {["exact", "street", "neighborhood", "city", "hidden"].map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+              <label className="flex items-center gap-1 text-sm text-slate-600">
+                <input type="checkbox" checked={isPrimary} onChange={(e) => setIsPrimary(e.target.checked)} /> {tr("primary site")}
+              </label>
+              <button className="btn" type="submit" disabled={!unitId.trim()}><T>Add site</T></button>
+            </form>
+          </div>
+          <div>
+            <div className="mb-1 text-xs font-medium text-slate-500"><T>Aliases (search-only)</T></div>
+            {aliases.length === 0 ? <p className="text-sm text-slate-400"><T>No aliases.</T></p> : (
+              <ul className="space-y-0.5 text-sm text-slate-700">
+                {aliases.map((a) => (
+                  <li key={a.id} className="flex items-center justify-between gap-2">
+                    <span>{a.aliasText}</span>
+                    <Pill>{a.aliasType}</Pill>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <form onSubmit={addAlias} className="mt-3 grid grid-cols-1 gap-2">
+              <input required className="input" placeholder={tr("alias text")} value={aliasText} onChange={(e) => setAliasText(e.target.value)} />
+              <select className="input" value={aliasType} onChange={(e) => setAliasType(e.target.value)}>
+                {["nickname", "abbreviation", "historical", "misspelling", "transliteration"].map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <button className="btn" type="submit" disabled={!unitId.trim()}><T>Add alias</T></button>
+            </form>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

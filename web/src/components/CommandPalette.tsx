@@ -13,6 +13,9 @@ import {
 } from "@/lib/ontology/registry";
 import { parseRid } from "@/lib/ontology/rid";
 import { pushRecent } from "@/lib/ontology/recents";
+import { useLocale } from "@/lib/locale";
+import { setActiveLocale } from "@/lib/i18n";
+import { tg } from "@/lib/messages";
 
 // ── fan-out object cache (no server-side search exists; we fetch one page per type and filter in the
 // browser). Module-level so it survives palette re-opens within a session; short TTL keeps it fresh. ──
@@ -78,6 +81,10 @@ interface ObjectHit {
 
 export function CommandPalette() {
   const router = useRouter();
+  // Subscribe to the UI locale so result titles/subtitles re-render in the chosen locale on switch
+  // (the cached rows keep their full `locale → text` maps; only the picked label changes).
+  const { locale } = useLocale();
+  setActiveLocale(locale);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<ObjectHit[]>([]);
@@ -152,15 +159,15 @@ export function CommandPalette() {
 
   const q = query.trim().toLowerCase();
   const navMatches = [
-    ...EXPLORABLE_TYPES.map((t) => ({ label: t.labelPlural, href: `/explore/${t.type}` })),
-    { label: "Overview", href: "/" },
-    { label: "Ontology", href: "/ontology" },
-    { label: "Authorize", href: "/authorize" },
-    { label: "Memberships", href: "/memberships" },
-    { label: "Orders", href: "/orders" },
-    { label: "Ranks", href: "/ranks" },
-    { label: "Localization", href: "/localization" },
-    { label: "Audit", href: "/audit" },
+    ...EXPLORABLE_TYPES.map((t) => ({ label: tg(t.labelPlural), href: `/explore/${t.type}` })),
+    { label: tg("Overview"), href: "/" },
+    { label: tg("Ontology"), href: "/ontology" },
+    { label: tg("Authorize"), href: "/authorize" },
+    { label: tg("Memberships"), href: "/memberships" },
+    { label: tg("Orders"), href: "/orders" },
+    { label: tg("Ranks"), href: "/ranks" },
+    { label: tg("Localization"), href: "/localization" },
+    { label: tg("Audit"), href: "/audit" },
   ].filter((n) => !q || n.label.toLowerCase().includes(q));
 
   const actionMatches = QUICK_ACTIONS.filter((a) => !q || a.label.toLowerCase().includes(q));
@@ -176,26 +183,26 @@ export function CommandPalette() {
       <Command.Input
         value={query}
         onValueChange={setQuery}
-        placeholder="Search objects, jump to a view, or paste a RID…"
+        placeholder={tg("Search objects, jump to a view, or paste a RID…")}
         autoFocus
       />
       <Command.List>
-        {loading ? <div className="cmdk-status">Indexing…</div> : null}
+        {loading ? <div className="cmdk-status">{tg("Indexing…")}</div> : null}
 
         {ridKnown ? (
-          <Command.Group heading="Open">
+          <Command.Group heading={tg("Open")}>
             <Command.Item
               value={`open-${ridHit!.type}`}
               onSelect={() => go(`/o/${encodeURIComponent(query.trim())}`)}
             >
-              <span className="cmdk-kind">{typeDef(ridHit!.type)!.label}</span>
+              <span className="cmdk-kind">{tg(typeDef(ridHit!.type)!.label)}</span>
               <span className="cmdk-mono">{ridHit!.uuid.slice(-12)}</span>
             </Command.Item>
           </Command.Group>
         ) : null}
 
         {navMatches.length > 0 ? (
-          <Command.Group heading="Navigate">
+          <Command.Group heading={tg("Navigate")}>
             {navMatches.map((n) => (
               <Command.Item key={n.href} value={`nav-${n.href}`} onSelect={() => go(n.href)}>
                 {n.label}
@@ -206,7 +213,7 @@ export function CommandPalette() {
         ) : null}
 
         {actionMatches.length > 0 ? (
-          <Command.Group heading="Actions">
+          <Command.Group heading={tg("Actions")}>
             {actionMatches.map((a) => (
               <Command.Item
                 key={a.label}
@@ -217,22 +224,22 @@ export function CommandPalette() {
                   await a.run({ router });
                 }}
               >
-                {a.label}
-                {a.hint ? <span className="cmdk-hint">{a.hint}</span> : null}
+                {tg(a.label)}
+                {a.hint ? <span className="cmdk-hint">{tg(a.hint)}</span> : null}
               </Command.Item>
             ))}
           </Command.Group>
         ) : null}
 
         {hits.length > 0 ? (
-          <Command.Group heading="Objects">
+          <Command.Group heading={tg("Objects")}>
             {hits.map(({ def, row }, i) => (
               <Command.Item
                 key={`${row.id}-${i}`}
                 value={`obj-${row.id}-${i}`}
                 onSelect={() => openObject(def, row)}
               >
-                <span className="cmdk-kind">{def.label}</span>
+                <span className="cmdk-kind">{tg(def.label)}</span>
                 <span className="truncate">{def.title(row)}</span>
                 {def.subtitle?.(row) ? (
                   <span className="cmdk-hint">{def.subtitle(row)}</span>
@@ -243,7 +250,7 @@ export function CommandPalette() {
         ) : null}
 
         <Command.Empty className="cmdk-status">
-          {q.length < 2 ? "Type to search…" : "No matches."}
+          {q.length < 2 ? tg("Type to search…") : tg("No matches.")}
         </Command.Empty>
       </Command.List>
     </Command.Dialog>

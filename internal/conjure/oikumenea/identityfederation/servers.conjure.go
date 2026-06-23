@@ -25,6 +25,17 @@ type IdentityFederationService interface {
 	// Read an account with its linked identities. Gates on `person.read` of the linked person.
 	GetAccount(ctx context.Context, authHeader bearertoken.Token, accountIdArg string) (Account, error)
 	/*
+	   List the IdP issuers configured for this instance (public fields only — no secrets), for
+	   binding UIs to offer as a choice when linking an external identity. Gates on `person.read`.
+	*/
+	ListIssuers(ctx context.Context, authHeader bearertoken.Token) ([]IssuerOption, error)
+	/*
+	   Read the person's single active account (with its linked identities), or
+	   Account:AccountNotFound when the person is roster-only (has no account). Gates on
+	   `person.read`. The console uses this to surface a person's login/account state.
+	*/
+	GetAccountByPerson(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (Account, error)
+	/*
 	   Create an account for a person, optionally linking its first identity. Gates on
 	   `person.update`. Returns Account:AccountConflict if the person already has an active
 	   account, Identity:IdentityConflict if the initial (issuer, subject) is already linked.
@@ -53,6 +64,12 @@ func RegisterRoutesIdentityFederationService(router wrouter.Router, impl Identit
 	resource := wresource.New("identityfederationservice", router)
 	if err := resource.Get("GetAccount", "/identity/v1/accounts/{accountId}", httpserver.NewJSONHandler(handler.HandleGetAccount, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getAccount route")
+	}
+	if err := resource.Get("ListIssuers", "/identity/v1/issuers", httpserver.NewJSONHandler(handler.HandleListIssuers, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listIssuers route")
+	}
+	if err := resource.Get("GetAccountByPerson", "/identity/v1/persons/{personId}/account", httpserver.NewJSONHandler(handler.HandleGetAccountByPerson, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getAccountByPerson route")
 	}
 	if err := resource.Post("CreateAccount", "/identity/v1/accounts", httpserver.NewJSONHandler(handler.HandleCreateAccount, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add createAccount route")
@@ -90,6 +107,40 @@ func (i *identityFederationServiceHandler) HandleGetAccount(rw http.ResponseWrit
 		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"accountId\" not present")
 	}
 	respArg, err := i.impl.GetAccount(req.Context(), bearertoken.Token(authHeader), accountIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (i *identityFederationServiceHandler) HandleListIssuers(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	respArg, err := i.impl.ListIssuers(req.Context(), bearertoken.Token(authHeader))
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (i *identityFederationServiceHandler) HandleGetAccountByPerson(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := i.impl.GetAccountByPerson(req.Context(), bearertoken.Token(authHeader), personIdArg)
 	if err != nil {
 		return err
 	}

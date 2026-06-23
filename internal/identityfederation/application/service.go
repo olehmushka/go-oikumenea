@@ -118,6 +118,23 @@ func (s *Service) GetAccount(ctx context.Context, id string) (domain.Account, er
 	return a, nil
 }
 
+// GetAccountByPerson reads a person's single active account with its linked identities attached. It
+// surfaces ErrAccountNotFound when the person is roster-only (no account). Mirrors GetAccount but
+// resolves by person rather than by account id, reusing the repo's GetActiveAccountByPerson.
+func (s *Service) GetAccountByPerson(ctx context.Context, personID string) (domain.Account, error) {
+	repo := s.newRepo(s.pool)
+	a, err := repo.GetActiveAccountByPerson(ctx, personID)
+	if err != nil {
+		return domain.Account{}, err
+	}
+	ids, err := repo.ListIdentitiesByAccount(ctx, a.ID)
+	if err != nil {
+		return domain.Account{}, err
+	}
+	a.Identities = ids
+	return a, nil
+}
+
 // DisableAccount disables login on an account (reversible). Idempotent: a not-found account surfaces
 // ErrAccountNotFound; disabling an already-disabled account is a harmless re-flip.
 func (s *Service) DisableAccount(ctx context.Context, id string) (domain.Account, error) {
