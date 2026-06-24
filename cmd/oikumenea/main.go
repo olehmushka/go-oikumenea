@@ -37,6 +37,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/rank"
 	"github.com/olegamysk/go-oikumenea/internal/religion"
 	"github.com/olegamysk/go-oikumenea/internal/tenant"
+	"github.com/olegamysk/go-oikumenea/internal/vehicle"
 	"github.com/olegamysk/go-oikumenea/pkg/crypto"
 	"github.com/olegamysk/go-oikumenea/pkg/events"
 	"github.com/olegamysk/go-oikumenea/pkg/personalcode"
@@ -231,6 +232,15 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// companies, registrations, industries, locations, positions/appointments, and the ownership/
 	// affiliation graph. Writes record via the audit service; translatable names assemble via localization.
 	if _, err := company.Register(info, pool, auditSvc, locSvc, enforcer); err != nil {
+		cleanup()
+		return nil, err
+	}
+
+	// Vehicle (M26 / D-Vehicles): a vehicle registry over person + the M21 company registry — brand/
+	// model/type catalogs, the vehicle object (VIN), the brand→manufacturer link, and the ownership+
+	// plate registration record (plate region → the WOF geo_places gazetteer). Writes record via the
+	// audit service; translatable catalog names assemble via localization.
+	if _, err := vehicle.Register(info, pool, auditSvc, locSvc, enforcer); err != nil {
 		cleanup()
 		return nil, err
 	}

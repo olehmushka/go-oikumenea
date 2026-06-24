@@ -114,6 +114,13 @@ const (
 	PermCompanyManage         Permission = "company.manage"
 	PermCompanyPositionManage Permission = "company.position.manage"
 
+	// vehicle (D-Vehicles, M26) — vehicle registry: brand/model/type catalogs + vehicles + the brand→
+	// manufacturer link + the ownership/plate registration record. External reference data, not
+	// tenant-unit scoped, so reads/writes are satisfied anywhere via the PEP. Catalog writes ride the
+	// instance-plane `vehicle.catalog.manage` (below).
+	PermVehicleRead   Permission = "vehicle.read"
+	PermVehicleManage Permission = "vehicle.manage"
+
 	// religion (D-Religion, M22) — the multi-faith taxonomy (religion_taxa + closure) + the per-faith
 	// catalogs are instance-global reference data (read anywhere; catalog writes on the instance plane
 	// as `religion.catalog.manage`, below). The per-unit organization attributes (profile/
@@ -153,6 +160,7 @@ const (
 	PermLocationTypesManage      Permission = "location.types.manage"
 	PermEducationCatalogManage   Permission = "education.catalog.manage"
 	PermCompanyCatalogManage     Permission = "company.catalog.manage"
+	PermVehicleCatalogManage     Permission = "vehicle.catalog.manage"
 	PermReligionCatalogManage    Permission = "religion.catalog.manage"
 	PermInstanceConfig           Permission = "instance.config"
 	PermInstanceAdminManage      Permission = "instance.admin.manage"
@@ -179,6 +187,7 @@ var instanceScope = map[Permission]struct{}{
 	PermLocationTypesManage:      {},
 	PermEducationCatalogManage:   {},
 	PermCompanyCatalogManage:     {},
+	PermVehicleCatalogManage:     {},
 	PermReligionCatalogManage:    {},
 	PermLocaleManage:             {},
 	PermTranslationManage:        {},
@@ -208,10 +217,11 @@ var catalog = func() map[Permission]struct{} {
 		PermLocationRead, PermLocationCreate, PermLocationUpdate,
 		PermEducationRead, PermEducationManage, PermEducationPositionManage, PermEducationEnrollmentManage,
 		PermCompanyRead, PermCompanyManage, PermCompanyPositionManage,
+		PermVehicleRead, PermVehicleManage,
 		PermReligionRead, PermReligionOrgManage, PermClergyManage, PermAffiliationManage, PermSiteManage, PermScheduleManage,
 		PermLocaleRead, PermTranslationRead, PermLocaleManage, PermTranslationManage,
 		PermRankSchemeManage, PermGraphManage, PermClosureRebuild, PermDocumentTypeManage, PermOrderTypeManage,
-		PermPersonalCodeSchemeManage, PermCountryManage, PermLocationTypesManage, PermEducationCatalogManage, PermCompanyCatalogManage, PermReligionCatalogManage, PermInstanceConfig, PermInstanceAdminManage,
+		PermPersonalCodeSchemeManage, PermCountryManage, PermLocationTypesManage, PermEducationCatalogManage, PermCompanyCatalogManage, PermVehicleCatalogManage, PermReligionCatalogManage, PermInstanceConfig, PermInstanceAdminManage,
 		PermImportManage,
 	}
 	m := make(map[Permission]struct{}, len(all))

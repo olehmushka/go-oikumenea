@@ -53,7 +53,7 @@ migrates, and demos** on its own, so the service is runnable at every step.
 | **M23** | Clergy grades & credentials | per-tradition ordered clergy-grade catalog + reified credential link; offices as positions + role assignments; religion decree types | M22, M6, M7, M10 |
 | **M24** | Religious affiliation & belief | `pii:special` envelope extended (D-SpecialPII); lay affiliation as a reified link; affiliation-type catalog | M22 (+ M0 crypto) |
 | **M25** | Religious discovery | sites → Location, service schedules, aliases; closure + PostGIS search; site/service-type catalogs | M22, M19 |
-| **M26** | Vehicles (+ subnational subdivisions) | shared `geo_subdivisions` ISO-3166-2 registry; vehicle brand/model/type taxonomy + the vehicle object (VIN); temporal brand↔Company manufacturer link; the ownership+plate registration link (polymorphic person\|company owner, plate region) | M5, M21 |
+| **M26** | Vehicles | vehicle brand/model/type taxonomy + the vehicle object (VIN); temporal brand↔Company manufacturer link; the ownership+plate registration link (polymorphic person\|company owner, **plate region → the WOF `geo_places` gazetteer** — D-GeoSubdivisions superseded, no new geo table) | M5, M21, M16 |
 | **M28** | Unit code lifecycle | codeless units (`tenant_units.code` nullable ⇒ non-separate sub-unit) + audited editable codes (`PUT /units/{id}/code`, `tenant_unit_code_events` ledger); the RID is the external handle (`todo.md` items 2 & 3; D-UnitCodeLifecycle amends D-Code) | M3 |
 | **M29** | OSINT overlay foundation | provisional persons (`status=provisional` stubs) + manual `MergePerson`; the `source`/`confidence` attribution convention; the structured `legal_basis` catalog (GDPR Art 6/9) — the substrate M30–M37 ride (D-OverlayFoundation) | M5, M1, M21 |
 | **M30** | External organizations registry | a dedicated `external_organizations` module (RID service 18) for party/government/military/NGO/registrant orgs, catalog-typed, provisional/resolved, hermenea-fed (D-ExternalOrgs) | M29 |
@@ -115,7 +115,7 @@ Legend: `✅` done · `🚧` in progress · `⬜` not started · `➖` not appli
 | **M23** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — clergy grades & credentials (D-ClergyCredential): per-tradition `religion_grade_categories`/`religion_clergy_grades`/`religion_office_types` catalogs + reified **public** `religion_clergy_credentials` link (`link__clergy_credential`, RID `16,2,2`), indelible (status flip active/suspended/revoked, never deleted). Migration `0024_religion_clergy` (per-tradition seed: bishop/imam/rabbi/bhikkhu/swami…) + RLS on `org_unit_id`; `clergy.manage` perm gated against the conferring unit over the canonical graph. `ReligionService` endpoints (`/clergy-grades`, `/grade-categories`, `/office-types`, person/unit credential lists, add, status-flip update); person-detail "Religion" card + `/religion` roster panel. Integration test green (add→list by person+unit→suspend→reject bad status) |
 | **M24** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — lay affiliation (D-ReligiousAffiliation / D-SpecialPII): `religion_affiliation_types` catalog + reified `pii:special` `religion_affiliations` link (`link__affiliated_with`, RID `16,2,3`). The belief value is **envelope-encrypted at rest** (reuses `pkg/crypto` `Cipher` Seal/Open/BlindIndex — D-SpecialPII extends the sensitive-tier envelope unchanged) and **crypto-erased** via `ErasePersonAffiliations` (shared open seam with document `ErasePersonRecords` — the `PersonPurged` subscriber is still deferred). Migration `0025_religion_affiliation`; `affiliation.manage` perm gates read+write (person data). `ReligionService` endpoints (`/affiliation-types`, person affiliation list/add/update/delete); person-detail "Religion" card (Art. 9 notice). Integration test green: **ciphertext at rest contains no plaintext + blind index present, decrypt round-trips, crypto-erase drops the envelope (row survives, value empties)** |
 | **M25** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — religious discovery (D-Religion discovery surface): `religion_site_types`/`religion_service_types` catalogs, the reified `religion_sites` link (`link__site_of`, `16,2,4` — org unit ↔ shared `location_locations`, one-primary-per-unit), `religion_service_schedules` (weekly day / RRULE, IANA tz, language, mode, meeting-url guard), and search-only `religion_aliases`. Migration `0026_religion_discovery` (per-tradition seed) + RLS on the unit-scoped tables; `site.manage`/`schedule.manage` perms gated over the canonical graph. `ReligionService` discovery endpoints incl. `GET /discovery/sites` (closure filter via `religion_taxa_closure` + PostGIS `ST_DWithin`/`ST_Intersects`) with **app-side `public_precision` coarsening** (H3 dropped per D-Location 2026-06-17 → `domain.Coarsen` rounding). `/religion` web panels (site/service-type catalogs, discovery search, per-unit sites/aliases). Integration test green (radius+language+day search returns the site, exact/city/hidden coarsening, transliteration alias match, one-primary invariant, online-requires-meeting-url) |
-| **M26** | ✅ | 🚧 | ⬜ | ⬜ | ⬜ | ⬜ | decided |
+| **M26** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — `vehicle` module (RID service 17): brand/model/type + plate-number catalogs, the `vehicle_vehicles` object (VIN unique-active), the temporal brand→Company `manufactured_by` link, and the ownership+plate `registered_to` link (polymorphic person\|company owner, plate region → the WOF `geo_places` gazetteer per the **D-GeoPlaces supersession** — no `geo_subdivisions` built; country FKs are `country_id`). Migration `0027_vehicle`; audited VehicleService CRUD + register/transfer-as-history + `GET /persons/{id}/vehicles`; a read-only `GET /geo/v1/places` region picker added to GeoService; `/vehicles` web page + person vehicles panel; Go+TS SDK façades extended. Integration test proves the exit slice (VIN/plate conflicts, RegionInvalid, transfer closes prior + opens new, manufacturer link, person-purge erasure). |
 | **M27** | ✅ | ✅ | ✅ | ➖ | ✅ | ✅ | verified — unified Go + TypeScript SDKs from the Conjure contract (D-ClientSDK). Go façade `client.New`/`NewWithTokenProvider` (`clients/go/client.go`) over the existing per-service clients; new `clients/typescript` npm package generated by **conjure-typescript** (`scripts/gen-ts-client.sh` + `tools/ir2openapi -dump-ir` + `rewrite-ir-packages.mjs` 3-seg IR rewrite) with a `createOikumeneaClient` façade. Both expose `hermenea`/`import` — oikumenea proxies `/hermenea/v1/*` (D-Hermenea), so one client reaches native + proxied endpoints. `web/` swapped onto the TS SDK (dropped `schema.d.ts` + `openapi-fetch`/`openapi-typescript`); the imports page reads+triggers hermenea through the typed façade. Verified: `client` module builds + façade smoke test; `clients/typescript` tsc build; `web` `next build` clean; UI Docker image (repo-root context + `outputFileTracingRoot`) builds and boots (login `307`). Migrated `➖` (tooling-only, no schema). Publishing tags (npm/pkg.go.dev) are a follow-up |
 | **M28** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — unit code lifecycle (D-UnitCodeLifecycle, amends D-Code): codeless units (`tenant_units.code` nullable ⇒ non-separate sub-unit) + audited editable codes (`PUT /units/{id}/code` perm `unit.recode` in the **admin** base role, append-only `tenant_unit_code_events` RID `4,1,4` registered in `platform_rid_types` + `pkg/rid`, `409 Tenant:UnitCodeConflict`); the **RID** is the external handle, not the code. `Unit.code`/`UnitRef.code`/`CreateUnitRequest.code` now `optional`; new `setUnitCode` + `listUnitCodeEvents` endpoints. `web/` create-without-code + "Edit code" action + code-history card. The existing `20260601000003_tenant.sql` + `20260601000000_schema_bootstrap.sql` were edited in place (dev DB reset + `atlas migrate hash`), no new migration file. Integration test green: codeless create + coexisting codeless siblings, set/correct/clear each appending a ledger row, duplicate active code → `409`; full suite re-run shows no other module's seed tests broke. Consumed `todo.md` items 2 & 3 |
 | **M29** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | designed — OSINT overlay foundation (D-OverlayFoundation): provisional persons + manual `MergePerson`, `source`/`confidence` attribution convention, structured `legal_basis` catalog |
@@ -145,8 +145,8 @@ supersedes D-Worker and **absorbs M17/D-DataIngestion**); its module doc
 exists — present for **M16** ([hermenea.md](modules/hermenea.md)), **M18**
 ([language.md](modules/language.md)), **M19**
 ([location.md](modules/location.md)), **M20** ([education.md](modules/education.md)),
-**M21** ([company.md](modules/company.md)), **M22–M25** ([religion.md](modules/religion.md)) and
-**M27** ([clients.md](modules/clients.md)); for M26 the module doc is still to be written, hence `🚧`.
+**M21** ([company.md](modules/company.md)), **M22–M25** ([religion.md](modules/religion.md)),
+**M26** ([vehicle.md](modules/vehicle.md)) and **M27** ([clients.md](modules/clients.md)).
 **M27 is verified** as the unified Go + TypeScript SDKs (D-ClientSDK), with its UI gate `✅` (the web
 console consumes the TS SDK) and its *Migrated* gate `➖` (tooling-only — no schema/migration). M15's backend is additive over the M4 rank migration
 (`20260601000004_rank.sql`), not a separate file. M12 is now **verified**: its exit criteria are met
@@ -956,46 +956,53 @@ names — with privacy-preserving spatial search, while the CMS/rendering stays 
 
 ---
 
-## M26 — Vehicles (+ subnational subdivisions foundation)
+## M26 — Vehicles
 
-**Status: planned.** Binding via **D-Vehicles** + **D-GeoSubdivisions** in
-[roadmap-decisions.md](architecture/roadmap-decisions.md). The **last `todo.md` item** — a vehicle registry
-that binds people **and** companies to vehicles in one queryable graph, bundling a shared
-`geo_subdivisions` ISO-3166-2 foundation (exactly as M19 bundled its PostGIS-backed point model with
-Location). Additive over person + the M21 Company registry.
+**Status: verified.** Binding via **D-Vehicles** in
+[roadmap-decisions.md](architecture/roadmap-decisions.md). The **last `todo.md` item** — a vehicle
+registry that binds people **and** companies to vehicles in one queryable graph. Additive over person +
+the M21 Company registry. See the [vehicle](modules/vehicle.md) module doc.
+
+**Doc reconciliation (the plate-region foundation).** The original M26 plan bundled a shared
+`geo_subdivisions` ISO-3166-2 registry as the plate-region foundation (**D-GeoSubdivisions**). That
+decision was **superseded by D-GeoPlaces** in M16: the WOF **`geo_places`** gazetteer is already built
+and live (35k UA places), and D-GeoPlaces is explicit — *"D-Vehicles' plate-region FK `subdivision_id`
+→ `geo_places` (placetype=region)."* So M26 **builds no geography table**; the plate region is an FK
+into existing `geo_places`, and all country FKs are `country_id uuid → geo_countries(id)` (the geo
+re-key amendment), not an ISO `code`. The "subnational subdivisions foundation" sub-deliverable is
+dropped accordingly.
 
 **Goal.** Hold vehicles at registry grade — a brand/model/type taxonomy, the physical vehicle (VIN),
 and the ownership/plate record — so a person or company links to the vehicles they own/operate and to
-the manufacturer behind a marque, with the plate **region** modelled as structured data rather than
+the manufacturer behind a marque, with the plate **region** modelled as a `geo_places` FK rather than
 free text.
 
 - **Delivers:**
-  - **`geo_subdivisions`** — a shared, **platform-seeded** ISO-3166-2 registry (mirrors `geo_countries`/
-    D-Geo: `code` PK e.g. `'UA-32'`, `country_code` → `geo_countries`, optional `parent_id`,
-    `subdivision_type`, translatable `name` via `entity_type='subdivision'`); UA subset migration-seeded,
-    the full global set rides M17; `GET /subdivisions?country=` + instance-scope `subdivision.manage`.
   - **Catalogs:** `vehicle_types` (taxonomy tree, self-FK + denormalized root, no closure — the
-    `rank_types` pattern), `vehicle_brands` (`country_code` → `geo_countries`), `vehicle_models`
+    `rank_types` pattern), `vehicle_brands` (`country_id` → `geo_countries`), `vehicle_models`
     (`brand_id`, `generation`, manufacture window), `vehicle_registration_number_types`.
-  - **Object:** `vehicle_vehicles` (RID PK; `type_id`/`model_id`; `manufacture_date`; `vin` unique
-    among active, nullable, `pii:basic`; `color`; `attributes` JSONB; soft-delete).
-  - **Reified Links:** `vehicle_brand_manufacturers` (`link__manufactured_by`: brand → `company_companies`,
-    temporal); `vehicle_registrations` (`link__registered_to`: vehicle → **polymorphic owner**
-    person **XOR** company, `country_code` → `geo_countries`, `subdivision_id` → `geo_subdivisions`,
-    `registration_number` unique-active-per-country, `number_type_id`, temporal + `status`).
-  - Holder-scoped reads (D-PersonReadScope) for person-owned registrations, audited writes
-    (`CreateVehicle`/`RegisterVehicle`/`TransferRegistration` + catalog edits), and a `PersonPurged`
-    subscriber erasing person-owned registrations; national vehicle/brand registries ride M17.
-- **Implements:** D-Vehicles (extends D-Ontology) + D-GeoSubdivisions (extends D-Geo). See a new
-  `vehicle` module + [platform](modules/platform.md) (the `geo_subdivisions` registry).
+  - **Object:** `vehicle_vehicles` (RID PK `17,1,1`; `type_id`/`model_id`; `manufacture_date`; `vin`
+    unique among active, nullable, `pii:basic`; `color`; `attributes` JSONB; soft-delete).
+  - **Reified Links:** `vehicle_brand_manufacturers` (`link__manufactured_by` `17,2,1`: brand →
+    `company_companies`, temporal); `vehicle_registrations` (`link__registered_to` `17,2,2`: vehicle →
+    **polymorphic owner** person **XOR** company, `country_id` → `geo_countries`, `subdivision_id` →
+    **`geo_places`** (placetype=region), `registration_number` unique-active-per-country,
+    `number_type_id`, temporal + `status` — registration is the ownership history).
+  - A read-only **`GET /geo/v1/places`** region picker added to GeoService (over `geo_places`).
+    Holder-scoped reads for person-owned registrations, audited writes (`CreateVehicle`/`RegisterVehicle`
+    transfer-as-history + catalog edits), and the `ErasePersonRegistrations` purge path (the `PersonPurged`
+    subscriber is a deferred shared seam); national vehicle/brand registries ride M16 (hermenea).
+- **Implements:** D-Vehicles (extends D-Ontology). See the [vehicle](modules/vehicle.md) module. The
+  plate region rides D-GeoPlaces (M16); **D-GeoSubdivisions stays superseded — not built**.
 - **Excluded / parked:** vehicle lifecycle/intelligence feeds — insurance/MTPL, technical inspection,
   accidents, theft/wanted, odometer, telematics (**DS-52**, connector-fed, mirrors DS-45); column-izing
-  stabilized vehicle specs out of `attributes` (**DS-53**, the DS-6 pattern); the full ISO-3166-2 set +
-  residence/Location `admin_area_*` retrofit (**DS-51**).
-- **Exit:** seed UA subdivisions and read them localized; create a vehicle with a VIN under a brand/
-  model/type; register it to a person in a plate region, then transfer it to a company (a new
-  registration row, the prior one closed); query who owns a vehicle and which company makes a brand;
-  purging a person erases their owned registrations.
+  stabilized vehicle specs out of `attributes` (**DS-53**, the DS-6 pattern); the full WOF locality
+  backfill + residence/Location `admin_area_*` retrofit (**DS-51**).
+- **Exit (verified).** Create a vehicle with a VIN under a brand/model/type (duplicate VIN → `409`);
+  register it to a person in a plate region (a non-region place → `Vehicle:RegionInvalid`; a duplicate
+  active plate per country → `409`); transfer it to a company (a new registration row, the prior one
+  closed); query who owns a vehicle and which company makes a brand; purging a person erases their owned
+  registrations. Proven by `internal/vehicle/vehicle_integration_test.go` (`TestVehicleVertical`).
 
 ---
 
@@ -1034,11 +1041,13 @@ computed-UBO). The Glottolog language dataset rides the M17 connector, so item 1
 its own.
 
 The **M26** milestone (above) is the **last** planned domain milestone — `todo.md` item 5
-(Vehicles) — promoted into binding decisions (D-Vehicles + D-GeoSubdivisions). It adds new parked seams:
-**DS-51** (full ISO-3166-2 subdivision set + residence/Location `admin_area_*` retrofit), **DS-52**
-(vehicle lifecycle/intelligence feeds — insurance/inspection/accidents/telematics), and **DS-53**
-(column-ize stabilized vehicle specs). Its `geo_subdivisions` foundation and brand/model registries ride
-the M17 connector. M26 is the last planned *domain* milestone; the remaining `todo.md` items 2 & 3
+(Vehicles) — promoted into binding decisions (**D-Vehicles**; **D-GeoSubdivisions** was superseded by
+D-GeoPlaces in M16, so no subdivision registry is built — the plate region rides the WOF `geo_places`
+gazetteer). It adds new parked seams: **DS-51** (full WOF locality backfill + residence/Location
+`admin_area_*` retrofit), **DS-52** (vehicle lifecycle/intelligence feeds —
+insurance/inspection/accidents/telematics), and **DS-53** (column-ize stabilized vehicle specs). Its
+brand/model registries ride the M16 hermenea connectors. M26 is the last planned *domain* milestone; the
+remaining `todo.md` items 2 & 3
 (units-without-codes, editing-unit-codes) are the **M28** unit-code-lifecycle milestone (below).
 
 The **M22–M25** milestones (above) are the **multi-faith religion vertical** (`todo.md` item 4),

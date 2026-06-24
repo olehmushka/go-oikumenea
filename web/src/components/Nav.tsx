@@ -20,6 +20,7 @@ const TOOLS: { href: string; key: string }[] = [
   { href: "/locations", key: "nav.locations" },
   { href: "/education", key: "nav.education" },
   { href: "/companies", key: "nav.companies" },
+  { href: "/vehicles", key: "nav.vehicles" },
   { href: "/religion", key: "nav.religion" },
   { href: "/localization", key: "nav.localization" },
   { href: "/imports", key: "nav.imports" },

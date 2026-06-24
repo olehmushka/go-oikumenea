@@ -302,14 +302,16 @@ scope is `unit|subtree` over a unit, not a single site/location.
 
 ## vehicle — planned ([milestones.md](milestones.md) M26 · [D-Vehicles](architecture/roadmap-decisions.md))
 
-**DS-51 · Full ISO-3166-2 subdivision set + residence/Location retrofit.**
-Introduced by [D-GeoSubdivisions](architecture/roadmap-decisions.md): `geo_subdivisions` ships with the
-**target-country subset** migration-seeded (UA first); `person_residences.region` and
-`location_locations.admin_area_1`/`admin_area_2` stay **free-text**.
-- *Default* — UA (and other target) subdivisions only; residence/Location regions are free text.
-- *Trigger* — global coverage or structured Location addresses wanted → ingest the **full ISO-3166-2
-  set** via a D-DataIngestion connector (M17) and retrofit `person_residences.region` /
-  `location_locations.admin_area_*` to a `geo_subdivisions` FK (additive expand/contract). `parked`
+**DS-51 · Full WOF locality backfill + residence/Location retrofit.**
+Re-scoped by **D-GeoPlaces** (which superseded D-GeoSubdivisions): the structured subnational layer is the
+WOF **`geo_places`** gazetteer, not an ISO-3166-2 `geo_subdivisions` registry. The UA gazetteer is loaded
+(M16); other countries roll out per-country via hermenea. `person_residences.region` and
+`location_locations.admin_area_1`/`admin_area_2` stay **free-text** for now.
+- *Default* — UA gazetteer loaded; residence/Location regions are free text; M26 vehicle plate regions
+  already ride `geo_places`.
+- *Trigger* — global coverage or structured Location addresses wanted → run the per-country WOF backfill
+  (M16 hermenea) and retrofit `person_residences.region` / `location_locations.admin_area_*` to a
+  `geo_places` FK (additive expand/contract). `parked`
 
 **DS-52 · Vehicle lifecycle / intelligence feeds.**
 [D-Vehicles](architecture/roadmap-decisions.md) scopes M26 to **structural** registry data (identity, taxonomy,

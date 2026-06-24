@@ -29,6 +29,7 @@ var serviceNames = map[int]string{
 	SvcEducation:  "education",
 	SvcCompany:    "company",
 	SvcReligion:   "religion",
+	SvcVehicle:    "vehicle",
 }
 
 type typeKey struct {
@@ -173,6 +174,14 @@ var typeNames = map[typeKey]string{
 	{SvcReligion, int(KindLink), 2}:    "clergy_credential",
 	{SvcReligion, int(KindLink), 3}:    "affiliated_with",
 	{SvcReligion, int(KindLink), 4}:    "site_of",
+	// vehicle (M26 / D-Vehicles) — brand/model/type catalogs + the vehicle object + ownership links
+	{SvcVehicle, int(KindObject), 1}: "vehicle",
+	{SvcVehicle, int(KindObject), 2}: "vehicle_type",
+	{SvcVehicle, int(KindObject), 3}: "vehicle_brand",
+	{SvcVehicle, int(KindObject), 4}: "vehicle_model",
+	{SvcVehicle, int(KindObject), 5}: "registration_number_type",
+	{SvcVehicle, int(KindLink), 1}:   "manufactured_by",
+	{SvcVehicle, int(KindLink), 2}:   "registered_to",
 }
 
 // Bare person link-type names (the dispatch tokens), derived from the registry above.

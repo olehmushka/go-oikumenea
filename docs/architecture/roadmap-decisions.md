@@ -794,6 +794,16 @@ as M19 bundled the PostGIS bootstrap with Location. Additive / expand-only.
 
 ### D-Vehicles — A `vehicle` registry binding people & companies to vehicles (extends D-Ontology)
 
+**Built (M26) — amendments.** Delivered as the [vehicle](../modules/vehicle.md) module (RID service
+17), migration `0027_vehicle`. Two amendments landed at build time, both flowing from the M16
+geo re-key: (1) the plate-region FK `subdivision_id` targets the WOF **`geo_places`** gazetteer
+(placetype=region, **D-GeoPlaces supersedes D-GeoSubdivisions** — no `geo_subdivisions` table is built),
+app-validated on write (`Vehicle:RegionInvalid`); (2) every country FK is `country_id uuid →
+geo_countries(id)` (the geo RID re-key), not an ISO `code`. The polymorphic owner is `(owner_kind,
+owner_id text)`; person-owned registrations are erased via `ErasePersonRegistrations` (the `PersonPurged`
+subscriber is a deferred shared seam). The original design (below) said `country_code`/`geo_subdivisions`
+— read those as `country_id`/`geo_places` per these amendments.
+
 **Decision.** A new **`vehicle`** module holds vehicles at **registry grade**, scoped to **structural**
 data — a brand/model/type taxonomy, the physical vehicle, and the ownership/plate record — so people
 and companies link to vehicles in one queryable graph. Volatile vehicle intelligence is **parked**.

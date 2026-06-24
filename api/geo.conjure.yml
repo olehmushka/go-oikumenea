@@ -30,6 +30,55 @@ types:
         docs: The countries, in display order.
         fields:
           countries: list<Country>
+      Place:
+        docs: An administrative place in the WOF geo_places gazetteer (D-GeoPlaces). `id` is the RID; used e.g. as a vehicle plate region (placetype=region).
+        fields:
+          id:
+            type: string
+            docs: The place's RID (location service); what consumers (e.g. vehicle registrations) reference.
+          placetype:
+            type: string
+            docs: country | region | county | locality.
+          name:
+            type: string
+            docs: Default-locale display name; other locales arrive via the i18n store.
+          countryId:
+            type: optional<string>
+            docs: The RID of the containing country.
+          status:
+            type: string
+            docs: active | retired.
+      PlaceList:
+        docs: The places matching the query, in name order.
+        fields:
+          places: list<Place>
+      NearestPlace:
+        docs: The gazetteer place nearest a coordinate (D-GeoPlaces) — a city/town/village (placetype=locality) when one exists, else the nearest county/region. Powers the locations-form prefill.
+        fields:
+          id:
+            type: string
+            docs: The place's RID (location service).
+          placetype:
+            type: string
+            docs: locality | county | region.
+          name:
+            type: string
+            docs: Default-locale display name; other locales arrive via the i18n store.
+          countryId:
+            type: optional<string>
+            docs: The RID of the containing country.
+          distanceMeters:
+            type: double
+            docs: Great-circle distance in metres from the input coordinate to the place's centroid.
+      CoordinateResolution:
+        docs: The reverse-geocode of a coordinate — the containing country plus the nearest place. Either may be absent if the gazetteer has no coverage at the point.
+        fields:
+          country:
+            type: optional<Country>
+            docs: The country whose shape contains the point (or, lacking a shape, the nearest place's country); absent if neither resolves.
+          place:
+            type: optional<NearestPlace>
+            docs: The nearest gazetteer place; absent only if the gazetteer is empty.
 services:
   GeoService:
     name: Geo Service
@@ -44,3 +93,34 @@ services:
         http: GET /countries
         docs: List the active countries in display order (sort_order, then code).
         returns: CountryList
+      listPlaces:
+        http: GET /places
+        docs: |
+          List active administrative places in the WOF gazetteer for a country, filtered by placetype
+          (default `region`), in name order. Powers region pickers (e.g. vehicle plate region).
+        args:
+          country:
+            type: string
+            param-type: query
+            docs: The containing country's RID.
+          placetype:
+            type: optional<string>
+            param-type: query
+            docs: country | region | county | locality. Defaults to region.
+        returns: PlaceList
+      resolveCoordinate:
+        http: GET /resolve
+        docs: |
+          Reverse-geocode a WGS84 coordinate to the containing country plus the nearest place
+          (a locality — city/town/village — when one exists, else the nearest county/region).
+          Powers the locations form's auto-prefill after a coordinate is entered.
+        args:
+          lat:
+            type: double
+            param-type: query
+            docs: WGS84 latitude in decimal degrees.
+          lng:
+            type: double
+            param-type: query
+            docs: WGS84 longitude in decimal degrees.
+        returns: CoordinateResolution

@@ -541,12 +541,12 @@ a published coordinate to an H3 cell (`exact`→point … `city`→~9 km … `hi
 persecuted-community case. **Service schedule** is a site's recurring service (day/RRULE, time, IANA
 timezone, service language, **service type**, mode). **Alias** is a search-only alternative name.
 
-### Vehicle & subdivisions (M26)
+### Vehicle (M26)
 
-**Subdivision.** A seeded **ISO-3166-2** subnational division (oblast/region/raion/city) in the shared
-`geo_subdivisions` registry (D-GeoSubdivisions, M26) — `code` + translatable `name`, under a **Country**,
-optionally nested via `parent_id`. A platform-owned reference layer below `geo_countries`, the structured
-home for the vehicle plate-region (residence/Location free-text regions retrofit to it later, DS-51).
+**Plate region.** The structured home for a vehicle's registration region is the WOF **`geo_places`**
+gazetteer (placetype=region, D-GeoPlaces, built in M16) — **not** a separate `geo_subdivisions` registry
+(D-GeoSubdivisions was superseded; never built). A vehicle registration's `subdivision_id` is a
+`geo_places` region RID, app-validated on write.
 
 **Vehicle.** A physical vehicle (D-Vehicles, M26): a `vin` (unique among active), `manufacture_date`,
 `color`, and long-tail `attributes`, typed by a **vehicle type** (a shallow taxonomy tree) and a
@@ -555,7 +555,7 @@ temporal `MANUFACTURED_BY` link.
 
 **Vehicle registration.** The ownership+plate record — the reified temporal `REGISTERED_TO` link from a
 **Vehicle** to a **polymorphic owner** (person **or** company), carrying the registration country,
-**subdivision** (plate region), plate `registration_number`, and **registration number type**
+the **plate region** (a `geo_places` region RID), plate `registration_number`, and **registration number type**
 (regular/temporary/transit/…). Re-registration is a new row (the prior closed), so the link *is* the
 ownership history; person-owned rows are `pii:basic`, holder-scoped, and purge-erased.
 

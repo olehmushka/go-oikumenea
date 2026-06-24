@@ -40,6 +40,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/clients/go/oikumenea/rank"
 	"github.com/olegamysk/go-oikumenea/clients/go/oikumenea/religion"
 	"github.com/olegamysk/go-oikumenea/clients/go/oikumenea/tenant"
+	"github.com/olegamysk/go-oikumenea/clients/go/oikumenea/vehicle"
 	"github.com/palantir/conjure-go-runtime/v2/conjure-go-client/httpclient"
 	"github.com/palantir/pkg/bearertoken"
 )
@@ -74,6 +75,7 @@ type Client struct {
 	Rank     rank.RankServiceClientWithAuth
 	Religion religion.ReligionServiceClientWithAuth
 	Tenant   tenant.TenantServiceClientWithAuth
+	Vehicle  vehicle.VehicleServiceClientWithAuth
 	// Hermenea is the ingestion/scheduler companion's control + read API, reached through
 	// oikumenea's reverse proxy (D-Hermenea).
 	Hermenea hermenea.HermeneaServiceClientWithAuth
@@ -115,6 +117,7 @@ func NewWithTokenProvider(baseURL string, tokenProvider httpclient.TokenProvider
 		Rank:               rank.NewRankServiceClientWithTokenProvider(rank.NewRankServiceClient(hc), tokenProvider),
 		Religion:           religion.NewReligionServiceClientWithTokenProvider(religion.NewReligionServiceClient(hc), tokenProvider),
 		Tenant:             tenant.NewTenantServiceClientWithTokenProvider(tenant.NewTenantServiceClient(hc), tokenProvider),
+		Vehicle:            vehicle.NewVehicleServiceClientWithTokenProvider(vehicle.NewVehicleServiceClient(hc), tokenProvider),
 		Hermenea:           hermenea.NewHermeneaServiceClientWithTokenProvider(hermenea.NewHermeneaServiceClient(hc), tokenProvider),
 	}, nil
 }

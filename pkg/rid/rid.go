@@ -66,6 +66,7 @@ const (
 	SvcEducation  = 14
 	SvcCompany    = 15
 	SvcReligion   = 16
+	SvcVehicle    = 17
 )
 
 // ActionType is the generic per-service type code for an Action RID (the specific action name lives
