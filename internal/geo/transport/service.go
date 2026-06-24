@@ -57,3 +57,38 @@ func toAPICountry(c domain.Country) geoapi.Country {
 		Status: c.Status,
 	}
 }
+
+// ListPlaces implements GET /places — active gazetteer places of a placetype (default region) under a
+// country, for region pickers (D-GeoPlaces).
+func (s Service) ListPlaces(ctx context.Context, token bearertoken.Token, country string, placetype *string) (geoapi.PlaceList, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermCountryRead)); err != nil {
+		return geoapi.PlaceList{}, err
+	}
+	pt := ""
+	if placetype != nil {
+		pt = *placetype
+	}
+	places, err := s.app.ListPlaces(ctx, country, pt)
+	if err != nil {
+		return geoapi.PlaceList{}, werror.WrapWithContextParams(ctx, err, "list places failed")
+	}
+	out := make([]geoapi.Place, 0, len(places))
+	for _, p := range places {
+		out = append(out, toAPIPlace(p))
+	}
+	return geoapi.PlaceList{Places: out}, nil
+}
+
+func toAPIPlace(p domain.Place) geoapi.Place {
+	place := geoapi.Place{
+		Id:        p.ID,
+		Placetype: p.Placetype,
+		Name:      p.Name,
+		Status:    p.Status,
+	}
+	if p.CountryID != "" {
+		cid := p.CountryID
+		place.CountryId = &cid
+	}
+	return place
+}

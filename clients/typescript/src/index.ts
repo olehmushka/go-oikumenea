@@ -44,6 +44,7 @@ import {
   rank,
   religion,
   tenant,
+  vehicle,
 } from "./generated";
 
 export * from "./generated";
@@ -102,6 +103,7 @@ export interface OikumeneaClient {
   readonly rank: rank.RankService;
   readonly religion: religion.ReligionService;
   readonly tenant: tenant.TenantService;
+  readonly vehicle: vehicle.VehicleService;
   /** The hermenea ingestion/scheduler control + read API, proxied through oikumenea (D-Hermenea). */
   readonly hermenea: hermenea.HermeneaService;
   /** The underlying conjure HTTP bridge, for advanced use (custom endpoints, binary bodies). */
@@ -211,6 +213,7 @@ export function createOikumeneaClient(
     rank: new rank.RankService(bridge),
     religion: new religion.ReligionService(bridge),
     tenant: new tenant.TenantService(bridge),
+    vehicle: new vehicle.VehicleService(bridge),
     hermenea: new hermenea.HermeneaService(bridge),
     bridge,
     request,

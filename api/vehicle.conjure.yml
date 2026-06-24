@@ -1,0 +1,404 @@
+# Vehicle module API (M26). A generic vehicle registry binding people AND companies to vehicles in one
+# queryable graph (docs/modules/vehicle.md / D-Vehicles): a brand/model/type taxonomy, the physical
+# vehicle (VIN), the brand->manufacturer link (to a M21 company), and the ownership+plate registration
+# record. Volatile vehicle intelligence (insurance/inspection/accidents/telematics) is PARKED (DS-52);
+# column-izing stabilized specs out of `attributes` is parked (DS-53).
+#
+# RID-bearing fields are typed `string` (the canonical RID text): Conjure reserves `rid` as a built-in
+# primitive, so a type named `Rid` cannot be used. Translatable labels (type/brand/model/plate-type
+# names) are returned as a `locale -> text` map assembled from the i18n store (D-i18n: all locales in
+# every response, no negotiation); create/update requests carry the default-locale value as a plain
+# `string`. Vehicle entities carry no unit scope of their own (external reference data), so reads gate
+# on `vehicle.read`, vehicle/registration/manufacturer writes on `vehicle.manage`, catalog management
+# on the instance-scope `vehicle.catalog.manage` — all satisfied anywhere via the PEP. Writes are
+# audited in-process under a `system` actor (D-Audit). The plate REGION is a geo_places RID (placetype
+# = region) resolved via GeoService.listPlaces. Generated Go lands in internal/conjure, never hand-edited.
+types:
+  definitions:
+    default-package: oikumenea.vehicle
+    objects:
+      # ---- reference catalogs ----
+      VehicleType:
+        docs: A vehicle taxonomy node (car/truck/motorcycle…); a shallow tree (parentId + denormalized rootId).
+        fields:
+          id: string
+          code: string
+          name:
+            type: map<string, string>
+            docs: Default-locale fallback + i18n translations.
+          parentId: optional<string>
+          rootId: optional<string>
+          status: string
+          sortOrder: optional<integer>
+      Brand:
+        docs: A vehicle marque (Toyota/BMW…); countryId is the country of origin (nullable).
+        fields:
+          id: string
+          code: string
+          name: map<string, string>
+          countryId: optional<string>
+          status: string
+          sortOrder: optional<integer>
+      Model:
+        docs: A model under a brand (containment); generation + the manufacture window are structural specs.
+        fields:
+          id: string
+          brandId: string
+          code: string
+          name: map<string, string>
+          generation: optional<string>
+          manufactureStart: optional<string>
+          manufactureEnd: optional<string>
+          status: string
+          sortOrder: optional<integer>
+      RegistrationNumberType:
+        docs: A plate-type catalog entry (regular/temporary/transit/diplomatic/military/old…).
+        fields:
+          id: string
+          code: string
+          name: map<string, string>
+          status: string
+          sortOrder: optional<integer>
+      # ---- objects ----
+      Vehicle:
+        docs: A physical vehicle at registry grade. Soft-deleted, not destroyed. The RID is the external handle.
+        fields:
+          id: string
+          typeId: string
+          typeLabel:
+            type: optional<string>
+            docs: Best-effort default-locale type name.
+          modelId: optional<string>
+          modelLabel: optional<string>
+          brandId:
+            type: optional<string>
+            docs: The brand of the model (derived), when a model is set.
+          brandLabel: optional<string>
+          vin: optional<string>
+          color: optional<string>
+          manufactureDate: optional<string>
+          attributes:
+            type: optional<string>
+            docs: Long-tail spec grab-bag as a JSON string (DS-53 will column-ize stabilized fields).
+          status:
+            type: string
+            docs: One of active | scrapped | exported.
+          createdAt: datetime
+          updatedAt: datetime
+      # ---- reified links ----
+      Manufacturer:
+        docs: A brand is MANUFACTURED_BY a company (link__manufactured_by); temporal (changes with acquisitions).
+        fields:
+          id: string
+          brandId: string
+          companyId: string
+          companyLabel:
+            type: optional<string>
+            docs: Best-effort company legal name.
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+          createdAt: datetime
+          updatedAt: datetime
+      Registration:
+        docs: |
+          The ownership+plate record (link__registered_to). The owner is a person OR a company
+          (polymorphic). country/subdivision carry the registering country + optional plate region. A
+          re-registration is a new row (the prior closed), so registration IS the ownership history.
+        fields:
+          id: string
+          vehicleId: string
+          ownerKind:
+            type: string
+            docs: One of person | company.
+          ownerId: string
+          ownerLabel:
+            type: optional<string>
+            docs: Best-effort display label (company legal name for company owners; empty for persons).
+          countryId: string
+          subdivisionId:
+            type: optional<string>
+            docs: The plate region — a geo_places RID (placetype=region).
+          subdivisionLabel: optional<string>
+          registrationNumber: string
+          numberTypeId: optional<string>
+          status:
+            type: string
+            docs: One of active | closed.
+          effectiveFrom: datetime
+          effectiveTo: optional<datetime>
+          createdAt: datetime
+          updatedAt: datetime
+      # ---- person view ----
+      PersonVehicleRegistration:
+        docs: A vehicle registration a person owns, enriched with the vehicle's identity (read-only).
+        fields:
+          id: string
+          vehicleId: string
+          vin: optional<string>
+          typeLabel: optional<string>
+          brandLabel: optional<string>
+          modelLabel: optional<string>
+          registrationNumber: string
+          countryId: string
+          subdivisionLabel: optional<string>
+          status: string
+          effectiveFrom: datetime
+          effectiveTo: optional<datetime>
+      PersonVehicles:
+        docs: A person's vehicle registrations (current + historical, newest first).
+        fields:
+          registrations: list<PersonVehicleRegistration>
+      # ---- pages / lists ----
+      VehiclePage:
+        fields:
+          vehicles: list<Vehicle>
+          nextPageToken: optional<string>
+      VehicleTypeList:
+        fields:
+          types: list<VehicleType>
+      BrandList:
+        fields:
+          brands: list<Brand>
+      ModelList:
+        fields:
+          models: list<Model>
+      RegistrationNumberTypeList:
+        fields:
+          numberTypes: list<RegistrationNumberType>
+      RegistrationList:
+        fields:
+          registrations: list<Registration>
+      ManufacturerList:
+        fields:
+          manufacturers: list<Manufacturer>
+      # ---- request bodies ----
+      UpsertVehicleTypeRequest:
+        docs: Create/update (by code) a vehicle-type catalog node. name is the default-locale fallback.
+        fields:
+          code: string
+          name: string
+          parentId: optional<string>
+          sortOrder: optional<integer>
+      UpsertBrandRequest:
+        fields:
+          code: string
+          name: string
+          countryId: optional<string>
+          sortOrder: optional<integer>
+      UpsertModelRequest:
+        fields:
+          code: string
+          name: string
+          generation: optional<string>
+          manufactureStart: optional<string>
+          manufactureEnd: optional<string>
+          sortOrder: optional<integer>
+      UpsertNumberTypeRequest:
+        fields:
+          code: string
+          name: string
+          sortOrder: optional<integer>
+      CreateVehicleRequest:
+        fields:
+          typeId: string
+          modelId: optional<string>
+          vin: optional<string>
+          color: optional<string>
+          manufactureDate: optional<string>
+          attributes:
+            type: optional<string>
+            docs: A JSON object string; defaults to {}.
+      UpdateVehicleRequest:
+        docs: Update type/model/vin/color/date/attributes/status; omitted fields are unchanged.
+        fields:
+          typeId: optional<string>
+          modelId: optional<string>
+          vin: optional<string>
+          color: optional<string>
+          manufactureDate: optional<string>
+          attributes: optional<string>
+          status: optional<string>
+      RegisterVehicleRequest:
+        docs: |
+          Register the vehicle to a new owner (person or company). Any currently-active registration for
+          the vehicle is closed first (registration is the ownership history), so this also performs a
+          transfer. subdivisionId (the plate region) must be a geo_places region when supplied.
+        fields:
+          ownerKind: string
+          ownerId: string
+          countryId: string
+          subdivisionId: optional<string>
+          registrationNumber: string
+          numberTypeId: optional<string>
+          effectiveFrom: optional<datetime>
+      AddManufacturerRequest:
+        docs: Record that a company manufactures this brand (temporal).
+        fields:
+          companyId: string
+          effectiveFrom: optional<string>
+          effectiveTo: optional<string>
+    errors:
+      VehicleNotFound:
+        namespace: Vehicle
+        code: NOT_FOUND
+        safe-args:
+          vehicleId: string
+      BrandNotFound:
+        namespace: Vehicle
+        code: NOT_FOUND
+        safe-args:
+          brandId: string
+      LinkNotFound:
+        docs: A registration / manufacturer link was not found.
+        namespace: Vehicle
+        code: NOT_FOUND
+        safe-args:
+          linkId: string
+      Conflict:
+        docs: A code/identifier already exists in scope (catalog code, duplicate active VIN, duplicate active plate per country).
+        namespace: Vehicle
+        code: CONFLICT
+        safe-args:
+          reason: string
+      Invalid:
+        docs: A malformed request or an unknown referenced entity (type/model/brand/country/number-type/owner).
+        namespace: Vehicle
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
+      RegionInvalid:
+        docs: The supplied plate region is not a geo_places region (placetype<>region) or does not exist.
+        namespace: Vehicle
+        code: INVALID_ARGUMENT
+        safe-args:
+          subdivisionId: string
+services:
+  VehicleService:
+    name: Vehicle Service
+    package: oikumenea.vehicle
+    base-path: /vehicle/v1
+    default-auth: header
+    docs: |
+      A vehicle registry: brand/model/type catalogs, vehicles, the brand->manufacturer link, and the
+      ownership+plate registration record. Reads gate on `vehicle.read`; vehicle/registration/
+      manufacturer writes on `vehicle.manage`; catalog-entry writes on `vehicle.catalog.manage`. Writes
+      are audited in-process (D-Audit).
+    endpoints:
+      # ---- catalogs ----
+      listVehicleTypes:
+        http: GET /vehicle-types
+        returns: VehicleTypeList
+      upsertVehicleType:
+        http: PUT /vehicle-types
+        args:
+          request: UpsertVehicleTypeRequest
+        returns: VehicleType
+      listBrands:
+        http: GET /brands
+        args:
+          query:
+            type: optional<string>
+            param-type: query
+            docs: Optional case-insensitive code/name filter.
+        returns: BrandList
+      upsertBrand:
+        http: PUT /brands
+        args:
+          request: UpsertBrandRequest
+        returns: Brand
+      listModels:
+        http: GET /brands/{brandId}/models
+        args:
+          brandId: { type: string, param-type: path }
+        returns: ModelList
+      upsertModel:
+        http: PUT /brands/{brandId}/models
+        args:
+          brandId: { type: string, param-type: path }
+          request: UpsertModelRequest
+        returns: Model
+      listRegistrationNumberTypes:
+        http: GET /registration-number-types
+        returns: RegistrationNumberTypeList
+      upsertRegistrationNumberType:
+        http: PUT /registration-number-types
+        args:
+          request: UpsertNumberTypeRequest
+        returns: RegistrationNumberType
+      # ---- vehicles ----
+      createVehicle:
+        http: POST /vehicles
+        args:
+          request: CreateVehicleRequest
+        returns: Vehicle
+      listVehicles:
+        http: GET /vehicles
+        args:
+          query:
+            type: optional<string>
+            param-type: query
+            docs: Optional case-insensitive VIN filter.
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: VehiclePage
+      getVehicle:
+        http: GET /vehicles/{vehicleId}
+        args:
+          vehicleId: { type: string, param-type: path }
+        returns: Vehicle
+      updateVehicle:
+        http: PUT /vehicles/{vehicleId}
+        args:
+          vehicleId: { type: string, param-type: path }
+          request: UpdateVehicleRequest
+        returns: Vehicle
+      deleteVehicle:
+        http: DELETE /vehicles/{vehicleId}
+        args:
+          vehicleId: { type: string, param-type: path }
+      # ---- registrations (ownership history) ----
+      listRegistrations:
+        http: GET /vehicles/{vehicleId}/registrations
+        args:
+          vehicleId: { type: string, param-type: path }
+        returns: RegistrationList
+      registerVehicle:
+        http: POST /vehicles/{vehicleId}/registrations
+        docs: Register (or transfer) the vehicle to a new owner; closes any active registration first.
+        args:
+          vehicleId: { type: string, param-type: path }
+          request: RegisterVehicleRequest
+        returns: Registration
+      closeRegistration:
+        http: POST /registrations/{registrationId}/close
+        docs: End an active registration without a new owner (e.g. deregistration).
+        args:
+          registrationId: { type: string, param-type: path }
+        returns: Registration
+      # ---- brand manufacturers ----
+      listManufacturers:
+        http: GET /brands/{brandId}/manufacturers
+        args:
+          brandId: { type: string, param-type: path }
+        returns: ManufacturerList
+      addManufacturer:
+        http: POST /brands/{brandId}/manufacturers
+        args:
+          brandId: { type: string, param-type: path }
+          request: AddManufacturerRequest
+        returns: Manufacturer
+      removeManufacturer:
+        http: DELETE /manufacturers/{manufacturerId}
+        args:
+          manufacturerId: { type: string, param-type: path }
+      # ---- person view ----
+      listPersonVehicles:
+        http: GET /persons/{personId}/vehicles
+        docs: Read-only view of the vehicle registrations a person owns (current + historical).
+        args:
+          personId: { type: string, param-type: path }
+        returns: PersonVehicles

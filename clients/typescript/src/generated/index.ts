@@ -18,6 +18,7 @@ import * as platform from "./platform";
 import * as rank from "./rank";
 import * as religion from "./religion";
 import * as tenant from "./tenant";
+import * as vehicle from "./vehicle";
 
 export { audit };
 export { authorization };
@@ -39,3 +40,4 @@ export { platform };
 export { rank };
 export { religion };
 export { tenant };
+export { vehicle };

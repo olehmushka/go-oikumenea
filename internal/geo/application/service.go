@@ -36,3 +36,12 @@ func NewService(pool *pgxpool.Pool, newRepo RepositoryFactory, audit *auditapp.S
 func (s *Service) ListCountries(ctx context.Context) ([]domain.Country, error) {
 	return s.newRepo(s.pool).ListCountries(ctx)
 }
+
+// ListPlaces returns active geo_places of a placetype (default region) under a country, in name order
+// (D-GeoPlaces) — powers region pickers such as a vehicle plate region.
+func (s *Service) ListPlaces(ctx context.Context, countryID, placetype string) ([]domain.Place, error) {
+	if placetype == "" {
+		placetype = "region"
+	}
+	return s.newRepo(s.pool).ListPlaces(ctx, countryID, placetype)
+}

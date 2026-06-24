@@ -57,7 +57,7 @@ across graphs. That — *hierarchy + inheritance + visibility, decided by a PDP*
 | [authorization](modules/authorization.md) | RBAC + the **PDP**. Roles, code-defined permissions, scoped assignments, instance-admin. |
 | [identity-federation](modules/identity-federation.md) | The external-IdP seam: accounts, external identities, inbound OIDC/JWKS validation. |
 | [localization](modules/localization.md) | i18n: instance-admin-managed locales + the translation store for entity labels. |
-| [platform](modules/platform.md) | witchcraft bootstrap, config, observability, schema bootstrap, country registry (+ the planned `geo_subdivisions` ISO-3166-2 registry, M26), crypto/KMS seam, boot-time schema-version check. Hosts the generic **`POST /import/{objectType}`** upsert endpoint + the `import.manage` **service principal** the hermenea companion calls (M16). |
+| [platform](modules/platform.md) | witchcraft bootstrap, config, observability, schema bootstrap, country registry + the WOF `geo_places` gazetteer (D-GeoPlaces, M16), crypto/KMS seam, boot-time schema-version check. Hosts the generic **`POST /import/{objectType}`** upsert endpoint + the `import.manage` **service principal** the hermenea companion calls (M16). |
 | [audit](modules/audit.md) | Append-only audit trail of permission-sensitive actions. |
 
 **Companion service** (a **second binary**, not an oikumenea `internal/` module):
@@ -81,7 +81,7 @@ across graphs. That — *hierarchy + inheritance + visibility, decided by a PDP*
 | `education` *(M20)* | Educational institutions, internal structure, buildings, and person bindings (enrollment, mentorship, groups, dorm stays, positions). |
 | [company](modules/company.md) *(M21)* | A legal-entity registry with the ownership/affiliation graph (legal form, registration, positions, founders, shareholders, UBO). |
 | [religion](modules/religion.md) *(M22–M25)* | The **multi-faith** religion vertical: faith taxonomy (religions→traditions), organizations as tenant units in religion graphs, clergy grades/credentials, lay affiliation (`pii:special`), and discovery (sites→Location, schedules, search). Catalog-driven, no hard-coded faith vocabulary. |
-| `vehicle` *(M26)* | A vehicle registry binding people & companies to vehicles: brand/model/type taxonomy, the vehicle (VIN), a temporal brand↔Company manufacturer link, and the ownership+plate registration (polymorphic person\|company owner, plate region via the shared `geo_subdivisions` registry). |
+| [vehicle](modules/vehicle.md) *(M26)* | A vehicle registry binding people & companies to vehicles: brand/model/type taxonomy, the vehicle (VIN), a temporal brand↔Company manufacturer link, and the ownership+plate registration (polymorphic person\|company owner, plate region via the shared WOF `geo_places` gazetteer). |
 | [external-organizations](modules/external-organizations.md) *(M30)* | A registry of external organizations (party / government body / foreign military / NGO / lobbying registrant) — the node-space the M33 person↔org institutional ties point at when the org is neither an operator unit nor an M21 company. Catalog-typed, provisional/resolved, hermenea-fed. |
 
 The remaining planned milestones extend existing modules rather than adding new ones: the

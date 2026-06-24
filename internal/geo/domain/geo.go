@@ -17,11 +17,25 @@ type Country struct {
 	Status string
 }
 
+// Place is one administrative node in the WOF geo_places gazetteer (D-GeoPlaces): a country/region/
+// county/locality. ID is the RID consumers reference (e.g. a vehicle plate region); CountryID is the
+// RID of the containing country ("" for a country node). Name is the default-locale name.
+type Place struct {
+	ID        string
+	Placetype string
+	Name      string
+	CountryID string
+	Status    string
+}
+
 // Repository is the geo module's port: a read-only view of the country registry plus the audited CRUD
 // + spatial reads over the shared Location entity (D-Location, M19). The country side is written by the
 // hermenea import pipeline (not here); the location side is owned by this module.
 type Repository interface {
 	ListCountries(ctx context.Context) ([]Country, error)
+	// ListPlaces returns active geo_places of the given placetype under a country, in name order
+	// (powers region pickers, e.g. a vehicle plate region — D-GeoPlaces).
+	ListPlaces(ctx context.Context, countryID, placetype string) ([]Place, error)
 
 	// location (D-Location)
 	InsertLocation(ctx context.Context, w LocationWrite) (Location, error)
