@@ -45,3 +45,9 @@ func (s *Service) ListPlaces(ctx context.Context, countryID, placetype string) (
 	}
 	return s.newRepo(s.pool).ListPlaces(ctx, countryID, placetype)
 }
+
+// ResolveCoordinate reverse-geocodes a WGS84 coordinate to the containing country plus the nearest
+// gazetteer place (locality, else county/region) — powers the locations-form prefill (D-GeoPlaces).
+func (s *Service) ResolveCoordinate(ctx context.Context, lat, lng float64) (domain.CoordinateResolution, error) {
+	return s.newRepo(s.pool).ResolveCoordinate(ctx, lat, lng)
+}

@@ -74,6 +74,33 @@ function CreateLocation({ types }: { types: LocationType[] }) {
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<Location | null>(null);
   const [format, setFormat] = useState("latlon");
+  // Prefilled-from-coordinate fields (controlled so the lookup can fill them); see onLatLonBlur.
+  const [countryId, setCountryId] = useState("");
+  const [locality, setLocality] = useState("");
+  const [adminArea1, setAdminArea1] = useState("");
+
+  // onLatLonBlur reverse-geocodes the entered WGS84 coordinate and prefills Country / Locality / Admin
+  // area — but only fields the user has left empty (manual edits are never overwritten). Best-effort:
+  // any error is swallowed so it never blocks creation.
+  async function onLatLonBlur(e: React.FocusEvent<HTMLInputElement>) {
+    const fForm = e.currentTarget.form;
+    if (!fForm) return;
+    const f = new FormData(fForm);
+    const lat = Number(String(f.get("latitude") || "").trim());
+    const lng = Number(String(f.get("longitude") || "").trim());
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    try {
+      const res = await api.geo.resolveCoordinate(lat, lng);
+      if (res.country) setCountryId((prev) => prev || res.country!.id);
+      const place = res.place;
+      if (place) {
+        if (place.placetype === "locality") setLocality((prev) => prev || place.name);
+        else setAdminArea1((prev) => prev || place.name);
+      }
+    } catch {
+      // best-effort prefill
+    }
+  }
 
   function buildCoordinate(f: FormData): CoordinateInput {
     const num = (k: string) => {
@@ -100,10 +127,11 @@ function CreateLocation({ types }: { types: LocationType[] }) {
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const form = e.currentTarget;
     setBusy(true);
     setErr(null);
     setCreated(null);
-    const f = new FormData(e.currentTarget);
+    const f = new FormData(form);
     const str = (k: string) => {
       const v = String(f.get(k) || "").trim();
       return v === "" ? undefined : v;
@@ -122,6 +150,12 @@ function CreateLocation({ types }: { types: LocationType[] }) {
     try {
       const loc = await api.location.createLocation(body as never);
       setCreated(loc as unknown as Location);
+      // Clear the form for the next entry: reset the uncontrolled inputs (coordinate, street, …) and
+      // the controlled prefill fields, so the next coordinate re-triggers the country/locality lookup.
+      form.reset();
+      setCountryId("");
+      setLocality("");
+      setAdminArea1("");
     } catch (e) {
       setErr(e);
     } finally {
@@ -143,11 +177,11 @@ function CreateLocation({ types }: { types: LocationType[] }) {
           </select>
         </div>
 
-        <CoordinateFields format={format} />
+        <CoordinateFields format={format} onLatLonBlur={onLatLonBlur} />
 
         <div>
           <label className="label"><T>Country *</T></label>
-          <CountrySelect name="countryId" required />
+          <CountrySelect name="countryId" required value={countryId} onChange={setCountryId} />
         </div>
         <div>
           <label className="label"><T>Type</T></label>
@@ -163,11 +197,11 @@ function CreateLocation({ types }: { types: LocationType[] }) {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="label"><T>Locality</T></label>
-            <input name="locality" className="input" placeholder={tr("Kyiv")} />
+            <input name="locality" className="input" placeholder={tr("Kyiv")} value={locality} onChange={(e) => setLocality(e.target.value)} />
           </div>
           <div>
             <label className="label"><T>Admin area</T></label>
-            <input name="adminArea1" className="input" placeholder={tr("Kyiv City")} />
+            <input name="adminArea1" className="input" placeholder={tr("Kyiv City")} value={adminArea1} onChange={(e) => setAdminArea1(e.target.value)} />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -210,7 +244,7 @@ function CreateLocation({ types }: { types: LocationType[] }) {
 
 // CoordinateFields swaps the inputs for the chosen format. All inputs are plain (uncontrolled) and read
 // from FormData on submit; only the rendered set changes.
-function CoordinateFields({ format }: { format: string }) {
+function CoordinateFields({ format, onLatLonBlur }: { format: string; onLatLonBlur?: (e: React.FocusEvent<HTMLInputElement>) => void }) {
   switch (format) {
     case "mgrs":
       return (
@@ -273,11 +307,11 @@ function CoordinateFields({ format }: { format: string }) {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="label"><T>Latitude *</T></label>
-            <input name="latitude" required className="input" placeholder="50.4501" inputMode="decimal" />
+            <input name="latitude" required className="input" placeholder="50.4501" inputMode="decimal" onBlur={onLatLonBlur} />
           </div>
           <div>
             <label className="label"><T>Longitude *</T></label>
-            <input name="longitude" required className="input" placeholder="30.5234" inputMode="decimal" />
+            <input name="longitude" required className="input" placeholder="30.5234" inputMode="decimal" onBlur={onLatLonBlur} />
           </div>
         </div>
       );

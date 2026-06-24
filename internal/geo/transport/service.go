@@ -79,6 +79,42 @@ func (s Service) ListPlaces(ctx context.Context, token bearertoken.Token, countr
 	return geoapi.PlaceList{Places: out}, nil
 }
 
+// ResolveCoordinate implements GET /resolve — reverse-geocode a coordinate to country + nearest place
+// for the locations-form prefill (D-GeoPlaces).
+func (s Service) ResolveCoordinate(ctx context.Context, token bearertoken.Token, lat, lng float64) (geoapi.CoordinateResolution, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermCountryRead)); err != nil {
+		return geoapi.CoordinateResolution{}, err
+	}
+	res, err := s.app.ResolveCoordinate(ctx, lat, lng)
+	if err != nil {
+		return geoapi.CoordinateResolution{}, werror.WrapWithContextParams(ctx, err, "resolve coordinate failed")
+	}
+	var out geoapi.CoordinateResolution
+	if res.Country != nil {
+		c := toAPICountry(*res.Country)
+		out.Country = &c
+	}
+	if res.Place != nil {
+		p := toAPINearestPlace(*res.Place)
+		out.Place = &p
+	}
+	return out, nil
+}
+
+func toAPINearestPlace(p domain.NearestPlace) geoapi.NearestPlace {
+	place := geoapi.NearestPlace{
+		Id:             p.ID,
+		Placetype:      p.Placetype,
+		Name:           p.Name,
+		DistanceMeters: p.DistanceMeters,
+	}
+	if p.CountryID != "" {
+		cid := p.CountryID
+		place.CountryId = &cid
+	}
+	return place
+}
+
 func toAPIPlace(p domain.Place) geoapi.Place {
 	place := geoapi.Place{
 		Id:        p.ID,

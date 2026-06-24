@@ -34,11 +34,17 @@ export function useCountryMap(): (id: string | undefined) => string {
 export function CountrySelect({
   name,
   defaultValue,
+  value,
+  onChange,
   required,
   includeEmpty = true,
 }: {
   name: string;
   defaultValue?: string;
+  // Controlled mode: pass both `value` and `onChange` (e.g. so a coordinate lookup can prefill the
+  // country). Omit them to keep the uncontrolled `defaultValue` behaviour used elsewhere.
+  value?: string;
+  onChange?: (id: string) => void;
   required?: boolean;
   includeEmpty?: boolean;
 }) {
@@ -55,8 +61,17 @@ export function CountrySelect({
       .catch(() => setCountries([]));
   }, []);
 
+  const controlled = value !== undefined && onChange !== undefined;
+
   return (
-    <select name={name} className="input" defaultValue={defaultValue ?? ""} required={required}>
+    <select
+      name={name}
+      className="input"
+      required={required}
+      {...(controlled
+        ? { value, onChange: (e) => onChange!(e.target.value) }
+        : { defaultValue: defaultValue ?? "" })}
+    >
       {includeEmpty ? <option value="">—</option> : null}
       {countries.map((c) => (
         <option key={c.id} value={c.id}>
