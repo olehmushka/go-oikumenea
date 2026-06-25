@@ -7,11 +7,83 @@ import (
 	"net/http"
 
 	"github.com/palantir/conjure-go-runtime/v2/conjure-go-contract/codecs"
+	"github.com/palantir/conjure-go-runtime/v2/conjure-go-contract/errors"
 	"github.com/palantir/conjure-go-runtime/v2/conjure-go-server/httpserver"
+	"github.com/palantir/pkg/bearertoken"
 	werror "github.com/palantir/witchcraft-go-error"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft/wresource"
 	"github.com/palantir/witchcraft-go-server/v2/wrouter"
 )
+
+/*
+Cross-cutting platform reference catalogs (D-OverlayFoundation, M29). Today: the GDPR
+lawful-basis catalog (`platform_legal_basis_kinds`), referenced by every future pii:special
+overlay store. Reads require `legal-basis.read`; writes the instance-plane `legal-basis.manage`.
+*/
+type PlatformCatalogService interface {
+	// List the GDPR lawful-basis catalog (Article 6 bases + Article 9 conditions).
+	ListLegalBasisKinds(ctx context.Context, authHeader bearertoken.Token) (LegalBasisKindList, error)
+	// Add or update a lawful-basis catalog entry (instance-admin; `legal-basis.manage`).
+	UpsertLegalBasisKind(ctx context.Context, authHeader bearertoken.Token, codeArg string, requestArg UpsertLegalBasisKindRequest) (LegalBasisKind, error)
+}
+
+// RegisterRoutesPlatformCatalogService registers handlers for the PlatformCatalogService endpoints with a witchcraft wrouter.
+// This should typically be called in a witchcraft server's InitFunc.
+// impl provides an implementation of each endpoint, which can assume the request parameters have been parsed
+// in accordance with the Conjure specification.
+func RegisterRoutesPlatformCatalogService(router wrouter.Router, impl PlatformCatalogService, routerParams ...wrouter.RouteParam) error {
+	handler := platformCatalogServiceHandler{impl: impl}
+	resource := wresource.New("platformcatalogservice", router)
+	if err := resource.Get("ListLegalBasisKinds", "/platform/v1/legal-basis-kinds", httpserver.NewJSONHandler(handler.HandleListLegalBasisKinds, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listLegalBasisKinds route")
+	}
+	if err := resource.Put("UpsertLegalBasisKind", "/platform/v1/legal-basis-kinds/{code}", httpserver.NewJSONHandler(handler.HandleUpsertLegalBasisKind, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertLegalBasisKind route")
+	}
+	return nil
+}
+
+type platformCatalogServiceHandler struct {
+	impl PlatformCatalogService
+}
+
+func (p *platformCatalogServiceHandler) HandleListLegalBasisKinds(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	respArg, err := p.impl.ListLegalBasisKinds(req.Context(), bearertoken.Token(authHeader))
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *platformCatalogServiceHandler) HandleUpsertLegalBasisKind(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	codeArg, ok := pathParams["code"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"code\" not present")
+	}
+	var requestArg UpsertLegalBasisKindRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertLegalBasisKind(req.Context(), bearertoken.Token(authHeader), codeArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
 
 // Unauthenticated operational endpoints owned by the platform module.
 type PlatformOpsService interface {

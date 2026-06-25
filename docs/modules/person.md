@@ -109,7 +109,14 @@ Conventions per [conventions.md](../architecture/conventions.md).
   `pii:special` **(ceiling)**: a grab-bag may hold up to special-category data, so it is tagged at
   the ceiling (D-PIITiers); special-category fields must not land here without the envelope seam
 - *(no `rank_id` column — rank is held via `person_ranks`, one per rank system; D-Rank)*
-- `status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','deactivated','purged'))`
+- `status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','deactivated','purged','provisional'))`
+  — `provisional` is a **minimal-PII stub** (D-OverlayFoundation, M29): an unresolved external / edge-target
+  person so a relationship or overlay edge points at a real node. It is resolved by **`MergePerson`**
+  (`POST /persons/{id}/merge`, perm `person.merge`, admin-tier), which in one transaction re-homes the
+  stub's person-owned edges, publishes the **`PersonMerged`** event so every other module re-points its
+  person-referencing rows ([events](../architecture/patterns.md) — the cross-module-mutation-via-events
+  rule), then tombstones the stub as `purged`. Created via `POST /provisional-persons`. No automatic
+  candidate matching — resolution is manual (fuzzy dedup is a parked seam).
 - `deactivated_at TIMESTAMPTZ`, `purge_after TIMESTAMPTZ` — reversibility window
 - `created_at`, `updated_at`, `deleted_at`
 

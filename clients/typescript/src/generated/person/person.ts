@@ -49,7 +49,7 @@ export interface IPerson {
     'attributes'?: any | null;
     /** The ranks the person holds — at most one per rank system (a DIRECTORY attribute; never an authz input — D-Rank). Empty when unranked. Populated by getPerson; empty in list responses. */
     'ranks': Array<IPersonRank>;
-    /** Lifecycle status — one of active | deactivated | purged. */
+    /** Lifecycle status — one of active | deactivated | purged | provisional (D-OverlayFoundation). */
     'status': string;
     'deactivatedAt'?: string | null;
     /** End of the reversibility window; purge is refused before it. */

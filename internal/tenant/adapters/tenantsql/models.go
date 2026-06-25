@@ -1780,6 +1780,22 @@ type OikumeneaPersonSponsorship struct {
 	EducationRole pgtype.Text
 }
 
+type OikumeneaPlatformLegalBasisKind struct {
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	Article string
+	// pii:none
+	Status string
+	// pii:none
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
 type OikumeneaPlatformRidService struct {
 	// pii:none
 	Code int16
@@ -2375,6 +2391,131 @@ type OikumeneaTenantUnitLifecycleEvent struct {
 	// pii:none
 	RequestID string
 	CreatedAt pgtype.Timestamptz
+}
+
+type OikumeneaVehicleBrand struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	CountryID pgtype.Text
+	Status    string
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaVehicleBrandManufacturer struct {
+	// pii:none
+	ID string
+	// pii:none
+	BrandID string
+	// pii:none
+	CompanyID     string
+	EffectiveFrom pgtype.Date
+	EffectiveTo   pgtype.Date
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	DeletedAt     pgtype.Timestamptz
+}
+
+type OikumeneaVehicleModel struct {
+	// pii:none
+	ID string
+	// pii:none
+	BrandID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	Generation       pgtype.Text
+	ManufactureStart pgtype.Date
+	ManufactureEnd   pgtype.Date
+	Status           string
+	SortOrder        pgtype.Int4
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	DeletedAt        pgtype.Timestamptz
+}
+
+type OikumeneaVehicleRegistration struct {
+	// pii:none
+	ID string
+	// pii:none
+	VehicleID string
+	// pii:none
+	OwnerKind string
+	// pii:basic
+	OwnerID string
+	// pii:none
+	CountryID string
+	// pii:none
+	SubdivisionID pgtype.Text
+	// pii:basic
+	RegistrationNumber string
+	NumberTypeID       pgtype.Text
+	Status             string
+	EffectiveFrom      pgtype.Timestamptz
+	EffectiveTo        pgtype.Timestamptz
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+	DeletedAt          pgtype.Timestamptz
+}
+
+type OikumeneaVehicleRegistrationNumberType struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name      string
+	Status    string
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaVehicleType struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	ParentID pgtype.Text
+	// pii:none
+	RootID    pgtype.Text
+	Status    string
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaVehicleVehicle struct {
+	// pii:none
+	ID string
+	// pii:none
+	TypeID string
+	// pii:none
+	ModelID pgtype.Text
+	// pii:basic
+	Vin pgtype.Text
+	// pii:none
+	Color           pgtype.Text
+	ManufactureDate pgtype.Date
+	Attributes      []byte
+	Status          string
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+	DeletedAt       pgtype.Timestamptz
 }
 
 type OikumeneaWritingSystem struct {

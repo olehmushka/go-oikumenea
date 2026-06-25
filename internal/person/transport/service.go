@@ -41,6 +41,7 @@ const (
 	permRankAssign = string(authzdomain.PermPersonRankAssign)
 	permLifecycle  = string(authzdomain.PermPersonLifecycle)
 	permPurge      = string(authzdomain.PermPersonPurge)
+	permMerge      = string(authzdomain.PermPersonMerge)
 )
 
 // Localization entity-type keys for the translatable contact-kind / platform catalog names (D-i18n).
@@ -89,6 +90,35 @@ func (s Service) CreatePerson(ctx context.Context, token bearertoken.Token, req 
 		return personapi.Person{}, s.mapError(ctx, err, "")
 	}
 	return toAPIPerson(created), nil
+}
+
+// CreateProvisionalPerson creates a minimal-PII provisional stub (D-OverlayFoundation, M29). Gated on
+// person.create (the same create-tier permission); resolution via MergePerson is the privileged step.
+func (s Service) CreateProvisionalPerson(ctx context.Context, token bearertoken.Token, req personapi.CreateProvisionalPersonRequest) (personapi.Person, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permCreate); err != nil {
+		return personapi.Person{}, err
+	}
+	created, err := s.app.CreateProvisionalPerson(ctx, domain.Person{
+		Name:       nameFromParts(req.DisplayName, nil, nil, nil, nil, nil, nil, nil, nil, nil),
+		Attributes: attrToBytes(req.Attributes),
+	})
+	if err != nil {
+		return personapi.Person{}, s.mapError(ctx, err, "")
+	}
+	return toAPIPerson(created), nil
+}
+
+// MergePerson resolves a provisional stub into a canonical person (D-OverlayFoundation, M29). Gated on
+// the admin-tier person.merge.
+func (s Service) MergePerson(ctx context.Context, token bearertoken.Token, personID string, req personapi.MergePersonRequest) (personapi.Person, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permMerge); err != nil {
+		return personapi.Person{}, err
+	}
+	merged, err := s.app.MergePerson(ctx, personID, req.IntoPersonId, derefOr(req.Confidence, ""))
+	if err != nil {
+		return personapi.Person{}, s.mapError(ctx, err, personID)
+	}
+	return toAPIPerson(merged), nil
 }
 
 func (s Service) GetPerson(ctx context.Context, token bearertoken.Token, personID string) (personapi.Person, error) {
@@ -1323,6 +1353,10 @@ func (s Service) mapError(ctx context.Context, err error, personID string) error
 		return personapi.NewPersonInvalid("language does not exist or is not a level='language' languoid")
 	case errors.Is(err, domain.ErrLanguageConflict):
 		return personapi.NewPersonConflict("the person already speaks this language")
+	case errors.Is(err, domain.ErrMergeNotProvisional):
+		return personapi.NewPersonInvalid("merge source is not a provisional person")
+	case errors.Is(err, domain.ErrMergeIntoInvalid):
+		return personapi.NewPersonInvalid("merge target must be a distinct, non-provisional person")
 	case errors.Is(err, domain.ErrInvalid):
 		return personapi.NewPersonInvalid(err.Error())
 	case errors.Is(err, domain.ErrLifecycle):

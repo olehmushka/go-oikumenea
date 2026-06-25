@@ -209,6 +209,24 @@ ECV-refreshable) beside the OIDC `Authenticator` resolves to a principal holding
 push trigger (`POST /sync/{source}` on hermenea, `OIKUMENEA_HERMENEA_TOKEN`) is a thin outbound HTTP
 client wired here.
 
+### Legal-basis catalog (D-OverlayFoundation, M29)
+
+Platform owns the cross-cutting **GDPR lawful-basis catalog** `platform_legal_basis_kinds` — a natural
+`code` PK reference table (like `geo_countries`) seeded with the **Article 6** lawful bases (consent,
+contract, legal_obligation, vital_interests, public_task, legitimate_interest) and the **Article 9**
+special-category conditions, partitioned by an `article` (`art6`/`art9`) column. It is referenced by FK
+from every future `pii:special` overlay store (the FK is **NOT NULL** there — M31+), so special-category
+processing is gated on a structured lawful basis rather than prose (see the *attribution convention* in
+[conventions.md](../architecture/conventions.md)). The `PlatformCatalogService` exposes it:
+
+| Op | Intent | Perm |
+|---|---|---|
+| `GET /platform/v1/legal-basis-kinds` | List the catalog | `legal-basis.read` |
+| `PUT /platform/v1/legal-basis-kinds/{code}` | Add/update an entry (audited) | `legal-basis.manage` (instance) |
+
+It is composed by `platform.RegisterCatalog` (after the audit service + PEP enforcer exist), not in
+`Bootstrap`.
+
 ## Dependencies
 
 - **Calls:** nothing domain-side. Provides infrastructure to **every** module.

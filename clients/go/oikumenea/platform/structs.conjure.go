@@ -7,6 +7,103 @@ import (
 	"github.com/palantir/pkg/safeyaml"
 )
 
+/*
+A structured GDPR lawful basis (D-OverlayFoundation, M29) — an Article 6 lawful basis or an
+Article 9 special-category condition. Referenced by FK from every future pii:special overlay
+store; the `code` is the stable handle.
+*/
+type LegalBasisKind struct {
+	Code string `json:"code"`
+	Name string `json:"name"`
+	// art6 (lawful basis) | art9 (special-category condition).
+	Article string `json:"article"`
+	// active | retired.
+	Status    string `json:"status"`
+	SortOrder *int   `json:"sortOrder,omitempty"`
+}
+
+func (o LegalBasisKind) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *LegalBasisKind) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type LegalBasisKindList struct {
+	Kinds []LegalBasisKind `json:"kinds"`
+}
+
+func (o LegalBasisKindList) MarshalJSON() ([]byte, error) {
+	if o.Kinds == nil {
+		o.Kinds = make([]LegalBasisKind, 0)
+	}
+	type _tmpLegalBasisKindList LegalBasisKindList
+	return safejson.Marshal(_tmpLegalBasisKindList(o))
+}
+
+func (o *LegalBasisKindList) UnmarshalJSON(data []byte) error {
+	type _tmpLegalBasisKindList LegalBasisKindList
+	var rawLegalBasisKindList _tmpLegalBasisKindList
+	if err := safejson.Unmarshal(data, &rawLegalBasisKindList); err != nil {
+		return err
+	}
+	if rawLegalBasisKindList.Kinds == nil {
+		rawLegalBasisKindList.Kinds = make([]LegalBasisKind, 0)
+	}
+	*o = LegalBasisKindList(rawLegalBasisKindList)
+	return nil
+}
+
+func (o LegalBasisKindList) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *LegalBasisKindList) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Add or update a lawful-basis catalog entry (instance-admin).
+type UpsertLegalBasisKindRequest struct {
+	Code string `json:"code"`
+	Name string `json:"name"`
+	// art6 | art9.
+	Article   string `json:"article"`
+	SortOrder *int   `json:"sortOrder,omitempty"`
+}
+
+func (o UpsertLegalBasisKindRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertLegalBasisKindRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // Binary and schema revision the running server reports.
 type VersionInfo struct {
 	BinaryRevision string `json:"binaryRevision"`

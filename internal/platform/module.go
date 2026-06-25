@@ -7,7 +7,10 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
+	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
 	platformapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/platform"
+	"github.com/olegamysk/go-oikumenea/internal/platform/catalog"
 	"github.com/olegamysk/go-oikumenea/internal/platform/config"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/internal/platform/health"
@@ -43,4 +46,16 @@ func Bootstrap(ctx context.Context, info witchcraft.InitInfo) (*pgxpool.Pool, fu
 	}
 
 	return pool, func() { pool.Close() }, nil
+}
+
+// RegisterCatalog wires the cross-cutting platform reference catalogs (D-OverlayFoundation, M29): the
+// GDPR lawful-basis catalog read+upsert surface (PlatformCatalogService). Unlike Bootstrap (which runs
+// first), this is composed later in the InitFunc, once the audit service + PEP enforcer exist. It owns
+// no resources (the pool is owned by platform), so there is no cleanup.
+func RegisterCatalog(ctx context.Context, info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, enforcer *pep.Enforcer) error {
+	svc := catalog.NewService(pool, audit)
+	if err := platformapi.RegisterRoutesPlatformCatalogService(info.Router, transport.NewCatalogService(svc, enforcer)); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "register platform catalog routes")
+	}
+	return nil
 }

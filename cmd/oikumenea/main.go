@@ -160,6 +160,10 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// Membership subscribes to order's appointment/removal effects (D-OrderApply): AppointmentOrdered
 	// fills/creates, RemovalOrdered ends — all in the issue transaction.
 	membershipSvc.SubscribeOrderEvents(bus)
+	// Cross-module re-home on a provisional→canonical merge (D-OverlayFoundation, M29): each module's
+	// subscriber re-points its person-referencing rows in the merge transaction (person publishes
+	// PersonMerged). Registered here, before serving.
+	membershipSvc.SubscribePersonEvents(bus)
 	// Person's read-scope projection (D-PersonReadScope) resolves a person's units through membership;
 	// bind that cross-module query seam now that membership exists (late-bound: person is built first).
 	personSvc.SetMembershipReader(membershipSvc)
@@ -167,16 +171,26 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// Order: administrative orders (наказ). On issue it PUBLISHES the effect events the membership/
 	// person subscribers above handle in the same transaction (D-OrderApply); the enforcer it holds is
 	// bound by authorization below.
-	if _, err := order.Register(info, pool, auditSvc, locSvc, enforcer, bus); err != nil {
+	orderSvc, err := order.Register(info, pool, auditSvc, locSvc, enforcer, bus)
+	if err != nil {
 		cleanup()
 		return nil, err
 	}
+	orderSvc.SubscribePersonEvents(bus)
 
 	// Authorization: builds the PDP over tenant's closure, seeds the base roles, and binds the
 	// enforcer the modules above already hold (D-BaseRoles / D-RIDSeeding). Its service also resolves
 	// each request's RLS reach for the authenticator's connection-pinning (D-RLSDefenseInDepth).
 	authzSvc, err := authorization.Register(info, pool, auditSvc, locSvc, tenantSvc, enforcer)
 	if err != nil {
+		cleanup()
+		return nil, err
+	}
+	authzSvc.SubscribePersonEvents(bus)
+
+	// Platform reference catalogs (M29 / D-OverlayFoundation): the GDPR lawful-basis catalog. Composed
+	// here (not in platform.Bootstrap) because it needs the audit service + the bound PEP enforcer.
+	if err := platform.RegisterCatalog(ctx, info, pool, auditSvc, enforcer); err != nil {
 		cleanup()
 		return nil, err
 	}
@@ -189,10 +203,12 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 		cleanup()
 		return nil, werror.Wrap(err, "build envelope cipher")
 	}
-	if _, err := document.Register(info, pool, auditSvc, locSvc, enforcer, cipher, personalcode.New(), personSvc); err != nil {
+	documentSvc, err := document.Register(info, pool, auditSvc, locSvc, enforcer, cipher, personalcode.New(), personSvc)
+	if err != nil {
 		cleanup()
 		return nil, err
 	}
+	documentSvc.SubscribePersonEvents(bus)
 
 	// Data import (M16 / D-Hermenea): the generic POST /import/{objectType} endpoint the out-of-process
 	// hermenea companion calls to load reference data (it never touches this DB). Idempotent,
@@ -223,36 +239,44 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// buildings (→ M19 location), groups, positions/appointments (mirror membership), and the person
 	// bindings (enrollments, dorm stays). Writes record via the audit service; translatable names
 	// assemble via localization.
-	if _, err := education.Register(info, pool, auditSvc, locSvc, enforcer); err != nil {
+	educationSvc, err := education.Register(info, pool, auditSvc, locSvc, enforcer)
+	if err != nil {
 		cleanup()
 		return nil, err
 	}
+	educationSvc.SubscribePersonEvents(bus)
 
 	// Company (M21 / D-Companies): a legal-entity registry over person + the M19 location foundation —
 	// companies, registrations, industries, locations, positions/appointments, and the ownership/
 	// affiliation graph. Writes record via the audit service; translatable names assemble via localization.
-	if _, err := company.Register(info, pool, auditSvc, locSvc, enforcer); err != nil {
+	companySvc, err := company.Register(info, pool, auditSvc, locSvc, enforcer)
+	if err != nil {
 		cleanup()
 		return nil, err
 	}
+	companySvc.SubscribePersonEvents(bus)
 
 	// Vehicle (M26 / D-Vehicles): a vehicle registry over person + the M21 company registry — brand/
 	// model/type catalogs, the vehicle object (VIN), the brand→manufacturer link, and the ownership+
 	// plate registration record (plate region → the WOF geo_places gazetteer). Writes record via the
 	// audit service; translatable catalog names assemble via localization.
-	if _, err := vehicle.Register(info, pool, auditSvc, locSvc, enforcer); err != nil {
+	vehicleSvc, err := vehicle.Register(info, pool, auditSvc, locSvc, enforcer)
+	if err != nil {
 		cleanup()
 		return nil, err
 	}
+	vehicleSvc.SubscribePersonEvents(bus)
 
 	// Religion (M22 / D-Religion): the multi-faith taxonomy (recursive religion_taxa + closure) with a
 	// catalog-driven level marker + theism classification, the per-faith catalogs, and the per-unit
 	// organization attributes (profile/classifications/policies). Org nodes reuse tenant units; the
 	// canonical/tradition/affiliation graphs are migration-seeded. Reuses tenantSvc for createChildOrg.
-	if _, err := religion.Register(info, pool, auditSvc, locSvc, tenantSvc, enforcer, cipher); err != nil {
+	religionSvc, err := religion.Register(info, pool, auditSvc, locSvc, tenantSvc, enforcer, cipher)
+	if err != nil {
 		cleanup()
 		return nil, err
 	}
+	religionSvc.SubscribePersonEvents(bus)
 
 	// Identity-federation: the external-IdP seam. Its application service is the (issuer, subject)
 	// resolver the validation middleware binds to.
@@ -261,6 +285,7 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 		cleanup()
 		return nil, err
 	}
+	identitySvc.SubscribePersonEvents(bus)
 
 	// Bind the inbound-token validation middleware: the configured issuers' validator, the
 	// (issuer, subject) resolver, the person directory (JIT claim -> person.code), and the JIT flag.

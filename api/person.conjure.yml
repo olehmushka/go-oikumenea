@@ -80,7 +80,7 @@ types:
             docs: The ranks the person holds — at most one per rank system (a DIRECTORY attribute; never an authz input — D-Rank). Empty when unranked. Populated by getPerson; empty in list responses.
           status:
             type: string
-            docs: Lifecycle status — one of active | deactivated | purged.
+            docs: Lifecycle status — one of active | deactivated | purged | provisional (D-OverlayFoundation).
           deactivatedAt: optional<datetime>
           purgeAfter:
             type: optional<datetime>
@@ -512,6 +512,28 @@ types:
             docs: ISO/IEC 5218 value; defaults to not_known when omitted.
           countryOfBirth: optional<string>
           attributes: optional<any>
+      CreateProvisionalPersonRequest:
+        docs: |
+          Create a provisional stub person (D-OverlayFoundation, M29). Minimal-PII: only a display name
+          is required, with optional attribution (source/confidence) recording how the stub was learned.
+        fields:
+          displayName: string
+          source:
+            type: optional<string>
+            docs: How the stub was learned — self_declared | operator_verified | imported (the attribution convention).
+          confidence:
+            type: optional<string>
+            docs: Certainty weight — confirmed | probable | possible (defaults to possible).
+          attributes: optional<any>
+      MergePersonRequest:
+        docs: Resolve a provisional stub into a canonical person (D-OverlayFoundation, M29).
+        fields:
+          intoPersonId:
+            type: string
+            docs: The URN RID of the surviving canonical person the stub's edges are re-homed onto.
+          confidence:
+            type: optional<string>
+            docs: Operator certainty about the identity equation — confirmed | probable | possible (defaults to possible). Recorded in the audit trail.
       UpdatePersonRequest:
         docs: |
           Update a person's names (canonical + CLDR parts), birthdate, date_of_death, sex,
@@ -799,6 +821,30 @@ services:
         docs: Create a person (no account, no unit needed). Returns Person:PersonConflict if the code is taken.
         args:
           request: CreatePersonRequest
+        returns: Person
+      createProvisionalPerson:
+        http: POST /provisional-persons
+        docs: |
+          Create a minimal-PII PROVISIONAL stub (D-OverlayFoundation, M29) — an unresolved external /
+          edge-target person so a relationship or overlay edge points at a real node. Resolve it later
+          via mergePerson. Only displayName is required.
+        args:
+          request: CreateProvisionalPersonRequest
+        returns: Person
+      mergePerson:
+        http: POST /persons/{personId}/merge
+        docs: |
+          Resolve the provisional stub {personId} INTO a canonical person (D-OverlayFoundation, M29):
+          re-homes the stub's edges (and every other module's references) onto the canonical person in
+          one transaction, then tombstones the stub. {personId} must be provisional; `intoPersonId` must
+          be a distinct, non-provisional person. Returns the canonical Person. Returns Person:PersonInvalid
+          when the source is not provisional or the target is invalid.
+        args:
+          personId:
+            type: string
+            param-type: path
+            docs: The provisional stub being merged away.
+          request: MergePersonRequest
         returns: Person
       getPerson:
         http: GET /persons/{personId}

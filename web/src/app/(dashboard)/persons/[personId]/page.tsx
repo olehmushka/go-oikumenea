@@ -8,6 +8,7 @@ import {
   CitizenshipManager,
   DocumentManager,
   EditPerson,
+  MergeProvisional,
   EmailManager,
   MessengerLinkManager,
   NameVariantManager,
@@ -107,6 +108,11 @@ export default async function PersonDetailPage({
           <div className="mt-3 border-t border-slate-100 pt-3">
             <PersonLifecycle person={person} />
           </div>
+          {(person.status ?? "").toLowerCase() === "provisional" ? (
+            <div className="mt-3 border-t border-slate-100 pt-3">
+              <MergeProvisional person={person} />
+            </div>
+          ) : null}
         </Card>
 
         <Card>

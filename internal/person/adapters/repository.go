@@ -22,12 +22,13 @@ import (
 // (D-Audit).
 type Repository struct {
 	q *personsql.Queries
+	c db.DBTX // raw command surface, for the handful of statements not expressed as sqlc queries
 }
 
 // NewRepository binds a repository to the given command surface. A db.DBTX value satisfies the
 // interface sqlc generates, so the pool and a pgx.Tx are both accepted.
 func NewRepository(conn db.DBTX) *Repository {
-	return &Repository{q: personsql.New(conn)}
+	return &Repository{q: personsql.New(conn), c: conn}
 }
 
 // compile-time assertion that the adapter satisfies the domain port.
@@ -58,6 +59,62 @@ func (r *Repository) InsertPerson(ctx context.Context, p domain.Person) (domain.
 		return domain.Person{}, mapWriteErr(err)
 	}
 	return toPerson(row), nil
+}
+
+// InsertProvisionalPerson inserts the person via the normal path, then flips its status to
+// 'provisional' in the same transaction (D-OverlayFoundation). The minimal-PII stub keeps the
+// display_name (required) and any seeded structured parts; everything else is left empty.
+func (r *Repository) InsertProvisionalPerson(ctx context.Context, p domain.Person) (domain.Person, error) {
+	created, err := r.InsertPerson(ctx, p)
+	if err != nil {
+		return domain.Person{}, err
+	}
+	if _, err := r.c.Exec(ctx,
+		`UPDATE oikumenea.person_persons SET status = 'provisional' WHERE id = $1`, created.ID); err != nil {
+		return domain.Person{}, err
+	}
+	created.Status = domain.StatusProvisional
+	return created, nil
+}
+
+// repointOwnedStmts re-homes the person-OWNED rows fromID → toID. Each entry is a single-column
+// UPDATE; relationship tables carry the person on two columns, so both are listed. Cross-module rows
+// (membership, documents, vehicle/company holders, …) are re-homed by the PersonMerged subscribers,
+// not here.
+var repointOwnedStmts = []string{
+	`UPDATE oikumenea.person_ranks            SET person_id  = $2 WHERE person_id  = $1`,
+	`UPDATE oikumenea.person_name_variants    SET person_id  = $2 WHERE person_id  = $1`,
+	`UPDATE oikumenea.person_citizenships     SET person_id  = $2 WHERE person_id  = $1`,
+	`UPDATE oikumenea.person_residences       SET person_id  = $2 WHERE person_id  = $1`,
+	`UPDATE oikumenea.person_emails           SET person_id  = $2 WHERE person_id  = $1`,
+	`UPDATE oikumenea.person_phones           SET person_id  = $2 WHERE person_id  = $1`,
+	`UPDATE oikumenea.person_call_signs       SET person_id  = $2 WHERE person_id  = $1`,
+	// person_messenger_links has NO person_id — it hangs off a phone/email (re-homed above), so the link
+	// follows its channel implicitly.
+	`UPDATE oikumenea.person_social_accounts  SET person_id  = $2 WHERE person_id  = $1`,
+	`UPDATE oikumenea.person_languages        SET person_id  = $2 WHERE person_id  = $1`,
+	`UPDATE oikumenea.person_partnerships     SET person_id_a = $2 WHERE person_id_a = $1`,
+	`UPDATE oikumenea.person_partnerships     SET person_id_b = $2 WHERE person_id_b = $1`,
+	`UPDATE oikumenea.person_kinships         SET parent_id  = $2 WHERE parent_id  = $1`,
+	`UPDATE oikumenea.person_kinships         SET child_id   = $2 WHERE child_id   = $1`,
+	`UPDATE oikumenea.person_guardianships    SET guardian_id = $2 WHERE guardian_id = $1`,
+	`UPDATE oikumenea.person_guardianships    SET ward_id    = $2 WHERE ward_id    = $1`,
+	`UPDATE oikumenea.person_sponsorships     SET sponsor_id = $2 WHERE sponsor_id = $1`,
+	`UPDATE oikumenea.person_sponsorships     SET sponsored_id = $2 WHERE sponsored_id = $1`,
+	`UPDATE oikumenea.person_next_of_kin      SET subject_id = $2 WHERE subject_id = $1`,
+	`UPDATE oikumenea.person_next_of_kin      SET contact_id = $2 WHERE contact_id = $1`,
+	`UPDATE oikumenea.person_associations     SET person_id_a = $2 WHERE person_id_a = $1`,
+	`UPDATE oikumenea.person_associations     SET person_id_b = $2 WHERE person_id_b = $1`,
+}
+
+// RepointPersonOwned runs the person-owned re-point UPDATEs fromID → toID in the caller's transaction.
+func (r *Repository) RepointPersonOwned(ctx context.Context, fromID, toID string) error {
+	for _, stmt := range repointOwnedStmts {
+		if _, err := r.c.Exec(ctx, stmt, fromID, toID); err != nil {
+			return mapWriteErr(err)
+		}
+	}
+	return nil
 }
 
 func (r *Repository) GetPerson(ctx context.Context, id string) (domain.Person, error) {

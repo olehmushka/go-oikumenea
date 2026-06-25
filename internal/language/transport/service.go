@@ -56,11 +56,11 @@ func deref(p *string) string {
 }
 
 // ListLanguages implements GET /languages.
-func (s Service) ListLanguages(ctx context.Context, token bearertoken.Token, level, family, query *string, limit *int) (languageapi.LanguoidList, error) {
+func (s Service) ListLanguages(ctx context.Context, token bearertoken.Token, level, family, parent *string, topLevel *bool, query *string, limit *int) (languageapi.LanguoidList, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermLanguageRead)); err != nil {
 		return languageapi.LanguoidList{}, err
 	}
-	f := domain.Filter{Level: deref(level), Family: deref(family), Query: deref(query)}
+	f := domain.Filter{Level: deref(level), Family: deref(family), Parent: deref(parent), TopLevel: topLevel != nil && *topLevel, Query: deref(query)}
 	if limit != nil {
 		f.Limit = *limit
 	}
