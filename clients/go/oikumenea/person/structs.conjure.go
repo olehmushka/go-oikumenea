@@ -134,6 +134,35 @@ func (o *CreatePersonRequest) UnmarshalYAML(unmarshal func(interface{}) error) e
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+/*
+Create a provisional stub person (D-OverlayFoundation, M29). Minimal-PII: only a display name
+is required, with optional attribution (source/confidence) recording how the stub was learned.
+*/
+type CreateProvisionalPersonRequest struct {
+	DisplayName string `json:"displayName"`
+	// How the stub was learned — self_declared | operator_verified | imported (the attribution convention).
+	Source *string `json:"source,omitempty"`
+	// Certainty weight — confirmed | probable | possible (defaults to possible).
+	Confidence *string      `json:"confidence,omitempty"`
+	Attributes *interface{} `json:"attributes,omitempty"`
+}
+
+func (o CreateProvisionalPersonRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *CreateProvisionalPersonRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // Begin reversible deactivation; opens a grace window (purgeAfter = now + the configured grace).
 type DeactivateRequest struct {
 	// Optional free-text reason recorded in the audit entry.
@@ -286,6 +315,30 @@ func (o Kinship) MarshalYAML() (interface{}, error) {
 }
 
 func (o *Kinship) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Resolve a provisional stub into a canonical person (D-OverlayFoundation, M29).
+type MergePersonRequest struct {
+	// The URN RID of the surviving canonical person the stub's edges are re-homed onto.
+	IntoPersonId string `json:"intoPersonId"`
+	// Operator certainty about the identity equation — confirmed | probable | possible (defaults to possible). Recorded in the audit trail.
+	Confidence *string `json:"confidence,omitempty"`
+}
+
+func (o MergePersonRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *MergePersonRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -468,7 +521,7 @@ type Person struct {
 	Attributes *interface{} `json:"attributes,omitempty"`
 	// The ranks the person holds — at most one per rank system (a DIRECTORY attribute; never an authz input — D-Rank). Empty when unranked. Populated by getPerson; empty in list responses.
 	Ranks []PersonRank `json:"ranks"`
-	// Lifecycle status — one of active | deactivated | purged.
+	// Lifecycle status — one of active | deactivated | purged | provisional (D-OverlayFoundation).
 	Status        string             `json:"status"`
 	DeactivatedAt *datetime.DateTime `json:"deactivatedAt,omitempty"`
 	// End of the reversibility window; purge is refused before it.

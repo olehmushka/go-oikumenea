@@ -31,7 +31,9 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/person/adapters"
 	"github.com/olegamysk/go-oikumenea/internal/person/application"
 	"github.com/olegamysk/go-oikumenea/internal/person/domain"
+	personevents "github.com/olegamysk/go-oikumenea/internal/person/events"
 	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olegamysk/go-oikumenea/pkg/events"
 )
 
 const defaultTestDSN = "postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable"
@@ -922,5 +924,95 @@ func TestPersonLanguages(t *testing.T) {
 	}
 	if remaining != 0 {
 		t.Fatalf("person_languages after purge = %d, want 0", remaining)
+	}
+}
+
+// TestMergeProvisionalPerson proves the D-OverlayFoundation (M29) merge: a provisional stub is created,
+// carries a person-owned edge (kinship) and a cross-module reference (an identity account), then is
+// merged into a canonical person — re-homing both in one transaction and tombstoning the stub. It also
+// asserts the source must be provisional.
+func TestMergeProvisionalPerson(t *testing.T) {
+	ctx := context.Background()
+	svc, pool := newService(t, 50)
+
+	// Wire the event bus so MergePerson publishes PersonMerged, and register a stand-in for the
+	// identity-federation subscriber (the same SubscribeRepoint helper the real module uses) so the
+	// cross-module re-home runs in the merge transaction.
+	bus := events.NewBus()
+	svc.SubscribeOrderEvents(bus) // sets the service's bus (also registers the rank handler — harmless)
+	personevents.SubscribeRepoint(bus,
+		`UPDATE oikumenea.account_accounts SET person_id = $2 WHERE person_id = $1`)
+
+	// A provisional stub, a canonical target, and a third person the stub is related to.
+	stub, err := svc.CreateProvisionalPerson(ctx, domain.Person{Name: domain.Name{DisplayName: "Unresolved Source"}})
+	if err != nil {
+		t.Fatalf("create provisional: %v", err)
+	}
+	if stub.Status != domain.StatusProvisional {
+		t.Fatalf("stub status = %q, want provisional", stub.Status)
+	}
+	canonical := newPerson(t, svc, "Canonical Person")
+	other := newPerson(t, svc, "Related Person")
+
+	// Person-owned edge: a kinship stub(parent) -> other(child).
+	if _, err := svc.UpsertKinship(ctx, stub.ID, domain.Kinship{ParentID: stub.ID, ChildID: other.ID}); err != nil {
+		t.Fatalf("add kinship: %v", err)
+	}
+	// Cross-module reference: an identity account on the stub.
+	var acctID string
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO oikumenea.account_accounts (person_id) VALUES ($1) RETURNING id`, stub.ID).Scan(&acctID); err != nil {
+		t.Fatalf("insert account: %v", err)
+	}
+
+	// Merge the stub into the canonical person.
+	merged, err := svc.MergePerson(ctx, stub.ID, canonical.ID, "confirmed")
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	if merged.ID != canonical.ID {
+		t.Fatalf("merge returned %s, want canonical %s", merged.ID, canonical.ID)
+	}
+
+	// The stub is tombstoned (status=purged).
+	gone, err := svc.GetPerson(ctx, stub.ID)
+	if err != nil {
+		t.Fatalf("get stub after merge: %v", err)
+	}
+	if gone.Status != domain.StatusPurged {
+		t.Fatalf("stub status after merge = %q, want purged", gone.Status)
+	}
+
+	// The person-owned kinship now belongs to the canonical person.
+	ks, err := svc.ListKinships(ctx, canonical.ID)
+	if err != nil {
+		t.Fatalf("list kinships: %v", err)
+	}
+	if len(ks) != 1 || ks[0].ParentID != canonical.ID || ks[0].ChildID != other.ID {
+		t.Fatalf("kinship not re-homed onto canonical: %+v", ks)
+	}
+
+	// The cross-module identity account now points at the canonical person.
+	var owner string
+	if err := pool.QueryRow(ctx, `SELECT person_id FROM oikumenea.account_accounts WHERE id = $1`, acctID).Scan(&owner); err != nil {
+		t.Fatalf("read account owner: %v", err)
+	}
+	if owner != canonical.ID {
+		t.Fatalf("account owner = %s, want canonical %s", owner, canonical.ID)
+	}
+
+	// A merge audit row was written.
+	var audits int
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM oikumenea.audit_log WHERE action = 'person.merge' AND target_id = $1`, canonical.ID).Scan(&audits); err != nil {
+		t.Fatalf("count merge audits: %v", err)
+	}
+	if audits != 1 {
+		t.Fatalf("merge audit rows = %d, want 1", audits)
+	}
+
+	// Merging a non-provisional source is rejected.
+	if _, err := svc.MergePerson(ctx, canonical.ID, other.ID, "possible"); !errors.Is(err, domain.ErrMergeNotProvisional) {
+		t.Fatalf("merge non-provisional source err = %v, want ErrMergeNotProvisional", err)
 	}
 }

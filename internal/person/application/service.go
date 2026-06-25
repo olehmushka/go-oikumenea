@@ -24,6 +24,7 @@ import (
 	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
 	orderevents "github.com/olegamysk/go-oikumenea/internal/order/events"
 	"github.com/olegamysk/go-oikumenea/internal/person/domain"
+	personevents "github.com/olegamysk/go-oikumenea/internal/person/events"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/pkg/events"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
@@ -70,6 +71,7 @@ type Service struct {
 	graceHours func() int
 	now        func() time.Time
 	membership MembershipReader
+	bus        *events.Bus // set when SubscribeOrderEvents wires the bus; used to publish PersonMerged
 }
 
 // NewService wires the service with the pool, the repository factory, the audit service, and the
@@ -106,6 +108,84 @@ func (s *Service) CreatePerson(ctx context.Context, p domain.Person) (domain.Per
 		}
 		out = created
 		return s.record(ctx, tx, "person.create", created.ID, map[string]any{"id": created.ID})
+	})
+	return out, err
+}
+
+// CreateProvisionalPerson creates a minimal-PII stub person (status='provisional') — an unresolved
+// external/edge-target node so a relationship or overlay edge points at a real person (D-OverlayFoundation).
+// It carries a display name and optional source/confidence attribution; it is resolved later by MergePerson.
+func (s *Service) CreateProvisionalPerson(ctx context.Context, p domain.Person) (domain.Person, error) {
+	if p.Sex == "" {
+		p.Sex = domain.DefaultSex
+	}
+	if err := p.Validate(); err != nil {
+		return domain.Person{}, err
+	}
+	var out domain.Person
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		created, err := s.newRepo(tx).InsertProvisionalPerson(ctx, p)
+		if err != nil {
+			return err
+		}
+		out = created
+		return s.record(ctx, tx, "person.provisional.create", created.ID, map[string]any{"id": created.ID})
+	})
+	return out, err
+}
+
+// MergePerson resolves a provisional stub (fromID) into a canonical person (intoID): in ONE transaction
+// it re-homes the stub's person-owned edges, publishes PersonMerged so every other module re-homes its
+// person-referencing rows on the same transaction, then tombstones the stub (PII nulled, status=purged).
+// fromID must be provisional; intoID must be a distinct, non-provisional/non-purged person. The
+// resulting canonical person is returned. D-OverlayFoundation (M29).
+func (s *Service) MergePerson(ctx context.Context, fromID, intoID, confidence string) (domain.Person, error) {
+	if confidence == "" {
+		confidence = domain.DefaultConfidence
+	}
+	if !domain.ValidConfidence(confidence) {
+		return domain.Person{}, domain.ErrInvalid
+	}
+	if fromID == intoID {
+		return domain.Person{}, domain.ErrMergeIntoInvalid
+	}
+	var out domain.Person
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		repo := s.newRepo(tx)
+		from, err := repo.GetPerson(ctx, fromID)
+		if err != nil {
+			return err
+		}
+		if from.Status != domain.StatusProvisional {
+			return domain.ErrMergeNotProvisional
+		}
+		into, err := repo.GetPerson(ctx, intoID)
+		if err != nil {
+			return err
+		}
+		if into.Status == domain.StatusProvisional || into.Status == domain.StatusPurged {
+			return domain.ErrMergeIntoInvalid
+		}
+		// Re-home the stub's person-OWNED edges (relationships, names, contacts, …) fromID → intoID.
+		if err := repo.RepointPersonOwned(ctx, fromID, intoID); err != nil {
+			return err
+		}
+		// Re-home every OTHER module's person-referencing rows on this same transaction (D-OverlayFoundation):
+		// the PersonMerged subscribers (membership, document, authorization, …) run synchronously here.
+		if s.bus != nil {
+			if err := s.bus.Publish(ctx, tx, personevents.PersonMerged{FromID: fromID, IntoID: intoID, Confidence: confidence}); err != nil {
+				return err
+			}
+		}
+		// Tombstone the stub: its child rows are already re-homed, so Purge nulls the stub's residual PII
+		// and flips status → purged (the merged-away marker), deleting nothing.
+		if _, err := repo.Purge(ctx, fromID); err != nil {
+			return err
+		}
+		if out, err = repo.GetPerson(ctx, intoID); err != nil {
+			return err
+		}
+		return s.record(ctx, tx, "person.merge", intoID, map[string]any{"id": intoID, "mergedFrom": fromID, "confidence": confidence})
 	})
 	return out, err
 }
@@ -339,6 +419,7 @@ func (s *Service) setRankTx(ctx context.Context, tx pgx.Tx, subsystem, id, syste
 // person's rank synchronously in the order's issue transaction (D-OrderApply), so a failure rolls the
 // whole issue back. Registered once at composition time (module.go), before serving.
 func (s *Service) SubscribeOrderEvents(bus *events.Bus) {
+	s.bus = bus // retained so MergePerson can publish PersonMerged on the same bus (D-OverlayFoundation)
 	bus.Subscribe(orderevents.TypeRankChangeOrdered, func(ctx context.Context, tx pgx.Tx, evt events.Event) error {
 		e, ok := evt.(orderevents.RankChangeOrdered)
 		if !ok {

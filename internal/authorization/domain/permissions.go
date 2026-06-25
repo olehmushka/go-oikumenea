@@ -35,6 +35,7 @@ const (
 	PermPersonRankAssign Permission = "person.rank.assign"
 	PermPersonLifecycle  Permission = "person.lifecycle"
 	PermPersonPurge      Permission = "person.purge"
+	PermPersonMerge      Permission = "person.merge" // resolve a provisional stub into a canonical person (D-OverlayFoundation, M29)
 
 	// membership
 	PermMembershipRead   Permission = "membership.read"
@@ -143,6 +144,11 @@ const (
 	PermSiteManage     Permission = "site.manage"
 	PermScheduleManage Permission = "schedule.manage"
 
+	// legal basis (D-OverlayFoundation, M29) — the structured GDPR lawful-basis catalog referenced by
+	// every future pii:special overlay store. Instance-global reference data: read anywhere via the PEP;
+	// catalog writes ride the instance-plane `legal-basis.manage` (below).
+	PermLegalBasisRead Permission = "legal-basis.read"
+
 	// i18n
 	PermLocaleRead        Permission = "locale.read"
 	PermTranslationRead   Permission = "translation.read"
@@ -162,6 +168,7 @@ const (
 	PermCompanyCatalogManage     Permission = "company.catalog.manage"
 	PermVehicleCatalogManage     Permission = "vehicle.catalog.manage"
 	PermReligionCatalogManage    Permission = "religion.catalog.manage"
+	PermLegalBasisManage         Permission = "legal-basis.manage" // instance-admin manages the GDPR lawful-basis catalog (D-OverlayFoundation, M29)
 	PermInstanceConfig           Permission = "instance.config"
 	PermInstanceAdminManage      Permission = "instance.admin.manage"
 	// import — the generic reference-data import endpoint (M16 / D-Hermenea). Held by the
@@ -189,6 +196,7 @@ var instanceScope = map[Permission]struct{}{
 	PermCompanyCatalogManage:     {},
 	PermVehicleCatalogManage:     {},
 	PermReligionCatalogManage:    {},
+	PermLegalBasisManage:         {},
 	PermLocaleManage:             {},
 	PermTranslationManage:        {},
 	PermInstanceConfig:           {},
@@ -202,7 +210,7 @@ var catalog = func() map[Permission]struct{} {
 	all := []Permission{
 		PermUnitRead, PermUnitCreate, PermUnitUpdate, PermUnitRecode, PermUnitLifecycle,
 		PermUnitEdgesManage, PermUnitEdgesCommandManage, PermUnitEdgesOperationalManage,
-		PermPersonRead, PermPersonCreate, PermPersonUpdate, PermPersonRankAssign, PermPersonLifecycle, PermPersonPurge,
+		PermPersonRead, PermPersonCreate, PermPersonUpdate, PermPersonRankAssign, PermPersonLifecycle, PermPersonPurge, PermPersonMerge,
 		PermMembershipRead, PermMembershipCreate, PermMembershipUpdate,
 		PermPositionRead, PermPositionCreate, PermPositionUpdate,
 		PermDocumentRead, PermDocumentCreate, PermDocumentUpdate, PermDocumentDelete, PermDocumentTypeRead,
@@ -219,6 +227,7 @@ var catalog = func() map[Permission]struct{} {
 		PermCompanyRead, PermCompanyManage, PermCompanyPositionManage,
 		PermVehicleRead, PermVehicleManage,
 		PermReligionRead, PermReligionOrgManage, PermClergyManage, PermAffiliationManage, PermSiteManage, PermScheduleManage,
+		PermLegalBasisRead, PermLegalBasisManage,
 		PermLocaleRead, PermTranslationRead, PermLocaleManage, PermTranslationManage,
 		PermRankSchemeManage, PermGraphManage, PermClosureRebuild, PermDocumentTypeManage, PermOrderTypeManage,
 		PermPersonalCodeSchemeManage, PermCountryManage, PermLocationTypesManage, PermEducationCatalogManage, PermCompanyCatalogManage, PermVehicleCatalogManage, PermReligionCatalogManage, PermInstanceConfig, PermInstanceAdminManage,
@@ -282,7 +291,7 @@ var readerPerms = []Permission{
 	PermRoleRead, PermAssignmentRead,
 	PermRankSchemeRead, PermGraphRead, PermCountryRead, PermLanguageRead, PermLocationRead,
 	PermDocumentTypeRead, PermPersonalCodeSchemeRead, PermOrderTypeRead,
-	PermReligionRead,
+	PermReligionRead, PermLegalBasisRead,
 	PermLocaleRead, PermTranslationRead,
 }
 
@@ -302,7 +311,7 @@ var adminOnlyPerms = []Permission{
 	PermUnitEdgesManage, // broad form — covers all graphs incl. custom (D-EdgePerms)
 	PermUnitLifecycle,
 	PermUnitRecode, // changing the external handle is a privileged action (D-UnitCodeLifecycle, M28)
-	PermPersonLifecycle, PermPersonPurge,
+	PermPersonLifecycle, PermPersonPurge, PermPersonMerge,
 	PermDocumentDelete, PermPersonalCodeDelete,
 	PermOrderIssue, PermOrderRevoke,
 	PermAssignmentGrant, PermAssignmentRevoke,

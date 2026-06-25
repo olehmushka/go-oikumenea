@@ -22,6 +22,20 @@ audited in-process (D-Audit). The module never reads rank to make a decision (D-
 type PersonServiceClient interface {
 	// Create a person (no account, no unit needed). Returns Person:PersonConflict if the code is taken.
 	CreatePerson(ctx context.Context, authHeader bearertoken.Token, requestArg CreatePersonRequest) (Person, error)
+	/*
+	   Create a minimal-PII PROVISIONAL stub (D-OverlayFoundation, M29) — an unresolved external /
+	   edge-target person so a relationship or overlay edge points at a real node. Resolve it later
+	   via mergePerson. Only displayName is required.
+	*/
+	CreateProvisionalPerson(ctx context.Context, authHeader bearertoken.Token, requestArg CreateProvisionalPersonRequest) (Person, error)
+	/*
+	   Resolve the provisional stub {personId} INTO a canonical person (D-OverlayFoundation, M29):
+	   re-homes the stub's edges (and every other module's references) onto the canonical person in
+	   one transaction, then tombstones the stub. {personId} must be provisional; `intoPersonId` must
+	   be a distinct, non-provisional person. Returns the canonical Person. Returns Person:PersonInvalid
+	   when the source is not provisional or the target is invalid.
+	*/
+	MergePerson(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg MergePersonRequest) (Person, error)
 	// Read one person with its name variants, citizenships, and residences.
 	GetPerson(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (Person, error)
 	// Update names, birthdate, date_of_death, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.
@@ -170,6 +184,42 @@ func (c *personServiceClient) CreatePerson(ctx context.Context, authHeader beare
 	}
 	if returnVal == nil {
 		return *new(Person), werror.ErrorWithContextParams(ctx, "createPerson response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) CreateProvisionalPerson(ctx context.Context, authHeader bearertoken.Token, requestArg CreateProvisionalPersonRequest) (Person, error) {
+	var returnVal *Person
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("CreateProvisionalPerson"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/provisional-persons"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(Person), werror.WrapWithContextParams(ctx, err, "createProvisionalPerson failed")
+	}
+	if returnVal == nil {
+		return *new(Person), werror.ErrorWithContextParams(ctx, "createProvisionalPerson response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) MergePerson(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg MergePersonRequest) (Person, error) {
+	var returnVal *Person
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("MergePerson"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/merge", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(Person), werror.WrapWithContextParams(ctx, err, "mergePerson failed")
+	}
+	if returnVal == nil {
+		return *new(Person), werror.ErrorWithContextParams(ctx, "mergePerson response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -1029,6 +1079,20 @@ audited in-process (D-Audit). The module never reads rank to make a decision (D-
 type PersonServiceClientWithAuth interface {
 	// Create a person (no account, no unit needed). Returns Person:PersonConflict if the code is taken.
 	CreatePerson(ctx context.Context, requestArg CreatePersonRequest) (Person, error)
+	/*
+	   Create a minimal-PII PROVISIONAL stub (D-OverlayFoundation, M29) — an unresolved external /
+	   edge-target person so a relationship or overlay edge points at a real node. Resolve it later
+	   via mergePerson. Only displayName is required.
+	*/
+	CreateProvisionalPerson(ctx context.Context, requestArg CreateProvisionalPersonRequest) (Person, error)
+	/*
+	   Resolve the provisional stub {personId} INTO a canonical person (D-OverlayFoundation, M29):
+	   re-homes the stub's edges (and every other module's references) onto the canonical person in
+	   one transaction, then tombstones the stub. {personId} must be provisional; `intoPersonId` must
+	   be a distinct, non-provisional person. Returns the canonical Person. Returns Person:PersonInvalid
+	   when the source is not provisional or the target is invalid.
+	*/
+	MergePerson(ctx context.Context, personIdArg string, requestArg MergePersonRequest) (Person, error)
 	// Read one person with its name variants, citizenships, and residences.
 	GetPerson(ctx context.Context, personIdArg string) (Person, error)
 	// Update names, birthdate, date_of_death, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.
@@ -1166,6 +1230,14 @@ type personServiceClientWithAuth struct {
 
 func (c *personServiceClientWithAuth) CreatePerson(ctx context.Context, requestArg CreatePersonRequest) (Person, error) {
 	return c.client.CreatePerson(ctx, c.authHeader, requestArg)
+}
+
+func (c *personServiceClientWithAuth) CreateProvisionalPerson(ctx context.Context, requestArg CreateProvisionalPersonRequest) (Person, error) {
+	return c.client.CreateProvisionalPerson(ctx, c.authHeader, requestArg)
+}
+
+func (c *personServiceClientWithAuth) MergePerson(ctx context.Context, personIdArg string, requestArg MergePersonRequest) (Person, error) {
+	return c.client.MergePerson(ctx, c.authHeader, personIdArg, requestArg)
 }
 
 func (c *personServiceClientWithAuth) GetPerson(ctx context.Context, personIdArg string) (Person, error) {
@@ -1387,6 +1459,22 @@ func (c *personServiceClientWithTokenProvider) CreatePerson(ctx context.Context,
 		return *new(Person), err
 	}
 	return c.client.CreatePerson(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) CreateProvisionalPerson(ctx context.Context, requestArg CreateProvisionalPersonRequest) (Person, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Person), err
+	}
+	return c.client.CreateProvisionalPerson(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) MergePerson(ctx context.Context, personIdArg string, requestArg MergePersonRequest) (Person, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Person), err
+	}
+	return c.client.MergePerson(ctx, bearertoken.Token(token), personIdArg, requestArg)
 }
 
 func (c *personServiceClientWithTokenProvider) GetPerson(ctx context.Context, personIdArg string) (Person, error) {

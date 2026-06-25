@@ -8,6 +8,7 @@ import { ErrorBox } from "@/components/ErrorBox";
 import { EntitySelect } from "@/components/EntitySelect";
 import { CountrySelect, useCountryMap } from "@/components/CountrySelect";
 import { LanguagePicker } from "@/components/LanguagePicker";
+import { ReligionTaxonPicker } from "@/components/ReligionTaxonPicker";
 import { PersonLink } from "@/components/PositionForms";
 import { T } from "@/components/T";
 import { pickLabel } from "@/lib/i18n";
@@ -175,6 +176,50 @@ export function EditPerson({ person }: { person: Person }) {
 }
 
 /** Lifecycle: deactivate / reactivate / purge, depending on current status. */
+// MergeProvisional resolves a provisional stub into a canonical person (D-OverlayFoundation, M29):
+// it re-homes the stub's edges (and every other module's references) onto the canonical person, then
+// tombstones the stub. Shown only when the person's status is `provisional`.
+export function MergeProvisional({ person }: { person: Person }) {
+  const router = useRouter();
+  const { busy, err, run } = useRun();
+  const [intoId, setIntoId] = useState("");
+  const [confidence, setConfidence] = useState("confirmed");
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-zinc-500">
+        <T>This is a provisional stub. Merge it into a canonical person to re-home its edges and resolve it.</T>
+      </p>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
+        <input
+          className="input"
+          placeholder="canonical person RID"
+          value={intoId}
+          onChange={(e) => setIntoId(e.target.value)}
+        />
+        <select className="input" value={confidence} onChange={(e) => setConfidence(e.target.value)}>
+          <option value="confirmed">confirmed</option>
+          <option value="probable">probable</option>
+          <option value="possible">possible</option>
+        </select>
+        <button
+          type="button"
+          className="btn-primary"
+          disabled={busy || !intoId.trim()}
+          onClick={() =>
+            run(
+              () => api.person.mergePerson(person.id, { intoPersonId: intoId.trim(), confidence }),
+              () => router.push(`/persons/${intoId.trim()}`),
+            )
+          }
+        >
+          {busy ? <T>Merging…</T> : <T>Merge</T>}
+        </button>
+      </div>
+      {err ? <ErrorBox error={err} /> : null}
+    </div>
+  );
+}
+
 export function PersonLifecycle({ person }: { person: Person }) {
   const { busy, err, run } = useRun();
   const status = (person.status ?? "").toUpperCase();
@@ -1557,37 +1602,13 @@ export function PersonAffiliationManager({ personId }: { personId: string }) {
             </option>
           ))}
         </select>
-        <ReligionTaxonSelect key={pickerKey} onChange={setReligionId} />
+        <ReligionTaxonPicker key={pickerKey} value={religionId} onChange={setReligionId} />
         <input name="value" type="text" className="input" placeholder={tr("detail (optional)")} />
         <button className="btn-ghost" disabled={busy}>
           <T>Add</T>
         </button>
       </form>
     </ChannelBlock>
-  );
-}
-
-// ReligionTaxonSelect is a lightweight typeahead over root-religion taxa for the optional faith anchor.
-function ReligionTaxonSelect({ onChange }: { onChange: (id: string) => void }) {
-  const { locale } = useLocale();
-  const tr = useTg();
-  const [opts, setOpts] = useState<{ id: string; label: string }[]>([]);
-  useEffect(() => {
-    api.religion
-      .listTaxa("religion", undefined, undefined, undefined, 100)
-      .then((r) => setOpts((r?.taxa ?? []).map((t) => ({ id: t.id, label: pickLabel(t.name, locale) || t.code }))))
-      .catch(() => setOpts([]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  return (
-    <select className="input" defaultValue="" onChange={(e) => onChange(e.target.value)}>
-      <option value="">{tr("faith (optional)…")}</option>
-      {opts.map((o) => (
-        <option key={o.id} value={o.id}>
-          {o.label}
-        </option>
-      ))}
-    </select>
   );
 }
 

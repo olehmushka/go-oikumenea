@@ -28,6 +28,9 @@ types:
           parentId:
             type: optional<string>
             docs: The RID of the immediate parent languoid (absent for a top-level family / isolate).
+          hasChildren:
+            type: boolean
+            docs: Whether this languoid has non-dialect children (family/language); lets a tree browser show an expand affordance only on expandable nodes.
           familyCode:
             type: optional<string>
             docs: The root-family glottocode (derived via the closure).
@@ -95,6 +98,14 @@ services:
             type: optional<string>
             param-type: query
             docs: Filter to descendants of this root-family glottocode (via family_code).
+          parent:
+            type: optional<string>
+            param-type: query
+            docs: Filter to the immediate children of this languoid RID (one tree level, for lazy expansion).
+          topLevel:
+            type: optional<boolean>
+            param-type: query
+            docs: When true, return only top-level languoids (no parent — the forest roots).
           query:
             type: optional<string>
             param-type: query

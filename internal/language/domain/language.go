@@ -10,15 +10,16 @@ import "context"
 // Languoid is one node in the Glottolog forest. ID is the RID (the reference key person/unit/locale
 // links store); Code is the stable glottocode; optional fields fold to "" when absent.
 type Languoid struct {
-	ID         string
-	Code       string
-	Level      string
-	Name       string
-	ParentID   string
-	FamilyCode string
-	ISO639_3   string
-	Macroarea  string
-	Status     string
+	ID          string
+	Code        string
+	Level       string
+	Name        string
+	ParentID    string
+	HasChildren bool
+	FamilyCode  string
+	ISO639_3    string
+	Macroarea   string
+	Status      string
 }
 
 // WritingSystem is one ISO-15924 script. ID is the RID; Code is the ISO-15924 lookup code.
@@ -29,12 +30,16 @@ type WritingSystem struct {
 	ScriptType string
 }
 
-// Filter narrows a languoid listing (empty fields disable each criterion; Limit is clamped upstream).
+// Filter narrows a languoid listing (empty / false fields disable each criterion; Limit is clamped
+// upstream). Parent restricts to the immediate children of a languoid RID (one tree level); TopLevel
+// restricts to the forest roots (no parent). The two combine with the level/family/query criteria.
 type Filter struct {
-	Level  string
-	Family string
-	Query  string
-	Limit  int
+	Level    string
+	Family   string
+	Parent   string
+	TopLevel bool
+	Query    string
+	Limit    int
 }
 
 // Repository is the language module's port: a read-only view of the languoid + writing-system registry.

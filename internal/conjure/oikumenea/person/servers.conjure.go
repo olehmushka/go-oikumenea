@@ -25,6 +25,20 @@ audited in-process (D-Audit). The module never reads rank to make a decision (D-
 type PersonService interface {
 	// Create a person (no account, no unit needed). Returns Person:PersonConflict if the code is taken.
 	CreatePerson(ctx context.Context, authHeader bearertoken.Token, requestArg CreatePersonRequest) (Person, error)
+	/*
+	   Create a minimal-PII PROVISIONAL stub (D-OverlayFoundation, M29) — an unresolved external /
+	   edge-target person so a relationship or overlay edge points at a real node. Resolve it later
+	   via mergePerson. Only displayName is required.
+	*/
+	CreateProvisionalPerson(ctx context.Context, authHeader bearertoken.Token, requestArg CreateProvisionalPersonRequest) (Person, error)
+	/*
+	   Resolve the provisional stub {personId} INTO a canonical person (D-OverlayFoundation, M29):
+	   re-homes the stub's edges (and every other module's references) onto the canonical person in
+	   one transaction, then tombstones the stub. {personId} must be provisional; `intoPersonId` must
+	   be a distinct, non-provisional person. Returns the canonical Person. Returns Person:PersonInvalid
+	   when the source is not provisional or the target is invalid.
+	*/
+	MergePerson(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg MergePersonRequest) (Person, error)
 	// Read one person with its name variants, citizenships, and residences.
 	GetPerson(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (Person, error)
 	// Update names, birthdate, date_of_death, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.
@@ -160,6 +174,12 @@ func RegisterRoutesPersonService(router wrouter.Router, impl PersonService, rout
 	resource := wresource.New("personservice", router)
 	if err := resource.Post("CreatePerson", "/person/v1/persons", httpserver.NewJSONHandler(handler.HandleCreatePerson, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add createPerson route")
+	}
+	if err := resource.Post("CreateProvisionalPerson", "/person/v1/provisional-persons", httpserver.NewJSONHandler(handler.HandleCreateProvisionalPerson, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add createProvisionalPerson route")
+	}
+	if err := resource.Post("MergePerson", "/person/v1/persons/{personId}/merge", httpserver.NewJSONHandler(handler.HandleMergePerson, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add mergePerson route")
 	}
 	if err := resource.Get("GetPerson", "/person/v1/persons/{personId}", httpserver.NewJSONHandler(handler.HandleGetPerson, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getPerson route")
@@ -331,6 +351,48 @@ func (p *personServiceHandler) HandleCreatePerson(rw http.ResponseWriter, req *h
 		return errors.WrapWithInvalidArgument(err)
 	}
 	respArg, err := p.impl.CreatePerson(req.Context(), bearertoken.Token(authHeader), requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleCreateProvisionalPerson(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var requestArg CreateProvisionalPersonRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.CreateProvisionalPerson(req.Context(), bearertoken.Token(authHeader), requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleMergePerson(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg MergePersonRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.MergePerson(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
 	if err != nil {
 		return err
 	}

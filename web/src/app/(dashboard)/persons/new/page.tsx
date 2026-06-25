@@ -22,6 +22,9 @@ export default function NewPersonPage() {
   const [displayName, setDisplayName] = useState("");
   const [code, setCode] = useState("");
   const [codeTouched, setCodeTouched] = useState(false);
+  // Provisional stub (D-OverlayFoundation, M29): a minimal-PII node to point edges at, resolved later
+  // via merge. When on, only displayName (+ attribution) is sent.
+  const [provisional, setProvisional] = useState(false);
   const slug = slugify(displayName);
   const autoCode = slug ? `${slug}-${suffix.current}` : "";
   const codeValue = codeTouched ? code : autoCode;
@@ -46,7 +49,12 @@ export default function NewPersonPage() {
       countryOfBirth: str("countryOfBirth"),
     };
     try {
-      const p = await api.person.createPerson(body as never);
+      const p = provisional
+        ? await api.person.createProvisionalPerson({
+            displayName: displayName.trim(),
+            confidence: str("confidence"),
+          } as never)
+        : await api.person.createPerson(body as never);
       router.push(`/persons/${p.id}`);
     } catch (e) {
       setErr(e);
@@ -59,6 +67,15 @@ export default function NewPersonPage() {
       <PageHeader title={<T>New person</T>} description={<T>Create a directory entry. A login account is optional and attached later.</T>} />
       {err ? <div className="mb-4"><ErrorBox error={err} /></div> : null}
       <form onSubmit={onSubmit} className="card space-y-4 p-5">
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={provisional}
+            onChange={(e) => setProvisional(e.target.checked)}
+          />
+          <span><T>Provisional stub</T></span>
+          <span className="text-xs text-zinc-500"><T>(unresolved external person — resolve later via merge)</T></span>
+        </label>
         <div>
           <label className="label"><T>Display name *</T></label>
           <input
@@ -70,6 +87,16 @@ export default function NewPersonPage() {
             onChange={(e) => setDisplayName(e.target.value)}
           />
         </div>
+        {provisional ? (
+          <div>
+            <label className="label"><T>Confidence</T></label>
+            <select name="confidence" className="input" defaultValue="possible">
+              <option value="confirmed">{tr("confirmed")}</option>
+              <option value="probable">{tr("probable")}</option>
+              <option value="possible">{tr("possible")}</option>
+            </select>
+          </div>
+        ) : null}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="label"><T>Given</T></label>

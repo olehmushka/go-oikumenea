@@ -31,10 +31,12 @@ var _ domain.Repository = (*Repository)(nil)
 // ListLanguoids returns languoids matching the filter, in code order.
 func (r *Repository) ListLanguoids(ctx context.Context, f domain.Filter) ([]domain.Languoid, error) {
 	rows, err := r.q.ListLanguoids(ctx, languagesql.ListLanguoidsParams{
-		Level:  f.Level,
-		Family: f.Family,
-		Q:      f.Query,
-		Lim:    int32(f.Limit),
+		Level:    f.Level,
+		Family:   f.Family,
+		Parent:   f.Parent,
+		TopLevel: f.TopLevel,
+		Q:        f.Query,
+		Lim:      int32(f.Limit),
 	})
 	if err != nil {
 		return nil, err
@@ -42,15 +44,16 @@ func (r *Repository) ListLanguoids(ctx context.Context, f domain.Filter) ([]doma
 	out := make([]domain.Languoid, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, domain.Languoid{
-			ID:         row.ID,
-			Code:       row.Code,
-			Level:      row.Level,
-			Name:       row.Name,
-			ParentID:   row.ParentID.String,
-			FamilyCode: row.FamilyCode.String,
-			ISO639_3:   row.Iso6393.String,
-			Macroarea:  row.Macroarea.String,
-			Status:     row.Status,
+			ID:          row.ID,
+			Code:        row.Code,
+			Level:       row.Level,
+			Name:        row.Name,
+			ParentID:    row.ParentID.String,
+			HasChildren: row.HasChildren,
+			FamilyCode:  row.FamilyCode.String,
+			ISO639_3:    row.Iso6393.String,
+			Macroarea:   row.Macroarea.String,
+			Status:      row.Status,
 		})
 	}
 	return out, nil
@@ -66,15 +69,16 @@ func (r *Repository) GetLanguoid(ctx context.Context, id string) (domain.Languoi
 		return domain.Languoid{}, false, err
 	}
 	return domain.Languoid{
-		ID:         row.ID,
-		Code:       row.Code,
-		Level:      row.Level,
-		Name:       row.Name,
-		ParentID:   row.ParentID.String,
-		FamilyCode: row.FamilyCode.String,
-		ISO639_3:   row.Iso6393.String,
-		Macroarea:  row.Macroarea.String,
-		Status:     row.Status,
+		ID:          row.ID,
+		Code:        row.Code,
+		Level:       row.Level,
+		Name:        row.Name,
+		ParentID:    row.ParentID.String,
+		HasChildren: row.HasChildren,
+		FamilyCode:  row.FamilyCode.String,
+		ISO639_3:    row.Iso6393.String,
+		Macroarea:   row.Macroarea.String,
+		Status:      row.Status,
 	}, true, nil
 }
 

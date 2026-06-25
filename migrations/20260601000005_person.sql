@@ -46,7 +46,10 @@ CREATE TABLE oikumenea.person_persons (
   -- rank is NOT a column: a person holds one rank PER RANK SYSTEM via the person_ranks link below (D-Rank).
 
   status           text NOT NULL DEFAULT 'active'
-                     CHECK (status IN ('active','deactivated','purged')),
+                     CHECK (status IN ('active','deactivated','purged','provisional')),
+                     -- 'provisional' = a minimal-PII stub node (D-OverlayFoundation, M29): an unresolved
+                     -- external/edge target awaiting MergePerson, which promotes/merges it into a canonical
+                     -- person (re-homing its edges) and tombstones the stub as 'purged'.
   deactivated_at   timestamptz,                   -- set on deactivate; cleared on reactivate
   purge_after      timestamptz,                   -- reversibility window end; purge refuses before it
 

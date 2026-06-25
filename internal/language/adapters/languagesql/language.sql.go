@@ -12,20 +12,25 @@ import (
 )
 
 const getLanguoid = `-- name: GetLanguoid :one
-SELECT id, code, level, name, parent_id, family_code, iso639_3, macroarea, status
-FROM oikumenea.language_languoids WHERE id = $1
+SELECT l.id, l.code, l.level, l.name, l.parent_id, l.family_code, l.iso639_3, l.macroarea, l.status,
+  EXISTS (
+    SELECT 1 FROM oikumenea.language_languoids c
+    WHERE c.parent_id = l.id AND c.level <> 'dialect'
+  ) AS has_children
+FROM oikumenea.language_languoids l WHERE l.id = $1
 `
 
 type GetLanguoidRow struct {
-	ID         string
-	Code       string
-	Level      string
-	Name       string
-	ParentID   pgtype.Text
-	FamilyCode pgtype.Text
-	Iso6393    pgtype.Text
-	Macroarea  pgtype.Text
-	Status     string
+	ID          string
+	Code        string
+	Level       string
+	Name        string
+	ParentID    pgtype.Text
+	FamilyCode  pgtype.Text
+	Iso6393     pgtype.Text
+	Macroarea   pgtype.Text
+	Status      string
+	HasChildren bool
 }
 
 func (q *Queries) GetLanguoid(ctx context.Context, id string) (GetLanguoidRow, error) {
@@ -41,50 +46,64 @@ func (q *Queries) GetLanguoid(ctx context.Context, id string) (GetLanguoidRow, e
 		&i.Iso6393,
 		&i.Macroarea,
 		&i.Status,
+		&i.HasChildren,
 	)
 	return i, err
 }
 
 const listLanguoids = `-- name: ListLanguoids :many
 
-SELECT id, code, level, name, parent_id, family_code, iso639_3, macroarea, status
-FROM oikumenea.language_languoids
-WHERE ($1::text = '' OR level = $1::text)
-  AND ($2::text = '' OR family_code = $2::text)
-  AND ($3::text = '' OR name ILIKE '%' || $3::text || '%' OR code ILIKE $3::text || '%')
-ORDER BY code
-LIMIT $4::int
+SELECT l.id, l.code, l.level, l.name, l.parent_id, l.family_code, l.iso639_3, l.macroarea, l.status,
+  EXISTS (
+    SELECT 1 FROM oikumenea.language_languoids c
+    WHERE c.parent_id = l.id AND c.level <> 'dialect'
+  ) AS has_children
+FROM oikumenea.language_languoids l
+WHERE ($1::text = '' OR l.level = $1::text)
+  AND ($2::text = '' OR l.family_code = $2::text)
+  AND ($3::text = '' OR l.parent_id::text = $3::text)
+  AND (NOT $4::bool OR l.parent_id IS NULL)
+  AND ($5::text = '' OR l.name ILIKE '%' || $5::text || '%' OR l.code ILIKE $5::text || '%')
+ORDER BY l.code
+LIMIT $6::int
 `
 
 type ListLanguoidsParams struct {
-	Level  string
-	Family string
-	Q      string
-	Lim    int32
+	Level    string
+	Family   string
+	Parent   string
+	TopLevel bool
+	Q        string
+	Lim      int32
 }
 
 type ListLanguoidsRow struct {
-	ID         string
-	Code       string
-	Level      string
-	Name       string
-	ParentID   pgtype.Text
-	FamilyCode pgtype.Text
-	Iso6393    pgtype.Text
-	Macroarea  pgtype.Text
-	Status     string
+	ID          string
+	Code        string
+	Level       string
+	Name        string
+	ParentID    pgtype.Text
+	FamilyCode  pgtype.Text
+	Iso6393     pgtype.Text
+	Macroarea   pgtype.Text
+	Status      string
+	HasChildren bool
 }
 
 // Language module queries (docs/modules/language.md; D-Languages, M18). Read-only lookups over the
 // RID-keyed Glottolog languoid forest + ISO-15924 writing-system registry. The catalog is written by
 // the hermenea import pipeline (language-scheme / language-scripts), not here.
-// Languoids in code order, optionally filtered by level, root family (family_code), and a
-// name/glottocode substring. The empty-string sentinel disables each filter; the limit is clamped by
-// the application.
+// Languoids in code order, optionally filtered by level, root family (family_code), immediate parent
+// (one tree level), top-level-only, and a name/glottocode substring. The empty-string / false
+// sentinels disable each filter; the limit is clamped by the application. has_children flags whether
+// the node has any non-dialect child, so a tree browser can show an expand affordance only where it
+// leads somewhere (family → language; languages whose only children are dialects read as leaves).
 func (q *Queries) ListLanguoids(ctx context.Context, arg ListLanguoidsParams) ([]ListLanguoidsRow, error) {
 	rows, err := q.db.Query(ctx, listLanguoids,
 		arg.Level,
 		arg.Family,
+		arg.Parent,
+		arg.TopLevel,
 		arg.Q,
 		arg.Lim,
 	)
@@ -105,6 +124,7 @@ func (q *Queries) ListLanguoids(ctx context.Context, arg ListLanguoidsParams) ([
 			&i.Iso6393,
 			&i.Macroarea,
 			&i.Status,
+			&i.HasChildren,
 		); err != nil {
 			return nil, err
 		}

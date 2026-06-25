@@ -10,6 +10,8 @@ export interface ILanguoid {
     'name': { [key: string]: string };
     /** The RID of the immediate parent languoid (absent for a top-level family / isolate). */
     'parentId'?: string | null;
+    /** Whether this languoid has non-dialect children (family/language); lets a tree browser show an expand affordance only on expandable nodes. */
+    'hasChildren': boolean;
     /** The root-family glottocode (derived via the closure). */
     'familyCode'?: string | null;
     /** ISO 639-3 code, when the languoid has one (families/dialects usually do not). */

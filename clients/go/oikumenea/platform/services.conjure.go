@@ -4,11 +4,123 @@ package platform
 
 import (
 	"context"
+	"fmt"
+	"net/url"
 
 	"github.com/olegamysk/go-oikumenea/clients/go/internal/conjureerrors"
 	"github.com/palantir/conjure-go-runtime/v2/conjure-go-client/httpclient"
+	"github.com/palantir/pkg/bearertoken"
 	werror "github.com/palantir/witchcraft-go-error"
 )
+
+/*
+Cross-cutting platform reference catalogs (D-OverlayFoundation, M29). Today: the GDPR
+lawful-basis catalog (`platform_legal_basis_kinds`), referenced by every future pii:special
+overlay store. Reads require `legal-basis.read`; writes the instance-plane `legal-basis.manage`.
+*/
+type PlatformCatalogServiceClient interface {
+	// List the GDPR lawful-basis catalog (Article 6 bases + Article 9 conditions).
+	ListLegalBasisKinds(ctx context.Context, authHeader bearertoken.Token) (LegalBasisKindList, error)
+	// Add or update a lawful-basis catalog entry (instance-admin; `legal-basis.manage`).
+	UpsertLegalBasisKind(ctx context.Context, authHeader bearertoken.Token, codeArg string, requestArg UpsertLegalBasisKindRequest) (LegalBasisKind, error)
+}
+
+type platformCatalogServiceClient struct {
+	client httpclient.Client
+}
+
+func NewPlatformCatalogServiceClient(client httpclient.Client) PlatformCatalogServiceClient {
+	return &platformCatalogServiceClient{client: client}
+}
+
+func (c *platformCatalogServiceClient) ListLegalBasisKinds(ctx context.Context, authHeader bearertoken.Token) (LegalBasisKindList, error) {
+	var returnVal *LegalBasisKindList
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListLegalBasisKinds"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/platform/v1/legal-basis-kinds"))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(LegalBasisKindList), werror.WrapWithContextParams(ctx, err, "listLegalBasisKinds failed")
+	}
+	if returnVal == nil {
+		return *new(LegalBasisKindList), werror.ErrorWithContextParams(ctx, "listLegalBasisKinds response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *platformCatalogServiceClient) UpsertLegalBasisKind(ctx context.Context, authHeader bearertoken.Token, codeArg string, requestArg UpsertLegalBasisKindRequest) (LegalBasisKind, error) {
+	var returnVal *LegalBasisKind
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertLegalBasisKind"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/platform/v1/legal-basis-kinds/%s", url.PathEscape(fmt.Sprint(codeArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(LegalBasisKind), werror.WrapWithContextParams(ctx, err, "upsertLegalBasisKind failed")
+	}
+	if returnVal == nil {
+		return *new(LegalBasisKind), werror.ErrorWithContextParams(ctx, "upsertLegalBasisKind response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+/*
+Cross-cutting platform reference catalogs (D-OverlayFoundation, M29). Today: the GDPR
+lawful-basis catalog (`platform_legal_basis_kinds`), referenced by every future pii:special
+overlay store. Reads require `legal-basis.read`; writes the instance-plane `legal-basis.manage`.
+*/
+type PlatformCatalogServiceClientWithAuth interface {
+	// List the GDPR lawful-basis catalog (Article 6 bases + Article 9 conditions).
+	ListLegalBasisKinds(ctx context.Context) (LegalBasisKindList, error)
+	// Add or update a lawful-basis catalog entry (instance-admin; `legal-basis.manage`).
+	UpsertLegalBasisKind(ctx context.Context, codeArg string, requestArg UpsertLegalBasisKindRequest) (LegalBasisKind, error)
+}
+
+func NewPlatformCatalogServiceClientWithAuth(client PlatformCatalogServiceClient, authHeader bearertoken.Token) PlatformCatalogServiceClientWithAuth {
+	return &platformCatalogServiceClientWithAuth{client: client, authHeader: authHeader}
+}
+
+type platformCatalogServiceClientWithAuth struct {
+	client     PlatformCatalogServiceClient
+	authHeader bearertoken.Token
+}
+
+func (c *platformCatalogServiceClientWithAuth) ListLegalBasisKinds(ctx context.Context) (LegalBasisKindList, error) {
+	return c.client.ListLegalBasisKinds(ctx, c.authHeader)
+}
+
+func (c *platformCatalogServiceClientWithAuth) UpsertLegalBasisKind(ctx context.Context, codeArg string, requestArg UpsertLegalBasisKindRequest) (LegalBasisKind, error) {
+	return c.client.UpsertLegalBasisKind(ctx, c.authHeader, codeArg, requestArg)
+}
+
+func NewPlatformCatalogServiceClientWithTokenProvider(client PlatformCatalogServiceClient, tokenProvider httpclient.TokenProvider) PlatformCatalogServiceClientWithAuth {
+	return &platformCatalogServiceClientWithTokenProvider{client: client, tokenProvider: tokenProvider}
+}
+
+type platformCatalogServiceClientWithTokenProvider struct {
+	client        PlatformCatalogServiceClient
+	tokenProvider httpclient.TokenProvider
+}
+
+func (c *platformCatalogServiceClientWithTokenProvider) ListLegalBasisKinds(ctx context.Context) (LegalBasisKindList, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(LegalBasisKindList), err
+	}
+	return c.client.ListLegalBasisKinds(ctx, bearertoken.Token(token))
+}
+
+func (c *platformCatalogServiceClientWithTokenProvider) UpsertLegalBasisKind(ctx context.Context, codeArg string, requestArg UpsertLegalBasisKindRequest) (LegalBasisKind, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(LegalBasisKind), err
+	}
+	return c.client.UpsertLegalBasisKind(ctx, bearertoken.Token(token), codeArg, requestArg)
+}
 
 // Unauthenticated operational endpoints owned by the platform module.
 type PlatformOpsServiceClient interface {

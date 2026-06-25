@@ -147,6 +147,25 @@ Two reference tables follow the registry pattern (D-Geo / D-PersonalCodes):
   optional `validation_regex`, translatable `name`). Distinct from the generic
   `document_document_types` (papers); see [document](../modules/document.md).
 
+### Attribution convention (`source` / `confidence` / `as_of`)
+
+Overlay and enrichment rows — anything asserting a fact the operator did not author first-hand —
+carry a uniform **attribution column-set** so every claim is query-weightable (D-PersonSocialChannels,
+formalized by **D-OverlayFoundation**, M29). Reuse these columns verbatim on every overlay/attribution
+row from M30 onward:
+
+- **`source text NOT NULL CHECK (source IN ('self_declared','operator_verified','imported'))`** — how
+  the value was learned.
+- **`confidence text NOT NULL DEFAULT 'possible' CHECK (confidence IN ('confirmed','probable','possible'))`**
+  — how strongly the claim is weighted.
+- **`as_of timestamptz`** *(optional)* — when the asserted value was observed/true.
+
+Two rules ride with it: **declared ≠ inferred** — an inferred value lives in a *separate* column-space
+from a first-party declared one and is **never merged into it**; and a **`legal_basis`** FK
+(`platform_legal_basis_kinds`, see [platform](../modules/platform.md)) is **NOT NULL on every
+`pii:special` store**, gating special-category processing on a structured GDPR lawful basis rather than
+prose.
+
 ### Code vs. name — stable identifiers vs. translatable labels
 
 Every structural/catalog entity (unit, role, position, rank category/type/rank, locale, country,

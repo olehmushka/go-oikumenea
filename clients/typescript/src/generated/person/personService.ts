@@ -2,11 +2,13 @@ import { IAssociation } from "./association";
 import { ICallSign } from "./callSign";
 import { ICitizenship } from "./citizenship";
 import { ICreatePersonRequest } from "./createPersonRequest";
+import { ICreateProvisionalPersonRequest } from "./createProvisionalPersonRequest";
 import { IDeactivateRequest } from "./deactivateRequest";
 import { IEmail } from "./email";
 import { IEmailType } from "./emailType";
 import { IGuardianship } from "./guardianship";
 import { IKinship } from "./kinship";
+import { IMergePersonRequest } from "./mergePersonRequest";
 import { IMessengerLink } from "./messengerLink";
 import { INameVariant } from "./nameVariant";
 import { INextOfKin } from "./nextOfKin";
@@ -54,6 +56,22 @@ const __undefined: undefined = undefined;
 export interface IPersonService {
     /** Create a person (no account, no unit needed). Returns Person:PersonConflict if the code is taken. */
     createPerson(request: ICreatePersonRequest): Promise<IPerson>;
+    /**
+     * Create a minimal-PII PROVISIONAL stub (D-OverlayFoundation, M29) — an unresolved external /
+     * edge-target person so a relationship or overlay edge points at a real node. Resolve it later
+     * via mergePerson. Only displayName is required.
+     *
+     */
+    createProvisionalPerson(request: ICreateProvisionalPersonRequest): Promise<IPerson>;
+    /**
+     * Resolve the provisional stub {personId} INTO a canonical person (D-OverlayFoundation, M29):
+     * re-homes the stub's edges (and every other module's references) onto the canonical person in
+     * one transaction, then tombstones the stub. {personId} must be provisional; `intoPersonId` must
+     * be a distinct, non-provisional person. Returns the canonical Person. Returns Person:PersonInvalid
+     * when the source is not provisional or the target is invalid.
+     *
+     */
+    mergePerson(personId: string, request: IMergePersonRequest): Promise<IPerson>;
     /** Read one person with its name variants, citizenships, and residences. */
     getPerson(personId: string): Promise<IPerson>;
     /** Update names, birthdate, date_of_death, sex, country_of_birth, attributes. `code` is immutable; rank via setRank. */
@@ -201,6 +219,52 @@ export class PersonService implements IPersonService {
             __undefined,
             __undefined,
             __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Create a minimal-PII PROVISIONAL stub (D-OverlayFoundation, M29) — an unresolved external /
+     * edge-target person so a relationship or overlay edge points at a real node. Resolve it later
+     * via mergePerson. Only displayName is required.
+     *
+     */
+    public createProvisionalPerson(request: ICreateProvisionalPersonRequest): Promise<IPerson> {
+        return this.bridge.call<IPerson>(
+            "PersonService",
+            "createProvisionalPerson",
+            "POST",
+            "/person/v1/provisional-persons",
+            request,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Resolve the provisional stub {personId} INTO a canonical person (D-OverlayFoundation, M29):
+     * re-homes the stub's edges (and every other module's references) onto the canonical person in
+     * one transaction, then tombstones the stub. {personId} must be provisional; `intoPersonId` must
+     * be a distinct, non-provisional person. Returns the canonical Person. Returns Person:PersonInvalid
+     * when the source is not provisional or the target is invalid.
+     *
+     */
+    public mergePerson(personId: string, request: IMergePersonRequest): Promise<IPerson> {
+        return this.bridge.call<IPerson>(
+            "PersonService",
+            "mergePerson",
+            "POST",
+            "/person/v1/persons/{personId}/merge",
+            request,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
             __undefined,
             __undefined
         );

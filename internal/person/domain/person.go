@@ -87,6 +87,10 @@ const (
 // DefaultConfidence is substituted when a social-account claim omits a confidence weight.
 const DefaultConfidence = "possible"
 
+// ValidConfidence reports whether c is a recognized attribution confidence weight (D-PersonSocialChannels,
+// reused by the D-OverlayFoundation attribution convention).
+func ValidConfidence(c string) bool { return validConfidence[c] }
+
 // Status is the person lifecycle state (D-PersonReadScope reversibility window).
 type Status string
 
@@ -94,6 +98,19 @@ const (
 	StatusActive      Status = "active"
 	StatusDeactivated Status = "deactivated"
 	StatusPurged      Status = "purged"
+	// StatusProvisional is a minimal-PII stub node (D-OverlayFoundation, M29): an unresolved external
+	// person / edge target that exists only so a relationship or overlay edge has a real node to point
+	// at. It is resolved by MergePerson, which re-homes its edges into a canonical person and tombstones
+	// the stub as StatusPurged.
+	StatusProvisional Status = "provisional"
+)
+
+// ErrMergeNotProvisional is returned by MergePerson when the source person is not a provisional stub
+// (only a provisional may be merged away). ErrMergeIntoInvalid is returned when the merge target is
+// itself provisional/purged or is the source person. D-OverlayFoundation (M29).
+var (
+	ErrMergeNotProvisional = errors.New("merge source is not a provisional person")
+	ErrMergeIntoInvalid    = errors.New("merge target must be a distinct, non-provisional person")
 )
 
 // Sex is the ISO/IEC 5218 biological-sex value, stored as readable text (D-PersonBio). It is NOT
@@ -777,6 +794,13 @@ func validDate(s string) bool {
 type Repository interface {
 	// persons
 	InsertPerson(ctx context.Context, p Person) (Person, error)
+	// InsertProvisionalPerson inserts a minimal-PII stub with status='provisional' (D-OverlayFoundation).
+	InsertProvisionalPerson(ctx context.Context, p Person) (Person, error)
+	// RepointPersonOwned re-homes every person-OWNED child row (name variants, contacts, social
+	// accounts, languages, ranks, and the person↔person relationship endpoints) fromID → toID, in the
+	// caller's transaction (the cross-module rows are re-homed by the PersonMerged subscribers). A plain
+	// UPDATE; collisions are not de-duplicated (a parked seam — provisional stubs don't trigger them).
+	RepointPersonOwned(ctx context.Context, fromID, toID string) error
 	GetPerson(ctx context.Context, id string) (Person, error)
 	// GetActivePersonByCode resolves an active person by stable code (JIT/bootstrap); ErrNotFound
 	// when none matches.

@@ -17,6 +17,33 @@ types:
         fields:
           binaryRevision: string
           schemaRevision: string
+      LegalBasisKind:
+        docs: |
+          A structured GDPR lawful basis (D-OverlayFoundation, M29) — an Article 6 lawful basis or an
+          Article 9 special-category condition. Referenced by FK from every future pii:special overlay
+          store; the `code` is the stable handle.
+        fields:
+          code: string
+          name: string
+          article:
+            type: string
+            docs: art6 (lawful basis) | art9 (special-category condition).
+          status:
+            type: string
+            docs: active | retired.
+          sortOrder: optional<integer>
+      LegalBasisKindList:
+        fields:
+          kinds: list<LegalBasisKind>
+      UpsertLegalBasisKindRequest:
+        docs: Add or update a lawful-basis catalog entry (instance-admin).
+        fields:
+          code: string
+          name: string
+          article:
+            type: string
+            docs: art6 | art9.
+          sortOrder: optional<integer>
     errors:
       DemoError:
         docs: |
@@ -40,3 +67,26 @@ services:
       demoError:
         http: GET /demo/error
         docs: Always returns Platform:DemoError (M0 SerializableError smoke test).
+  PlatformCatalogService:
+    name: Platform Catalog Service
+    package: oikumenea.platform
+    base-path: /platform/v1
+    default-auth: header
+    docs: |
+      Cross-cutting platform reference catalogs (D-OverlayFoundation, M29). Today: the GDPR
+      lawful-basis catalog (`platform_legal_basis_kinds`), referenced by every future pii:special
+      overlay store. Reads require `legal-basis.read`; writes the instance-plane `legal-basis.manage`.
+    endpoints:
+      listLegalBasisKinds:
+        http: GET /legal-basis-kinds
+        docs: List the GDPR lawful-basis catalog (Article 6 bases + Article 9 conditions).
+        returns: LegalBasisKindList
+      upsertLegalBasisKind:
+        http: PUT /legal-basis-kinds/{code}
+        docs: Add or update a lawful-basis catalog entry (instance-admin; `legal-basis.manage`).
+        args:
+          code:
+            type: string
+            param-type: path
+          request: UpsertLegalBasisKindRequest
+        returns: LegalBasisKind

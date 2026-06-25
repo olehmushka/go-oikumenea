@@ -100,6 +100,7 @@ export interface OikumeneaClient {
   readonly order: order.OrderService;
   readonly person: person.PersonService;
   readonly platform: platform.PlatformOpsService;
+  readonly platformCatalog: platform.PlatformCatalogService;
   readonly rank: rank.RankService;
   readonly religion: religion.ReligionService;
   readonly tenant: tenant.TenantService;
@@ -210,6 +211,7 @@ export function createOikumeneaClient(
     order: new order.OrderService(bridge),
     person: new person.PersonService(bridge),
     platform: new platform.PlatformOpsService(bridge),
+    platformCatalog: new platform.PlatformCatalogService(bridge),
     rank: new rank.RankService(bridge),
     religion: new religion.ReligionService(bridge),
     tenant: new tenant.TenantService(bridge),
