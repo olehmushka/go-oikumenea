@@ -1,28 +1,137 @@
--- Tenant module queries (docs/modules/tenant.md). Units as a DAG per graph + a maintained
--- transitive closure recomputed in the write transaction on every edge change. Units/graphs
--- soft-delete; edges hard-delete on detach; the closure is derived (no RID).
+-- Tenant module queries (docs/modules/tenant.md). Two-tier model (D-TenantOrganizations, M40):
+-- domains (org-kind catalog) -> organizations (the realm) -> units as a DAG per graph + a maintained
+-- transitive closure recomputed in the write transaction on every edge change. Graphs are per-org
+-- (org_id), with org_id NULL = an instance-global/cross-org graph (religion taxonomy). Units/graphs/
+-- orgs soft-delete; edges hard-delete on detach; the closure is derived (no RID).
+
+-- ============================ domains (org-kind catalog) ============================
+
+-- name: InsertDomain :one
+INSERT INTO oikumenea.tenant_domains (code, name, sort_order)
+VALUES (@code, @name, sqlc.narg('sort_order'))
+RETURNING *;
+
+-- name: GetDomain :one
+SELECT * FROM oikumenea.tenant_domains WHERE id = @id AND deleted_at IS NULL;
+
+-- name: GetDomainByCode :one
+SELECT * FROM oikumenea.tenant_domains WHERE code = @code AND deleted_at IS NULL;
+
+-- name: ListDomains :many
+SELECT * FROM oikumenea.tenant_domains WHERE deleted_at IS NULL ORDER BY sort_order NULLS LAST, code;
+
+-- name: UpdateDomain :one
+UPDATE oikumenea.tenant_domains SET
+  name       = COALESCE(sqlc.narg('name'), name),
+  status     = COALESCE(sqlc.narg('status'), status),
+  sort_order = COALESCE(sqlc.narg('sort_order'), sort_order)
+WHERE id = @id AND deleted_at IS NULL
+RETURNING *;
+
+-- name: CountActiveDomainsByCode :one
+SELECT count(*)::int AS code_count FROM oikumenea.tenant_domains
+WHERE code = @code AND deleted_at IS NULL AND id <> @exclude_id;
+
+-- ============================ unit kinds (domain-scoped catalog) ============================
+
+-- name: InsertUnitKind :one
+INSERT INTO oikumenea.tenant_unit_kinds (domain_id, code, name, attr_schema, sort_order)
+VALUES (@domain_id, @code, @name, sqlc.narg('attr_schema'), sqlc.narg('sort_order'))
+RETURNING *;
+
+-- name: GetUnitKind :one
+SELECT * FROM oikumenea.tenant_unit_kinds WHERE id = @id AND deleted_at IS NULL;
+
+-- name: ListUnitKinds :many
+SELECT * FROM oikumenea.tenant_unit_kinds
+WHERE domain_id = @domain_id AND deleted_at IS NULL
+ORDER BY sort_order NULLS LAST, code;
+
+-- name: UpdateUnitKind :one
+UPDATE oikumenea.tenant_unit_kinds SET
+  name        = COALESCE(sqlc.narg('name'), name),
+  attr_schema = COALESCE(sqlc.narg('attr_schema'), attr_schema),
+  status      = COALESCE(sqlc.narg('status'), status),
+  sort_order  = COALESCE(sqlc.narg('sort_order'), sort_order)
+WHERE id = @id AND deleted_at IS NULL
+RETURNING *;
+
+-- name: CountActiveUnitKindsByCode :one
+SELECT count(*)::int AS code_count FROM oikumenea.tenant_unit_kinds
+WHERE domain_id = @domain_id AND code = @code AND deleted_at IS NULL AND id <> @exclude_id;
+
+-- ============================ organizations (the realm) ============================
+
+-- name: InsertOrganization :one
+INSERT INTO oikumenea.tenant_organizations (code, name, domain_id, visibility, metadata)
+VALUES (@code, @name, @domain_id, @visibility, @metadata)
+RETURNING *;
+
+-- name: GetOrganization :one
+SELECT * FROM oikumenea.tenant_organizations WHERE id = @id AND deleted_at IS NULL;
+
+-- name: UpdateOrganization :one
+UPDATE oikumenea.tenant_organizations SET
+  name       = COALESCE(sqlc.narg('name'), name),
+  domain_id  = COALESCE(sqlc.narg('domain_id'), domain_id),
+  visibility = COALESCE(sqlc.narg('visibility'), visibility),
+  metadata   = COALESCE(sqlc.narg('metadata'), metadata)
+WHERE id = @id AND deleted_at IS NULL
+RETURNING *;
+
+-- name: SetOrgState :one
+UPDATE oikumenea.tenant_organizations SET state = @state
+WHERE id = @id AND deleted_at IS NULL
+RETURNING *;
+
+-- name: ListOrganizations :many
+-- Keyset pagination over the time-ordered RID (id), optional domain filter.
+SELECT * FROM oikumenea.tenant_organizations
+WHERE deleted_at IS NULL
+  AND (sqlc.narg('domain_id')::uuid IS NULL OR domain_id = sqlc.narg('domain_id')::uuid)
+  AND (sqlc.narg('after')::uuid IS NULL OR id > sqlc.narg('after')::uuid)
+ORDER BY id
+LIMIT @lim;
+
+-- name: CountActiveOrgsByCode :one
+SELECT count(*)::int AS code_count FROM oikumenea.tenant_organizations
+WHERE code = @code AND deleted_at IS NULL AND id <> @exclude_id;
+
+-- name: InsertOrgLifecycleEvent :exec
+INSERT INTO oikumenea.tenant_org_lifecycle_events
+  (org_id, from_state, to_state, reason, actor_person_id, request_id)
+VALUES (@org_id, @from_state, @to_state, sqlc.narg('reason'), sqlc.narg('actor_person_id'), @request_id);
 
 -- ============================ units ============================
 
 -- name: InsertUnit :one
--- Create a unit. The RID PK defaults at the database; the partial-unique code guards duplicates.
+-- Create a unit (D-TenantOrganizations, M40): org_id + domain_id required, kind_id optional.
 -- `code` is optional (NULL = a non-separate sub-unit; D-UnitCodeLifecycle).
-INSERT INTO oikumenea.tenant_units (code, name, unit_kind, level, visibility, metadata)
-VALUES (sqlc.narg('code'), @name, sqlc.narg('unit_kind'), sqlc.narg('level'), @visibility, @metadata)
+-- pdp_scoped is DERIVED in SQL from the unit's domain (D-UnifiedOrgGraph, M41) so the RLS predicate can
+-- exempt reference (university/company) units without a join.
+INSERT INTO oikumenea.tenant_units (org_id, domain_id, kind_id, code, name, level, visibility, pdp_scoped, metadata)
+SELECT @org_id, @domain_id, sqlc.narg('kind_id'), sqlc.narg('code'), @name, sqlc.narg('level'), @visibility,
+       COALESCE((SELECT d.pdp_scoped FROM oikumenea.tenant_domains d WHERE d.id = @domain_id), true), @metadata
 RETURNING *;
 
 -- name: GetUnit :one
 SELECT * FROM oikumenea.tenant_units WHERE id = @id AND deleted_at IS NULL;
 
 -- name: UpdateUnit :one
--- Partial update: a NULL narg leaves the stored value unchanged (COALESCE). `code` is immutable.
+-- Partial update: a NULL narg leaves the stored value unchanged (COALESCE). `code` and `org_id` are
+-- immutable here (code via SetUnitCode; org is fixed at create).
 UPDATE oikumenea.tenant_units SET
   name       = COALESCE(sqlc.narg('name'), name),
-  unit_kind  = COALESCE(sqlc.narg('unit_kind'), unit_kind),
+  domain_id  = COALESCE(sqlc.narg('domain_id'), domain_id),
+  kind_id    = COALESCE(sqlc.narg('kind_id'), kind_id),
   level      = COALESCE(sqlc.narg('level'), level),
   visibility = COALESCE(sqlc.narg('visibility'), visibility),
+  -- re-derive pdp_scoped when the domain changes (mixed-tree re-classification, M41)
+  pdp_scoped = COALESCE(
+    (SELECT d.pdp_scoped FROM oikumenea.tenant_domains d WHERE d.id = COALESCE(sqlc.narg('domain_id'), tenant_units.domain_id)),
+    tenant_units.pdp_scoped),
   metadata   = COALESCE(sqlc.narg('metadata'), metadata)
-WHERE id = @id AND deleted_at IS NULL
+WHERE tenant_units.id = @id AND deleted_at IS NULL
 RETURNING *;
 
 -- name: SetUnitState :one
@@ -44,33 +153,73 @@ SELECT count(*)::int AS code_count FROM oikumenea.tenant_units
 WHERE code = @code AND deleted_at IS NULL AND id <> @exclude_id;
 
 -- name: ListUnits :many
--- Keyset pagination over the time-ordered RID (id), optional level filter.
+-- Keyset pagination over the time-ordered RID (id), REQUIRED org scope + optional domain/kind/level.
 SELECT * FROM oikumenea.tenant_units
 WHERE deleted_at IS NULL
+  AND org_id = @org_id
+  AND (sqlc.narg('domain_id')::uuid IS NULL OR domain_id = sqlc.narg('domain_id')::uuid)
+  AND (sqlc.narg('kind_id')::uuid IS NULL OR kind_id = sqlc.narg('kind_id')::uuid)
   AND (sqlc.narg('level')::smallint IS NULL OR level = sqlc.narg('level')::smallint)
   AND (sqlc.narg('after')::uuid IS NULL OR id > sqlc.narg('after')::uuid)
 ORDER BY id
 LIMIT @lim;
 
--- ============================ graphs ============================
+-- name: ListChildUnits :many
+-- Direct children of @parent_id within graph @graph_id (the immediate edges, not the closure subtree).
+-- Keyset-paginated by the child unit's RID (id). Used for expand-on-click hierarchy browsing.
+SELECT u.* FROM oikumenea.tenant_units u
+JOIN oikumenea.tenant_unit_edges e
+  ON e.child_id = u.id AND e.graph_id = @graph_id AND e.parent_id = @parent_id
+WHERE u.deleted_at IS NULL
+  AND (sqlc.narg('after')::uuid IS NULL OR u.id > sqlc.narg('after')::uuid)
+ORDER BY u.id
+LIMIT @lim;
+
+-- name: ListRootUnits :many
+-- The org's top-level units in graph @graph_id: active units with no parent edge in the graph
+-- (includes still-unattached units). Keyset-paginated by id. Used as the roots of the unit tree.
+SELECT u.* FROM oikumenea.tenant_units u
+WHERE u.deleted_at IS NULL
+  AND u.org_id = @org_id
+  AND NOT EXISTS (
+    SELECT 1 FROM oikumenea.tenant_unit_edges e
+    WHERE e.graph_id = @graph_id AND e.child_id = u.id
+  )
+  AND (sqlc.narg('after')::uuid IS NULL OR u.id > sqlc.narg('after')::uuid)
+ORDER BY u.id
+LIMIT @lim;
+
+-- ============================ graphs (per-org; org_id NULL = global) ============================
 
 -- name: InsertGraph :one
-INSERT INTO oikumenea.tenant_graphs (code, name, is_authority_bearing)
-VALUES (@code, @name, @is_authority_bearing)
+INSERT INTO oikumenea.tenant_graphs (org_id, code, name, is_default, is_authority_bearing)
+VALUES (sqlc.narg('org_id'), @code, @name, @is_default, @is_authority_bearing)
 RETURNING *;
 
 -- name: GetGraphByID :one
 SELECT * FROM oikumenea.tenant_graphs WHERE id = @id AND deleted_at IS NULL;
 
--- name: GetGraphByCode :one
-SELECT * FROM oikumenea.tenant_graphs WHERE code = @code AND deleted_at IS NULL;
+-- name: GetGraphForOrgByCode :one
+-- Resolve a graph by code within an organization, preferring the org's own graph and falling back to
+-- an instance-global graph (org_id NULL). When @org_id is NULL only global graphs match. The ORDER BY
+-- puts the org-specific row (org_id IS NULL = false) ahead of the global one.
+SELECT * FROM oikumenea.tenant_graphs
+WHERE code = @code AND deleted_at IS NULL
+  AND (org_id = sqlc.narg('org_id') OR org_id IS NULL)
+ORDER BY (org_id IS NULL)
+LIMIT 1;
 
--- name: ListGraphs :many
-SELECT * FROM oikumenea.tenant_graphs WHERE deleted_at IS NULL ORDER BY created_at, code;
+-- name: ListGraphsForOrg :many
+-- An organization's graphs plus the instance-global graphs (org_id NULL). When @org_id is NULL,
+-- returns only the global graphs.
+SELECT * FROM oikumenea.tenant_graphs
+WHERE deleted_at IS NULL AND (org_id = sqlc.narg('org_id') OR org_id IS NULL)
+ORDER BY (org_id IS NULL), created_at, code;
 
--- name: ClearDefaultGraphs :exec
--- Unset is_default on every active graph (run before promoting a new default).
-UPDATE oikumenea.tenant_graphs SET is_default = false WHERE is_default AND deleted_at IS NULL;
+-- name: ClearDefaultGraphsForOrg :exec
+-- Unset is_default on the org's active graphs (run before promoting a new default within the org).
+UPDATE oikumenea.tenant_graphs SET is_default = false
+WHERE is_default AND deleted_at IS NULL AND org_id = @org_id;
 
 -- name: UpdateGraph :one
 UPDATE oikumenea.tenant_graphs SET
@@ -85,8 +234,10 @@ UPDATE oikumenea.tenant_graphs SET deleted_at = now()
 WHERE id = @id AND deleted_at IS NULL
 RETURNING *;
 
--- name: CountActiveGraphs :one
-SELECT count(*)::int AS active_count FROM oikumenea.tenant_graphs WHERE deleted_at IS NULL;
+-- name: CountActiveGraphsForOrg :one
+-- Active graph count for the per-org "at least one graph remains" guard (NULL org_id = globals).
+SELECT count(*)::int AS active_count FROM oikumenea.tenant_graphs
+WHERE deleted_at IS NULL AND org_id IS NOT DISTINCT FROM sqlc.narg('org_id');
 
 -- name: GraphHasLiveEdges :one
 SELECT EXISTS(
@@ -173,6 +324,10 @@ SELECT
      UNION ALL
      (SELECT 'extra'::text AS kind, ancestor_id, descendant_id FROM extra LIMIT 5)
    ) s) AS sample;
+
+-- name: ListGraphIDs :many
+-- All active graph ids (used to verify/rebuild every graph when none is named).
+SELECT id FROM oikumenea.tenant_graphs WHERE deleted_at IS NULL ORDER BY created_at, code;
 
 -- name: UpsertClosureStatus :exec
 INSERT INTO oikumenea.tenant_closure_status (graph_id, last_checked_at, missing_count, extra_count, in_drift, sample)

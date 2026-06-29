@@ -16,16 +16,18 @@ import (
 	companyapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/company"
 	locapp "github.com/olegamysk/go-oikumenea/internal/localization/application"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	tenantapp "github.com/olegamysk/go-oikumenea/internal/tenant/application"
 	werror "github.com/palantir/witchcraft-go-error"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
 )
 
 // Register builds the company module over the platform pool, the audit service (writes record
-// in-transaction — D-Audit), and the localization service (translatable name maps), then registers the
-// CompanyService onto the witchcraft router. It owns no resources of its own.
-func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, loc *locapp.Service, enforcer *pep.Enforcer) (*application.Service, error) {
+// in-transaction — D-Audit), the localization service (translatable name maps), and the tenant service
+// (a company = a `company`-domain org — M41), then registers the CompanyService onto the witchcraft
+// router. It owns no resources of its own.
+func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, loc *locapp.Service, tenant *tenantapp.Service, enforcer *pep.Enforcer) (*application.Service, error) {
 	repoFor := func(conn db.DBTX) domain.Repository { return adapters.NewRepository(conn) }
-	svc := application.NewService(pool, repoFor, audit)
+	svc := application.NewService(pool, repoFor, audit, tenant)
 	if err := companyapi.RegisterRoutesCompanyService(info.Router, transport.NewService(svc, loc, enforcer)); err != nil {
 		return nil, werror.Wrap(err, "register company service routes")
 	}

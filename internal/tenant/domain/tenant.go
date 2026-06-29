@@ -27,14 +27,33 @@ var (
 	ErrGraphCodeConflict = errors.New("graph code already exists")
 	ErrGraphInUse        = errors.New("graph is in use")
 	ErrGraphProtected    = errors.New("graph is protected")
+	// D-TenantOrganizations (M40)
+	ErrDomainNotFound       = errors.New("domain not found")
+	ErrDomainCodeConflict   = errors.New("domain code already exists")
+	ErrUnitKindNotFound     = errors.New("unit kind not found")
+	ErrUnitKindCodeConflict = errors.New("unit kind code already exists in this domain")
+	ErrOrgNotFound          = errors.New("organization not found")
+	ErrOrgCodeConflict      = errors.New("organization code already exists")
 	// D-Languages (M18)
 	ErrUnknownLanguage      = errors.New("language does not exist")
 	ErrUnitLanguageNotFound = errors.New("unit language not found")
 	ErrUnitLanguageConflict = errors.New("the unit already has this language")
 )
 
-// CommandGraphCode is the seeded default + undeletable + locked-authority-bearing graph (D-Graphs).
-const CommandGraphCode = "command"
+// CommandGraphCode is the per-org seeded default + undeletable + locked-authority-bearing graph
+// (D-Graphs / D-TenantOrganizations). OperationalGraphCode is the second per-org seeded graph.
+const (
+	CommandGraphCode     = "command"
+	OperationalGraphCode = "operational"
+)
+
+// CatalogStatus is the active/retired soft-state shared by the catalog objects (domain, unit kind).
+type CatalogStatus string
+
+const (
+	StatusActive  CatalogStatus = "active"
+	StatusRetired CatalogStatus = "retired"
+)
 
 // Visibility is a unit's read-time public/shadow gate value (the shadow gate lands in M7).
 type Visibility string
@@ -59,15 +78,122 @@ const (
 // (D-UnitCodeLifecycle, M28): nil ⇒ a non-separate sub-unit; the RID (ID) is the external handle.
 type Unit struct {
 	ID         string
+	OrgID      string  // owning organization (D-TenantOrganizations, M40)
+	DomainID   string  // per-unit kind class; defaults to the org's domain (mixed trees allowed)
+	KindID     *string // nil = no domain-scoped unit kind
 	Code       *string // nil = no code (a non-separate sub-unit)
 	Name       string
-	UnitKind   string // "" = none
-	Level      *int   // nil = unset
+	Level      *int // nil = unset
 	Visibility Visibility
 	State      State
 	Metadata   json.RawMessage
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+}
+
+// Domain is the org-kind catalog (D-TenantOrganizations, M40): military/government/company/…
+// PdpScoped (D-UnifiedOrgGraph, M41): true = operational (reach-RLS + auto per-org graphs); false =
+// reference (university/company — instance-global, no auto graphs).
+type Domain struct {
+	ID        string
+	Code      string
+	Name      string
+	Status    CatalogStatus
+	PdpScoped bool
+	SortOrder *int
+}
+
+// DomainPatch is a partial update of a domain; a nil field is unchanged. Code is immutable.
+type DomainPatch struct {
+	Name      *string
+	Status    *CatalogStatus
+	SortOrder *int
+}
+
+// UnitKind is a domain-scoped catalog replacing the former free-text unit_kind. AttrSchema is an
+// optional JSON schema that validates a unit's metadata for this kind.
+type UnitKind struct {
+	ID         string
+	DomainID   string
+	Code       string
+	Name       string
+	AttrSchema json.RawMessage
+	Status     CatalogStatus
+	SortOrder  *int
+}
+
+// UnitKindPatch is a partial update of a unit kind; a nil field is unchanged. Code/DomainID immutable.
+type UnitKindPatch struct {
+	Name       *string
+	AttrSchema json.RawMessage // nil = unchanged
+	Status     *CatalogStatus
+	SortOrder  *int
+}
+
+// Organization is the realm a person joins (US Army, Bundeswehr, KhNU). Name is the default-locale
+// text. Domain/visibility are directory attributes — never PDP inputs.
+type Organization struct {
+	ID         string
+	Code       string
+	Name       string
+	DomainID   string
+	Visibility Visibility
+	State      State
+	Metadata   json.RawMessage
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
+// OrgPatch is a partial update of an organization; a nil field is unchanged. Code immutable; state
+// is changed via the audited lifecycle transition, not this patch.
+type OrgPatch struct {
+	Name       *string
+	DomainID   *string
+	Visibility *Visibility
+	Metadata   json.RawMessage // nil = unchanged
+}
+
+// Validate enforces the domain catalog invariants: a well-shaped code and a non-empty name.
+func (d Domain) Validate() error {
+	if !validCode(d.Code) {
+		return errors.Join(ErrInvalidUnit, errors.New("domain code must be non-empty and contain no whitespace"))
+	}
+	if strings.TrimSpace(d.Name) == "" {
+		return wrapInvalid("name is required")
+	}
+	return nil
+}
+
+// Validate enforces the unit-kind invariants: a domain, a well-shaped code, and a non-empty name.
+func (k UnitKind) Validate() error {
+	if strings.TrimSpace(k.DomainID) == "" {
+		return wrapInvalid("domainId is required")
+	}
+	if !validCode(k.Code) {
+		return errors.Join(ErrInvalidUnit, errors.New("unit-kind code must be non-empty and contain no whitespace"))
+	}
+	if strings.TrimSpace(k.Name) == "" {
+		return wrapInvalid("name is required")
+	}
+	return nil
+}
+
+// Validate enforces the organization invariants: a domain, a well-shaped code, a non-empty name, and
+// a known visibility.
+func (o Organization) Validate() error {
+	if strings.TrimSpace(o.DomainID) == "" {
+		return wrapInvalid("domainId is required")
+	}
+	if !validCode(o.Code) {
+		return errors.Join(ErrInvalidUnit, errors.New("organization code must be non-empty and contain no whitespace"))
+	}
+	if strings.TrimSpace(o.Name) == "" {
+		return wrapInvalid("name is required")
+	}
+	if o.Visibility != VisibilityPublic && o.Visibility != VisibilityShadow {
+		return wrapInvalid("visibility must be public or shadow")
+	}
+	return nil
 }
 
 // UnitCodeEvent is one entry in a unit's append-only code-change ledger (D-UnitCodeLifecycle, M28).
@@ -85,18 +211,21 @@ type UnitCodeEvent struct {
 }
 
 // UnitPatch is a partial update of a unit: a nil field leaves the stored value unchanged. Code is
-// immutable by convention and not patchable.
+// immutable by convention (recode op) and org is fixed at create — neither is patchable here.
 type UnitPatch struct {
 	Name       *string
-	UnitKind   *string
+	DomainID   *string // re-classify the unit's domain (mixed trees allowed)
+	KindID     *string // change the domain-scoped unit kind
 	Level      *int
 	Visibility *Visibility
 	Metadata   json.RawMessage // nil = unchanged
 }
 
-// Graph is a named hierarchy over the units (D-Graphs). Each graph is independently a DAG.
+// Graph is a named hierarchy over the units (D-Graphs), per organization. OrgID is nil for an
+// instance-global / cross-org graph (e.g. religion's taxonomy graphs — D-TenantOrganizations, M40).
 type Graph struct {
 	ID                 string
+	OrgID              *string
 	Code               string
 	Name               string
 	IsDefault          bool
@@ -142,6 +271,12 @@ type ClosureReport struct {
 // Validate enforces the unit invariants before insert: an OPTIONAL code (well-shaped if present;
 // D-UnitCodeLifecycle), a non-empty name, and a known visibility.
 func (u Unit) Validate() error {
+	if strings.TrimSpace(u.OrgID) == "" {
+		return wrapInvalid("orgId is required")
+	}
+	if strings.TrimSpace(u.DomainID) == "" {
+		return wrapInvalid("domainId is required")
+	}
 	if u.Code != nil && !validCode(*u.Code) {
 		return wrapInvalid("code must be non-empty and contain no whitespace")
 	}
@@ -212,12 +347,38 @@ func validCode(code string) bool {
 // adapter implements it. Each method runs on whatever DBTX the adapter was constructed with, so a
 // write + its closure recompute + its audit row share one transaction (D-Audit / D-ClosureIntegrity).
 type Repository interface {
+	// domains (org-kind catalog — D-TenantOrganizations, M40)
+	InsertDomain(ctx context.Context, code, name string, sortOrder *int) (Domain, error)
+	GetDomain(ctx context.Context, id string) (Domain, error)
+	GetDomainByCode(ctx context.Context, code string) (Domain, error)
+	ListDomains(ctx context.Context) ([]Domain, error)
+	UpdateDomain(ctx context.Context, id string, patch DomainPatch) (Domain, error)
+	CountActiveDomainsByCode(ctx context.Context, code, excludeID string) (int, error)
+
+	// unit kinds (domain-scoped catalog)
+	InsertUnitKind(ctx context.Context, k UnitKind) (UnitKind, error)
+	GetUnitKind(ctx context.Context, id string) (UnitKind, error)
+	ListUnitKinds(ctx context.Context, domainID string) ([]UnitKind, error)
+	UpdateUnitKind(ctx context.Context, id string, patch UnitKindPatch) (UnitKind, error)
+	CountActiveUnitKindsByCode(ctx context.Context, domainID, code, excludeID string) (int, error)
+
+	// organizations (the realm)
+	InsertOrganization(ctx context.Context, o Organization) (Organization, error)
+	GetOrganization(ctx context.Context, id string) (Organization, error)
+	UpdateOrganization(ctx context.Context, id string, patch OrgPatch) (Organization, error)
+	SetOrgState(ctx context.Context, id string, state State) (Organization, error)
+	ListOrganizations(ctx context.Context, domainID *string, after string, limit int) ([]Organization, error)
+	CountActiveOrgsByCode(ctx context.Context, code, excludeID string) (int, error)
+	InsertOrgLifecycleEvent(ctx context.Context, orgID string, from, to State, reason, actorPersonID, requestID string) error
+
 	// units
 	InsertUnit(ctx context.Context, u Unit) (Unit, error)
 	GetUnit(ctx context.Context, id string) (Unit, error)
 	UpdateUnit(ctx context.Context, id string, patch UnitPatch) (Unit, error)
 	SetUnitState(ctx context.Context, id string, state State) (Unit, error)
-	ListUnits(ctx context.Context, level *int, after string, limit int) ([]Unit, error)
+	ListUnits(ctx context.Context, orgID string, domainID, kindID *string, level *int, after string, limit int) ([]Unit, error)
+	ListChildUnits(ctx context.Context, parentID, graphID, after string, limit int) ([]Unit, error)
+	ListRootUnits(ctx context.Context, orgID, graphID, after string, limit int) ([]Unit, error)
 
 	// code lifecycle (D-UnitCodeLifecycle, M28)
 	SetUnitCode(ctx context.Context, id string, code *string) (Unit, error)
@@ -225,15 +386,16 @@ type Repository interface {
 	InsertUnitCodeEvent(ctx context.Context, e UnitCodeEvent) error
 	ListUnitCodeEvents(ctx context.Context, unitID string) ([]UnitCodeEvent, error)
 
-	// graphs
-	InsertGraph(ctx context.Context, code, name string, authorityBearing bool) (Graph, error)
+	// graphs (per-org; orgID nil = instance-global)
+	InsertGraph(ctx context.Context, orgID *string, code, name string, isDefault, authorityBearing bool) (Graph, error)
 	GetGraphByID(ctx context.Context, id string) (Graph, error)
-	GetGraphByCode(ctx context.Context, code string) (Graph, error)
-	ListGraphs(ctx context.Context) ([]Graph, error)
-	ClearDefaultGraphs(ctx context.Context) error
+	GetGraphForOrgByCode(ctx context.Context, orgID *string, code string) (Graph, error)
+	ListGraphsForOrg(ctx context.Context, orgID *string) ([]Graph, error)
+	ListGraphIDs(ctx context.Context) ([]string, error)
+	ClearDefaultGraphsForOrg(ctx context.Context, orgID *string) error
 	UpdateGraph(ctx context.Context, id string, patch GraphPatch) (Graph, error)
 	SoftDeleteGraph(ctx context.Context, id string) error
-	CountActiveGraphs(ctx context.Context) (int, error)
+	CountActiveGraphsForOrg(ctx context.Context, orgID *string) (int, error)
 	GraphHasLiveEdges(ctx context.Context, graphID string) (bool, error)
 
 	// edges

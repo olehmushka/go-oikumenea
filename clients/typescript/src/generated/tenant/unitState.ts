@@ -1,4 +1,8 @@
-/** A unit's lifecycle state. Transitions are reversible and recorded as append-only events. */
+/**
+ * A unit's (or organization's) lifecycle state. Transitions are reversible and recorded as
+ * append-only events. Organizations reuse this enum (D-TenantOrganizations, M40).
+ *
+ */
 export namespace UnitState {
     export type ACTIVE = "ACTIVE";
     export type SUSPENDED = "SUSPENDED";

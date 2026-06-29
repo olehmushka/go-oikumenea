@@ -1,95 +1,74 @@
-"use client";
-
-import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { api } from "@/lib/api/client";
-import { PageHeader } from "@/components/ui";
-import { ErrorBox } from "@/components/ErrorBox";
-import { EntitySelect } from "@/components/EntitySelect";
-import { GraphSelect } from "@/components/GraphSelect";
+import Link from "next/link";
+import { oikumenea } from "@/lib/api/server";
+import { PageHeader, EmptyState, ErrorNotice } from "@/components/ui";
+import { NewUnitForm, type Opt } from "@/components/NewUnitForm";
+import { UnitCreateMenu } from "@/components/UnitCreateMenu";
 import { T } from "@/components/T";
-import { useTg } from "@/lib/locale";
+import { pickLabel, getActiveLocale } from "@/lib/i18n";
 
-export default function NewUnitPage() {
-  const router = useRouter();
-  const tr = useTg();
-  const [err, setErr] = useState<unknown>(null);
-  const [busy, setBusy] = useState(false);
+// Creating a unit is now domain-first: the user arrives here with ?domain=<rid> chosen from the
+// per-domain buttons (UnitCreateMenu). The domain is fixed (not a form field); the form only collects
+// what varies within a domain (org, kind, name/code, parent). Without a domain we show the chooser.
+export default async function NewUnitPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ domain?: string }>;
+}) {
+  const { domain } = await searchParams;
+  const locale = getActiveLocale();
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setBusy(true);
-    setErr(null);
-    const f = new FormData(e.currentTarget);
-    const body = {
-      code: String(f.get("code") || "").trim() || undefined,
-      name: String(f.get("name") || "").trim(),
-      unitKind: String(f.get("unitKind") || "").trim() || undefined,
-      visibility: String(f.get("visibility") || "PUBLIC"),
-    };
-    const parentId = String(f.get("parentId") || "").trim();
-    const graph = String(f.get("graph") || "").trim();
-    try {
-      const u = await api.tenant.createUnit(body as never);
-      // If a parent was picked, attach this new unit as its child (a child/"descending" unit).
-      if (parentId) {
-        await api.tenant.addEdge(u.id, {
-          parentId,
-          graph: graph || undefined,
-        });
-      }
-      router.push(`/units/${u.id}`);
-    } catch (e) {
-      setErr(e);
-      setBusy(false);
-    }
+  if (!domain) {
+    return (
+      <div className="max-w-lg">
+        <PageHeader title={<T>New unit</T>} description={<T>First pick the kind of organization the unit belongs to.</T>} />
+        <UnitCreateMenu />
+      </div>
+    );
+  }
+
+  let domainLabel = domain;
+  let orgs: Opt[] = [];
+  let kinds: Opt[] = [];
+  let error: unknown = null;
+  try {
+    const ok = await oikumenea();
+    const [domainsRes, orgsRes, kindsRes] = await Promise.all([
+      ok.tenant.listDomains(),
+      ok.tenant.listOrganizations(domain, 200),
+      ok.tenant.listUnitKinds(domain),
+    ]);
+    const dom = (domainsRes.domains ?? []).find((d) => d.id === domain);
+    domainLabel = dom ? pickLabel(dom.name, locale) || dom.code : domain;
+    orgs = (orgsRes.organizations ?? []).map((o) => ({
+      id: o.id,
+      label: pickLabel(o.name, locale) || o.code,
+    }));
+    kinds = (kindsRes.unitKinds ?? []).map((k) => ({
+      id: k.id,
+      label: pickLabel(k.name, locale) || k.code,
+    }));
+  } catch (e) {
+    error = e;
   }
 
   return (
     <div className="max-w-lg">
-      <PageHeader title={<T>New unit</T>} description={<T>Create a unit. Optionally pick a parent to nest it under (you can also manage edges later from the unit&apos;s detail page).</T>} />
-      {err ? <div className="mb-4"><ErrorBox error={err} /></div> : null}
-      <form onSubmit={onSubmit} className="card space-y-4 p-5">
-        <div>
-          <label className="label"><T>Code</T></label>
-          <input name="code" className="input" placeholder="hq-1" />
-          <p className="mt-1 text-xs text-slate-400"><T>Optional human-readable identifier. Leave empty for a non-separate sub-unit — the RID is the stable external handle.</T></p>
-        </div>
-        <div>
-          <label className="label"><T>Name *</T></label>
-          <input name="name" required className="input" placeholder={tr("Headquarters")} />
-        </div>
-        <div>
-          <label className="label"><T>Kind</T></label>
-          <input name="unitKind" className="input" placeholder={tr("command / department / faculty")} />
-        </div>
-        <div>
-          <label className="label"><T>Visibility</T></label>
-          <select name="visibility" className="input" defaultValue="PUBLIC">
-            <option value="PUBLIC">PUBLIC</option>
-            <option value="SHADOW">SHADOW</option>
-          </select>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="label"><T>Parent unit (optional)</T></label>
-            <EntitySelect name="parentId" kind="unit" allowEmpty placeholder={tr("Search a parent…")} />
-            <p className="mt-1 text-xs text-slate-400"><T>Nests this unit under the chosen parent.</T></p>
-          </div>
-          <div>
-            <label className="label"><T>Graph</T></label>
-            <GraphSelect name="graph" />
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <button type="submit" className="btn-primary" disabled={busy}>
-            {busy ? <T>Creating…</T> : <T>Create unit</T>}
-          </button>
-          <button type="button" className="btn-ghost" onClick={() => router.back()}>
-            <T>Cancel</T>
-          </button>
-        </div>
-      </form>
+      <PageHeader
+        title={<><T>New</T> <span className="lowercase">{domainLabel}</span> <T>unit</T></>}
+        description={<T>Create a unit in this domain. The domain is fixed by the kind you chose; pick the organization it belongs to.</T>}
+      />
+      {error ? <div className="mb-4"><ErrorNotice error={error} /></div> : null}
+      {!error && orgs.length === 0 ? (
+        <EmptyState>
+          <T>This domain has no organizations yet.</T>{" "}
+          <Link href="/organizations" className="font-medium text-indigo-600 hover:underline">
+            <T>Create an organization first.</T>
+          </Link>
+        </EmptyState>
+      ) : null}
+      {!error && orgs.length > 0 ? (
+        <NewUnitForm domainId={domain} domainLabel={domainLabel} orgs={orgs} kinds={kinds} />
+      ) : null}
     </div>
   );
 }

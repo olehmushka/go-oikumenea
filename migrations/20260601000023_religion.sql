@@ -576,13 +576,15 @@ COMMENT ON COLUMN oikumenea.religion_org_policies.decided_by_person_id IS 'pii:n
 -- ===================================================================================================
 -- The three seeded religion graphs (D-Graphs / D-DirectoryGraphs). canonical = governance/jurisdiction
 -- (authority-bearing; the PDP cascades subtree grants); tradition + affiliation = directory-only.
--- Idempotent (ON CONFLICT on the partial-unique code index), mirroring tenant's boot seed.
+-- These are INSTANCE-GLOBAL/cross-org taxonomy graphs (org_id NULL) — ecumenical discovery spans all
+-- religious bodies (D-TenantOrganizations, M40, which allows global graphs alongside per-org ones).
+-- Idempotent (ON CONFLICT on the global-graph partial-unique code index), mirroring tenant's boot seed.
 -- ===================================================================================================
-INSERT INTO oikumenea.tenant_graphs (code, name, is_default, is_authority_bearing) VALUES
-  ('canonical',   'Canonical',   false, true),
-  ('tradition',   'Tradition',   false, false),
-  ('affiliation', 'Affiliation', false, false)
-ON CONFLICT (code) WHERE deleted_at IS NULL DO NOTHING;
+INSERT INTO oikumenea.tenant_graphs (org_id, code, name, is_default, is_authority_bearing) VALUES
+  (NULL, 'canonical',   'Canonical',   false, true),
+  (NULL, 'tradition',   'Tradition',   false, false),
+  (NULL, 'affiliation', 'Affiliation', false, false)
+ON CONFLICT (code) WHERE deleted_at IS NULL AND org_id IS NULL DO NOTHING;
 
 -- ===================================================================================================
 -- RLS backstop (D-RLSDefenseInDepth) on the unit-scoped religion tables. Mirrors membership_positions:

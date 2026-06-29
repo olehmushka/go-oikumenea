@@ -15,10 +15,11 @@ type Repository interface {
 	ListIndustryClasses(ctx context.Context) ([]IndustryClass, error)
 	UpsertIndustryClass(ctx context.Context, code, name, system string, sortOrder *int) (IndustryClass, error)
 
-	// companies
-	InsertCompany(ctx context.Context, in CompanyInput) (Company, error)
+	// companies (tenant org + company_org_profiles sidecar — M41). The org row (code/name) is owned by
+	// the tenant service; these own the sidecar and the joined read view.
+	InsertOrgProfile(ctx context.Context, companyID string, in CompanyInput) error
 	GetCompany(ctx context.Context, id string) (Company, error)
-	UpdateCompany(ctx context.Context, id string, up CompanyUpdate) (Company, error)
+	UpdateOrgProfile(ctx context.Context, id string, up CompanyUpdate) error
 	ListCompanies(ctx context.Context, query, after string, lim int) ([]Company, error)
 	SoftDeleteCompany(ctx context.Context, id string) (int64, error)
 	// CompanyNamesByIDs returns default-locale legal names for a set of company ids (label resolution).

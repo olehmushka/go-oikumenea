@@ -47,6 +47,11 @@ var typeNames = map[typeKey]string{
 	{SvcTenant, int(KindObject), 2}: "graph",
 	{SvcTenant, int(KindObject), 3}: "unit_lifecycle_event",
 	{SvcTenant, int(KindObject), 4}: "unit_code_event",
+	// tenant — domains/organizations/unit-kinds (M40 / D-TenantOrganizations)
+	{SvcTenant, int(KindObject), 5}: "domain",
+	{SvcTenant, int(KindObject), 6}: "organization",
+	{SvcTenant, int(KindObject), 7}: "unit_kind",
+	{SvcTenant, int(KindObject), 8}: "org_lifecycle_event",
 	{SvcTenant, int(KindLink), 1}:   "parent_of",
 	// rank
 	{SvcRank, int(KindObject), 1}: "system",
@@ -104,16 +109,14 @@ var typeNames = map[typeKey]string{
 	// cross-module language links (M18)
 	{SvcTenant, int(KindLink), 2}: "unit_language",
 	{SvcI18n, int(KindLink), 1}:   "locale_language",
-	// education (M20 / D-Education)
-	{SvcEducation, int(KindObject), 1}: "institution",
-	{SvcEducation, int(KindObject), 2}: "education_unit",
+	// education (M20 / D-Education; unified onto the tenant org-graph — M41 / D-UnifiedOrgGraph: an
+	// institution is a tenant organization, a unit is a tenant unit, unit kinds are tenant_unit_kinds, and
+	// the parent edge is a tenant graph edge — so types 1/2/7 and link 1 are GONE here).
 	{SvcEducation, int(KindObject), 3}: "building",
 	{SvcEducation, int(KindObject), 4}: "group",
 	{SvcEducation, int(KindObject), 5}: "education_position",
 	{SvcEducation, int(KindObject), 6}: "institution_kind",
-	{SvcEducation, int(KindObject), 7}: "unit_kind",
 	{SvcEducation, int(KindObject), 8}: "degree_level",
-	{SvcEducation, int(KindLink), 1}:   "education_unit_parent_of",
 	{SvcEducation, int(KindLink), 2}:   "studied_at",
 	{SvcEducation, int(KindLink), 3}:   "resided_in_dormitory",
 	{SvcEducation, int(KindLink), 4}:   "holds_education_position",
@@ -138,8 +141,8 @@ var typeNames = map[typeKey]string{
 	{SvcEducation, int(KindLink), 10}:   "member_of_governance_body",
 	{SvcEducation, int(KindLink), 11}:   "awarded_qualification",
 	{SvcEducation, int(KindLink), 12}:   "awarded_scholarship",
-	// company (M21 / D-Companies)
-	{SvcCompany, int(KindObject), 1}: "company",
+	// company (M21 / D-Companies). M41 / D-UnifiedOrgGraph: a company is a `company`-domain tenant
+	// organization (no own `company` object RID); company_org_profiles is the keyed sidecar.
 	{SvcCompany, int(KindObject), 2}: "legal_form",
 	{SvcCompany, int(KindObject), 3}: "registration_scheme",
 	{SvcCompany, int(KindObject), 4}: "industry_class",

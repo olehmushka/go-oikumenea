@@ -6,7 +6,10 @@ import (
 	"strings"
 )
 
-// A unit's lifecycle state. Transitions are reversible and recorded as append-only events.
+/*
+A unit's (or organization's) lifecycle state. Transitions are reversible and recorded as
+append-only events. Organizations reuse this enum (D-TenantOrganizations, M40).
+*/
 type UnitState struct {
 	val UnitState_Value
 }

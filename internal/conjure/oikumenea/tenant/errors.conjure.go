@@ -15,6 +15,305 @@ import (
 	werror "github.com/palantir/witchcraft-go-error"
 )
 
+type domainCodeConflict struct {
+	Code string `json:"code"`
+}
+
+func (o domainCodeConflict) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *domainCodeConflict) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewDomainCodeConflict returns new instance of DomainCodeConflict error.
+func NewDomainCodeConflict(codeArg string) *DomainCodeConflict {
+	return &DomainCodeConflict{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), domainCodeConflict: domainCodeConflict{Code: codeArg}}
+}
+
+// WrapWithDomainCodeConflict returns new instance of DomainCodeConflict error wrapping an existing error.
+func WrapWithDomainCodeConflict(err error, codeArg string) *DomainCodeConflict {
+	return &DomainCodeConflict{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, domainCodeConflict: domainCodeConflict{Code: codeArg}}
+}
+
+// DomainCodeConflict is an error type.
+// A domain with this code already exists.
+type DomainCodeConflict struct {
+	errorInstanceID uuid.UUID
+	domainCodeConflict
+	cause error
+	stack werror.StackTrace
+}
+
+// IsDomainCodeConflict returns true if err is an instance of DomainCodeConflict.
+func IsDomainCodeConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*DomainCodeConflict)
+	return ok
+}
+
+func (e *DomainCodeConflict) Error() string {
+	return fmt.Sprintf("CONFLICT Tenant:DomainCodeConflict (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *DomainCodeConflict) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *DomainCodeConflict) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *DomainCodeConflict) Message() string {
+	return "CONFLICT Tenant:DomainCodeConflict"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *DomainCodeConflict) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *DomainCodeConflict) Code() errors.ErrorCode {
+	return errors.Conflict
+}
+
+// Name returns an error name identifying error type.
+func (e *DomainCodeConflict) Name() string {
+	return "Tenant:DomainCodeConflict"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *DomainCodeConflict) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *DomainCodeConflict) Parameters() map[string]interface{} {
+	return map[string]interface{}{"code": e.Code}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *DomainCodeConflict) safeParams() map[string]interface{} {
+	return map[string]interface{}{"code": e.Code, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *DomainCodeConflict) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *DomainCodeConflict) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *DomainCodeConflict) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e DomainCodeConflict) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.domainCodeConflict)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.Conflict, ErrorName: "Tenant:DomainCodeConflict", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *DomainCodeConflict) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters domainCodeConflict
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.domainCodeConflict = parameters
+	return nil
+}
+
+type domainNotFound struct {
+	DomainId string `json:"domainId"`
+}
+
+func (o domainNotFound) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *domainNotFound) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewDomainNotFound returns new instance of DomainNotFound error.
+func NewDomainNotFound(domainIdArg string) *DomainNotFound {
+	return &DomainNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), domainNotFound: domainNotFound{DomainId: domainIdArg}}
+}
+
+// WrapWithDomainNotFound returns new instance of DomainNotFound error wrapping an existing error.
+func WrapWithDomainNotFound(err error, domainIdArg string) *DomainNotFound {
+	return &DomainNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, domainNotFound: domainNotFound{DomainId: domainIdArg}}
+}
+
+// DomainNotFound is an error type.
+type DomainNotFound struct {
+	errorInstanceID uuid.UUID
+	domainNotFound
+	cause error
+	stack werror.StackTrace
+}
+
+// IsDomainNotFound returns true if err is an instance of DomainNotFound.
+func IsDomainNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*DomainNotFound)
+	return ok
+}
+
+func (e *DomainNotFound) Error() string {
+	return fmt.Sprintf("NOT_FOUND Tenant:DomainNotFound (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *DomainNotFound) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *DomainNotFound) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *DomainNotFound) Message() string {
+	return "NOT_FOUND Tenant:DomainNotFound"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *DomainNotFound) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *DomainNotFound) Code() errors.ErrorCode {
+	return errors.NotFound
+}
+
+// Name returns an error name identifying error type.
+func (e *DomainNotFound) Name() string {
+	return "Tenant:DomainNotFound"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *DomainNotFound) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *DomainNotFound) Parameters() map[string]interface{} {
+	return map[string]interface{}{"domainId": e.DomainId}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *DomainNotFound) safeParams() map[string]interface{} {
+	return map[string]interface{}{"domainId": e.DomainId, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *DomainNotFound) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *DomainNotFound) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *DomainNotFound) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e DomainNotFound) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.domainNotFound)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.NotFound, ErrorName: "Tenant:DomainNotFound", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *DomainNotFound) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters domainNotFound
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.domainNotFound = parameters
+	return nil
+}
+
 type graphCodeConflict struct {
 	Code string `json:"code"`
 }
@@ -495,7 +794,7 @@ func WrapWithGraphProtected(err error, reasonArg string) *GraphProtected {
 }
 
 // GraphProtected is an error type.
-// The command graph cannot be deleted or made directory-only; at least one graph must remain.
+// The command graph cannot be deleted or made directory-only; at least one graph must remain (per org).
 type GraphProtected struct {
 	errorInstanceID uuid.UUID
 	graphProtected
@@ -611,6 +910,305 @@ func (e *GraphProtected) UnmarshalJSON(data []byte) error {
 	}
 	e.errorInstanceID = serializableError.ErrorInstanceID
 	e.graphProtected = parameters
+	return nil
+}
+
+type organizationCodeConflict struct {
+	Code string `json:"code"`
+}
+
+func (o organizationCodeConflict) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *organizationCodeConflict) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewOrganizationCodeConflict returns new instance of OrganizationCodeConflict error.
+func NewOrganizationCodeConflict(codeArg string) *OrganizationCodeConflict {
+	return &OrganizationCodeConflict{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), organizationCodeConflict: organizationCodeConflict{Code: codeArg}}
+}
+
+// WrapWithOrganizationCodeConflict returns new instance of OrganizationCodeConflict error wrapping an existing error.
+func WrapWithOrganizationCodeConflict(err error, codeArg string) *OrganizationCodeConflict {
+	return &OrganizationCodeConflict{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, organizationCodeConflict: organizationCodeConflict{Code: codeArg}}
+}
+
+// OrganizationCodeConflict is an error type.
+// An organization with this code already exists.
+type OrganizationCodeConflict struct {
+	errorInstanceID uuid.UUID
+	organizationCodeConflict
+	cause error
+	stack werror.StackTrace
+}
+
+// IsOrganizationCodeConflict returns true if err is an instance of OrganizationCodeConflict.
+func IsOrganizationCodeConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*OrganizationCodeConflict)
+	return ok
+}
+
+func (e *OrganizationCodeConflict) Error() string {
+	return fmt.Sprintf("CONFLICT Tenant:OrganizationCodeConflict (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *OrganizationCodeConflict) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *OrganizationCodeConflict) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *OrganizationCodeConflict) Message() string {
+	return "CONFLICT Tenant:OrganizationCodeConflict"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *OrganizationCodeConflict) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *OrganizationCodeConflict) Code() errors.ErrorCode {
+	return errors.Conflict
+}
+
+// Name returns an error name identifying error type.
+func (e *OrganizationCodeConflict) Name() string {
+	return "Tenant:OrganizationCodeConflict"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *OrganizationCodeConflict) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *OrganizationCodeConflict) Parameters() map[string]interface{} {
+	return map[string]interface{}{"code": e.Code}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *OrganizationCodeConflict) safeParams() map[string]interface{} {
+	return map[string]interface{}{"code": e.Code, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *OrganizationCodeConflict) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *OrganizationCodeConflict) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *OrganizationCodeConflict) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e OrganizationCodeConflict) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.organizationCodeConflict)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.Conflict, ErrorName: "Tenant:OrganizationCodeConflict", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *OrganizationCodeConflict) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters organizationCodeConflict
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.organizationCodeConflict = parameters
+	return nil
+}
+
+type organizationNotFound struct {
+	OrgId string `json:"orgId"`
+}
+
+func (o organizationNotFound) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *organizationNotFound) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewOrganizationNotFound returns new instance of OrganizationNotFound error.
+func NewOrganizationNotFound(orgIdArg string) *OrganizationNotFound {
+	return &OrganizationNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), organizationNotFound: organizationNotFound{OrgId: orgIdArg}}
+}
+
+// WrapWithOrganizationNotFound returns new instance of OrganizationNotFound error wrapping an existing error.
+func WrapWithOrganizationNotFound(err error, orgIdArg string) *OrganizationNotFound {
+	return &OrganizationNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, organizationNotFound: organizationNotFound{OrgId: orgIdArg}}
+}
+
+// OrganizationNotFound is an error type.
+type OrganizationNotFound struct {
+	errorInstanceID uuid.UUID
+	organizationNotFound
+	cause error
+	stack werror.StackTrace
+}
+
+// IsOrganizationNotFound returns true if err is an instance of OrganizationNotFound.
+func IsOrganizationNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*OrganizationNotFound)
+	return ok
+}
+
+func (e *OrganizationNotFound) Error() string {
+	return fmt.Sprintf("NOT_FOUND Tenant:OrganizationNotFound (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *OrganizationNotFound) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *OrganizationNotFound) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *OrganizationNotFound) Message() string {
+	return "NOT_FOUND Tenant:OrganizationNotFound"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *OrganizationNotFound) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *OrganizationNotFound) Code() errors.ErrorCode {
+	return errors.NotFound
+}
+
+// Name returns an error name identifying error type.
+func (e *OrganizationNotFound) Name() string {
+	return "Tenant:OrganizationNotFound"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *OrganizationNotFound) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *OrganizationNotFound) Parameters() map[string]interface{} {
+	return map[string]interface{}{"orgId": e.OrgId}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *OrganizationNotFound) safeParams() map[string]interface{} {
+	return map[string]interface{}{"orgId": e.OrgId, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *OrganizationNotFound) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *OrganizationNotFound) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *OrganizationNotFound) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e OrganizationNotFound) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.organizationNotFound)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.NotFound, ErrorName: "Tenant:OrganizationNotFound", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *OrganizationNotFound) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters organizationNotFound
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.organizationNotFound = parameters
 	return nil
 }
 
@@ -1216,6 +1814,306 @@ func (e *UnitInvalid) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type unitKindCodeConflict struct {
+	DomainId string `json:"domainId"`
+	Code     string `json:"code"`
+}
+
+func (o unitKindCodeConflict) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *unitKindCodeConflict) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewUnitKindCodeConflict returns new instance of UnitKindCodeConflict error.
+func NewUnitKindCodeConflict(domainIdArg string, codeArg string) *UnitKindCodeConflict {
+	return &UnitKindCodeConflict{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), unitKindCodeConflict: unitKindCodeConflict{DomainId: domainIdArg, Code: codeArg}}
+}
+
+// WrapWithUnitKindCodeConflict returns new instance of UnitKindCodeConflict error wrapping an existing error.
+func WrapWithUnitKindCodeConflict(err error, domainIdArg string, codeArg string) *UnitKindCodeConflict {
+	return &UnitKindCodeConflict{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, unitKindCodeConflict: unitKindCodeConflict{DomainId: domainIdArg, Code: codeArg}}
+}
+
+// UnitKindCodeConflict is an error type.
+// A unit kind with this code already exists in the domain.
+type UnitKindCodeConflict struct {
+	errorInstanceID uuid.UUID
+	unitKindCodeConflict
+	cause error
+	stack werror.StackTrace
+}
+
+// IsUnitKindCodeConflict returns true if err is an instance of UnitKindCodeConflict.
+func IsUnitKindCodeConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*UnitKindCodeConflict)
+	return ok
+}
+
+func (e *UnitKindCodeConflict) Error() string {
+	return fmt.Sprintf("CONFLICT Tenant:UnitKindCodeConflict (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *UnitKindCodeConflict) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *UnitKindCodeConflict) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *UnitKindCodeConflict) Message() string {
+	return "CONFLICT Tenant:UnitKindCodeConflict"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *UnitKindCodeConflict) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *UnitKindCodeConflict) Code() errors.ErrorCode {
+	return errors.Conflict
+}
+
+// Name returns an error name identifying error type.
+func (e *UnitKindCodeConflict) Name() string {
+	return "Tenant:UnitKindCodeConflict"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *UnitKindCodeConflict) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *UnitKindCodeConflict) Parameters() map[string]interface{} {
+	return map[string]interface{}{"domainId": e.DomainId, "code": e.Code}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *UnitKindCodeConflict) safeParams() map[string]interface{} {
+	return map[string]interface{}{"domainId": e.DomainId, "code": e.Code, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *UnitKindCodeConflict) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *UnitKindCodeConflict) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *UnitKindCodeConflict) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e UnitKindCodeConflict) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.unitKindCodeConflict)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.Conflict, ErrorName: "Tenant:UnitKindCodeConflict", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *UnitKindCodeConflict) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters unitKindCodeConflict
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.unitKindCodeConflict = parameters
+	return nil
+}
+
+type unitKindNotFound struct {
+	UnitKindId string `json:"unitKindId"`
+}
+
+func (o unitKindNotFound) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *unitKindNotFound) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewUnitKindNotFound returns new instance of UnitKindNotFound error.
+func NewUnitKindNotFound(unitKindIdArg string) *UnitKindNotFound {
+	return &UnitKindNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), unitKindNotFound: unitKindNotFound{UnitKindId: unitKindIdArg}}
+}
+
+// WrapWithUnitKindNotFound returns new instance of UnitKindNotFound error wrapping an existing error.
+func WrapWithUnitKindNotFound(err error, unitKindIdArg string) *UnitKindNotFound {
+	return &UnitKindNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, unitKindNotFound: unitKindNotFound{UnitKindId: unitKindIdArg}}
+}
+
+// UnitKindNotFound is an error type.
+type UnitKindNotFound struct {
+	errorInstanceID uuid.UUID
+	unitKindNotFound
+	cause error
+	stack werror.StackTrace
+}
+
+// IsUnitKindNotFound returns true if err is an instance of UnitKindNotFound.
+func IsUnitKindNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*UnitKindNotFound)
+	return ok
+}
+
+func (e *UnitKindNotFound) Error() string {
+	return fmt.Sprintf("NOT_FOUND Tenant:UnitKindNotFound (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *UnitKindNotFound) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *UnitKindNotFound) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *UnitKindNotFound) Message() string {
+	return "NOT_FOUND Tenant:UnitKindNotFound"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *UnitKindNotFound) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *UnitKindNotFound) Code() errors.ErrorCode {
+	return errors.NotFound
+}
+
+// Name returns an error name identifying error type.
+func (e *UnitKindNotFound) Name() string {
+	return "Tenant:UnitKindNotFound"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *UnitKindNotFound) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *UnitKindNotFound) Parameters() map[string]interface{} {
+	return map[string]interface{}{"unitKindId": e.UnitKindId}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *UnitKindNotFound) safeParams() map[string]interface{} {
+	return map[string]interface{}{"unitKindId": e.UnitKindId, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *UnitKindNotFound) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *UnitKindNotFound) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *UnitKindNotFound) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e UnitKindNotFound) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.unitKindNotFound)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.NotFound, ErrorName: "Tenant:UnitKindNotFound", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *UnitKindNotFound) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters unitKindNotFound
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.unitKindNotFound = parameters
+	return nil
+}
+
 type unitNotFound struct {
 	UnitId string `json:"unitId"`
 }
@@ -1366,13 +2264,19 @@ func (e *UnitNotFound) UnmarshalJSON(data []byte) error {
 }
 
 func init() {
+	conjureerrors.RegisterErrorType("Tenant:DomainCodeConflict", reflect.TypeOf(DomainCodeConflict{}))
+	conjureerrors.RegisterErrorType("Tenant:DomainNotFound", reflect.TypeOf(DomainNotFound{}))
 	conjureerrors.RegisterErrorType("Tenant:GraphCodeConflict", reflect.TypeOf(GraphCodeConflict{}))
 	conjureerrors.RegisterErrorType("Tenant:GraphInUse", reflect.TypeOf(GraphInUse{}))
 	conjureerrors.RegisterErrorType("Tenant:GraphNotFound", reflect.TypeOf(GraphNotFound{}))
 	conjureerrors.RegisterErrorType("Tenant:GraphProtected", reflect.TypeOf(GraphProtected{}))
+	conjureerrors.RegisterErrorType("Tenant:OrganizationCodeConflict", reflect.TypeOf(OrganizationCodeConflict{}))
+	conjureerrors.RegisterErrorType("Tenant:OrganizationNotFound", reflect.TypeOf(OrganizationNotFound{}))
 	conjureerrors.RegisterErrorType("Tenant:TransitionInvalid", reflect.TypeOf(TransitionInvalid{}))
 	conjureerrors.RegisterErrorType("Tenant:UnitCodeConflict", reflect.TypeOf(UnitCodeConflict{}))
 	conjureerrors.RegisterErrorType("Tenant:UnitCycleDetected", reflect.TypeOf(UnitCycleDetected{}))
 	conjureerrors.RegisterErrorType("Tenant:UnitInvalid", reflect.TypeOf(UnitInvalid{}))
+	conjureerrors.RegisterErrorType("Tenant:UnitKindCodeConflict", reflect.TypeOf(UnitKindCodeConflict{}))
+	conjureerrors.RegisterErrorType("Tenant:UnitKindNotFound", reflect.TypeOf(UnitKindNotFound{}))
 	conjureerrors.RegisterErrorType("Tenant:UnitNotFound", reflect.TypeOf(UnitNotFound{}))
 }

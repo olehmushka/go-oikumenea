@@ -23,8 +23,12 @@
 -- registry rows; all reference rows are created through EducationService at runtime. The `diploma`
 -- document type is seeded at boot in internal/document/module.go (ON CONFLICT), not here.
 --
--- Expand-only (L-UpgradeSafe / D-Migrations); depends on 0020 education (education_institutions /
--- education_units / education_degree_levels / person_education_enrollments) and 0005 person.
+-- M41 / D-UnifiedOrgGraph: `institution_id` columns here reference tenant_organizations (the institution
+-- org) and `owning_unit_id`/`unit_id` reference tenant_units — the column names are kept so the
+-- reference-layer Go is unchanged, but an institution is a tenant org and a unit is a tenant unit.
+--
+-- Expand-only (L-UpgradeSafe / D-Migrations); depends on 0003 tenant (tenant_organizations / tenant_units),
+-- 0020 education (education_degree_levels / education_programs / person_education_enrollments) and 0005 person.
 
 -- ---------------------------------------------------------------------------------------------------
 -- RID registry (D-ResourceIdentifiers): extend the education service (14) with the reference-layer
@@ -50,8 +54,8 @@ INSERT INTO oikumenea.platform_rid_types (service_code, kind, type_code, type_na
 -- education_programs — a degree/diploma/certificate program offered by an institution (optionally a unit).
 CREATE TABLE oikumenea.education_programs (
   id                 uuid PRIMARY KEY DEFAULT oikumenea.new_id(14,1,9),  -- education / object / program
-  institution_id     uuid NOT NULL REFERENCES oikumenea.education_institutions(id) ON DELETE RESTRICT,
-  owning_unit_id     uuid REFERENCES oikumenea.education_units(id) ON DELETE RESTRICT,  -- nullable
+  institution_id     uuid NOT NULL REFERENCES oikumenea.tenant_organizations(id) ON DELETE RESTRICT,
+  owning_unit_id     uuid REFERENCES oikumenea.tenant_units(id) ON DELETE RESTRICT,  -- nullable
   degree_level_id    uuid REFERENCES oikumenea.education_degree_levels(id) ON DELETE RESTRICT,  -- ISCED; nullable
   code               text NOT NULL,
   name               text NOT NULL,              -- default-locale display name; translatable via the i18n store
@@ -84,8 +88,8 @@ COMMENT ON COLUMN oikumenea.education_programs.name IS 'pii:none';
 -- education_courses — a unit of study / module / subject owned by an institution (optionally a unit).
 CREATE TABLE oikumenea.education_courses (
   id             uuid PRIMARY KEY DEFAULT oikumenea.new_id(14,1,10),  -- education / object / course
-  institution_id uuid NOT NULL REFERENCES oikumenea.education_institutions(id) ON DELETE RESTRICT,
-  owning_unit_id uuid REFERENCES oikumenea.education_units(id) ON DELETE RESTRICT,  -- nullable
+  institution_id uuid NOT NULL REFERENCES oikumenea.tenant_organizations(id) ON DELETE RESTRICT,
+  owning_unit_id uuid REFERENCES oikumenea.tenant_units(id) ON DELETE RESTRICT,  -- nullable
   code           text NOT NULL,
   title          text NOT NULL,                 -- default-locale title; translatable via the i18n store
   credit_hours   integer,
@@ -199,7 +203,7 @@ COMMENT ON COLUMN oikumenea.education_course_prerequisites.required_course_id IS
 -- education_research_centres — a research centre / institute / lab of an institution.
 CREATE TABLE oikumenea.education_research_centres (
   id             uuid PRIMARY KEY DEFAULT oikumenea.new_id(14,1,12),  -- education / object / research_centre
-  institution_id uuid NOT NULL REFERENCES oikumenea.education_institutions(id) ON DELETE RESTRICT,
+  institution_id uuid NOT NULL REFERENCES oikumenea.tenant_organizations(id) ON DELETE RESTRICT,
   code           text NOT NULL,
   name           text NOT NULL,
   kind           text NOT NULL DEFAULT 'centre'
@@ -229,9 +233,9 @@ COMMENT ON COLUMN oikumenea.education_research_centres.name IS 'pii:none';
 -- education_research_groups — a smaller research cluster under a centre and/or unit of an institution.
 CREATE TABLE oikumenea.education_research_groups (
   id             uuid PRIMARY KEY DEFAULT oikumenea.new_id(14,1,13),  -- education / object / research_group
-  institution_id uuid NOT NULL REFERENCES oikumenea.education_institutions(id) ON DELETE RESTRICT,
+  institution_id uuid NOT NULL REFERENCES oikumenea.tenant_organizations(id) ON DELETE RESTRICT,
   centre_id      uuid REFERENCES oikumenea.education_research_centres(id) ON DELETE RESTRICT,  -- nullable
-  unit_id        uuid REFERENCES oikumenea.education_units(id) ON DELETE RESTRICT,             -- nullable
+  unit_id        uuid REFERENCES oikumenea.tenant_units(id) ON DELETE RESTRICT,             -- nullable
   code           text NOT NULL,
   name           text NOT NULL,
   focus_area     text,
@@ -259,7 +263,7 @@ COMMENT ON COLUMN oikumenea.education_research_groups.name IS 'pii:none';
 -- education_grants — a research/operational funding grant held by an institution.
 CREATE TABLE oikumenea.education_grants (
   id             uuid PRIMARY KEY DEFAULT oikumenea.new_id(14,1,14),  -- education / object / grant
-  institution_id uuid NOT NULL REFERENCES oikumenea.education_institutions(id) ON DELETE RESTRICT,
+  institution_id uuid NOT NULL REFERENCES oikumenea.tenant_organizations(id) ON DELETE RESTRICT,
   code           text NOT NULL,
   title          text NOT NULL,
   funder         text,
@@ -292,7 +296,7 @@ COMMENT ON COLUMN oikumenea.education_grants.title IS 'pii:none';
 -- one of the referenced institutions); `code` is the stable app key (globally unique among active).
 CREATE TABLE oikumenea.education_publications (
   id             uuid PRIMARY KEY DEFAULT oikumenea.new_id(14,1,15),  -- education / object / publication
-  institution_id uuid REFERENCES oikumenea.education_institutions(id) ON DELETE RESTRICT,  -- nullable
+  institution_id uuid REFERENCES oikumenea.tenant_organizations(id) ON DELETE RESTRICT,  -- nullable
   code           text NOT NULL,
   title          text NOT NULL,
   kind           text NOT NULL DEFAULT 'journal_article'
@@ -326,7 +330,7 @@ COMMENT ON COLUMN oikumenea.education_publications.title IS 'pii:none';
 -- education_governance_bodies — board / senate / council / committee / advisory of an institution.
 CREATE TABLE oikumenea.education_governance_bodies (
   id             uuid PRIMARY KEY DEFAULT oikumenea.new_id(14,1,16),  -- education / object / governance_body
-  institution_id uuid NOT NULL REFERENCES oikumenea.education_institutions(id) ON DELETE RESTRICT,
+  institution_id uuid NOT NULL REFERENCES oikumenea.tenant_organizations(id) ON DELETE RESTRICT,
   code           text NOT NULL,
   name           text NOT NULL,
   kind           text NOT NULL DEFAULT 'committee'
@@ -355,7 +359,7 @@ COMMENT ON COLUMN oikumenea.education_governance_bodies.name IS 'pii:none';
 -- superseding an earlier policy (self-FK SET NULL).
 CREATE TABLE oikumenea.education_policies (
   id                 uuid PRIMARY KEY DEFAULT oikumenea.new_id(14,1,17),  -- education / object / policy
-  institution_id     uuid NOT NULL REFERENCES oikumenea.education_institutions(id) ON DELETE RESTRICT,
+  institution_id     uuid NOT NULL REFERENCES oikumenea.tenant_organizations(id) ON DELETE RESTRICT,
   governance_body_id uuid REFERENCES oikumenea.education_governance_bodies(id) ON DELETE RESTRICT,  -- nullable
   supersedes_id      uuid REFERENCES oikumenea.education_policies(id) ON DELETE SET NULL,           -- nullable
   code               text NOT NULL,
@@ -398,7 +402,7 @@ COMMENT ON COLUMN oikumenea.education_policies.title IS 'pii:none';
 -- education_qualifications — a formally awardable qualification (degree) classification.
 CREATE TABLE oikumenea.education_qualifications (
   id              uuid PRIMARY KEY DEFAULT oikumenea.new_id(14,1,18),  -- education / object / qualification
-  institution_id  uuid NOT NULL REFERENCES oikumenea.education_institutions(id) ON DELETE RESTRICT,
+  institution_id  uuid NOT NULL REFERENCES oikumenea.tenant_organizations(id) ON DELETE RESTRICT,
   program_id      uuid REFERENCES oikumenea.education_programs(id) ON DELETE RESTRICT,        -- nullable
   degree_level_id uuid REFERENCES oikumenea.education_degree_levels(id) ON DELETE RESTRICT,   -- ISCED; nullable
   code            text NOT NULL,
@@ -432,7 +436,7 @@ COMMENT ON COLUMN oikumenea.education_qualifications.name IS 'pii:none';
 -- is the stable app key (globally unique among active).
 CREATE TABLE oikumenea.education_scholarships (
   id             uuid PRIMARY KEY DEFAULT oikumenea.new_id(14,1,19),  -- education / object / scholarship
-  institution_id uuid REFERENCES oikumenea.education_institutions(id) ON DELETE RESTRICT,  -- nullable
+  institution_id uuid REFERENCES oikumenea.tenant_organizations(id) ON DELETE RESTRICT,  -- nullable
   code           text NOT NULL,
   name           text NOT NULL,
   kind           text NOT NULL DEFAULT 'merit'
@@ -466,7 +470,7 @@ COMMENT ON COLUMN oikumenea.education_scholarships.name IS 'pii:none';
 CREATE TABLE oikumenea.education_accreditation_events (
   id              uuid PRIMARY KEY DEFAULT oikumenea.new_id(14,1,20),  -- education / object / accreditation_event
   entity_kind     text NOT NULL CHECK (entity_kind IN ('institution','program')),
-  institution_id  uuid REFERENCES oikumenea.education_institutions(id) ON DELETE RESTRICT,  -- set iff institution
+  institution_id  uuid REFERENCES oikumenea.tenant_organizations(id) ON DELETE RESTRICT,  -- set iff institution
   program_id      uuid REFERENCES oikumenea.education_programs(id) ON DELETE RESTRICT,      -- set iff program
   body            text,                          -- accrediting organization name
   body_country_id uuid REFERENCES oikumenea.geo_countries(id) ON DELETE RESTRICT,           -- nullable

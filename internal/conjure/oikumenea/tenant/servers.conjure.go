@@ -36,8 +36,18 @@ type TenantService interface {
 	SetUnitCode(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg SetUnitCodeRequest) (Unit, error)
 	// A unit's code-change history, newest first (D-UnitCodeLifecycle, M28).
 	ListUnitCodeEvents(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (UnitCodeEventList, error)
-	// List/search units, token-paginated, optionally filtered by level.
-	ListUnits(ctx context.Context, authHeader bearertoken.Token, levelArg *int, pageSizeArg *int, pageTokenArg *string) (UnitPage, error)
+	/*
+	   List/search units within an organization (D-TenantOrganizations, M40). `org` is REQUIRED —
+	   a fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally filtered by
+	   `domain` (cross-cut within the org, for mixed trees), `unitKind`, and `level`. Token-paginated.
+
+	   For hierarchical (expand-on-click) browsing in graph `graph` (default `command`): pass
+	   `rootsOnly=true` to list only the org's top-level units (those with no parent in the graph),
+	   or `parent=<unitRid>` to list a unit's DIRECT children in the graph. The two are mutually
+	   exclusive, and each ignores the `domain`/`unitKind`/`level` filters. When neither is set the
+	   listing is the flat, filtered org listing.
+	*/
+	ListUnits(ctx context.Context, authHeader bearertoken.Token, orgArg string, domainArg *string, unitKindArg *string, levelArg *int, graphArg *string, parentArg *string, rootsOnlyArg *bool, pageSizeArg *int, pageTokenArg *string) (UnitPage, error)
 	// Attach the path unit as a child of parentId within a graph (default command). Returns Tenant:UnitCycleDetected on a cycle.
 	AddEdge(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg AddEdgeRequest) (UnitEdge, error)
 	// Detach the path unit from a parent within a graph.
@@ -61,14 +71,47 @@ type TenantService interface {
 	VerifyClosure(ctx context.Context, authHeader bearertoken.Token, graphArg *string) (ClosureReportList, error)
 	// Truncate + recompute the closure, one transaction per graph (default all graphs).
 	RebuildClosure(ctx context.Context, authHeader bearertoken.Token, graphArg *string) (ClosureReportList, error)
-	// List the graph registry in display order.
-	ListGraphs(ctx context.Context, authHeader bearertoken.Token) (GraphList, error)
+	/*
+	   List graphs in display order (M40). With `org`, returns that organization's graphs plus the
+	   instance-global graphs; without `org`, returns only the instance-global graphs.
+	*/
+	ListGraphs(ctx context.Context, authHeader bearertoken.Token, orgArg *string) (GraphList, error)
 	// Add a graph. Returns Tenant:GraphCodeConflict if the code exists.
 	AddGraph(ctx context.Context, authHeader bearertoken.Token, requestArg AddGraphRequest) (Graph, error)
 	// Rename / set default / flip isAuthorityBearing (guarded; command is locked authority-bearing).
 	UpdateGraph(ctx context.Context, authHeader bearertoken.Token, graphIdArg string, requestArg UpdateGraphRequest) (Graph, error)
 	// Delete a graph (blocked for command, or while it has live edges).
 	DeleteGraph(ctx context.Context, authHeader bearertoken.Token, graphIdArg string) error
+	// List the org-kind domain catalog in display order (D-TenantOrganizations, M40). Gated by domain.read.
+	ListDomains(ctx context.Context, authHeader bearertoken.Token) (DomainList, error)
+	// Add a domain (instance-admin; domain.manage). Returns Tenant:DomainCodeConflict if the code exists.
+	CreateDomain(ctx context.Context, authHeader bearertoken.Token, requestArg CreateDomainRequest) (Domain, error)
+	// Rename / retire a domain. Returns Tenant:DomainNotFound.
+	UpdateDomain(ctx context.Context, authHeader bearertoken.Token, domainIdArg string, requestArg UpdateDomainRequest) (Domain, error)
+	// List the unit-kind catalog for a domain (D-TenantOrganizations, M40). Gated by unit-kind.read.
+	ListUnitKinds(ctx context.Context, authHeader bearertoken.Token, domainArg string) (UnitKindList, error)
+	// Add a domain-scoped unit kind (instance-admin; unit-kind.manage). Returns Tenant:UnitKindCodeConflict.
+	CreateUnitKind(ctx context.Context, authHeader bearertoken.Token, requestArg CreateUnitKindRequest) (UnitKind, error)
+	// Rename / retire a unit kind or adjust its attr schema. Returns Tenant:UnitKindNotFound.
+	UpdateUnitKind(ctx context.Context, authHeader bearertoken.Token, unitKindIdArg string, requestArg UpdateUnitKindRequest) (UnitKind, error)
+	/*
+	   List organizations, token-paginated, optionally filtered by domain (D-TenantOrganizations,
+	   M40). Shadow-gated. Gated by organization.read.
+	*/
+	ListOrganizations(ctx context.Context, authHeader bearertoken.Token, domainArg *string, pageSizeArg *int, pageTokenArg *string) (OrganizationPage, error)
+	/*
+	   Create an organization and seed its command + operational graphs in one transaction
+	   (organization.create). Returns Tenant:OrganizationCodeConflict if the code exists.
+	*/
+	CreateOrganization(ctx context.Context, authHeader bearertoken.Token, requestArg CreateOrganizationRequest) (Organization, error)
+	// Read one organization by RID (shadow-gated). Returns Tenant:OrganizationNotFound.
+	GetOrganization(ctx context.Context, authHeader bearertoken.Token, orgIdArg string) (Organization, error)
+	// Update an organization's name/domain/metadata/visibility (organization.update).
+	UpdateOrganization(ctx context.Context, authHeader bearertoken.Token, orgIdArg string, requestArg UpdateOrganizationRequest) (Organization, error)
+	// Transition an organization's lifecycle state (organization.lifecycle). Returns Tenant:TransitionInvalid for an illegal transition.
+	TransitionOrganization(ctx context.Context, authHeader bearertoken.Token, orgIdArg string, requestArg TransitionRequest) (Organization, error)
+	// List an organization's graph registry (alias of GET /graphs?org=, path-scoped).
+	ListOrganizationGraphs(ctx context.Context, authHeader bearertoken.Token, orgIdArg string) (GraphList, error)
 }
 
 // RegisterRoutesTenantService registers handlers for the TenantService endpoints with a witchcraft wrouter.
@@ -137,6 +180,42 @@ func RegisterRoutesTenantService(router wrouter.Router, impl TenantService, rout
 	}
 	if err := resource.Delete("DeleteGraph", "/tenant/v1/graphs/{graphId}", httpserver.NewJSONHandler(handler.HandleDeleteGraph, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteGraph route")
+	}
+	if err := resource.Get("ListDomains", "/tenant/v1/domains", httpserver.NewJSONHandler(handler.HandleListDomains, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listDomains route")
+	}
+	if err := resource.Post("CreateDomain", "/tenant/v1/domains", httpserver.NewJSONHandler(handler.HandleCreateDomain, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add createDomain route")
+	}
+	if err := resource.Put("UpdateDomain", "/tenant/v1/domains/{domainId}", httpserver.NewJSONHandler(handler.HandleUpdateDomain, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add updateDomain route")
+	}
+	if err := resource.Get("ListUnitKinds", "/tenant/v1/unit-kinds", httpserver.NewJSONHandler(handler.HandleListUnitKinds, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listUnitKinds route")
+	}
+	if err := resource.Post("CreateUnitKind", "/tenant/v1/unit-kinds", httpserver.NewJSONHandler(handler.HandleCreateUnitKind, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add createUnitKind route")
+	}
+	if err := resource.Put("UpdateUnitKind", "/tenant/v1/unit-kinds/{unitKindId}", httpserver.NewJSONHandler(handler.HandleUpdateUnitKind, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add updateUnitKind route")
+	}
+	if err := resource.Get("ListOrganizations", "/tenant/v1/organizations", httpserver.NewJSONHandler(handler.HandleListOrganizations, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listOrganizations route")
+	}
+	if err := resource.Post("CreateOrganization", "/tenant/v1/organizations", httpserver.NewJSONHandler(handler.HandleCreateOrganization, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add createOrganization route")
+	}
+	if err := resource.Get("GetOrganization", "/tenant/v1/organizations/{orgId}", httpserver.NewJSONHandler(handler.HandleGetOrganization, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getOrganization route")
+	}
+	if err := resource.Put("UpdateOrganization", "/tenant/v1/organizations/{orgId}", httpserver.NewJSONHandler(handler.HandleUpdateOrganization, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add updateOrganization route")
+	}
+	if err := resource.Put("TransitionOrganization", "/tenant/v1/organizations/{orgId}/state", httpserver.NewJSONHandler(handler.HandleTransitionOrganization, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add transitionOrganization route")
+	}
+	if err := resource.Get("ListOrganizationGraphs", "/tenant/v1/organizations/{orgId}/graphs", httpserver.NewJSONHandler(handler.HandleListOrganizationGraphs, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listOrganizationGraphs route")
 	}
 	return nil
 }
@@ -259,6 +338,17 @@ func (t *tenantServiceHandler) HandleListUnits(rw http.ResponseWriter, req *http
 	if err != nil {
 		return errors.WrapWithPermissionDenied(err)
 	}
+	orgArg := req.URL.Query().Get("org")
+	var domainArg *string
+	if domainArgStr := req.URL.Query().Get("domain"); domainArgStr != "" {
+		domainArgInternal := domainArgStr
+		domainArg = &domainArgInternal
+	}
+	var unitKindArg *string
+	if unitKindArgStr := req.URL.Query().Get("unitKind"); unitKindArgStr != "" {
+		unitKindArgInternal := unitKindArgStr
+		unitKindArg = &unitKindArgInternal
+	}
 	var levelArg *int
 	if levelArgStr := req.URL.Query().Get("level"); levelArgStr != "" {
 		levelArgInternal, err := strconv.Atoi(levelArgStr)
@@ -266,6 +356,24 @@ func (t *tenantServiceHandler) HandleListUnits(rw http.ResponseWriter, req *http
 			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"level\" as integer")
 		}
 		levelArg = &levelArgInternal
+	}
+	var graphArg *string
+	if graphArgStr := req.URL.Query().Get("graph"); graphArgStr != "" {
+		graphArgInternal := graphArgStr
+		graphArg = &graphArgInternal
+	}
+	var parentArg *string
+	if parentArgStr := req.URL.Query().Get("parent"); parentArgStr != "" {
+		parentArgInternal := parentArgStr
+		parentArg = &parentArgInternal
+	}
+	var rootsOnlyArg *bool
+	if rootsOnlyArgStr := req.URL.Query().Get("rootsOnly"); rootsOnlyArgStr != "" {
+		rootsOnlyArgInternal, err := strconv.ParseBool(rootsOnlyArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"rootsOnly\" as boolean")
+		}
+		rootsOnlyArg = &rootsOnlyArgInternal
 	}
 	var pageSizeArg *int
 	if pageSizeArgStr := req.URL.Query().Get("pageSize"); pageSizeArgStr != "" {
@@ -280,7 +388,7 @@ func (t *tenantServiceHandler) HandleListUnits(rw http.ResponseWriter, req *http
 		pageTokenArgInternal := pageTokenArgStr
 		pageTokenArg = &pageTokenArgInternal
 	}
-	respArg, err := t.impl.ListUnits(req.Context(), bearertoken.Token(authHeader), levelArg, pageSizeArg, pageTokenArg)
+	respArg, err := t.impl.ListUnits(req.Context(), bearertoken.Token(authHeader), orgArg, domainArg, unitKindArg, levelArg, graphArg, parentArg, rootsOnlyArg, pageSizeArg, pageTokenArg)
 	if err != nil {
 		return err
 	}
@@ -540,7 +648,12 @@ func (t *tenantServiceHandler) HandleListGraphs(rw http.ResponseWriter, req *htt
 	if err != nil {
 		return errors.WrapWithPermissionDenied(err)
 	}
-	respArg, err := t.impl.ListGraphs(req.Context(), bearertoken.Token(authHeader))
+	var orgArg *string
+	if orgArgStr := req.URL.Query().Get("org"); orgArgStr != "" {
+		orgArgInternal := orgArgStr
+		orgArg = &orgArgInternal
+	}
+	respArg, err := t.impl.ListGraphs(req.Context(), bearertoken.Token(authHeader), orgArg)
 	if err != nil {
 		return err
 	}
@@ -608,4 +721,255 @@ func (t *tenantServiceHandler) HandleDeleteGraph(rw http.ResponseWriter, req *ht
 	}
 	rw.WriteHeader(http.StatusNoContent)
 	return nil
+}
+
+func (t *tenantServiceHandler) HandleListDomains(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	respArg, err := t.impl.ListDomains(req.Context(), bearertoken.Token(authHeader))
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (t *tenantServiceHandler) HandleCreateDomain(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var requestArg CreateDomainRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := t.impl.CreateDomain(req.Context(), bearertoken.Token(authHeader), requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (t *tenantServiceHandler) HandleUpdateDomain(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	domainIdArg, ok := pathParams["domainId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"domainId\" not present")
+	}
+	var requestArg UpdateDomainRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := t.impl.UpdateDomain(req.Context(), bearertoken.Token(authHeader), domainIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (t *tenantServiceHandler) HandleListUnitKinds(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	domainArg := req.URL.Query().Get("domain")
+	respArg, err := t.impl.ListUnitKinds(req.Context(), bearertoken.Token(authHeader), domainArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (t *tenantServiceHandler) HandleCreateUnitKind(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var requestArg CreateUnitKindRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := t.impl.CreateUnitKind(req.Context(), bearertoken.Token(authHeader), requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (t *tenantServiceHandler) HandleUpdateUnitKind(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	unitKindIdArg, ok := pathParams["unitKindId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"unitKindId\" not present")
+	}
+	var requestArg UpdateUnitKindRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := t.impl.UpdateUnitKind(req.Context(), bearertoken.Token(authHeader), unitKindIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (t *tenantServiceHandler) HandleListOrganizations(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var domainArg *string
+	if domainArgStr := req.URL.Query().Get("domain"); domainArgStr != "" {
+		domainArgInternal := domainArgStr
+		domainArg = &domainArgInternal
+	}
+	var pageSizeArg *int
+	if pageSizeArgStr := req.URL.Query().Get("pageSize"); pageSizeArgStr != "" {
+		pageSizeArgInternal, err := strconv.Atoi(pageSizeArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"pageSize\" as integer")
+		}
+		pageSizeArg = &pageSizeArgInternal
+	}
+	var pageTokenArg *string
+	if pageTokenArgStr := req.URL.Query().Get("pageToken"); pageTokenArgStr != "" {
+		pageTokenArgInternal := pageTokenArgStr
+		pageTokenArg = &pageTokenArgInternal
+	}
+	respArg, err := t.impl.ListOrganizations(req.Context(), bearertoken.Token(authHeader), domainArg, pageSizeArg, pageTokenArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (t *tenantServiceHandler) HandleCreateOrganization(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var requestArg CreateOrganizationRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := t.impl.CreateOrganization(req.Context(), bearertoken.Token(authHeader), requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (t *tenantServiceHandler) HandleGetOrganization(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	orgIdArg, ok := pathParams["orgId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"orgId\" not present")
+	}
+	respArg, err := t.impl.GetOrganization(req.Context(), bearertoken.Token(authHeader), orgIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (t *tenantServiceHandler) HandleUpdateOrganization(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	orgIdArg, ok := pathParams["orgId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"orgId\" not present")
+	}
+	var requestArg UpdateOrganizationRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := t.impl.UpdateOrganization(req.Context(), bearertoken.Token(authHeader), orgIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (t *tenantServiceHandler) HandleTransitionOrganization(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	orgIdArg, ok := pathParams["orgId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"orgId\" not present")
+	}
+	var requestArg TransitionRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := t.impl.TransitionOrganization(req.Context(), bearertoken.Token(authHeader), orgIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (t *tenantServiceHandler) HandleListOrganizationGraphs(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	orgIdArg, ok := pathParams["orgId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"orgId\" not present")
+	}
+	respArg, err := t.impl.ListOrganizationGraphs(req.Context(), bearertoken.Token(authHeader), orgIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
 }

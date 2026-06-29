@@ -23,6 +23,7 @@ export * from "./closureReport";
 export * from "./conflict";
 export * from "./createAliasRequest";
 export * from "./createChildOrgRequest";
+export * from "./createRootOrgRequest";
 export * from "./createScheduleRequest";
 export * from "./createSiteRequest";
 export * from "./createTaxonRequest";

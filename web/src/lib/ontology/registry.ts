@@ -73,6 +73,12 @@ export interface ListDef {
    * list endpoint isn't paginated and can't be browsed past its limit.
    */
   searchParam?: string;
+  /**
+   * when set, the list endpoint requires an `org` RID (D-TenantOrganizations, M40 — a fully-unscoped
+   * listing is rejected). The explore page shows an organization picker and injects `?org=<rid>`;
+   * nothing is listed until an org is chosen.
+   */
+  orgScoped?: boolean;
   parse: (res: unknown) => { rows: Row[]; nextPageToken?: string };
 }
 
@@ -297,14 +303,14 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
     labelPlural: "Units",
     module: "tenant",
     blurb: "Units as a DAG (multi-parent, multi-root); public/shadow visibility. Feeds the PDP.",
-    list: { path: "/tenant/v1/units", search: "?pageSize=50", parse: pageParse("units") },
+    list: { path: "/tenant/v1/units", search: "?pageSize=50", orgScoped: true, parse: pageParse("units") },
     get: (id) => `/tenant/v1/units/${id}`,
     title: (u) => s(u.code) || ridTail(u.id),
     subtitle: (u) => loc(u.name) || undefined,
     columns: [
       { key: "code", header: "Code", value: (u) => s(u.code), render: "mono" },
       { key: "name", header: "Name", value: (u) => loc(u.name) },
-      { key: "unitKind", header: "Kind", value: (u) => s(u.unitKind) },
+      { key: "kindId", header: "Kind", value: (u) => s(u.kindId), render: "mono" },
       { key: "level", header: "Level", value: (u) => s(u.level) },
       { key: "visibility", header: "Visibility", value: (u) => s(u.visibility), render: "pill", tone: (u) => statusTone(u.visibility) },
       { key: "state", header: "State", value: (u) => s(u.state), render: "pill", tone: (u) => statusTone(u.state) },
@@ -312,7 +318,7 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
     properties: [
       { label: "Name", value: (u) => loc(u.name) },
       { label: "Code", value: (u) => s(u.code), render: "mono" },
-      { label: "Kind", value: (u) => s(u.unitKind) },
+      { label: "Kind", value: (u) => s(u.kindId), render: "mono" },
       { label: "Level", value: (u) => s(u.level) },
       { label: "Visibility", value: (u) => s(u.visibility), render: "pill", tone: (u) => statusTone(u.visibility) },
       { label: "State", value: (u) => s(u.state), render: "pill", tone: (u) => statusTone(u.state) },

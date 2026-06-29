@@ -69,7 +69,7 @@ export function UnitAdmin({ unit }: { unit: Unit }) {
               try {
                 await api.tenant.updateUnit(unit.id, {
                   name: String(f.get("name") || "").trim() || undefined,
-                  unitKind: String(f.get("unitKind") || "").trim() || undefined,
+                  kindId: String(f.get("kindId") || "").trim() || undefined,
                   level: f.get("level") ? Number(f.get("level")) : undefined,
                   visibility: (String(f.get("visibility") || "").trim() || undefined) as never,
                 });
@@ -90,8 +90,8 @@ export function UnitAdmin({ unit }: { unit: Unit }) {
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="label"><T>Kind</T></label>
-              <input name="unitKind" className="input" defaultValue={unit.unitKind ?? ""} />
+              <label className="label"><T>Kind ID</T></label>
+              <input name="kindId" className="input" defaultValue={unit.kindId ?? ""} placeholder={tr("unit-kind RID")} />
             </div>
             <div>
               <label className="label"><T>Level</T></label>

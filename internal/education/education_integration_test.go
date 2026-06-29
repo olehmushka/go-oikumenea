@@ -27,6 +27,9 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/education/domain"
 	personadapters "github.com/olegamysk/go-oikumenea/internal/person/adapters"
 	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
+	tenantadapters "github.com/olegamysk/go-oikumenea/internal/tenant/adapters"
+	tenantapp "github.com/olegamysk/go-oikumenea/internal/tenant/application"
+	tenantdomain "github.com/olegamysk/go-oikumenea/internal/tenant/domain"
 )
 
 const defaultTestDSN = "postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable"
@@ -50,9 +53,46 @@ func newService(t *testing.T, pool *pgxpool.Pool) *application.Service {
 	audit := auditapp.NewService(pool, func(conn pdb.DBTX) auditdomain.Repository {
 		return auditadapters.NewRepository(conn)
 	}, func() int { return 50 })
+	seedTenantCatalog(t, pool)
+	tenantSvc := tenantapp.NewService(pool, func(conn pdb.DBTX) tenantdomain.Repository {
+		return tenantadapters.NewRepository(conn)
+	}, audit)
 	return application.NewService(pool, func(conn pdb.DBTX) domain.Repository {
 		return adapters.NewRepository(conn)
-	}, audit)
+	}, audit, tenantSvc)
+}
+
+// seedTenantCatalog idempotently seeds the `university` reference domain (pdp_scoped=false) + its
+// unit-kind catalog — what tenant.Register seeds at boot — so an institution (a university org) and its
+// units can be created in the test DB (M41 / D-UnifiedOrgGraph).
+func seedTenantCatalog(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `INSERT INTO oikumenea.tenant_domains (code, name, pdp_scoped, sort_order)
+		VALUES ('university','University',false,30)
+		ON CONFLICT (code) WHERE deleted_at IS NULL DO NOTHING`); err != nil {
+		t.Fatalf("seed university domain: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO oikumenea.tenant_unit_kinds (domain_id, code, name, sort_order)
+		SELECT d.id, k.code, k.name, k.so
+		FROM (VALUES ('campus','Campus',0),('institute','Institute',5),('faculty','Faculty',10),('department','Department',20),('chair','Chair',30)) AS k(code,name,so)
+		JOIN oikumenea.tenant_domains d ON d.code='university' AND d.deleted_at IS NULL
+		ON CONFLICT (domain_id, code) WHERE deleted_at IS NULL DO NOTHING`); err != nil {
+		t.Fatalf("seed university unit kinds: %v", err)
+	}
+}
+
+// tenantUnitKindID resolves a `university`-domain unit-kind RID by code (tenant_unit_kinds — M41).
+func tenantUnitKindID(t *testing.T, pool *pgxpool.Pool, code string) string {
+	t.Helper()
+	var id string
+	if err := pool.QueryRow(context.Background(),
+		`SELECT k.id FROM oikumenea.tenant_unit_kinds k
+		 JOIN oikumenea.tenant_domains d ON d.id = k.domain_id
+		 WHERE d.code='university' AND k.code=$1 AND k.deleted_at IS NULL`, code).Scan(&id); err != nil {
+		t.Fatalf("resolve university unit kind %s: %v", code, err)
+	}
+	return id
 }
 
 func ptr(s string) *string { return &s }
@@ -115,8 +155,8 @@ func TestEducationVertical(t *testing.T) {
 	ctx := context.Background()
 
 	uniKind := catalogID(t, pool, "education_institution_kinds", "university")
-	facultyKind := catalogID(t, pool, "education_unit_kinds", "faculty")
-	deptKind := catalogID(t, pool, "education_unit_kinds", "department")
+	facultyKind := tenantUnitKindID(t, pool, "faculty")
+	deptKind := tenantUnitKindID(t, pool, "department")
 	masterLevel := catalogID(t, pool, "education_degree_levels", "isced-7")
 
 	// --- institution -> faculty -> department + a study group ---
@@ -160,16 +200,9 @@ func TestEducationVertical(t *testing.T) {
 		t.Fatalf("expected ErrUnitCycle, got %v", err)
 	}
 
-	// reparent dept to top-level then verify closure recomputed (dept depth -> 0).
+	// reparent dept to top-level then verify the tenant closure recomputed (dept depth -> 0).
 	if _, err := svc.ReparentUnit(ctx, dept.ID, nil); err != nil {
 		t.Fatalf("reparent dept: %v", err)
-	}
-	rep, err := svc.VerifyClosure(ctx, inst.ID)
-	if err != nil {
-		t.Fatalf("verify closure: %v", err)
-	}
-	if rep.InDrift {
-		t.Fatalf("closure in drift after reparent: %+v", rep)
 	}
 	units, _ = svc.ListUnits(ctx, inst.ID)
 	for _, u := range units {

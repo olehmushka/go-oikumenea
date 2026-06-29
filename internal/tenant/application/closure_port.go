@@ -50,10 +50,17 @@ func (s *Service) DescendantUnitIDs(ctx context.Context, graphID, unitID string)
 	return out, nil
 }
 
-// ResolveGraph turns a graph CODE into its RID and authority-bearing flag for the grant path. An
-// empty code resolves to the registry default (command). Unknown codes surface ErrGraphNotFound.
-func (s *Service) ResolveGraph(ctx context.Context, code string) (graphID string, authorityBearing bool, err error) {
-	g, err := s.newRepo(s.pool).GetGraphByCode(ctx, defaultGraph(code))
+// ResolveGraph turns a graph CODE into its RID and authority-bearing flag for the grant path,
+// resolved within the TARGET UNIT's organization (graphs are per-org — D-TenantOrganizations, M40),
+// falling back to an instance-global graph of that code. An empty code resolves to the org's default
+// (command). Unknown codes / target surface ErrGraphNotFound / ErrUnitNotFound.
+func (s *Service) ResolveGraph(ctx context.Context, targetUnitID, code string) (graphID string, authorityBearing bool, err error) {
+	repo := s.newRepo(s.pool)
+	unit, err := repo.GetUnit(ctx, targetUnitID)
+	if err != nil {
+		return "", false, err
+	}
+	g, err := repo.GetGraphForOrgByCode(ctx, &unit.OrgID, defaultGraph(code))
 	if err != nil {
 		return "", false, err
 	}

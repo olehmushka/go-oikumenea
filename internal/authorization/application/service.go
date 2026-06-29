@@ -49,10 +49,12 @@ const (
 // audited write). Injected by module.go so the application never imports adapters.
 type RepositoryFactory func(conn db.DBTX) domain.Repository
 
-// GraphPort resolves a named graph for the grant path (cross-module query — tenant). An empty code
-// means the registry default (command). Returns the graph RID and whether it cascades authority.
+// GraphPort resolves a named graph for the grant path (cross-module query — tenant), scoped to the
+// TARGET UNIT's organization (graphs are per-org — D-TenantOrganizations, M40), falling back to an
+// instance-global graph. An empty code means the org's default (command). Returns the graph RID and
+// whether it cascades authority.
 type GraphPort interface {
-	ResolveGraph(ctx context.Context, code string) (graphID string, authorityBearing bool, err error)
+	ResolveGraph(ctx context.Context, targetUnitID, code string) (graphID string, authorityBearing bool, err error)
 }
 
 // Service is the authorization application service. It owns its writes (holds the pool to open
@@ -357,7 +359,7 @@ func (s *Service) GrantAssignment(ctx context.Context, g domain.GrantInput) (dom
 
 	var graphID string
 	if g.Scope == domain.ScopeSubtree {
-		id, bearing, err := s.graphs.ResolveGraph(ctx, g.GraphCode)
+		id, bearing, err := s.graphs.ResolveGraph(ctx, g.TargetUnitID, g.GraphCode)
 		if err != nil {
 			return domain.Assignment{}, err
 		}

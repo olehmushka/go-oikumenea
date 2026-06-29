@@ -106,15 +106,15 @@ func (r *Repository) UpsertIndustryClass(ctx context.Context, code, name, system
 
 // ---------------------------------------------------------------- companies
 
-func (r *Repository) InsertCompany(ctx context.Context, in domain.CompanyInput) (domain.Company, error) {
-	row, err := r.q.InsertCompany(ctx, companysql.InsertCompanyParams{
-		Code: in.Code, LegalName: in.LegalName, ShortName: text(in.ShortName), LegalFormID: in.LegalFormID,
+func (r *Repository) InsertOrgProfile(ctx context.Context, companyID string, in domain.CompanyInput) error {
+	_, err := r.q.InsertOrgProfile(ctx, companysql.InsertOrgProfileParams{
+		CompanyID: companyID, ShortName: text(in.ShortName), LegalFormID: in.LegalFormID,
 		OwnershipCategory: text(in.OwnershipCategory), CountryID: text(in.CountryID), FoundedOn: datePtr(in.FoundedOn),
 	})
 	if err != nil {
-		return domain.Company{}, mapErr(err)
+		return mapErr(err)
 	}
-	return toCompany(row), nil
+	return nil
 }
 
 func (r *Repository) GetCompany(ctx context.Context, id string) (domain.Company, error) {
@@ -122,19 +122,24 @@ func (r *Repository) GetCompany(ctx context.Context, id string) (domain.Company,
 	if err != nil {
 		return domain.Company{}, notFound(err, domain.ErrCompanyNotFound)
 	}
-	return toCompany(row), nil
+	return domain.Company{
+		ID: row.ID, Code: row.Code, LegalName: row.LegalName, ShortName: textVal(row.ShortName),
+		LegalFormID: row.LegalFormID, OwnershipCategory: row.OwnershipCategory, CountryID: textVal(row.CountryID),
+		FoundedOn: dateStr(row.FoundedOn), DissolvedOn: dateStr(row.DissolvedOn), State: row.State,
+		CreatedAt: ts(row.CreatedAt), UpdatedAt: ts(row.UpdatedAt),
+	}, nil
 }
 
-func (r *Repository) UpdateCompany(ctx context.Context, id string, up domain.CompanyUpdate) (domain.Company, error) {
-	row, err := r.q.UpdateCompany(ctx, companysql.UpdateCompanyParams{
-		LegalName: text(up.LegalName), ShortName: text(up.ShortName), LegalFormID: text(up.LegalFormID),
+func (r *Repository) UpdateOrgProfile(ctx context.Context, id string, up domain.CompanyUpdate) error {
+	_, err := r.q.UpdateOrgProfile(ctx, companysql.UpdateOrgProfileParams{
+		ShortName: text(up.ShortName), LegalFormID: text(up.LegalFormID),
 		OwnershipCategory: text(up.OwnershipCategory), CountryID: text(up.CountryID),
 		FoundedOn: datePtr(up.FoundedOn), DissolvedOn: datePtr(up.DissolvedOn), State: text(up.State), ID: id,
 	})
 	if err != nil {
-		return domain.Company{}, notFound(mapErr(err), domain.ErrCompanyNotFound)
+		return notFound(mapErr(err), domain.ErrCompanyNotFound)
 	}
-	return toCompany(row), nil
+	return nil
 }
 
 func (r *Repository) ListCompanies(ctx context.Context, query, after string, lim int) ([]domain.Company, error) {
@@ -144,7 +149,12 @@ func (r *Repository) ListCompanies(ctx context.Context, query, after string, lim
 	}
 	out := make([]domain.Company, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, toCompany(row))
+		out = append(out, domain.Company{
+			ID: row.ID, Code: row.Code, LegalName: row.LegalName, ShortName: textVal(row.ShortName),
+			LegalFormID: row.LegalFormID, OwnershipCategory: row.OwnershipCategory, CountryID: textVal(row.CountryID),
+			FoundedOn: dateStr(row.FoundedOn), DissolvedOn: dateStr(row.DissolvedOn), State: row.State,
+			CreatedAt: ts(row.CreatedAt), UpdatedAt: ts(row.UpdatedAt),
+		})
 	}
 	return out, nil
 }
@@ -598,15 +608,6 @@ func toScheme(r companysql.OikumeneaCompanyRegistrationScheme) domain.Registrati
 
 func toIndustryClass(r companysql.OikumeneaCompanyIndustryClass) domain.IndustryClass {
 	return domain.IndustryClass{ID: r.ID, Code: r.Code, Name: r.Name, System: r.System, Status: r.Status, SortOrder: int4ptr(r.SortOrder)}
-}
-
-func toCompany(r companysql.OikumeneaCompanyCompany) domain.Company {
-	return domain.Company{
-		ID: r.ID, Code: r.Code, LegalName: r.LegalName, ShortName: textVal(r.ShortName), LegalFormID: r.LegalFormID,
-		OwnershipCategory: r.OwnershipCategory, CountryID: textVal(r.CountryID),
-		FoundedOn: dateStr(r.FoundedOn), DissolvedOn: dateStr(r.DissolvedOn), State: r.State,
-		CreatedAt: ts(r.CreatedAt), UpdatedAt: ts(r.UpdatedAt),
-	}
 }
 
 func toRegistration(r companysql.OikumeneaCompanyRegistration) domain.Registration {

@@ -35,14 +35,6 @@ import (
 
 const defaultTestDSN = "postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable"
 
-// seedGraphsSQL mirrors tenant.Register's boot seed (the integration test builds the application
-// service directly, so it seeds the registry itself). Idempotent on the partial-unique code index.
-const seedGraphsSQL = `
-INSERT INTO oikumenea.tenant_graphs (code, name, is_default, is_authority_bearing) VALUES
-  ('command',     'Command',     true,  true),
-  ('operational', 'Operational', false, true)
-ON CONFLICT (code) WHERE deleted_at IS NULL DO NOTHING`
-
 func newService(t *testing.T) (*application.Service, *pgxpool.Pool) {
 	t.Helper()
 	dsn := os.Getenv("OIKUMENEA_TEST_DSN")
@@ -56,15 +48,29 @@ func newService(t *testing.T) (*application.Service, *pgxpool.Pool) {
 	}
 	t.Cleanup(pool.Close)
 
-	if _, err := pool.Exec(ctx, seedGraphsSQL); err != nil {
-		t.Fatalf("seed graphs: %v", err)
-	}
-
 	auditSvc := auditapp.NewService(pool, func(conn pdb.DBTX) auditdomain.Repository {
 		return auditadapters.NewRepository(conn)
 	}, func() int { return 50 })
 	repoFor := func(conn pdb.DBTX) domain.Repository { return adapters.NewRepository(conn) }
 	return application.NewService(pool, repoFor, auditSvc), pool
+}
+
+// seedOrg creates a fresh domain + organization (the realm) via the application service. Creating the
+// org seeds its command + operational graphs in the same transaction (D-TenantOrganizations, M40), so
+// the per-org graph registry exists for the edge/closure tests.
+func seedOrg(t *testing.T, svc *application.Service) domain.Organization {
+	t.Helper()
+	ctx := context.Background()
+	code := uuid.NewString()[:8]
+	d, err := svc.CreateDomain(ctx, "dom-"+code, "Domain "+code, nil)
+	if err != nil {
+		t.Fatalf("create domain: %v", err)
+	}
+	org, err := svc.CreateOrganization(ctx, domain.Organization{Code: "org-" + code, Name: "Org " + code, DomainID: d.ID})
+	if err != nil {
+		t.Fatalf("create organization: %v", err)
+	}
+	return org
 }
 
 func newAuditSvc(pool *pgxpool.Pool) *auditapp.Service {
@@ -80,9 +86,9 @@ func uniqueCode(t *testing.T, prefix string) string {
 	return prefix + "-" + uuid.NewString()[:8]
 }
 
-func mustCreate(t *testing.T, svc *application.Service, code string) domain.Unit {
+func mustCreate(t *testing.T, svc *application.Service, org domain.Organization, code string) domain.Unit {
 	t.Helper()
-	u, err := svc.CreateUnit(context.Background(), domain.Unit{Code: &code, Name: code})
+	u, err := svc.CreateUnit(context.Background(), domain.Unit{OrgID: org.ID, DomainID: org.DomainID, Code: &code, Name: code})
 	if err != nil {
 		t.Fatalf("create unit %q: %v", code, err)
 	}
@@ -93,8 +99,9 @@ func mustCreate(t *testing.T, svc *application.Service, code string) domain.Unit
 func TestSeededGraphs(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newService(t)
+	org := seedOrg(t, svc)
 
-	graphs, err := svc.ListGraphs(ctx)
+	graphs, err := svc.ListGraphs(ctx, &org.ID)
 	if err != nil {
 		t.Fatalf("list graphs: %v", err)
 	}
@@ -117,8 +124,9 @@ func TestSeededGraphs(t *testing.T) {
 func TestCreateUnitWritesAuditRow(t *testing.T) {
 	ctx := context.Background()
 	svc, pool := newService(t)
+	org := seedOrg(t, svc)
 
-	u := mustCreate(t, svc, uniqueCode(t, "unit"))
+	u := mustCreate(t, svc, org, uniqueCode(t, "unit"))
 
 	got, err := svc.GetUnit(ctx, u.ID)
 	if err != nil {
@@ -146,11 +154,12 @@ func TestCreateUnitWritesAuditRow(t *testing.T) {
 func TestMultiParentDAGAndClosure(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newService(t)
+	org := seedOrg(t, svc)
 
-	a := mustCreate(t, svc, uniqueCode(t, "a"))
-	b := mustCreate(t, svc, uniqueCode(t, "b"))
-	c := mustCreate(t, svc, uniqueCode(t, "c"))
-	d := mustCreate(t, svc, uniqueCode(t, "d"))
+	a := mustCreate(t, svc, org, uniqueCode(t, "a"))
+	b := mustCreate(t, svc, org, uniqueCode(t, "b"))
+	c := mustCreate(t, svc, org, uniqueCode(t, "c"))
+	d := mustCreate(t, svc, org, uniqueCode(t, "d"))
 
 	// command edges: a->b, a->c, b->d, c->d (AddEdge(child, parent, graph)).
 	for _, e := range [][2]string{{b.ID, a.ID}, {c.ID, a.ID}, {d.ID, b.ID}, {d.ID, c.ID}} {
@@ -178,13 +187,76 @@ func TestMultiParentDAGAndClosure(t *testing.T) {
 	}
 }
 
+// TestListRootsAndChildren proves the hierarchy-browsing modes of ListUnits: rootsOnly returns the
+// org's top-level units (no parent edge in the graph) and parent returns one unit's DIRECT children.
+func TestListRootsAndChildren(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newService(t)
+	org := seedOrg(t, svc)
+
+	a := mustCreate(t, svc, org, uniqueCode(t, "a"))
+	b := mustCreate(t, svc, org, uniqueCode(t, "b"))
+	c := mustCreate(t, svc, org, uniqueCode(t, "c"))
+	d := mustCreate(t, svc, org, uniqueCode(t, "d"))
+
+	// command edges: a->b, a->c, b->d (AddEdge(child, parent, graph)).
+	for _, e := range [][2]string{{b.ID, a.ID}, {c.ID, a.ID}, {d.ID, b.ID}} {
+		if _, err := svc.AddEdge(ctx, e[0], e[1], "command"); err != nil {
+			t.Fatalf("add edge %v: %v", e, err)
+		}
+	}
+
+	ids := func(p application.UnitPage) map[string]bool {
+		m := map[string]bool{}
+		for _, u := range p.Units {
+			m[u.ID] = true
+		}
+		return m
+	}
+
+	// rootsOnly: only `a` has no parent edge in command.
+	roots, err := svc.ListUnits(ctx, org.ID, nil, nil, nil, "command", nil, true, 0, "")
+	if err != nil {
+		t.Fatalf("list roots: %v", err)
+	}
+	gotRoots := ids(roots)
+	if len(gotRoots) != 1 || !gotRoots[a.ID] {
+		t.Fatalf("unexpected roots: %+v (want only %s)", gotRoots, a.ID)
+	}
+
+	// parent=a: direct children are b and c (NOT d, which is a grandchild).
+	kids, err := svc.ListUnits(ctx, org.ID, nil, nil, nil, "command", &a.ID, false, 0, "")
+	if err != nil {
+		t.Fatalf("list children of a: %v", err)
+	}
+	gotKids := ids(kids)
+	if len(gotKids) != 2 || !gotKids[b.ID] || !gotKids[c.ID] {
+		t.Fatalf("unexpected children of a: %+v (want %s, %s)", gotKids, b.ID, c.ID)
+	}
+
+	// parent=b: direct child is d only.
+	bKids, err := svc.ListUnits(ctx, org.ID, nil, nil, nil, "command", &b.ID, false, 0, "")
+	if err != nil {
+		t.Fatalf("list children of b: %v", err)
+	}
+	if gotBKids := ids(bKids); len(gotBKids) != 1 || !gotBKids[d.ID] {
+		t.Fatalf("unexpected children of b: %+v (want %s)", gotBKids, d.ID)
+	}
+
+	// parent and rootsOnly are mutually exclusive.
+	if _, err := svc.ListUnits(ctx, org.ID, nil, nil, nil, "command", &a.ID, true, 0, ""); !errors.Is(err, domain.ErrInvalidUnit) {
+		t.Fatalf("expected ErrInvalidUnit for parent+rootsOnly, got %v", err)
+	}
+}
+
 // TestCycleRejectedAndCrossGraphAllowed proves per-graph DAG enforcement and cross-graph freedom.
 func TestCycleRejectedAndCrossGraphAllowed(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newService(t)
+	org := seedOrg(t, svc)
 
-	a := mustCreate(t, svc, uniqueCode(t, "a"))
-	b := mustCreate(t, svc, uniqueCode(t, "b"))
+	a := mustCreate(t, svc, org, uniqueCode(t, "a"))
+	b := mustCreate(t, svc, org, uniqueCode(t, "b"))
 
 	// command: a->b.
 	if _, err := svc.AddEdge(ctx, b.ID, a.ID, "command"); err != nil {
@@ -208,8 +280,9 @@ func TestCycleRejectedAndCrossGraphAllowed(t *testing.T) {
 func TestTransitionRecordedAndAudited(t *testing.T) {
 	ctx := context.Background()
 	svc, pool := newService(t)
+	org := seedOrg(t, svc)
 
-	u := mustCreate(t, svc, uniqueCode(t, "unit"))
+	u := mustCreate(t, svc, org, uniqueCode(t, "unit"))
 
 	suspended, err := svc.TransitionUnit(ctx, u.ID, domain.StateSuspended, "drill")
 	if err != nil {
@@ -242,46 +315,46 @@ func TestTransitionRecordedAndAudited(t *testing.T) {
 func TestVerifyAndRebuildClosure(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newService(t)
+	org := seedOrg(t, svc)
 
-	a := mustCreate(t, svc, uniqueCode(t, "a"))
-	b := mustCreate(t, svc, uniqueCode(t, "b"))
+	a := mustCreate(t, svc, org, uniqueCode(t, "a"))
+	b := mustCreate(t, svc, org, uniqueCode(t, "b"))
 	if _, err := svc.AddEdge(ctx, b.ID, a.ID, "command"); err != nil {
 		t.Fatalf("add edge: %v", err)
 	}
 
-	cmd := "command"
-	reports, err := svc.VerifyClosure(ctx, &cmd)
-	if err != nil {
-		t.Fatalf("verify: %v", err)
+	// Graph codes are per-org now (M40), so verify ALL graphs and assert none is in drift after the
+	// incremental maintenance (a code filter would match every org's command graph).
+	assertNoDrift := func(when string) {
+		reports, err := svc.VerifyClosure(ctx, nil)
+		if err != nil {
+			t.Fatalf("verify %s: %v", when, err)
+		}
+		if len(reports) == 0 {
+			t.Fatalf("expected at least one graph report %s", when)
+		}
+		for _, r := range reports {
+			if r.InDrift || r.MissingCount != 0 || r.ExtraCount != 0 {
+				t.Fatalf("expected zero drift %s, got %+v", when, r)
+			}
+		}
 	}
-	if len(reports) != 1 || reports[0].InDrift || reports[0].MissingCount != 0 || reports[0].ExtraCount != 0 {
-		t.Fatalf("expected zero drift after maintenance, got %+v", reports)
-	}
+	assertNoDrift("after maintenance")
 
-	rebuilt, err := svc.RebuildClosure(ctx, &cmd)
-	if err != nil {
+	if _, err := svc.RebuildClosure(ctx, nil); err != nil {
 		t.Fatalf("rebuild: %v", err)
 	}
-	if len(rebuilt) != 1 {
-		t.Fatalf("expected one rebuild report, got %d", len(rebuilt))
-	}
-	// closure is consistent again after rebuild.
-	reports, err = svc.VerifyClosure(ctx, &cmd)
-	if err != nil {
-		t.Fatalf("verify after rebuild: %v", err)
-	}
-	if reports[0].InDrift {
-		t.Fatalf("expected no drift after rebuild, got %+v", reports[0])
-	}
+	assertNoDrift("after rebuild")
 }
 
 // TestRemoveEdgeUpdatesClosure detaches an edge and confirms the descendant disappears.
 func TestRemoveEdgeUpdatesClosure(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newService(t)
+	org := seedOrg(t, svc)
 
-	a := mustCreate(t, svc, uniqueCode(t, "a"))
-	b := mustCreate(t, svc, uniqueCode(t, "b"))
+	a := mustCreate(t, svc, org, uniqueCode(t, "a"))
+	b := mustCreate(t, svc, org, uniqueCode(t, "b"))
 	if _, err := svc.AddEdge(ctx, b.ID, a.ID, "command"); err != nil {
 		t.Fatalf("add edge: %v", err)
 	}
@@ -335,10 +408,11 @@ func seedLanguoid(t *testing.T, pool *pgxpool.Pool, code, name string) string {
 func TestUnitLanguages(t *testing.T) {
 	ctx := context.Background()
 	svc, pool := newService(t)
+	org := seedOrg(t, svc)
 
 	suffix := uuid.NewString()[:8]
 	lang := seedLanguoid(t, pool, "ua"+suffix[:6], "Testish")
-	u := mustCreate(t, svc, "unit-lang-"+suffix)
+	u := mustCreate(t, svc, org, "unit-lang-"+suffix)
 
 	saved, err := svc.UpsertUnitLanguage(ctx, domain.UnitLanguage{UnitID: u.ID, LanguageID: lang, IsOfficial: true})
 	if err != nil {
@@ -383,16 +457,17 @@ func TestUnitLanguages(t *testing.T) {
 func TestUnitCodeLifecycle(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newService(t)
+	org := seedOrg(t, svc)
 
 	// codeless create succeeds, and two codeless siblings coexist (the partial-unique index ignores NULLs).
-	a, err := svc.CreateUnit(ctx, domain.Unit{Name: "3rd Platoon"})
+	a, err := svc.CreateUnit(ctx, domain.Unit{OrgID: org.ID, DomainID: org.DomainID, Name: "3rd Platoon"})
 	if err != nil {
 		t.Fatalf("create codeless unit a: %v", err)
 	}
 	if a.Code != nil {
 		t.Fatalf("expected codeless unit, got code=%v", *a.Code)
 	}
-	b, err := svc.CreateUnit(ctx, domain.Unit{Name: "4th Platoon"})
+	b, err := svc.CreateUnit(ctx, domain.Unit{OrgID: org.ID, DomainID: org.DomainID, Name: "4th Platoon"})
 	if err != nil {
 		t.Fatalf("create codeless sibling b: %v", err)
 	}

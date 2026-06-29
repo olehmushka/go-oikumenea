@@ -70,11 +70,31 @@ func code(t *testing.T, prefix string) string {
 }
 
 // seedUnit inserts a tenant unit directly and returns its RID.
+// ensureOrgSQL idempotently seeds a test domain + organization + its per-org command/operational
+// graphs (D-TenantOrganizations, M40), so seedUnit can place a unit in a real organization.
+const ensureOrgSQL = `
+INSERT INTO oikumenea.tenant_domains (code, name) VALUES ('test-domain','Test Domain')
+  ON CONFLICT (code) WHERE deleted_at IS NULL DO NOTHING;
+INSERT INTO oikumenea.tenant_organizations (code, name, domain_id)
+  SELECT 'test-org','Test Org', d.id FROM oikumenea.tenant_domains d WHERE d.code='test-domain'
+  ON CONFLICT (code) WHERE deleted_at IS NULL DO NOTHING;
+INSERT INTO oikumenea.tenant_graphs (org_id, code, name, is_default, is_authority_bearing)
+  SELECT o.id, 'command', 'Command', true, true FROM oikumenea.tenant_organizations o WHERE o.code='test-org'
+  ON CONFLICT (org_id, code) WHERE deleted_at IS NULL AND org_id IS NOT NULL DO NOTHING;
+INSERT INTO oikumenea.tenant_graphs (org_id, code, name, is_default, is_authority_bearing)
+  SELECT o.id, 'operational', 'Operational', false, true FROM oikumenea.tenant_organizations o WHERE o.code='test-org'
+  ON CONFLICT (org_id, code) WHERE deleted_at IS NULL AND org_id IS NOT NULL DO NOTHING`
+
 func seedUnit(t *testing.T, pool *pgxpool.Pool) string {
 	t.Helper()
+	if _, err := pool.Exec(context.Background(), ensureOrgSQL); err != nil {
+		t.Fatalf("ensure org: %v", err)
+	}
 	var id string
 	if err := pool.QueryRow(context.Background(),
-		`INSERT INTO oikumenea.tenant_units (code, name) VALUES ($1, 'Unit') RETURNING id`,
+		`INSERT INTO oikumenea.tenant_units (org_id, domain_id, code, name)
+		 SELECT o.id, o.domain_id, $1, 'Unit' FROM oikumenea.tenant_organizations o WHERE o.code='test-org'
+		 RETURNING id`,
 		code(t, "unit")).Scan(&id); err != nil {
 		t.Fatalf("seed unit: %v", err)
 	}

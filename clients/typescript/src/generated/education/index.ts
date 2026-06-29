@@ -2,7 +2,6 @@ export * from "./appointment";
 export * from "./building";
 export * from "./buildingList";
 export * from "./buildingNotFound";
-export * from "./closureReport";
 export * from "./conflict";
 export * from "./createBuildingRequest";
 export * from "./createGroupRequest";

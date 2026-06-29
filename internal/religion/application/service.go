@@ -10,6 +10,7 @@ package application
 import (
 	"context"
 	"encoding/json"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -29,6 +30,11 @@ const (
 	defaultPageSize = 50
 	maxPageSize     = 200
 	canonicalGraph  = "canonical"
+	// churchDomainCode is the tenant domain a top-level religious body belongs to (M41 /
+	// D-UnifiedOrgGraph). Unlike education/company, `church` is an OPERATIONAL domain (pdp_scoped=true),
+	// but religious bodies use the instance-global canonical/tradition/affiliation graphs, not per-org
+	// command/operational graphs.
+	churchDomainCode = "church"
 )
 
 // Repo is the persistence surface the service needs (consumer-defined; *adapters.Repository satisfies it).
@@ -118,6 +124,9 @@ type Service struct {
 	audit   *auditapp.Service
 	tenant  *tenantapp.Service
 	cipher  *crypto.Cipher // envelope cipher for pii:special affiliation values (D-SpecialPII, M24)
+
+	churchMu  sync.Mutex
+	churchDom string // cached `church` domain RID (seeded at boot, stable)
 }
 
 // NewService wires the service with the pool, repository factory, audit, tenant services, and the
@@ -450,6 +459,66 @@ func (s *Service) RemoveOrgPolicy(ctx context.Context, unitID, policyID string) 
 	})
 }
 
+// churchDomainID resolves (and caches) the `church` tenant domain RID.
+func (s *Service) churchDomainID(ctx context.Context) (string, error) {
+	s.churchMu.Lock()
+	defer s.churchMu.Unlock()
+	if s.churchDom != "" {
+		return s.churchDom, nil
+	}
+	doms, err := s.tenant.ListDomains(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, d := range doms {
+		if d.Code == churchDomainCode {
+			s.churchDom = d.ID
+			return d.ID, nil
+		}
+	}
+	return "", domain.ErrInvalid
+}
+
+// CreateRootOrg builds a top-level religious body (M41 / D-UnifiedOrgGraph): a `church`-domain tenant
+// organization + its root religious-body unit (no parent, so no canonical edge) + the unit's profile +
+// an optional primary classification. Descendants are added via CreateChildOrg. The tenant operations
+// run in their own transactions (D-Hexagonal cross-module mutation), so this is sequential, not atomic.
+func (s *Service) CreateRootOrg(ctx context.Context, code, name, visibility, orgKindID, primaryTaxonID string) (domain.OrgProfile, error) {
+	dom, err := s.churchDomainID(ctx)
+	if err != nil {
+		return domain.OrgProfile{}, err
+	}
+	vis := tenantdomain.VisibilityPublic
+	if visibility == string(tenantdomain.VisibilityShadow) {
+		vis = tenantdomain.VisibilityShadow
+	}
+	org, err := s.tenant.CreateOrganization(ctx, tenantdomain.Organization{
+		Code: code, Name: name, DomainID: dom, Visibility: vis,
+	})
+	if err != nil {
+		return domain.OrgProfile{}, err
+	}
+	root, err := s.tenant.CreateUnit(ctx, tenantdomain.Unit{
+		OrgID: org.ID, DomainID: dom, Code: &code, Name: name, Visibility: vis,
+	})
+	if err != nil {
+		return domain.OrgProfile{}, err
+	}
+	var kindPtr *string
+	if orgKindID != "" {
+		kindPtr = &orgKindID
+	}
+	if _, err := s.SetOrgProfile(ctx, root.ID, kindPtr, nil); err != nil {
+		return domain.OrgProfile{}, err
+	}
+	if primaryTaxonID != "" {
+		if _, err := s.AddOrgClassification(ctx, root.ID, primaryTaxonID, true, nil, nil); err != nil {
+			return domain.OrgProfile{}, err
+		}
+	}
+	return s.GetOrgProfile(ctx, root.ID)
+}
+
 // CreateChildOrg builds a child religious-body unit under parentUnitID in the canonical graph (a tenant
 // unit + the canonical parent→child edge + the child's profile + an optional primary classification),
 // rejecting it if the parent carries an active excludes_child_creation policy. The tenant operations run
@@ -466,7 +535,20 @@ func (s *Service) CreateChildOrg(ctx context.Context, parentUnitID, code, name, 
 	if visibility == string(tenantdomain.VisibilityShadow) {
 		vis = tenantdomain.VisibilityShadow
 	}
-	child, err := s.tenant.CreateUnit(ctx, tenantdomain.Unit{Code: &code, Name: name, Visibility: vis})
+	// The child religious-body unit belongs to the same organization (and inherits the domain) as its
+	// parent (D-TenantOrganizations, M40). The canonical graph is an instance-global taxonomy graph,
+	// resolved by AddEdge via the org→global fallback.
+	parent, err := s.tenant.GetUnit(ctx, parentUnitID)
+	if err != nil {
+		return domain.OrgProfile{}, err
+	}
+	child, err := s.tenant.CreateUnit(ctx, tenantdomain.Unit{
+		OrgID:      parent.OrgID,
+		DomainID:   parent.DomainID,
+		Code:       &code,
+		Name:       name,
+		Visibility: vis,
+	})
 	if err != nil {
 		return domain.OrgProfile{}, err
 	}

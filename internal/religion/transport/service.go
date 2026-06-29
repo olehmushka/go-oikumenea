@@ -431,6 +431,19 @@ func (s ReligionService) CreateChildOrg(ctx context.Context, token bearertoken.T
 	return s.orgProfileAPI(ctx, p)
 }
 
+// CreateRootOrg creates a top-level religious body (M41). It has no parent unit to scope on, so it is an
+// instance-level action guarded by religion.catalog.manage (RequireAnywhere), like the taxonomy/catalogs.
+func (s ReligionService) CreateRootOrg(ctx context.Context, token bearertoken.Token, req religionapi.CreateRootOrgRequest) (religionapi.OrgProfile, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, catalogPerm); err != nil {
+		return religionapi.OrgProfile{}, err
+	}
+	p, err := s.app.CreateRootOrg(ctx, req.Code, req.Name, strOr(req.Visibility), strOr(req.OrgKindId), strOr(req.PrimaryTaxonId))
+	if err != nil {
+		return religionapi.OrgProfile{}, s.mapError(ctx, err)
+	}
+	return s.orgProfileAPI(ctx, p)
+}
+
 // ============================ mappers ============================
 
 func (s ReligionService) taxonAPI(ctx context.Context, t domain.Taxon) (religionapi.Taxon, error) {

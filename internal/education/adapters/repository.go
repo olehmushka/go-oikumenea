@@ -51,26 +51,6 @@ func (r *Repository) UpsertInstitutionKind(ctx context.Context, code, name strin
 	return domain.InstitutionKind{ID: k.ID, Code: k.Code, Name: k.Name, Status: k.Status, SortOrder: int4ptr(k.SortOrder)}, nil
 }
 
-func (r *Repository) ListUnitKinds(ctx context.Context) ([]domain.UnitKind, error) {
-	rows, err := r.q.ListUnitKinds(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.UnitKind, 0, len(rows))
-	for _, k := range rows {
-		out = append(out, domain.UnitKind{ID: k.ID, Code: k.Code, Name: k.Name, Status: k.Status, SortOrder: int4ptr(k.SortOrder)})
-	}
-	return out, nil
-}
-
-func (r *Repository) UpsertUnitKind(ctx context.Context, code, name string, sortOrder *int) (domain.UnitKind, error) {
-	k, err := r.q.UpsertUnitKind(ctx, educationsql.UpsertUnitKindParams{Code: code, Name: name, SortOrder: int4(sortOrder)})
-	if err != nil {
-		return domain.UnitKind{}, mapErr(err)
-	}
-	return domain.UnitKind{ID: k.ID, Code: k.Code, Name: k.Name, Status: k.Status, SortOrder: int4ptr(k.SortOrder)}, nil
-}
-
 func (r *Repository) ListDegreeLevels(ctx context.Context) ([]domain.DegreeLevel, error) {
 	rows, err := r.q.ListDegreeLevels(ctx)
 	if err != nil {
@@ -83,17 +63,16 @@ func (r *Repository) ListDegreeLevels(ctx context.Context) ([]domain.DegreeLevel
 	return out, nil
 }
 
-// ---------------------------------------------------------------- institutions
+// ---------------------------------------------------------------- institutions (tenant org + sidecar — M41)
 
-func (r *Repository) InsertInstitution(ctx context.Context, in domain.InstitutionInput) (domain.Institution, error) {
-	row, err := r.q.InsertInstitution(ctx, educationsql.InsertInstitutionParams{
-		Code: in.Code, Name: in.Name, KindID: in.KindID,
-		CountryID: text(in.CountryID), FoundedOn: datePtr(in.FoundedOn), ClosedOn: datePtr(in.ClosedOn),
+// InsertOrgProfile writes the education_org_profiles sidecar for an already-created `university`-domain
+// tenant organization (its code/name live on the org; the org is created via the tenant service).
+func (r *Repository) InsertOrgProfile(ctx context.Context, institutionID, kindID string, countryID, foundedOn, closedOn *string) error {
+	_, err := r.q.InsertOrgProfile(ctx, educationsql.InsertOrgProfileParams{
+		InstitutionID: institutionID, KindID: kindID,
+		CountryID: text(countryID), FoundedOn: datePtr(foundedOn), ClosedOn: datePtr(closedOn),
 	})
-	if err != nil {
-		return domain.Institution{}, mapErr(err)
-	}
-	return toInstitution(row), nil
+	return mapErr(err)
 }
 
 func (r *Repository) GetInstitution(ctx context.Context, id string) (domain.Institution, error) {
@@ -101,18 +80,21 @@ func (r *Repository) GetInstitution(ctx context.Context, id string) (domain.Inst
 	if err != nil {
 		return domain.Institution{}, notFound(err, domain.ErrInstitutionNotFound)
 	}
-	return toInstitution(row), nil
+	return domain.Institution{
+		ID: row.ID, Code: row.Code, Name: row.Name, KindID: row.KindID, CountryID: strp(row.CountryID),
+		FoundedOn: dateStr(row.FoundedOn), ClosedOn: dateStr(row.ClosedOn), State: row.State,
+		CreatedAt: ts(row.CreatedAt), UpdatedAt: ts(row.UpdatedAt),
+	}, nil
 }
 
-func (r *Repository) UpdateInstitution(ctx context.Context, id string, up domain.InstitutionUpdate) (domain.Institution, error) {
-	row, err := r.q.UpdateInstitution(ctx, educationsql.UpdateInstitutionParams{
-		Name: text(up.Name), KindID: text(up.KindID), CountryID: text(up.CountryID),
+// UpdateOrgProfile applies the education-specific fields (kind/country/dates/state) on the sidecar; the
+// org name is changed separately through the tenant service.
+func (r *Repository) UpdateOrgProfile(ctx context.Context, id string, up domain.InstitutionUpdate) error {
+	_, err := r.q.UpdateOrgProfile(ctx, educationsql.UpdateOrgProfileParams{
+		KindID: text(up.KindID), CountryID: text(up.CountryID),
 		FoundedOn: datePtr(up.FoundedOn), ClosedOn: datePtr(up.ClosedOn), State: text(up.State), ID: id,
 	})
-	if err != nil {
-		return domain.Institution{}, notFound(mapErr(err), domain.ErrInstitutionNotFound)
-	}
-	return toInstitution(row), nil
+	return notFound(mapErr(err), domain.ErrInstitutionNotFound)
 }
 
 func (r *Repository) ListInstitutions(ctx context.Context, query, after string, lim int) ([]domain.Institution, error) {
@@ -122,7 +104,11 @@ func (r *Repository) ListInstitutions(ctx context.Context, query, after string, 
 	}
 	out := make([]domain.Institution, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, toInstitution(row))
+		out = append(out, domain.Institution{
+			ID: row.ID, Code: row.Code, Name: row.Name, KindID: row.KindID, CountryID: strp(row.CountryID),
+			FoundedOn: dateStr(row.FoundedOn), ClosedOn: dateStr(row.ClosedOn), State: row.State,
+			CreatedAt: ts(row.CreatedAt), UpdatedAt: ts(row.UpdatedAt),
+		})
 	}
 	return out, nil
 }
@@ -133,92 +119,6 @@ func (r *Repository) SoftDeleteInstitution(ctx context.Context, id string) (int6
 		return 0, mapErr(err)
 	}
 	return n, nil
-}
-
-// ---------------------------------------------------------------- units + closure
-
-func (r *Repository) InsertUnit(ctx context.Context, institutionID string, in domain.UnitInput) (domain.Unit, error) {
-	row, err := r.q.InsertUnit(ctx, educationsql.InsertUnitParams{
-		InstitutionID: institutionID, ParentID: text(in.ParentID), KindID: in.KindID,
-		Code: in.Code, Name: in.Name, SortOrder: int4(in.SortOrder),
-	})
-	if err != nil {
-		return domain.Unit{}, mapErr(err)
-	}
-	return toUnit(row), nil
-}
-
-func (r *Repository) GetUnit(ctx context.Context, id string) (domain.Unit, error) {
-	row, err := r.q.GetUnit(ctx, id)
-	if err != nil {
-		return domain.Unit{}, notFound(err, domain.ErrUnitNotFound)
-	}
-	return toUnit(row), nil
-}
-
-func (r *Repository) UpdateUnit(ctx context.Context, id string, up domain.UnitUpdate) (domain.Unit, error) {
-	row, err := r.q.UpdateUnit(ctx, educationsql.UpdateUnitParams{
-		Name: text(up.Name), KindID: text(up.KindID), Status: text(up.Status), SortOrder: int4(up.SortOrder), ID: id,
-	})
-	if err != nil {
-		return domain.Unit{}, notFound(mapErr(err), domain.ErrUnitNotFound)
-	}
-	return toUnit(row), nil
-}
-
-func (r *Repository) SetUnitParent(ctx context.Context, id string, parentID *string) (domain.Unit, error) {
-	row, err := r.q.SetUnitParent(ctx, educationsql.SetUnitParentParams{ParentID: text(parentID), ID: id})
-	if err != nil {
-		return domain.Unit{}, notFound(mapErr(err), domain.ErrUnitNotFound)
-	}
-	return toUnit(row), nil
-}
-
-func (r *Repository) ListUnitsByInstitution(ctx context.Context, institutionID string) ([]domain.Unit, error) {
-	rows, err := r.q.ListUnitsByInstitution(ctx, institutionID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.Unit, 0, len(rows))
-	for _, row := range rows {
-		u := domain.Unit{
-			ID: row.ID, InstitutionID: row.InstitutionID, ParentID: strp(row.ParentID), KindID: row.KindID,
-			Code: row.Code, Name: row.Name, Status: row.Status, SortOrder: int4ptr(row.SortOrder),
-			Depth: int(row.Depth), CreatedAt: ts(row.CreatedAt), UpdatedAt: ts(row.UpdatedAt),
-		}
-		out = append(out, u)
-	}
-	return out, nil
-}
-
-func (r *Repository) ClosureHasPath(ctx context.Context, ancestorID, descendantID string) (bool, error) {
-	return r.q.ClosureHasPath(ctx, educationsql.ClosureHasPathParams{AncestorID: ancestorID, DescendantID: descendantID})
-}
-
-func (r *Repository) RecomputeClosure(ctx context.Context, institutionID string) error {
-	if err := r.q.DeleteClosureForInstitution(ctx, institutionID); err != nil {
-		return err
-	}
-	return r.q.RebuildClosureForInstitution(ctx, institutionID)
-}
-
-func (r *Repository) VerifyClosure(ctx context.Context, institutionID string) (int, int, error) {
-	stored, err := r.q.CountStoredClosure(ctx, institutionID)
-	if err != nil {
-		return 0, 0, err
-	}
-	expected, err := r.q.CountExpectedClosure(ctx, institutionID)
-	if err != nil {
-		return 0, 0, err
-	}
-	missing := 0
-	extra := 0
-	if expected > stored {
-		missing = int(expected - stored)
-	} else if stored > expected {
-		extra = int(stored - expected)
-	}
-	return missing, extra, nil
 }
 
 // ---------------------------------------------------------------- buildings
@@ -538,22 +438,6 @@ func (r *Repository) ListDormitoryStaysByPerson(ctx context.Context, personID st
 }
 
 // ---------------------------------------------------------------- mappers
-
-func toInstitution(r educationsql.OikumeneaEducationInstitution) domain.Institution {
-	return domain.Institution{
-		ID: r.ID, Code: r.Code, Name: r.Name, KindID: r.KindID, CountryID: strp(r.CountryID),
-		FoundedOn: dateStr(r.FoundedOn), ClosedOn: dateStr(r.ClosedOn), State: r.State,
-		CreatedAt: ts(r.CreatedAt), UpdatedAt: ts(r.UpdatedAt),
-	}
-}
-
-func toUnit(r educationsql.OikumeneaEducationUnit) domain.Unit {
-	return domain.Unit{
-		ID: r.ID, InstitutionID: r.InstitutionID, ParentID: strp(r.ParentID), KindID: r.KindID,
-		Code: r.Code, Name: r.Name, Status: r.Status, SortOrder: int4ptr(r.SortOrder),
-		CreatedAt: ts(r.CreatedAt), UpdatedAt: ts(r.UpdatedAt),
-	}
-}
 
 func toBuilding(r educationsql.OikumeneaEducationBuilding) domain.Building {
 	return domain.Building{

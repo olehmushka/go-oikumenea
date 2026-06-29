@@ -11,13 +11,14 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const clearDefaultGraphs = `-- name: ClearDefaultGraphs :exec
-UPDATE oikumenea.tenant_graphs SET is_default = false WHERE is_default AND deleted_at IS NULL
+const clearDefaultGraphsForOrg = `-- name: ClearDefaultGraphsForOrg :exec
+UPDATE oikumenea.tenant_graphs SET is_default = false
+WHERE is_default AND deleted_at IS NULL AND org_id = $1
 `
 
-// Unset is_default on every active graph (run before promoting a new default).
-func (q *Queries) ClearDefaultGraphs(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, clearDefaultGraphs)
+// Unset is_default on the org's active graphs (run before promoting a new default within the org).
+func (q *Queries) ClearDefaultGraphsForOrg(ctx context.Context, orgID pgtype.Text) error {
+	_, err := q.db.Exec(ctx, clearDefaultGraphsForOrg, orgID)
 	return err
 }
 
@@ -45,15 +46,69 @@ func (q *Queries) ClosureHasPath(ctx context.Context, arg ClosureHasPathParams) 
 	return reachable, err
 }
 
-const countActiveGraphs = `-- name: CountActiveGraphs :one
-SELECT count(*)::int AS active_count FROM oikumenea.tenant_graphs WHERE deleted_at IS NULL
+const countActiveDomainsByCode = `-- name: CountActiveDomainsByCode :one
+SELECT count(*)::int AS code_count FROM oikumenea.tenant_domains
+WHERE code = $1 AND deleted_at IS NULL AND id <> $2
 `
 
-func (q *Queries) CountActiveGraphs(ctx context.Context) (int32, error) {
-	row := q.db.QueryRow(ctx, countActiveGraphs)
+type CountActiveDomainsByCodeParams struct {
+	Code      string
+	ExcludeID string
+}
+
+func (q *Queries) CountActiveDomainsByCode(ctx context.Context, arg CountActiveDomainsByCodeParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countActiveDomainsByCode, arg.Code, arg.ExcludeID)
+	var code_count int32
+	err := row.Scan(&code_count)
+	return code_count, err
+}
+
+const countActiveGraphsForOrg = `-- name: CountActiveGraphsForOrg :one
+SELECT count(*)::int AS active_count FROM oikumenea.tenant_graphs
+WHERE deleted_at IS NULL AND org_id IS NOT DISTINCT FROM $1
+`
+
+// Active graph count for the per-org "at least one graph remains" guard (NULL org_id = globals).
+func (q *Queries) CountActiveGraphsForOrg(ctx context.Context, orgID pgtype.Text) (int32, error) {
+	row := q.db.QueryRow(ctx, countActiveGraphsForOrg, orgID)
 	var active_count int32
 	err := row.Scan(&active_count)
 	return active_count, err
+}
+
+const countActiveOrgsByCode = `-- name: CountActiveOrgsByCode :one
+SELECT count(*)::int AS code_count FROM oikumenea.tenant_organizations
+WHERE code = $1 AND deleted_at IS NULL AND id <> $2
+`
+
+type CountActiveOrgsByCodeParams struct {
+	Code      string
+	ExcludeID string
+}
+
+func (q *Queries) CountActiveOrgsByCode(ctx context.Context, arg CountActiveOrgsByCodeParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countActiveOrgsByCode, arg.Code, arg.ExcludeID)
+	var code_count int32
+	err := row.Scan(&code_count)
+	return code_count, err
+}
+
+const countActiveUnitKindsByCode = `-- name: CountActiveUnitKindsByCode :one
+SELECT count(*)::int AS code_count FROM oikumenea.tenant_unit_kinds
+WHERE domain_id = $1 AND code = $2 AND deleted_at IS NULL AND id <> $3
+`
+
+type CountActiveUnitKindsByCodeParams struct {
+	DomainID  string
+	Code      string
+	ExcludeID string
+}
+
+func (q *Queries) CountActiveUnitKindsByCode(ctx context.Context, arg CountActiveUnitKindsByCodeParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countActiveUnitKindsByCode, arg.DomainID, arg.Code, arg.ExcludeID)
+	var code_count int32
+	err := row.Scan(&code_count)
+	return code_count, err
 }
 
 const countActiveUnitsByCode = `-- name: CountActiveUnitsByCode :one
@@ -121,19 +176,41 @@ func (q *Queries) DeleteUnitLanguage(ctx context.Context, arg DeleteUnitLanguage
 	return id, err
 }
 
-const getGraphByCode = `-- name: GetGraphByCode :one
-SELECT id, code, name, is_default, is_authority_bearing, created_at, updated_at, deleted_at FROM oikumenea.tenant_graphs WHERE code = $1 AND deleted_at IS NULL
+const getDomain = `-- name: GetDomain :one
+SELECT id, code, name, status, pdp_scoped, sort_order, created_at, updated_at, deleted_at FROM oikumenea.tenant_domains WHERE id = $1 AND deleted_at IS NULL
 `
 
-func (q *Queries) GetGraphByCode(ctx context.Context, code string) (OikumeneaTenantGraph, error) {
-	row := q.db.QueryRow(ctx, getGraphByCode, code)
-	var i OikumeneaTenantGraph
+func (q *Queries) GetDomain(ctx context.Context, id string) (OikumeneaTenantDomain, error) {
+	row := q.db.QueryRow(ctx, getDomain, id)
+	var i OikumeneaTenantDomain
 	err := row.Scan(
 		&i.ID,
 		&i.Code,
 		&i.Name,
-		&i.IsDefault,
-		&i.IsAuthorityBearing,
+		&i.Status,
+		&i.PdpScoped,
+		&i.SortOrder,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const getDomainByCode = `-- name: GetDomainByCode :one
+SELECT id, code, name, status, pdp_scoped, sort_order, created_at, updated_at, deleted_at FROM oikumenea.tenant_domains WHERE code = $1 AND deleted_at IS NULL
+`
+
+func (q *Queries) GetDomainByCode(ctx context.Context, code string) (OikumeneaTenantDomain, error) {
+	row := q.db.QueryRow(ctx, getDomainByCode, code)
+	var i OikumeneaTenantDomain
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.Status,
+		&i.PdpScoped,
+		&i.SortOrder,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -142,7 +219,7 @@ func (q *Queries) GetGraphByCode(ctx context.Context, code string) (OikumeneaTen
 }
 
 const getGraphByID = `-- name: GetGraphByID :one
-SELECT id, code, name, is_default, is_authority_bearing, created_at, updated_at, deleted_at FROM oikumenea.tenant_graphs WHERE id = $1 AND deleted_at IS NULL
+SELECT id, org_id, code, name, is_default, is_authority_bearing, created_at, updated_at, deleted_at FROM oikumenea.tenant_graphs WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetGraphByID(ctx context.Context, id string) (OikumeneaTenantGraph, error) {
@@ -150,6 +227,7 @@ func (q *Queries) GetGraphByID(ctx context.Context, id string) (OikumeneaTenantG
 	var i OikumeneaTenantGraph
 	err := row.Scan(
 		&i.ID,
+		&i.OrgID,
 		&i.Code,
 		&i.Name,
 		&i.IsDefault,
@@ -161,8 +239,63 @@ func (q *Queries) GetGraphByID(ctx context.Context, id string) (OikumeneaTenantG
 	return i, err
 }
 
+const getGraphForOrgByCode = `-- name: GetGraphForOrgByCode :one
+SELECT id, org_id, code, name, is_default, is_authority_bearing, created_at, updated_at, deleted_at FROM oikumenea.tenant_graphs
+WHERE code = $1 AND deleted_at IS NULL
+  AND (org_id = $2 OR org_id IS NULL)
+ORDER BY (org_id IS NULL)
+LIMIT 1
+`
+
+type GetGraphForOrgByCodeParams struct {
+	Code  string
+	OrgID pgtype.Text
+}
+
+// Resolve a graph by code within an organization, preferring the org's own graph and falling back to
+// an instance-global graph (org_id NULL). When @org_id is NULL only global graphs match. The ORDER BY
+// puts the org-specific row (org_id IS NULL = false) ahead of the global one.
+func (q *Queries) GetGraphForOrgByCode(ctx context.Context, arg GetGraphForOrgByCodeParams) (OikumeneaTenantGraph, error) {
+	row := q.db.QueryRow(ctx, getGraphForOrgByCode, arg.Code, arg.OrgID)
+	var i OikumeneaTenantGraph
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Code,
+		&i.Name,
+		&i.IsDefault,
+		&i.IsAuthorityBearing,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const getOrganization = `-- name: GetOrganization :one
+SELECT id, code, name, domain_id, visibility, state, metadata, created_at, updated_at, deleted_at FROM oikumenea.tenant_organizations WHERE id = $1 AND deleted_at IS NULL
+`
+
+func (q *Queries) GetOrganization(ctx context.Context, id string) (OikumeneaTenantOrganization, error) {
+	row := q.db.QueryRow(ctx, getOrganization, id)
+	var i OikumeneaTenantOrganization
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.DomainID,
+		&i.Visibility,
+		&i.State,
+		&i.Metadata,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const getUnit = `-- name: GetUnit :one
-SELECT id, code, name, unit_kind, level, visibility, state, metadata, created_at, updated_at, deleted_at FROM oikumenea.tenant_units WHERE id = $1 AND deleted_at IS NULL
+SELECT id, org_id, domain_id, kind_id, code, name, level, visibility, state, pdp_scoped, metadata, created_at, updated_at, deleted_at FROM oikumenea.tenant_units WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetUnit(ctx context.Context, id string) (OikumeneaTenantUnit, error) {
@@ -170,13 +303,38 @@ func (q *Queries) GetUnit(ctx context.Context, id string) (OikumeneaTenantUnit, 
 	var i OikumeneaTenantUnit
 	err := row.Scan(
 		&i.ID,
+		&i.OrgID,
+		&i.DomainID,
+		&i.KindID,
 		&i.Code,
 		&i.Name,
-		&i.UnitKind,
 		&i.Level,
 		&i.Visibility,
 		&i.State,
+		&i.PdpScoped,
 		&i.Metadata,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const getUnitKind = `-- name: GetUnitKind :one
+SELECT id, domain_id, code, name, attr_schema, status, sort_order, created_at, updated_at, deleted_at FROM oikumenea.tenant_unit_kinds WHERE id = $1 AND deleted_at IS NULL
+`
+
+func (q *Queries) GetUnitKind(ctx context.Context, id string) (OikumeneaTenantUnitKind, error) {
+	row := q.db.QueryRow(ctx, getUnitKind, id)
+	var i OikumeneaTenantUnitKind
+	err := row.Scan(
+		&i.ID,
+		&i.DomainID,
+		&i.Code,
+		&i.Name,
+		&i.AttrSchema,
+		&i.Status,
+		&i.SortOrder,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -230,6 +388,43 @@ func (q *Queries) GraphHasLiveEdges(ctx context.Context, graphID string) (bool, 
 	return has_edges, err
 }
 
+const insertDomain = `-- name: InsertDomain :one
+
+
+INSERT INTO oikumenea.tenant_domains (code, name, sort_order)
+VALUES ($1, $2, $3)
+RETURNING id, code, name, status, pdp_scoped, sort_order, created_at, updated_at, deleted_at
+`
+
+type InsertDomainParams struct {
+	Code      string
+	Name      string
+	SortOrder pgtype.Int4
+}
+
+// Tenant module queries (docs/modules/tenant.md). Two-tier model (D-TenantOrganizations, M40):
+// domains (org-kind catalog) -> organizations (the realm) -> units as a DAG per graph + a maintained
+// transitive closure recomputed in the write transaction on every edge change. Graphs are per-org
+// (org_id), with org_id NULL = an instance-global/cross-org graph (religion taxonomy). Units/graphs/
+// orgs soft-delete; edges hard-delete on detach; the closure is derived (no RID).
+// ============================ domains (org-kind catalog) ============================
+func (q *Queries) InsertDomain(ctx context.Context, arg InsertDomainParams) (OikumeneaTenantDomain, error) {
+	row := q.db.QueryRow(ctx, insertDomain, arg.Code, arg.Name, arg.SortOrder)
+	var i OikumeneaTenantDomain
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.Status,
+		&i.PdpScoped,
+		&i.SortOrder,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const insertEdge = `-- name: InsertEdge :one
 
 INSERT INTO oikumenea.tenant_unit_edges (graph_id, parent_id, child_id, created_by)
@@ -266,23 +461,32 @@ func (q *Queries) InsertEdge(ctx context.Context, arg InsertEdgeParams) (Oikumen
 
 const insertGraph = `-- name: InsertGraph :one
 
-INSERT INTO oikumenea.tenant_graphs (code, name, is_authority_bearing)
-VALUES ($1, $2, $3)
-RETURNING id, code, name, is_default, is_authority_bearing, created_at, updated_at, deleted_at
+INSERT INTO oikumenea.tenant_graphs (org_id, code, name, is_default, is_authority_bearing)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, org_id, code, name, is_default, is_authority_bearing, created_at, updated_at, deleted_at
 `
 
 type InsertGraphParams struct {
+	OrgID              pgtype.Text
 	Code               string
 	Name               string
+	IsDefault          bool
 	IsAuthorityBearing bool
 }
 
-// ============================ graphs ============================
+// ============================ graphs (per-org; org_id NULL = global) ============================
 func (q *Queries) InsertGraph(ctx context.Context, arg InsertGraphParams) (OikumeneaTenantGraph, error) {
-	row := q.db.QueryRow(ctx, insertGraph, arg.Code, arg.Name, arg.IsAuthorityBearing)
+	row := q.db.QueryRow(ctx, insertGraph,
+		arg.OrgID,
+		arg.Code,
+		arg.Name,
+		arg.IsDefault,
+		arg.IsAuthorityBearing,
+	)
 	var i OikumeneaTenantGraph
 	err := row.Scan(
 		&i.ID,
+		&i.OrgID,
 		&i.Code,
 		&i.Name,
 		&i.IsDefault,
@@ -323,34 +527,104 @@ func (q *Queries) InsertLifecycleEvent(ctx context.Context, arg InsertLifecycleE
 	return err
 }
 
+const insertOrgLifecycleEvent = `-- name: InsertOrgLifecycleEvent :exec
+INSERT INTO oikumenea.tenant_org_lifecycle_events
+  (org_id, from_state, to_state, reason, actor_person_id, request_id)
+VALUES ($1, $2, $3, $4, $5, $6)
+`
+
+type InsertOrgLifecycleEventParams struct {
+	OrgID         string
+	FromState     string
+	ToState       string
+	Reason        pgtype.Text
+	ActorPersonID pgtype.Text
+	RequestID     string
+}
+
+func (q *Queries) InsertOrgLifecycleEvent(ctx context.Context, arg InsertOrgLifecycleEventParams) error {
+	_, err := q.db.Exec(ctx, insertOrgLifecycleEvent,
+		arg.OrgID,
+		arg.FromState,
+		arg.ToState,
+		arg.Reason,
+		arg.ActorPersonID,
+		arg.RequestID,
+	)
+	return err
+}
+
+const insertOrganization = `-- name: InsertOrganization :one
+
+INSERT INTO oikumenea.tenant_organizations (code, name, domain_id, visibility, metadata)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, code, name, domain_id, visibility, state, metadata, created_at, updated_at, deleted_at
+`
+
+type InsertOrganizationParams struct {
+	Code       string
+	Name       string
+	DomainID   string
+	Visibility string
+	Metadata   []byte
+}
+
+// ============================ organizations (the realm) ============================
+func (q *Queries) InsertOrganization(ctx context.Context, arg InsertOrganizationParams) (OikumeneaTenantOrganization, error) {
+	row := q.db.QueryRow(ctx, insertOrganization,
+		arg.Code,
+		arg.Name,
+		arg.DomainID,
+		arg.Visibility,
+		arg.Metadata,
+	)
+	var i OikumeneaTenantOrganization
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.DomainID,
+		&i.Visibility,
+		&i.State,
+		&i.Metadata,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const insertUnit = `-- name: InsertUnit :one
 
-
-INSERT INTO oikumenea.tenant_units (code, name, unit_kind, level, visibility, metadata)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, code, name, unit_kind, level, visibility, state, metadata, created_at, updated_at, deleted_at
+INSERT INTO oikumenea.tenant_units (org_id, domain_id, kind_id, code, name, level, visibility, pdp_scoped, metadata)
+SELECT $1, $2, $3, $4, $5, $6, $7,
+       COALESCE((SELECT d.pdp_scoped FROM oikumenea.tenant_domains d WHERE d.id = $2), true), $8
+RETURNING id, org_id, domain_id, kind_id, code, name, level, visibility, state, pdp_scoped, metadata, created_at, updated_at, deleted_at
 `
 
 type InsertUnitParams struct {
+	OrgID      string
+	DomainID   string
+	KindID     pgtype.Text
 	Code       pgtype.Text
 	Name       string
-	UnitKind   pgtype.Text
 	Level      pgtype.Int2
 	Visibility string
 	Metadata   []byte
 }
 
-// Tenant module queries (docs/modules/tenant.md). Units as a DAG per graph + a maintained
-// transitive closure recomputed in the write transaction on every edge change. Units/graphs
-// soft-delete; edges hard-delete on detach; the closure is derived (no RID).
 // ============================ units ============================
-// Create a unit. The RID PK defaults at the database; the partial-unique code guards duplicates.
+// Create a unit (D-TenantOrganizations, M40): org_id + domain_id required, kind_id optional.
 // `code` is optional (NULL = a non-separate sub-unit; D-UnitCodeLifecycle).
+// pdp_scoped is DERIVED in SQL from the unit's domain (D-UnifiedOrgGraph, M41) so the RLS predicate can
+// exempt reference (university/company) units without a join.
 func (q *Queries) InsertUnit(ctx context.Context, arg InsertUnitParams) (OikumeneaTenantUnit, error) {
 	row := q.db.QueryRow(ctx, insertUnit,
+		arg.OrgID,
+		arg.DomainID,
+		arg.KindID,
 		arg.Code,
 		arg.Name,
-		arg.UnitKind,
 		arg.Level,
 		arg.Visibility,
 		arg.Metadata,
@@ -358,12 +632,15 @@ func (q *Queries) InsertUnit(ctx context.Context, arg InsertUnitParams) (Oikumen
 	var i OikumeneaTenantUnit
 	err := row.Scan(
 		&i.ID,
+		&i.OrgID,
+		&i.DomainID,
+		&i.KindID,
 		&i.Code,
 		&i.Name,
-		&i.UnitKind,
 		&i.Level,
 		&i.Visibility,
 		&i.State,
+		&i.PdpScoped,
 		&i.Metadata,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -399,6 +676,46 @@ func (q *Queries) InsertUnitCodeEvent(ctx context.Context, arg InsertUnitCodeEve
 		arg.RequestID,
 	)
 	return err
+}
+
+const insertUnitKind = `-- name: InsertUnitKind :one
+
+INSERT INTO oikumenea.tenant_unit_kinds (domain_id, code, name, attr_schema, sort_order)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, domain_id, code, name, attr_schema, status, sort_order, created_at, updated_at, deleted_at
+`
+
+type InsertUnitKindParams struct {
+	DomainID   string
+	Code       string
+	Name       string
+	AttrSchema []byte
+	SortOrder  pgtype.Int4
+}
+
+// ============================ unit kinds (domain-scoped catalog) ============================
+func (q *Queries) InsertUnitKind(ctx context.Context, arg InsertUnitKindParams) (OikumeneaTenantUnitKind, error) {
+	row := q.db.QueryRow(ctx, insertUnitKind,
+		arg.DomainID,
+		arg.Code,
+		arg.Name,
+		arg.AttrSchema,
+		arg.SortOrder,
+	)
+	var i OikumeneaTenantUnitKind
+	err := row.Scan(
+		&i.ID,
+		&i.DomainID,
+		&i.Code,
+		&i.Name,
+		&i.AttrSchema,
+		&i.Status,
+		&i.SortOrder,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
 }
 
 const insertUnitLanguage = `-- name: InsertUnitLanguage :exec
@@ -454,6 +771,65 @@ func (q *Queries) ListAncestors(ctx context.Context, arg ListAncestorsParams) ([
 			&i.Name,
 			&i.Visibility,
 			&i.Depth,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listChildUnits = `-- name: ListChildUnits :many
+SELECT u.id, u.org_id, u.domain_id, u.kind_id, u.code, u.name, u.level, u.visibility, u.state, u.pdp_scoped, u.metadata, u.created_at, u.updated_at, u.deleted_at FROM oikumenea.tenant_units u
+JOIN oikumenea.tenant_unit_edges e
+  ON e.child_id = u.id AND e.graph_id = $1 AND e.parent_id = $2
+WHERE u.deleted_at IS NULL
+  AND ($3::uuid IS NULL OR u.id > $3::uuid)
+ORDER BY u.id
+LIMIT $4
+`
+
+type ListChildUnitsParams struct {
+	GraphID  string
+	ParentID string
+	After    pgtype.Text
+	Lim      int32
+}
+
+// Direct children of @parent_id within graph @graph_id (the immediate edges, not the closure subtree).
+// Keyset-paginated by the child unit's RID (id). Used for expand-on-click hierarchy browsing.
+func (q *Queries) ListChildUnits(ctx context.Context, arg ListChildUnitsParams) ([]OikumeneaTenantUnit, error) {
+	rows, err := q.db.Query(ctx, listChildUnits,
+		arg.GraphID,
+		arg.ParentID,
+		arg.After,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaTenantUnit
+	for rows.Next() {
+		var i OikumeneaTenantUnit
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.DomainID,
+			&i.KindID,
+			&i.Code,
+			&i.Name,
+			&i.Level,
+			&i.Visibility,
+			&i.State,
+			&i.PdpScoped,
+			&i.Metadata,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -522,12 +898,75 @@ func (q *Queries) ListDescendants(ctx context.Context, arg ListDescendantsParams
 	return items, nil
 }
 
-const listGraphs = `-- name: ListGraphs :many
-SELECT id, code, name, is_default, is_authority_bearing, created_at, updated_at, deleted_at FROM oikumenea.tenant_graphs WHERE deleted_at IS NULL ORDER BY created_at, code
+const listDomains = `-- name: ListDomains :many
+SELECT id, code, name, status, pdp_scoped, sort_order, created_at, updated_at, deleted_at FROM oikumenea.tenant_domains WHERE deleted_at IS NULL ORDER BY sort_order NULLS LAST, code
 `
 
-func (q *Queries) ListGraphs(ctx context.Context) ([]OikumeneaTenantGraph, error) {
-	rows, err := q.db.Query(ctx, listGraphs)
+func (q *Queries) ListDomains(ctx context.Context) ([]OikumeneaTenantDomain, error) {
+	rows, err := q.db.Query(ctx, listDomains)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaTenantDomain
+	for rows.Next() {
+		var i OikumeneaTenantDomain
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.Status,
+			&i.PdpScoped,
+			&i.SortOrder,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGraphIDs = `-- name: ListGraphIDs :many
+SELECT id FROM oikumenea.tenant_graphs WHERE deleted_at IS NULL ORDER BY created_at, code
+`
+
+// All active graph ids (used to verify/rebuild every graph when none is named).
+func (q *Queries) ListGraphIDs(ctx context.Context) ([]string, error) {
+	rows, err := q.db.Query(ctx, listGraphIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGraphsForOrg = `-- name: ListGraphsForOrg :many
+SELECT id, org_id, code, name, is_default, is_authority_bearing, created_at, updated_at, deleted_at FROM oikumenea.tenant_graphs
+WHERE deleted_at IS NULL AND (org_id = $1 OR org_id IS NULL)
+ORDER BY (org_id IS NULL), created_at, code
+`
+
+// An organization's graphs plus the instance-global graphs (org_id NULL). When @org_id is NULL,
+// returns only the global graphs.
+func (q *Queries) ListGraphsForOrg(ctx context.Context, orgID pgtype.Text) ([]OikumeneaTenantGraph, error) {
+	rows, err := q.db.Query(ctx, listGraphsForOrg, orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -537,10 +976,120 @@ func (q *Queries) ListGraphs(ctx context.Context) ([]OikumeneaTenantGraph, error
 		var i OikumeneaTenantGraph
 		if err := rows.Scan(
 			&i.ID,
+			&i.OrgID,
 			&i.Code,
 			&i.Name,
 			&i.IsDefault,
 			&i.IsAuthorityBearing,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOrganizations = `-- name: ListOrganizations :many
+SELECT id, code, name, domain_id, visibility, state, metadata, created_at, updated_at, deleted_at FROM oikumenea.tenant_organizations
+WHERE deleted_at IS NULL
+  AND ($1::uuid IS NULL OR domain_id = $1::uuid)
+  AND ($2::uuid IS NULL OR id > $2::uuid)
+ORDER BY id
+LIMIT $3
+`
+
+type ListOrganizationsParams struct {
+	DomainID pgtype.Text
+	After    pgtype.Text
+	Lim      int32
+}
+
+// Keyset pagination over the time-ordered RID (id), optional domain filter.
+func (q *Queries) ListOrganizations(ctx context.Context, arg ListOrganizationsParams) ([]OikumeneaTenantOrganization, error) {
+	rows, err := q.db.Query(ctx, listOrganizations, arg.DomainID, arg.After, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaTenantOrganization
+	for rows.Next() {
+		var i OikumeneaTenantOrganization
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.DomainID,
+			&i.Visibility,
+			&i.State,
+			&i.Metadata,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRootUnits = `-- name: ListRootUnits :many
+SELECT u.id, u.org_id, u.domain_id, u.kind_id, u.code, u.name, u.level, u.visibility, u.state, u.pdp_scoped, u.metadata, u.created_at, u.updated_at, u.deleted_at FROM oikumenea.tenant_units u
+WHERE u.deleted_at IS NULL
+  AND u.org_id = $1
+  AND NOT EXISTS (
+    SELECT 1 FROM oikumenea.tenant_unit_edges e
+    WHERE e.graph_id = $2 AND e.child_id = u.id
+  )
+  AND ($3::uuid IS NULL OR u.id > $3::uuid)
+ORDER BY u.id
+LIMIT $4
+`
+
+type ListRootUnitsParams struct {
+	OrgID   string
+	GraphID string
+	After   pgtype.Text
+	Lim     int32
+}
+
+// The org's top-level units in graph @graph_id: active units with no parent edge in the graph
+// (includes still-unattached units). Keyset-paginated by id. Used as the roots of the unit tree.
+func (q *Queries) ListRootUnits(ctx context.Context, arg ListRootUnitsParams) ([]OikumeneaTenantUnit, error) {
+	rows, err := q.db.Query(ctx, listRootUnits,
+		arg.OrgID,
+		arg.GraphID,
+		arg.After,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaTenantUnit
+	for rows.Next() {
+		var i OikumeneaTenantUnit
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.DomainID,
+			&i.KindID,
+			&i.Code,
+			&i.Name,
+			&i.Level,
+			&i.Visibility,
+			&i.State,
+			&i.PdpScoped,
+			&i.Metadata,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
@@ -581,6 +1130,43 @@ func (q *Queries) ListUnitCodeEvents(ctx context.Context, unitID string) ([]Oiku
 			&i.ActorPersonID,
 			&i.RequestID,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUnitKinds = `-- name: ListUnitKinds :many
+SELECT id, domain_id, code, name, attr_schema, status, sort_order, created_at, updated_at, deleted_at FROM oikumenea.tenant_unit_kinds
+WHERE domain_id = $1 AND deleted_at IS NULL
+ORDER BY sort_order NULLS LAST, code
+`
+
+func (q *Queries) ListUnitKinds(ctx context.Context, domainID string) ([]OikumeneaTenantUnitKind, error) {
+	rows, err := q.db.Query(ctx, listUnitKinds, domainID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaTenantUnitKind
+	for rows.Next() {
+		var i OikumeneaTenantUnitKind
+		if err := rows.Scan(
+			&i.ID,
+			&i.DomainID,
+			&i.Code,
+			&i.Name,
+			&i.AttrSchema,
+			&i.Status,
+			&i.SortOrder,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -639,23 +1225,36 @@ func (q *Queries) ListUnitLanguages(ctx context.Context, unitID string) ([]ListU
 }
 
 const listUnits = `-- name: ListUnits :many
-SELECT id, code, name, unit_kind, level, visibility, state, metadata, created_at, updated_at, deleted_at FROM oikumenea.tenant_units
+SELECT id, org_id, domain_id, kind_id, code, name, level, visibility, state, pdp_scoped, metadata, created_at, updated_at, deleted_at FROM oikumenea.tenant_units
 WHERE deleted_at IS NULL
-  AND ($1::smallint IS NULL OR level = $1::smallint)
-  AND ($2::uuid IS NULL OR id > $2::uuid)
+  AND org_id = $1
+  AND ($2::uuid IS NULL OR domain_id = $2::uuid)
+  AND ($3::uuid IS NULL OR kind_id = $3::uuid)
+  AND ($4::smallint IS NULL OR level = $4::smallint)
+  AND ($5::uuid IS NULL OR id > $5::uuid)
 ORDER BY id
-LIMIT $3
+LIMIT $6
 `
 
 type ListUnitsParams struct {
-	Level pgtype.Int2
-	After pgtype.Text
-	Lim   int32
+	OrgID    string
+	DomainID pgtype.Text
+	KindID   pgtype.Text
+	Level    pgtype.Int2
+	After    pgtype.Text
+	Lim      int32
 }
 
-// Keyset pagination over the time-ordered RID (id), optional level filter.
+// Keyset pagination over the time-ordered RID (id), REQUIRED org scope + optional domain/kind/level.
 func (q *Queries) ListUnits(ctx context.Context, arg ListUnitsParams) ([]OikumeneaTenantUnit, error) {
-	rows, err := q.db.Query(ctx, listUnits, arg.Level, arg.After, arg.Lim)
+	rows, err := q.db.Query(ctx, listUnits,
+		arg.OrgID,
+		arg.DomainID,
+		arg.KindID,
+		arg.Level,
+		arg.After,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -665,12 +1264,15 @@ func (q *Queries) ListUnits(ctx context.Context, arg ListUnitsParams) ([]Oikumen
 		var i OikumeneaTenantUnit
 		if err := rows.Scan(
 			&i.ID,
+			&i.OrgID,
+			&i.DomainID,
+			&i.KindID,
 			&i.Code,
 			&i.Name,
-			&i.UnitKind,
 			&i.Level,
 			&i.Visibility,
 			&i.State,
+			&i.PdpScoped,
 			&i.Metadata,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -715,10 +1317,39 @@ func (q *Queries) RebuildClosureForGraph(ctx context.Context, graphID string) er
 	return err
 }
 
+const setOrgState = `-- name: SetOrgState :one
+UPDATE oikumenea.tenant_organizations SET state = $1
+WHERE id = $2 AND deleted_at IS NULL
+RETURNING id, code, name, domain_id, visibility, state, metadata, created_at, updated_at, deleted_at
+`
+
+type SetOrgStateParams struct {
+	State string
+	ID    string
+}
+
+func (q *Queries) SetOrgState(ctx context.Context, arg SetOrgStateParams) (OikumeneaTenantOrganization, error) {
+	row := q.db.QueryRow(ctx, setOrgState, arg.State, arg.ID)
+	var i OikumeneaTenantOrganization
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.DomainID,
+		&i.Visibility,
+		&i.State,
+		&i.Metadata,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const setUnitCode = `-- name: SetUnitCode :one
 UPDATE oikumenea.tenant_units SET code = $1
 WHERE id = $2 AND deleted_at IS NULL
-RETURNING id, code, name, unit_kind, level, visibility, state, metadata, created_at, updated_at, deleted_at
+RETURNING id, org_id, domain_id, kind_id, code, name, level, visibility, state, pdp_scoped, metadata, created_at, updated_at, deleted_at
 `
 
 type SetUnitCodeParams struct {
@@ -733,12 +1364,15 @@ func (q *Queries) SetUnitCode(ctx context.Context, arg SetUnitCodeParams) (Oikum
 	var i OikumeneaTenantUnit
 	err := row.Scan(
 		&i.ID,
+		&i.OrgID,
+		&i.DomainID,
+		&i.KindID,
 		&i.Code,
 		&i.Name,
-		&i.UnitKind,
 		&i.Level,
 		&i.Visibility,
 		&i.State,
+		&i.PdpScoped,
 		&i.Metadata,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -750,7 +1384,7 @@ func (q *Queries) SetUnitCode(ctx context.Context, arg SetUnitCodeParams) (Oikum
 const setUnitState = `-- name: SetUnitState :one
 UPDATE oikumenea.tenant_units SET state = $1
 WHERE id = $2 AND deleted_at IS NULL
-RETURNING id, code, name, unit_kind, level, visibility, state, metadata, created_at, updated_at, deleted_at
+RETURNING id, org_id, domain_id, kind_id, code, name, level, visibility, state, pdp_scoped, metadata, created_at, updated_at, deleted_at
 `
 
 type SetUnitStateParams struct {
@@ -763,12 +1397,15 @@ func (q *Queries) SetUnitState(ctx context.Context, arg SetUnitStateParams) (Oik
 	var i OikumeneaTenantUnit
 	err := row.Scan(
 		&i.ID,
+		&i.OrgID,
+		&i.DomainID,
+		&i.KindID,
 		&i.Code,
 		&i.Name,
-		&i.UnitKind,
 		&i.Level,
 		&i.Visibility,
 		&i.State,
+		&i.PdpScoped,
 		&i.Metadata,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -780,7 +1417,7 @@ func (q *Queries) SetUnitState(ctx context.Context, arg SetUnitStateParams) (Oik
 const softDeleteGraph = `-- name: SoftDeleteGraph :one
 UPDATE oikumenea.tenant_graphs SET deleted_at = now()
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, code, name, is_default, is_authority_bearing, created_at, updated_at, deleted_at
+RETURNING id, org_id, code, name, is_default, is_authority_bearing, created_at, updated_at, deleted_at
 `
 
 func (q *Queries) SoftDeleteGraph(ctx context.Context, id string) (OikumeneaTenantGraph, error) {
@@ -788,10 +1425,49 @@ func (q *Queries) SoftDeleteGraph(ctx context.Context, id string) (OikumeneaTena
 	var i OikumeneaTenantGraph
 	err := row.Scan(
 		&i.ID,
+		&i.OrgID,
 		&i.Code,
 		&i.Name,
 		&i.IsDefault,
 		&i.IsAuthorityBearing,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const updateDomain = `-- name: UpdateDomain :one
+UPDATE oikumenea.tenant_domains SET
+  name       = COALESCE($1, name),
+  status     = COALESCE($2, status),
+  sort_order = COALESCE($3, sort_order)
+WHERE id = $4 AND deleted_at IS NULL
+RETURNING id, code, name, status, pdp_scoped, sort_order, created_at, updated_at, deleted_at
+`
+
+type UpdateDomainParams struct {
+	Name      pgtype.Text
+	Status    pgtype.Text
+	SortOrder pgtype.Int4
+	ID        string
+}
+
+func (q *Queries) UpdateDomain(ctx context.Context, arg UpdateDomainParams) (OikumeneaTenantDomain, error) {
+	row := q.db.QueryRow(ctx, updateDomain,
+		arg.Name,
+		arg.Status,
+		arg.SortOrder,
+		arg.ID,
+	)
+	var i OikumeneaTenantDomain
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.Status,
+		&i.PdpScoped,
+		&i.SortOrder,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -805,7 +1481,7 @@ UPDATE oikumenea.tenant_graphs SET
   is_default           = COALESCE($2, is_default),
   is_authority_bearing = COALESCE($3, is_authority_bearing)
 WHERE id = $4 AND deleted_at IS NULL
-RETURNING id, code, name, is_default, is_authority_bearing, created_at, updated_at, deleted_at
+RETURNING id, org_id, code, name, is_default, is_authority_bearing, created_at, updated_at, deleted_at
 `
 
 type UpdateGraphParams struct {
@@ -825,6 +1501,7 @@ func (q *Queries) UpdateGraph(ctx context.Context, arg UpdateGraphParams) (Oikum
 	var i OikumeneaTenantGraph
 	err := row.Scan(
 		&i.ID,
+		&i.OrgID,
 		&i.Code,
 		&i.Name,
 		&i.IsDefault,
@@ -836,31 +1513,81 @@ func (q *Queries) UpdateGraph(ctx context.Context, arg UpdateGraphParams) (Oikum
 	return i, err
 }
 
+const updateOrganization = `-- name: UpdateOrganization :one
+UPDATE oikumenea.tenant_organizations SET
+  name       = COALESCE($1, name),
+  domain_id  = COALESCE($2, domain_id),
+  visibility = COALESCE($3, visibility),
+  metadata   = COALESCE($4, metadata)
+WHERE id = $5 AND deleted_at IS NULL
+RETURNING id, code, name, domain_id, visibility, state, metadata, created_at, updated_at, deleted_at
+`
+
+type UpdateOrganizationParams struct {
+	Name       pgtype.Text
+	DomainID   pgtype.Text
+	Visibility pgtype.Text
+	Metadata   []byte
+	ID         string
+}
+
+func (q *Queries) UpdateOrganization(ctx context.Context, arg UpdateOrganizationParams) (OikumeneaTenantOrganization, error) {
+	row := q.db.QueryRow(ctx, updateOrganization,
+		arg.Name,
+		arg.DomainID,
+		arg.Visibility,
+		arg.Metadata,
+		arg.ID,
+	)
+	var i OikumeneaTenantOrganization
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.DomainID,
+		&i.Visibility,
+		&i.State,
+		&i.Metadata,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const updateUnit = `-- name: UpdateUnit :one
 UPDATE oikumenea.tenant_units SET
   name       = COALESCE($1, name),
-  unit_kind  = COALESCE($2, unit_kind),
-  level      = COALESCE($3, level),
-  visibility = COALESCE($4, visibility),
-  metadata   = COALESCE($5, metadata)
-WHERE id = $6 AND deleted_at IS NULL
-RETURNING id, code, name, unit_kind, level, visibility, state, metadata, created_at, updated_at, deleted_at
+  domain_id  = COALESCE($2, domain_id),
+  kind_id    = COALESCE($3, kind_id),
+  level      = COALESCE($4, level),
+  visibility = COALESCE($5, visibility),
+  -- re-derive pdp_scoped when the domain changes (mixed-tree re-classification, M41)
+  pdp_scoped = COALESCE(
+    (SELECT d.pdp_scoped FROM oikumenea.tenant_domains d WHERE d.id = COALESCE($2, tenant_units.domain_id)),
+    tenant_units.pdp_scoped),
+  metadata   = COALESCE($6, metadata)
+WHERE tenant_units.id = $7 AND deleted_at IS NULL
+RETURNING id, org_id, domain_id, kind_id, code, name, level, visibility, state, pdp_scoped, metadata, created_at, updated_at, deleted_at
 `
 
 type UpdateUnitParams struct {
 	Name       pgtype.Text
-	UnitKind   pgtype.Text
+	DomainID   pgtype.Text
+	KindID     pgtype.Text
 	Level      pgtype.Int2
 	Visibility pgtype.Text
 	Metadata   []byte
 	ID         string
 }
 
-// Partial update: a NULL narg leaves the stored value unchanged (COALESCE). `code` is immutable.
+// Partial update: a NULL narg leaves the stored value unchanged (COALESCE). `code` and `org_id` are
+// immutable here (code via SetUnitCode; org is fixed at create).
 func (q *Queries) UpdateUnit(ctx context.Context, arg UpdateUnitParams) (OikumeneaTenantUnit, error) {
 	row := q.db.QueryRow(ctx, updateUnit,
 		arg.Name,
-		arg.UnitKind,
+		arg.DomainID,
+		arg.KindID,
 		arg.Level,
 		arg.Visibility,
 		arg.Metadata,
@@ -869,13 +1596,58 @@ func (q *Queries) UpdateUnit(ctx context.Context, arg UpdateUnitParams) (Oikumen
 	var i OikumeneaTenantUnit
 	err := row.Scan(
 		&i.ID,
+		&i.OrgID,
+		&i.DomainID,
+		&i.KindID,
 		&i.Code,
 		&i.Name,
-		&i.UnitKind,
 		&i.Level,
 		&i.Visibility,
 		&i.State,
+		&i.PdpScoped,
 		&i.Metadata,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const updateUnitKind = `-- name: UpdateUnitKind :one
+UPDATE oikumenea.tenant_unit_kinds SET
+  name        = COALESCE($1, name),
+  attr_schema = COALESCE($2, attr_schema),
+  status      = COALESCE($3, status),
+  sort_order  = COALESCE($4, sort_order)
+WHERE id = $5 AND deleted_at IS NULL
+RETURNING id, domain_id, code, name, attr_schema, status, sort_order, created_at, updated_at, deleted_at
+`
+
+type UpdateUnitKindParams struct {
+	Name       pgtype.Text
+	AttrSchema []byte
+	Status     pgtype.Text
+	SortOrder  pgtype.Int4
+	ID         string
+}
+
+func (q *Queries) UpdateUnitKind(ctx context.Context, arg UpdateUnitKindParams) (OikumeneaTenantUnitKind, error) {
+	row := q.db.QueryRow(ctx, updateUnitKind,
+		arg.Name,
+		arg.AttrSchema,
+		arg.Status,
+		arg.SortOrder,
+		arg.ID,
+	)
+	var i OikumeneaTenantUnitKind
+	err := row.Scan(
+		&i.ID,
+		&i.DomainID,
+		&i.Code,
+		&i.Name,
+		&i.AttrSchema,
+		&i.Status,
+		&i.SortOrder,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,

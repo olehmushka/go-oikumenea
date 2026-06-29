@@ -339,6 +339,53 @@ func TestChildCreationPolicy(t *testing.T) {
 	}
 }
 
+// TestCreateRootOrg proves the first-class top-level-body path (M41 / D-UnifiedOrgGraph): CreateRootOrg
+// builds a `church`-domain organization + its root religious-body unit + profile, and a child added under
+// it via CreateChildOrg lands in the canonical graph — no hand-seeded org/unit fixtures.
+func TestCreateRootOrg(t *testing.T) {
+	pool := newPool(t)
+	svc := newService(t, pool)
+	ctx := context.Background()
+
+	ensureChurchDomain(t, pool)
+	ocu := taxonID(t, pool, "orthodox_church_of_ukraine")
+
+	root, err := svc.CreateRootOrg(ctx, uniq("ocu"), "Orthodox Church of Ukraine", "", "", ocu)
+	if err != nil {
+		t.Fatalf("create root org: %v", err)
+	}
+	if root.UnitID == "" {
+		t.Fatalf("expected a root unit profile")
+	}
+	// The root unit lives in a `church`-domain organization (M40/M41).
+	var domCode string
+	if err := pool.QueryRow(ctx, `
+		SELECT d.code FROM oikumenea.tenant_units u
+		JOIN oikumenea.tenant_organizations o ON o.id = u.org_id
+		JOIN oikumenea.tenant_domains d ON d.id = o.domain_id
+		WHERE u.id = $1`, root.UnitID).Scan(&domCode); err != nil {
+		t.Fatalf("resolve root org domain: %v", err)
+	}
+	if domCode != "church" {
+		t.Fatalf("expected root body in church domain, got %q", domCode)
+	}
+	// A child body added under the root lands in the canonical graph.
+	child, err := svc.CreateChildOrg(ctx, root.UnitID, uniq("eparchy"), "Kyiv Eparchy", "", "", "")
+	if err != nil {
+		t.Fatalf("create child under root: %v", err)
+	}
+	var edges int
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*) FROM oikumenea.tenant_unit_edges e
+		JOIN oikumenea.tenant_graphs g ON g.id = e.graph_id
+		WHERE g.code='canonical' AND e.parent_id=$1 AND e.child_id=$2`, root.UnitID, child.UnitID).Scan(&edges); err != nil {
+		t.Fatalf("check edge: %v", err)
+	}
+	if edges != 1 {
+		t.Fatalf("expected 1 canonical edge root->child, got %d", edges)
+	}
+}
+
 // TestClergyCredentialLifecycle proves the public clergy credential: add → list (by person + by unit) →
 // status flip (suspend), and the indelible nature (no hard delete, status reflects revocation).
 func TestClergyCredentialLifecycle(t *testing.T) {
@@ -455,11 +502,37 @@ func mustDate(t *testing.T, s string) *time.Time {
 
 func ptr(s string) *string { return &s }
 
+// ensureOrgSQL idempotently seeds a church-domain organization (D-TenantOrganizations, M40) so a
+// religious-body root unit can be placed in a real organization; child bodies inherit its org via
+// CreateChildOrg. The canonical/tradition/affiliation graphs stay instance-global (migration-seeded).
+const ensureOrgSQL = `
+INSERT INTO oikumenea.tenant_domains (code, name) VALUES ('test-church','Church')
+  ON CONFLICT (code) WHERE deleted_at IS NULL DO NOTHING;
+INSERT INTO oikumenea.tenant_organizations (code, name, domain_id)
+  SELECT 'test-religion-org','Test Religion Org', d.id FROM oikumenea.tenant_domains d WHERE d.code='test-church'
+  ON CONFLICT (code) WHERE deleted_at IS NULL DO NOTHING`
+
+// ensureChurchDomain idempotently seeds the real `church` operational domain (pdp_scoped=true) — what
+// tenant.Register seeds at boot — so CreateRootOrg can resolve it (M41 / D-UnifiedOrgGraph).
+func ensureChurchDomain(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	if _, err := pool.Exec(context.Background(), `INSERT INTO oikumenea.tenant_domains (code, name, pdp_scoped)
+		VALUES ('church','Church',true)
+		ON CONFLICT (code) WHERE deleted_at IS NULL DO NOTHING`); err != nil {
+		t.Fatalf("ensure church domain: %v", err)
+	}
+}
+
 func seedUnit(t *testing.T, pool *pgxpool.Pool) string {
 	t.Helper()
+	if _, err := pool.Exec(context.Background(), ensureOrgSQL); err != nil {
+		t.Fatalf("ensure org: %v", err)
+	}
 	var id string
 	if err := pool.QueryRow(context.Background(),
-		`INSERT INTO oikumenea.tenant_units (code, name) VALUES ($1,'Religious Body') RETURNING id`, uniq("unit")).Scan(&id); err != nil {
+		`INSERT INTO oikumenea.tenant_units (org_id, domain_id, code, name)
+		 SELECT o.id, o.domain_id, $1, 'Religious Body' FROM oikumenea.tenant_organizations o WHERE o.code='test-religion-org'
+		 RETURNING id`, uniq("unit")).Scan(&id); err != nil {
 		t.Fatalf("seed unit: %v", err)
 	}
 	return id

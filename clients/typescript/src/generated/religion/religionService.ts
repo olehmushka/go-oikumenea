@@ -17,6 +17,7 @@ import { IClergyGradeList } from "./clergyGradeList";
 import { IClosureReport } from "./closureReport";
 import { ICreateAliasRequest } from "./createAliasRequest";
 import { ICreateChildOrgRequest } from "./createChildOrgRequest";
+import { ICreateRootOrgRequest } from "./createRootOrgRequest";
 import { ICreateScheduleRequest } from "./createScheduleRequest";
 import { ICreateSiteRequest } from "./createSiteRequest";
 import { ICreateTaxonRequest } from "./createTaxonRequest";
@@ -119,6 +120,12 @@ export interface IReligionService {
      *
      */
     createChildOrg(unitId: string, request: ICreateChildOrgRequest): Promise<IOrgProfile>;
+    /**
+     * Create a top-level religious body (M41 / D-UnifiedOrgGraph): a `church`-domain tenant
+     * organization + its root religious-body unit + profile. Instance-level (religion.catalog.manage).
+     *
+     */
+    createRootOrg(request: ICreateRootOrgRequest): Promise<IOrgProfile>;
     listGradeCategories(): Promise<IGradeCategoryList>;
     upsertGradeCategory(request: IUpsertGradeCategoryRequest): Promise<IGradeCategory>;
     /** List clergy grades, optionally filtered to a tradition taxon (RID or code), ordered by tradition then ordinal. */
@@ -625,6 +632,26 @@ export class ReligionService implements IReligionService {
             [
                 unitId,
             ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Create a top-level religious body (M41 / D-UnifiedOrgGraph): a `church`-domain tenant
+     * organization + its root religious-body unit + profile. Instance-level (religion.catalog.manage).
+     *
+     */
+    public createRootOrg(request: ICreateRootOrgRequest): Promise<IOrgProfile> {
+        return this.bridge.call<IOrgProfile>(
+            "ReligionService",
+            "createRootOrg",
+            "POST",
+            "/religion/v1/religion-orgs",
+            request,
+            __undefined,
+            __undefined,
+            __undefined,
             __undefined,
             __undefined
         );

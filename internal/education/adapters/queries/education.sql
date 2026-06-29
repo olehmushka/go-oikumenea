@@ -17,140 +17,53 @@ ON CONFLICT (code) WHERE deleted_at IS NULL
 DO UPDATE SET name = EXCLUDED.name, sort_order = COALESCE(EXCLUDED.sort_order, oikumenea.education_institution_kinds.sort_order), updated_at = now()
 RETURNING *;
 
--- name: ListUnitKinds :many
-SELECT * FROM oikumenea.education_unit_kinds
-WHERE deleted_at IS NULL ORDER BY sort_order, code;
-
--- name: UpsertUnitKind :one
-INSERT INTO oikumenea.education_unit_kinds (code, name, sort_order)
-VALUES (@code, @name, sqlc.narg('sort_order'))
-ON CONFLICT (code) WHERE deleted_at IS NULL
-DO UPDATE SET name = EXCLUDED.name, sort_order = COALESCE(EXCLUDED.sort_order, oikumenea.education_unit_kinds.sort_order), updated_at = now()
-RETURNING *;
-
 -- name: ListDegreeLevels :many
 SELECT * FROM oikumenea.education_degree_levels
 WHERE deleted_at IS NULL ORDER BY isced_level;
 
--- ============================ institutions ============================
+-- ============================ institutions (tenant org + education_org_profiles sidecar — M41) ============================
+-- An institution is a `university`-domain tenant organization (code/name/visibility) plus an
+-- education_org_profiles sidecar (kind/country/dates/state). The org itself is created/updated through
+-- the tenant service; these queries own the sidecar and the joined read view.
 
--- name: InsertInstitution :one
-INSERT INTO oikumenea.education_institutions (code, name, kind_id, country_id, founded_on, closed_on)
-VALUES (@code, @name, @kind_id, sqlc.narg('country_id'), sqlc.narg('founded_on'), sqlc.narg('closed_on'))
+-- name: InsertOrgProfile :one
+INSERT INTO oikumenea.education_org_profiles (institution_id, kind_id, country_id, founded_on, closed_on)
+VALUES (@institution_id, @kind_id, sqlc.narg('country_id'), sqlc.narg('founded_on'), sqlc.narg('closed_on'))
 RETURNING *;
 
 -- name: GetInstitution :one
-SELECT * FROM oikumenea.education_institutions WHERE id = @id AND deleted_at IS NULL;
+SELECT o.id, o.code, o.name,
+  p.kind_id, p.country_id, p.founded_on, p.closed_on, p.state, p.created_at, p.updated_at
+FROM oikumenea.education_org_profiles p
+JOIN oikumenea.tenant_organizations o ON o.id = p.institution_id AND o.deleted_at IS NULL
+WHERE p.institution_id = @id AND p.deleted_at IS NULL;
 
--- name: UpdateInstitution :one
-UPDATE oikumenea.education_institutions SET
-  name       = COALESCE(sqlc.narg('name'), name),
+-- name: UpdateOrgProfile :one
+UPDATE oikumenea.education_org_profiles SET
   kind_id    = COALESCE(sqlc.narg('kind_id'), kind_id),
   country_id = COALESCE(sqlc.narg('country_id'), country_id),
   founded_on = COALESCE(sqlc.narg('founded_on'), founded_on),
   closed_on  = COALESCE(sqlc.narg('closed_on'), closed_on),
   state      = COALESCE(sqlc.narg('state'), state)
-WHERE id = @id AND deleted_at IS NULL
+WHERE institution_id = @id AND deleted_at IS NULL
 RETURNING *;
 
 -- name: ListInstitutions :many
--- Active institutions, optional case-insensitive code/name filter, keyset-paginated by RID.
-SELECT * FROM oikumenea.education_institutions
-WHERE deleted_at IS NULL
-  AND (@query = '' OR code ILIKE '%' || @query || '%' OR name ILIKE '%' || @query || '%')
-  AND (@after = '' OR id::text > @after)
-ORDER BY id
+-- Active institutions (orgs with an education profile), optional case-insensitive code/name filter,
+-- keyset-paginated by org RID.
+SELECT o.id, o.code, o.name,
+  p.kind_id, p.country_id, p.founded_on, p.closed_on, p.state, p.created_at, p.updated_at
+FROM oikumenea.education_org_profiles p
+JOIN oikumenea.tenant_organizations o ON o.id = p.institution_id AND o.deleted_at IS NULL
+WHERE p.deleted_at IS NULL
+  AND (@query = '' OR o.code ILIKE '%' || @query || '%' OR o.name ILIKE '%' || @query || '%')
+  AND (@after = '' OR o.id::text > @after)
+ORDER BY o.id
 LIMIT @lim;
 
 -- name: SoftDeleteInstitution :execrows
-UPDATE oikumenea.education_institutions SET deleted_at = now()
-WHERE id = @id AND deleted_at IS NULL;
-
--- ============================ units (structure tree) ============================
-
--- name: InsertUnit :one
-INSERT INTO oikumenea.education_units (institution_id, parent_id, kind_id, code, name, sort_order)
-VALUES (@institution_id, sqlc.narg('parent_id'), @kind_id, @code, @name, sqlc.narg('sort_order'))
-RETURNING *;
-
--- name: GetUnit :one
-SELECT * FROM oikumenea.education_units WHERE id = @id AND deleted_at IS NULL;
-
--- name: UpdateUnit :one
-UPDATE oikumenea.education_units SET
-  name            = COALESCE(sqlc.narg('name'), name),
-  kind_id         = COALESCE(sqlc.narg('kind_id'), kind_id),
-  status          = COALESCE(sqlc.narg('status'), status),
-  sort_order      = COALESCE(sqlc.narg('sort_order'), sort_order)
-WHERE id = @id AND deleted_at IS NULL
-RETURNING *;
-
--- name: SetUnitParent :one
--- Reparent: set parent_id (NULL = top-level). The cycle guard runs in the application before this.
-UPDATE oikumenea.education_units SET parent_id = sqlc.narg('parent_id')
-WHERE id = @id AND deleted_at IS NULL
-RETURNING *;
-
--- name: ListUnitsByInstitution :many
--- All active units of an institution with their depth from the nearest root (max closure depth as a
--- descendant — single-parent tree, so that is the distance to the root).
-SELECT u.*,
-  COALESCE((SELECT max(c.depth) FROM oikumenea.education_unit_closure c WHERE c.descendant_id = u.id), 0)::int AS depth
-FROM oikumenea.education_units u
-WHERE u.institution_id = @institution_id AND u.deleted_at IS NULL
-ORDER BY depth, u.sort_order, u.code;
-
--- name: ClosureHasPath :one
--- Whether `ancestor` reaches `descendant` in the maintained closure (cycle guard on reparent).
-SELECT EXISTS (
-  SELECT 1 FROM oikumenea.education_unit_closure
-  WHERE ancestor_id = @ancestor_id AND descendant_id = @descendant_id
-) AS has_path;
-
--- name: DeleteClosureForInstitution :exec
-DELETE FROM oikumenea.education_unit_closure
-WHERE ancestor_id IN (SELECT id FROM oikumenea.education_units WHERE institution_id = @institution_id);
-
--- name: RebuildClosureForInstitution :exec
--- Recompute one institution's full transitive closure from its units' parent_id tree, in the caller's
--- transaction. Reflexive (u,u,0) rows for every active unit, then descend parent->child.
-WITH RECURSIVE
-  nodes AS (
-    SELECT eu.id AS u FROM oikumenea.education_units eu
-    WHERE eu.institution_id = @institution_id AND eu.deleted_at IS NULL
-  ),
-  reach AS (
-    SELECT u AS ancestor_id, u AS descendant_id, 0 AS depth FROM nodes
-    UNION ALL
-    SELECT r.ancestor_id, c.id, r.depth + 1
-    FROM reach r
-    JOIN oikumenea.education_units c
-      ON c.parent_id = r.descendant_id AND c.institution_id = @institution_id AND c.deleted_at IS NULL
-  )
-INSERT INTO oikumenea.education_unit_closure (ancestor_id, descendant_id, depth)
-SELECT ancestor_id, descendant_id, min(depth)::int
-FROM reach
-GROUP BY ancestor_id, descendant_id;
-
--- name: CountStoredClosure :one
-SELECT count(*) FROM oikumenea.education_unit_closure c
-WHERE c.descendant_id IN (SELECT id FROM oikumenea.education_units WHERE institution_id = @institution_id);
-
--- name: CountExpectedClosure :one
-WITH RECURSIVE
-  nodes AS (
-    SELECT eu.id AS u FROM oikumenea.education_units eu
-    WHERE eu.institution_id = @institution_id AND eu.deleted_at IS NULL
-  ),
-  reach AS (
-    SELECT u AS ancestor_id, u AS descendant_id, 0 AS depth FROM nodes
-    UNION ALL
-    SELECT r.ancestor_id, c.id, r.depth + 1
-    FROM reach r
-    JOIN oikumenea.education_units c
-      ON c.parent_id = r.descendant_id AND c.institution_id = @institution_id AND c.deleted_at IS NULL
-  )
-SELECT count(*) FROM (SELECT DISTINCT ancestor_id, descendant_id FROM reach) e;
+UPDATE oikumenea.education_org_profiles SET deleted_at = now()
+WHERE institution_id = @id AND deleted_at IS NULL;
 
 -- ============================ buildings ============================
 
@@ -288,7 +201,7 @@ RETURNING *;
 SELECT a.*, p.title AS position_title, p.institution_id AS institution_id, i.name AS institution_name
 FROM oikumenea.education_appointments a
 JOIN oikumenea.education_positions p ON p.id = a.position_id
-JOIN oikumenea.education_institutions i ON i.id = p.institution_id
+JOIN oikumenea.tenant_organizations i ON i.id = p.institution_id
 WHERE a.person_id = @person_id AND a.deleted_at IS NULL
 ORDER BY a.status, a.effective_from DESC NULLS LAST, a.id;
 

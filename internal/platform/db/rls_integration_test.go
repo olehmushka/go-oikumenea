@@ -65,6 +65,17 @@ func TestRLSBackstop(t *testing.T) {
 	}
 	defer super.Close()
 
+	// Units now belong to an organization (D-TenantOrganizations, M40); seed a test domain + org so the
+	// RLS-fixture unit inserts have a valid org_id/domain_id (referenced by subquery below).
+	if _, err := super.Exec(ctx, `
+INSERT INTO oikumenea.tenant_domains (code, name) VALUES ('rls-test-domain','RLS Test Domain')
+  ON CONFLICT (code) WHERE deleted_at IS NULL DO NOTHING;
+INSERT INTO oikumenea.tenant_organizations (code, name, domain_id)
+  SELECT 'rls-test-org','RLS Test Org', d.id FROM oikumenea.tenant_domains d WHERE d.code='rls-test-domain'
+  ON CONFLICT (code) WHERE deleted_at IS NULL DO NOTHING`); err != nil {
+		t.Fatalf("seed rls org: %v", err)
+	}
+
 	// Distinct ids so the test is independent of any pre-existing rows; minted via new_id so the
 	// id RID-shape CHECK holds. idReadable/idHidden are seeded now (both shadow); idWrite* are reserved
 	// for the write-policy test; idPublic is a public unit for the public-read policy test (F-002).
@@ -79,13 +90,15 @@ func TestRLSBackstop(t *testing.T) {
 	// public-read exception); idPublic is public so it should be selectable regardless of reach.
 	for _, id := range []string{idReadable, idHidden} {
 		if _, err := super.Exec(ctx,
-			"INSERT INTO oikumenea.tenant_units (id, code, name, visibility) VALUES ($1, $2, $3, 'shadow')",
+			`INSERT INTO oikumenea.tenant_units (id, code, name, visibility, org_id, domain_id)
+			 SELECT $1, $2, $3, 'shadow', o.id, o.domain_id FROM oikumenea.tenant_organizations o WHERE o.code='rls-test-org'`,
 			id, mkCode(id), "RLS test unit"); err != nil {
 			t.Fatalf("seed unit: %v", err)
 		}
 	}
 	if _, err := super.Exec(ctx,
-		"INSERT INTO oikumenea.tenant_units (id, code, name, visibility) VALUES ($1, $2, $3, 'public')",
+		`INSERT INTO oikumenea.tenant_units (id, code, name, visibility, org_id, domain_id)
+		 SELECT $1, $2, $3, 'public', o.id, o.domain_id FROM oikumenea.tenant_organizations o WHERE o.code='rls-test-org'`,
 		idPublic, mkCode(idPublic), "RLS test public unit"); err != nil {
 		t.Fatalf("seed public unit: %v", err)
 	}
@@ -159,7 +172,8 @@ func TestRLSBackstop(t *testing.T) {
 		}
 		defer releaseOK()
 		if _, err := okConn.Exec(ctx,
-			"INSERT INTO oikumenea.tenant_units (id, code, name) VALUES ($1, $2, $3)",
+			`INSERT INTO oikumenea.tenant_units (id, code, name, org_id, domain_id)
+			 SELECT $1, $2, $3, o.id, o.domain_id FROM oikumenea.tenant_organizations o WHERE o.code='rls-test-org'`,
 			idWriteOK, mkCode(idWriteOK), "RLS write ok"); err != nil {
 			t.Errorf("insert into a writable unit id should succeed, got: %v", err)
 		}
@@ -171,7 +185,8 @@ func TestRLSBackstop(t *testing.T) {
 		}
 		defer releaseDeny()
 		_, err = denyConn.Exec(ctx,
-			"INSERT INTO oikumenea.tenant_units (id, code, name) VALUES ($1, $2, $3)",
+			`INSERT INTO oikumenea.tenant_units (id, code, name, org_id, domain_id)
+			 SELECT $1, $2, $3, o.id, o.domain_id FROM oikumenea.tenant_organizations o WHERE o.code='rls-test-org'`,
 			idWriteDenied, mkCode(idWriteDenied), "RLS write denied")
 		if err == nil {
 			t.Error("insert with empty writable_units must be rejected by RLS WITH CHECK")

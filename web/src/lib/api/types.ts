@@ -27,6 +27,10 @@ export type Whoami = identityfederation.IWhoami;
 // ── tenant ───────────────────────────────────────────────────────────────────
 export type Unit = tenant.IUnit;
 export type UnitPage = tenant.IUnitPage;
+export type Domain = tenant.IDomain;
+export type Organization = tenant.IOrganization;
+export type UnitKind = tenant.IUnitKind;
+export type Visibility = tenant.Visibility;
 export type UnitRef = tenant.IUnitRef;
 export type UnitRefList = tenant.IUnitRefList;
 export type Graph = tenant.IGraph;

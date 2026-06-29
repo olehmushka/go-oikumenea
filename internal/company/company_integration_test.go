@@ -27,6 +27,9 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/company/domain"
 	personadapters "github.com/olegamysk/go-oikumenea/internal/person/adapters"
 	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
+	tenantadapters "github.com/olegamysk/go-oikumenea/internal/tenant/adapters"
+	tenantapp "github.com/olegamysk/go-oikumenea/internal/tenant/application"
+	tenantdomain "github.com/olegamysk/go-oikumenea/internal/tenant/domain"
 )
 
 const defaultTestDSN = "postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable"
@@ -50,9 +53,25 @@ func newService(t *testing.T, pool *pgxpool.Pool) *application.Service {
 	audit := auditapp.NewService(pool, func(conn pdb.DBTX) auditdomain.Repository {
 		return auditadapters.NewRepository(conn)
 	}, func() int { return 50 })
+	seedTenantCatalog(t, pool)
+	tenantSvc := tenantapp.NewService(pool, func(conn pdb.DBTX) tenantdomain.Repository {
+		return tenantadapters.NewRepository(conn)
+	}, audit)
 	return application.NewService(pool, func(conn pdb.DBTX) domain.Repository {
 		return adapters.NewRepository(conn)
-	}, audit)
+	}, audit, tenantSvc)
+}
+
+// seedTenantCatalog idempotently seeds the `company` reference domain (pdp_scoped=false) — what
+// tenant.Register seeds at boot — so a company (a `company`-domain org) can be created in the test DB
+// (M41 / D-UnifiedOrgGraph). Companies have no internal unit tree, so no unit kinds are seeded.
+func seedTenantCatalog(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	if _, err := pool.Exec(context.Background(), `INSERT INTO oikumenea.tenant_domains (code, name, pdp_scoped, sort_order)
+		VALUES ('company','Company',false,40)
+		ON CONFLICT (code) WHERE deleted_at IS NULL DO NOTHING`); err != nil {
+		t.Fatalf("seed company domain: %v", err)
+	}
 }
 
 func ptr(s string) *string  { return &s }

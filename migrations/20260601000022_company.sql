@@ -35,9 +35,11 @@
 -- ---------------------------------------------------------------------------------------------------
 INSERT INTO oikumenea.platform_rid_services (code, module) VALUES (15, 'company');
 
+-- M41 / D-UnifiedOrgGraph: a company IS a `company`-domain tenant organization (no own `company` object
+-- RID); company-specific attributes live in the company_org_profiles sidecar (PK = the tenant org RID).
 INSERT INTO oikumenea.platform_rid_types (service_code, kind, type_code, type_name) VALUES
   -- company objects
-  (15,1,1,'company'),(15,1,2,'legal_form'),(15,1,3,'registration_scheme'),(15,1,4,'industry_class'),
+  (15,1,2,'legal_form'),(15,1,3,'registration_scheme'),(15,1,4,'industry_class'),
   (15,1,5,'company_position'),(15,1,6,'registration'),
   -- company links
   (15,2,1,'holds_company_position'),(15,2,2,'founded'),(15,2,3,'owns_stake'),(15,2,4,'beneficiary_of'),
@@ -167,13 +169,13 @@ INSERT INTO oikumenea.company_industry_classes (code, name, system, sort_order) 
 -- Objects: companies, registrations, positions.
 -- ===================================================================================================
 
--- company_companies — a legal entity at registry grade. `code` is the stable external key (unique among
--- active); legal_name is the translatable registered name; short_name is a plain trading/short name.
--- ownership_category and legal_form are orthogonal axes (a private LLC vs a state-owned JSC).
-CREATE TABLE oikumenea.company_companies (
-  id                 uuid PRIMARY KEY DEFAULT oikumenea.new_id(15,1,1),  -- company / object / company
-  code               text NOT NULL,
-  legal_name         text NOT NULL,           -- default-locale registered name; translatable via the i18n store
+-- company_org_profiles — the company sidecar (M41 / D-UnifiedOrgGraph). A company IS a `company`-domain
+-- tenant organization (its stable `code` and translatable registered name = the org's code + name); this
+-- table carries the company-specific attributes keyed by the tenant org RID (PK = institution pattern,
+-- mirrors education_org_profiles / religion_org_profiles — no own RID). short_name is a plain trading
+-- name; ownership_category and legal_form are orthogonal axes (a private LLC vs a state-owned JSC).
+CREATE TABLE oikumenea.company_org_profiles (
+  company_id         uuid PRIMARY KEY REFERENCES oikumenea.tenant_organizations(id) ON DELETE CASCADE,
   short_name         text,                    -- plain trading/short name
   legal_form_id      uuid NOT NULL REFERENCES oikumenea.company_legal_forms(id) ON DELETE RESTRICT,
   ownership_category text NOT NULL DEFAULT 'private'
@@ -184,33 +186,27 @@ CREATE TABLE oikumenea.company_companies (
   state              text NOT NULL DEFAULT 'active' CHECK (state IN ('active','dissolved','merged')),
   created_at         timestamptz NOT NULL DEFAULT now(),
   updated_at         timestamptz NOT NULL DEFAULT now(),
-  deleted_at         timestamptz,
-  CONSTRAINT company_companies_rid_shape
-    CHECK (oikumenea.rid_service(id)=15 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=1)
+  deleted_at         timestamptz
 );
-CREATE UNIQUE INDEX company_companies_code_active
-  ON oikumenea.company_companies (code) WHERE deleted_at IS NULL;
-CREATE INDEX company_companies_country_idx
-  ON oikumenea.company_companies (country_id) WHERE deleted_at IS NULL;
-CREATE INDEX company_companies_legal_form_idx
-  ON oikumenea.company_companies (legal_form_id) WHERE deleted_at IS NULL;
-CREATE TRIGGER company_companies_set_updated_at
-  BEFORE UPDATE ON oikumenea.company_companies
+CREATE INDEX company_org_profiles_country_idx
+  ON oikumenea.company_org_profiles (country_id) WHERE deleted_at IS NULL;
+CREATE INDEX company_org_profiles_legal_form_idx
+  ON oikumenea.company_org_profiles (legal_form_id) WHERE deleted_at IS NULL;
+CREATE TRIGGER company_org_profiles_set_updated_at
+  BEFORE UPDATE ON oikumenea.company_org_profiles
   FOR EACH ROW EXECUTE FUNCTION oikumenea.set_updated_at();
-COMMENT ON COLUMN oikumenea.company_companies.id IS 'pii:none';
-COMMENT ON COLUMN oikumenea.company_companies.code IS 'pii:none';
-COMMENT ON COLUMN oikumenea.company_companies.legal_name IS 'pii:none';
-COMMENT ON COLUMN oikumenea.company_companies.short_name IS 'pii:none';
-COMMENT ON COLUMN oikumenea.company_companies.legal_form_id IS 'pii:none';
-COMMENT ON COLUMN oikumenea.company_companies.ownership_category IS 'pii:none';
-COMMENT ON COLUMN oikumenea.company_companies.country_id IS 'pii:none';
+COMMENT ON COLUMN oikumenea.company_org_profiles.company_id IS 'pii:none';
+COMMENT ON COLUMN oikumenea.company_org_profiles.short_name IS 'pii:none';
+COMMENT ON COLUMN oikumenea.company_org_profiles.legal_form_id IS 'pii:none';
+COMMENT ON COLUMN oikumenea.company_org_profiles.ownership_category IS 'pii:none';
+COMMENT ON COLUMN oikumenea.company_org_profiles.country_id IS 'pii:none';
 
 -- company_registrations — a company's per-scheme registration identifier (mirrors document
 -- personal_codes). identifier is the registered number; validated records whether it matched the
 -- scheme's validator_pattern. Unique per (scheme, identifier) among active rows.
 CREATE TABLE oikumenea.company_registrations (
   id         uuid PRIMARY KEY DEFAULT oikumenea.new_id(15,1,6),  -- company / object / registration
-  company_id uuid NOT NULL REFERENCES oikumenea.company_companies(id) ON DELETE CASCADE,
+  company_id uuid NOT NULL REFERENCES oikumenea.tenant_organizations(id) ON DELETE CASCADE,
   scheme_id  uuid NOT NULL REFERENCES oikumenea.company_registration_schemes(id) ON DELETE RESTRICT,
   identifier text NOT NULL,
   validated  boolean NOT NULL DEFAULT false,
@@ -236,7 +232,7 @@ COMMENT ON COLUMN oikumenea.company_registrations.identifier IS 'pii:none';
 -- secondaries.
 CREATE TABLE oikumenea.company_industry_assignments (
   id                 uuid PRIMARY KEY DEFAULT oikumenea.new_id(15,2,7),  -- company / link / has_industry
-  company_id         uuid NOT NULL REFERENCES oikumenea.company_companies(id) ON DELETE CASCADE,
+  company_id         uuid NOT NULL REFERENCES oikumenea.tenant_organizations(id) ON DELETE CASCADE,
   industry_class_id  uuid NOT NULL REFERENCES oikumenea.company_industry_classes(id) ON DELETE RESTRICT,
   is_primary         boolean NOT NULL DEFAULT false,
   created_at         timestamptz NOT NULL DEFAULT now(),
@@ -262,7 +258,7 @@ COMMENT ON COLUMN oikumenea.company_industry_assignments.is_primary IS 'pii:none
 -- distinguishes the registered office from operating sites / branches.
 CREATE TABLE oikumenea.company_locations (
   id          uuid PRIMARY KEY DEFAULT oikumenea.new_id(15,2,8),  -- company / link / located_at
-  company_id  uuid NOT NULL REFERENCES oikumenea.company_companies(id) ON DELETE CASCADE,
+  company_id  uuid NOT NULL REFERENCES oikumenea.tenant_organizations(id) ON DELETE CASCADE,
   location_id uuid NOT NULL REFERENCES oikumenea.location_locations(id) ON DELETE RESTRICT,  -- M19
   role        text NOT NULL DEFAULT 'registered' CHECK (role IN ('registered','operating','branch')),
   created_at  timestamptz NOT NULL DEFAULT now(),
@@ -286,7 +282,7 @@ COMMENT ON COLUMN oikumenea.company_locations.role IS 'pii:none';
 -- fills it (mirrors membership / education positions). `code` unique within the company.
 CREATE TABLE oikumenea.company_positions (
   id         uuid PRIMARY KEY DEFAULT oikumenea.new_id(15,1,5),  -- company / object / company_position
-  company_id uuid NOT NULL REFERENCES oikumenea.company_companies(id) ON DELETE RESTRICT,
+  company_id uuid NOT NULL REFERENCES oikumenea.tenant_organizations(id) ON DELETE RESTRICT,
   code       text NOT NULL,
   title      text NOT NULL,                  -- default-locale title; translatable via the i18n store
   status     text NOT NULL DEFAULT 'active' CHECK (status IN ('active','abolished')),
@@ -353,7 +349,7 @@ COMMENT ON COLUMN oikumenea.company_appointments.status IS 'pii:none';
 -- is a person it is pii:basic and erased on person purge.
 CREATE TABLE oikumenea.company_foundings (
   id          uuid PRIMARY KEY DEFAULT oikumenea.new_id(15,2,2),  -- company / link / founded
-  company_id  uuid NOT NULL REFERENCES oikumenea.company_companies(id) ON DELETE CASCADE,  -- the founded company
+  company_id  uuid NOT NULL REFERENCES oikumenea.tenant_organizations(id) ON DELETE CASCADE,  -- the founded company
   holder_kind text NOT NULL CHECK (holder_kind IN ('person','company')),
   holder_id   text NOT NULL,                  -- founder RID (person or company); polymorphic, no FK
   founded_on  date,
@@ -380,7 +376,7 @@ COMMENT ON COLUMN oikumenea.company_foundings.holder_id IS 'pii:basic';
 -- effective-dated. Person-holder rows are pii:basic and erased on person purge.
 CREATE TABLE oikumenea.company_shareholdings (
   id             uuid PRIMARY KEY DEFAULT oikumenea.new_id(15,2,3),  -- company / link / owns_stake
-  company_id     uuid NOT NULL REFERENCES oikumenea.company_companies(id) ON DELETE CASCADE,  -- the issuer
+  company_id     uuid NOT NULL REFERENCES oikumenea.tenant_organizations(id) ON DELETE CASCADE,  -- the issuer
   holder_kind    text NOT NULL CHECK (holder_kind IN ('person','company')),
   holder_id      text NOT NULL,               -- owner RID (person or company); polymorphic, no FK
   stake_pct      numeric(7,4) CHECK (stake_pct IS NULL OR (stake_pct >= 0 AND stake_pct <= 100)),
@@ -411,7 +407,7 @@ COMMENT ON COLUMN oikumenea.company_shareholdings.stake_pct IS 'pii:none';
 -- pii:basic; erased on person purge.
 CREATE TABLE oikumenea.company_beneficiaries (
   id           uuid PRIMARY KEY DEFAULT oikumenea.new_id(15,2,4),  -- company / link / beneficiary_of
-  company_id   uuid NOT NULL REFERENCES oikumenea.company_companies(id) ON DELETE CASCADE,
+  company_id   uuid NOT NULL REFERENCES oikumenea.tenant_organizations(id) ON DELETE CASCADE,
   person_id    uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
   ultimate_pct numeric(7,4) CHECK (ultimate_pct IS NULL OR (ultimate_pct >= 0 AND ultimate_pct <= 100)),
   declared     boolean NOT NULL DEFAULT true,
@@ -437,8 +433,8 @@ COMMENT ON COLUMN oikumenea.company_beneficiaries.ultimate_pct IS 'pii:none';
 -- (link__succeeded_by). Both ends are companies.
 CREATE TABLE oikumenea.company_successions (
   id             uuid PRIMARY KEY DEFAULT oikumenea.new_id(15,2,5),  -- company / link / succeeded_by
-  predecessor_id uuid NOT NULL REFERENCES oikumenea.company_companies(id) ON DELETE CASCADE,
-  successor_id   uuid NOT NULL REFERENCES oikumenea.company_companies(id) ON DELETE CASCADE,
+  predecessor_id uuid NOT NULL REFERENCES oikumenea.tenant_organizations(id) ON DELETE CASCADE,
+  successor_id   uuid NOT NULL REFERENCES oikumenea.tenant_organizations(id) ON DELETE CASCADE,
   kind           text NOT NULL DEFAULT 'reorganization'
                    CHECK (kind IN ('merger','reorganization','rename','acquisition','spinoff')),
   effective_on   date,
@@ -465,8 +461,8 @@ COMMENT ON COLUMN oikumenea.company_successions.kind IS 'pii:none';
 -- ends are companies (a branch is itself registered as a company row).
 CREATE TABLE oikumenea.company_branches (
   id         uuid PRIMARY KEY DEFAULT oikumenea.new_id(15,2,6),  -- company / link / branch_of
-  branch_id  uuid NOT NULL REFERENCES oikumenea.company_companies(id) ON DELETE CASCADE,
-  parent_id  uuid NOT NULL REFERENCES oikumenea.company_companies(id) ON DELETE CASCADE,
+  branch_id  uuid NOT NULL REFERENCES oikumenea.tenant_organizations(id) ON DELETE CASCADE,
+  parent_id  uuid NOT NULL REFERENCES oikumenea.tenant_organizations(id) ON DELETE CASCADE,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,

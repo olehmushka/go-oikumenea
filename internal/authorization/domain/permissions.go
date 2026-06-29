@@ -28,6 +28,17 @@ const (
 	PermUnitEdgesCommandManage     Permission = "unit.edges.command.manage"
 	PermUnitEdgesOperationalManage Permission = "unit.edges.operational.manage"
 
+	// domains / unit-kinds / organizations (D-TenantOrganizations, M40). Reads are reference reads;
+	// organization create/update are manager-tier; organization lifecycle is admin-tier; the domain &
+	// unit-kind catalogs are managed on the instance plane (domain.manage / unit-kind.manage, below).
+	// Domain/organization/kind are DIRECTORY attributes — never PDP inputs.
+	PermDomainRead            Permission = "domain.read"
+	PermUnitKindRead          Permission = "unit-kind.read"
+	PermOrganizationRead      Permission = "organization.read"
+	PermOrganizationCreate    Permission = "organization.create"
+	PermOrganizationUpdate    Permission = "organization.update"
+	PermOrganizationLifecycle Permission = "organization.lifecycle"
+
 	// person
 	PermPersonRead       Permission = "person.read"
 	PermPersonCreate     Permission = "person.create"
@@ -161,6 +172,8 @@ const (
 	PermClosureRebuild           Permission = "closure.rebuild"
 	PermDocumentTypeManage       Permission = "document.type.manage"
 	PermOrderTypeManage          Permission = "order.type.manage"
+	PermDomainManage             Permission = "domain.manage"    // instance-admin manages the org-kind catalog (D-TenantOrganizations, M40)
+	PermUnitKindManage           Permission = "unit-kind.manage" // instance-admin manages the domain-scoped unit-kind catalog (M40)
 	PermPersonalCodeSchemeManage Permission = "personal-code-scheme.manage"
 	PermCountryManage            Permission = "country.manage"
 	PermLocationTypesManage      Permission = "location.types.manage"
@@ -189,6 +202,8 @@ var instanceScope = map[Permission]struct{}{
 	PermClosureRebuild:           {},
 	PermDocumentTypeManage:       {},
 	PermOrderTypeManage:          {},
+	PermDomainManage:             {},
+	PermUnitKindManage:           {},
 	PermPersonalCodeSchemeManage: {},
 	PermCountryManage:            {},
 	PermLocationTypesManage:      {},
@@ -210,6 +225,8 @@ var catalog = func() map[Permission]struct{} {
 	all := []Permission{
 		PermUnitRead, PermUnitCreate, PermUnitUpdate, PermUnitRecode, PermUnitLifecycle,
 		PermUnitEdgesManage, PermUnitEdgesCommandManage, PermUnitEdgesOperationalManage,
+		PermDomainRead, PermUnitKindRead, PermOrganizationRead, PermOrganizationCreate, PermOrganizationUpdate, PermOrganizationLifecycle,
+		PermDomainManage, PermUnitKindManage,
 		PermPersonRead, PermPersonCreate, PermPersonUpdate, PermPersonRankAssign, PermPersonLifecycle, PermPersonPurge, PermPersonMerge,
 		PermMembershipRead, PermMembershipCreate, PermMembershipUpdate,
 		PermPositionRead, PermPositionCreate, PermPositionUpdate,
@@ -290,6 +307,7 @@ var readerPerms = []Permission{
 	PermDocumentRead, PermPersonalCodeRead, PermOrderRead,
 	PermRoleRead, PermAssignmentRead,
 	PermRankSchemeRead, PermGraphRead, PermCountryRead, PermLanguageRead, PermLocationRead,
+	PermDomainRead, PermUnitKindRead, PermOrganizationRead,
 	PermDocumentTypeRead, PermPersonalCodeSchemeRead, PermOrderTypeRead,
 	PermReligionRead, PermLegalBasisRead,
 	PermLocaleRead, PermTranslationRead,
@@ -304,13 +322,15 @@ var managerOnlyPerms = []Permission{
 	PermPersonalCodeCreate, PermPersonalCodeUpdate,
 	PermOrderCreate,
 	PermLocationCreate, PermLocationUpdate,
+	PermOrganizationCreate, PermOrganizationUpdate,
 	PermReligionOrgManage, PermSiteManage, PermScheduleManage,
 }
 
 var adminOnlyPerms = []Permission{
 	PermUnitEdgesManage, // broad form — covers all graphs incl. custom (D-EdgePerms)
 	PermUnitLifecycle,
-	PermUnitRecode, // changing the external handle is a privileged action (D-UnitCodeLifecycle, M28)
+	PermOrganizationLifecycle, // organization suspend/archive/restore (D-TenantOrganizations, M40)
+	PermUnitRecode,            // changing the external handle is a privileged action (D-UnitCodeLifecycle, M28)
 	PermPersonLifecycle, PermPersonPurge, PermPersonMerge,
 	PermDocumentDelete, PermPersonalCodeDelete,
 	PermOrderIssue, PermOrderRevoke,

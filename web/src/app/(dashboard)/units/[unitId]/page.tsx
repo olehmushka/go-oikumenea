@@ -72,7 +72,7 @@ export default async function UnitDetailPage({
               label={<T>Code</T>}
               value={unit?.code ? <Mono>{unit.code}</Mono> : <span className="text-slate-400"><T>none (sub-unit)</T></span>}
             />
-            <Row label={<T>Kind</T>} value={unit?.unitKind ?? "—"} />
+            <Row label={<T>Kind</T>} value={unit?.kindId ? <Mono>{unit.kindId}</Mono> : "—"} />
             <Row label={<T>Level</T>} value={unit?.level ?? "—"} />
             <Row
               label={<T>Visibility</T>}

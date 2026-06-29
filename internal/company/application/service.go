@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -17,6 +18,8 @@ import (
 	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
 	"github.com/olegamysk/go-oikumenea/internal/company/domain"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	tenantapp "github.com/olegamysk/go-oikumenea/internal/tenant/application"
+	tenantdomain "github.com/olegamysk/go-oikumenea/internal/tenant/domain"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 
@@ -24,21 +27,51 @@ const (
 	auditSubsystem  = "company-admin"
 	defaultPageSize = 50
 	maxPageSize     = 200
+	// companyDomainCode is the tenant domain a company org belongs to (M41 / D-UnifiedOrgGraph). Companies
+	// have no internal unit tree, so (unlike education) no per-org graph is seeded.
+	companyDomainCode = "company"
 )
 
 // RepositoryFactory binds a domain.Repository to a command surface (pool for reads, tx for writes).
 type RepositoryFactory func(conn db.DBTX) domain.Repository
 
-// Service is the company application service.
+// Service is the company application service. A company is a `company`-domain tenant organization; the
+// org (code/name) is owned by the tenant service, while this service owns the company_org_profiles
+// sidecar, the registrations/positions/locations, and the ownership/affiliation graph.
 type Service struct {
 	pool    *pgxpool.Pool
 	newRepo RepositoryFactory
 	audit   *auditapp.Service
+	tenant  *tenantapp.Service
+
+	domMu     sync.Mutex
+	domID     string // cached `company` domain RID (seeded at boot, stable)
 }
 
-// NewService wires the service with the pool, repository factory, and the audit service.
-func NewService(pool *pgxpool.Pool, newRepo RepositoryFactory, audit *auditapp.Service) *Service {
-	return &Service{pool: pool, newRepo: newRepo, audit: audit}
+// NewService wires the service with the pool, repository factory, the audit service, and the tenant
+// service (a company = a `company`-domain org — M41).
+func NewService(pool *pgxpool.Pool, newRepo RepositoryFactory, audit *auditapp.Service, tenant *tenantapp.Service) *Service {
+	return &Service{pool: pool, newRepo: newRepo, audit: audit, tenant: tenant}
+}
+
+// companyDomainID resolves (and caches) the `company` tenant domain RID.
+func (s *Service) companyDomainID(ctx context.Context) (string, error) {
+	s.domMu.Lock()
+	defer s.domMu.Unlock()
+	if s.domID != "" {
+		return s.domID, nil
+	}
+	doms, err := s.tenant.ListDomains(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, d := range doms {
+		if d.Code == companyDomainCode {
+			s.domID = d.ID
+			return d.ID, nil
+		}
+	}
+	return "", domain.ErrInvalid
 }
 
 // ============================ catalogs ============================
@@ -99,20 +132,34 @@ func (s *Service) UpsertIndustryClass(ctx context.Context, code, name, system st
 
 // ============================ companies ============================
 
+// CreateCompany creates a `company`-domain tenant organization (the legal entity; code/registered name =
+// org code/name) and writes the company_org_profiles sidecar. Cross-module: the org create runs in the
+// tenant service's own transaction; the sidecar + audit run in a company transaction (sequential, like
+// education's CreateInstitution). Companies have no internal unit tree, so no graph is seeded.
 func (s *Service) CreateCompany(ctx context.Context, in domain.CompanyInput) (domain.Company, error) {
 	if err := in.Validate(); err != nil {
 		return domain.Company{}, err
 	}
-	var out domain.Company
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		created, err := s.newRepo(tx).InsertCompany(ctx, in)
-		if err != nil {
+	dom, err := s.companyDomainID(ctx)
+	if err != nil {
+		return domain.Company{}, err
+	}
+	org, err := s.tenant.CreateOrganization(ctx, tenantdomain.Organization{
+		Code: in.Code, Name: in.LegalName, DomainID: dom, Visibility: tenantdomain.VisibilityPublic,
+	})
+	if err != nil {
+		return domain.Company{}, err
+	}
+	err = s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := s.newRepo(tx).InsertOrgProfile(ctx, org.ID, in); err != nil {
 			return err
 		}
-		out = created
-		return s.record(ctx, tx, "company.create", created.ID, created)
+		return s.record(ctx, tx, "company.create", org.ID, org)
 	})
-	return out, err
+	if err != nil {
+		return domain.Company{}, err
+	}
+	return s.GetCompany(ctx, org.ID)
 }
 
 func (s *Service) GetCompany(ctx context.Context, id string) (domain.Company, error) {
@@ -123,17 +170,35 @@ func (s *Service) ListCompanies(ctx context.Context, query, after string, pageSi
 	return s.newRepo(s.pool).ListCompanies(ctx, query, after, clampPageSize(pageSize)+1)
 }
 
+// UpdateCompany applies a partial change: the org name (registered name) via the tenant service (if set)
+// and the company sidecar fields (short name/legal form/ownership/country/dates/state) via the repository.
 func (s *Service) UpdateCompany(ctx context.Context, id string, up domain.CompanyUpdate) (domain.Company, error) {
-	var out domain.Company
+	if _, err := s.newRepo(s.pool).GetCompany(ctx, id); err != nil {
+		return domain.Company{}, err
+	}
+	if up.LegalName != nil {
+		if _, err := s.tenant.UpdateOrganization(ctx, id, tenantdomain.OrgPatch{Name: up.LegalName}); err != nil {
+			return domain.Company{}, mapOrgNotFound(err)
+		}
+	}
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		updated, err := s.newRepo(tx).UpdateCompany(ctx, id, up)
-		if err != nil {
+		if err := s.newRepo(tx).UpdateOrgProfile(ctx, id, up); err != nil {
 			return err
 		}
-		out = updated
-		return s.record(ctx, tx, "company.update", id, updated)
+		return s.record(ctx, tx, "company.update", id, up)
 	})
-	return out, err
+	if err != nil {
+		return domain.Company{}, err
+	}
+	return s.GetCompany(ctx, id)
+}
+
+// mapOrgNotFound translates the tenant service's org-not-found sentinel into the company one.
+func mapOrgNotFound(err error) error {
+	if errors.Is(err, tenantdomain.ErrOrgNotFound) {
+		return domain.ErrCompanyNotFound
+	}
+	return err
 }
 
 func (s *Service) DeleteCompany(ctx context.Context, id string) error {

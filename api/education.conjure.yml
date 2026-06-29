@@ -223,13 +223,6 @@ types:
       DormitoryStayList:
         fields:
           dormitoryStays: list<DormitoryStay>
-      ClosureReport:
-        docs: The result of a closure verify/rebuild for an institution's unit tree.
-        fields:
-          institutionId: string
-          missingCount: integer
-          extraCount: integer
-          inDrift: boolean
       # ---- request bodies ----
       UpsertCatalogKindRequest:
         docs: Create/update an institution-kind or unit-kind. name is the default-locale fallback.
@@ -435,12 +428,8 @@ services:
         returns: InstitutionKind
       listUnitKinds:
         http: GET /unit-kinds
+        docs: The `university` domain's unit-kind catalog (owned by the tenant service — M41).
         returns: UnitKindList
-      upsertUnitKind:
-        http: PUT /unit-kinds
-        args:
-          request: UpsertCatalogKindRequest
-        returns: UnitKind
       listDegreeLevels:
         http: GET /degree-levels
         returns: DegreeLevelList
@@ -510,16 +499,6 @@ services:
           unitId: { type: string, param-type: path }
           request: ReparentUnitRequest
         returns: EducationUnit
-      verifyClosure:
-        http: POST /institutions/{institutionId}/units/verify-closure
-        args:
-          institutionId: { type: string, param-type: path }
-        returns: ClosureReport
-      rebuildClosure:
-        http: POST /institutions/{institutionId}/units/rebuild-closure
-        args:
-          institutionId: { type: string, param-type: path }
-        returns: ClosureReport
       # ---- buildings ----
       createBuilding:
         http: POST /institutions/{institutionId}/buildings

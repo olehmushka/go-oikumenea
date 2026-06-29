@@ -33,8 +33,18 @@ type TenantServiceClient interface {
 	SetUnitCode(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg SetUnitCodeRequest) (Unit, error)
 	// A unit's code-change history, newest first (D-UnitCodeLifecycle, M28).
 	ListUnitCodeEvents(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (UnitCodeEventList, error)
-	// List/search units, token-paginated, optionally filtered by level.
-	ListUnits(ctx context.Context, authHeader bearertoken.Token, levelArg *int, pageSizeArg *int, pageTokenArg *string) (UnitPage, error)
+	/*
+	   List/search units within an organization (D-TenantOrganizations, M40). `org` is REQUIRED —
+	   a fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally filtered by
+	   `domain` (cross-cut within the org, for mixed trees), `unitKind`, and `level`. Token-paginated.
+
+	   For hierarchical (expand-on-click) browsing in graph `graph` (default `command`): pass
+	   `rootsOnly=true` to list only the org's top-level units (those with no parent in the graph),
+	   or `parent=<unitRid>` to list a unit's DIRECT children in the graph. The two are mutually
+	   exclusive, and each ignores the `domain`/`unitKind`/`level` filters. When neither is set the
+	   listing is the flat, filtered org listing.
+	*/
+	ListUnits(ctx context.Context, authHeader bearertoken.Token, orgArg string, domainArg *string, unitKindArg *string, levelArg *int, graphArg *string, parentArg *string, rootsOnlyArg *bool, pageSizeArg *int, pageTokenArg *string) (UnitPage, error)
 	// Attach the path unit as a child of parentId within a graph (default command). Returns Tenant:UnitCycleDetected on a cycle.
 	AddEdge(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg AddEdgeRequest) (UnitEdge, error)
 	// Detach the path unit from a parent within a graph.
@@ -58,14 +68,47 @@ type TenantServiceClient interface {
 	VerifyClosure(ctx context.Context, authHeader bearertoken.Token, graphArg *string) (ClosureReportList, error)
 	// Truncate + recompute the closure, one transaction per graph (default all graphs).
 	RebuildClosure(ctx context.Context, authHeader bearertoken.Token, graphArg *string) (ClosureReportList, error)
-	// List the graph registry in display order.
-	ListGraphs(ctx context.Context, authHeader bearertoken.Token) (GraphList, error)
+	/*
+	   List graphs in display order (M40). With `org`, returns that organization's graphs plus the
+	   instance-global graphs; without `org`, returns only the instance-global graphs.
+	*/
+	ListGraphs(ctx context.Context, authHeader bearertoken.Token, orgArg *string) (GraphList, error)
 	// Add a graph. Returns Tenant:GraphCodeConflict if the code exists.
 	AddGraph(ctx context.Context, authHeader bearertoken.Token, requestArg AddGraphRequest) (Graph, error)
 	// Rename / set default / flip isAuthorityBearing (guarded; command is locked authority-bearing).
 	UpdateGraph(ctx context.Context, authHeader bearertoken.Token, graphIdArg string, requestArg UpdateGraphRequest) (Graph, error)
 	// Delete a graph (blocked for command, or while it has live edges).
 	DeleteGraph(ctx context.Context, authHeader bearertoken.Token, graphIdArg string) error
+	// List the org-kind domain catalog in display order (D-TenantOrganizations, M40). Gated by domain.read.
+	ListDomains(ctx context.Context, authHeader bearertoken.Token) (DomainList, error)
+	// Add a domain (instance-admin; domain.manage). Returns Tenant:DomainCodeConflict if the code exists.
+	CreateDomain(ctx context.Context, authHeader bearertoken.Token, requestArg CreateDomainRequest) (Domain, error)
+	// Rename / retire a domain. Returns Tenant:DomainNotFound.
+	UpdateDomain(ctx context.Context, authHeader bearertoken.Token, domainIdArg string, requestArg UpdateDomainRequest) (Domain, error)
+	// List the unit-kind catalog for a domain (D-TenantOrganizations, M40). Gated by unit-kind.read.
+	ListUnitKinds(ctx context.Context, authHeader bearertoken.Token, domainArg string) (UnitKindList, error)
+	// Add a domain-scoped unit kind (instance-admin; unit-kind.manage). Returns Tenant:UnitKindCodeConflict.
+	CreateUnitKind(ctx context.Context, authHeader bearertoken.Token, requestArg CreateUnitKindRequest) (UnitKind, error)
+	// Rename / retire a unit kind or adjust its attr schema. Returns Tenant:UnitKindNotFound.
+	UpdateUnitKind(ctx context.Context, authHeader bearertoken.Token, unitKindIdArg string, requestArg UpdateUnitKindRequest) (UnitKind, error)
+	/*
+	   List organizations, token-paginated, optionally filtered by domain (D-TenantOrganizations,
+	   M40). Shadow-gated. Gated by organization.read.
+	*/
+	ListOrganizations(ctx context.Context, authHeader bearertoken.Token, domainArg *string, pageSizeArg *int, pageTokenArg *string) (OrganizationPage, error)
+	/*
+	   Create an organization and seed its command + operational graphs in one transaction
+	   (organization.create). Returns Tenant:OrganizationCodeConflict if the code exists.
+	*/
+	CreateOrganization(ctx context.Context, authHeader bearertoken.Token, requestArg CreateOrganizationRequest) (Organization, error)
+	// Read one organization by RID (shadow-gated). Returns Tenant:OrganizationNotFound.
+	GetOrganization(ctx context.Context, authHeader bearertoken.Token, orgIdArg string) (Organization, error)
+	// Update an organization's name/domain/metadata/visibility (organization.update).
+	UpdateOrganization(ctx context.Context, authHeader bearertoken.Token, orgIdArg string, requestArg UpdateOrganizationRequest) (Organization, error)
+	// Transition an organization's lifecycle state (organization.lifecycle). Returns Tenant:TransitionInvalid for an illegal transition.
+	TransitionOrganization(ctx context.Context, authHeader bearertoken.Token, orgIdArg string, requestArg TransitionRequest) (Organization, error)
+	// List an organization's graph registry (alias of GET /graphs?org=, path-scoped).
+	ListOrganizationGraphs(ctx context.Context, authHeader bearertoken.Token, orgIdArg string) (GraphList, error)
 }
 
 type tenantServiceClient struct {
@@ -164,15 +207,31 @@ func (c *tenantServiceClient) ListUnitCodeEvents(ctx context.Context, authHeader
 	return *returnVal, nil
 }
 
-func (c *tenantServiceClient) ListUnits(ctx context.Context, authHeader bearertoken.Token, levelArg *int, pageSizeArg *int, pageTokenArg *string) (UnitPage, error) {
+func (c *tenantServiceClient) ListUnits(ctx context.Context, authHeader bearertoken.Token, orgArg string, domainArg *string, unitKindArg *string, levelArg *int, graphArg *string, parentArg *string, rootsOnlyArg *bool, pageSizeArg *int, pageTokenArg *string) (UnitPage, error) {
 	var returnVal *UnitPage
 	var requestParams []httpclient.RequestParam
 	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListUnits"))
 	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
 	requestParams = append(requestParams, httpclient.WithPathf("/tenant/v1/units"))
 	queryParams := make(url.Values)
+	queryParams.Set("org", fmt.Sprint(orgArg))
+	if domainArg != nil {
+		queryParams.Set("domain", fmt.Sprint(*domainArg))
+	}
+	if unitKindArg != nil {
+		queryParams.Set("unitKind", fmt.Sprint(*unitKindArg))
+	}
 	if levelArg != nil {
 		queryParams.Set("level", fmt.Sprint(*levelArg))
+	}
+	if graphArg != nil {
+		queryParams.Set("graph", fmt.Sprint(*graphArg))
+	}
+	if parentArg != nil {
+		queryParams.Set("parent", fmt.Sprint(*parentArg))
+	}
+	if rootsOnlyArg != nil {
+		queryParams.Set("rootsOnly", fmt.Sprint(*rootsOnlyArg))
 	}
 	if pageSizeArg != nil {
 		queryParams.Set("pageSize", fmt.Sprint(*pageSizeArg))
@@ -387,12 +446,17 @@ func (c *tenantServiceClient) RebuildClosure(ctx context.Context, authHeader bea
 	return *returnVal, nil
 }
 
-func (c *tenantServiceClient) ListGraphs(ctx context.Context, authHeader bearertoken.Token) (GraphList, error) {
+func (c *tenantServiceClient) ListGraphs(ctx context.Context, authHeader bearertoken.Token, orgArg *string) (GraphList, error) {
 	var returnVal *GraphList
 	var requestParams []httpclient.RequestParam
 	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListGraphs"))
 	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
 	requestParams = append(requestParams, httpclient.WithPathf("/tenant/v1/graphs"))
+	queryParams := make(url.Values)
+	if orgArg != nil {
+		queryParams.Set("org", fmt.Sprint(*orgArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
 	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
 	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
 	if _, err := c.client.Get(ctx, requestParams...); err != nil {
@@ -452,6 +516,231 @@ func (c *tenantServiceClient) DeleteGraph(ctx context.Context, authHeader bearer
 	return nil
 }
 
+func (c *tenantServiceClient) ListDomains(ctx context.Context, authHeader bearertoken.Token) (DomainList, error) {
+	var returnVal *DomainList
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListDomains"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/tenant/v1/domains"))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(DomainList), werror.WrapWithContextParams(ctx, err, "listDomains failed")
+	}
+	if returnVal == nil {
+		return *new(DomainList), werror.ErrorWithContextParams(ctx, "listDomains response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *tenantServiceClient) CreateDomain(ctx context.Context, authHeader bearertoken.Token, requestArg CreateDomainRequest) (Domain, error) {
+	var returnVal *Domain
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("CreateDomain"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/tenant/v1/domains"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(Domain), werror.WrapWithContextParams(ctx, err, "createDomain failed")
+	}
+	if returnVal == nil {
+		return *new(Domain), werror.ErrorWithContextParams(ctx, "createDomain response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *tenantServiceClient) UpdateDomain(ctx context.Context, authHeader bearertoken.Token, domainIdArg string, requestArg UpdateDomainRequest) (Domain, error) {
+	var returnVal *Domain
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpdateDomain"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/tenant/v1/domains/%s", url.PathEscape(fmt.Sprint(domainIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(Domain), werror.WrapWithContextParams(ctx, err, "updateDomain failed")
+	}
+	if returnVal == nil {
+		return *new(Domain), werror.ErrorWithContextParams(ctx, "updateDomain response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *tenantServiceClient) ListUnitKinds(ctx context.Context, authHeader bearertoken.Token, domainArg string) (UnitKindList, error) {
+	var returnVal *UnitKindList
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListUnitKinds"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/tenant/v1/unit-kinds"))
+	queryParams := make(url.Values)
+	queryParams.Set("domain", fmt.Sprint(domainArg))
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(UnitKindList), werror.WrapWithContextParams(ctx, err, "listUnitKinds failed")
+	}
+	if returnVal == nil {
+		return *new(UnitKindList), werror.ErrorWithContextParams(ctx, "listUnitKinds response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *tenantServiceClient) CreateUnitKind(ctx context.Context, authHeader bearertoken.Token, requestArg CreateUnitKindRequest) (UnitKind, error) {
+	var returnVal *UnitKind
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("CreateUnitKind"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/tenant/v1/unit-kinds"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(UnitKind), werror.WrapWithContextParams(ctx, err, "createUnitKind failed")
+	}
+	if returnVal == nil {
+		return *new(UnitKind), werror.ErrorWithContextParams(ctx, "createUnitKind response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *tenantServiceClient) UpdateUnitKind(ctx context.Context, authHeader bearertoken.Token, unitKindIdArg string, requestArg UpdateUnitKindRequest) (UnitKind, error) {
+	var returnVal *UnitKind
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpdateUnitKind"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/tenant/v1/unit-kinds/%s", url.PathEscape(fmt.Sprint(unitKindIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(UnitKind), werror.WrapWithContextParams(ctx, err, "updateUnitKind failed")
+	}
+	if returnVal == nil {
+		return *new(UnitKind), werror.ErrorWithContextParams(ctx, "updateUnitKind response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *tenantServiceClient) ListOrganizations(ctx context.Context, authHeader bearertoken.Token, domainArg *string, pageSizeArg *int, pageTokenArg *string) (OrganizationPage, error) {
+	var returnVal *OrganizationPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListOrganizations"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/tenant/v1/organizations"))
+	queryParams := make(url.Values)
+	if domainArg != nil {
+		queryParams.Set("domain", fmt.Sprint(*domainArg))
+	}
+	if pageSizeArg != nil {
+		queryParams.Set("pageSize", fmt.Sprint(*pageSizeArg))
+	}
+	if pageTokenArg != nil {
+		queryParams.Set("pageToken", fmt.Sprint(*pageTokenArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(OrganizationPage), werror.WrapWithContextParams(ctx, err, "listOrganizations failed")
+	}
+	if returnVal == nil {
+		return *new(OrganizationPage), werror.ErrorWithContextParams(ctx, "listOrganizations response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *tenantServiceClient) CreateOrganization(ctx context.Context, authHeader bearertoken.Token, requestArg CreateOrganizationRequest) (Organization, error) {
+	var returnVal *Organization
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("CreateOrganization"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/tenant/v1/organizations"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(Organization), werror.WrapWithContextParams(ctx, err, "createOrganization failed")
+	}
+	if returnVal == nil {
+		return *new(Organization), werror.ErrorWithContextParams(ctx, "createOrganization response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *tenantServiceClient) GetOrganization(ctx context.Context, authHeader bearertoken.Token, orgIdArg string) (Organization, error) {
+	var returnVal *Organization
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("GetOrganization"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/tenant/v1/organizations/%s", url.PathEscape(fmt.Sprint(orgIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(Organization), werror.WrapWithContextParams(ctx, err, "getOrganization failed")
+	}
+	if returnVal == nil {
+		return *new(Organization), werror.ErrorWithContextParams(ctx, "getOrganization response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *tenantServiceClient) UpdateOrganization(ctx context.Context, authHeader bearertoken.Token, orgIdArg string, requestArg UpdateOrganizationRequest) (Organization, error) {
+	var returnVal *Organization
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpdateOrganization"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/tenant/v1/organizations/%s", url.PathEscape(fmt.Sprint(orgIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(Organization), werror.WrapWithContextParams(ctx, err, "updateOrganization failed")
+	}
+	if returnVal == nil {
+		return *new(Organization), werror.ErrorWithContextParams(ctx, "updateOrganization response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *tenantServiceClient) TransitionOrganization(ctx context.Context, authHeader bearertoken.Token, orgIdArg string, requestArg TransitionRequest) (Organization, error) {
+	var returnVal *Organization
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("TransitionOrganization"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/tenant/v1/organizations/%s/state", url.PathEscape(fmt.Sprint(orgIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(Organization), werror.WrapWithContextParams(ctx, err, "transitionOrganization failed")
+	}
+	if returnVal == nil {
+		return *new(Organization), werror.ErrorWithContextParams(ctx, "transitionOrganization response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *tenantServiceClient) ListOrganizationGraphs(ctx context.Context, authHeader bearertoken.Token, orgIdArg string) (GraphList, error) {
+	var returnVal *GraphList
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListOrganizationGraphs"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/tenant/v1/organizations/%s/graphs", url.PathEscape(fmt.Sprint(orgIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(GraphList), werror.WrapWithContextParams(ctx, err, "listOrganizationGraphs failed")
+	}
+	if returnVal == nil {
+		return *new(GraphList), werror.ErrorWithContextParams(ctx, "listOrganizationGraphs response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 /*
 The unit graph, its per-graph closure, and the graph registry (D-Graphs). Reads pass the
 shadow-visibility gate and are gated by `unit.read`/`graph.read`; writes are unit-scoped
@@ -472,8 +761,18 @@ type TenantServiceClientWithAuth interface {
 	SetUnitCode(ctx context.Context, unitIdArg string, requestArg SetUnitCodeRequest) (Unit, error)
 	// A unit's code-change history, newest first (D-UnitCodeLifecycle, M28).
 	ListUnitCodeEvents(ctx context.Context, unitIdArg string) (UnitCodeEventList, error)
-	// List/search units, token-paginated, optionally filtered by level.
-	ListUnits(ctx context.Context, levelArg *int, pageSizeArg *int, pageTokenArg *string) (UnitPage, error)
+	/*
+	   List/search units within an organization (D-TenantOrganizations, M40). `org` is REQUIRED —
+	   a fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally filtered by
+	   `domain` (cross-cut within the org, for mixed trees), `unitKind`, and `level`. Token-paginated.
+
+	   For hierarchical (expand-on-click) browsing in graph `graph` (default `command`): pass
+	   `rootsOnly=true` to list only the org's top-level units (those with no parent in the graph),
+	   or `parent=<unitRid>` to list a unit's DIRECT children in the graph. The two are mutually
+	   exclusive, and each ignores the `domain`/`unitKind`/`level` filters. When neither is set the
+	   listing is the flat, filtered org listing.
+	*/
+	ListUnits(ctx context.Context, orgArg string, domainArg *string, unitKindArg *string, levelArg *int, graphArg *string, parentArg *string, rootsOnlyArg *bool, pageSizeArg *int, pageTokenArg *string) (UnitPage, error)
 	// Attach the path unit as a child of parentId within a graph (default command). Returns Tenant:UnitCycleDetected on a cycle.
 	AddEdge(ctx context.Context, unitIdArg string, requestArg AddEdgeRequest) (UnitEdge, error)
 	// Detach the path unit from a parent within a graph.
@@ -497,14 +796,47 @@ type TenantServiceClientWithAuth interface {
 	VerifyClosure(ctx context.Context, graphArg *string) (ClosureReportList, error)
 	// Truncate + recompute the closure, one transaction per graph (default all graphs).
 	RebuildClosure(ctx context.Context, graphArg *string) (ClosureReportList, error)
-	// List the graph registry in display order.
-	ListGraphs(ctx context.Context) (GraphList, error)
+	/*
+	   List graphs in display order (M40). With `org`, returns that organization's graphs plus the
+	   instance-global graphs; without `org`, returns only the instance-global graphs.
+	*/
+	ListGraphs(ctx context.Context, orgArg *string) (GraphList, error)
 	// Add a graph. Returns Tenant:GraphCodeConflict if the code exists.
 	AddGraph(ctx context.Context, requestArg AddGraphRequest) (Graph, error)
 	// Rename / set default / flip isAuthorityBearing (guarded; command is locked authority-bearing).
 	UpdateGraph(ctx context.Context, graphIdArg string, requestArg UpdateGraphRequest) (Graph, error)
 	// Delete a graph (blocked for command, or while it has live edges).
 	DeleteGraph(ctx context.Context, graphIdArg string) error
+	// List the org-kind domain catalog in display order (D-TenantOrganizations, M40). Gated by domain.read.
+	ListDomains(ctx context.Context) (DomainList, error)
+	// Add a domain (instance-admin; domain.manage). Returns Tenant:DomainCodeConflict if the code exists.
+	CreateDomain(ctx context.Context, requestArg CreateDomainRequest) (Domain, error)
+	// Rename / retire a domain. Returns Tenant:DomainNotFound.
+	UpdateDomain(ctx context.Context, domainIdArg string, requestArg UpdateDomainRequest) (Domain, error)
+	// List the unit-kind catalog for a domain (D-TenantOrganizations, M40). Gated by unit-kind.read.
+	ListUnitKinds(ctx context.Context, domainArg string) (UnitKindList, error)
+	// Add a domain-scoped unit kind (instance-admin; unit-kind.manage). Returns Tenant:UnitKindCodeConflict.
+	CreateUnitKind(ctx context.Context, requestArg CreateUnitKindRequest) (UnitKind, error)
+	// Rename / retire a unit kind or adjust its attr schema. Returns Tenant:UnitKindNotFound.
+	UpdateUnitKind(ctx context.Context, unitKindIdArg string, requestArg UpdateUnitKindRequest) (UnitKind, error)
+	/*
+	   List organizations, token-paginated, optionally filtered by domain (D-TenantOrganizations,
+	   M40). Shadow-gated. Gated by organization.read.
+	*/
+	ListOrganizations(ctx context.Context, domainArg *string, pageSizeArg *int, pageTokenArg *string) (OrganizationPage, error)
+	/*
+	   Create an organization and seed its command + operational graphs in one transaction
+	   (organization.create). Returns Tenant:OrganizationCodeConflict if the code exists.
+	*/
+	CreateOrganization(ctx context.Context, requestArg CreateOrganizationRequest) (Organization, error)
+	// Read one organization by RID (shadow-gated). Returns Tenant:OrganizationNotFound.
+	GetOrganization(ctx context.Context, orgIdArg string) (Organization, error)
+	// Update an organization's name/domain/metadata/visibility (organization.update).
+	UpdateOrganization(ctx context.Context, orgIdArg string, requestArg UpdateOrganizationRequest) (Organization, error)
+	// Transition an organization's lifecycle state (organization.lifecycle). Returns Tenant:TransitionInvalid for an illegal transition.
+	TransitionOrganization(ctx context.Context, orgIdArg string, requestArg TransitionRequest) (Organization, error)
+	// List an organization's graph registry (alias of GET /graphs?org=, path-scoped).
+	ListOrganizationGraphs(ctx context.Context, orgIdArg string) (GraphList, error)
 }
 
 func NewTenantServiceClientWithAuth(client TenantServiceClient, authHeader bearertoken.Token) TenantServiceClientWithAuth {
@@ -536,8 +868,8 @@ func (c *tenantServiceClientWithAuth) ListUnitCodeEvents(ctx context.Context, un
 	return c.client.ListUnitCodeEvents(ctx, c.authHeader, unitIdArg)
 }
 
-func (c *tenantServiceClientWithAuth) ListUnits(ctx context.Context, levelArg *int, pageSizeArg *int, pageTokenArg *string) (UnitPage, error) {
-	return c.client.ListUnits(ctx, c.authHeader, levelArg, pageSizeArg, pageTokenArg)
+func (c *tenantServiceClientWithAuth) ListUnits(ctx context.Context, orgArg string, domainArg *string, unitKindArg *string, levelArg *int, graphArg *string, parentArg *string, rootsOnlyArg *bool, pageSizeArg *int, pageTokenArg *string) (UnitPage, error) {
+	return c.client.ListUnits(ctx, c.authHeader, orgArg, domainArg, unitKindArg, levelArg, graphArg, parentArg, rootsOnlyArg, pageSizeArg, pageTokenArg)
 }
 
 func (c *tenantServiceClientWithAuth) AddEdge(ctx context.Context, unitIdArg string, requestArg AddEdgeRequest) (UnitEdge, error) {
@@ -580,8 +912,8 @@ func (c *tenantServiceClientWithAuth) RebuildClosure(ctx context.Context, graphA
 	return c.client.RebuildClosure(ctx, c.authHeader, graphArg)
 }
 
-func (c *tenantServiceClientWithAuth) ListGraphs(ctx context.Context) (GraphList, error) {
-	return c.client.ListGraphs(ctx, c.authHeader)
+func (c *tenantServiceClientWithAuth) ListGraphs(ctx context.Context, orgArg *string) (GraphList, error) {
+	return c.client.ListGraphs(ctx, c.authHeader, orgArg)
 }
 
 func (c *tenantServiceClientWithAuth) AddGraph(ctx context.Context, requestArg AddGraphRequest) (Graph, error) {
@@ -594,6 +926,54 @@ func (c *tenantServiceClientWithAuth) UpdateGraph(ctx context.Context, graphIdAr
 
 func (c *tenantServiceClientWithAuth) DeleteGraph(ctx context.Context, graphIdArg string) error {
 	return c.client.DeleteGraph(ctx, c.authHeader, graphIdArg)
+}
+
+func (c *tenantServiceClientWithAuth) ListDomains(ctx context.Context) (DomainList, error) {
+	return c.client.ListDomains(ctx, c.authHeader)
+}
+
+func (c *tenantServiceClientWithAuth) CreateDomain(ctx context.Context, requestArg CreateDomainRequest) (Domain, error) {
+	return c.client.CreateDomain(ctx, c.authHeader, requestArg)
+}
+
+func (c *tenantServiceClientWithAuth) UpdateDomain(ctx context.Context, domainIdArg string, requestArg UpdateDomainRequest) (Domain, error) {
+	return c.client.UpdateDomain(ctx, c.authHeader, domainIdArg, requestArg)
+}
+
+func (c *tenantServiceClientWithAuth) ListUnitKinds(ctx context.Context, domainArg string) (UnitKindList, error) {
+	return c.client.ListUnitKinds(ctx, c.authHeader, domainArg)
+}
+
+func (c *tenantServiceClientWithAuth) CreateUnitKind(ctx context.Context, requestArg CreateUnitKindRequest) (UnitKind, error) {
+	return c.client.CreateUnitKind(ctx, c.authHeader, requestArg)
+}
+
+func (c *tenantServiceClientWithAuth) UpdateUnitKind(ctx context.Context, unitKindIdArg string, requestArg UpdateUnitKindRequest) (UnitKind, error) {
+	return c.client.UpdateUnitKind(ctx, c.authHeader, unitKindIdArg, requestArg)
+}
+
+func (c *tenantServiceClientWithAuth) ListOrganizations(ctx context.Context, domainArg *string, pageSizeArg *int, pageTokenArg *string) (OrganizationPage, error) {
+	return c.client.ListOrganizations(ctx, c.authHeader, domainArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *tenantServiceClientWithAuth) CreateOrganization(ctx context.Context, requestArg CreateOrganizationRequest) (Organization, error) {
+	return c.client.CreateOrganization(ctx, c.authHeader, requestArg)
+}
+
+func (c *tenantServiceClientWithAuth) GetOrganization(ctx context.Context, orgIdArg string) (Organization, error) {
+	return c.client.GetOrganization(ctx, c.authHeader, orgIdArg)
+}
+
+func (c *tenantServiceClientWithAuth) UpdateOrganization(ctx context.Context, orgIdArg string, requestArg UpdateOrganizationRequest) (Organization, error) {
+	return c.client.UpdateOrganization(ctx, c.authHeader, orgIdArg, requestArg)
+}
+
+func (c *tenantServiceClientWithAuth) TransitionOrganization(ctx context.Context, orgIdArg string, requestArg TransitionRequest) (Organization, error) {
+	return c.client.TransitionOrganization(ctx, c.authHeader, orgIdArg, requestArg)
+}
+
+func (c *tenantServiceClientWithAuth) ListOrganizationGraphs(ctx context.Context, orgIdArg string) (GraphList, error) {
+	return c.client.ListOrganizationGraphs(ctx, c.authHeader, orgIdArg)
 }
 
 func NewTenantServiceClientWithTokenProvider(client TenantServiceClient, tokenProvider httpclient.TokenProvider) TenantServiceClientWithAuth {
@@ -645,12 +1025,12 @@ func (c *tenantServiceClientWithTokenProvider) ListUnitCodeEvents(ctx context.Co
 	return c.client.ListUnitCodeEvents(ctx, bearertoken.Token(token), unitIdArg)
 }
 
-func (c *tenantServiceClientWithTokenProvider) ListUnits(ctx context.Context, levelArg *int, pageSizeArg *int, pageTokenArg *string) (UnitPage, error) {
+func (c *tenantServiceClientWithTokenProvider) ListUnits(ctx context.Context, orgArg string, domainArg *string, unitKindArg *string, levelArg *int, graphArg *string, parentArg *string, rootsOnlyArg *bool, pageSizeArg *int, pageTokenArg *string) (UnitPage, error) {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
 		return *new(UnitPage), err
 	}
-	return c.client.ListUnits(ctx, bearertoken.Token(token), levelArg, pageSizeArg, pageTokenArg)
+	return c.client.ListUnits(ctx, bearertoken.Token(token), orgArg, domainArg, unitKindArg, levelArg, graphArg, parentArg, rootsOnlyArg, pageSizeArg, pageTokenArg)
 }
 
 func (c *tenantServiceClientWithTokenProvider) AddEdge(ctx context.Context, unitIdArg string, requestArg AddEdgeRequest) (UnitEdge, error) {
@@ -733,12 +1113,12 @@ func (c *tenantServiceClientWithTokenProvider) RebuildClosure(ctx context.Contex
 	return c.client.RebuildClosure(ctx, bearertoken.Token(token), graphArg)
 }
 
-func (c *tenantServiceClientWithTokenProvider) ListGraphs(ctx context.Context) (GraphList, error) {
+func (c *tenantServiceClientWithTokenProvider) ListGraphs(ctx context.Context, orgArg *string) (GraphList, error) {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
 		return *new(GraphList), err
 	}
-	return c.client.ListGraphs(ctx, bearertoken.Token(token))
+	return c.client.ListGraphs(ctx, bearertoken.Token(token), orgArg)
 }
 
 func (c *tenantServiceClientWithTokenProvider) AddGraph(ctx context.Context, requestArg AddGraphRequest) (Graph, error) {
@@ -763,4 +1143,100 @@ func (c *tenantServiceClientWithTokenProvider) DeleteGraph(ctx context.Context, 
 		return err
 	}
 	return c.client.DeleteGraph(ctx, bearertoken.Token(token), graphIdArg)
+}
+
+func (c *tenantServiceClientWithTokenProvider) ListDomains(ctx context.Context) (DomainList, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(DomainList), err
+	}
+	return c.client.ListDomains(ctx, bearertoken.Token(token))
+}
+
+func (c *tenantServiceClientWithTokenProvider) CreateDomain(ctx context.Context, requestArg CreateDomainRequest) (Domain, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Domain), err
+	}
+	return c.client.CreateDomain(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *tenantServiceClientWithTokenProvider) UpdateDomain(ctx context.Context, domainIdArg string, requestArg UpdateDomainRequest) (Domain, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Domain), err
+	}
+	return c.client.UpdateDomain(ctx, bearertoken.Token(token), domainIdArg, requestArg)
+}
+
+func (c *tenantServiceClientWithTokenProvider) ListUnitKinds(ctx context.Context, domainArg string) (UnitKindList, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(UnitKindList), err
+	}
+	return c.client.ListUnitKinds(ctx, bearertoken.Token(token), domainArg)
+}
+
+func (c *tenantServiceClientWithTokenProvider) CreateUnitKind(ctx context.Context, requestArg CreateUnitKindRequest) (UnitKind, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(UnitKind), err
+	}
+	return c.client.CreateUnitKind(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *tenantServiceClientWithTokenProvider) UpdateUnitKind(ctx context.Context, unitKindIdArg string, requestArg UpdateUnitKindRequest) (UnitKind, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(UnitKind), err
+	}
+	return c.client.UpdateUnitKind(ctx, bearertoken.Token(token), unitKindIdArg, requestArg)
+}
+
+func (c *tenantServiceClientWithTokenProvider) ListOrganizations(ctx context.Context, domainArg *string, pageSizeArg *int, pageTokenArg *string) (OrganizationPage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(OrganizationPage), err
+	}
+	return c.client.ListOrganizations(ctx, bearertoken.Token(token), domainArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *tenantServiceClientWithTokenProvider) CreateOrganization(ctx context.Context, requestArg CreateOrganizationRequest) (Organization, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Organization), err
+	}
+	return c.client.CreateOrganization(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *tenantServiceClientWithTokenProvider) GetOrganization(ctx context.Context, orgIdArg string) (Organization, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Organization), err
+	}
+	return c.client.GetOrganization(ctx, bearertoken.Token(token), orgIdArg)
+}
+
+func (c *tenantServiceClientWithTokenProvider) UpdateOrganization(ctx context.Context, orgIdArg string, requestArg UpdateOrganizationRequest) (Organization, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Organization), err
+	}
+	return c.client.UpdateOrganization(ctx, bearertoken.Token(token), orgIdArg, requestArg)
+}
+
+func (c *tenantServiceClientWithTokenProvider) TransitionOrganization(ctx context.Context, orgIdArg string, requestArg TransitionRequest) (Organization, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Organization), err
+	}
+	return c.client.TransitionOrganization(ctx, bearertoken.Token(token), orgIdArg, requestArg)
+}
+
+func (c *tenantServiceClientWithTokenProvider) ListOrganizationGraphs(ctx context.Context, orgIdArg string) (GraphList, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(GraphList), err
+	}
+	return c.client.ListOrganizationGraphs(ctx, bearertoken.Token(token), orgIdArg)
 }

@@ -1,4 +1,4 @@
-# Roadmap decisions (planned tier — M16–M39)
+# Roadmap decisions (planned tier — M16–M41)
 
 The landed architectural decisions for the **planned milestones M16–M39** — verticals that are
 **decided and designed but not yet built** (no `internal/` or `migrations/` artifacts exist for them
@@ -20,7 +20,10 @@ D-GeoSubdivisions, pulls PostGIS forward) · **D-DataIngestion** (M17→folded i
 (M18) · **D-Location** (M19) · **D-Education** (M20) · **D-Companies** (M21) · **D-Religion** /
 **D-ClergyCredential** / **D-ReligiousAffiliation** / **D-SpecialPII** (M22–M25) · **D-GeoSubdivisions**
 (*superseded by D-GeoPlaces*) / **D-Vehicles** (M26) · **D-ClientSDK** (M27, unified Go + TypeScript
-SDKs from the Conjure contract; *in implementation*) · **D-UnitCodeLifecycle** (M28).
+SDKs from the Conjure contract; *in implementation*) · **D-UnitCodeLifecycle** (M28) ·
+**D-TenantOrganizations** (M40, Domains + Organizations: a multi-domain tenant over the unit graph) ·
+**D-UnifiedOrgGraph** (M41, verticals reuse the tenant org-graph + per-vertical sidecars; `pdp_scoped`
+reference/operational split).
 
 The **person-intelligence / OSINT-enrichment cluster** (M29–M37, derived from
 [`draft_superbrain_schema.md`](../draft_superbrain_schema.md)): **D-OverlayFoundation** (M29, the
@@ -963,6 +966,194 @@ becomes a pointer; `SetUnitCode` application method (uniqueness check + event ap
 `UnitCodeChanged` domain event consumed by [audit](../modules/audit.md). Web unit editor allows an
 empty code + an "Edit code" action. Consumes `todo.md` items 2 & 3. Lands as **M28**
 ([milestones](../milestones.md)).
+
+---
+
+### D-TenantOrganizations — Domains + Organizations: a multi-domain tenant over the unit graph (extends D-Graph/D-Graphs, amends D-Code, refines L-SingleDomain)
+
+**Decision.** The [tenant](../modules/tenant.md) module gains a **two-tier model above the existing
+unit DAG** so one deployment can host **every kind of hierarchical organization** — military,
+government, company, university, church, public-org — side by side, instead of an implicit
+single-domain forest of units. Three new pieces, all reusing the proven catalog / closure patterns;
+the unit DAG, per-graph closure, public/shadow gate, lifecycle, and the PDP are **structurally
+unchanged**.
+
+- **Domain** (`tenant_domains`, RID `4,1,5`) — a **catalog Object** classifying *what kind* of
+  organization a thing is (`military`/`government`/`company`/`university`/`church`/`public-org`, …).
+  Stable `code` + translatable `name` (D-Code/D-i18n), `status active/retired`, `sort_order`.
+  **Instance-admin-extensible, seeded at boot, never a `CHECK` enum** — exactly the D-Religion
+  faith-vocabulary rule generalized to org kinds (no `if domain == …` branch anywhere).
+- **Organization** (`tenant_organizations`, RID `4,1,6`) — a **first-class realm Object**: the
+  concrete top-level entity a person joins (*US Army*, *Bundeswehr*, *Ukrainian Defence Forces*,
+  *KhNU*). `code` (D-Code), translatable `name`, `domain_id` (NOT NULL → its kind), `visibility`
+  public/shadow, `state active/suspended/archived`, soft-delete + lifecycle ledger
+  (`tenant_org_lifecycle_events`, RID `4,1,8`). Many organizations may share a domain
+  (US Army + Bundeswehr are both `military`, distinct orgs).
+- **Unit kind** (`tenant_unit_kinds`, RID `4,1,7`) — a **domain-scoped catalog** that *replaces the
+  free-text `tenant_units.unit_kind`* (military→{brigade, battalion, platoon}; university→{faculty,
+  department, chair}). `domain_id` FK, `code`, translatable `name`, optional `attr_schema jsonb`
+  (validates a unit's `metadata` per kind, the `document_types.attr_schema` pattern), `UNIQUE(domain_id, code)`.
+
+**Units gain `org_id` (NOT NULL) + `domain_id` (NOT NULL) + `kind_id`.** A unit belongs to exactly
+one organization. `domain_id` is **per-unit** (defaults to the org's domain on create) because
+**mixed-domain trees are allowed** — a parent unit may own children of other domains (a government
+ministry owning a state company; a holding owning a hospital + a university). Edges carry **no
+same-domain constraint**.
+
+**Graphs become per-organization (with a global escape hatch).** `tenant_graphs` gains a **nullable**
+`org_id`: a **non-NULL** `org_id` is a per-org graph; **`org_id NULL` is an instance-global / cross-org
+graph** — needed because the religion vertical (M22) seeds cross-faith taxonomy graphs (`tradition`,
+`affiliation`, `canonical`) that span *all* religious bodies for ecumenical discovery, not one
+organization. Two partial-unique code indexes ((`org_id, code`) WHERE `org_id IS NOT NULL`; (`code`)
+WHERE `org_id IS NULL`); the single-default index keys on `COALESCE(org_id, sentinel)` (one default
+per org, one among globals). Each organization gets its **own seeded `command` (default, locked
+authority-bearing, undeletable) + `operational` graphs**, created in the **same transaction as the
+organization** (replacing the former boot-time *global* command/operational seed). The "≥1 graph
+always exists / `command` undeletable" invariant moves from instance-global to **per-org**.
+Edges/closure/PDP isolate per organization — authority over US Army cannot leak into Bundeswehr —
+using the **unchanged** per-graph closure machinery (the PDP is transparent to a graph's org scope);
+a global graph's closure may legitimately span orgs (the ecumenical case).
+
+**Domain & organization are directory attributes — never PDP or shadow-gate inputs** (exactly the
+**D-Rank** "rank ≠ permission" and the `level`/`unit_kind` stance). Authority flows **only** through
+role assignments cascading over graphs (now naturally org-scoped). There is no `domain ==`/`org ==`
+branch in any authorization path.
+
+**Person↔organization affiliation is derived, not stored.** A person's service history across
+organizations and time (US Army 2010–2015, *then* Bundeswehr 2016–2020) is the union of their
+**temporal unit memberships** ([membership](../modules/membership.md)) projected through each unit's
+`org_id` — **no new affiliation table**. The person directory stays **instance-global** (the locked
+D-PersonGlobal stance), which is precisely what lets one person belong to multiple organizations over
+different periods.
+
+**Listing is org-scoped.** `GET /units` **requires** an `org` query arg (`?domain`, `?unitKind`,
+`?level` optional); browsing organizations by kind is `GET /organizations?domain=`. New catalog CRUD
+mirrors the document/order/location shape: `/domains`, `/unit-kinds?domain=`, `/organizations`,
+`PUT /organizations/{id}/state`; graphs are read per org (`GET /organizations/{id}/graphs`).
+
+**Why.** The model was *already* domain-agnostic in name (a unit is "a brigade **or** a university
+department") but had no first-class notion of *which concrete organization* a unit belongs to, and
+no classification to scope by — org kind was smuggled into free-text `unit_kind`, and there was no way
+to host US Army and Bundeswehr as distinct-but-comparable military organizations in one DB. A real
+**Organization** object + a **Domain** catalog gives that, *and strengthens the Keycloak
+differentiator* rather than breaking it: Keycloak realms are isolated silos; here organizations
+**share one instance-global person directory** (so cross-org service over time works) and units can
+still be linked across the graph — *organizations sharing one directory, not isolated realms*.
+Per-org graphs reuse the per-graph closure for free; domain-scoped `unit_kinds` add real validation +
+a per-kind `attr_schema` scaling hook that free text never could.
+
+**Why not** (a) *Domain as a flat tag on units only, no Organization object*: cannot represent "US
+Army vs Bundeswehr as distinct military orgs," makes org identity emergent/ambiguous in a multi-root
+DAG, and gives nowhere to hang org lifecycle. (b) *Keycloak-style isolated realms (per-org person
+silos)*: breaks the locked instance-global person directory and the very cross-org-over-time use case
+that motivated this; the differentiator is explicitly *not* isolated realms. (c) *Homogeneous trees
+(edges only same-domain)*: blocks real conglomerates (ministry→state-company); domain is genuinely
+per-unit. (d) *Global graphs across all orgs*: one closure spanning every organization, authority
+scoping leaning entirely on `target_unit` — per-org graphs isolate cleanly and the closure code is
+unchanged. (e) *An explicit `person↔org` affiliation link*: duplicates the membership truth and drifts
+from it; derive it. (f) *Absorb the company (Svc15) / religion (Svc16) verticals into tenant
+`metadata`*: loses their dedicated typed objects — domains **classify**, the vertical modules keep
+their domain-specific objects hung off organizations/units (consistent with D-Religion's
+"reuse the tenant unit graph").
+
+**L-SingleDomain is refined, not broken** (as D-Religion / D-RankSystems refined their locks). The
+deployment may now hold **multiple domains**, but there is still **no org-type discriminator branched
+on in code** — domain, organization, and `unit_kind` remain descriptive catalog rows feeding
+listing/validation/UI, never a code switch and never a PDP input.
+
+**Consequence.** `tenant_domains` / `tenant_unit_kinds` / `tenant_organizations` /
+`tenant_org_lifecycle_events` tables + `org_id`/`domain_id`/`kind_id` on `tenant_units` + `org_id` on
+`tenant_graphs` land by **editing `20260601000003_tenant.sql` in place** (dev DB reset +
+`atlas migrate hash`; the tenant tables carry no production data — same path D-UnitCodeLifecycle and
+D-Location took), with matching `platform_rid_types` rows + `pkg/rid` registry entries + new Object
+rows in [ontology-mapping](../ontology-mapping.md). New Conjure `Domain`/`UnitKind`/`Organization`
+types + catalog/org endpoints + `org` required on `listUnits` + `orgId` on `Graph`; `internal/tenant`
+gains domain/org/unit-kind services, `CreateOrganization` seeds per-org graphs in-txn, `module.go`
+seeds the domain + unit-kind catalogs at boot and drops the global graph seed; new permissions
+`domain.{read,manage}`, `unit-kind.{read,manage}`, `organization.{read,create,update,lifecycle}`
+([authorization](../modules/authorization.md)). **Amends D-Code** (org/domain/unit-kind codes are
+`NOT NULL UNIQUE`, immutable-by-convention — the unit carve-out is unchanged) and **D-Graph/D-Graphs**
+(graphs are per-org; the seed/undeletable invariant is per-org). [membership](../modules/membership.md)
+is unaffected structurally (org history is a projection). Lands as **M40** ([milestones](../milestones.md)),
+on the built M3/M5/M7. Additive / expand-only against external callers (RID-keyed). Distinct from
+**D-ExternalOrgs** (M30), which registers *external* reference organizations a person is affiliated
+with (parties, foreign militaries) — *this* decision is the deploying org's own structural tenant.
+
+---
+
+### D-UnifiedOrgGraph — Verticals reuse the tenant org-graph; per-vertical sidecars (reverses D-Education, amends D-Companies/D-Religion, extends D-TenantOrganizations)
+
+**Decision.** **Every hierarchical organization in the deployment is a `tenant_organizations` + `tenant_units`
+graph node** — the verticals stop reinventing structure. After M40 made tenant a multi-domain org graph,
+`education` and `company` still each carried a *parallel* hierarchy (`education_units` + its own
+`education_unit_closure`; `company_companies` as a separate legal-entity table), while `religion` already
+reused tenant units. M41 makes all three consistent under **one pattern**:
+
+> **tenant owns the org-graph** (organizations + units + per-graph closure + graphs); **each vertical keeps a
+> `<vertical>_org_profiles` *sidecar*** — keyed by the tenant org/unit RID, **no own RID** (the
+> `religion_org_profiles` template) — for its domain-specific attributes, plus its own catalogs and links
+> re-pointed at tenant ids.
+
+- **Education** (reverses D-Education's "dedicated structure tree, *not* reused tenant units"):
+  `education_institutions` → `tenant_organizations` (domain=`university`); `education_units` → `tenant_units`;
+  **`education_unit_closure` is deleted — reuse `tenant_unit_closure`** (the duplicate closure engine goes);
+  `education_unit_kinds` → `tenant_unit_kinds`. The institution's attributes move to `education_org_profiles`
+  (PK = org RID; `institution_kind_id`, country, founded/closed); `education_institution_kinds` /
+  `education_degree_levels` stay as vertical catalogs; every dependent FK (buildings/groups/positions/
+  enrollments + the M21 reference layer + 6 person links) re-points to the org/unit RIDs. The single-parent
+  tree becomes a DAG (a strict superset).
+- **Company** (amends D-Companies): `company_companies` → `tenant_organizations` (domain=`company`) +
+  `company_org_profiles` (legal_form, ownership_category, country, founded/dissolved). **Corporate groups
+  (parent→subsidiary) remain the ownership/affiliation graph** between company-orgs — `shareholdings`
+  (fractional, multi-owner), `branch_of`, `successions` — **not** containment edges (equity ≠ containment;
+  a strict tree can't hold a 60/40 split). A company's *internal* divisions may be `tenant_units` within it
+  (additive). All company links re-point `company_id` → org RID (incl. the cross-module
+  `vehicle_brand_manufacturers.company_id`).
+- **Religion** (formalizes D-Religion): religious bodies already are tenant units + `religion_org_profiles`;
+  M41 gives religion a first-class **church-domain root-org** path (not just test fixtures). The global
+  `canonical`/`tradition`/`affiliation` graphs stay (the church-domain exception).
+
+**`pdp_scoped` domain flag (extends D-TenantOrganizations).** `tenant_domains` gains
+`pdp_scoped boolean NOT NULL DEFAULT true`, denormalized onto `tenant_units` (derived in SQL at insert).
+**Operational** domains (military/government/public-org/**church**) are `true`: reach-RLS applies and
+`CreateOrganization` auto-seeds per-org `command`+`operational` graphs. **Reference** domains
+(university/company) are `false`: **instance-global** — public reads, app-permission writes, **exempt from
+the reach-RLS predicate** (`tenant_units_reach` gains `NOT pdp_scoped OR …`), and **no auto graph seed**
+(avoids 2 graph rows × tens of thousands of bulk-imported orgs). Verticals build structure under a reference
+org via the idempotent `EnsureGraph(org, code, …)` tenant method (first graph becomes the org's default).
+
+**Why.** This is what M40 was *for*: a domain classifies an org kind, so a university is a university-domain
+org and a faculty is a unit. Education had literally reimplemented the tenant DAG + closure; collapsing it
+removes a whole maintenance engine. Religion already proved the reuse pattern. One backbone means one
+closure, one visibility/lifecycle/i18n/code machinery, uniform cross-domain queries, and graph-based imports
+for reference data. The reference/operational split (`pdp_scoped`) preserves the one thing D-Education was
+right to protect — external reference orgs must not inherit the deploying org's PDP/RLS scoping — now as a
+**domain attribute** rather than a separate table.
+
+**Why not** (a) *Keep the parallel hierarchies*: duplicated closure + inconsistent with religion. (b)
+*Anchor-table bridge* (keep `education_institutions`/`company_companies` as thin tables): retains the
+duplication the change removes. (c) *Company as a unit / org-to-org containment tree for subsidiaries*:
+ownership is fractional and multi-parent — a containment tree can't represent it; the ownership graph
+(with a future computed-UBO closure, DS-47) is the right model. (d) *Treat reference orgs like operational
+ones*: bulk imports balloon graph rows and fight the reach-RLS WITH CHECK.
+
+**Consequence.** Tenant: `pdp_scoped` on domains+units, RLS exemption, lazy graph seed + `EnsureGraph`
+(built, M41 **Phase 0 — done+verified**). Education/company structural tables are **redefined in place**
+(pre-release, no prod data → rebuild): institutions/companies become tenant orgs; `education_units`→tenant_units;
+`education_unit_closure` dropped; `<vertical>_org_profiles` sidecars added; all FKs re-pointed; the education
+closure-maintenance code is deleted (reuse tenant's). The education `institution`(14,1,1)/
+`education_unit`(14,1,2)/`education_unit_parent_of`(14,2,1) and company `company`(15,1,1) RID types are
+removed from `pkg/rid` + `platform_rid_types` + [ontology-mapping](../ontology-mapping.md) (those objects are
+now tenant org/unit). **Phase 1 (education) + Phase 2 (company) — done+verified**: both verticals collapsed
+onto tenant orgs/units + sidecars, all suites green; company has no per-org graph (no unit tree).
+**Phase 3 (religion) — done+verified**: a first-class `createRootOrg` (`POST /religion-orgs`) builds a
+`church`-domain org + root unit + profile (the church-domain exception: `pdp_scoped=true` but global
+canonical/tradition/affiliation graphs). Reference orgs import via the tenant org/unit path + a sidecar upsert
+handler (`internal/dataimport`) — **deferred** (additive; no hermenea connector yet). Lands as **M41**
+([milestones](../milestones.md)), on M40 + M20 + M21 + M22–25.
+**Reverses** D-Education's "not reused"; **amends** D-Companies (entity→org) and D-Graph/D-Graphs (reference
+orgs need no graphs). Additive against external callers only by RID (the RIDs change service 14/15→4, but
+pre-release has no external consumers).
 
 ---
 

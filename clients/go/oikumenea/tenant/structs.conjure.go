@@ -31,10 +31,12 @@ func (o *AddEdgeRequest) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
-// Add a graph to the registry (instance-admin; graph.manage).
+// Add a graph (instance-admin; graph.manage). Per-org when orgId is set, else instance-global (M40).
 type AddGraphRequest struct {
-	Code string `json:"code"`
-	Name string `json:"name"`
+	// The organization the new graph belongs to; omit for an instance-global/cross-org graph.
+	OrgId *string `json:"orgId,omitempty"`
+	Code  string  `json:"code"`
+	Name  string  `json:"name"`
 	// Defaults to true.
 	IsAuthorityBearing *bool `json:"isAuthorityBearing,omitempty"`
 }
@@ -126,13 +128,96 @@ func (o *ClosureReportList) UnmarshalYAML(unmarshal func(interface{}) error) err
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// Add an org-kind domain to the catalog (instance-admin; domain.manage).
+type CreateDomainRequest struct {
+	Code      string `json:"code"`
+	Name      string `json:"name"`
+	SortOrder *int   `json:"sortOrder,omitempty"`
+}
+
+func (o CreateDomainRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *CreateDomainRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+Create an organization (the realm). Seeds its `command` (default, locked authority-bearing,
+undeletable) + `operational` graphs in the same transaction (D-TenantOrganizations, M40).
+*/
+type CreateOrganizationRequest struct {
+	Code string `json:"code"`
+	Name string `json:"name"`
+	// The organization's domain (its kind) RID.
+	DomainId string `json:"domainId"`
+	// Defaults to PUBLIC.
+	Visibility *Visibility  `json:"visibility,omitempty"`
+	Metadata   *interface{} `json:"metadata,omitempty"`
+}
+
+func (o CreateOrganizationRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *CreateOrganizationRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Add a domain-scoped unit kind (instance-admin; unit-kind.manage).
+type CreateUnitKindRequest struct {
+	DomainId   string       `json:"domainId"`
+	Code       string       `json:"code"`
+	Name       string       `json:"name"`
+	AttrSchema *interface{} `json:"attrSchema,omitempty"`
+	SortOrder  *int         `json:"sortOrder,omitempty"`
+}
+
+func (o CreateUnitKindRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *CreateUnitKindRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // Create a unit. `name` is the default-locale text; other locales are managed via LocalizationService.
 type CreateUnitRequest struct {
+	// The owning organization's RID (required; D-TenantOrganizations, M40).
+	OrgId string `json:"orgId"`
+	// The unit's domain RID; defaults to the organization's domain when omitted. May differ (mixed trees).
+	DomainId *string `json:"domainId,omitempty"`
+	// The unit's domain-scoped unit-kind RID (replaces free-text unitKind). Must belong to the unit's domain.
+	KindId *string `json:"kindId,omitempty"`
 	// Optional human-readable code (omit for a non-separate sub-unit; D-UnitCodeLifecycle, M28).
-	Code     *string `json:"code,omitempty"`
-	Name     string  `json:"name"`
-	UnitKind *string `json:"unitKind,omitempty"`
-	Level    *int    `json:"level,omitempty"`
+	Code  *string `json:"code,omitempty"`
+	Name  string  `json:"name"`
+	Level *int    `json:"level,omitempty"`
 	// Defaults to PUBLIC.
 	Visibility *Visibility  `json:"visibility,omitempty"`
 	Metadata   *interface{} `json:"metadata,omitempty"`
@@ -154,11 +239,109 @@ func (o *CreateUnitRequest) UnmarshalYAML(unmarshal func(interface{}) error) err
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
-// A named hierarchy over the units (D-Graphs). Each graph is independently a DAG.
+/*
+An org-kind catalog row (D-TenantOrganizations, M40): military/government/company/
+university/church/public-org, … Classifies organizations and units; a directory attribute,
+never a PDP input. `code` is the stable external reference; `name` is the locale->text map.
+*/
+type Domain struct {
+	// The domain's URN RID (carried as a plain string).
+	Id string `json:"id"`
+	// Stable, locale-agnostic identifier (e.g. military, university). Immutable by convention.
+	Code string `json:"code"`
+	// locale->text display name (all enabled locales; D-i18n).
+	Name map[string]string `json:"name"`
+	// active | retired (catalog soft-state).
+	Status    string `json:"status"`
+	SortOrder *int   `json:"sortOrder,omitempty"`
+}
+
+func (o Domain) MarshalJSON() ([]byte, error) {
+	if o.Name == nil {
+		o.Name = make(map[string]string)
+	}
+	type _tmpDomain Domain
+	return safejson.Marshal(_tmpDomain(o))
+}
+
+func (o *Domain) UnmarshalJSON(data []byte) error {
+	type _tmpDomain Domain
+	var rawDomain _tmpDomain
+	if err := safejson.Unmarshal(data, &rawDomain); err != nil {
+		return err
+	}
+	if rawDomain.Name == nil {
+		rawDomain.Name = make(map[string]string)
+	}
+	*o = Domain(rawDomain)
+	return nil
+}
+
+func (o Domain) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *Domain) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// The domain (org-kind) catalog, in display order.
+type DomainList struct {
+	Domains []Domain `json:"domains"`
+}
+
+func (o DomainList) MarshalJSON() ([]byte, error) {
+	if o.Domains == nil {
+		o.Domains = make([]Domain, 0)
+	}
+	type _tmpDomainList DomainList
+	return safejson.Marshal(_tmpDomainList(o))
+}
+
+func (o *DomainList) UnmarshalJSON(data []byte) error {
+	type _tmpDomainList DomainList
+	var rawDomainList _tmpDomainList
+	if err := safejson.Unmarshal(data, &rawDomainList); err != nil {
+		return err
+	}
+	if rawDomainList.Domains == nil {
+		rawDomainList.Domains = make([]Domain, 0)
+	}
+	*o = DomainList(rawDomainList)
+	return nil
+}
+
+func (o DomainList) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *DomainList) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// A named hierarchy over the units (D-Graphs), per organization (M40). Each graph is independently a DAG.
 type Graph struct {
 	// The graph's URN RID (carried as a plain string).
 	Id string `json:"id"`
-	// Stable, locale-agnostic identifier (e.g. command, operational); referenced by edges/closure/assignments.
+	// The owning organization's RID (D-TenantOrganizations, M40); ABSENT = an instance-global/cross-org graph (e.g. religion's taxonomy graphs).
+	OrgId *string `json:"orgId,omitempty"`
+	// Stable, locale-agnostic identifier (e.g. command, operational); unique per org (or among global graphs); referenced by edges/closure/assignments.
 	Code string `json:"code"`
 	// locale->text display name.
 	Name map[string]string `json:"name"`
@@ -248,6 +431,108 @@ func (o *GraphList) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 /*
+The realm a person joins (D-TenantOrganizations, M40): US Army / Bundeswehr / KhNU. Many
+organizations may share a domain. Owns units and per-org graphs. A directory attribute,
+never a PDP input — authority flows only through its graphs.
+*/
+type Organization struct {
+	// The organization's URN RID.
+	Id string `json:"id"`
+	// Stable, locale-agnostic identifier (D-Code; NOT NULL UNIQUE, immutable by convention).
+	Code string `json:"code"`
+	// locale->text display name.
+	Name map[string]string `json:"name"`
+	// The organization's domain (its kind) RID.
+	DomainId   string     `json:"domainId"`
+	Visibility Visibility `json:"visibility"`
+	State      UnitState  `json:"state"`
+	// Free-form long-tail attributes (JSONB).
+	Metadata  *interface{}      `json:"metadata,omitempty"`
+	CreatedAt datetime.DateTime `json:"createdAt"`
+	UpdatedAt datetime.DateTime `json:"updatedAt"`
+}
+
+func (o Organization) MarshalJSON() ([]byte, error) {
+	if o.Name == nil {
+		o.Name = make(map[string]string)
+	}
+	type _tmpOrganization Organization
+	return safejson.Marshal(_tmpOrganization(o))
+}
+
+func (o *Organization) UnmarshalJSON(data []byte) error {
+	type _tmpOrganization Organization
+	var rawOrganization _tmpOrganization
+	if err := safejson.Unmarshal(data, &rawOrganization); err != nil {
+		return err
+	}
+	if rawOrganization.Name == nil {
+		rawOrganization.Name = make(map[string]string)
+	}
+	*o = Organization(rawOrganization)
+	return nil
+}
+
+func (o Organization) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *Organization) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// A page of organizations plus the opaque token for the next page (empty when exhausted).
+type OrganizationPage struct {
+	Organizations []Organization `json:"organizations"`
+	NextPageToken *string        `json:"nextPageToken,omitempty"`
+}
+
+func (o OrganizationPage) MarshalJSON() ([]byte, error) {
+	if o.Organizations == nil {
+		o.Organizations = make([]Organization, 0)
+	}
+	type _tmpOrganizationPage OrganizationPage
+	return safejson.Marshal(_tmpOrganizationPage(o))
+}
+
+func (o *OrganizationPage) UnmarshalJSON(data []byte) error {
+	type _tmpOrganizationPage OrganizationPage
+	var rawOrganizationPage _tmpOrganizationPage
+	if err := safejson.Unmarshal(data, &rawOrganizationPage); err != nil {
+		return err
+	}
+	if rawOrganizationPage.Organizations == nil {
+		rawOrganizationPage.Organizations = make([]Organization, 0)
+	}
+	*o = OrganizationPage(rawOrganizationPage)
+	return nil
+}
+
+func (o OrganizationPage) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *OrganizationPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
 Set, correct, or clear a unit's code (D-UnitCodeLifecycle, M28). An omitted `code` CLEARS the
 code (the unit becomes a non-separate sub-unit). `reason` is recorded on the append-only ledger.
 */
@@ -300,12 +585,16 @@ func (o *TransitionRequest) UnmarshalYAML(unmarshal func(interface{}) error) err
 type Unit struct {
 	// The unit's URN RID (carried as a plain string).
 	Id string `json:"id"`
+	// The owning organization's RID (D-TenantOrganizations, M40).
+	OrgId string `json:"orgId"`
+	// The unit's domain (kind class) RID; defaults to the org's domain, may differ (mixed trees). Never a PDP input.
+	DomainId string `json:"domainId"`
+	// The unit's domain-scoped unit-kind RID (replaces the former free-text unitKind). Never branched on in code.
+	KindId *string `json:"kindId,omitempty"`
 	// Optional human-readable business ID (D-UnitCodeLifecycle, M28); absent = a non-separate sub-unit. The RID (id) is the stable external handle. Unique among active units that have a code; set/corrected/cleared via PUT /units/{id}/code.
 	Code *string `json:"code,omitempty"`
 	// locale->text display name (all enabled locales; default-locale fallback + i18n store).
 	Name map[string]string `json:"name"`
-	// Descriptive instance label (e.g. battalion); never branched on in code.
-	UnitKind *string `json:"unitKind,omitempty"`
 	// Optional ordinal for sort/filter; never a PDP or shadow-gate input.
 	Level      *int       `json:"level,omitempty"`
 	Visibility Visibility `json:"visibility"`
@@ -444,6 +733,105 @@ func (o UnitEdge) MarshalYAML() (interface{}, error) {
 }
 
 func (o *UnitEdge) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+A domain-scoped unit-kind catalog row (D-TenantOrganizations, M40) replacing the former
+free-text unitKind (military→brigade/battalion/platoon; university→faculty/department/chair).
+*/
+type UnitKind struct {
+	// The unit-kind's URN RID.
+	Id string `json:"id"`
+	// The owning domain's RID; codes are unique per domain.
+	DomainId string `json:"domainId"`
+	// Stable identifier, unique among active kinds of the same domain.
+	Code string `json:"code"`
+	// locale->text display name.
+	Name map[string]string `json:"name"`
+	// Optional JSON schema validating a unit's metadata for this kind.
+	AttrSchema *interface{} `json:"attrSchema,omitempty"`
+	// active | retired.
+	Status    string `json:"status"`
+	SortOrder *int   `json:"sortOrder,omitempty"`
+}
+
+func (o UnitKind) MarshalJSON() ([]byte, error) {
+	if o.Name == nil {
+		o.Name = make(map[string]string)
+	}
+	type _tmpUnitKind UnitKind
+	return safejson.Marshal(_tmpUnitKind(o))
+}
+
+func (o *UnitKind) UnmarshalJSON(data []byte) error {
+	type _tmpUnitKind UnitKind
+	var rawUnitKind _tmpUnitKind
+	if err := safejson.Unmarshal(data, &rawUnitKind); err != nil {
+		return err
+	}
+	if rawUnitKind.Name == nil {
+		rawUnitKind.Name = make(map[string]string)
+	}
+	*o = UnitKind(rawUnitKind)
+	return nil
+}
+
+func (o UnitKind) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UnitKind) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// The unit-kind catalog for a domain, in display order.
+type UnitKindList struct {
+	UnitKinds []UnitKind `json:"unitKinds"`
+}
+
+func (o UnitKindList) MarshalJSON() ([]byte, error) {
+	if o.UnitKinds == nil {
+		o.UnitKinds = make([]UnitKind, 0)
+	}
+	type _tmpUnitKindList UnitKindList
+	return safejson.Marshal(_tmpUnitKindList(o))
+}
+
+func (o *UnitKindList) UnmarshalJSON(data []byte) error {
+	type _tmpUnitKindList UnitKindList
+	var rawUnitKindList _tmpUnitKindList
+	if err := safejson.Unmarshal(data, &rawUnitKindList); err != nil {
+		return err
+	}
+	if rawUnitKindList.UnitKinds == nil {
+		rawUnitKindList.UnitKinds = make([]UnitKind, 0)
+	}
+	*o = UnitKindList(rawUnitKindList)
+	return nil
+}
+
+func (o UnitKindList) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UnitKindList) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -678,6 +1066,29 @@ func (o *UnitRefPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// Rename / retire a domain. Omitted fields are unchanged. `code` is immutable.
+type UpdateDomainRequest struct {
+	Name      *string `json:"name,omitempty"`
+	Status    *string `json:"status,omitempty"`
+	SortOrder *int    `json:"sortOrder,omitempty"`
+}
+
+func (o UpdateDomainRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpdateDomainRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // Rename / set default / flip isAuthorityBearing (guarded). Omitted fields are unchanged.
 type UpdateGraphRequest struct {
 	Name *string `json:"name,omitempty"`
@@ -702,10 +1113,60 @@ func (o *UpdateGraphRequest) UnmarshalYAML(unmarshal func(interface{}) error) er
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
-// Update name/kind/level/metadata/visibility. Omitted fields are unchanged. `code` is excluded — set it via PUT /units/{id}/code (D-UnitCodeLifecycle).
-type UpdateUnitRequest struct {
+// Update name/domain/metadata/visibility. Omitted fields are unchanged. `code` is immutable; state is changed via PUT /organizations/{id}/state.
+type UpdateOrganizationRequest struct {
 	Name       *string      `json:"name,omitempty"`
-	UnitKind   *string      `json:"unitKind,omitempty"`
+	DomainId   *string      `json:"domainId,omitempty"`
+	Visibility *Visibility  `json:"visibility,omitempty"`
+	Metadata   *interface{} `json:"metadata,omitempty"`
+}
+
+func (o UpdateOrganizationRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpdateOrganizationRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Rename / retire a unit kind or adjust its attr schema. Omitted fields are unchanged. `code`/`domainId` are immutable.
+type UpdateUnitKindRequest struct {
+	Name       *string      `json:"name,omitempty"`
+	AttrSchema *interface{} `json:"attrSchema,omitempty"`
+	Status     *string      `json:"status,omitempty"`
+	SortOrder  *int         `json:"sortOrder,omitempty"`
+}
+
+func (o UpdateUnitKindRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpdateUnitKindRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Update name/kind/domain/level/metadata/visibility. Omitted fields are unchanged. `code` is excluded — set it via PUT /units/{id}/code (D-UnitCodeLifecycle). `orgId` is immutable.
+type UpdateUnitRequest struct {
+	Name *string `json:"name,omitempty"`
+	// Re-classify the unit's domain (mixed trees allowed). The kind, if set, must match.
+	DomainId   *string      `json:"domainId,omitempty"`
+	KindId     *string      `json:"kindId,omitempty"`
 	Level      *int         `json:"level,omitempty"`
 	Visibility *Visibility  `json:"visibility,omitempty"`
 	Metadata   *interface{} `json:"metadata,omitempty"`

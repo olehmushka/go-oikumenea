@@ -468,6 +468,20 @@ types:
           visibility:
             type: optional<string>
             docs: public | shadow (default public).
+      CreateRootOrgRequest:
+        docs: |
+          Create a top-level religious body (M41 / D-UnifiedOrgGraph): a `church`-domain
+          tenant organization + its root religious-body unit + the unit's profile + an optional primary
+          classification. The body has no parent (no canonical edge); descendants are added via
+          createChildOrg. `code`/`name` apply to both the organization and its root unit.
+        fields:
+          code: string
+          name: string
+          orgKindId: optional<string>
+          primaryTaxonId: optional<string>
+          visibility:
+            type: optional<string>
+            docs: public | shadow (default public).
       # ---- clergy (M23) request bodies ----
       UpsertGradeCategoryRequest:
         fields:
@@ -870,6 +884,14 @@ services:
         args:
           unitId: { type: string, param-type: path }
           request: CreateChildOrgRequest
+        returns: OrgProfile
+      createRootOrg:
+        http: POST /religion-orgs
+        docs: |
+          Create a top-level religious body (M41 / D-UnifiedOrgGraph): a `church`-domain tenant
+          organization + its root religious-body unit + profile. Instance-level (religion.catalog.manage).
+        args:
+          request: CreateRootOrgRequest
         returns: OrgProfile
       # ---- clergy catalogs (M23): read on religion.read, write on religion.catalog.manage (instance) ----
       listGradeCategories:

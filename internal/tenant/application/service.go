@@ -75,12 +75,32 @@ func (s *Service) CreateUnit(ctx context.Context, u domain.Unit) (domain.Unit, e
 	if u.State == "" {
 		u.State = domain.StateActive
 	}
-	if err := u.Validate(); err != nil {
-		return domain.Unit{}, err
-	}
 	var out domain.Unit
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		created, err := s.newRepo(tx).InsertUnit(ctx, u)
+		repo := s.newRepo(tx)
+		// The owning organization must exist; the unit's domain defaults to the org's domain when
+		// omitted (mixed-domain trees are allowed, so an explicit domain may differ — M40).
+		org, err := repo.GetOrganization(ctx, u.OrgID)
+		if err != nil {
+			return err
+		}
+		if u.DomainID == "" {
+			u.DomainID = org.DomainID
+		}
+		// A kind, if given, must belong to the unit's domain (domain-scoped catalog).
+		if u.KindID != nil {
+			k, err := repo.GetUnitKind(ctx, *u.KindID)
+			if err != nil {
+				return err
+			}
+			if k.DomainID != u.DomainID {
+				return domain.ErrUnitKindNotFound
+			}
+		}
+		if err := u.Validate(); err != nil {
+			return err
+		}
+		created, err := repo.InsertUnit(ctx, u)
 		if err != nil {
 			return err
 		}
@@ -172,18 +192,57 @@ func (s *Service) ListUnitLanguages(ctx context.Context, unitID string) ([]domai
 	return repo.ListUnitLanguages(ctx, unitID)
 }
 
-// ListUnits returns a keyset-paginated page of units (by time-ordered RID), optionally filtered by
-// level.
-func (s *Service) ListUnits(ctx context.Context, level *int, pageSize int, pageToken string) (UnitPage, error) {
+// ListUnits returns a keyset-paginated page of units within an organization (REQUIRED orgID;
+// D-TenantOrganizations, M40). For the flat listing it is optionally filtered by domain/kind/level.
+// For hierarchical browsing in graph graphCode (default command) it returns either the org's root
+// units (rootsOnly) or one unit's DIRECT children (parent); those two are mutually exclusive and
+// ignore the domain/kind/level filters.
+func (s *Service) ListUnits(ctx context.Context, orgID string, domainID, kindID *string, level *int, graphCode string, parent *string, rootsOnly bool, pageSize int, pageToken string) (UnitPage, error) {
+	if orgID == "" {
+		return UnitPage{}, domain.ErrInvalidUnit
+	}
+	if parent != nil && rootsOnly {
+		return UnitPage{}, domain.ErrInvalidUnit
+	}
 	size := resolvePageSize(pageSize)
 	after, err := decodeCursor(pageToken)
 	if err != nil {
 		return UnitPage{}, err
 	}
-	units, err := s.newRepo(s.querier(ctx)).ListUnits(ctx, level, after, size+1)
-	if err != nil {
-		return UnitPage{}, err
+	repo := s.newRepo(s.querier(ctx))
+
+	var units []domain.Unit
+	switch {
+	case parent != nil:
+		// Direct children of the parent unit in the graph; resolve the graph from the parent's org.
+		p, err := repo.GetUnit(ctx, *parent)
+		if err != nil {
+			return UnitPage{}, err
+		}
+		g, err := repo.GetGraphForOrgByCode(ctx, &p.OrgID, defaultGraph(graphCode))
+		if err != nil {
+			return UnitPage{}, err
+		}
+		units, err = repo.ListChildUnits(ctx, *parent, g.ID, after, size+1)
+		if err != nil {
+			return UnitPage{}, err
+		}
+	case rootsOnly:
+		g, err := repo.GetGraphForOrgByCode(ctx, &orgID, defaultGraph(graphCode))
+		if err != nil {
+			return UnitPage{}, err
+		}
+		units, err = repo.ListRootUnits(ctx, orgID, g.ID, after, size+1)
+		if err != nil {
+			return UnitPage{}, err
+		}
+	default:
+		units, err = repo.ListUnits(ctx, orgID, domainID, kindID, level, after, size+1)
+		if err != nil {
+			return UnitPage{}, err
+		}
 	}
+
 	if len(units) > size {
 		last := units[size-1]
 		return UnitPage{Units: units[:size], NextPageToken: encodeCursor(last.ID)}, nil
@@ -291,14 +350,17 @@ func (s *Service) AddEdge(ctx context.Context, childID, parentID, graphCode stri
 	var out domain.Edge
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
 		repo := s.newRepo(tx)
-		g, err := repo.GetGraphByCode(ctx, graphCode)
+		child, err := repo.GetUnit(ctx, childID)
 		if err != nil {
 			return err
 		}
 		if _, err := repo.GetUnit(ctx, parentID); err != nil {
 			return err
 		}
-		if _, err := repo.GetUnit(ctx, childID); err != nil {
+		// Resolve the graph within the child unit's organization, falling back to an instance-global
+		// graph (e.g. religion's taxonomy graphs) — D-TenantOrganizations, M40.
+		g, err := repo.GetGraphForOrgByCode(ctx, &child.OrgID, graphCode)
+		if err != nil {
 			return err
 		}
 		// A new parent->child edge closes a cycle iff the child already reaches the parent in g.
@@ -331,7 +393,11 @@ func (s *Service) RemoveEdge(ctx context.Context, childID, parentID, graphCode s
 	graphCode = defaultGraph(graphCode)
 	return s.inTx(ctx, func(tx pgx.Tx) error {
 		repo := s.newRepo(tx)
-		g, err := repo.GetGraphByCode(ctx, graphCode)
+		child, err := repo.GetUnit(ctx, childID)
+		if err != nil {
+			return err
+		}
+		g, err := repo.GetGraphForOrgByCode(ctx, &child.OrgID, graphCode)
 		if err != nil {
 			return err
 		}
@@ -350,11 +416,12 @@ func (s *Service) RemoveEdge(ctx context.Context, childID, parentID, graphCode s
 // Ancestors returns the unit's ancestors in graph graphCode (default command), nearest first.
 func (s *Service) Ancestors(ctx context.Context, unitID, graphCode string) ([]domain.UnitRef, error) {
 	repo := s.newRepo(s.querier(ctx))
-	g, err := repo.GetGraphByCode(ctx, defaultGraph(graphCode))
+	unit, err := repo.GetUnit(ctx, unitID)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := repo.GetUnit(ctx, unitID); err != nil {
+	g, err := repo.GetGraphForOrgByCode(ctx, &unit.OrgID, defaultGraph(graphCode))
+	if err != nil {
 		return nil, err
 	}
 	return repo.ListAncestors(ctx, g.ID, unitID)
@@ -369,11 +436,12 @@ func (s *Service) Descendants(ctx context.Context, unitID, graphCode string, pag
 		return UnitRefPage{}, err
 	}
 	repo := s.newRepo(s.querier(ctx))
-	g, err := repo.GetGraphByCode(ctx, defaultGraph(graphCode))
+	unit, err := repo.GetUnit(ctx, unitID)
 	if err != nil {
 		return UnitRefPage{}, err
 	}
-	if _, err := repo.GetUnit(ctx, unitID); err != nil {
+	g, err := repo.GetGraphForOrgByCode(ctx, &unit.OrgID, defaultGraph(graphCode))
+	if err != nil {
 		return UnitRefPage{}, err
 	}
 	refs, err := repo.ListDescendants(ctx, g.ID, unitID, after, size+1)
@@ -447,21 +515,33 @@ func (s *Service) RebuildClosure(ctx context.Context, graphCode *string) ([]doma
 
 // ---------------------------------------------------------------- graphs
 
-// ListGraphs returns the graph registry in display order.
-func (s *Service) ListGraphs(ctx context.Context) ([]domain.Graph, error) {
-	return s.newRepo(s.querier(ctx)).ListGraphs(ctx)
+// ListGraphs returns an organization's graph registry plus the instance-global graphs (orgID nil =
+// only the global graphs) in display order — D-TenantOrganizations, M40.
+func (s *Service) ListGraphs(ctx context.Context, orgID *string) ([]domain.Graph, error) {
+	if orgID != nil {
+		if _, err := s.newRepo(s.querier(ctx)).GetOrganization(ctx, *orgID); err != nil {
+			return nil, err
+		}
+	}
+	return s.newRepo(s.querier(ctx)).ListGraphsForOrg(ctx, orgID)
 }
 
-// AddGraph validates and adds a graph (instance-admin) and records the action. New graphs are never
-// the default (promote via UpdateGraph).
-func (s *Service) AddGraph(ctx context.Context, code, name string, authorityBearing bool) (domain.Graph, error) {
+// AddGraph validates and adds a graph to an organization (orgID nil = an instance-global graph) and
+// records the action. New graphs are never the default (promote via UpdateGraph).
+func (s *Service) AddGraph(ctx context.Context, orgID *string, code, name string, authorityBearing bool) (domain.Graph, error) {
 	g := domain.Graph{Code: code, Name: name}
 	if err := g.Validate(); err != nil {
 		return domain.Graph{}, err
 	}
 	var out domain.Graph
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		created, err := s.newRepo(tx).InsertGraph(ctx, code, name, authorityBearing)
+		repo := s.newRepo(tx)
+		if orgID != nil {
+			if _, err := repo.GetOrganization(ctx, *orgID); err != nil {
+				return err
+			}
+		}
+		created, err := repo.InsertGraph(ctx, orgID, code, name, false, authorityBearing)
 		if err != nil {
 			return err
 		}
@@ -491,7 +571,7 @@ func (s *Service) UpdateGraph(ctx context.Context, id string, patch domain.Graph
 		}
 		if patch.IsDefault != nil {
 			if *patch.IsDefault {
-				if err := repo.ClearDefaultGraphs(ctx); err != nil {
+				if err := repo.ClearDefaultGraphsForOrg(ctx, g.OrgID); err != nil {
 					return err
 				}
 			} else if g.IsDefault {
@@ -521,7 +601,7 @@ func (s *Service) DeleteGraph(ctx context.Context, id string) error {
 		if g.Code == domain.CommandGraphCode || g.IsDefault {
 			return domain.ErrGraphProtected
 		}
-		count, err := repo.CountActiveGraphs(ctx)
+		count, err := repo.CountActiveGraphsForOrg(ctx, g.OrgID)
 		if err != nil {
 			return err
 		}
@@ -544,17 +624,26 @@ func (s *Service) DeleteGraph(ctx context.Context, id string) error {
 
 // ---------------------------------------------------------------- helpers
 
-// resolveGraphs returns the single graph named by code, or all graphs when code is nil.
+// resolveGraphs returns all graphs (across every organization and the global graphs) for the closure
+// verify/rebuild diagnostics, optionally filtered to those whose code matches graphCode. Graph codes
+// are no longer globally unique (per-org), so a code filter may match several graphs — M40.
 func (s *Service) resolveGraphs(ctx context.Context, graphCode *string) ([]domain.Graph, error) {
 	repo := s.newRepo(s.querier(ctx))
-	if graphCode != nil {
-		g, err := repo.GetGraphByCode(ctx, *graphCode)
+	ids, err := repo.ListGraphIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	graphs := make([]domain.Graph, 0, len(ids))
+	for _, id := range ids {
+		g, err := repo.GetGraphByID(ctx, id)
 		if err != nil {
 			return nil, err
 		}
-		return []domain.Graph{g}, nil
+		if graphCode == nil || g.Code == *graphCode {
+			graphs = append(graphs, g)
+		}
 	}
-	return repo.ListGraphs(ctx)
+	return graphs, nil
 }
 
 // singleTargetID returns the lone graph's RID when exactly one graph is in scope, else "" (a

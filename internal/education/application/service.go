@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -18,6 +19,8 @@ import (
 	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
 	"github.com/olegamysk/go-oikumenea/internal/education/domain"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	tenantapp "github.com/olegamysk/go-oikumenea/internal/tenant/application"
+	tenantdomain "github.com/olegamysk/go-oikumenea/internal/tenant/domain"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 
@@ -25,21 +28,107 @@ const (
 	auditSubsystem  = "education-admin"
 	defaultPageSize = 50
 	maxPageSize     = 200
+	// universityDomainCode is the tenant domain an education institution org belongs to (M41 /
+	// D-UnifiedOrgGraph). structureGraph is the per-org graph holding the institution's unit tree
+	// (campus → faculty → department → chair), lazily seeded since `university` is a reference domain.
+	universityDomainCode = "university"
+	structureGraph       = "structure"
+	structureGraphName   = "Structure"
 )
 
 // RepositoryFactory binds a domain.Repository to a command surface (pool for reads, tx for writes).
 type RepositoryFactory func(conn db.DBTX) domain.Repository
 
-// Service is the education application service.
+// Service is the education application service. Institutions are `university`-domain tenant organizations
+// and units are tenant units; the structure (orgs/units/closure) is owned by the tenant service, while
+// this service owns the education_org_profiles sidecar, the reference layer, and the person links.
 type Service struct {
 	pool    *pgxpool.Pool
 	newRepo RepositoryFactory
 	audit   *auditapp.Service
+	tenant  *tenantapp.Service
+
+	uniMu     sync.Mutex
+	uniDomain string // cached `university` domain RID (seeded at boot, stable)
 }
 
-// NewService wires the service with the pool, repository factory, and the audit service.
-func NewService(pool *pgxpool.Pool, newRepo RepositoryFactory, audit *auditapp.Service) *Service {
-	return &Service{pool: pool, newRepo: newRepo, audit: audit}
+// NewService wires the service with the pool, repository factory, the audit service, and the tenant
+// service (institution = org, unit = tenant unit — M41).
+func NewService(pool *pgxpool.Pool, newRepo RepositoryFactory, audit *auditapp.Service, tenant *tenantapp.Service) *Service {
+	return &Service{pool: pool, newRepo: newRepo, audit: audit, tenant: tenant}
+}
+
+// universityDomainID resolves (and caches) the `university` tenant domain RID.
+func (s *Service) universityDomainID(ctx context.Context) (string, error) {
+	s.uniMu.Lock()
+	defer s.uniMu.Unlock()
+	if s.uniDomain != "" {
+		return s.uniDomain, nil
+	}
+	doms, err := s.tenant.ListDomains(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, d := range doms {
+		if d.Code == universityDomainCode {
+			s.uniDomain = d.ID
+			return d.ID, nil
+		}
+	}
+	return "", domain.ErrInvalid
+}
+
+// toUnitView maps a tenant unit to the education Unit view, deriving its parent + depth from the
+// structure graph closure (nearest ancestor = parent; ancestor count = depth).
+func (s *Service) toUnitView(ctx context.Context, u tenantdomain.Unit) (domain.Unit, error) {
+	anc, err := s.tenant.Ancestors(ctx, u.ID, structureGraph)
+	if err != nil {
+		return domain.Unit{}, err
+	}
+	parent := ""
+	if len(anc) > 0 {
+		parent = anc[0].ID
+	}
+	return domain.Unit{
+		ID: u.ID, InstitutionID: u.OrgID, ParentID: parent, KindID: deref(u.KindID),
+		Code: deref(u.Code), Name: u.Name, Status: string(u.State), Depth: len(anc),
+		CreatedAt: u.CreatedAt, UpdatedAt: u.UpdatedAt,
+	}, nil
+}
+
+func deref(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
+// mapOrgNotFound / mapUnitNotFound translate the tenant service's not-found sentinels into the
+// education ones, so the transport keeps mapping to the same Conjure errors (M41 delegation).
+func mapOrgNotFound(err error) error {
+	if errors.Is(err, tenantdomain.ErrOrgNotFound) {
+		return domain.ErrInstitutionNotFound
+	}
+	return err
+}
+
+func mapUnitNotFound(err error) error {
+	if errors.Is(err, tenantdomain.ErrUnitNotFound) {
+		return domain.ErrUnitNotFound
+	}
+	return err
+}
+
+// mapEdgeErr translates a tenant edge error (cycle / missing unit) into the education sentinels so the
+// transport keeps mapping reparent failures to Education:UnitCycleDetected / Education:UnitNotFound.
+func mapEdgeErr(err error) error {
+	switch {
+	case errors.Is(err, tenantdomain.ErrUnitCycle):
+		return domain.ErrUnitCycle
+	case errors.Is(err, tenantdomain.ErrUnitNotFound):
+		return domain.ErrUnitNotFound
+	}
+	return err
 }
 
 // ============================ catalogs ============================
@@ -48,8 +137,22 @@ func (s *Service) ListInstitutionKinds(ctx context.Context) ([]domain.Institutio
 	return s.newRepo(s.pool).ListInstitutionKinds(ctx)
 }
 
+// ListUnitKinds returns the `university` domain's unit-kind catalog (campus/faculty/department/chair),
+// owned by the tenant service (M41).
 func (s *Service) ListUnitKinds(ctx context.Context) ([]domain.UnitKind, error) {
-	return s.newRepo(s.pool).ListUnitKinds(ctx)
+	uni, err := s.universityDomainID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	kinds, err := s.tenant.ListUnitKinds(ctx, uni)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.UnitKind, 0, len(kinds))
+	for _, k := range kinds {
+		out = append(out, domain.UnitKind{ID: k.ID, Code: k.Code, Name: k.Name, Status: string(k.Status), SortOrder: k.SortOrder})
+	}
+	return out, nil
 }
 
 func (s *Service) ListDegreeLevels(ctx context.Context) ([]domain.DegreeLevel, error) {
@@ -69,35 +172,39 @@ func (s *Service) UpsertInstitutionKind(ctx context.Context, code, name string, 
 	return out, err
 }
 
-func (s *Service) UpsertUnitKind(ctx context.Context, code, name string, sortOrder *int) (domain.UnitKind, error) {
-	var out domain.UnitKind
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		k, err := s.newRepo(tx).UpsertUnitKind(ctx, code, name, sortOrder)
-		if err != nil {
-			return err
-		}
-		out = k
-		return s.record(ctx, tx, "education.unit-kind.upsert", k.ID, k)
-	})
-	return out, err
-}
+// ============================ institutions (tenant org + sidecar — M41) ============================
 
-// ============================ institutions ============================
-
+// CreateInstitution creates a `university`-domain tenant organization (the institution), seeds its
+// `structure` graph, and writes the education_org_profiles sidecar. Cross-module: the org create runs in
+// the tenant service's own transaction; the sidecar + audit run in an education transaction (sequential,
+// like religion's createChildOrg).
 func (s *Service) CreateInstitution(ctx context.Context, in domain.InstitutionInput) (domain.Institution, error) {
 	if err := in.Validate(); err != nil {
 		return domain.Institution{}, err
 	}
-	var out domain.Institution
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		created, err := s.newRepo(tx).InsertInstitution(ctx, in)
-		if err != nil {
+	uni, err := s.universityDomainID(ctx)
+	if err != nil {
+		return domain.Institution{}, err
+	}
+	org, err := s.tenant.CreateOrganization(ctx, tenantdomain.Organization{
+		Code: in.Code, Name: in.Name, DomainID: uni, Visibility: tenantdomain.VisibilityPublic,
+	})
+	if err != nil {
+		return domain.Institution{}, err
+	}
+	if _, err := s.tenant.EnsureGraph(ctx, org.ID, structureGraph, structureGraphName, false); err != nil {
+		return domain.Institution{}, err
+	}
+	err = s.inTx(ctx, func(tx pgx.Tx) error {
+		if err := s.newRepo(tx).InsertOrgProfile(ctx, org.ID, in.KindID, in.CountryID, in.FoundedOn, in.ClosedOn); err != nil {
 			return err
 		}
-		out = created
-		return s.record(ctx, tx, "education.institution.create", created.ID, created)
+		return s.record(ctx, tx, "education.institution.create", org.ID, org)
 	})
-	return out, err
+	if err != nil {
+		return domain.Institution{}, err
+	}
+	return s.GetInstitution(ctx, org.ID)
 }
 
 func (s *Service) GetInstitution(ctx context.Context, id string) (domain.Institution, error) {
@@ -108,19 +215,30 @@ func (s *Service) ListInstitutions(ctx context.Context, query, after string, pag
 	return s.newRepo(s.pool).ListInstitutions(ctx, query, after, clampPageSize(pageSize)+1)
 }
 
+// UpdateInstitution applies a partial change: the org name via the tenant service (if set) and the
+// education sidecar fields (kind/country/dates/state) via the repository.
 func (s *Service) UpdateInstitution(ctx context.Context, id string, up domain.InstitutionUpdate) (domain.Institution, error) {
-	var out domain.Institution
+	if _, err := s.newRepo(s.pool).GetInstitution(ctx, id); err != nil {
+		return domain.Institution{}, err
+	}
+	if up.Name != nil {
+		if _, err := s.tenant.UpdateOrganization(ctx, id, tenantdomain.OrgPatch{Name: up.Name}); err != nil {
+			return domain.Institution{}, err
+		}
+	}
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		updated, err := s.newRepo(tx).UpdateInstitution(ctx, id, up)
-		if err != nil {
+		if err := s.newRepo(tx).UpdateOrgProfile(ctx, id, up); err != nil {
 			return err
 		}
-		out = updated
-		return s.record(ctx, tx, "education.institution.update", id, updated)
+		return s.record(ctx, tx, "education.institution.update", id, up)
 	})
-	return out, err
+	if err != nil {
+		return domain.Institution{}, err
+	}
+	return s.GetInstitution(ctx, id)
 }
 
+// DeleteInstitution soft-deletes the education profile (the org itself stays in the tenant directory).
 func (s *Service) DeleteInstitution(ctx context.Context, id string) error {
 	return s.inTx(ctx, func(tx pgx.Tx) error {
 		n, err := s.newRepo(tx).SoftDeleteInstitution(ctx, id)
@@ -134,137 +252,105 @@ func (s *Service) DeleteInstitution(ctx context.Context, id string) error {
 	})
 }
 
-// ============================ units + closure ============================
+// ============================ units (tenant units in the structure graph — M41) ============================
 
-// CreateUnit inserts a unit (validating the parent belongs to the same institution) and recomputes the
-// institution's closure in the same transaction.
+// CreateUnit creates a tenant unit under the institution org (in its `structure` graph) and, if a parent
+// is given, the parent→child edge. The tenant service owns the closure (no second closure engine).
 func (s *Service) CreateUnit(ctx context.Context, institutionID string, in domain.UnitInput) (domain.Unit, error) {
 	if err := in.Validate(); err != nil {
 		return domain.Unit{}, err
 	}
-	var out domain.Unit
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if _, err := repo.GetInstitution(ctx, institutionID); err != nil {
-			return err
-		}
-		if in.ParentID != nil {
-			parent, err := repo.GetUnit(ctx, *in.ParentID)
-			if err != nil {
-				return err
-			}
-			if parent.InstitutionID != institutionID {
-				return domain.ErrInvalid
-			}
-		}
-		created, err := repo.InsertUnit(ctx, institutionID, in)
-		if err != nil {
-			return err
-		}
-		if err := repo.RecomputeClosure(ctx, institutionID); err != nil {
-			return err
-		}
-		out = created
-		return s.record(ctx, tx, "education.unit.create", created.ID, created)
+	org, err := s.tenant.GetOrganization(ctx, institutionID)
+	if err != nil {
+		return domain.Unit{}, mapOrgNotFound(err)
+	}
+	if _, err := s.tenant.EnsureGraph(ctx, institutionID, structureGraph, structureGraphName, false); err != nil {
+		return domain.Unit{}, err
+	}
+	kindID := in.KindID
+	code := in.Code
+	u, err := s.tenant.CreateUnit(ctx, tenantdomain.Unit{
+		OrgID: institutionID, DomainID: org.DomainID, KindID: &kindID, Code: &code, Name: in.Name,
+		Visibility: tenantdomain.VisibilityPublic,
 	})
-	return out, err
+	if err != nil {
+		return domain.Unit{}, err
+	}
+	if in.ParentID != nil && *in.ParentID != "" {
+		if _, err := s.tenant.AddEdge(ctx, u.ID, *in.ParentID, structureGraph); err != nil {
+			return domain.Unit{}, mapEdgeErr(err)
+		}
+	}
+	return s.toUnitView(ctx, u)
 }
 
 func (s *Service) GetUnit(ctx context.Context, id string) (domain.Unit, error) {
-	return s.newRepo(s.pool).GetUnit(ctx, id)
+	u, err := s.tenant.GetUnit(ctx, id)
+	if err != nil {
+		return domain.Unit{}, mapUnitNotFound(err)
+	}
+	return s.toUnitView(ctx, u)
 }
 
 func (s *Service) ListUnits(ctx context.Context, institutionID string) ([]domain.Unit, error) {
-	return s.newRepo(s.pool).ListUnitsByInstitution(ctx, institutionID)
+	page, err := s.tenant.ListUnits(ctx, institutionID, nil, nil, nil, "", nil, false, maxPageSize, "")
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Unit, 0, len(page.Units))
+	for _, u := range page.Units {
+		v, err := s.toUnitView(ctx, u)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, nil
 }
 
+// UpdateUnit applies name/kind via the tenant unit patch and, when a status is given, a tenant lifecycle
+// transition (education active/archived → tenant active/archived).
 func (s *Service) UpdateUnit(ctx context.Context, id string, up domain.UnitUpdate) (domain.Unit, error) {
-	var out domain.Unit
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		updated, err := s.newRepo(tx).UpdateUnit(ctx, id, up)
-		if err != nil {
-			return err
+	if up.Name != nil || up.KindID != nil {
+		if _, err := s.tenant.UpdateUnit(ctx, id, tenantdomain.UnitPatch{Name: up.Name, KindID: up.KindID}); err != nil {
+			return domain.Unit{}, mapUnitNotFound(err)
 		}
-		out = updated
-		return s.record(ctx, tx, "education.unit.update", id, updated)
-	})
-	return out, err
+	}
+	if up.Status != nil {
+		to := tenantdomain.State(*up.Status)
+		if *up.Status == "archived" {
+			to = tenantdomain.StateArchived
+		} else if *up.Status == "active" {
+			to = tenantdomain.StateActive
+		}
+		if _, err := s.tenant.TransitionUnit(ctx, id, to, "education.unit.update"); err != nil {
+			return domain.Unit{}, mapUnitNotFound(err)
+		}
+	}
+	return s.GetUnit(ctx, id)
 }
 
-// ReparentUnit moves a unit under a new parent (same institution), guarding against cycles, then
-// recomputes the closure.
+// ReparentUnit re-points a unit's structure-graph parent: drop the current parent edge (if any) and add
+// the new one. The tenant AddEdge enforces the cycle guard and maintains the closure.
 func (s *Service) ReparentUnit(ctx context.Context, id string, parentID *string) (domain.Unit, error) {
-	var out domain.Unit
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		unit, err := repo.GetUnit(ctx, id)
-		if err != nil {
-			return err
+	if _, err := s.tenant.GetUnit(ctx, id); err != nil {
+		return domain.Unit{}, mapUnitNotFound(err)
+	}
+	cur, err := s.tenant.Ancestors(ctx, id, structureGraph)
+	if err != nil {
+		return domain.Unit{}, err
+	}
+	if len(cur) > 0 {
+		if err := s.tenant.RemoveEdge(ctx, id, cur[0].ID, structureGraph); err != nil {
+			return domain.Unit{}, err
 		}
-		if parentID != nil {
-			if *parentID == id {
-				return domain.ErrUnitCycle
-			}
-			parent, err := repo.GetUnit(ctx, *parentID)
-			if err != nil {
-				return err
-			}
-			if parent.InstitutionID != unit.InstitutionID {
-				return domain.ErrInvalid
-			}
-			// Cycle: the proposed parent must not already be in this unit's subtree.
-			cyclic, err := repo.ClosureHasPath(ctx, id, *parentID)
-			if err != nil {
-				return err
-			}
-			if cyclic {
-				return domain.ErrUnitCycle
-			}
+	}
+	if parentID != nil && *parentID != "" {
+		if _, err := s.tenant.AddEdge(ctx, id, *parentID, structureGraph); err != nil {
+			return domain.Unit{}, mapEdgeErr(err)
 		}
-		updated, err := repo.SetUnitParent(ctx, id, parentID)
-		if err != nil {
-			return err
-		}
-		if err := repo.RecomputeClosure(ctx, unit.InstitutionID); err != nil {
-			return err
-		}
-		out = updated
-		return s.record(ctx, tx, "education.unit.reparent", id, updated)
-	})
-	return out, err
-}
-
-func (s *Service) VerifyClosure(ctx context.Context, institutionID string) (domain.ClosureReport, error) {
-	var rep domain.ClosureReport
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if _, err := repo.GetInstitution(ctx, institutionID); err != nil {
-			return err
-		}
-		missing, extra, err := repo.VerifyClosure(ctx, institutionID)
-		if err != nil {
-			return err
-		}
-		rep = domain.ClosureReport{InstitutionID: institutionID, Missing: missing, Extra: extra, InDrift: missing > 0 || extra > 0}
-		return s.record(ctx, tx, "education.closure.verify", institutionID, rep)
-	})
-	return rep, err
-}
-
-func (s *Service) RebuildClosure(ctx context.Context, institutionID string) (domain.ClosureReport, error) {
-	var rep domain.ClosureReport
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if _, err := repo.GetInstitution(ctx, institutionID); err != nil {
-			return err
-		}
-		if err := repo.RecomputeClosure(ctx, institutionID); err != nil {
-			return err
-		}
-		rep = domain.ClosureReport{InstitutionID: institutionID}
-		return s.record(ctx, tx, "education.closure.rebuild", institutionID, rep)
-	})
-	return rep, err
+	}
+	return s.GetUnit(ctx, id)
 }
 
 // ============================ buildings ============================

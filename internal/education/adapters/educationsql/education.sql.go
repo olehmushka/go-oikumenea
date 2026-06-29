@@ -35,72 +35,6 @@ func (q *Queries) AbolishPosition(ctx context.Context, id string) (OikumeneaEduc
 	return i, err
 }
 
-const closureHasPath = `-- name: ClosureHasPath :one
-SELECT EXISTS (
-  SELECT 1 FROM oikumenea.education_unit_closure
-  WHERE ancestor_id = $1 AND descendant_id = $2
-) AS has_path
-`
-
-type ClosureHasPathParams struct {
-	AncestorID   string
-	DescendantID string
-}
-
-// Whether `ancestor` reaches `descendant` in the maintained closure (cycle guard on reparent).
-func (q *Queries) ClosureHasPath(ctx context.Context, arg ClosureHasPathParams) (bool, error) {
-	row := q.db.QueryRow(ctx, closureHasPath, arg.AncestorID, arg.DescendantID)
-	var has_path bool
-	err := row.Scan(&has_path)
-	return has_path, err
-}
-
-const countExpectedClosure = `-- name: CountExpectedClosure :one
-WITH RECURSIVE
-  nodes AS (
-    SELECT eu.id AS u FROM oikumenea.education_units eu
-    WHERE eu.institution_id = $1 AND eu.deleted_at IS NULL
-  ),
-  reach AS (
-    SELECT u AS ancestor_id, u AS descendant_id, 0 AS depth FROM nodes
-    UNION ALL
-    SELECT r.ancestor_id, c.id, r.depth + 1
-    FROM reach r
-    JOIN oikumenea.education_units c
-      ON c.parent_id = r.descendant_id AND c.institution_id = $1 AND c.deleted_at IS NULL
-  )
-SELECT count(*) FROM (SELECT DISTINCT ancestor_id, descendant_id FROM reach) e
-`
-
-func (q *Queries) CountExpectedClosure(ctx context.Context, institutionID string) (int64, error) {
-	row := q.db.QueryRow(ctx, countExpectedClosure, institutionID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const countStoredClosure = `-- name: CountStoredClosure :one
-SELECT count(*) FROM oikumenea.education_unit_closure c
-WHERE c.descendant_id IN (SELECT id FROM oikumenea.education_units WHERE institution_id = $1)
-`
-
-func (q *Queries) CountStoredClosure(ctx context.Context, institutionID string) (int64, error) {
-	row := q.db.QueryRow(ctx, countStoredClosure, institutionID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const deleteClosureForInstitution = `-- name: DeleteClosureForInstitution :exec
-DELETE FROM oikumenea.education_unit_closure
-WHERE ancestor_id IN (SELECT id FROM oikumenea.education_units WHERE institution_id = $1)
-`
-
-func (q *Queries) DeleteClosureForInstitution(ctx context.Context, institutionID string) error {
-	_, err := q.db.Exec(ctx, deleteClosureForInstitution, institutionID)
-	return err
-}
-
 const endAppointment = `-- name: EndAppointment :one
 UPDATE oikumenea.education_appointments
 SET status = 'ended', effective_to = COALESCE($1::timestamptz, now())
@@ -279,12 +213,29 @@ func (q *Queries) GetGroup(ctx context.Context, id string) (OikumeneaEducationGr
 }
 
 const getInstitution = `-- name: GetInstitution :one
-SELECT id, code, name, kind_id, country_id, founded_on, closed_on, state, created_at, updated_at, deleted_at FROM oikumenea.education_institutions WHERE id = $1 AND deleted_at IS NULL
+SELECT o.id, o.code, o.name,
+  p.kind_id, p.country_id, p.founded_on, p.closed_on, p.state, p.created_at, p.updated_at
+FROM oikumenea.education_org_profiles p
+JOIN oikumenea.tenant_organizations o ON o.id = p.institution_id AND o.deleted_at IS NULL
+WHERE p.institution_id = $1 AND p.deleted_at IS NULL
 `
 
-func (q *Queries) GetInstitution(ctx context.Context, id string) (OikumeneaEducationInstitution, error) {
+type GetInstitutionRow struct {
+	ID        string
+	Code      string
+	Name      string
+	KindID    string
+	CountryID pgtype.Text
+	FoundedOn pgtype.Date
+	ClosedOn  pgtype.Date
+	State     string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+func (q *Queries) GetInstitution(ctx context.Context, id string) (GetInstitutionRow, error) {
 	row := q.db.QueryRow(ctx, getInstitution, id)
-	var i OikumeneaEducationInstitution
+	var i GetInstitutionRow
 	err := row.Scan(
 		&i.ID,
 		&i.Code,
@@ -296,7 +247,6 @@ func (q *Queries) GetInstitution(ctx context.Context, id string) (OikumeneaEduca
 		&i.State,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.DeletedAt,
 	)
 	return i, err
 }
@@ -314,29 +264,6 @@ func (q *Queries) GetPosition(ctx context.Context, id string) (OikumeneaEducatio
 		&i.UnitID,
 		&i.Code,
 		&i.Title,
-		&i.Status,
-		&i.SortOrder,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.DeletedAt,
-	)
-	return i, err
-}
-
-const getUnit = `-- name: GetUnit :one
-SELECT id, institution_id, parent_id, kind_id, code, name, status, sort_order, created_at, updated_at, deleted_at FROM oikumenea.education_units WHERE id = $1 AND deleted_at IS NULL
-`
-
-func (q *Queries) GetUnit(ctx context.Context, id string) (OikumeneaEducationUnit, error) {
-	row := q.db.QueryRow(ctx, getUnit, id)
-	var i OikumeneaEducationUnit
-	err := row.Scan(
-		&i.ID,
-		&i.InstitutionID,
-		&i.ParentID,
-		&i.KindID,
-		&i.Code,
-		&i.Name,
 		&i.Status,
 		&i.SortOrder,
 		&i.CreatedAt,
@@ -562,37 +489,36 @@ func (q *Queries) InsertGroup(ctx context.Context, arg InsertGroupParams) (Oikum
 	return i, err
 }
 
-const insertInstitution = `-- name: InsertInstitution :one
+const insertOrgProfile = `-- name: InsertOrgProfile :one
 
-INSERT INTO oikumenea.education_institutions (code, name, kind_id, country_id, founded_on, closed_on)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, code, name, kind_id, country_id, founded_on, closed_on, state, created_at, updated_at, deleted_at
+INSERT INTO oikumenea.education_org_profiles (institution_id, kind_id, country_id, founded_on, closed_on)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING institution_id, kind_id, country_id, founded_on, closed_on, state, created_at, updated_at, deleted_at
 `
 
-type InsertInstitutionParams struct {
-	Code      string
-	Name      string
-	KindID    string
-	CountryID pgtype.Text
-	FoundedOn pgtype.Date
-	ClosedOn  pgtype.Date
+type InsertOrgProfileParams struct {
+	InstitutionID string
+	KindID        string
+	CountryID     pgtype.Text
+	FoundedOn     pgtype.Date
+	ClosedOn      pgtype.Date
 }
 
-// ============================ institutions ============================
-func (q *Queries) InsertInstitution(ctx context.Context, arg InsertInstitutionParams) (OikumeneaEducationInstitution, error) {
-	row := q.db.QueryRow(ctx, insertInstitution,
-		arg.Code,
-		arg.Name,
+// ============================ institutions (tenant org + education_org_profiles sidecar — M41) ============================
+// An institution is a `university`-domain tenant organization (code/name/visibility) plus an
+// education_org_profiles sidecar (kind/country/dates/state). The org itself is created/updated through
+// the tenant service; these queries own the sidecar and the joined read view.
+func (q *Queries) InsertOrgProfile(ctx context.Context, arg InsertOrgProfileParams) (OikumeneaEducationOrgProfile, error) {
+	row := q.db.QueryRow(ctx, insertOrgProfile,
+		arg.InstitutionID,
 		arg.KindID,
 		arg.CountryID,
 		arg.FoundedOn,
 		arg.ClosedOn,
 	)
-	var i OikumeneaEducationInstitution
+	var i OikumeneaEducationOrgProfile
 	err := row.Scan(
-		&i.ID,
-		&i.Code,
-		&i.Name,
+		&i.InstitutionID,
 		&i.KindID,
 		&i.CountryID,
 		&i.FoundedOn,
@@ -651,54 +577,11 @@ func (q *Queries) InsertPosition(ctx context.Context, arg InsertPositionParams) 
 	return i, err
 }
 
-const insertUnit = `-- name: InsertUnit :one
-
-INSERT INTO oikumenea.education_units (institution_id, parent_id, kind_id, code, name, sort_order)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, institution_id, parent_id, kind_id, code, name, status, sort_order, created_at, updated_at, deleted_at
-`
-
-type InsertUnitParams struct {
-	InstitutionID string
-	ParentID      pgtype.Text
-	KindID        string
-	Code          string
-	Name          string
-	SortOrder     pgtype.Int4
-}
-
-// ============================ units (structure tree) ============================
-func (q *Queries) InsertUnit(ctx context.Context, arg InsertUnitParams) (OikumeneaEducationUnit, error) {
-	row := q.db.QueryRow(ctx, insertUnit,
-		arg.InstitutionID,
-		arg.ParentID,
-		arg.KindID,
-		arg.Code,
-		arg.Name,
-		arg.SortOrder,
-	)
-	var i OikumeneaEducationUnit
-	err := row.Scan(
-		&i.ID,
-		&i.InstitutionID,
-		&i.ParentID,
-		&i.KindID,
-		&i.Code,
-		&i.Name,
-		&i.Status,
-		&i.SortOrder,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.DeletedAt,
-	)
-	return i, err
-}
-
 const listAppointmentsByPerson = `-- name: ListAppointmentsByPerson :many
 SELECT a.id, a.person_id, a.position_id, a.status, a.effective_from, a.effective_to, a.created_at, a.updated_at, a.deleted_at, p.title AS position_title, p.institution_id AS institution_id, i.name AS institution_name
 FROM oikumenea.education_appointments a
 JOIN oikumenea.education_positions p ON p.id = a.position_id
-JOIN oikumenea.education_institutions i ON i.id = p.institution_id
+JOIN oikumenea.tenant_organizations i ON i.id = p.institution_id
 WHERE a.person_id = $1 AND a.deleted_at IS NULL
 ORDER BY a.status, a.effective_from DESC NULLS LAST, a.id
 `
@@ -1031,11 +914,14 @@ func (q *Queries) ListInstitutionKinds(ctx context.Context) ([]OikumeneaEducatio
 }
 
 const listInstitutions = `-- name: ListInstitutions :many
-SELECT id, code, name, kind_id, country_id, founded_on, closed_on, state, created_at, updated_at, deleted_at FROM oikumenea.education_institutions
-WHERE deleted_at IS NULL
-  AND ($1 = '' OR code ILIKE '%' || $1 || '%' OR name ILIKE '%' || $1 || '%')
-  AND ($2 = '' OR id::text > $2)
-ORDER BY id
+SELECT o.id, o.code, o.name,
+  p.kind_id, p.country_id, p.founded_on, p.closed_on, p.state, p.created_at, p.updated_at
+FROM oikumenea.education_org_profiles p
+JOIN oikumenea.tenant_organizations o ON o.id = p.institution_id AND o.deleted_at IS NULL
+WHERE p.deleted_at IS NULL
+  AND ($1 = '' OR o.code ILIKE '%' || $1 || '%' OR o.name ILIKE '%' || $1 || '%')
+  AND ($2 = '' OR o.id::text > $2)
+ORDER BY o.id
 LIMIT $3
 `
 
@@ -1045,16 +931,30 @@ type ListInstitutionsParams struct {
 	Lim   int32
 }
 
-// Active institutions, optional case-insensitive code/name filter, keyset-paginated by RID.
-func (q *Queries) ListInstitutions(ctx context.Context, arg ListInstitutionsParams) ([]OikumeneaEducationInstitution, error) {
+type ListInstitutionsRow struct {
+	ID        string
+	Code      string
+	Name      string
+	KindID    string
+	CountryID pgtype.Text
+	FoundedOn pgtype.Date
+	ClosedOn  pgtype.Date
+	State     string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+// Active institutions (orgs with an education profile), optional case-insensitive code/name filter,
+// keyset-paginated by org RID.
+func (q *Queries) ListInstitutions(ctx context.Context, arg ListInstitutionsParams) ([]ListInstitutionsRow, error) {
 	rows, err := q.db.Query(ctx, listInstitutions, arg.Query, arg.After, arg.Lim)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []OikumeneaEducationInstitution
+	var items []ListInstitutionsRow
 	for rows.Next() {
-		var i OikumeneaEducationInstitution
+		var i ListInstitutionsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Code,
@@ -1066,7 +966,6 @@ func (q *Queries) ListInstitutions(ctx context.Context, arg ListInstitutionsPara
 			&i.State,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1112,98 +1011,6 @@ func (q *Queries) ListPositionsByInstitution(ctx context.Context, arg ListPositi
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listUnitKinds = `-- name: ListUnitKinds :many
-SELECT id, code, name, status, sort_order, created_at, updated_at, deleted_at FROM oikumenea.education_unit_kinds
-WHERE deleted_at IS NULL ORDER BY sort_order, code
-`
-
-func (q *Queries) ListUnitKinds(ctx context.Context) ([]OikumeneaEducationUnitKind, error) {
-	rows, err := q.db.Query(ctx, listUnitKinds)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []OikumeneaEducationUnitKind
-	for rows.Next() {
-		var i OikumeneaEducationUnitKind
-		if err := rows.Scan(
-			&i.ID,
-			&i.Code,
-			&i.Name,
-			&i.Status,
-			&i.SortOrder,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.DeletedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listUnitsByInstitution = `-- name: ListUnitsByInstitution :many
-SELECT u.id, u.institution_id, u.parent_id, u.kind_id, u.code, u.name, u.status, u.sort_order, u.created_at, u.updated_at, u.deleted_at,
-  COALESCE((SELECT max(c.depth) FROM oikumenea.education_unit_closure c WHERE c.descendant_id = u.id), 0)::int AS depth
-FROM oikumenea.education_units u
-WHERE u.institution_id = $1 AND u.deleted_at IS NULL
-ORDER BY depth, u.sort_order, u.code
-`
-
-type ListUnitsByInstitutionRow struct {
-	ID            string
-	InstitutionID string
-	ParentID      pgtype.Text
-	KindID        string
-	Code          string
-	Name          string
-	Status        string
-	SortOrder     pgtype.Int4
-	CreatedAt     pgtype.Timestamptz
-	UpdatedAt     pgtype.Timestamptz
-	DeletedAt     pgtype.Timestamptz
-	Depth         int32
-}
-
-// All active units of an institution with their depth from the nearest root (max closure depth as a
-// descendant — single-parent tree, so that is the distance to the root).
-func (q *Queries) ListUnitsByInstitution(ctx context.Context, institutionID string) ([]ListUnitsByInstitutionRow, error) {
-	rows, err := q.db.Query(ctx, listUnitsByInstitution, institutionID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListUnitsByInstitutionRow
-	for rows.Next() {
-		var i ListUnitsByInstitutionRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.InstitutionID,
-			&i.ParentID,
-			&i.KindID,
-			&i.Code,
-			&i.Name,
-			&i.Status,
-			&i.SortOrder,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.DeletedAt,
-			&i.Depth,
 		); err != nil {
 			return nil, err
 		}
@@ -1262,64 +1069,6 @@ func (q *Queries) ListVacantPositionsByInstitution(ctx context.Context, arg List
 		return nil, err
 	}
 	return items, nil
-}
-
-const rebuildClosureForInstitution = `-- name: RebuildClosureForInstitution :exec
-WITH RECURSIVE
-  nodes AS (
-    SELECT eu.id AS u FROM oikumenea.education_units eu
-    WHERE eu.institution_id = $1 AND eu.deleted_at IS NULL
-  ),
-  reach AS (
-    SELECT u AS ancestor_id, u AS descendant_id, 0 AS depth FROM nodes
-    UNION ALL
-    SELECT r.ancestor_id, c.id, r.depth + 1
-    FROM reach r
-    JOIN oikumenea.education_units c
-      ON c.parent_id = r.descendant_id AND c.institution_id = $1 AND c.deleted_at IS NULL
-  )
-INSERT INTO oikumenea.education_unit_closure (ancestor_id, descendant_id, depth)
-SELECT ancestor_id, descendant_id, min(depth)::int
-FROM reach
-GROUP BY ancestor_id, descendant_id
-`
-
-// Recompute one institution's full transitive closure from its units' parent_id tree, in the caller's
-// transaction. Reflexive (u,u,0) rows for every active unit, then descend parent->child.
-func (q *Queries) RebuildClosureForInstitution(ctx context.Context, institutionID string) error {
-	_, err := q.db.Exec(ctx, rebuildClosureForInstitution, institutionID)
-	return err
-}
-
-const setUnitParent = `-- name: SetUnitParent :one
-UPDATE oikumenea.education_units SET parent_id = $1
-WHERE id = $2 AND deleted_at IS NULL
-RETURNING id, institution_id, parent_id, kind_id, code, name, status, sort_order, created_at, updated_at, deleted_at
-`
-
-type SetUnitParentParams struct {
-	ParentID pgtype.Text
-	ID       string
-}
-
-// Reparent: set parent_id (NULL = top-level). The cycle guard runs in the application before this.
-func (q *Queries) SetUnitParent(ctx context.Context, arg SetUnitParentParams) (OikumeneaEducationUnit, error) {
-	row := q.db.QueryRow(ctx, setUnitParent, arg.ParentID, arg.ID)
-	var i OikumeneaEducationUnit
-	err := row.Scan(
-		&i.ID,
-		&i.InstitutionID,
-		&i.ParentID,
-		&i.KindID,
-		&i.Code,
-		&i.Name,
-		&i.Status,
-		&i.SortOrder,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.DeletedAt,
-	)
-	return i, err
 }
 
 const softDeleteBuilding = `-- name: SoftDeleteBuilding :execrows
@@ -1385,8 +1134,8 @@ func (q *Queries) SoftDeleteGroup(ctx context.Context, id string) (int64, error)
 }
 
 const softDeleteInstitution = `-- name: SoftDeleteInstitution :execrows
-UPDATE oikumenea.education_institutions SET deleted_at = now()
-WHERE id = $1 AND deleted_at IS NULL
+UPDATE oikumenea.education_org_profiles SET deleted_at = now()
+WHERE institution_id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) SoftDeleteInstitution(ctx context.Context, id string) (int64, error) {
@@ -1595,20 +1344,18 @@ func (q *Queries) UpdateGroup(ctx context.Context, arg UpdateGroupParams) (Oikum
 	return i, err
 }
 
-const updateInstitution = `-- name: UpdateInstitution :one
-UPDATE oikumenea.education_institutions SET
-  name       = COALESCE($1, name),
-  kind_id    = COALESCE($2, kind_id),
-  country_id = COALESCE($3, country_id),
-  founded_on = COALESCE($4, founded_on),
-  closed_on  = COALESCE($5, closed_on),
-  state      = COALESCE($6, state)
-WHERE id = $7 AND deleted_at IS NULL
-RETURNING id, code, name, kind_id, country_id, founded_on, closed_on, state, created_at, updated_at, deleted_at
+const updateOrgProfile = `-- name: UpdateOrgProfile :one
+UPDATE oikumenea.education_org_profiles SET
+  kind_id    = COALESCE($1, kind_id),
+  country_id = COALESCE($2, country_id),
+  founded_on = COALESCE($3, founded_on),
+  closed_on  = COALESCE($4, closed_on),
+  state      = COALESCE($5, state)
+WHERE institution_id = $6 AND deleted_at IS NULL
+RETURNING institution_id, kind_id, country_id, founded_on, closed_on, state, created_at, updated_at, deleted_at
 `
 
-type UpdateInstitutionParams struct {
-	Name      pgtype.Text
+type UpdateOrgProfileParams struct {
 	KindID    pgtype.Text
 	CountryID pgtype.Text
 	FoundedOn pgtype.Date
@@ -1617,9 +1364,8 @@ type UpdateInstitutionParams struct {
 	ID        string
 }
 
-func (q *Queries) UpdateInstitution(ctx context.Context, arg UpdateInstitutionParams) (OikumeneaEducationInstitution, error) {
-	row := q.db.QueryRow(ctx, updateInstitution,
-		arg.Name,
+func (q *Queries) UpdateOrgProfile(ctx context.Context, arg UpdateOrgProfileParams) (OikumeneaEducationOrgProfile, error) {
+	row := q.db.QueryRow(ctx, updateOrgProfile,
 		arg.KindID,
 		arg.CountryID,
 		arg.FoundedOn,
@@ -1627,11 +1373,9 @@ func (q *Queries) UpdateInstitution(ctx context.Context, arg UpdateInstitutionPa
 		arg.State,
 		arg.ID,
 	)
-	var i OikumeneaEducationInstitution
+	var i OikumeneaEducationOrgProfile
 	err := row.Scan(
-		&i.ID,
-		&i.Code,
-		&i.Name,
+		&i.InstitutionID,
 		&i.KindID,
 		&i.CountryID,
 		&i.FoundedOn,
@@ -1676,49 +1420,6 @@ func (q *Queries) UpdatePosition(ctx context.Context, arg UpdatePositionParams) 
 	return i, err
 }
 
-const updateUnit = `-- name: UpdateUnit :one
-UPDATE oikumenea.education_units SET
-  name            = COALESCE($1, name),
-  kind_id         = COALESCE($2, kind_id),
-  status          = COALESCE($3, status),
-  sort_order      = COALESCE($4, sort_order)
-WHERE id = $5 AND deleted_at IS NULL
-RETURNING id, institution_id, parent_id, kind_id, code, name, status, sort_order, created_at, updated_at, deleted_at
-`
-
-type UpdateUnitParams struct {
-	Name      pgtype.Text
-	KindID    pgtype.Text
-	Status    pgtype.Text
-	SortOrder pgtype.Int4
-	ID        string
-}
-
-func (q *Queries) UpdateUnit(ctx context.Context, arg UpdateUnitParams) (OikumeneaEducationUnit, error) {
-	row := q.db.QueryRow(ctx, updateUnit,
-		arg.Name,
-		arg.KindID,
-		arg.Status,
-		arg.SortOrder,
-		arg.ID,
-	)
-	var i OikumeneaEducationUnit
-	err := row.Scan(
-		&i.ID,
-		&i.InstitutionID,
-		&i.ParentID,
-		&i.KindID,
-		&i.Code,
-		&i.Name,
-		&i.Status,
-		&i.SortOrder,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.DeletedAt,
-	)
-	return i, err
-}
-
 const upsertInstitutionKind = `-- name: UpsertInstitutionKind :one
 INSERT INTO oikumenea.education_institution_kinds (code, name, sort_order)
 VALUES ($1, $2, $3)
@@ -1736,36 +1437,6 @@ type UpsertInstitutionKindParams struct {
 func (q *Queries) UpsertInstitutionKind(ctx context.Context, arg UpsertInstitutionKindParams) (OikumeneaEducationInstitutionKind, error) {
 	row := q.db.QueryRow(ctx, upsertInstitutionKind, arg.Code, arg.Name, arg.SortOrder)
 	var i OikumeneaEducationInstitutionKind
-	err := row.Scan(
-		&i.ID,
-		&i.Code,
-		&i.Name,
-		&i.Status,
-		&i.SortOrder,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.DeletedAt,
-	)
-	return i, err
-}
-
-const upsertUnitKind = `-- name: UpsertUnitKind :one
-INSERT INTO oikumenea.education_unit_kinds (code, name, sort_order)
-VALUES ($1, $2, $3)
-ON CONFLICT (code) WHERE deleted_at IS NULL
-DO UPDATE SET name = EXCLUDED.name, sort_order = COALESCE(EXCLUDED.sort_order, oikumenea.education_unit_kinds.sort_order), updated_at = now()
-RETURNING id, code, name, status, sort_order, created_at, updated_at, deleted_at
-`
-
-type UpsertUnitKindParams struct {
-	Code      string
-	Name      string
-	SortOrder pgtype.Int4
-}
-
-func (q *Queries) UpsertUnitKind(ctx context.Context, arg UpsertUnitKindParams) (OikumeneaEducationUnitKind, error) {
-	row := q.db.QueryRow(ctx, upsertUnitKind, arg.Code, arg.Name, arg.SortOrder)
-	var i OikumeneaEducationUnitKind
 	err := row.Scan(
 		&i.ID,
 		&i.Code,

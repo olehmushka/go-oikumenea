@@ -7,13 +7,25 @@
 
 ## Purpose
 
+> **M41 / D-UnifiedOrgGraph (unification):** an **institution is a [tenant](tenant.md) organization**
+> (domain=`university`, `pdp_scoped=false` → instance-global reference: public reads, app-permission
+> writes, no reach-RLS, no auto graph seed) carrying an **`education_org_profiles` sidecar** (keyed by
+> the org RID — kind/country/dates/state; mirrors `religion_org_profiles`). A **unit is a tenant unit**
+> in the org's `structure` graph, and the tree's transitive closure is **`tenant_unit_closure`** — the
+> dedicated `education_institutions` / `education_units` / `education_unit_closure` tables and the
+> `EducationInstitution` / `EducationUnit` / `EducationUnitKind` objects are **gone**; unit kinds are
+> `tenant_unit_kinds` under the `university` domain. `EducationService` is a façade over the tenant
+> service for structure, owning the sidecar, the reference layer, and the person links. The
+> institution/unit `code`s and the education API surface are preserved; only closure verify/rebuild and
+> unit-kind upsert endpoints were dropped (the tenant service owns them). The prose below predates the
+> merge where it still says "recursive tree / maintained closure / external reference org".
+
 Records the **education domain** as **external reference entities** — *where a person studied or
 taught* — at analytics grade (D-Education). An **institution** is a school/university/academy the
-service references but does **not** govern; it is deliberately **distinct from the deploying org's
-[tenant](tenant.md) units** (no PDP, no shadow visibility) and **independent of
-companies** (no shared organization foundation). Each institution owns a **recursive
-structure tree** (campus → faculty → department → chair) with a maintained transitive closure
-(mirrors [tenant](tenant.md)), **buildings** located via the shared M19 [location](location.md),
+service references but does **not** govern; it is a `university`-domain **reference organization**
+(M41), kept **distinct from operational PDP-bearing units** by the domain's `pdp_scoped=false` flag.
+Its **structure tree** (campus → faculty → department → chair) is **tenant units + the tenant
+closure** (M41), **buildings** located via the shared M19 [location](location.md),
 **groups** (cohorts), and **positions** (rector/dean/chair billets that fill like
 [membership](membership.md) positions). People connect to it through **enrollments** (studied at),
 **dormitory stays** (resided in), and **appointments** (held a position); mentorship reuses M14

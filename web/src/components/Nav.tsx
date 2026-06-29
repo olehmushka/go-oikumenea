@@ -12,6 +12,7 @@ const TOOLS: { href: string; key: string }[] = [
   { href: "/ontology", key: "nav.ontology" },
   { href: "/authorize", key: "nav.authorize" },
   { href: "/roles", key: "nav.roles" },
+  { href: "/organizations", key: "nav.organizations" },
   { href: "/graphs", key: "nav.graphs" },
   { href: "/memberships", key: "nav.memberships" },
   { href: "/orders", key: "nav.orders" },

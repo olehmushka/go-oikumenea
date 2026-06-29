@@ -6,27 +6,59 @@
 
 ## Purpose
 
-Owns the organization as a **graph of units**. A unit is a node — a brigade/battalion/platoon,
-or a university/campus/department. The module stores units, their parent→child edges (a **DAG**:
-multi-parent, multi-root), a maintained transitive **closure** for fast ancestor/descendant
-queries, each unit's **visibility** (`public`/`shadow`), and its lifecycle state. It is the
-structural foundation the whole service hangs off; the [authorization](authorization.md) PDP
-reads its closure to resolve inheritance. It does **not** decide access itself.
+Owns the organization structure as a **two-tier model** (D-TenantOrganizations, M40): a **domain**
+catalog (the *kind* of organization — military/government/company/university/church/public-org),
+**organizations** (the realm a person joins — *US Army*, *Bundeswehr*, *KhNU*), and within each
+organization a **graph of units**. A unit is a node — a brigade/battalion/platoon, or a
+university/campus/department. The module stores domains, organizations, units, their parent→child
+edges (a **DAG**: multi-parent, multi-root, **per organization**), a maintained transitive
+**closure** for fast ancestor/descendant queries, each unit's/org's **visibility** (`public`/
+`shadow`), and lifecycle state. One deployment hosts **multiple domains and multiple organizations**
+side by side, all sharing the instance-global [person](person.md) directory so a person can serve
+across organizations over time. It is the structural foundation the whole service hangs off; the
+[authorization](authorization.md) PDP reads its closure to resolve inheritance. It does **not**
+decide access itself, and **domain/organization are directory attributes — never PDP inputs**.
 
 ## Entities & aggregates
 
-**Ontology kinds** (D-Ontology; [registry](../ontology-mapping.md)) — **Objects:** `Unit`, `Graph`.
-**Links:** `link__parent_of` (the unit edge, per graph) and the derived `link__ancestor_of` (the
-closure). **Actions:** `CreateUnit`, `TransitionUnit`, `RecodeUnit`, `AddEdge`/`RemoveEdge`, graph
+**Ontology kinds** (D-Ontology; [registry](../ontology-mapping.md)) — **Objects:** `Domain`,
+`Organization`, `UnitKind`, `Unit`, `Graph`. **Links:** `link__parent_of` (the unit edge, per graph)
+and the derived `link__ancestor_of` (the closure). **Actions:** `CreateDomain`, `CreateOrganization`,
+`TransitionOrganization`, `CreateUnit`, `TransitionUnit`, `RecodeUnit`, `AddEdge`/`RemoveEdge`, graph
 management — each audited and keyed by its `action__<type>` RID.
 
-- **Unit** (aggregate root) — a node in the org graph: **optional** `code`, translatable `name`,
-  optional `unit_kind` label, optional ordinal `level`, `visibility`, lifecycle `state`,
-  free-form `metadata`. A **codeless** unit is a non-separate sub-unit (D-UnitCodeLifecycle, M28).
-- **Graph** — a **named hierarchy** over the units (D-Graphs): `command` (the structural /
-  administrative authority chain — the default, undeletable) and `operational`
-  (mission / task-organization, OPCON-like). Instance-admin-managed registry; stable `code` +
-  translatable `name`. Each graph is independently a DAG.
+- **Domain** — an org-kind **catalog** (D-Code/D-i18n): `military`/`government`/`company`/
+  `university`/`church`/`public-org`, … Stable `code` + translatable `name`, `status`. Seeded by
+  migration `0003_tenant` (RID seeding in migrations is valid post-F-014 — `new_id` reads no GUC),
+  instance-admin-extensible, **never a `CHECK` enum**. Classifies organizations and units; a
+  **directory attribute, never a PDP input**.
+- **Organization** (aggregate root, the realm) — the concrete top-level entity a person joins
+  (*US Army*, *Bundeswehr*, *KhNU*). `code` (D-Code), translatable `name`, `domain_id` (its kind),
+  `visibility`, lifecycle `state`. Many organizations may share a domain. Owns units and per-org
+  graphs. **A directory attribute, never a PDP input** — authority flows only through its graphs.
+- **Unit kind** — a **domain-scoped catalog** replacing the former free-text `unit_kind`. Seeded by
+  migration `0003_tenant` with a starter set per domain; the `military` set is a **universal echelon
+  ladder** any armed force can use — a top governance tier (`ministry-of-defence`), `service-branch`,
+  `command`, the joint/ground ladder (`army-group → army → corps → division → brigade → regiment →
+  battalion → company → platoon → squad → fire-team`), plus air (`wing`/`air-group`/`air-squadron`/
+  `flight`) and naval (`fleet`/`flotilla`/`naval-squadron`) echelons; university→{campus, faculty,
+  department, chair}. Arm-specific naming variants (battery/troop = company/platoon) are **not** separate
+  kinds — the per-unit `name` carries the actual title. `domain_id`, `code` (unique per domain),
+  translatable `name`, optional `attr_schema` (validates a unit's `metadata` per kind).
+- **Unit** — a node in an organization's graph: `org_id` (the owning realm), `domain_id` (its kind
+  class — per-unit, defaults to the org's domain, **mixed-domain trees allowed**), optional
+  `kind_id`, **optional** `code`, translatable `name`, optional ordinal `level`, `visibility`,
+  lifecycle `state`, free-form `metadata`. A **codeless** unit is a non-separate sub-unit
+  (D-UnitCodeLifecycle, M28).
+- **Graph** — a **named hierarchy** over units (D-Graphs), normally **per organization** (`org_id`):
+  each org is seeded `command` (the structural / administrative authority chain — the default,
+  undeletable) and `operational` (mission / task-organization, OPCON-like). A graph with **`org_id`
+  NULL is instance-global / cross-org** — used by the religion vertical's `tradition`/`affiliation`/
+  `canonical` taxonomy graphs that span all faiths (D-TenantOrganizations, M40). Instance-admin-managed;
+  `code` unique per org (or among global graphs) + translatable `name`. Each graph is independently a
+  DAG; per-org closures/PDP isolate per org, while a global graph's closure may legitimately span orgs.
+- **Organization lifecycle event** — append-only record of each org state transition (mirrors the
+  unit lifecycle event).
 - **Unit edge** — a directed `parent → child` relationship **within one graph**. Many per unit
   in either direction (DAG), across graphs.
 - **Unit closure** — derived, **per graph**: every `(graph, ancestor, descendant, depth)` pair
@@ -38,8 +70,42 @@ management — each audited and keyed by its `action__<type>` RID.
 Conventions (URN RID PKs (D-ResourceIdentifiers), `TIMESTAMPTZ`, `set_updated_at`, soft-delete, `TEXT`+`CHECK` enums)
 per [conventions.md](../architecture/conventions.md).
 
+**`tenant_domains`** (org-kind catalog — D-TenantOrganizations, M40; RID `4,1,5`)
+- `id` PK · `code TEXT` (unique among active) · `name TEXT` (translatable) ·
+  `status TEXT CHECK (status IN ('active','retired'))` · `sort_order` · timestamps + soft-delete.
+- **`pdp_scoped BOOLEAN NOT NULL DEFAULT true`** (D-UnifiedOrgGraph, M41): `true` = an **operational**
+  domain (military/government/public-org/church) whose units are reach-RLS-scoped and whose orgs auto-seed
+  `command`/`operational` graphs; `false` = a **reference** domain (university/company) that is
+  instance-global (public reads, app-permission writes, exempt from reach-RLS, no auto graph seed).
+  Denormalized onto `tenant_units.pdp_scoped` (derived in SQL at insert) for the RLS predicate.
+- Seeded at **boot** (RID-keyed; idempotent `ON CONFLICT (code) DO NOTHING`):
+  `military`, `government`, `company`, `university`, `church`, `public-org`. Instance-admin-extensible.
+
+**`tenant_unit_kinds`** (domain-scoped catalog — replaces free-text `unit_kind`; RID `4,1,7`)
+- `id` PK · `domain_id` FK → `tenant_domains` · `code TEXT` (**unique per domain**,
+  `UNIQUE (domain_id, code) WHERE deleted_at IS NULL`) · `name TEXT` (translatable) ·
+  `attr_schema JSONB` (optional JSON schema validating a unit's `metadata` for this kind) ·
+  `status` · `sort_order` · timestamps + soft-delete. Seeded at boot per domain.
+
+**`tenant_organizations`** (the realm — D-TenantOrganizations, M40; RID `4,1,6`)
+- `id` PK · `code TEXT NOT NULL` (D-Code; unique among active, immutable by convention) ·
+  `name TEXT` (translatable) · `domain_id` FK → `tenant_domains` (its kind) ·
+  `visibility TEXT CHECK (visibility IN ('public','shadow'))` ·
+  `state TEXT CHECK (state IN ('active','suspended','archived'))` · `metadata JSONB` ·
+  timestamps + soft-delete. **Not seeded** (deployment-created). Indexed on `(domain_id)`.
+
+**`tenant_org_lifecycle_events`** (append-only org transition ledger; RID `4,1,8`)
+- `id` PK · `org_id` FK · `from_state`/`to_state` · `reason` · `actor_person_id` · `request_id` ·
+  `created_at`. Guarded by `reject_mutation()`. Mirrors `tenant_unit_lifecycle_events`.
+
 **`tenant_units`**
 - `id` PK
+- `org_id` FK → `tenant_organizations` **NOT NULL** — the owning realm (M40). Immutable after create.
+- `domain_id` FK → `tenant_domains` **NOT NULL** — the unit's kind class; **defaults to the org's
+  domain** on create, may differ (**mixed-domain trees allowed**). A directory attribute, never a
+  PDP input. Indexed `(org_id)` and `(org_id, domain_id)`.
+- `kind_id` FK → `tenant_unit_kinds` (nullable) — the domain-scoped unit kind (replaces free-text
+  `unit_kind`); must belong to the unit's domain. Never branched on in code.
 - `code TEXT` — **optional**, **mutable** human-readable business identifier
   (D-UnitCodeLifecycle, M28, amending D-Code). `NULL` ⇒ a **non-separate sub-unit** (a line
   battalion/platoon with no independent designation); a value ⇒ a separate unit. Unique among
@@ -49,8 +115,6 @@ per [conventions.md](../architecture/conventions.md).
   drafts' `slug` — an API-only service has no subdomains.)
 - `name TEXT NOT NULL` — default-locale display name; **translatable** via the
   [localization](localization.md) store (returned as a `locale → text` map)
-- `unit_kind TEXT` — descriptive instance label (e.g. `battalion`); **not** branched on in
-  code (see L-SingleDomain)
 - `level SMALLINT` — optional **ordinal** for sort/filter (echelon in an army:
   team < … < battalion < brigade < corps; tier in a church; depth-class in a university).
   Promoted from `metadata` (DS-1 resolved). **Directory attribute only** — like rank, it is
@@ -62,14 +126,21 @@ per [conventions.md](../architecture/conventions.md).
 - `metadata JSONB NOT NULL DEFAULT '{}'`
 - `created_at`, `updated_at`, `deleted_at`
 
-**`tenant_graphs`** (named-hierarchy registry; instance-admin-managed — D-Graphs)
+**`tenant_graphs`** (named-hierarchy registry, **per organization** — D-Graphs / D-TenantOrganizations)
 - `id` PK
+- `org_id` FK → `tenant_organizations` **nullable** — the owning realm; graphs are per-org (M40).
+  Each org is seeded its own `command` + `operational` graphs **in the same transaction as the org**
+  (replacing the former boot-time *global* seed). **`org_id NULL` = an instance-global / cross-org
+  graph** (the religion taxonomy graphs).
 - `code TEXT NOT NULL` — **stable, locale-agnostic** identifier referenced by edges/closure/
-  assignments (e.g. `command`, `operational`); unique among active rows; immutable by convention
+  assignments (e.g. `command`, `operational`); **unique per org** among active rows
+  (`UNIQUE (org_id, code) WHERE deleted_at IS NULL AND org_id IS NOT NULL`) and, separately, unique
+  among active **global** graphs (`UNIQUE (code) WHERE deleted_at IS NULL AND org_id IS NULL`);
+  immutable by convention
 - `name TEXT NOT NULL` — default-locale display name; **translatable** via the
   [localization](localization.md) store
-- `is_default BOOLEAN NOT NULL DEFAULT FALSE` — exactly one default (seeded `command`); the
-  default is the graph a `subtree` grant uses when none is named
+- `is_default BOOLEAN NOT NULL DEFAULT FALSE` — exactly one default **per org** (seeded `command`);
+  the default is the graph a `subtree` grant uses when none is named
 - `is_authority_bearing BOOLEAN NOT NULL DEFAULT TRUE` — whether the PDP cascades `subtree`
   grants over this graph (D-DirectoryGraphs). `FALSE` = **directory-only**: edges/closure are
   maintained for display/association but no cascade. `command` is **locked to TRUE**
@@ -172,9 +243,13 @@ Defines and is gated by: `unit.create`, `unit.read`, `unit.update`, `unit.recode
 code set/correct/clear — D-UnitCodeLifecycle),
 `unit.edges.<graph>.manage` / `unit.edges.manage` (D-EdgePerms),
 `unit.lifecycle` (all unit-scoped, the path unit) and the **graph-registry** permissions
-`graph.read` (a reference read in `unit-reader`) + `graph.manage` (instance-scope). Read results
+`graph.read` (a reference read in `unit-reader`) + `graph.manage` (instance-scope). The **catalog +
+realm** permissions (D-TenantOrganizations, M40) are `domain.read`/`domain.manage`,
+`unit-kind.read`/`unit-kind.manage` (instance-scope), and `organization.read` (org-scoped reads,
+shadow-gated) + `organization.create`/`organization.update`/`organization.lifecycle`. Read results
 pass the **shadow-visibility gate** ([patterns.md](../architecture/patterns.md)). The module
-never decides access — it calls the PDP. `level` is **not** consulted by any check.
+never decides access — it calls the PDP. **`level`, `domain`, `org`, and `kind` are NOT consulted by
+any authorization check** — authority flows only through role assignments over (now per-org) graphs.
 
 ## Invariants & safety
 
@@ -195,11 +270,25 @@ never decides access — it calls the PDP. `level` is **not** consulted by any c
   (no parent) is an **instance-scoped** `unit.create` — so the **first** unit is created by the
   bootstrapped instance admin (the graphs start empty after install; D-Bootstrap), and is the
   first post-bootstrap action.
-- **Graph registry guard.** `command` is seeded, is the default, is **locked authority-bearing**
-  (`CHECK`), and **cannot be deleted**; at least one graph always exists; a graph with live edges
-  or active `subtree` assignments cannot be deleted. `is_authority_bearing` may flip TRUE→FALSE
-  only when no active `subtree` assignments reference the graph (D-DirectoryGraphs); FALSE→TRUE
-  is always safe. Graph `code` is unique among active graphs and immutable by convention.
+- **Graph registry guard, per organization** (D-TenantOrganizations, M40). Each organization is
+  seeded its own `command` + `operational` graphs **in the same transaction as the org**; `command`
+  is the per-org default, **locked authority-bearing** (`CHECK`), and **cannot be deleted**; at least
+  one graph always exists **per org**; a graph with live edges or active `subtree` assignments cannot
+  be deleted. A graph may also be **instance-global** (`org_id NULL`, e.g. religion's taxonomy graphs);
+  global graph `code` is unique among active global graphs. `is_authority_bearing` may flip TRUE→FALSE only when no active `subtree` assignments
+  reference the graph (D-DirectoryGraphs); FALSE→TRUE is always safe. Graph `code` is unique **per org**
+  among active graphs and immutable by convention.
+- **Organization & domain are directory-only.** An organization owns its units and graphs; a unit's
+  `org_id` is immutable after create. `domain_id` is per-unit (defaults to the org's domain;
+  **mixed-domain trees allowed** — edges carry no same-domain constraint). Org/domain/`kind` are
+  **never** PDP or shadow-gate inputs. Domain/unit-kind/org `code` is `NOT NULL UNIQUE`
+  (unit-kind: unique per domain), immutable by convention. Org lifecycle mirrors unit lifecycle
+  (reversible, append-only `tenant_org_lifecycle_events`).
+- **Listing is org-scoped.** `GET /units` **requires** `?org` (rejected with `Tenant:UnitInvalid`
+  otherwise); `?domain`/`?unitKind`/`?level` are optional filters. Cross-org browsing is
+  `GET /organizations?domain=`. A person's organization history is **derived** from their temporal
+  unit memberships ([membership](membership.md)) projected through each unit's `org_id` — there is no
+  person↔org affiliation table.
 - **Lifecycle is reversible.** `archived` is soft (within grace) before any purge; transitions
   are append-only events.
 - Unit **`code`** is **optional** (a codeless unit is a non-separate sub-unit) and **unique among

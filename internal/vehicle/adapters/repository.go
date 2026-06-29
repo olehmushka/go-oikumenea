@@ -630,7 +630,8 @@ func (r *Repository) ModelNamesByIDs(ctx context.Context, ids []string) (map[str
 }
 
 func (r *Repository) CompanyNamesByIDs(ctx context.Context, ids []string) (map[string]string, error) {
-	return r.namesByIDs(ctx, `SELECT id, legal_name FROM oikumenea.company_companies WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL`, ids)
+	// M41 / D-UnifiedOrgGraph: a company manufacturer is a `company`-domain tenant organization.
+	return r.namesByIDs(ctx, `SELECT id, name FROM oikumenea.tenant_organizations WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL`, ids)
 }
 
 func (r *Repository) PlaceNamesByIDs(ctx context.Context, ids []string) (map[string]string, error) {

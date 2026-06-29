@@ -1,7 +1,6 @@
 import { IAppointment } from "./appointment";
 import { IBuilding } from "./building";
 import { IBuildingList } from "./buildingList";
-import { IClosureReport } from "./closureReport";
 import { ICreateBuildingRequest } from "./createBuildingRequest";
 import { ICreateGroupRequest } from "./createGroupRequest";
 import { ICreateInstitutionRequest } from "./createInstitutionRequest";
@@ -26,7 +25,6 @@ import { IInstitutionPage } from "./institutionPage";
 import { IPersonAppointmentList } from "./personAppointmentList";
 import { IPositionPage } from "./positionPage";
 import { IReparentUnitRequest } from "./reparentUnitRequest";
-import { IUnitKind } from "./unitKind";
 import { IUnitKindList } from "./unitKindList";
 import { IUpdateBuildingRequest } from "./updateBuildingRequest";
 import { IUpdateGroupRequest } from "./updateGroupRequest";
@@ -53,8 +51,8 @@ export interface IEducationService {
     listInstitutionKinds(): Promise<IInstitutionKindList>;
     /** Create or update (by code) an institution-kind catalog entry. */
     upsertInstitutionKind(request: IUpsertCatalogKindRequest): Promise<IInstitutionKind>;
+    /** The `university` domain's unit-kind catalog (owned by the tenant service — M41). */
     listUnitKinds(): Promise<IUnitKindList>;
-    upsertUnitKind(request: IUpsertCatalogKindRequest): Promise<IUnitKind>;
     listDegreeLevels(): Promise<IDegreeLevelList>;
     createInstitution(request: ICreateInstitutionRequest): Promise<IInstitution>;
     listInstitutions(query?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IInstitutionPage>;
@@ -68,8 +66,6 @@ export interface IEducationService {
     updateUnit(unitId: string, request: IUpdateUnitRequest): Promise<IEducationUnit>;
     /** Move a unit under a new parent, recomputing the closure. Returns Education:UnitCycleDetected on a cycle. */
     reparentUnit(unitId: string, request: IReparentUnitRequest): Promise<IEducationUnit>;
-    verifyClosure(institutionId: string): Promise<IClosureReport>;
-    rebuildClosure(institutionId: string): Promise<IClosureReport>;
     createBuilding(institutionId: string, request: ICreateBuildingRequest): Promise<IBuilding>;
     listBuildings(institutionId: string): Promise<IBuildingList>;
     getBuilding(buildingId: string): Promise<IBuilding>;
@@ -135,6 +131,7 @@ export class EducationService implements IEducationService {
         );
     }
 
+    /** The `university` domain's unit-kind catalog (owned by the tenant service — M41). */
     public listUnitKinds(): Promise<IUnitKindList> {
         return this.bridge.call<IUnitKindList>(
             "EducationService",
@@ -142,21 +139,6 @@ export class EducationService implements IEducationService {
             "GET",
             "/education/v1/unit-kinds",
             __undefined,
-            __undefined,
-            __undefined,
-            __undefined,
-            __undefined,
-            __undefined
-        );
-    }
-
-    public upsertUnitKind(request: IUpsertCatalogKindRequest): Promise<IUnitKind> {
-        return this.bridge.call<IUnitKind>(
-            "EducationService",
-            "upsertUnitKind",
-            "PUT",
-            "/education/v1/unit-kinds",
-            request,
             __undefined,
             __undefined,
             __undefined,
@@ -346,40 +328,6 @@ export class EducationService implements IEducationService {
             __undefined,
             [
                 unitId,
-            ],
-            __undefined,
-            __undefined
-        );
-    }
-
-    public verifyClosure(institutionId: string): Promise<IClosureReport> {
-        return this.bridge.call<IClosureReport>(
-            "EducationService",
-            "verifyClosure",
-            "POST",
-            "/education/v1/institutions/{institutionId}/units/verify-closure",
-            __undefined,
-            __undefined,
-            __undefined,
-            [
-                institutionId,
-            ],
-            __undefined,
-            __undefined
-        );
-    }
-
-    public rebuildClosure(institutionId: string): Promise<IClosureReport> {
-        return this.bridge.call<IClosureReport>(
-            "EducationService",
-            "rebuildClosure",
-            "POST",
-            "/education/v1/institutions/{institutionId}/units/rebuild-closure",
-            __undefined,
-            __undefined,
-            __undefined,
-            [
-                institutionId,
             ],
             __undefined,
             __undefined

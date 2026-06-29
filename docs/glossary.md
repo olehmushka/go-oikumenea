@@ -7,24 +7,42 @@ thematically; alphabetical index at the end.
 
 ## Organization
 
-**Unit.** A node in the organization graph — the thing this service calls a *tenant*. A
-brigade / regiment / battalion / platoon, or a university / campus / faculty / department.
-All organizational entities are units; there is no separate "group" concept. Owned by the
+**Domain.** The *kind* of organization (D-TenantOrganizations, M40): `military`, `government`,
+`company`, `university`, `church`, `public-org`, … A catalog row (stable `code` + translatable
+`name`), instance-admin-extensible, **never a `CHECK` enum**. Classifies organizations and units; a
+**directory attribute, never a PDP input**. One deployment may hold many domains. Owned by the
 [tenant](modules/tenant.md) module.
 
-**Unit kind.** An optional, instance-configured label on a unit describing its level
-(e.g. `brigade`, `battalion`, or `university`, `department`). It is **descriptive data**,
-not a behavioral discriminator — the code does not branch on it. Distinct from drafts'
-`tenant_type`, which is dropped.
+**Organization (realm).** The concrete top-level entity a person joins — *US Army*, *Bundeswehr*,
+*KhNU* (D-TenantOrganizations, M40). Many organizations may share a *domain* (US Army and Bundeswehr
+are both `military`, distinct orgs). An organization owns its *units* and its own per-org *graphs*.
+The person directory is **instance-global**, so one person can serve in several organizations over
+different periods — *organizations sharing a directory, not isolated realms*. A directory attribute,
+never a PDP input. Owned by the [tenant](modules/tenant.md) module.
+
+**Unit.** A node in an *organization*'s graph — the thing this service historically called a
+*tenant*. A brigade / regiment / battalion / platoon, or a university / campus / faculty /
+department. Belongs to exactly one organization (`org_id`) and carries a per-unit *domain* (mixed-
+domain trees allowed). All organizational nodes are units; there is no separate "group" concept.
+Owned by the [tenant](modules/tenant.md) module.
+
+**Unit kind.** A **domain-scoped catalog** describing a unit's level
+(military→`brigade`/`battalion`; university→`faculty`/`department`) — D-TenantOrganizations (M40),
+replacing the former free-text label. `code` unique per domain + translatable `name` + optional
+`attr_schema` (validates a unit's `metadata`). **Descriptive data**, not a behavioral discriminator —
+the code does not branch on it.
 
 **Unit graph / DAG.** Units relate by parent→child edges. A unit may have **more than one
 parent** (a directed acyclic graph), and there may be **more than one root** (units with no
 parent). Cycles are forbidden. There is **more than one such graph** — see *Graph*.
 
-**Graph (named hierarchy).** A named DAG over the units (D-Graphs). The deployment ships
-`command` (the structural / administrative authority chain — the default) and `operational`
-(mission / task-organization, OPCON-like); the instance admin can add more. An edge belongs to
-exactly one graph; the same unit pair may be related differently in different graphs. Modelled on
+**Graph (named hierarchy).** A named DAG over an *organization*'s units (D-Graphs), **per
+organization** (D-TenantOrganizations, M40). Each organization is seeded its own `command` (the
+structural / administrative authority chain — its default) and `operational` (mission /
+task-organization, OPCON-like) graphs; the instance admin can add more. A graph with **no org**
+(`org_id` NULL) is **instance-global / cross-org** — used by the religion vertical's taxonomy graphs
+that span all faiths. An edge belongs to exactly one graph; the same unit pair may be related
+differently in different graphs; per-org closures/PDP isolate per organization. Modelled on
 NATO's distinction between **ADCON** (administrative control — `command`) and **OPCON / TACON**
 (operational control — `operational`). Owned by the [tenant](modules/tenant.md) module.
 

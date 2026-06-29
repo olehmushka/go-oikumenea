@@ -25,7 +25,7 @@
 -- (like company / education / location), so no RLS is enabled.
 --
 -- Expand-only (L-UpgradeSafe / D-Migrations); depends on the 0000 schema bootstrap (new_id +
--- geo_countries + geo_places), 0005 person (person_persons) and 0022 company (company_companies).
+-- geo_countries + geo_places), 0005 person (person_persons) and 0022 company (tenant_organizations).
 
 -- ---------------------------------------------------------------------------------------------------
 -- RID registry (D-ResourceIdentifiers): the new `vehicle` service (17) + its object/link/action types.
@@ -221,11 +221,11 @@ COMMENT ON COLUMN oikumenea.vehicle_vehicles.color IS 'pii:none';
 
 -- vehicle_brand_manufacturers — a brand is MANUFACTURED_BY a company (link__manufactured_by). Temporal:
 -- a marque's manufacturer changes with acquisitions, so effective_from/effective_to record the window.
--- Both ends are real FKs (brand + the M21 company_companies).
+-- Both ends are real FKs (brand + the manufacturer, a `company`-domain tenant organization — M41).
 CREATE TABLE oikumenea.vehicle_brand_manufacturers (
   id             uuid PRIMARY KEY DEFAULT oikumenea.new_id(17,2,1),  -- vehicle / link / manufactured_by
   brand_id       uuid NOT NULL REFERENCES oikumenea.vehicle_brands(id) ON DELETE CASCADE,
-  company_id     uuid NOT NULL REFERENCES oikumenea.company_companies(id) ON DELETE RESTRICT,  -- M21
+  company_id     uuid NOT NULL REFERENCES oikumenea.tenant_organizations(id) ON DELETE RESTRICT,  -- M21/M41 company org
   effective_from date,
   effective_to   date,
   created_at     timestamptz NOT NULL DEFAULT now(),

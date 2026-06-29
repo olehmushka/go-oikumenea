@@ -35,7 +35,11 @@ walk on every decision.
 **Consequence.** The PDP resolves inheritance over the closure. Tenant owns closure
 maintenance + cycle prevention as an invariant. See [tenant](../modules/tenant.md).
 **Amended by D-Graphs** — edges are *typed* (each belongs to one named graph) and the closure
-is maintained **per graph**; cycle prevention is per graph.
+is maintained **per graph**; cycle prevention is per graph. **Further amended by
+[D-TenantOrganizations](roadmap-decisions.md#d-tenantorganizations--domains--organizations-a-multi-domain-tenant-over-the-unit-graph)
+(M40)** — graphs are scoped **per organization** (`tenant_graphs.org_id`, **nullable**: NULL = an
+instance-global/cross-org graph, e.g. religion's taxonomy graphs); a unit carries `org_id` +
+`domain_id`, and the closure/PDP isolate per org.
 
 ### D-Inherit — Inheritance is per-assignment scope
 
@@ -107,7 +111,14 @@ storage **×(active graphs)** and the operator concept "which hierarchy does thi
 cascade over?". A per-graph **`is_authority_bearing`** flag (a graph recorded for directory /
 association only, never traversed by the PDP) is **promoted to PDP-enforced state** by
 **D-DirectoryGraphs** below. See [tenant](../modules/tenant.md) and
-[authorization](../modules/authorization.md).
+[authorization](../modules/authorization.md). **Amended by
+[D-TenantOrganizations](roadmap-decisions.md#d-tenantorganizations--domains--organizations-a-multi-domain-tenant-over-the-unit-graph)
+(M40)** — `tenant_graphs` gains a **nullable** `org_id`; the seeded `command` (default, undeletable,
+locked authority-bearing) + `operational` graphs and the "≥1 graph always exists" guard become **per
+organization** (created in the same transaction as the org), not instance-global. `org_id NULL` =
+an **instance-global/cross-org** graph (the religion taxonomy graphs); the code-active index splits
+into per-org and global partial-unique indexes, and the single-default index keys on
+`COALESCE(org_id, sentinel)`.
 
 ### D-Rank — Rank on person; rank ≠ permission
 
@@ -293,6 +304,12 @@ becomes `code` (an API-only service has no subdomains). See [conventions.md](con
 via an audited recode op). The stable machine handle external systems reference is the **RID**, not
 the unit `code`. Other structural/catalog entities keep `code TEXT NOT NULL UNIQUE`, immutable by
 convention. See [roadmap-decisions.md](roadmap-decisions.md) (D-UnitCodeLifecycle).
+
+**Extended by [D-TenantOrganizations](roadmap-decisions.md#d-tenantorganizations--domains--organizations-a-multi-domain-tenant-over-the-unit-graph)
+(M40)** — the new tenant catalog/realm entities `tenant_domains`, `tenant_unit_kinds`, and
+`tenant_organizations` carry `code TEXT NOT NULL UNIQUE`, immutable-by-convention, with translatable
+`name` on the i18n footing (the unit `code` carve-out is unchanged). Free-text `tenant_units.unit_kind`
+is replaced by a `kind_id` FK into the domain-scoped `tenant_unit_kinds` catalog.
 
 ### D-Audit — Every write is audited; audit reads are permission-scoped
 
@@ -1182,10 +1199,14 @@ boot because their *content* (permission sets, install identity) originates in c
 static migration cannot reproduce, not because of any RID limitation.
 
 **Consequence.** No `unrecognized configuration parameter "app.environment"` failure mode; the GUC is
-vestigial (still set by `db.NewPool` `AfterConnect`, read by nothing). Existing boot seeds (tenant
-graphs, base roles, document/order type catalogs, first-admin) continue to work unchanged — they rely
-on the column `DEFAULT new_id(...)`, which needs no GUC. See [conventions.md](conventions.md) (Resource
-identifiers), [tenant](../modules/tenant.md), and [platform](../modules/platform.md).
+vestigial (still set by `db.NewPool` `AfterConnect`, read by nothing). The remaining boot seeds (base
+roles, document/order type catalogs, first-admin) continue to work unchanged — they rely on the column
+`DEFAULT new_id(...)`, which needs no GUC. The **tenant domain + unit-kind reference catalogs** moved
+from boot (`tenant.Register`) **into migration `0003_tenant`** (M41) — their content is static SQL, so
+the migration is the natural home; this also lets the migration ship the full universal `military`
+echelon ladder. Per-org `command`/`operational` graphs are not seeded at all — they are created with each
+organization (`CreateOrganization`). See [conventions.md](conventions.md) (Resource identifiers),
+[tenant](../modules/tenant.md), and [platform](../modules/platform.md).
 
 ---
 
@@ -1607,13 +1628,22 @@ These come from the high-level plan and are not re-litigated here.
   persisted.
 - **L-AccountOptional — Person-centric, account optional.** `person` is the core aggregate; an
   `account` is an optional attachment. People who never log in are first-class.
-- **L-SingleDomain — Single domain per deployment.** One instance = one domain (army OR church
-  OR university). **No org-type discriminator** in data; `unit_kind` is a descriptive label
-  only. **Refined by [D-Religion](#d-religion--a-multi-faith-religion-vertical-catalog-driven-taxonomy-organization-graphs--discovery-reverses-the-drafts-religion-drop-refines-l-singledomain):**
+- **L-SingleDomain — ~~Single~~ multi-domain per deployment.** Originally one instance = one domain
+  (army OR church OR university), no org-type discriminator in data; `unit_kind` a descriptive label.
+  **Refined by [D-Religion](#d-religion--a-multi-faith-religion-vertical-catalog-driven-taxonomy-organization-graphs--discovery-reverses-the-drafts-religion-drop-refines-l-singledomain):**
   the single domain may be **religion**, within which multiple religions/traditions coexist as
-  **catalog data + units in graphs** — still no org-type discriminator in code (every faith label
-  is a descriptive catalog row, never a branch), exactly as D-RankSystems refined L-OneRankScheme.
+  **catalog data + units in graphs**. **Superseded for the org-structure scope by
+  [D-TenantOrganizations](roadmap-decisions.md#d-tenantorganizations--domains--organizations-a-multi-domain-tenant-over-the-unit-graph)
+  (M40):** one instance may now hold **multiple domains** (military/government/company/university/
+  church/public-org) and multiple **organizations** within each — but the spirit holds: **no org-type
+  discriminator is branched on in code.** Domain, organization, and `unit_kind` are descriptive
+  **catalog rows** feeding listing/validation/UI, never a code switch and never a PDP input, exactly
+  as D-RankSystems refined L-OneRankScheme.
 - **L-UnitIsTenant — Tenant ≡ organizational unit.** A "tenant" is a node in the org graph.
+  **Refined by [D-TenantOrganizations](roadmap-decisions.md#d-tenantorganizations--domains--organizations-a-multi-domain-tenant-over-the-unit-graph)
+  (M40):** units now belong to a first-class **Organization** (the realm a person joins — US Army,
+  Bundeswehr, KhNU), itself classified by a **Domain** catalog. The organization is the concrete
+  top-level container; units remain the graph nodes within it.
 - **L-OneRankScheme — One system-wide rank scheme**, edited by the instance admin, never
   adopted per unit. **Refined by [D-RankSystems](#d-ranksystems--multinational-rank-systems-standardized-grade-comparability-and-scheme-presets-extends-d-rank-refines-l-onerankscheme):**
   the one registry MAY contain multiple `rank_systems` (multinational) — still one scheme,

@@ -33,7 +33,8 @@ intelligence (insurance/MTPL, inspection, accidents, theft, odometer, telematics
   unique among active when present, nullable, `pii:basic`); `color`; `manufacture_date`; `attributes`
   JSONB long-tail grab-bag; soft-delete. The **RID is the external handle** (no separate `code`).
 - **Reified Links** (D-Ontology):
-  - `vehicle_brand_manufacturers` (`link__manufactured_by`, RID `17,2,1`): brand → `company_companies`,
+  - `vehicle_brand_manufacturers` (`link__manufactured_by`, RID `17,2,1`): brand → a `company`-domain
+    `tenant_organizations` row (the manufacturer company — M41 / D-UnifiedOrgGraph),
     **temporal** (`effective_from`/`effective_to`) — a marque's manufacturer changes with acquisitions.
   - `vehicle_registrations` (`link__registered_to`, RID `17,2,2`): the **ownership + plate record** —
     `vehicle_id` → vehicle; a **polymorphic owner** `owner_kind ∈ {person,company}` + `owner_id` (text,

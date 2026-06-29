@@ -239,7 +239,7 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// buildings (→ M19 location), groups, positions/appointments (mirror membership), and the person
 	// bindings (enrollments, dorm stays). Writes record via the audit service; translatable names
 	// assemble via localization.
-	educationSvc, err := education.Register(info, pool, auditSvc, locSvc, enforcer)
+	educationSvc, err := education.Register(info, pool, auditSvc, locSvc, tenantSvc, enforcer)
 	if err != nil {
 		cleanup()
 		return nil, err
@@ -249,7 +249,7 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// Company (M21 / D-Companies): a legal-entity registry over person + the M19 location foundation —
 	// companies, registrations, industries, locations, positions/appointments, and the ownership/
 	// affiliation graph. Writes record via the audit service; translatable names assemble via localization.
-	companySvc, err := company.Register(info, pool, auditSvc, locSvc, enforcer)
+	companySvc, err := company.Register(info, pool, auditSvc, locSvc, tenantSvc, enforcer)
 	if err != nil {
 		cleanup()
 		return nil, err

@@ -3,9 +3,23 @@ import { notFound } from "next/navigation";
 import { oikumenea } from "@/lib/api/server";
 import { EmptyState, ErrorNotice, PageHeader, Pager } from "@/components/ui";
 import { DataTable } from "@/components/ontology/DataTable";
+import { UnitTree } from "@/components/ontology/UnitTree";
 import { TypeBadge } from "@/components/ontology/TypeBadge";
 import { OBJECT_TYPES, type Row } from "@/lib/ontology/registry";
 import { T } from "@/components/T";
+import { UnitCreateMenu } from "@/components/UnitCreateMenu";
+
+// For org-scoped lists (units; D-TenantOrganizations, M40), fetch the organizations to populate the
+// picker. Returns {id, label} options; label prefers the stable code, falling back to the RID tail.
+async function loadOrgOptions(): Promise<{ id: string; label: string }[]> {
+  const res = await oikumenea().then((ok) =>
+    ok.request("GET", "/tenant/v1/organizations", { query: "?pageSize=200" }),
+  );
+  const orgs = ((res as { organizations?: unknown[] })?.organizations ?? []) as Record<string, unknown>[];
+  return orgs
+    .map((o) => ({ id: String(o.id ?? ""), label: String(o.code ?? o.id ?? "").trim() }))
+    .filter((o) => o.id);
+}
 
 // Generic create routes for the few types with a bespoke create wizard; others create inline elsewhere.
 const NEW_ROUTE: Record<string, string> = {
@@ -18,37 +32,61 @@ export default async function ExplorePage({
   searchParams,
 }: {
   params: Promise<{ type: string }>;
-  searchParams: Promise<{ pageToken?: string; q?: string }>;
+  searchParams: Promise<{ pageToken?: string; q?: string; org?: string; view?: string }>;
 }) {
   const { type } = await params;
   const def = OBJECT_TYPES[type];
   if (!def || !def.list) notFound();
 
-  const { pageToken, q } = await searchParams;
+  const { pageToken, q, org, view } = await searchParams;
+  // Units support a hierarchical (expand-on-click) Tree view alongside the flat Table.
+  const treeView = type === "unit" && view === "tree";
   // Backend substring search (e.g. languoids): the catalog is large and the list isn't paginable past
   // its limit, so the query param is the only way to reach rows beyond the first page.
   const query = def.list.searchParam ? (q ?? "").trim() : "";
+
+  // Org-scoped lists (units; M40) require an `org` RID before the backend will list anything; without
+  // one it rejects with Tenant:UnitInvalid. Load the picker options and only query once an org is chosen.
+  const orgScoped = def.list.orgScoped === true;
+  const orgId = orgScoped ? (org ?? "").trim() : "";
+  let orgOptions: { id: string; label: string }[] = [];
+  let error: unknown = null;
+  if (orgScoped) {
+    try {
+      orgOptions = await loadOrgOptions();
+    } catch (e) {
+      error = e;
+    }
+  }
+
   let rows: Row[] = [];
   let nextPageToken: string | undefined;
-  let error: unknown = null;
-  try {
-    let search = def.list.search ?? "";
-    if (query) {
-      search += `${search ? "&" : "?"}${def.list.searchParam}=${encodeURIComponent(query)}`;
+  if (!error && (!orgScoped || orgId) && !treeView) {
+    try {
+      let search = def.list.search ?? "";
+      if (orgScoped && orgId) {
+        search += `${search ? "&" : "?"}org=${encodeURIComponent(orgId)}`;
+      }
+      if (query) {
+        search += `${search ? "&" : "?"}${def.list.searchParam}=${encodeURIComponent(query)}`;
+      }
+      if (pageToken) {
+        search += `${search ? "&" : "?"}pageToken=${encodeURIComponent(pageToken)}`;
+      }
+      const listPath = def.list.path;
+      const res = await oikumenea().then((ok) => ok.request("GET", listPath, { query: search }));
+      const parsed = def.list.parse(res);
+      rows = parsed.rows;
+      nextPageToken = parsed.nextPageToken;
+    } catch (e) {
+      error = e;
     }
-    if (pageToken) {
-      search += `${search ? "&" : "?"}pageToken=${encodeURIComponent(pageToken)}`;
-    }
-    const listPath = def.list.path;
-    const res = await oikumenea().then((ok) => ok.request("GET", listPath, { query: search }));
-    const parsed = def.list.parse(res);
-    rows = parsed.rows;
-    nextPageToken = parsed.nextPageToken;
-  } catch (e) {
-    error = e;
   }
 
   const newRoute = NEW_ROUTE[type];
+  const pagerExtra = [query ? `q=${encodeURIComponent(query)}` : "", orgId ? `org=${encodeURIComponent(orgId)}` : ""]
+    .filter(Boolean)
+    .join("&");
 
   return (
     <div>
@@ -58,7 +96,10 @@ export default async function ExplorePage({
         action={
           <div className="flex items-center gap-3">
             <TypeBadge type={def.type} />
-            {newRoute ? (
+            {type === "unit" ? (
+              // Units are created per-domain (military / university / …), not via one generic form.
+              <UnitCreateMenu />
+            ) : newRoute ? (
               <Link href={newRoute} className="btn-primary">
                 <T>New</T> <span className="lowercase"><T>{def.label}</T></span>
               </Link>
@@ -66,7 +107,36 @@ export default async function ExplorePage({
           </div>
         }
       />
-      {def.list.searchParam ? (
+      {orgScoped ? (
+        <form method="get" action={`/explore/${type}`} className="mb-4 flex items-center gap-2">
+          <label className="label mb-0"><T>Organization</T></label>
+          <select name="org" defaultValue={orgId} className="input max-w-xs">
+            <option value=""><T>Select an organization…</T></option>
+            {orgOptions.map((o) => (
+              <option key={o.id} value={o.id}>{o.label}</option>
+            ))}
+          </select>
+          <button type="submit" className="btn-primary"><T>Show</T></button>
+        </form>
+      ) : null}
+      {type === "unit" && orgId ? (
+        <div className="mb-4 flex items-center gap-1 text-sm">
+          <Link
+            href={`/explore/unit?org=${encodeURIComponent(orgId)}`}
+            className={treeView ? "btn-ghost" : "btn-primary"}
+          >
+            <T>Table</T>
+          </Link>
+          <Link
+            href={`/explore/unit?org=${encodeURIComponent(orgId)}&view=tree`}
+            className={treeView ? "btn-primary" : "btn-ghost"}
+          >
+            <T>Tree</T>
+          </Link>
+        </div>
+      ) : null}
+      {treeView && orgId ? <UnitTree orgId={orgId} /> : null}
+      {!treeView && def.list.searchParam ? (
         <form method="get" action={`/explore/${type}`} className="mb-4 flex items-center gap-2">
           <input
             type="search"
@@ -83,18 +153,21 @@ export default async function ExplorePage({
         </form>
       ) : null}
       {error ? <ErrorNotice error={error} /> : null}
-      {!error && rows.length === 0 ? (
+      {!error && orgScoped && !orgId ? (
+        <EmptyState><T>Select an organization to view its units.</T></EmptyState>
+      ) : null}
+      {!error && !treeView && (!orgScoped || orgId) && rows.length === 0 ? (
         <EmptyState>
           {query ? <T>No matches.</T> : <T>Nothing here yet.</T>}
         </EmptyState>
       ) : null}
-      {!error && rows.length > 0 ? (
+      {!error && !treeView && rows.length > 0 ? (
         <>
           <DataTable type={type} rows={rows} />
           <Pager
             basePath={`/explore/${type}`}
             nextPageToken={nextPageToken}
-            extraQuery={query ? `q=${encodeURIComponent(query)}` : ""}
+            extraQuery={pagerExtra}
           />
         </>
       ) : null}

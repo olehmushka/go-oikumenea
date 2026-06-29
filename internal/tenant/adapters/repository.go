@@ -40,9 +40,11 @@ func (r *Repository) InsertUnit(ctx context.Context, u domain.Unit) (domain.Unit
 		metadata = json.RawMessage("{}") // the column is NOT NULL; default empty object
 	}
 	row, err := r.q.InsertUnit(ctx, tenantsql.InsertUnitParams{
+		OrgID:      u.OrgID,
+		DomainID:   u.DomainID,
+		KindID:     textPtr(u.KindID),
 		Code:       textPtr(u.Code),
 		Name:       u.Name,
-		UnitKind:   textPtr(strPtrOrNil(u.UnitKind)),
 		Level:      int2Ptr(u.Level),
 		Visibility: string(u.Visibility),
 		Metadata:   metadata,
@@ -76,7 +78,8 @@ func (r *Repository) UpdateUnit(ctx context.Context, id string, patch domain.Uni
 	row, err := r.q.UpdateUnit(ctx, tenantsql.UpdateUnitParams{
 		ID:         id,
 		Name:       textPtr(patch.Name),
-		UnitKind:   textPtr(patch.UnitKind),
+		DomainID:   textPtr(patch.DomainID),
+		KindID:     textPtr(patch.KindID),
 		Level:      int2Ptr(patch.Level),
 		Visibility: textPtr(visibility),
 		Metadata:   patch.Metadata, // nil leaves the value unchanged (COALESCE)
@@ -101,11 +104,14 @@ func (r *Repository) SetUnitState(ctx context.Context, id string, state domain.S
 	return toUnit(row), nil
 }
 
-func (r *Repository) ListUnits(ctx context.Context, level *int, after string, limit int) ([]domain.Unit, error) {
+func (r *Repository) ListUnits(ctx context.Context, orgID string, domainID, kindID *string, level *int, after string, limit int) ([]domain.Unit, error) {
 	rows, err := r.q.ListUnits(ctx, tenantsql.ListUnitsParams{
-		Level: int2Ptr(level),
-		After: textPtr(strPtrOrNil(after)),
-		Lim:   int32(limit),
+		OrgID:    orgID,
+		DomainID: textPtr(domainID),
+		KindID:   textPtr(kindID),
+		Level:    int2Ptr(level),
+		After:    textPtr(strPtrOrNil(after)),
+		Lim:      int32(limit),
 	})
 	if err != nil {
 		return nil, err
@@ -117,12 +123,50 @@ func (r *Repository) ListUnits(ctx context.Context, level *int, after string, li
 	return units, nil
 }
 
-// ---------------------------------------------------------------- graphs
+// ListChildUnits returns the direct children of parentID within graphID (immediate edges), keyset-paginated.
+func (r *Repository) ListChildUnits(ctx context.Context, parentID, graphID, after string, limit int) ([]domain.Unit, error) {
+	rows, err := r.q.ListChildUnits(ctx, tenantsql.ListChildUnitsParams{
+		GraphID:  graphID,
+		ParentID: parentID,
+		After:    textPtr(strPtrOrNil(after)),
+		Lim:      int32(limit),
+	})
+	if err != nil {
+		return nil, err
+	}
+	units := make([]domain.Unit, 0, len(rows))
+	for _, row := range rows {
+		units = append(units, toUnit(row))
+	}
+	return units, nil
+}
 
-func (r *Repository) InsertGraph(ctx context.Context, code, name string, authorityBearing bool) (domain.Graph, error) {
+// ListRootUnits returns the org's top-level units within graphID (no parent edge), keyset-paginated.
+func (r *Repository) ListRootUnits(ctx context.Context, orgID, graphID, after string, limit int) ([]domain.Unit, error) {
+	rows, err := r.q.ListRootUnits(ctx, tenantsql.ListRootUnitsParams{
+		OrgID:   orgID,
+		GraphID: graphID,
+		After:   textPtr(strPtrOrNil(after)),
+		Lim:     int32(limit),
+	})
+	if err != nil {
+		return nil, err
+	}
+	units := make([]domain.Unit, 0, len(rows))
+	for _, row := range rows {
+		units = append(units, toUnit(row))
+	}
+	return units, nil
+}
+
+// ---------------------------------------------------------------- graphs (per-org; orgID nil = global)
+
+func (r *Repository) InsertGraph(ctx context.Context, orgID *string, code, name string, isDefault, authorityBearing bool) (domain.Graph, error) {
 	row, err := r.q.InsertGraph(ctx, tenantsql.InsertGraphParams{
+		OrgID:              textPtr(orgID),
 		Code:               code,
 		Name:               name,
+		IsDefault:          isDefault,
 		IsAuthorityBearing: authorityBearing,
 	})
 	if err != nil {
@@ -145,8 +189,8 @@ func (r *Repository) GetGraphByID(ctx context.Context, id string) (domain.Graph,
 	return toGraph(row), nil
 }
 
-func (r *Repository) GetGraphByCode(ctx context.Context, code string) (domain.Graph, error) {
-	row, err := r.q.GetGraphByCode(ctx, code)
+func (r *Repository) GetGraphForOrgByCode(ctx context.Context, orgID *string, code string) (domain.Graph, error) {
+	row, err := r.q.GetGraphForOrgByCode(ctx, tenantsql.GetGraphForOrgByCodeParams{Code: code, OrgID: textPtr(orgID)})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Graph{}, domain.ErrGraphNotFound
@@ -156,8 +200,8 @@ func (r *Repository) GetGraphByCode(ctx context.Context, code string) (domain.Gr
 	return toGraph(row), nil
 }
 
-func (r *Repository) ListGraphs(ctx context.Context) ([]domain.Graph, error) {
-	rows, err := r.q.ListGraphs(ctx)
+func (r *Repository) ListGraphsForOrg(ctx context.Context, orgID *string) ([]domain.Graph, error) {
+	rows, err := r.q.ListGraphsForOrg(ctx, textPtr(orgID))
 	if err != nil {
 		return nil, err
 	}
@@ -168,8 +212,12 @@ func (r *Repository) ListGraphs(ctx context.Context) ([]domain.Graph, error) {
 	return graphs, nil
 }
 
-func (r *Repository) ClearDefaultGraphs(ctx context.Context) error {
-	return r.q.ClearDefaultGraphs(ctx)
+func (r *Repository) ListGraphIDs(ctx context.Context) ([]string, error) {
+	return r.q.ListGraphIDs(ctx)
+}
+
+func (r *Repository) ClearDefaultGraphsForOrg(ctx context.Context, orgID *string) error {
+	return r.q.ClearDefaultGraphsForOrg(ctx, textPtr(orgID))
 }
 
 func (r *Repository) UpdateGraph(ctx context.Context, id string, patch domain.GraphPatch) (domain.Graph, error) {
@@ -199,8 +247,8 @@ func (r *Repository) SoftDeleteGraph(ctx context.Context, id string) error {
 	return nil
 }
 
-func (r *Repository) CountActiveGraphs(ctx context.Context) (int, error) {
-	n, err := r.q.CountActiveGraphs(ctx)
+func (r *Repository) CountActiveGraphsForOrg(ctx context.Context, orgID *string) (int, error) {
+	n, err := r.q.CountActiveGraphsForOrg(ctx, textPtr(orgID))
 	return int(n), err
 }
 
@@ -387,9 +435,11 @@ func (r *Repository) InsertLifecycleEvent(ctx context.Context, unitID string, fr
 func toUnit(row tenantsql.OikumeneaTenantUnit) domain.Unit {
 	return domain.Unit{
 		ID:         row.ID,
+		OrgID:      row.OrgID,
+		DomainID:   row.DomainID,
+		KindID:     textToPtr(row.KindID),
 		Code:       textToPtr(row.Code),
 		Name:       row.Name,
-		UnitKind:   row.UnitKind.String, // "" when not valid
 		Level:      int2ToPtr(row.Level),
 		Visibility: domain.Visibility(row.Visibility),
 		State:      domain.State(row.State),
@@ -402,11 +452,290 @@ func toUnit(row tenantsql.OikumeneaTenantUnit) domain.Unit {
 func toGraph(row tenantsql.OikumeneaTenantGraph) domain.Graph {
 	return domain.Graph{
 		ID:                 row.ID,
+		OrgID:              textToPtr(row.OrgID),
 		Code:               row.Code,
 		Name:               row.Name,
 		IsDefault:          row.IsDefault,
 		IsAuthorityBearing: row.IsAuthorityBearing,
 	}
+}
+
+func toDomain(row tenantsql.OikumeneaTenantDomain) domain.Domain {
+	return domain.Domain{
+		ID:        row.ID,
+		Code:      row.Code,
+		Name:      row.Name,
+		Status:    domain.CatalogStatus(row.Status),
+		PdpScoped: row.PdpScoped,
+		SortOrder: int4ToPtr(row.SortOrder),
+	}
+}
+
+func toUnitKind(row tenantsql.OikumeneaTenantUnitKind) domain.UnitKind {
+	return domain.UnitKind{
+		ID:         row.ID,
+		DomainID:   row.DomainID,
+		Code:       row.Code,
+		Name:       row.Name,
+		AttrSchema: json.RawMessage(row.AttrSchema),
+		Status:     domain.CatalogStatus(row.Status),
+		SortOrder:  int4ToPtr(row.SortOrder),
+	}
+}
+
+func toOrganization(row tenantsql.OikumeneaTenantOrganization) domain.Organization {
+	return domain.Organization{
+		ID:         row.ID,
+		Code:       row.Code,
+		Name:       row.Name,
+		DomainID:   row.DomainID,
+		Visibility: domain.Visibility(row.Visibility),
+		State:      domain.State(row.State),
+		Metadata:   json.RawMessage(row.Metadata),
+		CreatedAt:  row.CreatedAt.Time,
+		UpdatedAt:  row.UpdatedAt.Time,
+	}
+}
+
+// ---------------------------------------------------------------- domains (org-kind catalog, M40)
+
+func (r *Repository) InsertDomain(ctx context.Context, code, name string, sortOrder *int) (domain.Domain, error) {
+	row, err := r.q.InsertDomain(ctx, tenantsql.InsertDomainParams{Code: code, Name: name, SortOrder: int4Ptr(sortOrder)})
+	if err != nil {
+		if isUniqueViolation(err) {
+			return domain.Domain{}, domain.ErrDomainCodeConflict
+		}
+		return domain.Domain{}, err
+	}
+	return toDomain(row), nil
+}
+
+func (r *Repository) GetDomain(ctx context.Context, id string) (domain.Domain, error) {
+	row, err := r.q.GetDomain(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Domain{}, domain.ErrDomainNotFound
+		}
+		return domain.Domain{}, err
+	}
+	return toDomain(row), nil
+}
+
+func (r *Repository) GetDomainByCode(ctx context.Context, code string) (domain.Domain, error) {
+	row, err := r.q.GetDomainByCode(ctx, code)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Domain{}, domain.ErrDomainNotFound
+		}
+		return domain.Domain{}, err
+	}
+	return toDomain(row), nil
+}
+
+func (r *Repository) ListDomains(ctx context.Context) ([]domain.Domain, error) {
+	rows, err := r.q.ListDomains(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Domain, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toDomain(row))
+	}
+	return out, nil
+}
+
+func (r *Repository) UpdateDomain(ctx context.Context, id string, patch domain.DomainPatch) (domain.Domain, error) {
+	row, err := r.q.UpdateDomain(ctx, tenantsql.UpdateDomainParams{
+		ID:        id,
+		Name:      textPtr(patch.Name),
+		Status:    catalogStatusPtr(patch.Status),
+		SortOrder: int4Ptr(patch.SortOrder),
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Domain{}, domain.ErrDomainNotFound
+		}
+		return domain.Domain{}, err
+	}
+	return toDomain(row), nil
+}
+
+func (r *Repository) CountActiveDomainsByCode(ctx context.Context, code, excludeID string) (int, error) {
+	n, err := r.q.CountActiveDomainsByCode(ctx, tenantsql.CountActiveDomainsByCodeParams{Code: code, ExcludeID: excludeID})
+	return int(n), err
+}
+
+// ---------------------------------------------------------------- unit kinds (domain-scoped catalog)
+
+func (r *Repository) InsertUnitKind(ctx context.Context, k domain.UnitKind) (domain.UnitKind, error) {
+	row, err := r.q.InsertUnitKind(ctx, tenantsql.InsertUnitKindParams{
+		DomainID:   k.DomainID,
+		Code:       k.Code,
+		Name:       k.Name,
+		AttrSchema: jsonOrNil(k.AttrSchema),
+		SortOrder:  int4Ptr(k.SortOrder),
+	})
+	if err != nil {
+		if isUniqueViolation(err) {
+			return domain.UnitKind{}, domain.ErrUnitKindCodeConflict
+		}
+		if isFKViolation(err) {
+			return domain.UnitKind{}, domain.ErrDomainNotFound
+		}
+		return domain.UnitKind{}, err
+	}
+	return toUnitKind(row), nil
+}
+
+func (r *Repository) GetUnitKind(ctx context.Context, id string) (domain.UnitKind, error) {
+	row, err := r.q.GetUnitKind(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.UnitKind{}, domain.ErrUnitKindNotFound
+		}
+		return domain.UnitKind{}, err
+	}
+	return toUnitKind(row), nil
+}
+
+func (r *Repository) ListUnitKinds(ctx context.Context, domainID string) ([]domain.UnitKind, error) {
+	rows, err := r.q.ListUnitKinds(ctx, domainID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.UnitKind, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toUnitKind(row))
+	}
+	return out, nil
+}
+
+func (r *Repository) UpdateUnitKind(ctx context.Context, id string, patch domain.UnitKindPatch) (domain.UnitKind, error) {
+	row, err := r.q.UpdateUnitKind(ctx, tenantsql.UpdateUnitKindParams{
+		ID:         id,
+		Name:       textPtr(patch.Name),
+		AttrSchema: patch.AttrSchema, // nil leaves unchanged (COALESCE)
+		Status:     catalogStatusPtr(patch.Status),
+		SortOrder:  int4Ptr(patch.SortOrder),
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.UnitKind{}, domain.ErrUnitKindNotFound
+		}
+		return domain.UnitKind{}, err
+	}
+	return toUnitKind(row), nil
+}
+
+func (r *Repository) CountActiveUnitKindsByCode(ctx context.Context, domainID, code, excludeID string) (int, error) {
+	n, err := r.q.CountActiveUnitKindsByCode(ctx, tenantsql.CountActiveUnitKindsByCodeParams{
+		DomainID:  domainID,
+		Code:      code,
+		ExcludeID: excludeID,
+	})
+	return int(n), err
+}
+
+// ---------------------------------------------------------------- organizations (the realm)
+
+func (r *Repository) InsertOrganization(ctx context.Context, o domain.Organization) (domain.Organization, error) {
+	metadata := o.Metadata
+	if len(metadata) == 0 {
+		metadata = json.RawMessage("{}")
+	}
+	row, err := r.q.InsertOrganization(ctx, tenantsql.InsertOrganizationParams{
+		Code:       o.Code,
+		Name:       o.Name,
+		DomainID:   o.DomainID,
+		Visibility: string(o.Visibility),
+		Metadata:   metadata,
+	})
+	if err != nil {
+		if isUniqueViolation(err) {
+			return domain.Organization{}, domain.ErrOrgCodeConflict
+		}
+		if isFKViolation(err) {
+			return domain.Organization{}, domain.ErrDomainNotFound
+		}
+		return domain.Organization{}, err
+	}
+	return toOrganization(row), nil
+}
+
+func (r *Repository) GetOrganization(ctx context.Context, id string) (domain.Organization, error) {
+	row, err := r.q.GetOrganization(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Organization{}, domain.ErrOrgNotFound
+		}
+		return domain.Organization{}, err
+	}
+	return toOrganization(row), nil
+}
+
+func (r *Repository) UpdateOrganization(ctx context.Context, id string, patch domain.OrgPatch) (domain.Organization, error) {
+	var visibility *string
+	if patch.Visibility != nil {
+		v := string(*patch.Visibility)
+		visibility = &v
+	}
+	row, err := r.q.UpdateOrganization(ctx, tenantsql.UpdateOrganizationParams{
+		ID:         id,
+		Name:       textPtr(patch.Name),
+		DomainID:   textPtr(patch.DomainID),
+		Visibility: textPtr(visibility),
+		Metadata:   patch.Metadata,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Organization{}, domain.ErrOrgNotFound
+		}
+		return domain.Organization{}, err
+	}
+	return toOrganization(row), nil
+}
+
+func (r *Repository) SetOrgState(ctx context.Context, id string, state domain.State) (domain.Organization, error) {
+	row, err := r.q.SetOrgState(ctx, tenantsql.SetOrgStateParams{ID: id, State: string(state)})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Organization{}, domain.ErrOrgNotFound
+		}
+		return domain.Organization{}, err
+	}
+	return toOrganization(row), nil
+}
+
+func (r *Repository) ListOrganizations(ctx context.Context, domainID *string, after string, limit int) ([]domain.Organization, error) {
+	rows, err := r.q.ListOrganizations(ctx, tenantsql.ListOrganizationsParams{
+		DomainID: textPtr(domainID),
+		After:    textPtr(strPtrOrNil(after)),
+		Lim:      int32(limit),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Organization, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toOrganization(row))
+	}
+	return out, nil
+}
+
+func (r *Repository) CountActiveOrgsByCode(ctx context.Context, code, excludeID string) (int, error) {
+	n, err := r.q.CountActiveOrgsByCode(ctx, tenantsql.CountActiveOrgsByCodeParams{Code: code, ExcludeID: excludeID})
+	return int(n), err
+}
+
+func (r *Repository) InsertOrgLifecycleEvent(ctx context.Context, orgID string, from, to domain.State, reason, actorPersonID, requestID string) error {
+	return r.q.InsertOrgLifecycleEvent(ctx, tenantsql.InsertOrgLifecycleEventParams{
+		OrgID:         orgID,
+		FromState:     string(from),
+		ToState:       string(to),
+		Reason:        textPtr(strPtrOrNil(reason)),
+		ActorPersonID: textPtr(strPtrOrNil(actorPersonID)),
+		RequestID:     requestID,
+	})
 }
 
 // isUniqueViolation reports whether err is a Postgres unique-constraint violation (SQLSTATE 23505).
@@ -546,4 +875,35 @@ func int2ToPtr(n pgtype.Int2) *int {
 	}
 	v := int(n.Int16)
 	return &v
+}
+
+func int4Ptr(n *int) pgtype.Int4 {
+	if n == nil {
+		return pgtype.Int4{}
+	}
+	return pgtype.Int4{Int32: int32(*n), Valid: true}
+}
+
+func int4ToPtr(n pgtype.Int4) *int {
+	if !n.Valid {
+		return nil
+	}
+	v := int(n.Int32)
+	return &v
+}
+
+// catalogStatusPtr maps a *domain.CatalogStatus to a nullable text param (nil = unchanged).
+func catalogStatusPtr(s *domain.CatalogStatus) pgtype.Text {
+	if s == nil {
+		return pgtype.Text{}
+	}
+	return pgtype.Text{String: string(*s), Valid: true}
+}
+
+// jsonOrNil passes a JSON value through, or nil when empty (the column is nullable for unit kinds).
+func jsonOrNil(raw json.RawMessage) []byte {
+	if len(raw) == 0 {
+		return nil
+	}
+	return raw
 }

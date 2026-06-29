@@ -9,26 +9,16 @@ type Repository interface {
 	// catalogs
 	ListInstitutionKinds(ctx context.Context) ([]InstitutionKind, error)
 	UpsertInstitutionKind(ctx context.Context, code, name string, sortOrder *int) (InstitutionKind, error)
-	ListUnitKinds(ctx context.Context) ([]UnitKind, error)
-	UpsertUnitKind(ctx context.Context, code, name string, sortOrder *int) (UnitKind, error)
 	ListDegreeLevels(ctx context.Context) ([]DegreeLevel, error)
 
-	// institutions
-	InsertInstitution(ctx context.Context, in InstitutionInput) (Institution, error)
+	// institutions — a `university`-domain tenant org + the education_org_profiles sidecar (M41 /
+	// D-UnifiedOrgGraph). The org row (code/name/visibility) and the structure tree (tenant units +
+	// tenant_unit_closure) are owned by the tenant service; the repository owns the sidecar + read view.
+	InsertOrgProfile(ctx context.Context, institutionID, kindID string, countryID, foundedOn, closedOn *string) error
 	GetInstitution(ctx context.Context, id string) (Institution, error)
-	UpdateInstitution(ctx context.Context, id string, up InstitutionUpdate) (Institution, error)
+	UpdateOrgProfile(ctx context.Context, id string, up InstitutionUpdate) error
 	ListInstitutions(ctx context.Context, query, after string, lim int) ([]Institution, error)
 	SoftDeleteInstitution(ctx context.Context, id string) (int64, error)
-
-	// units + closure
-	InsertUnit(ctx context.Context, institutionID string, in UnitInput) (Unit, error)
-	GetUnit(ctx context.Context, id string) (Unit, error)
-	UpdateUnit(ctx context.Context, id string, up UnitUpdate) (Unit, error)
-	SetUnitParent(ctx context.Context, id string, parentID *string) (Unit, error)
-	ListUnitsByInstitution(ctx context.Context, institutionID string) ([]Unit, error)
-	ClosureHasPath(ctx context.Context, ancestorID, descendantID string) (bool, error)
-	RecomputeClosure(ctx context.Context, institutionID string) error
-	VerifyClosure(ctx context.Context, institutionID string) (missing, extra int, err error)
 
 	// buildings
 	InsertBuilding(ctx context.Context, institutionID string, in BuildingInput) (Building, error)

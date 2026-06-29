@@ -38,7 +38,11 @@ an external IdP; the service validates inbound identities and **decides** author
 PDP). It never stores credentials and never issues tokens.
 
 Differentiator vs. Keycloak: a real **PDP over a unit graph** (units may have multiple parents — a
-DAG) with **public/shadow visibility** — not flat, isolated realms.
+DAG) with **public/shadow visibility**. One deployment hosts **multiple domains**
+(military/government/company/university/church/public-org) and multiple **organizations** within them
+(US Army, Bundeswehr, KhNU — D-TenantOrganizations, M40), all **sharing one instance-global person
+directory** so a person can serve across organizations over time — *organizations sharing a directory,
+not flat isolated realms*.
 
 ## Read before doing anything
 
@@ -75,8 +79,10 @@ D-Worker** (in-process worker) and **folds D-DataIngestion (M17)** into M16.
 
 Eleven modules (`docs/modules/`):
 
-- **tenant** — units as a DAG (multi-parent, multi-root) + a maintained transitive-closure table;
-  `public`/`shadow` visibility; lifecycle. The closure feeds the PDP.
+- **tenant** — **domains** (org-kind catalog) → **organizations** (the realm a person joins) → units
+  as a DAG (multi-parent, multi-root) + a maintained transitive-closure table; per-org `command`/
+  `operational` graphs; domain-scoped `unit_kinds`; `public`/`shadow` visibility; lifecycle. The
+  closure feeds the PDP (D-TenantOrganizations, M40).
 - **person** — instance-global personnel directory; account-optional; holds exactly one rank.
   Carries structured names (incl. patronymic), `birthdate`, ISO-5218 `sex`.
 - **membership** — person↔unit belonging; owns **positions** (unit-owned billets that can be vacant).

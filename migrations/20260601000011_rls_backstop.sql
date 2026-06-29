@@ -52,13 +52,17 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA oikumenea GRANT EXECUTE ON FUNCTIONS TO oikum
 -- parent/holder (D-PersonReadScope / D-RLSDefenseInDepth); a reach-join policy for them is a noted
 -- hardening seam, not shipped.
 
--- tenant_units: keyed on the unit's own id.
+-- tenant_units: keyed on the unit's own id. REFERENCE units (pdp_scoped=false — university/company,
+-- D-UnifiedOrgGraph M41) are instance-global: they are exempt from the reach predicate (reads are gated
+-- by the public-read policy + the app-layer permission; writes by the instance-scoped `*.manage` perm).
 ALTER TABLE oikumenea.tenant_units ENABLE ROW LEVEL SECURITY;
 ALTER TABLE oikumenea.tenant_units FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_units_reach ON oikumenea.tenant_units
-  USING (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
+  USING (NOT pdp_scoped
+         OR coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
          OR id = ANY (string_to_array(nullif(current_setting('app.readable_units', true), ''), ',')::uuid[]))
-  WITH CHECK (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
+  WITH CHECK (NOT pdp_scoped
+         OR coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
          OR id = ANY (string_to_array(nullif(current_setting('app.writable_units', true), ''), ',')::uuid[]));
 
 -- tenant_unit_edges: visible/writable if EITHER endpoint is in reach.

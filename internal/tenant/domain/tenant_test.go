@@ -36,13 +36,14 @@ func TestUnitValidate(t *testing.T) {
 		unit Unit
 		ok   bool
 	}{
-		{"valid", Unit{Code: ptr("1-bn"), Name: "1st Battalion", Visibility: VisibilityPublic}, true},
-		{"valid shadow", Unit{Code: ptr("ghq"), Name: "GHQ", Visibility: VisibilityShadow}, true},
-		{"codeless sub-unit", Unit{Code: nil, Name: "3rd Platoon", Visibility: VisibilityPublic}, true}, // D-UnitCodeLifecycle
-		{"empty code", Unit{Code: ptr(""), Name: "x", Visibility: VisibilityPublic}, false},
-		{"whitespace code", Unit{Code: ptr("a b"), Name: "x", Visibility: VisibilityPublic}, false},
-		{"empty name", Unit{Code: ptr("a"), Name: "  ", Visibility: VisibilityPublic}, false},
-		{"bad visibility", Unit{Code: ptr("a"), Name: "x", Visibility: Visibility("hidden")}, false},
+		{"valid", Unit{OrgID: "o", DomainID: "d", Code: ptr("1-bn"), Name: "1st Battalion", Visibility: VisibilityPublic}, true},
+		{"valid shadow", Unit{OrgID: "o", DomainID: "d", Code: ptr("ghq"), Name: "GHQ", Visibility: VisibilityShadow}, true},
+		{"codeless sub-unit", Unit{OrgID: "o", DomainID: "d", Code: nil, Name: "3rd Platoon", Visibility: VisibilityPublic}, true}, // D-UnitCodeLifecycle
+		{"missing org", Unit{DomainID: "d", Code: ptr("a"), Name: "x", Visibility: VisibilityPublic}, false},                       // D-TenantOrganizations (M40)
+		{"empty code", Unit{OrgID: "o", DomainID: "d", Code: ptr(""), Name: "x", Visibility: VisibilityPublic}, false},
+		{"whitespace code", Unit{OrgID: "o", DomainID: "d", Code: ptr("a b"), Name: "x", Visibility: VisibilityPublic}, false},
+		{"empty name", Unit{OrgID: "o", DomainID: "d", Code: ptr("a"), Name: "  ", Visibility: VisibilityPublic}, false},
+		{"bad visibility", Unit{OrgID: "o", DomainID: "d", Code: ptr("a"), Name: "x", Visibility: Visibility("hidden")}, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

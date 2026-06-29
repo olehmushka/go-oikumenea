@@ -178,29 +178,6 @@ type OikumeneaCompanyBranch struct {
 	DeletedAt pgtype.Timestamptz
 }
 
-type OikumeneaCompanyCompany struct {
-	// pii:none
-	ID string
-	// pii:none
-	Code string
-	// pii:none
-	LegalName string
-	// pii:none
-	ShortName pgtype.Text
-	// pii:none
-	LegalFormID string
-	// pii:none
-	OwnershipCategory string
-	// pii:none
-	CountryID   pgtype.Text
-	FoundedOn   pgtype.Date
-	DissolvedOn pgtype.Date
-	State       string
-	CreatedAt   pgtype.Timestamptz
-	UpdatedAt   pgtype.Timestamptz
-	DeletedAt   pgtype.Timestamptz
-}
-
 type OikumeneaCompanyFounding struct {
 	// pii:none
 	ID string
@@ -276,6 +253,25 @@ type OikumeneaCompanyLocation struct {
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaCompanyOrgProfile struct {
+	// pii:none
+	CompanyID string
+	// pii:none
+	ShortName pgtype.Text
+	// pii:none
+	LegalFormID string
+	// pii:none
+	OwnershipCategory string
+	// pii:none
+	CountryID   pgtype.Text
+	FoundedOn   pgtype.Date
+	DissolvedOn pgtype.Date
+	State       string
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+	DeletedAt   pgtype.Timestamptz
 }
 
 type OikumeneaCompanyPosition struct {
@@ -639,25 +635,6 @@ type OikumeneaEducationGroup struct {
 	DeletedAt     pgtype.Timestamptz
 }
 
-type OikumeneaEducationInstitution struct {
-	// pii:none
-	ID string
-	// pii:none
-	Code string
-	// pii:none
-	Name string
-	// pii:none
-	KindID string
-	// pii:none
-	CountryID pgtype.Text
-	FoundedOn pgtype.Date
-	ClosedOn  pgtype.Date
-	State     string
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
-	DeletedAt pgtype.Timestamptz
-}
-
 type OikumeneaEducationInstitutionKind struct {
 	// pii:none
 	ID string
@@ -667,6 +644,21 @@ type OikumeneaEducationInstitutionKind struct {
 	Name      string
 	Status    string
 	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaEducationOrgProfile struct {
+	// pii:none
+	InstitutionID string
+	// pii:none
+	KindID string
+	// pii:none
+	CountryID pgtype.Text
+	FoundedOn pgtype.Date
+	ClosedOn  pgtype.Date
+	State     string
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
@@ -835,49 +827,6 @@ type OikumeneaEducationScholarship struct {
 	CreatedAt  pgtype.Timestamptz
 	UpdatedAt  pgtype.Timestamptz
 	DeletedAt  pgtype.Timestamptz
-}
-
-type OikumeneaEducationUnit struct {
-	// pii:none
-	ID string
-	// pii:none
-	InstitutionID string
-	// pii:none
-	ParentID pgtype.Text
-	// pii:none
-	KindID string
-	// pii:none
-	Code string
-	// pii:none
-	Name      string
-	Status    string
-	SortOrder pgtype.Int4
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
-	DeletedAt pgtype.Timestamptz
-}
-
-type OikumeneaEducationUnitClosure struct {
-	// pii:none
-	AncestorID string
-	// pii:none
-	DescendantID string
-	// pii:none
-	Depth int32
-}
-
-type OikumeneaEducationUnitKind struct {
-	// pii:none
-	ID string
-	// pii:none
-	Code string
-	// pii:none
-	Name      string
-	Status    string
-	SortOrder pgtype.Int4
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
-	DeletedAt pgtype.Timestamptz
 }
 
 type OikumeneaGeoCountry struct {
@@ -2280,9 +2229,29 @@ type OikumeneaTenantClosureStatus struct {
 	UpdatedAt pgtype.Timestamptz
 }
 
+type OikumeneaTenantDomain struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	Status string
+	// pii:none
+	PdpScoped bool
+	// pii:none
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
 type OikumeneaTenantGraph struct {
 	// pii:none
 	ID string
+	// pii:none
+	OrgID pgtype.Text
 	// pii:none
 	Code string
 	// pii:none
@@ -2296,21 +2265,65 @@ type OikumeneaTenantGraph struct {
 	DeletedAt          pgtype.Timestamptz
 }
 
+type OikumeneaTenantOrgLifecycleEvent struct {
+	// pii:none
+	ID string
+	// pii:none
+	OrgID string
+	// pii:none
+	FromState string
+	// pii:none
+	ToState string
+	// pii:none
+	Reason pgtype.Text
+	// pii:basic
+	ActorPersonID pgtype.Text
+	// pii:none
+	RequestID string
+	CreatedAt pgtype.Timestamptz
+}
+
+type OikumeneaTenantOrganization struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	DomainID string
+	// pii:none
+	Visibility string
+	// pii:none
+	State string
+	// pii:none
+	Metadata  []byte
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
 type OikumeneaTenantUnit struct {
 	// pii:none
 	ID string
 	// pii:none
+	OrgID string
+	// pii:none
+	DomainID string
+	// pii:none
+	KindID pgtype.Text
+	// pii:none
 	Code pgtype.Text
 	// pii:none
 	Name string
-	// pii:none
-	UnitKind pgtype.Text
 	// pii:none
 	Level pgtype.Int2
 	// pii:none
 	Visibility string
 	// pii:none
 	State string
+	// pii:none
+	PdpScoped bool
 	// pii:none
 	Metadata  []byte
 	CreatedAt pgtype.Timestamptz
@@ -2359,6 +2372,26 @@ type OikumeneaTenantUnitEdge struct {
 	CreatedAt pgtype.Timestamptz
 	// pii:basic
 	CreatedBy pgtype.Text
+}
+
+type OikumeneaTenantUnitKind struct {
+	// pii:none
+	ID string
+	// pii:none
+	DomainID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	AttrSchema []byte
+	// pii:none
+	Status string
+	// pii:none
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
 }
 
 type OikumeneaTenantUnitLanguage struct {

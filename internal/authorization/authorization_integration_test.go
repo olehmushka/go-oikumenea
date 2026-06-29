@@ -39,12 +39,21 @@ import (
 
 const defaultTestDSN = "postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable"
 
-// seedGraphsSQL mirrors tenant.Register's boot seed (the test bypasses Register).
-const seedGraphsSQL = `
-INSERT INTO oikumenea.tenant_graphs (code, name, is_default, is_authority_bearing) VALUES
-  ('command',     'Command',     true,  true),
-  ('operational', 'Operational', false, true)
-ON CONFLICT (code) WHERE deleted_at IS NULL DO NOTHING`
+// seedOrgSQL idempotently seeds a test domain + organization (the realm) and its per-org command +
+// operational graphs (D-TenantOrganizations, M40). The test bypasses tenant.Register/CreateOrganization,
+// so it materializes the org + graphs directly. seedUnit references this org.
+const seedOrgSQL = `
+INSERT INTO oikumenea.tenant_domains (code, name) VALUES ('test-domain','Test Domain')
+  ON CONFLICT (code) WHERE deleted_at IS NULL DO NOTHING;
+INSERT INTO oikumenea.tenant_organizations (code, name, domain_id)
+  SELECT 'test-org','Test Org', d.id FROM oikumenea.tenant_domains d WHERE d.code='test-domain'
+  ON CONFLICT (code) WHERE deleted_at IS NULL DO NOTHING;
+INSERT INTO oikumenea.tenant_graphs (org_id, code, name, is_default, is_authority_bearing)
+  SELECT o.id, 'command', 'Command', true, true FROM oikumenea.tenant_organizations o WHERE o.code='test-org'
+  ON CONFLICT (org_id, code) WHERE deleted_at IS NULL AND org_id IS NOT NULL DO NOTHING;
+INSERT INTO oikumenea.tenant_graphs (org_id, code, name, is_default, is_authority_bearing)
+  SELECT o.id, 'operational', 'Operational', false, true FROM oikumenea.tenant_organizations o WHERE o.code='test-org'
+  ON CONFLICT (org_id, code) WHERE deleted_at IS NULL AND org_id IS NOT NULL DO NOTHING`
 
 type harness struct {
 	authz  *authzapp.Service
@@ -63,8 +72,8 @@ func newHarness(t *testing.T) harness {
 		t.Fatalf("connect test db: %v", err)
 	}
 	t.Cleanup(pool.Close)
-	if _, err := pool.Exec(context.Background(), seedGraphsSQL); err != nil {
-		t.Fatalf("seed graphs: %v", err)
+	if _, err := pool.Exec(context.Background(), seedOrgSQL); err != nil {
+		t.Fatalf("seed org+graphs: %v", err)
 	}
 
 	audit := auditapp.NewService(pool, func(conn pdb.DBTX) auditdomain.Repository {
@@ -92,7 +101,9 @@ func (h harness) seedUnit(t *testing.T) string {
 	t.Helper()
 	var id string
 	if err := h.pool.QueryRow(context.Background(),
-		`INSERT INTO oikumenea.tenant_units (code, name) VALUES ($1, 'Unit') RETURNING id`, uniq("unit")).Scan(&id); err != nil {
+		`INSERT INTO oikumenea.tenant_units (org_id, domain_id, code, name)
+		 SELECT o.id, o.domain_id, $1, 'Unit' FROM oikumenea.tenant_organizations o WHERE o.code='test-org'
+		 RETURNING id`, uniq("unit")).Scan(&id); err != nil {
 		t.Fatalf("seed unit: %v", err)
 	}
 	return id

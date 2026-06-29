@@ -19,6 +19,15 @@ independent modules). It reuses the shared M19 [location](location.md) for addre
 are directory data. Scope is **structural only**; volatile registry intelligence (financials, court,
 tax, sanctions/PEP) is **parked** (DS-45/46/47).
 
+> **M41 / D-UnifiedOrgGraph.** A company is now a **`company`-domain `tenant_organization`** (the org
+> *is* the legal entity) plus a **`company_org_profiles`** sidecar keyed by the org RID — mirroring
+> [education](education.md)'s institution=org and [religion](religion.md)'s `religion_org_profiles`. The
+> former standalone `company_companies` table and its own `15,1,1` object RID are gone. `company` is a
+> **reference domain** (`pdp_scoped=false`): instance-global, public reads, app-permission writes, no
+> reach-RLS, and (unlike education) **no per-org unit graph** — companies have no internal unit tree. The
+> registry child tables (registrations, positions, locations, the ownership-graph links) keep their
+> `company_id` columns, now FK → `tenant_organizations`.
+
 ## Entities & aggregates
 
 **Ontology kinds** (D-Ontology; [registry](../ontology-mapping.md), RID service **15**) —
@@ -65,9 +74,17 @@ generic LLC/JSC/GmbH/PLC + UA ТОВ/ПАТ/ФОП). `company_registration_schem
 lei/duns/ua-edrpou/vat/us-ein). `company_industry_classes` adds `system ∈ nace|isic|kved` (seeded NACE
 sections).
 
-**`company_companies`** — `id`, `code`, `legal_name`, `short_name`, `legal_form_id` (RESTRICT),
-`ownership_category`, `country_id` → `geo_countries` (RESTRICT, nullable), `founded_on`/`dissolved_on`
-DATE, `state`. `UNIQUE (code) WHERE deleted_at IS NULL`.
+**A company = a `company`-domain `tenant_organization` + a `company_org_profiles` sidecar** (M41 /
+D-UnifiedOrgGraph). The legal entity itself is a `tenant_organizations` row (domain=`company`,
+`pdp_scoped=false`): its stable `code` and registered `legal_name` are the org's `code` + `name` (created
+/renamed through the tenant service). There is **no own `company` object RID** — the org RID (`4,1,6`) is
+the company's identity, and `company_org_profiles` is keyed by it.
+
+**`company_org_profiles`** — `company_id` PK → `tenant_organizations` (CASCADE; the org RID, no own RID),
+`short_name`, `legal_form_id` (RESTRICT), `ownership_category`, `country_id` → `geo_countries`
+(RESTRICT, nullable), `founded_on`/`dissolved_on` DATE, `state`, soft-delete. Companies have **no
+internal unit tree** (unlike education) — divisions, if needed, would be additive `tenant_units`. The
+registry child tables below carry their original `company_id` column names, now FK → `tenant_organizations`.
 
 **`company_registrations`** — `id`, `company_id` (CASCADE), `scheme_id` (RESTRICT), `identifier`,
 `validated`. `UNIQUE (scheme_id, identifier) WHERE deleted_at IS NULL`.

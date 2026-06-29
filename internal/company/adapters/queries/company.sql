@@ -44,21 +44,29 @@ DO UPDATE SET name = EXCLUDED.name, system = EXCLUDED.system,
   sort_order = COALESCE(EXCLUDED.sort_order, oikumenea.company_industry_classes.sort_order), updated_at = now()
 RETURNING *;
 
--- ============================ companies ============================
+-- ============================ companies (tenant org + company_org_profiles sidecar — M41) ============================
+-- A company is a `company`-domain tenant organization (its stable `code` and registered name = the org's
+-- code + name) plus a company_org_profiles sidecar (short_name/legal_form/ownership/country/dates/state).
+-- The org itself is created/updated through the tenant service; these queries own the sidecar and the
+-- joined read view.
 
--- name: InsertCompany :one
-INSERT INTO oikumenea.company_companies
-  (code, legal_name, short_name, legal_form_id, ownership_category, country_id, founded_on)
-VALUES (@code, @legal_name, sqlc.narg('short_name'), @legal_form_id,
+-- name: InsertOrgProfile :one
+INSERT INTO oikumenea.company_org_profiles
+  (company_id, short_name, legal_form_id, ownership_category, country_id, founded_on)
+VALUES (@company_id, sqlc.narg('short_name'), @legal_form_id,
         COALESCE(sqlc.narg('ownership_category'), 'private'), sqlc.narg('country_id'), sqlc.narg('founded_on'))
 RETURNING *;
 
 -- name: GetCompany :one
-SELECT * FROM oikumenea.company_companies WHERE id = @id AND deleted_at IS NULL;
+SELECT o.id, o.code, o.name AS legal_name,
+  p.short_name, p.legal_form_id, p.ownership_category, p.country_id,
+  p.founded_on, p.dissolved_on, p.state, p.created_at, p.updated_at
+FROM oikumenea.company_org_profiles p
+JOIN oikumenea.tenant_organizations o ON o.id = p.company_id AND o.deleted_at IS NULL
+WHERE p.company_id = @id AND p.deleted_at IS NULL;
 
--- name: UpdateCompany :one
-UPDATE oikumenea.company_companies SET
-  legal_name         = COALESCE(sqlc.narg('legal_name'), legal_name),
+-- name: UpdateOrgProfile :one
+UPDATE oikumenea.company_org_profiles SET
   short_name         = COALESCE(sqlc.narg('short_name'), short_name),
   legal_form_id      = COALESCE(sqlc.narg('legal_form_id'), legal_form_id),
   ownership_category = COALESCE(sqlc.narg('ownership_category'), ownership_category),
@@ -66,22 +74,26 @@ UPDATE oikumenea.company_companies SET
   founded_on         = COALESCE(sqlc.narg('founded_on'), founded_on),
   dissolved_on       = COALESCE(sqlc.narg('dissolved_on'), dissolved_on),
   state              = COALESCE(sqlc.narg('state'), state)
-WHERE id = @id AND deleted_at IS NULL
+WHERE company_id = @id AND deleted_at IS NULL
 RETURNING *;
 
 -- name: ListCompanies :many
-SELECT * FROM oikumenea.company_companies
-WHERE deleted_at IS NULL
-  AND (@query = '' OR code ILIKE '%' || @query || '%' OR legal_name ILIKE '%' || @query || '%' OR short_name ILIKE '%' || @query || '%')
-  AND (@after = '' OR id::text > @after)
-ORDER BY id
+SELECT o.id, o.code, o.name AS legal_name,
+  p.short_name, p.legal_form_id, p.ownership_category, p.country_id,
+  p.founded_on, p.dissolved_on, p.state, p.created_at, p.updated_at
+FROM oikumenea.company_org_profiles p
+JOIN oikumenea.tenant_organizations o ON o.id = p.company_id AND o.deleted_at IS NULL
+WHERE p.deleted_at IS NULL
+  AND (@query = '' OR o.code ILIKE '%' || @query || '%' OR o.name ILIKE '%' || @query || '%' OR p.short_name ILIKE '%' || @query || '%')
+  AND (@after = '' OR o.id::text > @after)
+ORDER BY o.id
 LIMIT @lim;
 
 -- name: SoftDeleteCompany :execrows
-UPDATE oikumenea.company_companies SET deleted_at = now() WHERE id = @id AND deleted_at IS NULL;
+UPDATE oikumenea.company_org_profiles SET deleted_at = now() WHERE company_id = @id AND deleted_at IS NULL;
 
 -- name: CompanyNamesByIDs :many
-SELECT id, legal_name FROM oikumenea.company_companies
+SELECT id, name AS legal_name FROM oikumenea.tenant_organizations
 WHERE id = ANY(@ids::uuid[]) AND deleted_at IS NULL;
 
 -- ============================ registrations ============================
@@ -198,10 +210,10 @@ RETURNING *;
 
 -- name: ListAppointmentsByPerson :many
 -- A person's company appointments, enriched with the position title + owning company (read-only view).
-SELECT a.*, p.title AS position_title, p.company_id AS company_id, c.legal_name AS company_name
+SELECT a.*, p.title AS position_title, p.company_id AS company_id, c.name AS company_name
 FROM oikumenea.company_appointments a
 JOIN oikumenea.company_positions p ON p.id = a.position_id
-JOIN oikumenea.company_companies c ON c.id = p.company_id
+JOIN oikumenea.tenant_organizations c ON c.id = p.company_id
 WHERE a.person_id = @person_id AND a.deleted_at IS NULL
 ORDER BY a.effective_from DESC;
 

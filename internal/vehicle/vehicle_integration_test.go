@@ -96,12 +96,20 @@ func seedPerson(t *testing.T, pool *pgxpool.Pool) string {
 	return id
 }
 
+// seedCompany seeds a manufacturer company. M41 / D-UnifiedOrgGraph: a company is a `company`-domain
+// tenant organization, so this seeds the `company` reference domain and inserts a tenant org (the
+// vehicle_brand_manufacturers FK now points at tenant_organizations).
 func seedCompany(t *testing.T, pool *pgxpool.Pool) string {
 	t.Helper()
+	if _, err := pool.Exec(context.Background(), `INSERT INTO oikumenea.tenant_domains (code, name, pdp_scoped, sort_order)
+		VALUES ('company','Company',false,40)
+		ON CONFLICT (code) WHERE deleted_at IS NULL DO NOTHING`); err != nil {
+		t.Fatalf("seed company domain: %v", err)
+	}
 	var id string
 	if err := pool.QueryRow(context.Background(),
-		`INSERT INTO oikumenea.company_companies (code, legal_name, legal_form_id)
-		 SELECT $1, 'Acme Motors', id FROM oikumenea.company_legal_forms WHERE code = 'llc' LIMIT 1
+		`INSERT INTO oikumenea.tenant_organizations (code, name, domain_id)
+		 SELECT $1, 'Acme Motors', id FROM oikumenea.tenant_domains WHERE code = 'company' AND deleted_at IS NULL LIMIT 1
 		 RETURNING id`, uniq("co")).Scan(&id); err != nil {
 		t.Fatalf("seed company: %v", err)
 	}

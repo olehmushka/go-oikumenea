@@ -45,7 +45,7 @@ func (q *Queries) ClearPrimaryIndustries(ctx context.Context, companyID string) 
 }
 
 const companyNamesByIDs = `-- name: CompanyNamesByIDs :many
-SELECT id, legal_name FROM oikumenea.company_companies
+SELECT id, name AS legal_name FROM oikumenea.tenant_organizations
 WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL
 `
 
@@ -185,12 +185,32 @@ func (q *Queries) GetBranch(ctx context.Context, id string) (OikumeneaCompanyBra
 }
 
 const getCompany = `-- name: GetCompany :one
-SELECT id, code, legal_name, short_name, legal_form_id, ownership_category, country_id, founded_on, dissolved_on, state, created_at, updated_at, deleted_at FROM oikumenea.company_companies WHERE id = $1 AND deleted_at IS NULL
+SELECT o.id, o.code, o.name AS legal_name,
+  p.short_name, p.legal_form_id, p.ownership_category, p.country_id,
+  p.founded_on, p.dissolved_on, p.state, p.created_at, p.updated_at
+FROM oikumenea.company_org_profiles p
+JOIN oikumenea.tenant_organizations o ON o.id = p.company_id AND o.deleted_at IS NULL
+WHERE p.company_id = $1 AND p.deleted_at IS NULL
 `
 
-func (q *Queries) GetCompany(ctx context.Context, id string) (OikumeneaCompanyCompany, error) {
+type GetCompanyRow struct {
+	ID                string
+	Code              string
+	LegalName         string
+	ShortName         pgtype.Text
+	LegalFormID       string
+	OwnershipCategory string
+	CountryID         pgtype.Text
+	FoundedOn         pgtype.Date
+	DissolvedOn       pgtype.Date
+	State             string
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
+func (q *Queries) GetCompany(ctx context.Context, id string) (GetCompanyRow, error) {
 	row := q.db.QueryRow(ctx, getCompany, id)
-	var i OikumeneaCompanyCompany
+	var i GetCompanyRow
 	err := row.Scan(
 		&i.ID,
 		&i.Code,
@@ -204,7 +224,6 @@ func (q *Queries) GetCompany(ctx context.Context, id string) (OikumeneaCompanyCo
 		&i.State,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.DeletedAt,
 	)
 	return i, err
 }
@@ -426,55 +445,6 @@ func (q *Queries) InsertBranch(ctx context.Context, arg InsertBranchParams) (Oik
 	return i, err
 }
 
-const insertCompany = `-- name: InsertCompany :one
-
-INSERT INTO oikumenea.company_companies
-  (code, legal_name, short_name, legal_form_id, ownership_category, country_id, founded_on)
-VALUES ($1, $2, $3, $4,
-        COALESCE($5, 'private'), $6, $7)
-RETURNING id, code, legal_name, short_name, legal_form_id, ownership_category, country_id, founded_on, dissolved_on, state, created_at, updated_at, deleted_at
-`
-
-type InsertCompanyParams struct {
-	Code              string
-	LegalName         string
-	ShortName         pgtype.Text
-	LegalFormID       string
-	OwnershipCategory interface{}
-	CountryID         pgtype.Text
-	FoundedOn         pgtype.Date
-}
-
-// ============================ companies ============================
-func (q *Queries) InsertCompany(ctx context.Context, arg InsertCompanyParams) (OikumeneaCompanyCompany, error) {
-	row := q.db.QueryRow(ctx, insertCompany,
-		arg.Code,
-		arg.LegalName,
-		arg.ShortName,
-		arg.LegalFormID,
-		arg.OwnershipCategory,
-		arg.CountryID,
-		arg.FoundedOn,
-	)
-	var i OikumeneaCompanyCompany
-	err := row.Scan(
-		&i.ID,
-		&i.Code,
-		&i.LegalName,
-		&i.ShortName,
-		&i.LegalFormID,
-		&i.OwnershipCategory,
-		&i.CountryID,
-		&i.FoundedOn,
-		&i.DissolvedOn,
-		&i.State,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.DeletedAt,
-	)
-	return i, err
-}
-
 const insertCompanyLocation = `-- name: InsertCompanyLocation :one
 
 INSERT INTO oikumenea.company_locations (company_id, location_id, role)
@@ -562,6 +532,55 @@ func (q *Queries) InsertIndustryAssignment(ctx context.Context, arg InsertIndust
 		&i.CompanyID,
 		&i.IndustryClassID,
 		&i.IsPrimary,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const insertOrgProfile = `-- name: InsertOrgProfile :one
+
+INSERT INTO oikumenea.company_org_profiles
+  (company_id, short_name, legal_form_id, ownership_category, country_id, founded_on)
+VALUES ($1, $2, $3,
+        COALESCE($4, 'private'), $5, $6)
+RETURNING company_id, short_name, legal_form_id, ownership_category, country_id, founded_on, dissolved_on, state, created_at, updated_at, deleted_at
+`
+
+type InsertOrgProfileParams struct {
+	CompanyID         string
+	ShortName         pgtype.Text
+	LegalFormID       string
+	OwnershipCategory interface{}
+	CountryID         pgtype.Text
+	FoundedOn         pgtype.Date
+}
+
+// ============================ companies (tenant org + company_org_profiles sidecar — M41) ============================
+// A company is a `company`-domain tenant organization (its stable `code` and registered name = the org's
+// code + name) plus a company_org_profiles sidecar (short_name/legal_form/ownership/country/dates/state).
+// The org itself is created/updated through the tenant service; these queries own the sidecar and the
+// joined read view.
+func (q *Queries) InsertOrgProfile(ctx context.Context, arg InsertOrgProfileParams) (OikumeneaCompanyOrgProfile, error) {
+	row := q.db.QueryRow(ctx, insertOrgProfile,
+		arg.CompanyID,
+		arg.ShortName,
+		arg.LegalFormID,
+		arg.OwnershipCategory,
+		arg.CountryID,
+		arg.FoundedOn,
+	)
+	var i OikumeneaCompanyOrgProfile
+	err := row.Scan(
+		&i.CompanyID,
+		&i.ShortName,
+		&i.LegalFormID,
+		&i.OwnershipCategory,
+		&i.CountryID,
+		&i.FoundedOn,
+		&i.DissolvedOn,
+		&i.State,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -721,10 +740,10 @@ func (q *Queries) InsertSuccession(ctx context.Context, arg InsertSuccessionPara
 }
 
 const listAppointmentsByPerson = `-- name: ListAppointmentsByPerson :many
-SELECT a.id, a.person_id, a.position_id, a.status, a.effective_from, a.effective_to, a.created_at, a.updated_at, a.deleted_at, p.title AS position_title, p.company_id AS company_id, c.legal_name AS company_name
+SELECT a.id, a.person_id, a.position_id, a.status, a.effective_from, a.effective_to, a.created_at, a.updated_at, a.deleted_at, p.title AS position_title, p.company_id AS company_id, c.name AS company_name
 FROM oikumenea.company_appointments a
 JOIN oikumenea.company_positions p ON p.id = a.position_id
-JOIN oikumenea.company_companies c ON c.id = p.company_id
+JOIN oikumenea.tenant_organizations c ON c.id = p.company_id
 WHERE a.person_id = $1 AND a.deleted_at IS NULL
 ORDER BY a.effective_from DESC
 `
@@ -879,11 +898,15 @@ func (q *Queries) ListBranchesByParent(ctx context.Context, parentID string) ([]
 }
 
 const listCompanies = `-- name: ListCompanies :many
-SELECT id, code, legal_name, short_name, legal_form_id, ownership_category, country_id, founded_on, dissolved_on, state, created_at, updated_at, deleted_at FROM oikumenea.company_companies
-WHERE deleted_at IS NULL
-  AND ($1 = '' OR code ILIKE '%' || $1 || '%' OR legal_name ILIKE '%' || $1 || '%' OR short_name ILIKE '%' || $1 || '%')
-  AND ($2 = '' OR id::text > $2)
-ORDER BY id
+SELECT o.id, o.code, o.name AS legal_name,
+  p.short_name, p.legal_form_id, p.ownership_category, p.country_id,
+  p.founded_on, p.dissolved_on, p.state, p.created_at, p.updated_at
+FROM oikumenea.company_org_profiles p
+JOIN oikumenea.tenant_organizations o ON o.id = p.company_id AND o.deleted_at IS NULL
+WHERE p.deleted_at IS NULL
+  AND ($1 = '' OR o.code ILIKE '%' || $1 || '%' OR o.name ILIKE '%' || $1 || '%' OR p.short_name ILIKE '%' || $1 || '%')
+  AND ($2 = '' OR o.id::text > $2)
+ORDER BY o.id
 LIMIT $3
 `
 
@@ -893,15 +916,30 @@ type ListCompaniesParams struct {
 	Lim   int32
 }
 
-func (q *Queries) ListCompanies(ctx context.Context, arg ListCompaniesParams) ([]OikumeneaCompanyCompany, error) {
+type ListCompaniesRow struct {
+	ID                string
+	Code              string
+	LegalName         string
+	ShortName         pgtype.Text
+	LegalFormID       string
+	OwnershipCategory string
+	CountryID         pgtype.Text
+	FoundedOn         pgtype.Date
+	DissolvedOn       pgtype.Date
+	State             string
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
+func (q *Queries) ListCompanies(ctx context.Context, arg ListCompaniesParams) ([]ListCompaniesRow, error) {
 	rows, err := q.db.Query(ctx, listCompanies, arg.Query, arg.After, arg.Lim)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []OikumeneaCompanyCompany
+	var items []ListCompaniesRow
 	for rows.Next() {
-		var i OikumeneaCompanyCompany
+		var i ListCompaniesRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Code,
@@ -915,7 +953,6 @@ func (q *Queries) ListCompanies(ctx context.Context, arg ListCompaniesParams) ([
 			&i.State,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1436,7 +1473,7 @@ func (q *Queries) SoftDeleteBranch(ctx context.Context, id string) (int64, error
 }
 
 const softDeleteCompany = `-- name: SoftDeleteCompany :execrows
-UPDATE oikumenea.company_companies SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL
+UPDATE oikumenea.company_org_profiles SET deleted_at = now() WHERE company_id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) SoftDeleteCompany(ctx context.Context, id string) (int64, error) {
@@ -1519,22 +1556,20 @@ func (q *Queries) SoftDeleteSuccession(ctx context.Context, id string) (int64, e
 	return result.RowsAffected(), nil
 }
 
-const updateCompany = `-- name: UpdateCompany :one
-UPDATE oikumenea.company_companies SET
-  legal_name         = COALESCE($1, legal_name),
-  short_name         = COALESCE($2, short_name),
-  legal_form_id      = COALESCE($3, legal_form_id),
-  ownership_category = COALESCE($4, ownership_category),
-  country_id         = COALESCE($5, country_id),
-  founded_on         = COALESCE($6, founded_on),
-  dissolved_on       = COALESCE($7, dissolved_on),
-  state              = COALESCE($8, state)
-WHERE id = $9 AND deleted_at IS NULL
-RETURNING id, code, legal_name, short_name, legal_form_id, ownership_category, country_id, founded_on, dissolved_on, state, created_at, updated_at, deleted_at
+const updateOrgProfile = `-- name: UpdateOrgProfile :one
+UPDATE oikumenea.company_org_profiles SET
+  short_name         = COALESCE($1, short_name),
+  legal_form_id      = COALESCE($2, legal_form_id),
+  ownership_category = COALESCE($3, ownership_category),
+  country_id         = COALESCE($4, country_id),
+  founded_on         = COALESCE($5, founded_on),
+  dissolved_on       = COALESCE($6, dissolved_on),
+  state              = COALESCE($7, state)
+WHERE company_id = $8 AND deleted_at IS NULL
+RETURNING company_id, short_name, legal_form_id, ownership_category, country_id, founded_on, dissolved_on, state, created_at, updated_at, deleted_at
 `
 
-type UpdateCompanyParams struct {
-	LegalName         pgtype.Text
+type UpdateOrgProfileParams struct {
 	ShortName         pgtype.Text
 	LegalFormID       pgtype.Text
 	OwnershipCategory pgtype.Text
@@ -1545,9 +1580,8 @@ type UpdateCompanyParams struct {
 	ID                string
 }
 
-func (q *Queries) UpdateCompany(ctx context.Context, arg UpdateCompanyParams) (OikumeneaCompanyCompany, error) {
-	row := q.db.QueryRow(ctx, updateCompany,
-		arg.LegalName,
+func (q *Queries) UpdateOrgProfile(ctx context.Context, arg UpdateOrgProfileParams) (OikumeneaCompanyOrgProfile, error) {
+	row := q.db.QueryRow(ctx, updateOrgProfile,
 		arg.ShortName,
 		arg.LegalFormID,
 		arg.OwnershipCategory,
@@ -1557,11 +1591,9 @@ func (q *Queries) UpdateCompany(ctx context.Context, arg UpdateCompanyParams) (O
 		arg.State,
 		arg.ID,
 	)
-	var i OikumeneaCompanyCompany
+	var i OikumeneaCompanyOrgProfile
 	err := row.Scan(
-		&i.ID,
-		&i.Code,
-		&i.LegalName,
+		&i.CompanyID,
 		&i.ShortName,
 		&i.LegalFormID,
 		&i.OwnershipCategory,

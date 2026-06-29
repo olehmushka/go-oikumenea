@@ -119,21 +119,6 @@ func (s EducationService) ListUnitKinds(ctx context.Context, token bearertoken.T
 	return educationapi.UnitKindList{UnitKinds: out}, nil
 }
 
-func (s EducationService) UpsertUnitKind(ctx context.Context, token bearertoken.Token, req educationapi.UpsertCatalogKindRequest) (educationapi.UnitKind, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, catalogManagePerm); err != nil {
-		return educationapi.UnitKind{}, err
-	}
-	k, err := s.app.UpsertUnitKind(ctx, req.Code, req.Name, req.SortOrder)
-	if err != nil {
-		return educationapi.UnitKind{}, s.mapError(ctx, err)
-	}
-	name, err := s.nameMap(ctx, entUnitKind, k.ID, k.Name)
-	if err != nil {
-		return educationapi.UnitKind{}, s.mapError(ctx, err)
-	}
-	return educationapi.UnitKind{Id: k.ID, Code: k.Code, Name: name, Status: k.Status, SortOrder: k.SortOrder}, nil
-}
-
 func (s EducationService) ListDegreeLevels(ctx context.Context, token bearertoken.Token) (educationapi.DegreeLevelList, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
 		return educationapi.DegreeLevelList{}, err
@@ -308,28 +293,6 @@ func (s EducationService) ReparentUnit(ctx context.Context, token bearertoken.To
 	return s.toAPIUnit(ctx, u)
 }
 
-func (s EducationService) VerifyClosure(ctx context.Context, token bearertoken.Token, institutionID string) (educationapi.ClosureReport, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, managePerm); err != nil {
-		return educationapi.ClosureReport{}, err
-	}
-	rep, err := s.app.VerifyClosure(ctx, institutionID)
-	if err != nil {
-		return educationapi.ClosureReport{}, s.mapError(ctx, err)
-	}
-	return closureAPI(rep), nil
-}
-
-func (s EducationService) RebuildClosure(ctx context.Context, token bearertoken.Token, institutionID string) (educationapi.ClosureReport, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, managePerm); err != nil {
-		return educationapi.ClosureReport{}, err
-	}
-	rep, err := s.app.RebuildClosure(ctx, institutionID)
-	if err != nil {
-		return educationapi.ClosureReport{}, s.mapError(ctx, err)
-	}
-	return closureAPI(rep), nil
-}
-
 // ============================ mappers + helpers ============================
 
 func (s EducationService) toAPIInstitution(ctx context.Context, inst domain.Institution) (educationapi.Institution, error) {
@@ -367,10 +330,6 @@ func unitAPI(u domain.Unit, name map[string]string) educationapi.EducationUnit {
 		Code: u.Code, Name: name, Status: u.Status, SortOrder: u.SortOrder, Depth: depth,
 		CreatedAt: datetime.DateTime(u.CreatedAt), UpdatedAt: datetime.DateTime(u.UpdatedAt),
 	}
-}
-
-func closureAPI(r domain.ClosureReport) educationapi.ClosureReport {
-	return educationapi.ClosureReport{InstitutionId: r.InstitutionID, MissingCount: r.Missing, ExtraCount: r.Extra, InDrift: r.InDrift}
 }
 
 // nameMap assembles one entity's translatable name as a locale->text map (default + i18n overlay).

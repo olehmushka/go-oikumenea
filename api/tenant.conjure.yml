@@ -24,26 +24,102 @@ types:
           - PUBLIC
           - SHADOW
       UnitState:
-        docs: A unit's lifecycle state. Transitions are reversible and recorded as append-only events.
+        docs: |
+          A unit's (or organization's) lifecycle state. Transitions are reversible and recorded as
+          append-only events. Organizations reuse this enum (D-TenantOrganizations, M40).
         values:
           - ACTIVE
           - SUSPENDED
           - ARCHIVED
+      Domain:
+        docs: |
+          An org-kind catalog row (D-TenantOrganizations, M40): military/government/company/
+          university/church/public-org, … Classifies organizations and units; a directory attribute,
+          never a PDP input. `code` is the stable external reference; `name` is the locale->text map.
+        fields:
+          id:
+            type: string
+            docs: The domain's URN RID (carried as a plain string).
+          code:
+            type: string
+            docs: Stable, locale-agnostic identifier (e.g. military, university). Immutable by convention.
+          name:
+            type: map<string, string>
+            docs: locale->text display name (all enabled locales; D-i18n).
+          status:
+            type: string
+            docs: active | retired (catalog soft-state).
+          sortOrder: optional<integer>
+      UnitKind:
+        docs: |
+          A domain-scoped unit-kind catalog row (D-TenantOrganizations, M40) replacing the former
+          free-text unitKind (military→brigade/battalion/platoon; university→faculty/department/chair).
+        fields:
+          id:
+            type: string
+            docs: The unit-kind's URN RID.
+          domainId:
+            type: string
+            docs: The owning domain's RID; codes are unique per domain.
+          code:
+            type: string
+            docs: Stable identifier, unique among active kinds of the same domain.
+          name:
+            type: map<string, string>
+            docs: locale->text display name.
+          attrSchema:
+            type: optional<any>
+            docs: Optional JSON schema validating a unit's metadata for this kind.
+          status:
+            type: string
+            docs: active | retired.
+          sortOrder: optional<integer>
+      Organization:
+        docs: |
+          The realm a person joins (D-TenantOrganizations, M40): US Army / Bundeswehr / KhNU. Many
+          organizations may share a domain. Owns units and per-org graphs. A directory attribute,
+          never a PDP input — authority flows only through its graphs.
+        fields:
+          id:
+            type: string
+            docs: The organization's URN RID.
+          code:
+            type: string
+            docs: Stable, locale-agnostic identifier (D-Code; NOT NULL UNIQUE, immutable by convention).
+          name:
+            type: map<string, string>
+            docs: locale->text display name.
+          domainId:
+            type: string
+            docs: The organization's domain (its kind) RID.
+          visibility: Visibility
+          state: UnitState
+          metadata:
+            type: optional<any>
+            docs: Free-form long-tail attributes (JSONB).
+          createdAt: datetime
+          updatedAt: datetime
       Unit:
         docs: A node in the org graph. `code` is the stable external reference; `name` is the locale->text map.
         fields:
           id:
             type: string
             docs: The unit's URN RID (carried as a plain string).
+          orgId:
+            type: string
+            docs: The owning organization's RID (D-TenantOrganizations, M40).
+          domainId:
+            type: string
+            docs: The unit's domain (kind class) RID; defaults to the org's domain, may differ (mixed trees). Never a PDP input.
+          kindId:
+            type: optional<string>
+            docs: The unit's domain-scoped unit-kind RID (replaces the former free-text unitKind). Never branched on in code.
           code:
             type: optional<string>
             docs: Optional human-readable business ID (D-UnitCodeLifecycle, M28); absent = a non-separate sub-unit. The RID (id) is the stable external handle. Unique among active units that have a code; set/corrected/cleared via PUT /units/{id}/code.
           name:
             type: map<string, string>
             docs: locale->text display name (all enabled locales; default-locale fallback + i18n store).
-          unitKind:
-            type: optional<string>
-            docs: Descriptive instance label (e.g. battalion); never branched on in code.
           level:
             type: optional<integer>
             docs: Optional ordinal for sort/filter; never a PDP or shadow-gate input.
@@ -71,14 +147,17 @@ types:
             type: boolean
             docs: Whether the language is official (vs. merely working) for the unit.
       Graph:
-        docs: A named hierarchy over the units (D-Graphs). Each graph is independently a DAG.
+        docs: A named hierarchy over the units (D-Graphs), per organization (M40). Each graph is independently a DAG.
         fields:
           id:
             type: string
             docs: The graph's URN RID (carried as a plain string).
+          orgId:
+            type: optional<string>
+            docs: The owning organization's RID (D-TenantOrganizations, M40); ABSENT = an instance-global/cross-org graph (e.g. religion's taxonomy graphs).
           code:
             type: string
-            docs: Stable, locale-agnostic identifier (e.g. command, operational); referenced by edges/closure/assignments.
+            docs: Stable, locale-agnostic identifier (e.g. command, operational); unique per org (or among global graphs); referenced by edges/closure/assignments.
           name:
             type: map<string, string>
             docs: locale->text display name.
@@ -152,22 +231,94 @@ types:
       CreateUnitRequest:
         docs: Create a unit. `name` is the default-locale text; other locales are managed via LocalizationService.
         fields:
+          orgId:
+            type: string
+            docs: The owning organization's RID (required; D-TenantOrganizations, M40).
+          domainId:
+            type: optional<string>
+            docs: The unit's domain RID; defaults to the organization's domain when omitted. May differ (mixed trees).
+          kindId:
+            type: optional<string>
+            docs: The unit's domain-scoped unit-kind RID (replaces free-text unitKind). Must belong to the unit's domain.
           code:
             type: optional<string>
             docs: Optional human-readable code (omit for a non-separate sub-unit; D-UnitCodeLifecycle, M28).
           name: string
-          unitKind: optional<string>
           level: optional<integer>
           visibility:
             type: optional<Visibility>
             docs: Defaults to PUBLIC.
           metadata: optional<any>
       UpdateUnitRequest:
-        docs: Update name/kind/level/metadata/visibility. Omitted fields are unchanged. `code` is excluded — set it via PUT /units/{id}/code (D-UnitCodeLifecycle).
+        docs: Update name/kind/domain/level/metadata/visibility. Omitted fields are unchanged. `code` is excluded — set it via PUT /units/{id}/code (D-UnitCodeLifecycle). `orgId` is immutable.
         fields:
           name: optional<string>
-          unitKind: optional<string>
+          domainId:
+            type: optional<string>
+            docs: Re-classify the unit's domain (mixed trees allowed). The kind, if set, must match.
+          kindId: optional<string>
           level: optional<integer>
+          visibility: optional<Visibility>
+          metadata: optional<any>
+      DomainList:
+        docs: The domain (org-kind) catalog, in display order.
+        fields:
+          domains: list<Domain>
+      CreateDomainRequest:
+        docs: Add an org-kind domain to the catalog (instance-admin; domain.manage).
+        fields:
+          code: string
+          name: string
+          sortOrder: optional<integer>
+      UpdateDomainRequest:
+        docs: Rename / retire a domain. Omitted fields are unchanged. `code` is immutable.
+        fields:
+          name: optional<string>
+          status: optional<string>
+          sortOrder: optional<integer>
+      UnitKindList:
+        docs: The unit-kind catalog for a domain, in display order.
+        fields:
+          unitKinds: list<UnitKind>
+      CreateUnitKindRequest:
+        docs: Add a domain-scoped unit kind (instance-admin; unit-kind.manage).
+        fields:
+          domainId: string
+          code: string
+          name: string
+          attrSchema: optional<any>
+          sortOrder: optional<integer>
+      UpdateUnitKindRequest:
+        docs: Rename / retire a unit kind or adjust its attr schema. Omitted fields are unchanged. `code`/`domainId` are immutable.
+        fields:
+          name: optional<string>
+          attrSchema: optional<any>
+          status: optional<string>
+          sortOrder: optional<integer>
+      OrganizationPage:
+        docs: A page of organizations plus the opaque token for the next page (empty when exhausted).
+        fields:
+          organizations: list<Organization>
+          nextPageToken: optional<string>
+      CreateOrganizationRequest:
+        docs: |
+          Create an organization (the realm). Seeds its `command` (default, locked authority-bearing,
+          undeletable) + `operational` graphs in the same transaction (D-TenantOrganizations, M40).
+        fields:
+          code: string
+          name: string
+          domainId:
+            type: string
+            docs: The organization's domain (its kind) RID.
+          visibility:
+            type: optional<Visibility>
+            docs: Defaults to PUBLIC.
+          metadata: optional<any>
+      UpdateOrganizationRequest:
+        docs: Update name/domain/metadata/visibility. Omitted fields are unchanged. `code` is immutable; state is changed via PUT /organizations/{id}/state.
+        fields:
+          name: optional<string>
+          domainId: optional<string>
           visibility: optional<Visibility>
           metadata: optional<any>
       SetUnitCodeRequest:
@@ -213,8 +364,11 @@ types:
           toState: UnitState
           reason: optional<string>
       AddGraphRequest:
-        docs: Add a graph to the registry (instance-admin; graph.manage).
+        docs: Add a graph (instance-admin; graph.manage). Per-org when orgId is set, else instance-global (M40).
         fields:
+          orgId:
+            type: optional<string>
+            docs: The organization the new graph belongs to; omit for an instance-global/cross-org graph.
           code: string
           name: string
           isAuthorityBearing:
@@ -287,11 +441,45 @@ types:
         safe-args:
           graph: string
       GraphProtected:
-        docs: The command graph cannot be deleted or made directory-only; at least one graph must remain.
+        docs: The command graph cannot be deleted or made directory-only; at least one graph must remain (per org).
         namespace: Tenant
         code: FAILED_PRECONDITION
         safe-args:
           reason: string
+      DomainNotFound:
+        namespace: Tenant
+        code: NOT_FOUND
+        safe-args:
+          domainId: string
+      DomainCodeConflict:
+        docs: A domain with this code already exists.
+        namespace: Tenant
+        code: CONFLICT
+        safe-args:
+          code: string
+      UnitKindNotFound:
+        namespace: Tenant
+        code: NOT_FOUND
+        safe-args:
+          unitKindId: string
+      UnitKindCodeConflict:
+        docs: A unit kind with this code already exists in the domain.
+        namespace: Tenant
+        code: CONFLICT
+        safe-args:
+          domainId: string
+          code: string
+      OrganizationNotFound:
+        namespace: Tenant
+        code: NOT_FOUND
+        safe-args:
+          orgId: string
+      OrganizationCodeConflict:
+        docs: An organization with this code already exists.
+        namespace: Tenant
+        code: CONFLICT
+        safe-args:
+          code: string
 services:
   TenantService:
     name: Tenant Service
@@ -348,11 +536,44 @@ services:
         returns: UnitCodeEventList
       listUnits:
         http: GET /units
-        docs: List/search units, token-paginated, optionally filtered by level.
+        docs: |
+          List/search units within an organization (D-TenantOrganizations, M40). `org` is REQUIRED —
+          a fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally filtered by
+          `domain` (cross-cut within the org, for mixed trees), `unitKind`, and `level`. Token-paginated.
+
+          For hierarchical (expand-on-click) browsing in graph `graph` (default `command`): pass
+          `rootsOnly=true` to list only the org's top-level units (those with no parent in the graph),
+          or `parent=<unitRid>` to list a unit's DIRECT children in the graph. The two are mutually
+          exclusive, and each ignores the `domain`/`unitKind`/`level` filters. When neither is set the
+          listing is the flat, filtered org listing.
         args:
+          org:
+            type: string
+            param-type: query
+            docs: REQUIRED — the organization RID to scope the listing to.
+          domain:
+            type: optional<string>
+            param-type: query
+            docs: Optional domain RID filter (units of this kind within the org). Ignored when `parent`/`rootsOnly` is set.
+          unitKind:
+            type: optional<string>
+            param-type: query
+            docs: Optional unit-kind RID filter. Ignored when `parent`/`rootsOnly` is set.
           level:
             type: optional<integer>
             param-type: query
+          graph:
+            type: optional<string>
+            param-type: query
+            docs: Graph code for `parent`/`rootsOnly` hierarchy queries (default `command`). Ignored for the flat listing.
+          parent:
+            type: optional<string>
+            param-type: query
+            docs: When set, list the DIRECT children of this unit RID within `graph`. Mutually exclusive with `rootsOnly`.
+          rootsOnly:
+            type: optional<boolean>
+            param-type: query
+            docs: When true, list only the org's root units (no parent within `graph`). Mutually exclusive with `parent`.
           pageSize:
             type: optional<integer>
             param-type: query
@@ -466,7 +687,14 @@ services:
         returns: ClosureReportList
       listGraphs:
         http: GET /graphs
-        docs: List the graph registry in display order.
+        docs: |
+          List graphs in display order (M40). With `org`, returns that organization's graphs plus the
+          instance-global graphs; without `org`, returns only the instance-global graphs.
+        args:
+          org:
+            type: optional<string>
+            param-type: query
+            docs: Optional organization RID; when set, the org's graphs are returned alongside global graphs.
         returns: GraphList
       addGraph:
         http: POST /graphs
@@ -490,3 +718,105 @@ services:
           graphId:
             type: string
             param-type: path
+      listDomains:
+        http: GET /domains
+        docs: List the org-kind domain catalog in display order (D-TenantOrganizations, M40). Gated by domain.read.
+        returns: DomainList
+      createDomain:
+        http: POST /domains
+        docs: Add a domain (instance-admin; domain.manage). Returns Tenant:DomainCodeConflict if the code exists.
+        args:
+          request: CreateDomainRequest
+        returns: Domain
+      updateDomain:
+        http: PUT /domains/{domainId}
+        docs: Rename / retire a domain. Returns Tenant:DomainNotFound.
+        args:
+          domainId:
+            type: string
+            param-type: path
+          request: UpdateDomainRequest
+        returns: Domain
+      listUnitKinds:
+        http: GET /unit-kinds
+        docs: List the unit-kind catalog for a domain (D-TenantOrganizations, M40). Gated by unit-kind.read.
+        args:
+          domain:
+            type: string
+            param-type: query
+            docs: REQUIRED — the domain RID whose unit kinds to list.
+        returns: UnitKindList
+      createUnitKind:
+        http: POST /unit-kinds
+        docs: Add a domain-scoped unit kind (instance-admin; unit-kind.manage). Returns Tenant:UnitKindCodeConflict.
+        args:
+          request: CreateUnitKindRequest
+        returns: UnitKind
+      updateUnitKind:
+        http: PUT /unit-kinds/{unitKindId}
+        docs: Rename / retire a unit kind or adjust its attr schema. Returns Tenant:UnitKindNotFound.
+        args:
+          unitKindId:
+            type: string
+            param-type: path
+          request: UpdateUnitKindRequest
+        returns: UnitKind
+      listOrganizations:
+        http: GET /organizations
+        docs: |
+          List organizations, token-paginated, optionally filtered by domain (D-TenantOrganizations,
+          M40). Shadow-gated. Gated by organization.read.
+        args:
+          domain:
+            type: optional<string>
+            param-type: query
+            docs: Optional domain RID filter (organizations of this kind).
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: OrganizationPage
+      createOrganization:
+        http: POST /organizations
+        docs: |
+          Create an organization and seed its command + operational graphs in one transaction
+          (organization.create). Returns Tenant:OrganizationCodeConflict if the code exists.
+        args:
+          request: CreateOrganizationRequest
+        returns: Organization
+      getOrganization:
+        http: GET /organizations/{orgId}
+        docs: Read one organization by RID (shadow-gated). Returns Tenant:OrganizationNotFound.
+        args:
+          orgId:
+            type: string
+            param-type: path
+        returns: Organization
+      updateOrganization:
+        http: PUT /organizations/{orgId}
+        docs: Update an organization's name/domain/metadata/visibility (organization.update).
+        args:
+          orgId:
+            type: string
+            param-type: path
+          request: UpdateOrganizationRequest
+        returns: Organization
+      transitionOrganization:
+        http: PUT /organizations/{orgId}/state
+        docs: Transition an organization's lifecycle state (organization.lifecycle). Returns Tenant:TransitionInvalid for an illegal transition.
+        args:
+          orgId:
+            type: string
+            param-type: path
+          request: TransitionRequest
+        returns: Organization
+      listOrganizationGraphs:
+        http: GET /organizations/{orgId}/graphs
+        docs: List an organization's graph registry (alias of GET /graphs?org=, path-scoped).
+        args:
+          orgId:
+            type: string
+            param-type: path
+        returns: GraphList

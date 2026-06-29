@@ -66,16 +66,18 @@ func (s Service) CreateUnit(ctx context.Context, token bearertoken.Token, req te
 		return tenantapi.Unit{}, err
 	}
 	u := domain.Unit{
+		OrgID:      req.OrgId,
+		DomainID:   derefOr(req.DomainId, ""),
+		KindID:     req.KindId,
 		Code:       req.Code,
 		Name:       req.Name,
-		UnitKind:   derefOr(req.UnitKind, ""),
 		Level:      req.Level,
 		Visibility: visibilityOrDefault(req.Visibility),
 		Metadata:   rawFromAny(req.Metadata),
 	}
 	created, err := s.app.CreateUnit(ctx, u)
 	if err != nil {
-		return tenantapi.Unit{}, s.mapError(ctx, err, errCtx{code: derefOr(req.Code, "")})
+		return tenantapi.Unit{}, s.mapError(ctx, err, errCtx{code: derefOr(req.Code, ""), orgID: req.OrgId})
 	}
 	return s.unitToAPI(ctx, created)
 }
@@ -97,7 +99,8 @@ func (s Service) UpdateUnit(ctx context.Context, token bearertoken.Token, unitID
 	}
 	patch := domain.UnitPatch{
 		Name:     req.Name,
-		UnitKind: req.UnitKind,
+		DomainID: req.DomainId,
+		KindID:   req.KindId,
 		Level:    req.Level,
 		Metadata: rawFromAny(req.Metadata),
 	}
@@ -148,13 +151,13 @@ func (s Service) ListUnitCodeEvents(ctx context.Context, token bearertoken.Token
 	return tenantapi.UnitCodeEventList{Events: out}, nil
 }
 
-func (s Service) ListUnits(ctx context.Context, token bearertoken.Token, level *int, pageSize *int, pageToken *string) (tenantapi.UnitPage, error) {
+func (s Service) ListUnits(ctx context.Context, token bearertoken.Token, org string, domainID *string, unitKind *string, level *int, graph *string, parent *string, rootsOnly *bool, pageSize *int, pageToken *string) (tenantapi.UnitPage, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermUnitRead)); err != nil {
 		return tenantapi.UnitPage{}, err
 	}
-	page, err := s.app.ListUnits(ctx, level, derefOr(pageSize, 0), derefOr(pageToken, ""))
+	page, err := s.app.ListUnits(ctx, org, domainID, unitKind, level, derefOr(graph, ""), parent, derefOr(rootsOnly, false), derefOr(pageSize, 0), derefOr(pageToken, ""))
 	if err != nil {
-		return tenantapi.UnitPage{}, s.mapError(ctx, err, errCtx{})
+		return tenantapi.UnitPage{}, s.mapError(ctx, err, errCtx{orgID: org})
 	}
 	visible, err := gateUnits(ctx, s.pep, page.Units, func(u domain.Unit) string { return u.ID }, func(u domain.Unit) bool { return u.Visibility == domain.VisibilityShadow })
 	if err != nil {
@@ -378,13 +381,13 @@ func (s Service) RebuildClosure(ctx context.Context, token bearertoken.Token, gr
 
 // ---------------------------------------------------------------- graphs
 
-func (s Service) ListGraphs(ctx context.Context, token bearertoken.Token) (tenantapi.GraphList, error) {
+func (s Service) ListGraphs(ctx context.Context, token bearertoken.Token, org *string) (tenantapi.GraphList, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermGraphRead)); err != nil {
 		return tenantapi.GraphList{}, err
 	}
-	graphs, err := s.app.ListGraphs(ctx)
+	graphs, err := s.app.ListGraphs(ctx, org)
 	if err != nil {
-		return tenantapi.GraphList{}, s.mapError(ctx, err, errCtx{})
+		return tenantapi.GraphList{}, s.mapError(ctx, err, errCtx{orgID: derefOr(org, "")})
 	}
 	out, err := s.graphsToAPI(ctx, graphs)
 	if err != nil {
@@ -397,9 +400,9 @@ func (s Service) AddGraph(ctx context.Context, token bearertoken.Token, req tena
 	if err := s.pep.Require(ctx, token, string(authzdomain.PermGraphManage), ""); err != nil {
 		return tenantapi.Graph{}, err
 	}
-	created, err := s.app.AddGraph(ctx, req.Code, req.Name, derefOr(req.IsAuthorityBearing, true))
+	created, err := s.app.AddGraph(ctx, req.OrgId, req.Code, req.Name, derefOr(req.IsAuthorityBearing, true))
 	if err != nil {
-		return tenantapi.Graph{}, s.mapError(ctx, err, errCtx{code: req.Code})
+		return tenantapi.Graph{}, s.mapError(ctx, err, errCtx{code: req.Code, orgID: derefOr(req.OrgId, "")})
 	}
 	return s.graphToAPI(ctx, created)
 }
@@ -427,6 +430,184 @@ func (s Service) DeleteGraph(ctx context.Context, token bearertoken.Token, graph
 		return s.mapError(ctx, err, errCtx{graph: graphID})
 	}
 	return nil
+}
+
+// ---------------------------------------------------------------- domains (M40)
+
+func (s Service) ListDomains(ctx context.Context, token bearertoken.Token) (tenantapi.DomainList, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermDomainRead)); err != nil {
+		return tenantapi.DomainList{}, err
+	}
+	ds, err := s.app.ListDomains(ctx)
+	if err != nil {
+		return tenantapi.DomainList{}, s.mapError(ctx, err, errCtx{})
+	}
+	out, err := s.domainsToAPI(ctx, ds)
+	if err != nil {
+		return tenantapi.DomainList{}, s.mapError(ctx, err, errCtx{})
+	}
+	return tenantapi.DomainList{Domains: out}, nil
+}
+
+func (s Service) CreateDomain(ctx context.Context, token bearertoken.Token, req tenantapi.CreateDomainRequest) (tenantapi.Domain, error) {
+	if err := s.pep.Require(ctx, token, string(authzdomain.PermDomainManage), ""); err != nil {
+		return tenantapi.Domain{}, err
+	}
+	created, err := s.app.CreateDomain(ctx, req.Code, req.Name, req.SortOrder)
+	if err != nil {
+		return tenantapi.Domain{}, s.mapError(ctx, err, errCtx{code: req.Code})
+	}
+	return s.domainToAPI(ctx, created)
+}
+
+func (s Service) UpdateDomain(ctx context.Context, token bearertoken.Token, domainID string, req tenantapi.UpdateDomainRequest) (tenantapi.Domain, error) {
+	if err := s.pep.Require(ctx, token, string(authzdomain.PermDomainManage), ""); err != nil {
+		return tenantapi.Domain{}, err
+	}
+	updated, err := s.app.UpdateDomain(ctx, domainID, domain.DomainPatch{
+		Name:      req.Name,
+		Status:    catalogStatusPtr(req.Status),
+		SortOrder: req.SortOrder,
+	})
+	if err != nil {
+		return tenantapi.Domain{}, s.mapError(ctx, err, errCtx{domainID: domainID})
+	}
+	return s.domainToAPI(ctx, updated)
+}
+
+// ---------------------------------------------------------------- unit kinds (M40)
+
+func (s Service) ListUnitKinds(ctx context.Context, token bearertoken.Token, domainID string) (tenantapi.UnitKindList, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermUnitKindRead)); err != nil {
+		return tenantapi.UnitKindList{}, err
+	}
+	ks, err := s.app.ListUnitKinds(ctx, domainID)
+	if err != nil {
+		return tenantapi.UnitKindList{}, s.mapError(ctx, err, errCtx{domainID: domainID})
+	}
+	out, err := s.unitKindsToAPI(ctx, ks)
+	if err != nil {
+		return tenantapi.UnitKindList{}, s.mapError(ctx, err, errCtx{domainID: domainID})
+	}
+	return tenantapi.UnitKindList{UnitKinds: out}, nil
+}
+
+func (s Service) CreateUnitKind(ctx context.Context, token bearertoken.Token, req tenantapi.CreateUnitKindRequest) (tenantapi.UnitKind, error) {
+	if err := s.pep.Require(ctx, token, string(authzdomain.PermUnitKindManage), ""); err != nil {
+		return tenantapi.UnitKind{}, err
+	}
+	created, err := s.app.CreateUnitKind(ctx, domain.UnitKind{
+		DomainID:   req.DomainId,
+		Code:       req.Code,
+		Name:       req.Name,
+		AttrSchema: rawFromAny(req.AttrSchema),
+		SortOrder:  req.SortOrder,
+	})
+	if err != nil {
+		return tenantapi.UnitKind{}, s.mapError(ctx, err, errCtx{domainID: req.DomainId, code: req.Code})
+	}
+	return s.unitKindToAPI(ctx, created)
+}
+
+func (s Service) UpdateUnitKind(ctx context.Context, token bearertoken.Token, unitKindID string, req tenantapi.UpdateUnitKindRequest) (tenantapi.UnitKind, error) {
+	if err := s.pep.Require(ctx, token, string(authzdomain.PermUnitKindManage), ""); err != nil {
+		return tenantapi.UnitKind{}, err
+	}
+	updated, err := s.app.UpdateUnitKind(ctx, unitKindID, domain.UnitKindPatch{
+		Name:       req.Name,
+		AttrSchema: rawFromAny(req.AttrSchema),
+		Status:     catalogStatusPtr(req.Status),
+		SortOrder:  req.SortOrder,
+	})
+	if err != nil {
+		return tenantapi.UnitKind{}, s.mapError(ctx, err, errCtx{unitKindID: unitKindID})
+	}
+	return s.unitKindToAPI(ctx, updated)
+}
+
+// ---------------------------------------------------------------- organizations (M40)
+
+func (s Service) ListOrganizations(ctx context.Context, token bearertoken.Token, domainID *string, pageSize *int, pageToken *string) (tenantapi.OrganizationPage, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermOrganizationRead)); err != nil {
+		return tenantapi.OrganizationPage{}, err
+	}
+	page, err := s.app.ListOrganizations(ctx, domainID, derefOr(pageSize, 0), derefOr(pageToken, ""))
+	if err != nil {
+		return tenantapi.OrganizationPage{}, s.mapError(ctx, err, errCtx{})
+	}
+	visible, err := gateUnits(ctx, s.pep, page.Orgs, func(o domain.Organization) string { return o.ID }, func(o domain.Organization) bool { return o.Visibility == domain.VisibilityShadow })
+	if err != nil {
+		return tenantapi.OrganizationPage{}, s.mapError(ctx, err, errCtx{})
+	}
+	out, err := s.organizationsToAPI(ctx, visible)
+	if err != nil {
+		return tenantapi.OrganizationPage{}, s.mapError(ctx, err, errCtx{})
+	}
+	return tenantapi.OrganizationPage{Organizations: out, NextPageToken: tokenPtr(page.NextPageToken)}, nil
+}
+
+func (s Service) CreateOrganization(ctx context.Context, token bearertoken.Token, req tenantapi.CreateOrganizationRequest) (tenantapi.Organization, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermOrganizationCreate)); err != nil {
+		return tenantapi.Organization{}, err
+	}
+	created, err := s.app.CreateOrganization(ctx, domain.Organization{
+		Code:       req.Code,
+		Name:       req.Name,
+		DomainID:   req.DomainId,
+		Visibility: visibilityOrDefault(req.Visibility),
+		Metadata:   rawFromAny(req.Metadata),
+	})
+	if err != nil {
+		return tenantapi.Organization{}, s.mapError(ctx, err, errCtx{code: req.Code, domainID: req.DomainId})
+	}
+	return s.organizationToAPI(ctx, created)
+}
+
+func (s Service) GetOrganization(ctx context.Context, token bearertoken.Token, orgID string) (tenantapi.Organization, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermOrganizationRead)); err != nil {
+		return tenantapi.Organization{}, err
+	}
+	o, err := s.app.GetOrganization(ctx, orgID)
+	if err != nil {
+		return tenantapi.Organization{}, s.mapError(ctx, err, errCtx{orgID: orgID})
+	}
+	return s.organizationToAPI(ctx, o)
+}
+
+func (s Service) UpdateOrganization(ctx context.Context, token bearertoken.Token, orgID string, req tenantapi.UpdateOrganizationRequest) (tenantapi.Organization, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermOrganizationUpdate)); err != nil {
+		return tenantapi.Organization{}, err
+	}
+	patch := domain.OrgPatch{
+		Name:     req.Name,
+		DomainID: req.DomainId,
+		Metadata: rawFromAny(req.Metadata),
+	}
+	if req.Visibility != nil {
+		v := fromAPIVisibility(*req.Visibility)
+		patch.Visibility = &v
+	}
+	updated, err := s.app.UpdateOrganization(ctx, orgID, patch)
+	if err != nil {
+		return tenantapi.Organization{}, s.mapError(ctx, err, errCtx{orgID: orgID})
+	}
+	return s.organizationToAPI(ctx, updated)
+}
+
+func (s Service) TransitionOrganization(ctx context.Context, token bearertoken.Token, orgID string, req tenantapi.TransitionRequest) (tenantapi.Organization, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermOrganizationLifecycle)); err != nil {
+		return tenantapi.Organization{}, err
+	}
+	updated, err := s.app.TransitionOrganization(ctx, orgID, fromAPIState(req.ToState), derefOr(req.Reason, ""))
+	if err != nil {
+		return tenantapi.Organization{}, s.mapError(ctx, err, errCtx{orgID: orgID})
+	}
+	return s.organizationToAPI(ctx, updated)
+}
+
+// ListOrganizationGraphs is the path-scoped alias of GET /graphs?org=.
+func (s Service) ListOrganizationGraphs(ctx context.Context, token bearertoken.Token, orgID string) (tenantapi.GraphList, error) {
+	return s.ListGraphs(ctx, token, &orgID)
 }
 
 // ---------------------------------------------------------------- response assembly
@@ -495,12 +676,131 @@ func (s Service) graphsToAPI(ctx context.Context, graphs []domain.Graph) ([]tena
 	return out, nil
 }
 
+func (s Service) domainToAPI(ctx context.Context, d domain.Domain) (tenantapi.Domain, error) {
+	names, err := s.loc.NamesByID(ctx, "domain", map[string]string{d.ID: d.Name})
+	if err != nil {
+		return tenantapi.Domain{}, err
+	}
+	return toAPIDomain(d, names[d.ID]), nil
+}
+
+func (s Service) domainsToAPI(ctx context.Context, ds []domain.Domain) ([]tenantapi.Domain, error) {
+	defaults := make(map[string]string, len(ds))
+	for _, d := range ds {
+		defaults[d.ID] = d.Name
+	}
+	names, err := s.loc.NamesByID(ctx, "domain", defaults)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]tenantapi.Domain, 0, len(ds))
+	for _, d := range ds {
+		out = append(out, toAPIDomain(d, names[d.ID]))
+	}
+	return out, nil
+}
+
+func (s Service) unitKindToAPI(ctx context.Context, k domain.UnitKind) (tenantapi.UnitKind, error) {
+	names, err := s.loc.NamesByID(ctx, "unit_kind", map[string]string{k.ID: k.Name})
+	if err != nil {
+		return tenantapi.UnitKind{}, err
+	}
+	return toAPIUnitKind(k, names[k.ID]), nil
+}
+
+func (s Service) unitKindsToAPI(ctx context.Context, ks []domain.UnitKind) ([]tenantapi.UnitKind, error) {
+	defaults := make(map[string]string, len(ks))
+	for _, k := range ks {
+		defaults[k.ID] = k.Name
+	}
+	names, err := s.loc.NamesByID(ctx, "unit_kind", defaults)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]tenantapi.UnitKind, 0, len(ks))
+	for _, k := range ks {
+		out = append(out, toAPIUnitKind(k, names[k.ID]))
+	}
+	return out, nil
+}
+
+func (s Service) organizationToAPI(ctx context.Context, o domain.Organization) (tenantapi.Organization, error) {
+	names, err := s.loc.NamesByID(ctx, "organization", map[string]string{o.ID: o.Name})
+	if err != nil {
+		return tenantapi.Organization{}, err
+	}
+	return toAPIOrganization(o, names[o.ID]), nil
+}
+
+func (s Service) organizationsToAPI(ctx context.Context, os []domain.Organization) ([]tenantapi.Organization, error) {
+	defaults := make(map[string]string, len(os))
+	for _, o := range os {
+		defaults[o.ID] = o.Name
+	}
+	names, err := s.loc.NamesByID(ctx, "organization", defaults)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]tenantapi.Organization, 0, len(os))
+	for _, o := range os {
+		out = append(out, toAPIOrganization(o, names[o.ID]))
+	}
+	return out, nil
+}
+
+func toAPIDomain(d domain.Domain, name map[string]string) tenantapi.Domain {
+	return tenantapi.Domain{
+		Id:        d.ID,
+		Code:      d.Code,
+		Name:      name,
+		Status:    string(d.Status),
+		SortOrder: d.SortOrder,
+	}
+}
+
+func toAPIUnitKind(k domain.UnitKind, name map[string]string) tenantapi.UnitKind {
+	return tenantapi.UnitKind{
+		Id:         k.ID,
+		DomainId:   k.DomainID,
+		Code:       k.Code,
+		Name:       name,
+		AttrSchema: anyFromRaw(k.AttrSchema),
+		Status:     string(k.Status),
+		SortOrder:  k.SortOrder,
+	}
+}
+
+func toAPIOrganization(o domain.Organization, name map[string]string) tenantapi.Organization {
+	return tenantapi.Organization{
+		Id:         o.ID,
+		Code:       o.Code,
+		Name:       name,
+		DomainId:   o.DomainID,
+		Visibility: toAPIVisibility(o.Visibility),
+		State:      toAPIState(o.State),
+		Metadata:   anyFromRaw(o.Metadata),
+		CreatedAt:  datetime.DateTime(o.CreatedAt),
+		UpdatedAt:  datetime.DateTime(o.UpdatedAt),
+	}
+}
+
+// catalogStatusPtr maps an API status string pointer to a *domain.CatalogStatus (nil = unchanged).
+func catalogStatusPtr(s *string) *domain.CatalogStatus {
+	if s == nil {
+		return nil
+	}
+	cs := domain.CatalogStatus(*s)
+	return &cs
+}
+
 func toAPIUnit(u domain.Unit, name map[string]string) tenantapi.Unit {
 	return tenantapi.Unit{
 		Id:         u.ID,
+		OrgId:      u.OrgID,
+		DomainId:   u.DomainID,
+		KindId:     u.KindID,
 		Code:       u.Code,
 		Name:       name,
-		UnitKind:   strPtrOrNil(u.UnitKind),
 		Level:      u.Level,
 		Visibility: toAPIVisibility(u.Visibility),
 		State:      toAPIState(u.State),
@@ -513,6 +813,7 @@ func toAPIUnit(u domain.Unit, name map[string]string) tenantapi.Unit {
 func toAPIGraph(g domain.Graph, name map[string]string) tenantapi.Graph {
 	return tenantapi.Graph{
 		Id:                 g.ID,
+		OrgId:              g.OrgID,
 		Code:               g.Code,
 		Name:               name,
 		IsDefault:          g.IsDefault,
@@ -539,11 +840,14 @@ func toAPIReports(reports []domain.ClosureReport) []tenantapi.ClosureReport {
 // errCtx carries the identifiers an endpoint can name in a Conjure error (only the relevant fields
 // are set per call).
 type errCtx struct {
-	unitID   string
-	code     string
-	graph    string
-	parentID string
-	childID  string
+	unitID     string
+	orgID      string
+	domainID   string
+	unitKindID string
+	code       string
+	graph      string
+	parentID   string
+	childID    string
 }
 
 // mapError translates domain/application errors into the Conjure SerializableError contract.
@@ -569,6 +873,18 @@ func (s Service) mapError(ctx context.Context, err error, c errCtx) error {
 		return tenantapi.NewGraphInUse(c.graph)
 	case errors.Is(err, domain.ErrGraphProtected):
 		return tenantapi.NewGraphProtected(err.Error())
+	case errors.Is(err, domain.ErrDomainNotFound):
+		return tenantapi.NewDomainNotFound(c.domainID)
+	case errors.Is(err, domain.ErrDomainCodeConflict):
+		return tenantapi.NewDomainCodeConflict(c.code)
+	case errors.Is(err, domain.ErrUnitKindNotFound):
+		return tenantapi.NewUnitKindNotFound(c.unitKindID)
+	case errors.Is(err, domain.ErrUnitKindCodeConflict):
+		return tenantapi.NewUnitKindCodeConflict(c.domainID, c.code)
+	case errors.Is(err, domain.ErrOrgNotFound):
+		return tenantapi.NewOrganizationNotFound(c.orgID)
+	case errors.Is(err, domain.ErrOrgCodeConflict):
+		return tenantapi.NewOrganizationCodeConflict(c.code)
 	case errors.Is(err, domain.ErrUnknownLanguage):
 		return tenantapi.NewUnitInvalid("language does not exist")
 	case errors.Is(err, domain.ErrUnitLanguageConflict):

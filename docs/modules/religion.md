@@ -129,6 +129,17 @@ congregation/mission/monastery/community/mosque-community/temple-community/counc
 > (voluntary association DAG, **directory-only**). A unit's `tenant_units.unit_kind` is set from a
 > `religion_org_kinds.code` (a descriptive label, never branched on).
 
+> **M41 / D-UnifiedOrgGraph — the church-domain exception.** A religious body is a `tenant_unit` in a
+> **`church`-domain `tenant_organization`** with a `religion_org_profiles` sidecar — religion is the
+> *template* the [education](education.md) and [company](company.md) verticals were brought onto.
+> A **top-level body** is created first-class via **`POST /religion-orgs`** (`createRootOrg`): a
+> `church`-domain organization + its root unit + profile; descendants are added with
+> `createChildOrg`. Unlike the *reference* domains university/company (`pdp_scoped=false`,
+> instance-global), `church` is an **operational** domain (`pdp_scoped=true`) — but religious bodies use
+> the **instance-global** `canonical`/`tradition`/`affiliation` graphs (migration-seeded, not per-org),
+> not the auto-seeded per-org `command`/`operational` graphs. Authority still cascades down the
+> `canonical` graph (reach-RLS applies).
+
 **`religion_org_profiles`** (per-organization faith attributes; one row per religious-body unit) —
 - `unit_id TEXT PRIMARY KEY REFERENCES tenant_units(id) ON DELETE RESTRICT` (a 1:1 Unit extension — no
   own RID)
@@ -285,6 +296,7 @@ Shabbat, daily mass, puja, meditation), special.
 | `POST·DELETE /units/{unitId}/classifications` | Add / remove a tradition tag (one primary) | `religionorg.manage` (on the unit) |
 | `PUT /units/{unitId}/type-overrides` · `GET /units/{unitId}/effective-type` | Set / read the unit theism override (resolved) | `religionorg.manage` / `religion.read` |
 | `GET·POST·DELETE /units/{unitId}/religion-policies` | Manage data-driven org policies | `religionorg.manage` (on the unit) |
+| `POST /religion-orgs` | Create a top-level body (church-domain org + root unit + profile — M41) | `religion.catalog.manage` (instance) |
 | `POST /units/{unitId}/child-orgs` | Create a child org unit + canonical edge (blocked by `excludes_child_creation`) | `religionorg.manage` (on the unit) |
 | `GET·PUT /grade-categories` · `/clergy-grades?tradition=` · `/office-types` | Read / manage the clergy catalogs (M23) | `religion.read` / `religion.catalog.manage` (instance) |
 | `GET /persons/{id}/clergy-credentials` · `GET /units/{unitId}/clergy-credentials` | List a person's / a unit's clergy credentials | `religion.read` (unit read on the unit) |
