@@ -62,6 +62,17 @@ sources:
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-ua-latest.db.bz2"
     cron: "@weekly"
     enabled: false
+  # External organizations (D-ExternalOrgs, M30) — live from the Wikidata SPARQL endpoint via the `http`
+  # connector (?format=json&query=…), transformed in Go (wikidataorgs.Mapper). A LIMIT-bounded query of
+  # Ukrainian political parties + government bodies so the live run is fast; broaden the query/LIMIT for a
+  # fuller backfill. The geo-countries source SHOULD load first so the country FK resolves.
+  - code: wikidata-orgs-ua
+    name: "Wikidata external orgs — Ukraine (parties + government)"
+    connector-type: http
+    object-type: external-organizations
+    locator: "https://query.wikidata.org/sparql?format=json&query=SELECT%20%3Forg%20%3ForgLabel%20%3FcountryCode%20%3Fkind%20WHERE%20%7B%0A%20%20VALUES%20%28%3Fclass%20%3Fkind%29%20%7B%0A%20%20%20%20%28wd%3AQ7278%20%22party%22%29%0A%20%20%20%20%28wd%3AQ2659904%20%22government_body%22%29%0A%20%20%7D%0A%20%20%3Forg%20wdt%3AP31%20%3Fclass%20.%0A%20%20%3Forg%20wdt%3AP17%20wd%3AQ212%20.%0A%20%20OPTIONAL%20%7B%20%3Forg%20wdt%3AP17%20%3Fc%20.%20%3Fc%20wdt%3AP297%20%3FcountryCode%20.%20%7D%0A%20%20SERVICE%20wikibase%3Alabel%20%7B%20bd%3AserviceParam%20wikibase%3Alanguage%20%22en%2Cuk%22.%20%7D%0A%7D%0ALIMIT%2080"
+    cron: "@weekly"
+    enabled: true
 
 worker:
   poll-interval-ms: 2000

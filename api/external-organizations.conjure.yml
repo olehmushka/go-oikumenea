@@ -1,0 +1,202 @@
+# External-organizations module API (M30 / D-ExternalOrgs). A registry of external organizations a
+# person is tied to but which the deploying org neither owns nor commands — political parties,
+# government bodies, foreign military formations, NGOs, lobbying registrants (docs/modules/
+# external-organizations.md). It is the node-space the M33 institutional-tie edges point at when the
+# org side is neither a tenant unit nor an M21 company. Catalog-typed, provenance-tagged, hermenea-fed.
+#
+# RID-bearing fields are typed `string` (the canonical RID text): Conjure reserves `rid` as a built-in
+# primitive, so a type named `Rid` cannot be used. Translatable labels (kind/org names) are returned as
+# a `locale -> text` map assembled from the i18n store (D-i18n: all locales in every response, no
+# negotiation); create/update requests carry the default-locale value as a plain `string`. External
+# orgs carry no unit scope of their own (external reference data), so reads gate on `externalorg.read`
+# and catalog + org writes on the instance-scope `externalorg.manage` — both satisfied anywhere via the
+# PEP. Writes are audited in-process under a `system` actor (D-Audit). Rows carry the D-OverlayFoundation
+# (M29) provisional/resolved status + the source/confidence/as_of attribution column-set. Generated Go
+# lands in internal/conjure, never hand-edited.
+types:
+  definitions:
+    default-package: oikumenea.externalorg
+    objects:
+      # ---- reference catalog ----
+      ExternalOrgKind:
+        docs: An external-org kind (party/government_body/military/ngo/registrant/other).
+        fields:
+          id: string
+          code: string
+          name:
+            type: map<string, string>
+            docs: Default-locale fallback + i18n translations.
+          status: string
+          sortOrder: optional<integer>
+      # ---- object ----
+      ExternalOrganization:
+        docs: |
+          An external organization at registry grade. Soft-deleted, not destroyed. The RID is the
+          external handle. Carries the D-OverlayFoundation provisional/resolved status + attribution.
+        fields:
+          id: string
+          kindId: string
+          kindLabel:
+            type: optional<string>
+            docs: Best-effort default-locale kind name.
+          name:
+            type: map<string, string>
+            docs: Default-locale fallback + i18n translations.
+          code: optional<string>
+          countryId: optional<string>
+          countryLabel: optional<string>
+          wikidataId:
+            type: optional<string>
+            docs: Optional Wikidata Q-id concordance (the hermenea import natural key).
+          status:
+            type: string
+            docs: One of provisional | resolved.
+          source:
+            type: string
+            docs: One of self_declared | operator_verified | imported (attribution).
+          confidence:
+            type: string
+            docs: One of confirmed | probable | possible (attribution).
+          asOf: optional<datetime>
+          createdAt: datetime
+          updatedAt: datetime
+      # ---- pages / lists ----
+      ExternalOrgPage:
+        fields:
+          orgs: list<ExternalOrganization>
+          nextPageToken: optional<string>
+      ExternalOrgKindList:
+        fields:
+          kinds: list<ExternalOrgKind>
+      # ---- request bodies ----
+      UpsertExternalOrgKindRequest:
+        docs: Create/update (by code) an external-org-kind catalog entry. name is the default-locale fallback.
+        fields:
+          code: string
+          name: string
+          sortOrder: optional<integer>
+      CreateExternalOrgRequest:
+        docs: |
+          Register an external organization. status defaults to resolved; pass provisional to create a
+          stub awaiting merge. source/confidence default to operator_verified/possible when omitted.
+        fields:
+          kindId: string
+          name: string
+          code: optional<string>
+          countryId: optional<string>
+          wikidataId: optional<string>
+          status: optional<string>
+          source: optional<string>
+          confidence: optional<string>
+          asOf: optional<datetime>
+      UpdateExternalOrgRequest:
+        docs: Update kind/name/code/country/wikidata/status/attribution; omitted fields are unchanged.
+        fields:
+          kindId: optional<string>
+          name: optional<string>
+          code: optional<string>
+          countryId: optional<string>
+          wikidataId: optional<string>
+          status: optional<string>
+          source: optional<string>
+          confidence: optional<string>
+          asOf: optional<datetime>
+      MergeExternalOrgRequest:
+        docs: |
+          Resolve a provisional stub into a canonical organization. The provisional org (the path id) is
+          tombstoned; the canonical (intoOrgId) survives. confidence is recorded on the merge action.
+        fields:
+          intoOrgId: string
+          confidence: optional<string>
+    errors:
+      ExternalOrgNotFound:
+        namespace: ExternalOrg
+        code: NOT_FOUND
+        safe-args:
+          orgId: string
+      Conflict:
+        docs: A code/wikidata-id already exists among active rows.
+        namespace: ExternalOrg
+        code: CONFLICT
+        safe-args:
+          reason: string
+      Invalid:
+        docs: A malformed request or an unknown referenced entity (kind/country), or an invalid merge.
+        namespace: ExternalOrg
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
+services:
+  ExternalOrganizationService:
+    name: External Organization Service
+    package: oikumenea.externalorg
+    base-path: /external-orgs/v1
+    default-auth: header
+    docs: |
+      An external-organizations registry: the kind catalog + the external-organization node-space, with
+      provisional/resolved resolution. Reads gate on `externalorg.read`; catalog + org writes on the
+      instance-scope `externalorg.manage`. Writes are audited in-process (D-Audit).
+    endpoints:
+      # ---- catalog ----
+      listExternalOrgKinds:
+        http: GET /external-org-kinds
+        returns: ExternalOrgKindList
+      upsertExternalOrgKind:
+        http: PUT /external-org-kinds
+        args:
+          request: UpsertExternalOrgKindRequest
+        returns: ExternalOrgKind
+      # ---- organizations ----
+      listExternalOrgs:
+        http: GET /external-orgs
+        args:
+          query:
+            type: optional<string>
+            param-type: query
+            docs: Optional case-insensitive name/code filter.
+          kind:
+            type: optional<string>
+            param-type: query
+            docs: Optional kind-code filter.
+          country:
+            type: optional<string>
+            param-type: query
+            docs: Optional country RID filter.
+          status:
+            type: optional<string>
+            param-type: query
+            docs: Optional status filter (provisional | resolved).
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: ExternalOrgPage
+      createExternalOrg:
+        http: POST /external-orgs
+        args:
+          request: CreateExternalOrgRequest
+        returns: ExternalOrganization
+      getExternalOrg:
+        http: GET /external-orgs/{orgId}
+        args:
+          orgId: { type: string, param-type: path }
+        returns: ExternalOrganization
+      updateExternalOrg:
+        http: PUT /external-orgs/{orgId}
+        args:
+          orgId: { type: string, param-type: path }
+          request: UpdateExternalOrgRequest
+        returns: ExternalOrganization
+      deleteExternalOrg:
+        http: DELETE /external-orgs/{orgId}
+        args:
+          orgId: { type: string, param-type: path }
+      mergeExternalOrg:
+        http: POST /external-orgs/{orgId}/merge
+        docs: Resolve a provisional stub (orgId) into a canonical organization (intoOrgId); tombstones the stub.
+        args:
+          orgId: { type: string, param-type: path }
+          request: MergeExternalOrgRequest
+        returns: ExternalOrganization

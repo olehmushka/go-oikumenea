@@ -23,6 +23,7 @@ const SERVICE_NAMES: Record<number, string> = {
   1: "platform", 2: "i18n", 3: "audit", 4: "tenant", 5: "rank", 6: "person",
   7: "membership", 8: "authz", 9: "account", 10: "document", 11: "order",
   12: "geo", 13: "language", 14: "education",
+  18: "external_organization",
 };
 
 // Token by `${service}/${kind}/${typeCode}` — kind 1=object, 2=link, 3=action. Mirrors the SQL
@@ -51,6 +52,8 @@ const TYPE_TOKENS: Record<string, string> = {
   "14/1/8": "degree_level",
   "14/2/1": "link__education_unit_parent_of", "14/2/2": "link__studied_at",
   "14/2/3": "link__resided_in_dormitory", "14/2/4": "link__holds_education_position",
+  // external organizations (M30 / D-ExternalOrgs)
+  "18/1/1": "external_organization", "18/1/2": "external_org_kind",
 };
 
 interface Decoded {

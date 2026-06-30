@@ -160,6 +160,12 @@ const (
 	// catalog writes ride the instance-plane `legal-basis.manage` (below).
 	PermLegalBasisRead Permission = "legal-basis.read"
 
+	// external organizations (D-ExternalOrgs, M30) — the registry of external orgs a person is tied to
+	// (parties, government bodies, foreign military, NGOs, registrants). Instance-global reference data,
+	// not tenant-unit scoped: read anywhere via the PEP; catalog + org writes ride the instance-plane
+	// `externalorg.manage` (below).
+	PermExternalOrgRead Permission = "externalorg.read"
+
 	// i18n
 	PermLocaleRead        Permission = "locale.read"
 	PermTranslationRead   Permission = "translation.read"
@@ -182,6 +188,7 @@ const (
 	PermVehicleCatalogManage     Permission = "vehicle.catalog.manage"
 	PermReligionCatalogManage    Permission = "religion.catalog.manage"
 	PermLegalBasisManage         Permission = "legal-basis.manage" // instance-admin manages the GDPR lawful-basis catalog (D-OverlayFoundation, M29)
+	PermExternalOrgManage        Permission = "externalorg.manage" // instance-admin manages the external-organizations registry (D-ExternalOrgs, M30)
 	PermInstanceConfig           Permission = "instance.config"
 	PermInstanceAdminManage      Permission = "instance.admin.manage"
 	// import — the generic reference-data import endpoint (M16 / D-Hermenea). Held by the
@@ -212,6 +219,7 @@ var instanceScope = map[Permission]struct{}{
 	PermVehicleCatalogManage:     {},
 	PermReligionCatalogManage:    {},
 	PermLegalBasisManage:         {},
+	PermExternalOrgManage:        {},
 	PermLocaleManage:             {},
 	PermTranslationManage:        {},
 	PermInstanceConfig:           {},
@@ -245,6 +253,7 @@ var catalog = func() map[Permission]struct{} {
 		PermVehicleRead, PermVehicleManage,
 		PermReligionRead, PermReligionOrgManage, PermClergyManage, PermAffiliationManage, PermSiteManage, PermScheduleManage,
 		PermLegalBasisRead, PermLegalBasisManage,
+		PermExternalOrgRead, PermExternalOrgManage,
 		PermLocaleRead, PermTranslationRead, PermLocaleManage, PermTranslationManage,
 		PermRankSchemeManage, PermGraphManage, PermClosureRebuild, PermDocumentTypeManage, PermOrderTypeManage,
 		PermPersonalCodeSchemeManage, PermCountryManage, PermLocationTypesManage, PermEducationCatalogManage, PermCompanyCatalogManage, PermVehicleCatalogManage, PermReligionCatalogManage, PermInstanceConfig, PermInstanceAdminManage,
@@ -309,7 +318,7 @@ var readerPerms = []Permission{
 	PermRankSchemeRead, PermGraphRead, PermCountryRead, PermLanguageRead, PermLocationRead,
 	PermDomainRead, PermUnitKindRead, PermOrganizationRead,
 	PermDocumentTypeRead, PermPersonalCodeSchemeRead, PermOrderTypeRead,
-	PermReligionRead, PermLegalBasisRead,
+	PermReligionRead, PermLegalBasisRead, PermExternalOrgRead,
 	PermLocaleRead, PermTranslationRead,
 }
 

@@ -1,4 +1,4 @@
-h1:Oxc2g4JAH8LAVK7+csSx9ZJWpj7pk9Ho1ZPHX+c9tBo=
+h1:Ee6rcKiO01xDnqbVcpceG7cLihvGLbX69G6ZVfL/cyk=
 20260601000000_schema_bootstrap.sql h1:Uz776n2oHY+lSR9gJnzN+1veTDbPeSGQZSvgdi6m84w=
 20260601000001_audit_log.sql h1:QYSj9nwr2UwgDS0BnLU4Dwq+Hn2cgmTM8ZMPsqqOZ9w=
 20260601000002_localization.sql h1:UFlGPQZs36XNEvAegqMmQipw2yhjptu4M8J8WOjRiwM=
@@ -28,3 +28,4 @@ h1:Oxc2g4JAH8LAVK7+csSx9ZJWpj7pk9Ho1ZPHX+c9tBo=
 20260601000026_religion_discovery.sql h1:DHa6dYgwpPpCG9V/vh7A2cwr+Z5nNctCmtZOyB8Zsc8=
 20260601000027_vehicle.sql h1:2K6YsSHPFS6vil6Slrq/ln+nSYenTRsb9ZUCWO2uso0=
 20260601000028_overlay_foundation.sql h1:pkcBGO0WCx3MmmuA1BX/21X8xuXjoxZhdpLbKdrTDiY=
+20260601000029_external_orgs.sql h1:TkQ/d+puQxgSBIsrUVBzI108tBUMKeifbIAkLoHJlK8=

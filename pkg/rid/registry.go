@@ -13,23 +13,24 @@ import (
 // in the migration together.
 
 var serviceNames = map[int]string{
-	SvcPlatform:   "platform",
-	SvcI18n:       "i18n",
-	SvcAudit:      "audit",
-	SvcTenant:     "tenant",
-	SvcRank:       "rank",
-	SvcPerson:     "person",
-	SvcMembership: "membership",
-	SvcAuthz:      "authz",
-	SvcAccount:    "account",
-	SvcDocument:   "document",
-	SvcOrder:      "order",
-	SvcLocation:   "location",
-	SvcLanguage:   "language",
-	SvcEducation:  "education",
-	SvcCompany:    "company",
-	SvcReligion:   "religion",
-	SvcVehicle:    "vehicle",
+	SvcPlatform:    "platform",
+	SvcI18n:        "i18n",
+	SvcAudit:       "audit",
+	SvcTenant:      "tenant",
+	SvcRank:        "rank",
+	SvcPerson:      "person",
+	SvcMembership:  "membership",
+	SvcAuthz:       "authz",
+	SvcAccount:     "account",
+	SvcDocument:    "document",
+	SvcOrder:       "order",
+	SvcLocation:    "location",
+	SvcLanguage:    "language",
+	SvcEducation:   "education",
+	SvcCompany:     "company",
+	SvcReligion:    "religion",
+	SvcVehicle:     "vehicle",
+	SvcExternalOrg: "external_organization",
 }
 
 type typeKey struct {
@@ -185,6 +186,9 @@ var typeNames = map[typeKey]string{
 	{SvcVehicle, int(KindObject), 5}: "registration_number_type",
 	{SvcVehicle, int(KindLink), 1}:   "manufactured_by",
 	{SvcVehicle, int(KindLink), 2}:   "registered_to",
+	// external-organizations (M30 / D-ExternalOrgs) — the external-org node-space + its kind catalog
+	{SvcExternalOrg, int(KindObject), 1}: "external_organization",
+	{SvcExternalOrg, int(KindObject), 2}: "external_org_kind",
 }
 
 // Bare person link-type names (the dispatch tokens), derived from the registry above.

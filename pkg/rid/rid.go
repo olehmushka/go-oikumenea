@@ -50,23 +50,24 @@ func (k Kind) String() string {
 
 // Service codes — mirror oikumenea.platform_rid_services (migration 0000).
 const (
-	SvcPlatform   = 1
-	SvcI18n       = 2
-	SvcAudit      = 3
-	SvcTenant     = 4
-	SvcRank       = 5
-	SvcPerson     = 6
-	SvcMembership = 7
-	SvcAuthz      = 8
-	SvcAccount    = 9
-	SvcDocument   = 10
-	SvcOrder      = 11
-	SvcLocation   = 12
-	SvcLanguage   = 13
-	SvcEducation  = 14
-	SvcCompany    = 15
-	SvcReligion   = 16
-	SvcVehicle    = 17
+	SvcPlatform    = 1
+	SvcI18n        = 2
+	SvcAudit       = 3
+	SvcTenant      = 4
+	SvcRank        = 5
+	SvcPerson      = 6
+	SvcMembership  = 7
+	SvcAuthz       = 8
+	SvcAccount     = 9
+	SvcDocument    = 10
+	SvcOrder       = 11
+	SvcLocation    = 12
+	SvcLanguage    = 13
+	SvcEducation   = 14
+	SvcCompany     = 15
+	SvcReligion    = 16
+	SvcVehicle     = 17
+	SvcExternalOrg = 18
 )
 
 // ActionType is the generic per-service type code for an Action RID (the specific action name lives

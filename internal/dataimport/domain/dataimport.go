@@ -42,6 +42,13 @@ const ObjectTypeLanguageScheme = "language-scheme"
 // pre-exist; a link whose languoid or script does not resolve is skipped (not an error).
 const ObjectTypeLanguageScripts = "language-scripts"
 
+// ObjectTypeExternalOrgs is the routing key for the external-organizations registry (D-ExternalOrgs,
+// M30) — parties/government bodies/military/NGOs/registrants fed from Wikidata / public registries by
+// the hermenea `wikidataorgs` mapper. Records are keyed by their Wikidata Q-id; an unknown `kind` is
+// skipped (the import is resilient to mapping gaps). Per-row provenance lands in the attribution columns
+// (source=imported + as_of), not a separate provenance column-set.
+const ObjectTypeExternalOrgs = "external-organizations"
+
 // Record is one object-type-specific record decoded from the canonical envelope (a JSON object). The
 // registered handler interprets its own shape.
 type Record = map[string]any
@@ -130,6 +137,27 @@ type LanguoidStore interface {
 	ReplaceCountries(ctx context.Context, code string, countryCodes []string) error
 	RebuildClosure(ctx context.Context) error
 	ReconcileLocaleLanguages(ctx context.Context) error
+}
+
+// ExternalOrg is one external-organization record decoded from a canonical-envelope record
+// (D-ExternalOrgs, M30). WikidataID is the idempotency key; KindCode resolves to the external_org_kinds
+// catalog; CountryCode is an ISO-3166 alpha-2 code resolved to geo_countries in SQL ("" = none).
+type ExternalOrg struct {
+	WikidataID  string
+	Name        string
+	KindCode    string
+	CountryCode string // ISO alpha-2; "" = none
+}
+
+// ExternalOrgStore is the port the external-organizations upsert handler drives (D-ExternalOrgs). The
+// handler resolves the kind (skipping records whose kind is unknown), then keys idempotency on the
+// Wikidata id: insert when absent, update when the name changed, skip otherwise — never deletes.
+// Imported rows are stamped source=imported + as_of=ImportedAt in the attribution columns.
+type ExternalOrgStore interface {
+	ResolveKind(ctx context.Context, code string) (id string, found bool, err error)
+	GetByWikidata(ctx context.Context, wikidataID string) (name string, found bool, err error)
+	Insert(ctx context.Context, kindID string, o ExternalOrg, prov Provenance) error
+	UpdateImport(ctx context.Context, kindID string, o ExternalOrg, prov Provenance) error
 }
 
 // LanguageScriptStore is the port the language-scripts upsert handler drives (D-Languages). A link ties

@@ -22,6 +22,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/dataimport"
 	"github.com/olegamysk/go-oikumenea/internal/document"
 	"github.com/olegamysk/go-oikumenea/internal/education"
+	"github.com/olegamysk/go-oikumenea/internal/externalorg"
 	"github.com/olegamysk/go-oikumenea/internal/geo"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation/bootstrap"
@@ -266,6 +267,16 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 		return nil, err
 	}
 	vehicleSvc.SubscribePersonEvents(bus)
+
+	// External organizations (M30 / D-ExternalOrgs): the registry of external orgs a person is tied to
+	// (parties, government bodies, foreign military, NGOs, registrants) — the node-space the M33
+	// institutional-tie edges FK. Instance-global reference data, catalog-typed, provisional/resolved +
+	// attribution; a hermenea import target (the `external-organizations` object-type is registered on the
+	// dataimport side). Writes record via the audit service; translatable names assemble via localization.
+	if _, err := externalorg.Register(info, pool, auditSvc, locSvc, enforcer); err != nil {
+		cleanup()
+		return nil, err
+	}
 
 	// Religion (M22 / D-Religion): the multi-faith taxonomy (recursive religion_taxa + closure) with a
 	// catalog-driven level marker + theism classification, the per-faith catalogs, and the per-unit

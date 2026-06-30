@@ -43,6 +43,9 @@ type LanguoidStoreFactory func(conn db.DBTX) domain.LanguoidStore
 // LanguageScriptStoreFactory binds the language-scripts store port to the caller's tx (D-Languages).
 type LanguageScriptStoreFactory func(conn db.DBTX) domain.LanguageScriptStore
 
+// ExternalOrgStoreFactory binds the external-organizations store port to the caller's tx (D-ExternalOrgs).
+type ExternalOrgStoreFactory func(conn db.DBTX) domain.ExternalOrgStore
+
 // Envelope is the application-level canonical envelope (the transport maps the Conjure type onto it).
 type Envelope struct {
 	ObjectType    string
@@ -372,6 +375,69 @@ func LanguageScriptsHandler(newStore LanguageScriptStoreFactory) Handler {
 		}
 		return sum, nil
 	}
+}
+
+// ExternalOrgsHandler builds the external-organizations upsert handler (D-ExternalOrgs, M30). It resolves
+// each record's kind against the external_org_kinds catalog (a record whose kind does not resolve is
+// skipped — the import is resilient to mapping gaps), then keys idempotency on the Wikidata id: insert
+// when absent, update only when the name changed, skip otherwise — never deletes. Imported rows are
+// stamped source=imported + as_of=ImportedAt; the country (ISO alpha-2) resolves to geo_countries in SQL.
+func ExternalOrgsHandler(newStore ExternalOrgStoreFactory) Handler {
+	return func(ctx context.Context, tx pgx.Tx, records []domain.Record, prov domain.Provenance) (domain.Summary, error) {
+		store := newStore(tx)
+		var sum domain.Summary
+		for _, rec := range records {
+			o, err := externalOrgFields(rec)
+			if err != nil {
+				return domain.Summary{}, err
+			}
+			kindID, ok, err := store.ResolveKind(ctx, o.KindCode)
+			if err != nil {
+				return domain.Summary{}, err
+			}
+			if !ok {
+				sum.Skipped++
+				continue
+			}
+			existing, found, err := store.GetByWikidata(ctx, o.WikidataID)
+			if err != nil {
+				return domain.Summary{}, err
+			}
+			switch {
+			case !found:
+				if err := store.Insert(ctx, kindID, o, prov); err != nil {
+					return domain.Summary{}, err
+				}
+				sum.Created++
+			case existing != o.Name:
+				if err := store.UpdateImport(ctx, kindID, o, prov); err != nil {
+					return domain.Summary{}, err
+				}
+				sum.Updated++
+			default:
+				sum.Skipped++
+			}
+		}
+		return sum, nil
+	}
+}
+
+// externalOrgFields decodes an external-organization record. wikidataId + name are required; kind
+// defaults to "other" when absent; country is an upper-cased ISO alpha-2 ("" when absent).
+func externalOrgFields(rec domain.Record) (domain.ExternalOrg, error) {
+	o := domain.ExternalOrg{
+		WikidataID:  strings.TrimSpace(recStr(rec["wikidataId"])),
+		Name:        strings.TrimSpace(recStr(rec["name"])),
+		KindCode:    strings.TrimSpace(recStr(rec["kind"])),
+		CountryCode: strings.ToUpper(strings.TrimSpace(recStr(rec["country"]))),
+	}
+	if o.WikidataID == "" || o.Name == "" {
+		return domain.ExternalOrg{}, domain.ErrInvalidRecord
+	}
+	if o.KindCode == "" {
+		o.KindCode = "other"
+	}
+	return o, nil
 }
 
 // recOptFloat reads an optional JSON number as *float64 (nil when absent/null/non-numeric).

@@ -56,6 +56,12 @@ func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Serv
 		func(conn db.DBTX) domain.LanguageScriptStore { return adapters.NewLanguageScriptRepo(conn) },
 	))
 
+	// external-organizations: the M30 registry (D-ExternalOrgs) fed from Wikidata / public registries by
+	// the hermenea `wikidataorgs` mapper. Idempotent upsert keyed by Wikidata id; unknown kinds skipped.
+	svc.Register(domain.ObjectTypeExternalOrgs, application.ExternalOrgsHandler(
+		func(conn db.DBTX) domain.ExternalOrgStore { return adapters.NewExternalOrgRepo(conn) },
+	))
+
 	if err := dataimportapi.RegisterRoutesImportService(info.Router, transport.NewService(svc, enforcer)); err != nil {
 		return nil, werror.Wrap(err, "register import service routes")
 	}

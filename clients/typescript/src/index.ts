@@ -31,6 +31,7 @@ import {
   document,
   education,
   educationref,
+  externalorg,
   geo,
   hermenea,
   identityfederation,
@@ -89,6 +90,8 @@ export interface OikumeneaClient {
   readonly document: document.DocumentService;
   readonly education: education.EducationService;
   readonly educationReference: educationref.EducationReferenceService;
+  /** External-organizations registry: parties/government/military/NGOs/registrants (D-ExternalOrgs). */
+  readonly externalOrg: externalorg.ExternalOrganizationService;
   readonly geo: geo.GeoService;
   readonly identityFederation: identityfederation.IdentityFederationService;
   /** Generic reference-data import endpoint (POST /import/{objectType}); hermenea's loader calls this. */
@@ -201,6 +204,7 @@ export function createOikumeneaClient(
     document: new document.DocumentService(bridge),
     education: new education.EducationService(bridge),
     educationReference: new educationref.EducationReferenceService(bridge),
+    externalOrg: new externalorg.ExternalOrganizationService(bridge),
     geo: new geo.GeoService(bridge),
     identityFederation: new identityfederation.IdentityFederationService(bridge),
     import: new dataimport.ImportService(bridge),

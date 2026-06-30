@@ -22,6 +22,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/loader"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/runtime"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/transport"
+	"github.com/olegamysk/go-oikumenea/internal/hermenea/wikidataorgs"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/wof"
 	werror "github.com/palantir/witchcraft-go-error"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
@@ -58,6 +59,10 @@ func Register(ctx context.Context, info witchcraft.InitInfo, pool *pgxpool.Pool,
 	svc.RegisterMapper(cldrscripts.ObjectType, cldrscripts.Mapper{})
 	svc.RegisterPagedMapper(glottolog.ObjectType, glottolog.CLDFMapper{})
 	svc.RegisterPagedMapper(cldrscripts.ObjectType, cldrscripts.SupplementalMapper{})
+	//   - external-organizations: the M30 registry (D-ExternalOrgs) — an in-memory Mapper over a Wikidata
+	//     SPARQL JSON result set fetched live by the `http` connector (?format=json&query=…). Emits
+	//     Wikidata-id-keyed party/government/military/NGO/registrant records.
+	svc.RegisterMapper(wikidataorgs.ObjectType, wikidataorgs.Mapper{})
 
 	// Seed declaratively-configured sources (idempotent upsert + schedule).
 	for _, cs := range cfg.Sources {

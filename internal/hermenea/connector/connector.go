@@ -55,6 +55,10 @@ func (h HTTP) Fetch(ctx context.Context, src domain.Source) (domain.RawBatch, er
 	if err != nil {
 		return domain.RawBatch{}, err
 	}
+	// A descriptive User-Agent + a JSON Accept are required by some public APIs (e.g. the Wikidata SPARQL
+	// endpoint 403s a request with the default Go UA) and harmless for plain file/JSON sources.
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Accept", "application/json")
 	resp, err := h.client.Do(req)
 	if err != nil {
 		return domain.RawBatch{}, err
@@ -207,8 +211,9 @@ func (h HTTPFiles) Stage(ctx context.Context, src domain.Source) (domain.StagedS
 }
 
 // userAgent identifies the importer to upstreams. Some hosts (e.g. SIL/iso639-3.sil.org) 403 the Go
-// default "Go-http-client" UA, so send a descriptive one.
-const userAgent = "go-oikumenea-hermenea/1.0 (+https://github.com/olegamysk/go-oikumenea)"
+// default "Go-http-client" UA, so send a descriptive one. The Wikimedia UA policy (used by the Wikidata
+// SPARQL endpoint, D-ExternalOrgs / M30) additionally expects a contact (URL + e-mail), so carry both.
+const userAgent = "go-oikumenea-hermenea/1.0 (https://github.com/olegamysk/go-oikumenea; olegamysk@gmail.com)"
 
 // download streams url to dest and returns the sha256 of its content (no full in-memory copy).
 func (h HTTPFiles) download(ctx context.Context, url, dest string) (string, error) {
