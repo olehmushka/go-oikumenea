@@ -68,6 +68,14 @@ var (
 	ErrUnknownLanguage  = errors.New("language does not exist or is not a level='language' languoid")
 	ErrLanguageNotFound = errors.New("person language not found")
 	ErrLanguageConflict = errors.New("the person already speaks this language")
+	// D-PhysicalIdentity (M31)
+	ErrNameAliasNotFound           = errors.New("name alias not found")
+	ErrPhysicalDescriptionNotFound = errors.New("physical description not found")
+	ErrDistinguishingMarkNotFound  = errors.New("distinguishing mark not found")
+	ErrUnknownEthnicityType        = errors.New("ethnicity type does not exist")
+	ErrEthnicityNotFound           = errors.New("ethnicity not found")
+	ErrUnknownLegalBasis           = errors.New("legal basis does not exist")
+	ErrColorMismatch               = errors.New("color is not an eye/hair-palette color") // D-Color hard-FK palette check
 )
 
 // Social-account attribution vocabularies (D-PersonSocialChannels): source records how the account was
@@ -282,6 +290,27 @@ type NameVariant struct {
 	Locale    string
 	Name      // embedded CLDR parts
 	IsPrimary bool
+	// VariantKind discriminates a canonical transliteration from an alias (D-PhysicalIdentity).
+	// "" defaults to transliteration on the upsert path; aliases carry one of the alias kinds.
+	VariantKind string
+	Source      string // alias attribution (D-OverlayFoundation); empty for transliterations
+	Confidence  string
+}
+
+// VariantKind values (D-PhysicalIdentity). Transliteration is the per-locale canonical alt-name form;
+// the rest are aliases that fold into the same table.
+const (
+	VariantTransliteration = "transliteration"
+	VariantAKA             = "aka"
+	VariantFormerLegal     = "former_legal"
+	VariantMaiden          = "maiden"
+	VariantPseudonym       = "pseudonym"
+	VariantCover           = "cover"
+)
+
+var validAliasKind = map[string]bool{
+	VariantAKA: true, VariantFormerLegal: true, VariantMaiden: true,
+	VariantPseudonym: true, VariantCover: true,
 }
 
 // Validate enforces a non-empty locale and display name.
@@ -290,6 +319,149 @@ func (v NameVariant) Validate() error {
 		return wrapInvalid("locale is required")
 	}
 	return v.Name.validate()
+}
+
+// ValidateAlias enforces a non-empty locale, display name and a recognised alias kind (not the
+// transliteration kind, which goes through UpsertNameVariant).
+func (v NameVariant) ValidateAlias() error {
+	if strings.TrimSpace(v.Locale) == "" {
+		return wrapInvalid("locale is required")
+	}
+	if !validAliasKind[v.VariantKind] {
+		return wrapInvalid("variantKind must be one of aka|former_legal|maiden|pseudonym|cover")
+	}
+	if v.Source != "" && !validSource[v.Source] {
+		return wrapInvalid("source must be one of self_declared|operator_verified|imported")
+	}
+	if v.Confidence != "" && !validConfidence[v.Confidence] {
+		return wrapInvalid("confidence must be one of confirmed|probable|possible")
+	}
+	return v.Name.validate()
+}
+
+// ColorLookup resolves a color RID to its palette domain (D-Color). Implemented by the platform color
+// catalog; used to enforce the hard FK's palette (eye_color_id must be a domain='eye' color, hair a
+// domain='hair' color). A cross-module query interface call — the domain owns the port; main wires the
+// concrete.
+type ColorLookup interface {
+	ColorDomain(ctx context.Context, id string) (string, error)
+}
+
+// PhysicalDescription is an effective-dated physical description (D-PhysicalIdentity; pii:basic). The
+// optional measurements use pointers so "unset" is distinct from zero. Free-text eye/hair/build are
+// advisory; blood type is a closed vocabulary.
+type PhysicalDescription struct {
+	ID            string
+	PersonID      string
+	HeightCm      *int
+	WeightKg      *int
+	EyeColorID    string // platform_colors.id (domain='eye'); "" = unset (D-Color)
+	HairColorID   string // platform_colors.id (domain='hair'); "" = unset (D-Color)
+	Build         string
+	BloodType     string
+	EffectiveFrom string // ISO-8601 date or "" (defaults to today on insert)
+	EffectiveTo   string // ISO-8601 date or "" (current)
+	Source        string
+	Confidence    string
+}
+
+var validBloodType = map[string]bool{
+	"A+": true, "A-": true, "B+": true, "B-": true,
+	"AB+": true, "AB-": true, "O+": true, "O-": true, "unknown": true,
+}
+
+// Validate enforces measurement ranges, a known blood type, and parseable dates.
+func (d PhysicalDescription) Validate() error {
+	if d.HeightCm != nil && (*d.HeightCm <= 0 || *d.HeightCm >= 300) {
+		return wrapInvalid("heightCm must be between 1 and 299")
+	}
+	if d.WeightKg != nil && (*d.WeightKg <= 0 || *d.WeightKg >= 700) {
+		return wrapInvalid("weightKg must be between 1 and 699")
+	}
+	if d.BloodType != "" && !validBloodType[d.BloodType] {
+		return wrapInvalid("bloodType must be one of A+|A-|B+|B-|AB+|AB-|O+|O-|unknown")
+	}
+	if !validDate(d.EffectiveFrom) || !validDate(d.EffectiveTo) {
+		return wrapInvalid("effectiveFrom/effectiveTo must be ISO-8601 dates (YYYY-MM-DD)")
+	}
+	return nil
+}
+
+// DistinguishingMark is a tattoo/scar/piercing/birthmark (D-PhysicalIdentity; pii:special ceiling —
+// body location/description can reveal Art. 9 data).
+type DistinguishingMark struct {
+	ID           string
+	PersonID     string
+	Kind         string
+	BodyLocation string
+	Description  string
+	Source       string
+	Confidence   string
+}
+
+var validMarkKind = map[string]bool{"tattoo": true, "scar": true, "piercing": true, "birthmark": true}
+
+// Validate enforces a recognised mark kind.
+func (m DistinguishingMark) Validate() error {
+	if !validMarkKind[m.Kind] {
+		return wrapInvalid("kind must be one of tattoo|scar|piercing|birthmark")
+	}
+	return nil
+}
+
+// EthnicityType is a row of the open, instance-admin-managed declared-ethnicity vocabulary
+// (D-PhysicalIdentity). The catalog is plaintext; a person's selection is encrypted in Ethnicity.
+type EthnicityType struct {
+	ID          string
+	Code        string
+	Name        string
+	ParentID    string // "" = root (D-PhysicalIdentity amendment, M43)
+	WikidataID  string // "" = none
+	HasChildren bool   // computed: has non-deleted children (tree expand affordance)
+	Status      string
+	SortOrder   *int
+}
+
+// EthnicityTypeFilter narrows a catalog listing (mirrors the language listing): TopLevel returns only
+// forest roots (parent_id IS NULL); Parent returns the immediate children of that RID; Query is a
+// name/code substring; Limit caps the page (0 → a server default).
+type EthnicityTypeFilter struct {
+	Parent   string
+	TopLevel bool
+	Query    string
+	Limit    int
+}
+
+// Ethnicity is the application/transport-facing declared ethnicity with the value DECRYPTED (the
+// catalog code). A crypto-erased tombstone yields Code == "".
+type Ethnicity struct {
+	ID         string
+	PersonID   string
+	Code       string // the decrypted declared ethnicity-type code
+	Name       string // resolved catalog name for display (default-locale; "" when retired/unknown)
+	LegalBasis string
+	Status     string
+	Source     string
+	Confidence string
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
+// StoredEthnicity is the envelope carrier the repository reads/writes (D-SpecialPII): the declared
+// value is held as ciphertext + wrapped DEK + key ref + blind index, never plaintext.
+type StoredEthnicity struct {
+	ID              string
+	PersonID        string
+	ValueCiphertext []byte
+	WrappedDEK      []byte
+	KeyRef          string
+	ValueBlindIndex []byte
+	LegalBasis      string
+	Status          string
+	Source          string
+	Confidence      string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 // Citizenship is a person's effective-dated nationality in a country (D-Geo). A person may hold
@@ -936,4 +1108,36 @@ type Repository interface {
 	DeleteAllSponsorships(ctx context.Context, personID string) error
 	DeleteAllNextOfKin(ctx context.Context, personID string) error
 	DeleteAllAssociations(ctx context.Context, personID string) error
+
+	// ---- physical identity (D-PhysicalIdentity, M31) ----
+
+	// name aliases — fold into person_name_variants (variant_kind != transliteration), addressed by RID
+	InsertNameAlias(ctx context.Context, v NameVariant) (NameVariant, error)
+	DeleteNameAlias(ctx context.Context, personID, id string) error // ErrNameAliasNotFound when missing
+
+	// physical descriptions (d.ID == "" => insert; otherwise replace that row)
+	UpsertPhysicalDescription(ctx context.Context, d PhysicalDescription) (PhysicalDescription, error)
+	DeletePhysicalDescription(ctx context.Context, personID, id string) error
+	ListPhysicalDescriptions(ctx context.Context, personID string) ([]PhysicalDescription, error)
+
+	// distinguishing marks (m.ID == "" => insert; otherwise replace that row)
+	UpsertDistinguishingMark(ctx context.Context, m DistinguishingMark) (DistinguishingMark, error)
+	DeleteDistinguishingMark(ctx context.Context, personID, id string) error
+	ListDistinguishingMarks(ctx context.Context, personID string) ([]DistinguishingMark, error)
+
+	// ethnicity-type catalog (hierarchical — D-PhysicalIdentity amendment, M43)
+	ListEthnicityTypes(ctx context.Context, f EthnicityTypeFilter) ([]EthnicityType, error)
+	GetEthnicityTypeByCode(ctx context.Context, code string) (EthnicityType, error) // ErrUnknownEthnicityType
+	GetEthnicityTypeByID(ctx context.Context, id string) (EthnicityType, error)      // ErrUnknownEthnicityType
+	ListEthnicityTypeLanguages(ctx context.Context, ethnicityTypeID string) ([]string, error)
+	ListEthnicityTypeCountries(ctx context.Context, ethnicityTypeID string) ([]string, error)
+	UpsertEthnicityType(ctx context.Context, t EthnicityType) (EthnicityType, error)
+
+	// ethnicities — the encrypted link__has_ethnicity (e.ID == "" => insert; otherwise replace that row)
+	InsertEthnicity(ctx context.Context, e StoredEthnicity) (StoredEthnicity, error)
+	UpdateEthnicity(ctx context.Context, e StoredEthnicity) (StoredEthnicity, error) // ErrEthnicityNotFound
+	DeleteEthnicity(ctx context.Context, personID, id string) error                  // ErrEthnicityNotFound
+	ListEthnicities(ctx context.Context, personID string) ([]StoredEthnicity, error)
+	// CryptoEraseEthnicities drops the envelope on all of a person's ethnicities (purge erasure path).
+	CryptoEraseEthnicities(ctx context.Context, personID string) (int64, error)
 }

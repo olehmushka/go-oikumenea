@@ -36,7 +36,7 @@ func reach(admin bool, readable ...string) authzdomain.Reach {
 }
 
 func TestReadablePerson(t *testing.T) {
-	svc := application.NewService(nil, nil, nil, func() int { return 0 })
+	svc := application.NewService(nil, nil, nil, func() int { return 0 }, nil)
 	svc.SetMembershipReader(fakeMembership{units: map[string][]string{
 		"p-inA":  {"unit-A"},
 		"p-inB":  {"unit-B"},
@@ -72,7 +72,7 @@ func TestReadablePerson(t *testing.T) {
 // TestReadablePerson_NoMembershipReader covers the pre-binding / safety case: without a membership
 // reader, only an instance admin may read.
 func TestReadablePerson_NoMembershipReader(t *testing.T) {
-	svc := application.NewService(nil, nil, nil, func() int { return 0 })
+	svc := application.NewService(nil, nil, nil, func() int { return 0 }, nil)
 	if ok, _ := svc.ReadablePerson(context.Background(), reach(true), "p"); !ok {
 		t.Fatal("instance admin must be readable even without a membership reader")
 	}

@@ -59,8 +59,42 @@ type PersonService interface {
 	PurgePerson(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (Person, error)
 	// Add or replace a locale name form (transliteration). Keyed by (person, locale).
 	UpsertNameVariant(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertNameVariantRequest) (NameVariant, error)
-	// Remove a name variant.
+	// Remove a name variant (the canonical transliteration for a locale).
 	DeleteNameVariant(ctx context.Context, authHeader bearertoken.Token, personIdArg string, localeArg string) error
+	// Add an alias name form (aka/former_legal/maiden/pseudonym/cover). Returns the created NameVariant.
+	AddNameAlias(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg AddNameAliasRequest) (NameVariant, error)
+	// Remove an alias by its RID.
+	DeleteNameAlias(ctx context.Context, authHeader bearertoken.Token, personIdArg string, aliasIdArg string) error
+	// List a person's effective-dated physical descriptions (D-PhysicalIdentity).
+	ListPhysicalDescriptions(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]PhysicalDescription, error)
+	// Add a physical description, or replace one when id is supplied. Returns Person:PersonInvalid for a bad measurement/blood type.
+	UpsertPhysicalDescription(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertPhysicalDescriptionRequest) (PhysicalDescription, error)
+	// Remove a physical description by id.
+	DeletePhysicalDescription(ctx context.Context, authHeader bearertoken.Token, personIdArg string, descriptionIdArg string) error
+	// List a person's distinguishing marks (D-PhysicalIdentity; pii:special ceiling).
+	ListDistinguishingMarks(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]DistinguishingMark, error)
+	// Add a distinguishing mark, or replace one when id is supplied. Returns Person:PersonInvalid for an unknown kind.
+	UpsertDistinguishingMark(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertDistinguishingMarkRequest) (DistinguishingMark, error)
+	// Remove a distinguishing mark by id.
+	DeleteDistinguishingMark(ctx context.Context, authHeader bearertoken.Token, personIdArg string, markIdArg string) error
+	/*
+	   List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
+	   the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
+	   expansion), or a name/code substring (query). `hasChildren` is set on each entry.
+	*/
+	ListEthnicityTypes(ctx context.Context, authHeader bearertoken.Token, topLevelArg *bool, parentArg *string, queryArg *string, limitArg *int) ([]EthnicityType, error)
+	// Fetch one ethnicity type by RID, including its group-level associated languages + homeland countries.
+	GetEthnicityType(ctx context.Context, authHeader bearertoken.Token, ethnicityTypeIdArg string) (EthnicityType, error)
+	// Add or update a declared-ethnicity catalog entry (instance-admin managed).
+	UpsertEthnicityType(ctx context.Context, authHeader bearertoken.Token, requestArg UpsertEthnicityTypeRequest) (EthnicityType, error)
+	// List a person's declared ethnicities with the value decrypted (D-PhysicalIdentity / D-SpecialPII).
+	ListEthnicities(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Ethnicity, error)
+	// Declare an ethnicity (envelope-encrypted, lawful-basis-gated). Returns Person:PersonInvalid for an unknown code/legal basis.
+	AddEthnicity(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg AddEthnicityRequest) (Ethnicity, error)
+	// Re-declare the ethnicity value and/or flip legal basis / status.
+	UpdateEthnicity(ctx context.Context, authHeader bearertoken.Token, personIdArg string, ethnicityIdArg string, requestArg UpdateEthnicityRequest) (Ethnicity, error)
+	// Remove a declared ethnicity by id.
+	DeleteEthnicity(ctx context.Context, authHeader bearertoken.Token, personIdArg string, ethnicityIdArg string) error
 	// List a person's citizenships.
 	ListCitizenships(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Citizenship, error)
 	// Add or replace the active citizenship for a country. Returns Person:PersonInvalid for an unknown country.
@@ -207,6 +241,51 @@ func RegisterRoutesPersonService(router wrouter.Router, impl PersonService, rout
 	}
 	if err := resource.Delete("DeleteNameVariant", "/person/v1/persons/{personId}/name-variants/{locale}", httpserver.NewJSONHandler(handler.HandleDeleteNameVariant, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteNameVariant route")
+	}
+	if err := resource.Post("AddNameAlias", "/person/v1/persons/{personId}/name-aliases", httpserver.NewJSONHandler(handler.HandleAddNameAlias, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add addNameAlias route")
+	}
+	if err := resource.Delete("DeleteNameAlias", "/person/v1/persons/{personId}/name-aliases/{aliasId}", httpserver.NewJSONHandler(handler.HandleDeleteNameAlias, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteNameAlias route")
+	}
+	if err := resource.Get("ListPhysicalDescriptions", "/person/v1/persons/{personId}/physical-descriptions", httpserver.NewJSONHandler(handler.HandleListPhysicalDescriptions, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listPhysicalDescriptions route")
+	}
+	if err := resource.Put("UpsertPhysicalDescription", "/person/v1/persons/{personId}/physical-descriptions", httpserver.NewJSONHandler(handler.HandleUpsertPhysicalDescription, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertPhysicalDescription route")
+	}
+	if err := resource.Delete("DeletePhysicalDescription", "/person/v1/persons/{personId}/physical-descriptions/{descriptionId}", httpserver.NewJSONHandler(handler.HandleDeletePhysicalDescription, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deletePhysicalDescription route")
+	}
+	if err := resource.Get("ListDistinguishingMarks", "/person/v1/persons/{personId}/distinguishing-marks", httpserver.NewJSONHandler(handler.HandleListDistinguishingMarks, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listDistinguishingMarks route")
+	}
+	if err := resource.Put("UpsertDistinguishingMark", "/person/v1/persons/{personId}/distinguishing-marks", httpserver.NewJSONHandler(handler.HandleUpsertDistinguishingMark, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertDistinguishingMark route")
+	}
+	if err := resource.Delete("DeleteDistinguishingMark", "/person/v1/persons/{personId}/distinguishing-marks/{markId}", httpserver.NewJSONHandler(handler.HandleDeleteDistinguishingMark, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteDistinguishingMark route")
+	}
+	if err := resource.Get("ListEthnicityTypes", "/person/v1/ethnicity-types", httpserver.NewJSONHandler(handler.HandleListEthnicityTypes, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listEthnicityTypes route")
+	}
+	if err := resource.Get("GetEthnicityType", "/person/v1/ethnicity-types/{ethnicityTypeId}", httpserver.NewJSONHandler(handler.HandleGetEthnicityType, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getEthnicityType route")
+	}
+	if err := resource.Put("UpsertEthnicityType", "/person/v1/ethnicity-types", httpserver.NewJSONHandler(handler.HandleUpsertEthnicityType, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertEthnicityType route")
+	}
+	if err := resource.Get("ListEthnicities", "/person/v1/persons/{personId}/ethnicities", httpserver.NewJSONHandler(handler.HandleListEthnicities, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listEthnicities route")
+	}
+	if err := resource.Post("AddEthnicity", "/person/v1/persons/{personId}/ethnicities", httpserver.NewJSONHandler(handler.HandleAddEthnicity, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add addEthnicity route")
+	}
+	if err := resource.Put("UpdateEthnicity", "/person/v1/persons/{personId}/ethnicities/{ethnicityId}", httpserver.NewJSONHandler(handler.HandleUpdateEthnicity, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add updateEthnicity route")
+	}
+	if err := resource.Delete("DeleteEthnicity", "/person/v1/persons/{personId}/ethnicities/{ethnicityId}", httpserver.NewJSONHandler(handler.HandleDeleteEthnicity, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteEthnicity route")
 	}
 	if err := resource.Get("ListCitizenships", "/person/v1/persons/{personId}/citizenships", httpserver.NewJSONHandler(handler.HandleListCitizenships, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listCitizenships route")
@@ -612,6 +691,371 @@ func (p *personServiceHandler) HandleDeleteNameVariant(rw http.ResponseWriter, r
 		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"locale\" not present")
 	}
 	if err := p.impl.DeleteNameVariant(req.Context(), bearertoken.Token(authHeader), personIdArg, localeArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (p *personServiceHandler) HandleAddNameAlias(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg AddNameAliasRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.AddNameAlias(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleDeleteNameAlias(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	aliasIdArg, ok := pathParams["aliasId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"aliasId\" not present")
+	}
+	if err := p.impl.DeleteNameAlias(req.Context(), bearertoken.Token(authHeader), personIdArg, aliasIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (p *personServiceHandler) HandleListPhysicalDescriptions(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.ListPhysicalDescriptions(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpsertPhysicalDescription(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg UpsertPhysicalDescriptionRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertPhysicalDescription(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleDeletePhysicalDescription(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	descriptionIdArg, ok := pathParams["descriptionId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"descriptionId\" not present")
+	}
+	if err := p.impl.DeletePhysicalDescription(req.Context(), bearertoken.Token(authHeader), personIdArg, descriptionIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (p *personServiceHandler) HandleListDistinguishingMarks(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.ListDistinguishingMarks(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpsertDistinguishingMark(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg UpsertDistinguishingMarkRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertDistinguishingMark(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleDeleteDistinguishingMark(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	markIdArg, ok := pathParams["markId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"markId\" not present")
+	}
+	if err := p.impl.DeleteDistinguishingMark(req.Context(), bearertoken.Token(authHeader), personIdArg, markIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (p *personServiceHandler) HandleListEthnicityTypes(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var topLevelArg *bool
+	if topLevelArgStr := req.URL.Query().Get("topLevel"); topLevelArgStr != "" {
+		topLevelArgInternal, err := strconv.ParseBool(topLevelArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"topLevel\" as boolean")
+		}
+		topLevelArg = &topLevelArgInternal
+	}
+	var parentArg *string
+	if parentArgStr := req.URL.Query().Get("parent"); parentArgStr != "" {
+		parentArgInternal := parentArgStr
+		parentArg = &parentArgInternal
+	}
+	var queryArg *string
+	if queryArgStr := req.URL.Query().Get("query"); queryArgStr != "" {
+		queryArgInternal := queryArgStr
+		queryArg = &queryArgInternal
+	}
+	var limitArg *int
+	if limitArgStr := req.URL.Query().Get("limit"); limitArgStr != "" {
+		limitArgInternal, err := strconv.Atoi(limitArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"limit\" as integer")
+		}
+		limitArg = &limitArgInternal
+	}
+	respArg, err := p.impl.ListEthnicityTypes(req.Context(), bearertoken.Token(authHeader), topLevelArg, parentArg, queryArg, limitArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleGetEthnicityType(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	ethnicityTypeIdArg, ok := pathParams["ethnicityTypeId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"ethnicityTypeId\" not present")
+	}
+	respArg, err := p.impl.GetEthnicityType(req.Context(), bearertoken.Token(authHeader), ethnicityTypeIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpsertEthnicityType(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var requestArg UpsertEthnicityTypeRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertEthnicityType(req.Context(), bearertoken.Token(authHeader), requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleListEthnicities(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.ListEthnicities(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleAddEthnicity(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg AddEthnicityRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.AddEthnicity(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpdateEthnicity(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	ethnicityIdArg, ok := pathParams["ethnicityId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"ethnicityId\" not present")
+	}
+	var requestArg UpdateEthnicityRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpdateEthnicity(req.Context(), bearertoken.Token(authHeader), personIdArg, ethnicityIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleDeleteEthnicity(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	ethnicityIdArg, ok := pathParams["ethnicityId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"ethnicityId\" not present")
+	}
+	if err := p.impl.DeleteEthnicity(req.Context(), bearertoken.Token(authHeader), personIdArg, ethnicityIdArg); err != nil {
 		return err
 	}
 	rw.WriteHeader(http.StatusNoContent)

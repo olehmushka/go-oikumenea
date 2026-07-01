@@ -8,6 +8,8 @@ import { ErrorBox } from "@/components/ErrorBox";
 import { EntitySelect } from "@/components/EntitySelect";
 import { CountrySelect, useCountryMap } from "@/components/CountrySelect";
 import { LanguagePicker } from "@/components/LanguagePicker";
+import { ColorPicker } from "@/components/ColorPicker";
+import { EthnicityPicker } from "@/components/EthnicityPicker";
 import { ReligionTaxonPicker } from "@/components/ReligionTaxonPicker";
 import { PersonLink } from "@/components/PositionForms";
 import { T } from "@/components/T";
@@ -22,8 +24,10 @@ import type {
   Citizenship,
   ClergyCredential,
   ClergyGrade,
+  DistinguishingMark,
   DocumentDoc,
   Email,
+  Ethnicity,
   Guardianship,
   Kinship,
   LocaleMap,
@@ -34,6 +38,7 @@ import type {
   Person,
   PersonLanguage,
   PersonRank,
+  PhysicalDescription,
   Phone,
   Platform,
   RelationType,
@@ -593,6 +598,8 @@ export function ResidenceManager({
 
 /* ------------------------------------------------------------------ name variants */
 
+const ALIAS_KINDS = ["aka", "former_legal", "maiden", "pseudonym", "cover"] as const;
+
 export function NameVariantManager({
   personId,
   variants,
@@ -601,10 +608,14 @@ export function NameVariantManager({
   variants?: NameVariant[];
 }) {
   const { busy, err, run } = useRun();
+  const tr = useTg();
+  const isTranslit = (n: NameVariant) => !n.variantKind || n.variantKind === "transliteration";
+  const translits = (variants ?? []).filter(isTranslit);
+  const aliases = (variants ?? []).filter((n) => !isTranslit(n));
   return (
     <ChannelBlock title="Name variants" err={err}>
       <ItemList
-        items={variants}
+        items={translits}
         render={(n) => `${n.locale}: ${n.displayName ?? `${n.given ?? ""} ${n.surname ?? ""}`}${n.isPrimary ? " ★" : ""}`}
         del={(n) => `/person/v1/persons/${personId}/name-variants/${n.locale}`}
         delConfirm="Remove this name variant?"
@@ -631,7 +642,243 @@ export function NameVariantManager({
           <T>Add</T>
         </button>
       </form>
+
+      <div className="mt-3 text-xs font-medium uppercase tracking-wide text-slate-400">{tr("Aliases")}</div>
+      <ItemList
+        items={aliases}
+        render={(n) => `${n.variantKind} · ${n.locale}: ${n.displayName ?? ""}`}
+        del={(n) => `/person/v1/persons/${personId}/name-aliases/${n.id}`}
+        delConfirm="Remove this alias?"
+      />
+      <form
+        className="mt-2 grid grid-cols-[5rem_8rem_1fr_auto] gap-2"
+        onSubmit={(ev) => {
+          ev.preventDefault();
+          const f = new FormData(ev.currentTarget);
+          const form = ev.currentTarget;
+          run(
+            () =>
+              api.person.addNameAlias(personId, {
+                locale: s(f, "locale")!,
+                variantKind: s(f, "variantKind")!,
+                displayName: s(f, "displayName")!,
+              }),
+            () => form.reset(),
+          );
+        }}
+      >
+        <input name="locale" required className="input" placeholder="eng" />
+        <select name="variantKind" className="input" defaultValue="aka">
+          {ALIAS_KINDS.map((k) => (
+            <option key={k} value={k}>{k}</option>
+          ))}
+        </select>
+        <input name="displayName" required className="input" placeholder={tr("alias name")} />
+        <button className="btn-ghost" disabled={busy}>
+          <T>Add</T>
+        </button>
+      </form>
     </ChannelBlock>
+  );
+}
+
+/* ------------------------------------------------------------------ physical identity (M31) */
+
+// PhysicalIdentityManager owns the M31 physical-identity panels: effective-dated physical descriptions,
+// distinguishing marks (pii:special ceiling) and the GDPR Art. 9 self-declared ethnicity (envelope-
+// encrypted server-side, lawful-basis-gated). Each section fetches on mount via the typed SDK.
+export function PhysicalIdentityManager({ personId }: { personId: string }) {
+  const { locale } = useLocale();
+  const tr = useTg();
+  const [descs, setDescs] = useState<PhysicalDescription[] | null>(null);
+  const [marks, setMarks] = useState<DistinguishingMark[] | null>(null);
+  const [eths, setEths] = useState<Ethnicity[] | null>(null);
+  const [bases, setBases] = useState<{ code: string; name: string }[]>([]);
+  const [colorsById, setColorsById] = useState<Record<string, { name?: Record<string, string>; code: string; hex?: string | null }>>({});
+  const [err, setErr] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = () => {
+    api.person.listPhysicalDescriptions(personId).then(setDescs).catch(setErr);
+    api.person.listDistinguishingMarks(personId).then(setMarks).catch(setErr);
+    api.person.listEthnicities(personId).then(setEths).catch(setErr);
+  };
+  // colorChip renders a swatch + localized name for an eye/hair color RID (D-Color); "" -> null.
+  const colorChip = (id?: string | null) => {
+    if (!id) return null;
+    const c = colorsById[id];
+    const lbl = c ? pickLabel(c.name, locale) || c.code : id;
+    return (
+      <span className="inline-flex items-center gap-1">
+        <span className="inline-block h-3 w-3 rounded-sm border border-slate-300" style={{ backgroundColor: c?.hex ?? "transparent" }} />
+        {lbl}
+      </span>
+    );
+  };
+  useEffect(() => {
+    load();
+    // D-Color: load the eye + hair palettes to resolve description color RIDs to swatch+label.
+    Promise.all([api.platformCatalog.listColors("eye"), api.platformCatalog.listColors("hair")])
+      .then(([e, h]) => {
+        const m: Record<string, { name?: Record<string, string>; code: string; hex?: string | null }> = {};
+        for (const c of [...(e?.colors ?? []), ...(h?.colors ?? [])]) m[c.id] = { name: c.name, code: c.code, hex: c.hex };
+        setColorsById(m);
+      })
+      .catch(setErr);
+    // Art. 9 special-category conditions only.
+    api.platformCatalog.listLegalBasisKinds()
+      .then((r) => setBases((r?.kinds ?? []).filter((k) => k.article === "art9").map((k) => ({ code: k.code, name: k.name }))))
+      .catch(setErr);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personId]);
+
+  const run = async (fn: () => Promise<unknown>, after?: () => void) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await fn();
+      after?.();
+      load();
+    } catch (e) {
+      setErr(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <ChannelBlock title="Physical description" err={err}>
+        <ItemList
+          items={descs ?? undefined}
+          render={(d) => {
+            const parts: React.ReactNode[] = [
+              d.heightCm ? `${d.heightCm} cm` : null,
+              d.weightKg ? `${d.weightKg} kg` : null,
+              colorChip(d.eyeColorId),
+              colorChip(d.hairColorId),
+              d.build || null,
+              d.bloodType ? `🩸 ${d.bloodType}` : null,
+            ].filter(Boolean);
+            if (parts.length === 0) return "—";
+            return (
+              <span className="inline-flex flex-wrap items-center gap-x-1">
+                {parts.map((p, i) => (
+                  <span key={i} className="inline-flex items-center">
+                    {i > 0 ? <span className="mx-1 text-slate-300">·</span> : null}
+                    {p}
+                  </span>
+                ))}
+              </span>
+            );
+          }}
+          del={(d) => `/person/v1/persons/${personId}/physical-descriptions/${d.id}`}
+          delConfirm="Remove this description?"
+        />
+        <form
+          className="mt-2 grid grid-cols-[5rem_5rem_1fr_1fr_6rem_auto] gap-2"
+          onSubmit={(ev) => {
+            ev.preventDefault();
+            const f = new FormData(ev.currentTarget);
+            const form = ev.currentTarget;
+            const num = (k: string) => (s(f, k) ? Number(s(f, k)) : undefined);
+            run(
+              () =>
+                api.person.upsertPhysicalDescription(personId, {
+                  heightCm: num("heightCm"),
+                  weightKg: num("weightKg"),
+                  eyeColorId: s(f, "eyeColorId") || undefined,
+                  hairColorId: s(f, "hairColorId") || undefined,
+                  bloodType: s(f, "bloodType"),
+                }),
+              () => form.reset(),
+            );
+          }}
+        >
+          <input name="heightCm" type="number" className="input" placeholder={tr("height")} />
+          <input name="weightKg" type="number" className="input" placeholder={tr("weight")} />
+          <ColorPicker domain="eye" name="eyeColorId" placeholder="eyes" />
+          <ColorPicker domain="hair" name="hairColorId" placeholder="hair" />
+          <select name="bloodType" className="input" defaultValue="">
+            <option value="">{tr("blood…")}</option>
+            {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "unknown"].map((b) => (
+              <option key={b} value={b}>{b}</option>
+            ))}
+          </select>
+          <button className="btn-ghost" disabled={busy}><T>Add</T></button>
+        </form>
+      </ChannelBlock>
+
+      <ChannelBlock title="Distinguishing marks" err={null}>
+        <ItemList
+          items={marks ?? undefined}
+          render={(m) => `${m.kind}${m.bodyLocation ? ` · ${m.bodyLocation}` : ""}${m.description ? ` — ${m.description}` : ""}`}
+          del={(m) => `/person/v1/persons/${personId}/distinguishing-marks/${m.id}`}
+          delConfirm="Remove this mark?"
+        />
+        <form
+          className="mt-2 grid grid-cols-[7rem_1fr_1fr_auto] gap-2"
+          onSubmit={(ev) => {
+            ev.preventDefault();
+            const f = new FormData(ev.currentTarget);
+            const form = ev.currentTarget;
+            run(
+              () =>
+                api.person.upsertDistinguishingMark(personId, {
+                  kind: s(f, "kind")!,
+                  bodyLocation: s(f, "bodyLocation"),
+                  description: s(f, "description"),
+                }),
+              () => form.reset(),
+            );
+          }}
+        >
+          <select name="kind" className="input" defaultValue="tattoo">
+            {["tattoo", "scar", "piercing", "birthmark"].map((k) => (
+              <option key={k} value={k}>{k}</option>
+            ))}
+          </select>
+          <input name="bodyLocation" className="input" placeholder={tr("location")} />
+          <input name="description" className="input" placeholder={tr("description")} />
+          <button className="btn-ghost" disabled={busy}><T>Add</T></button>
+        </form>
+      </ChannelBlock>
+
+      <ChannelBlock title="Ethnicity" err={null}>
+        <p className="mt-1 text-xs text-amber-600"><T>Special-category data (GDPR Art. 9) — self-declared, encrypted at rest.</T></p>
+        <ul className="mt-1 space-y-0.5 text-sm text-slate-700">
+          {(eths ?? []).map((e) => (
+            <li key={e.id} className="flex items-center justify-between gap-2">
+              <span>
+                {e.name || e.code || "—"}
+                <span className="ml-1 text-xs text-slate-400">· {e.legalBasis}</span>
+              </span>
+              <RowDelete path={`/person/v1/persons/${personId}/ethnicities/${e.id}`} confirm="Remove this ethnicity?" />
+            </li>
+          ))}
+        </ul>
+        <form
+          className="mt-2 grid grid-cols-[1fr_1fr_auto] gap-2"
+          onSubmit={(ev) => {
+            ev.preventDefault();
+            const f = new FormData(ev.currentTarget);
+            const code = s(f, "code");
+            const legalBasis = s(f, "legalBasis");
+            if (!code || !legalBasis) return;
+            const form = ev.currentTarget;
+            run(() => api.person.addEthnicity(personId, { code, legalBasis }), () => form.reset());
+          }}
+        >
+          <EthnicityPicker name="code" placeholder="ethnicity…" />
+          <select name="legalBasis" className="input" defaultValue="explicit_consent" required>
+            {bases.map((b) => (
+              <option key={b.code} value={b.code}>{b.name}</option>
+            ))}
+          </select>
+          <button className="btn-ghost" disabled={busy}><T>Add</T></button>
+        </form>
+      </ChannelBlock>
+    </>
   );
 }
 
@@ -1638,7 +1885,7 @@ function ItemList<T extends { id?: string }>({
   delConfirm,
 }: {
   items?: T[];
-  render: (it: T) => string;
+  render: (it: T) => React.ReactNode;
   del: (it: T) => string;
   delConfirm: string;
 }) {

@@ -43,6 +43,8 @@ func Default() Registry {
 		// No fixed client deadline: the Glottolog CLDF values.csv is large and the transform runs per
 		// run; bounded by the job-timeout context instead (mirrors WOFSQLite).
 		domain.ConnectorHTTPFiles: HTTPFiles{client: &http.Client{Timeout: 0}},
+		// Factbook stages ~260 country files; no fixed client deadline (bounded by the job timeout).
+		domain.ConnectorFactbook: Factbook{client: &http.Client{Timeout: 0}},
 	}
 }
 

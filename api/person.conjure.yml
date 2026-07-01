@@ -139,6 +139,118 @@ types:
           credentials: optional<string>
           preferred: optional<string>
           isPrimary: boolean
+          variantKind:
+            type: string
+            docs: transliteration (the canonical per-locale form) | aka | former_legal | maiden | pseudonym | cover (D-PhysicalIdentity).
+          source:
+            type: optional<string>
+            docs: Alias attribution — how the name was learned (self_declared | operator_verified | imported); null for transliterations.
+          confidence:
+            type: optional<string>
+            docs: Alias attribution confidence weight (confirmed | probable | possible).
+      PhysicalDescription:
+        docs: An effective-dated physical description (D-PhysicalIdentity, M31). pii:basic.
+        fields:
+          id: string
+          personId: string
+          heightCm:
+            type: optional<integer>
+            docs: Height in centimetres (1–299).
+          weightKg:
+            type: optional<integer>
+            docs: Weight in whole kilograms (1–699).
+          eyeColorId:
+            type: optional<string>
+            docs: Eye color — a platform_colors RID (domain='eye', D-Color). Resolve label/hex via the platform color catalog.
+          hairColorId:
+            type: optional<string>
+            docs: Hair color — a platform_colors RID (domain='hair', D-Color). Resolve label/hex via the platform color catalog.
+          build:
+            type: optional<string>
+            docs: Free-text physique (slim | athletic | heavy | ...).
+          bloodType:
+            type: optional<string>
+            docs: One of A+|A-|B+|B-|AB+|AB-|O+|O-|unknown.
+          effectiveFrom:
+            type: string
+            docs: ISO-8601 date the description took effect.
+          effectiveTo:
+            type: optional<string>
+            docs: ISO-8601 date it ceased; null = current.
+          source: optional<string>
+          confidence: optional<string>
+      DistinguishingMark:
+        docs: A tattoo/scar/piercing/birthmark (D-PhysicalIdentity, M31). pii:special ceiling — a mark can reveal Art. 9 data.
+        fields:
+          id: string
+          personId: string
+          kind:
+            type: string
+            docs: One of tattoo | scar | piercing | birthmark.
+          bodyLocation:
+            type: optional<string>
+            docs: Where on the body (e.g. left forearm); free text.
+          description:
+            type: optional<string>
+            docs: The mark's appearance; free text.
+          source: optional<string>
+          confidence: optional<string>
+      EthnicityType:
+        docs: |
+          A declared-ethnicity vocabulary entry in an instance-admin-managed, HIERARCHICAL taxonomy
+          (D-PhysicalIdentity amendment, M43). Stable code + translatable name + optional parent (tree
+          structure). `languages`/`countries` are GROUP-level ethnolinguistic + homeland associations
+          (reference metadata about the group; NEVER a person's datum — a person's ethnicity and
+          languages stay independent). This catalog is plaintext; a person's SELECTION is encrypted.
+        fields:
+          id: string
+          code:
+            type: string
+            docs: Stable, locale-agnostic identifier (D-Code).
+          name:
+            type: map<string, string>
+            docs: The translatable label as a locale -> text map (all enabled locales; D-i18n).
+          parentId:
+            type: optional<string>
+            docs: The RID of the immediate parent group (absent for forest roots).
+          hasChildren:
+            type: boolean
+            docs: Whether this group has children (lets a tree browser show the expand affordance).
+          wikidataId:
+            type: optional<string>
+            docs: Wikidata Q-id anchor (external linkage; from the opt-in import).
+          status:
+            type: string
+            docs: One of active | retired.
+          sortOrder: optional<integer>
+          languages:
+            type: list<string>
+            docs: Associated-language RIDs (Glottolog languoids) — group-level, populated on getEthnicityType.
+          countries:
+            type: list<string>
+            docs: Homeland-country RIDs (geo_countries) — group-level, populated on getEthnicityType.
+      Ethnicity:
+        docs: |
+          A person's self-declared ethnicity (D-PhysicalIdentity / D-SpecialPII, M31). The declared value
+          is envelope-encrypted at rest; `code` is the DECRYPTED catalog code returned only to authorized
+          readers. A crypto-erased tombstone returns an empty code.
+        fields:
+          id: string
+          personId: string
+          code:
+            type: string
+            docs: The declared ethnicity-type code (decrypted); empty for a crypto-erased tombstone.
+          name:
+            type: optional<string>
+            docs: The catalog's default-locale display name for the declared code.
+          legalBasis:
+            type: string
+            docs: The GDPR lawful-basis code (platform_legal_basis_kinds; an Art. 9 condition for special-category data).
+          status:
+            type: string
+            docs: One of active | retired.
+          source: optional<string>
+          confidence: optional<string>
       Citizenship:
         docs: A person's effective-dated nationality in a country (D-Geo). A person may hold several; at most one active per country.
         fields:
@@ -588,6 +700,91 @@ types:
           credentials: optional<string>
           preferred: optional<string>
           isPrimary: optional<boolean>
+      AddNameAliasRequest:
+        docs: Add an alias name form (aka/former_legal/maiden/pseudonym/cover). Addressed by its RID; may carry attribution.
+        fields:
+          locale: string
+          variantKind:
+            type: string
+            docs: One of aka | former_legal | maiden | pseudonym | cover.
+          displayName: string
+          title: optional<string>
+          given: optional<string>
+          given2: optional<string>
+          surname: optional<string>
+          surnamePrefix: optional<string>
+          surname2: optional<string>
+          generation: optional<string>
+          credentials: optional<string>
+          preferred: optional<string>
+          source: optional<string>
+          confidence: optional<string>
+      UpsertPhysicalDescriptionRequest:
+        docs: Add a physical description, or replace one when id is supplied.
+        fields:
+          id:
+            type: optional<string>
+            docs: The RID of an existing description row to replace; omit to add a new row.
+          heightCm: optional<integer>
+          weightKg: optional<integer>
+          eyeColorId:
+            type: optional<string>
+            docs: A platform_colors RID (domain='eye', D-Color).
+          hairColorId:
+            type: optional<string>
+            docs: A platform_colors RID (domain='hair', D-Color).
+          build: optional<string>
+          bloodType: optional<string>
+          effectiveFrom:
+            type: optional<string>
+            docs: ISO-8601 date; defaults to today on insert.
+          effectiveTo: optional<string>
+          source: optional<string>
+          confidence: optional<string>
+      UpsertDistinguishingMarkRequest:
+        docs: Add a distinguishing mark, or replace one when id is supplied.
+        fields:
+          id:
+            type: optional<string>
+            docs: The RID of an existing mark row to replace; omit to add a new row.
+          kind:
+            type: string
+            docs: One of tattoo | scar | piercing | birthmark.
+          bodyLocation: optional<string>
+          description: optional<string>
+          source: optional<string>
+          confidence: optional<string>
+      UpsertEthnicityTypeRequest:
+        docs: Add or update a declared-ethnicity catalog entry (instance-admin managed).
+        fields:
+          code: string
+          name:
+            type: string
+            docs: The default-locale display name (other locales arrive via the localization store).
+          parentId:
+            type: optional<string>
+            docs: The RID of the parent group (absent for a root). D-PhysicalIdentity amendment, M43.
+          wikidataId: optional<string>
+          sortOrder: optional<integer>
+      AddEthnicityRequest:
+        docs: Declare an ethnicity for a person (self-declared, envelope-encrypted, lawful-basis-gated).
+        fields:
+          code:
+            type: string
+            docs: A person_ethnicity_types code (validated against the catalog before sealing).
+          legalBasis:
+            type: string
+            docs: The GDPR lawful-basis code (an Art. 9 condition; platform_legal_basis_kinds).
+          source: optional<string>
+          confidence: optional<string>
+      UpdateEthnicityRequest:
+        docs: Re-declare the ethnicity value and/or flip legal basis / status.
+        fields:
+          code: string
+          legalBasis: string
+          status:
+            type: optional<string>
+            docs: active | retired; defaults to active.
       UpsertCitizenshipRequest:
         docs: Add or replace the active citizenship for a country (keyed by (person, country)).
         fields:
@@ -926,12 +1123,162 @@ services:
         returns: NameVariant
       deleteNameVariant:
         http: DELETE /persons/{personId}/name-variants/{locale}
-        docs: Remove a name variant.
+        docs: Remove a name variant (the canonical transliteration for a locale).
         args:
           personId:
             type: string
             param-type: path
           locale:
+            type: string
+            param-type: path
+      addNameAlias:
+        http: POST /persons/{personId}/name-aliases
+        docs: Add an alias name form (aka/former_legal/maiden/pseudonym/cover). Returns the created NameVariant.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: AddNameAliasRequest
+        returns: NameVariant
+      deleteNameAlias:
+        http: DELETE /persons/{personId}/name-aliases/{aliasId}
+        docs: Remove an alias by its RID.
+        args:
+          personId:
+            type: string
+            param-type: path
+          aliasId:
+            type: string
+            param-type: path
+      listPhysicalDescriptions:
+        http: GET /persons/{personId}/physical-descriptions
+        docs: List a person's effective-dated physical descriptions (D-PhysicalIdentity).
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<PhysicalDescription>
+      upsertPhysicalDescription:
+        http: PUT /persons/{personId}/physical-descriptions
+        docs: Add a physical description, or replace one when id is supplied. Returns Person:PersonInvalid for a bad measurement/blood type.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertPhysicalDescriptionRequest
+        returns: PhysicalDescription
+      deletePhysicalDescription:
+        http: DELETE /persons/{personId}/physical-descriptions/{descriptionId}
+        docs: Remove a physical description by id.
+        args:
+          personId:
+            type: string
+            param-type: path
+          descriptionId:
+            type: string
+            param-type: path
+      listDistinguishingMarks:
+        http: GET /persons/{personId}/distinguishing-marks
+        docs: List a person's distinguishing marks (D-PhysicalIdentity; pii:special ceiling).
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<DistinguishingMark>
+      upsertDistinguishingMark:
+        http: PUT /persons/{personId}/distinguishing-marks
+        docs: Add a distinguishing mark, or replace one when id is supplied. Returns Person:PersonInvalid for an unknown kind.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertDistinguishingMarkRequest
+        returns: DistinguishingMark
+      deleteDistinguishingMark:
+        http: DELETE /persons/{personId}/distinguishing-marks/{markId}
+        docs: Remove a distinguishing mark by id.
+        args:
+          personId:
+            type: string
+            param-type: path
+          markId:
+            type: string
+            param-type: path
+      listEthnicityTypes:
+        http: GET /ethnicity-types
+        docs: |
+          List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
+          the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
+          expansion), or a name/code substring (query). `hasChildren` is set on each entry.
+        args:
+          topLevel:
+            type: optional<boolean>
+            param-type: query
+            docs: When true, return only top-level groups (no parent — the forest roots).
+          parent:
+            type: optional<string>
+            param-type: query
+            docs: Filter to the immediate children of this ethnicity-type RID (one tree level).
+          query:
+            type: optional<string>
+            param-type: query
+            docs: Case-insensitive substring match on name or code.
+          limit:
+            type: optional<integer>
+            param-type: query
+            docs: Max rows to return (server clamps).
+        returns: list<EthnicityType>
+      getEthnicityType:
+        http: GET /ethnicity-types/{ethnicityTypeId}
+        docs: Fetch one ethnicity type by RID, including its group-level associated languages + homeland countries.
+        args:
+          ethnicityTypeId:
+            type: string
+            param-type: path
+        returns: EthnicityType
+      upsertEthnicityType:
+        http: PUT /ethnicity-types
+        docs: Add or update a declared-ethnicity catalog entry (instance-admin managed).
+        args:
+          request: UpsertEthnicityTypeRequest
+        returns: EthnicityType
+      listEthnicities:
+        http: GET /persons/{personId}/ethnicities
+        docs: List a person's declared ethnicities with the value decrypted (D-PhysicalIdentity / D-SpecialPII).
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<Ethnicity>
+      addEthnicity:
+        http: POST /persons/{personId}/ethnicities
+        docs: Declare an ethnicity (envelope-encrypted, lawful-basis-gated). Returns Person:PersonInvalid for an unknown code/legal basis.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: AddEthnicityRequest
+        returns: Ethnicity
+      updateEthnicity:
+        http: PUT /persons/{personId}/ethnicities/{ethnicityId}
+        docs: Re-declare the ethnicity value and/or flip legal basis / status.
+        args:
+          personId:
+            type: string
+            param-type: path
+          ethnicityId:
+            type: string
+            param-type: path
+          request: UpdateEthnicityRequest
+        returns: Ethnicity
+      deleteEthnicity:
+        http: DELETE /persons/{personId}/ethnicities/{ethnicityId}
+        docs: Remove a declared ethnicity by id.
+        args:
+          personId:
+            type: string
+            param-type: path
+          ethnicityId:
             type: string
             param-type: path
       listCitizenships:

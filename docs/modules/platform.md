@@ -227,6 +227,24 @@ processing is gated on a structured lawful basis rather than prose (see the *att
 It is composed by `platform.RegisterCatalog` (after the audit service + PEP enforcer exist), not in
 `Bootstrap`.
 
+### Color catalog (D-Color, M42)
+
+Platform also owns the cross-cutting **color catalog** `platform_colors` — its **first RID-bearing
+Object** (RID service 1, object type `1,1,1`). Unlike the natural-key legal-basis table, colors carry a
+RID (the FK target) and a translatable `name`. It is a **per-domain palette**: a `domain` discriminator
+(`eye` / `hair` / `vehicle`, TEXT+CHECK) with `UNIQUE(domain, code)`, a stable `code`, an i18n `name`
+(localization store, entity `color`, keyed by the RID since `code` is unique only per-domain), and a
+**nullable** `hex` swatch (biological eye/hair colors are categories, not precise hex). Seeded with
+eye/hair/vehicle baselines. Referenced by **hard FK** from `vehicle_vehicles.color_id` and
+`person_physical_descriptions.eye_color_id`/`hair_color_id` (`ON DELETE RESTRICT`); the referencing
+modules validate the color's `domain` in their application layer (a single-column FK can't constrain the
+palette). The same `PlatformCatalogService` exposes it:
+
+| Op | Intent | Perm |
+|---|---|---|
+| `GET /platform/v1/colors?domain=` | List a palette (or all) | `color.read` (reader-tier) |
+| `PUT /platform/v1/colors` | Add/update a color, upsert on `(domain, code)` (audited) | `color.manage` (instance) |
+
 ## Dependencies
 
 - **Calls:** nothing domain-side. Provides infrastructure to **every** module.

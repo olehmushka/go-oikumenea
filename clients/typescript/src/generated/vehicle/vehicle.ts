@@ -10,7 +10,8 @@ export interface IVehicle {
     'brandId'?: string | null;
     'brandLabel'?: string | null;
     'vin'?: string | null;
-    'color'?: string | null;
+    /** The vehicle's color — a platform_colors RID (domain='vehicle', D-Color). Resolve label/hex via the platform color catalog. */
+    'colorId'?: string | null;
     'manufactureDate'?: string | null;
     /** Long-tail spec grab-bag as a JSON string (DS-53 will column-ize stabilized fields). */
     'attributes'?: string | null;

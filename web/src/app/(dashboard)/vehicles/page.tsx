@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api/client";
 import { SearchSelect } from "@/components/SearchSelect";
+import { ColorPicker } from "@/components/ColorPicker";
 import { PageHeader, Card, Table, Mono } from "@/components/ui";
 import { ErrorBox } from "@/components/ErrorBox";
 import { T } from "@/components/T";
@@ -19,7 +20,7 @@ import { pickLabel, type LocaleMap } from "@/lib/i18n";
 type Catalog = { id: string; code: string; name: LocaleMap };
 type Brand = { id: string; code: string; name: LocaleMap; countryId?: string };
 type Model = { id: string; brandId: string; code: string; name: LocaleMap; generation?: string };
-type Vehicle = { id: string; typeId: string; typeLabel?: string; modelId?: string; modelLabel?: string; brandLabel?: string; vin?: string; color?: string; status: string };
+type Vehicle = { id: string; typeId: string; typeLabel?: string; modelId?: string; modelLabel?: string; brandLabel?: string; vin?: string; colorId?: string; status: string };
 type Registration = {
   id: string; vehicleId: string; ownerKind: string; ownerId: string; ownerLabel?: string;
   countryId: string; subdivisionId?: string; subdivisionLabel?: string; registrationNumber: string;
@@ -89,7 +90,7 @@ function CreateVehicle({ types, brands, onCreated, setErr }: { types: Catalog[];
   const [models, setModels] = useState<Model[]>([]);
   const [modelId, setModelId] = useState("");
   const [vin, setVin] = useState("");
-  const [color, setColor] = useState("");
+  const [colorId, setColorId] = useState("");
 
   useEffect(() => {
     if (!brandId) { setModels([]); setModelId(""); return; }
@@ -100,8 +101,8 @@ function CreateVehicle({ types, brands, onCreated, setErr }: { types: Catalog[];
     e.preventDefault();
     if (!typeId) return;
     api.vehicle
-      .createVehicle({ typeId, modelId: modelId || undefined, vin: vin || undefined, color: color || undefined })
-      .then(() => { setVin(""); setColor(""); onCreated(); })
+      .createVehicle({ typeId, modelId: modelId || undefined, vin: vin || undefined, colorId: colorId || undefined })
+      .then(() => { setVin(""); setColorId(""); onCreated(); })
       .catch(setErr);
   }
 
@@ -124,7 +125,7 @@ function CreateVehicle({ types, brands, onCreated, setErr }: { types: Catalog[];
           </select>
         ) : null}
         <input className="input" placeholder="VIN (optional)" value={vin} onChange={(e) => setVin(e.target.value)} />
-        <input className="input" placeholder="Color (optional)" value={color} onChange={(e) => setColor(e.target.value)} />
+        <ColorPicker domain="vehicle" value={colorId} onChange={setColorId} placeholder="Color (optional)" />
         <button className="btn-primary" type="submit"><T>Create</T></button>
       </form>
     </Card>

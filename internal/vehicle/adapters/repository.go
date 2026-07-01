@@ -316,18 +316,18 @@ func (r *Repository) UpsertNumberType(ctx context.Context, code, name string, so
 
 // vehicleSelect is the shared projection: the vehicle row + the derived brand_id via the model FK.
 const vehicleSelect = `
-	SELECT v.id, v.type_id, v.model_id, m.brand_id, v.vin, v.color, v.manufacture_date,
+	SELECT v.id, v.type_id, v.model_id, m.brand_id, v.vin, v.color_id, v.manufacture_date,
 	       v.attributes, v.status, v.created_at, v.updated_at
 	FROM oikumenea.vehicle_vehicles v
 	LEFT JOIN oikumenea.vehicle_models m ON m.id = v.model_id`
 
 func (r *Repository) InsertVehicle(ctx context.Context, in domain.VehicleInput) (domain.Vehicle, error) {
 	row := r.c.QueryRow(ctx, `
-		INSERT INTO oikumenea.vehicle_vehicles (type_id, model_id, vin, color, manufacture_date, attributes)
-		VALUES ($1, NULLIF($2,'')::uuid, NULLIF($3,''), NULLIF($4,''), NULLIF($5,'')::date,
+		INSERT INTO oikumenea.vehicle_vehicles (type_id, model_id, vin, color_id, manufacture_date, attributes)
+		VALUES ($1, NULLIF($2,'')::uuid, NULLIF($3,''), NULLIF($4,'')::uuid, NULLIF($5,'')::date,
 		        COALESCE(NULLIF($6,'')::jsonb, '{}'::jsonb))
 		RETURNING id`,
-		in.TypeID, in.ModelID, domain.NormalizeVIN(in.VIN), in.Color, in.ManufactureDate, in.Attributes)
+		in.TypeID, in.ModelID, domain.NormalizeVIN(in.VIN), in.ColorID, in.ManufactureDate, in.Attributes)
 	var id string
 	if err := row.Scan(&id); err != nil {
 		return domain.Vehicle{}, mapPGError(err)
@@ -346,7 +346,7 @@ func (r *Repository) UpdateVehicle(ctx context.Context, id string, up domain.Veh
 			type_id          = COALESCE($2::uuid, type_id),
 			model_id         = CASE WHEN $3::boolean THEN NULLIF($4,'')::uuid ELSE model_id END,
 			vin              = CASE WHEN $5::boolean THEN NULLIF($6,'') ELSE vin END,
-			color            = CASE WHEN $7::boolean THEN NULLIF($8,'') ELSE color END,
+			color_id         = CASE WHEN $7::boolean THEN NULLIF($8,'')::uuid ELSE color_id END,
 			manufacture_date = CASE WHEN $9::boolean THEN NULLIF($10,'')::date ELSE manufacture_date END,
 			attributes       = CASE WHEN $11::boolean THEN COALESCE(NULLIF($12,'')::jsonb,'{}'::jsonb) ELSE attributes END,
 			status           = COALESCE($13, status),
@@ -357,7 +357,7 @@ func (r *Repository) UpdateVehicle(ctx context.Context, id string, up domain.Veh
 		ptrUUID(up.TypeID),
 		up.ModelID != nil, derefStr(up.ModelID),
 		up.VIN != nil, normVINPtr(up.VIN),
-		up.Color != nil, derefStr(up.Color),
+		up.ColorID != nil, derefStr(up.ColorID),
 		up.ManufactureDate != nil, derefStr(up.ManufactureDate),
 		up.Attributes != nil, derefStr(up.Attributes),
 		up.Status)
@@ -399,26 +399,26 @@ func (r *Repository) SoftDeleteVehicle(ctx context.Context, id string) (int64, e
 
 func scanVehicle(row pgx.Row) (domain.Vehicle, error) {
 	var v domain.Vehicle
-	var model, brand, vin, color pgtype.Text
+	var model, brand, vin, colorID pgtype.Text
 	var mdate pgtype.Date
 	var attrs []byte
-	if err := row.Scan(&v.ID, &v.TypeID, &model, &brand, &vin, &color, &mdate, &attrs, &v.Status, &v.CreatedAt, &v.UpdatedAt); err != nil {
+	if err := row.Scan(&v.ID, &v.TypeID, &model, &brand, &vin, &colorID, &mdate, &attrs, &v.Status, &v.CreatedAt, &v.UpdatedAt); err != nil {
 		return domain.Vehicle{}, mapPGError(err)
 	}
-	v.ModelID, v.BrandID, v.VIN, v.Color = textVal(model), textVal(brand), textVal(vin), textVal(color)
+	v.ModelID, v.BrandID, v.VIN, v.ColorID = textVal(model), textVal(brand), textVal(vin), textVal(colorID)
 	v.ManufactureDate, v.Attributes = dateStr(mdate), string(attrs)
 	return v, nil
 }
 
 func scanVehicleRows(rows pgx.Rows) (domain.Vehicle, error) {
 	var v domain.Vehicle
-	var model, brand, vin, color pgtype.Text
+	var model, brand, vin, colorID pgtype.Text
 	var mdate pgtype.Date
 	var attrs []byte
-	if err := rows.Scan(&v.ID, &v.TypeID, &model, &brand, &vin, &color, &mdate, &attrs, &v.Status, &v.CreatedAt, &v.UpdatedAt); err != nil {
+	if err := rows.Scan(&v.ID, &v.TypeID, &model, &brand, &vin, &colorID, &mdate, &attrs, &v.Status, &v.CreatedAt, &v.UpdatedAt); err != nil {
 		return domain.Vehicle{}, err
 	}
-	v.ModelID, v.BrandID, v.VIN, v.Color = textVal(model), textVal(brand), textVal(vin), textVal(color)
+	v.ModelID, v.BrandID, v.VIN, v.ColorID = textVal(model), textVal(brand), textVal(vin), textVal(colorID)
 	v.ManufactureDate, v.Attributes = dateStr(mdate), string(attrs)
 	return v, nil
 }

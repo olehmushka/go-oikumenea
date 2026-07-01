@@ -23,6 +23,10 @@ type PlatformCatalogServiceClient interface {
 	ListLegalBasisKinds(ctx context.Context, authHeader bearertoken.Token) (LegalBasisKindList, error)
 	// Add or update a lawful-basis catalog entry (instance-admin; `legal-basis.manage`).
 	UpsertLegalBasisKind(ctx context.Context, authHeader bearertoken.Token, codeArg string, requestArg UpsertLegalBasisKindRequest) (LegalBasisKind, error)
+	// List the color catalog (D-Color), optionally filtered to one domain (eye | hair | vehicle).
+	ListColors(ctx context.Context, authHeader bearertoken.Token, domainArg *string) (ColorList, error)
+	// Add or update a color (instance-admin; `color.manage`). Upserts on (domain, code).
+	UpsertColor(ctx context.Context, authHeader bearertoken.Token, requestArg UpsertColorRequest) (Color, error)
 }
 
 type platformCatalogServiceClient struct {
@@ -68,6 +72,46 @@ func (c *platformCatalogServiceClient) UpsertLegalBasisKind(ctx context.Context,
 	return *returnVal, nil
 }
 
+func (c *platformCatalogServiceClient) ListColors(ctx context.Context, authHeader bearertoken.Token, domainArg *string) (ColorList, error) {
+	var returnVal *ColorList
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListColors"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/platform/v1/colors"))
+	queryParams := make(url.Values)
+	if domainArg != nil {
+		queryParams.Set("domain", fmt.Sprint(*domainArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(ColorList), werror.WrapWithContextParams(ctx, err, "listColors failed")
+	}
+	if returnVal == nil {
+		return *new(ColorList), werror.ErrorWithContextParams(ctx, "listColors response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *platformCatalogServiceClient) UpsertColor(ctx context.Context, authHeader bearertoken.Token, requestArg UpsertColorRequest) (Color, error) {
+	var returnVal *Color
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertColor"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/platform/v1/colors"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(Color), werror.WrapWithContextParams(ctx, err, "upsertColor failed")
+	}
+	if returnVal == nil {
+		return *new(Color), werror.ErrorWithContextParams(ctx, "upsertColor response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 /*
 Cross-cutting platform reference catalogs (D-OverlayFoundation, M29). Today: the GDPR
 lawful-basis catalog (`platform_legal_basis_kinds`), referenced by every future pii:special
@@ -78,6 +122,10 @@ type PlatformCatalogServiceClientWithAuth interface {
 	ListLegalBasisKinds(ctx context.Context) (LegalBasisKindList, error)
 	// Add or update a lawful-basis catalog entry (instance-admin; `legal-basis.manage`).
 	UpsertLegalBasisKind(ctx context.Context, codeArg string, requestArg UpsertLegalBasisKindRequest) (LegalBasisKind, error)
+	// List the color catalog (D-Color), optionally filtered to one domain (eye | hair | vehicle).
+	ListColors(ctx context.Context, domainArg *string) (ColorList, error)
+	// Add or update a color (instance-admin; `color.manage`). Upserts on (domain, code).
+	UpsertColor(ctx context.Context, requestArg UpsertColorRequest) (Color, error)
 }
 
 func NewPlatformCatalogServiceClientWithAuth(client PlatformCatalogServiceClient, authHeader bearertoken.Token) PlatformCatalogServiceClientWithAuth {
@@ -95,6 +143,14 @@ func (c *platformCatalogServiceClientWithAuth) ListLegalBasisKinds(ctx context.C
 
 func (c *platformCatalogServiceClientWithAuth) UpsertLegalBasisKind(ctx context.Context, codeArg string, requestArg UpsertLegalBasisKindRequest) (LegalBasisKind, error) {
 	return c.client.UpsertLegalBasisKind(ctx, c.authHeader, codeArg, requestArg)
+}
+
+func (c *platformCatalogServiceClientWithAuth) ListColors(ctx context.Context, domainArg *string) (ColorList, error) {
+	return c.client.ListColors(ctx, c.authHeader, domainArg)
+}
+
+func (c *platformCatalogServiceClientWithAuth) UpsertColor(ctx context.Context, requestArg UpsertColorRequest) (Color, error) {
+	return c.client.UpsertColor(ctx, c.authHeader, requestArg)
 }
 
 func NewPlatformCatalogServiceClientWithTokenProvider(client PlatformCatalogServiceClient, tokenProvider httpclient.TokenProvider) PlatformCatalogServiceClientWithAuth {
@@ -120,6 +176,22 @@ func (c *platformCatalogServiceClientWithTokenProvider) UpsertLegalBasisKind(ctx
 		return *new(LegalBasisKind), err
 	}
 	return c.client.UpsertLegalBasisKind(ctx, bearertoken.Token(token), codeArg, requestArg)
+}
+
+func (c *platformCatalogServiceClientWithTokenProvider) ListColors(ctx context.Context, domainArg *string) (ColorList, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(ColorList), err
+	}
+	return c.client.ListColors(ctx, bearertoken.Token(token), domainArg)
+}
+
+func (c *platformCatalogServiceClientWithTokenProvider) UpsertColor(ctx context.Context, requestArg UpsertColorRequest) (Color, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Color), err
+	}
+	return c.client.UpsertColor(ctx, bearertoken.Token(token), requestArg)
 }
 
 // Unauthenticated operational endpoints owned by the platform module.

@@ -1157,6 +1157,53 @@ pre-release has no external consumers).
 
 ---
 
+### D-Color — Structural color as a per-domain platform catalog referenced by hard FK (extends D-Code, D-i18n, D-Ontology; amends D-Vehicles, D-PhysicalIdentity)
+
+**Decision.** Replace the scattered free-text color fields (`vehicle_vehicles.color`,
+`person_physical_descriptions.eye_color` / `hair_color`) with a single operator-managed reference
+catalog, `platform_colors`, referenced by **hard FK**. Color is platform's first RID-bearing Object
+(service 1, object type `(1,1,1)` = `color`), sitting next to `platform_legal_basis_kinds` on the
+`PlatformCatalogService` (reachable via the `api.platformCatalog` façade).
+
+- **Per-domain palettes (not one shared list).** A `domain` discriminator (`eye | hair | vehicle`,
+  TEXT+CHECK enum) with `UNIQUE(domain, code)`. The vocabularies are genuinely different (eye colors
+  are a near-closed biological set; vehicle colors an open RAL/manufacturer space), so each palette is
+  independent and self-contained, reads are a trivial `WHERE domain = …`, and in-place creation from a
+  picker is unambiguous. Adding a domain is a code change (each domain corresponds to a call-site), so a
+  CHECK enum — not a `color_domains` catalog — is correct.
+- **`code` + i18n `name` + nullable `hex`.** Per D-Code, a stable locale-agnostic `code`; per D-i18n,
+  the `name` is returned as a `locale → text` map (assembled via the localization store, entity type
+  `color`, **keyed by the color RID** because `code` is unique only per-domain). `hex` is a **nullable**
+  representative swatch — biological eye/hair colors are categories, not precise hex; vehicle colors
+  carry one.
+- **Hard FK + app-layer palette check.** The three columns become `color_id` / `eye_color_id` /
+  `hair_color_id` (`uuid REFERENCES platform_colors(id) ON DELETE RESTRICT`). A single-column FK cannot
+  prove the referenced color is in the *right* palette, so the consuming application services
+  (person `UpsertPhysicalDescription`, vehicle `Create`/`UpdateVehicle`) validate the color's `domain`
+  via a cross-module `ColorLookup` query interface (the platform color service), returning
+  `ErrColorMismatch` otherwise — mirroring the existing "validate code against catalog before use"
+  pattern.
+- **Permissions.** Reads ride a broadly-granted `color.read` (any reader populates a picker); writes the
+  instance-plane `color.manage` (added to `instanceScope`). Writes are audited (`color.upsert`, a
+  platform Action RID).
+- **In-place creation.** The web `ColorPicker` (per-domain typeahead + swatch) offers a "Create '…'"
+  affordance that upserts `{domain, code, name, hex?}` and selects it, so operators extend palettes
+  without leaving the form.
+
+**Why.** Free-text color drifts ("brown" vs "Brown" vs "коричневий" vs "dark brown"), cannot be
+localized, and cannot render a swatch. A reference catalog gives consistency, i18n, swatches, and
+referential integrity, while staying cheap (~30 rows).
+
+**Consequence.** Lands in migration `0030_person_physical_identity` (originally shipped as a standalone
+`0031_color`; the three uncommitted M31/M42/M43 migrations were later **squashed into `0030`**, which
+creates `platform_colors` before the person/vehicle tables so `person_physical_descriptions` is created
+with `eye_color_id`/`hair_color_id` FK columns directly — the vehicle table, from committed `0027`, still
+takes an `ADD color_id` + `DROP color` ALTER). `D-Code`'s "every structural entity has a code" and
+`D-i18n`'s "all translations in every response" both apply; the hard FK is the structural payoff over the
+prior advisory free text. Built & verified at **M42** (see [milestones](../milestones.md)).
+
+---
+
 ## Person-intelligence / OSINT-enrichment cluster (M29–M37)
 
 These nine decisions promote the [`draft_superbrain_schema.md`](../draft_superbrain_schema.md)
@@ -1261,10 +1308,59 @@ store — a `variant_kind` is the minimal change. (b) *Store ethnicity as plain 
 Art. 9 — must be declared, encrypted, and lawful-basis-gated. (c) *Biometrics*: highest-risk; excluded
 pending legal review (token/reference-only if ever).
 
-**Consequence.** `person_name_variants.variant_kind` column; new `person_physical_descriptions`,
-`person_distinguishing_marks`, `person_ethnicity_types` + the encrypted `person_ethnicities` link; all
-erased/crypto-erased on purge. New person RIDs allocated on build. Lands as **M31**
-([milestones](../milestones.md)).
+**Consequence.** `person_name_variants.variant_kind` (+ `source`/`confidence`) column; new
+`person_physical_descriptions`, `person_distinguishing_marks`, `person_ethnicity_types` + the encrypted
+`person_ethnicities` link; all erased/crypto-erased on purge. New person RIDs allocated on build. Lands
+as **M31** ([milestones](../milestones.md)).
+
+**Built (M31, migration `0030_person_physical_identity`).** RIDs `6,1,11` physical_description, `6,1,12`
+distinguishing_mark, `6,1,13` ethnicity_type, `6,2,9` `has_ethnicity`. Refinement landed during build:
+the declared ethnicity is modelled as an **envelope-encrypted value** holding the catalog *code* (blind-
+indexed for equality search), **not** a plaintext FK to `person_ethnicity_types` — so the Art. 9 datum
+(which ethnicity) is never stored in plaintext; the catalog is the controlled vocabulary the application
+validates against before sealing. The envelope columns are nullable so purge crypto-erases them (row kept
+as a tombstone), while physical descriptions/marks are hard-deleted on purge. The person application
+service now holds the `pkg/crypto` cipher; `cmd/oikumenea/main.go` builds it ahead of `person.Register`.
+The one-transliteration-per-locale uniqueness became partial (`WHERE variant_kind='transliteration'`) so
+aliases coexist. Reads/writes gate on `person.read`/`person.update` (no new permission).
+
+**Amendment — ethnicity taxonomy & ethnolinguistic links (M43, migration `0030_person_physical_identity`;
+originally `0032_ethnicity_catalog`, later squashed into `0030` — `person_ethnicity_types` is created with
+`parent_id`/`wikidata_id`/provenance inline).** The
+flat, seeded-empty `person_ethnicity_types` catalog is promoted to a **hierarchical** reference catalog
+modeled on the M18 language registry, **without touching the encrypted person↔ethnicity link**:
+
+- **Hierarchy.** `parent_id` self-FK (like `language_languoids.parent_id`) + a rebuilt transitive closure
+  `person_ethnicity_type_closure` (copy of `language_languoid_closure`); `wikidata_id` anchor + import
+  provenance columns. Roots/children/search are served by a `listEthnicityTypes(topLevel|parent|query)`
+  filter with a computed `has_children`, mirroring `listLanguages`.
+- **Group-level ethnolinguistic + homeland links.** M:N `person_ethnicity_type_languages`
+  (→ `language_languoids`) and `person_ethnicity_type_countries` (→ `geo_countries`) — bare associations
+  (composite PK, **no RID**, like `language_languoid_countries`). These are reference metadata **about the
+  group** and are **never inferred onto a person**: `person_ethnicities` (a person's encrypted, declared
+  ethnicity) and `person_languages` (a person's `SPEAKS`, M18) stay independent first-party declarations.
+- **Opt-in import — CIA World Factbook (public domain), fetched + parsed LIVE at runtime.** A new
+  `ethnicity-scheme` hermenea object-type (idempotent, closure-rebuilding — a clone of `language-scheme`).
+  The **source is the CIA World Factbook** via the `factbook/factbook.json` GitHub mirror, ingested
+  **entirely at import time in Go — no committed preset, no Python**: a dedicated `factbook`
+  **StreamingConnector** enumerates the ~260 country files with one git-tree API call and stages them; the
+  `factbookethnicities` **PagedMapper** parses each country's "Ethnic groups" free-text, derives the
+  country's ISO code from its Internet ccTLD, and dedups group→countries across all files. This yields a
+  **flat** catalog of ethnic-group names, each linked to the countries where the Factbook lists it. The
+  Factbook has **no ethnicity hierarchy and no language linkage**, so this source populates the flat catalog
+  + country ties only; the `parent`/closure and language-M:N machinery above stays in the schema but is
+  unpopulated by this source (a future hierarchical/linguistic source could fill them). The `factbook`
+  source (`hermenea-install.yml`, locator `owner/repo@ref`) ships **`enabled: false`** — the **default
+  catalog stays empty** (ethnicity is contentious; the deployment owner loads it on purpose). Unresolved
+  country keys are silently dropped (resilient). No new RID types (the catalog keeps `6,1,13`).
+  *(Wikidata was evaluated as the richer, hierarchical + language-linked source but its endpoints — WDQS,
+  the Action API, EntityData — 403 datacenter/CI IPs per Wikimedia bot policy T400119, so it can't run in
+  CI; the public-domain Factbook over GitHub is reachable at runtime from datacenters. The runtime path is
+  preferred over a committed preset because the Factbook is reachable — hermenea is a runtime ingestion
+  service by design.)*
+
+**Why not** conflate ethnicity with language at the person level: a person's ethnicity ≠ their languages;
+any group↔language tie is a *group*-level association only, never inferred onto a person (declared ≠ inferred).
 
 ### D-PersonAddresses — Structured, effective-dated person addresses over Location (extends D-Location)
 

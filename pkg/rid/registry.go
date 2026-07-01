@@ -41,6 +41,8 @@ type typeKey struct {
 
 // typeNames maps (service, kind, type_code) -> type name. Mirrors the platform_rid_types seed.
 var typeNames = map[typeKey]string{
+	// platform — cross-cutting reference catalogs (D-Color: the per-domain color catalog)
+	{SvcPlatform, int(KindObject), 1}: "color",
 	// i18n
 	{SvcI18n, int(KindObject), 1}: "translation",
 	// tenant
@@ -70,6 +72,9 @@ var typeNames = map[typeKey]string{
 	{SvcPerson, int(KindObject), 8}:  "messenger_link",
 	{SvcPerson, int(KindObject), 9}:  "social_account",
 	{SvcPerson, int(KindObject), 10}: "social_handle",
+	{SvcPerson, int(KindObject), 11}: "physical_description",
+	{SvcPerson, int(KindObject), 12}: "distinguishing_mark",
+	{SvcPerson, int(KindObject), 13}: "ethnicity_type",
 	// person links
 	{SvcPerson, int(KindLink), 1}: "holds_rank",
 	{SvcPerson, int(KindLink), 2}: "partnered_with",
@@ -79,6 +84,7 @@ var typeNames = map[typeKey]string{
 	{SvcPerson, int(KindLink), 6}: "next_of_kin",
 	{SvcPerson, int(KindLink), 7}: "associated_with",
 	{SvcPerson, int(KindLink), 8}: "speaks",
+	{SvcPerson, int(KindLink), 9}: "has_ethnicity",
 	// membership
 	{SvcMembership, int(KindObject), 1}: "position",
 	{SvcMembership, int(KindLink), 1}:   "member_of",

@@ -15,4 +15,10 @@ export interface INameVariant {
     'credentials'?: string | null;
     'preferred'?: string | null;
     'isPrimary': boolean;
+    /** transliteration (the canonical per-locale form) | aka | former_legal | maiden | pseudonym | cover (D-PhysicalIdentity). */
+    'variantKind': string;
+    /** Alias attribution — how the name was learned (self_declared | operator_verified | imported); null for transliterations. */
+    'source'?: string | null;
+    /** Alias attribution confidence weight (confirmed | probable | possible). */
+    'confidence'?: string | null;
 }

@@ -25,6 +25,10 @@ type PlatformCatalogService interface {
 	ListLegalBasisKinds(ctx context.Context, authHeader bearertoken.Token) (LegalBasisKindList, error)
 	// Add or update a lawful-basis catalog entry (instance-admin; `legal-basis.manage`).
 	UpsertLegalBasisKind(ctx context.Context, authHeader bearertoken.Token, codeArg string, requestArg UpsertLegalBasisKindRequest) (LegalBasisKind, error)
+	// List the color catalog (D-Color), optionally filtered to one domain (eye | hair | vehicle).
+	ListColors(ctx context.Context, authHeader bearertoken.Token, domainArg *string) (ColorList, error)
+	// Add or update a color (instance-admin; `color.manage`). Upserts on (domain, code).
+	UpsertColor(ctx context.Context, authHeader bearertoken.Token, requestArg UpsertColorRequest) (Color, error)
 }
 
 // RegisterRoutesPlatformCatalogService registers handlers for the PlatformCatalogService endpoints with a witchcraft wrouter.
@@ -39,6 +43,12 @@ func RegisterRoutesPlatformCatalogService(router wrouter.Router, impl PlatformCa
 	}
 	if err := resource.Put("UpsertLegalBasisKind", "/platform/v1/legal-basis-kinds/{code}", httpserver.NewJSONHandler(handler.HandleUpsertLegalBasisKind, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertLegalBasisKind route")
+	}
+	if err := resource.Get("ListColors", "/platform/v1/colors", httpserver.NewJSONHandler(handler.HandleListColors, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listColors route")
+	}
+	if err := resource.Put("UpsertColor", "/platform/v1/colors", httpserver.NewJSONHandler(handler.HandleUpsertColor, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertColor route")
 	}
 	return nil
 }
@@ -78,6 +88,41 @@ func (p *platformCatalogServiceHandler) HandleUpsertLegalBasisKind(rw http.Respo
 		return errors.WrapWithInvalidArgument(err)
 	}
 	respArg, err := p.impl.UpsertLegalBasisKind(req.Context(), bearertoken.Token(authHeader), codeArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *platformCatalogServiceHandler) HandleListColors(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var domainArg *string
+	if domainArgStr := req.URL.Query().Get("domain"); domainArgStr != "" {
+		domainArgInternal := domainArgStr
+		domainArg = &domainArgInternal
+	}
+	respArg, err := p.impl.ListColors(req.Context(), bearertoken.Token(authHeader), domainArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *platformCatalogServiceHandler) HandleUpsertColor(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var requestArg UpsertColorRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertColor(req.Context(), bearertoken.Token(authHeader), requestArg)
 	if err != nil {
 		return err
 	}

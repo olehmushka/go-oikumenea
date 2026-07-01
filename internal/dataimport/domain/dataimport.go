@@ -49,6 +49,13 @@ const ObjectTypeLanguageScripts = "language-scripts"
 // (source=imported + as_of), not a separate provenance column-set.
 const ObjectTypeExternalOrgs = "external-organizations"
 
+// ObjectTypeEthnicityScheme is the routing key for the hierarchical ethnicity taxonomy (D-PhysicalIdentity
+// amendment, M43) — ethnic groups (+ each group's associated-language & homeland-country ties) fed from
+// Wikidata by the hermenea `wikidataethnicities` mapper. Records arrive parent-first (the ethnicity
+// `parent_id` FK is RESTRICT); after the batch the handler rebuilds the transitive closure. The catalog is
+// plaintext reference data — the person's SELECTION (person_ethnicities) is unaffected.
+const ObjectTypeEthnicityScheme = "ethnicity-scheme"
+
 // Record is one object-type-specific record decoded from the canonical envelope (a JSON object). The
 // registered handler interprets its own shape.
 type Record = map[string]any
@@ -137,6 +144,31 @@ type LanguoidStore interface {
 	ReplaceCountries(ctx context.Context, code string, countryCodes []string) error
 	RebuildClosure(ctx context.Context) error
 	ReconcileLocaleLanguages(ctx context.Context) error
+}
+
+// Ethnicity is one ethnicity-scheme record (D-PhysicalIdentity amendment, M43). Code is the
+// import/idempotency key; Parent is the parent code ("" = root). Languages carries associated-language
+// keys (each a Glottolog code OR an ISO-639-3 code — the mapper projects whichever Wikidata holds);
+// Countries carries homeland ISO-3166 alpha-2 codes. Group-level metadata — NOT a person's datum.
+type Ethnicity struct {
+	Code       string
+	Name       string
+	Parent     string
+	WikidataID string
+	Languages  []string
+	Countries  []string
+}
+
+// EthnicityStore is the port the ethnicity-scheme upsert handler drives. Mirrors LanguoidStore:
+// idempotency keyed on source_version, the group's language + country ties replaced on every
+// insert/update, and a transitive-closure rebuild after the batch. Never deletes an ethnicity type.
+type EthnicityStore interface {
+	GetVersion(ctx context.Context, code string) (sourceVersion string, found bool, err error)
+	Insert(ctx context.Context, e Ethnicity, prov Provenance) error
+	UpdateImport(ctx context.Context, e Ethnicity, prov Provenance) error
+	ReplaceLanguages(ctx context.Context, code string, languageKeys []string) error
+	ReplaceCountries(ctx context.Context, code string, countryCodes []string) error
+	RebuildClosure(ctx context.Context) error
 }
 
 // ExternalOrg is one external-organization record decoded from a canonical-envelope record

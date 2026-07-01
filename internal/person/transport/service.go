@@ -46,11 +46,12 @@ const (
 
 // Localization entity-type keys for the translatable contact-kind / platform catalog names (D-i18n).
 const (
-	emailTypeEntity    = "email_type"
-	phoneTypeEntity    = "phone_type"
-	platformEntity     = "platform"
-	relationTypeEntity = "relation_type"
-	languoidEntity     = "languoid"
+	emailTypeEntity     = "email_type"
+	phoneTypeEntity     = "phone_type"
+	platformEntity      = "platform"
+	relationTypeEntity  = "relation_type"
+	languoidEntity      = "languoid"
+	ethnicityTypeEntity = "ethnicity_type"
 )
 
 // Service adapts *application.Service to the generated personapi.PersonService interface. It holds the
@@ -273,6 +274,267 @@ func (s Service) DeleteNameVariant(ctx context.Context, token bearertoken.Token,
 		return err
 	}
 	if err := s.app.DeleteNameVariant(ctx, personID, locale); err != nil {
+		return s.mapError(ctx, err, personID)
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------- physical identity (M31)
+
+func (s Service) AddNameAlias(ctx context.Context, token bearertoken.Token, personID string, req personapi.AddNameAliasRequest) (personapi.NameVariant, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return personapi.NameVariant{}, err
+	}
+	created, err := s.app.AddNameAlias(ctx, domain.NameVariant{
+		PersonID: personID,
+		Locale:   req.Locale,
+		Name: nameFromParts(req.DisplayName, req.Title, req.Given, req.Given2, req.Surname,
+			req.SurnamePrefix, req.Surname2, req.Generation, req.Credentials, req.Preferred),
+		VariantKind: req.VariantKind,
+		Source:      derefOr(req.Source, ""),
+		Confidence:  derefOr(req.Confidence, ""),
+	})
+	if err != nil {
+		return personapi.NameVariant{}, s.mapError(ctx, err, personID)
+	}
+	return toAPIVariant(created), nil
+}
+
+func (s Service) DeleteNameAlias(ctx context.Context, token bearertoken.Token, personID, aliasID string) error {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return err
+	}
+	if err := s.app.DeleteNameAlias(ctx, personID, aliasID); err != nil {
+		return s.mapError(ctx, err, personID)
+	}
+	return nil
+}
+
+func (s Service) ListPhysicalDescriptions(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.PhysicalDescription, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	ds, err := s.app.ListPhysicalDescriptions(ctx, personID)
+	if err != nil {
+		return nil, s.mapError(ctx, err, personID)
+	}
+	out := make([]personapi.PhysicalDescription, 0, len(ds))
+	for _, d := range ds {
+		out = append(out, toAPIPhysicalDescription(d))
+	}
+	return out, nil
+}
+
+func (s Service) UpsertPhysicalDescription(ctx context.Context, token bearertoken.Token, personID string, req personapi.UpsertPhysicalDescriptionRequest) (personapi.PhysicalDescription, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return personapi.PhysicalDescription{}, err
+	}
+	created, err := s.app.UpsertPhysicalDescription(ctx, domain.PhysicalDescription{
+		ID:            derefOr(req.Id, ""),
+		PersonID:      personID,
+		HeightCm:      req.HeightCm,
+		WeightKg:      req.WeightKg,
+		EyeColorID:    derefOr(req.EyeColorId, ""),
+		HairColorID:   derefOr(req.HairColorId, ""),
+		Build:         derefOr(req.Build, ""),
+		BloodType:     derefOr(req.BloodType, ""),
+		EffectiveFrom: derefOr(req.EffectiveFrom, ""),
+		EffectiveTo:   derefOr(req.EffectiveTo, ""),
+		Source:        derefOr(req.Source, ""),
+		Confidence:    derefOr(req.Confidence, ""),
+	})
+	if err != nil {
+		return personapi.PhysicalDescription{}, s.mapError(ctx, err, personID)
+	}
+	return toAPIPhysicalDescription(created), nil
+}
+
+func (s Service) DeletePhysicalDescription(ctx context.Context, token bearertoken.Token, personID, descriptionID string) error {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return err
+	}
+	if err := s.app.DeletePhysicalDescription(ctx, personID, descriptionID); err != nil {
+		return s.mapError(ctx, err, personID)
+	}
+	return nil
+}
+
+func (s Service) ListDistinguishingMarks(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.DistinguishingMark, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	ms, err := s.app.ListDistinguishingMarks(ctx, personID)
+	if err != nil {
+		return nil, s.mapError(ctx, err, personID)
+	}
+	out := make([]personapi.DistinguishingMark, 0, len(ms))
+	for _, m := range ms {
+		out = append(out, toAPIDistinguishingMark(m))
+	}
+	return out, nil
+}
+
+func (s Service) UpsertDistinguishingMark(ctx context.Context, token bearertoken.Token, personID string, req personapi.UpsertDistinguishingMarkRequest) (personapi.DistinguishingMark, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return personapi.DistinguishingMark{}, err
+	}
+	created, err := s.app.UpsertDistinguishingMark(ctx, domain.DistinguishingMark{
+		ID:           derefOr(req.Id, ""),
+		PersonID:     personID,
+		Kind:         req.Kind,
+		BodyLocation: derefOr(req.BodyLocation, ""),
+		Description:  derefOr(req.Description, ""),
+		Source:       derefOr(req.Source, ""),
+		Confidence:   derefOr(req.Confidence, ""),
+	})
+	if err != nil {
+		return personapi.DistinguishingMark{}, s.mapError(ctx, err, personID)
+	}
+	return toAPIDistinguishingMark(created), nil
+}
+
+func (s Service) DeleteDistinguishingMark(ctx context.Context, token bearertoken.Token, personID, markID string) error {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return err
+	}
+	if err := s.app.DeleteDistinguishingMark(ctx, personID, markID); err != nil {
+		return s.mapError(ctx, err, personID)
+	}
+	return nil
+}
+
+func (s Service) ListEthnicityTypes(ctx context.Context, token bearertoken.Token, topLevel *bool, parent *string, query *string, limit *int) ([]personapi.EthnicityType, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	f := domain.EthnicityTypeFilter{Parent: derefOr(parent, ""), Query: derefOr(query, "")}
+	if topLevel != nil {
+		f.TopLevel = *topLevel
+	}
+	if limit != nil {
+		f.Limit = *limit
+	}
+	types, err := s.app.ListEthnicityTypes(ctx, f)
+	if err != nil {
+		return nil, s.mapError(ctx, err, "")
+	}
+	defaults := make(map[string]string, len(types))
+	for _, t := range types {
+		defaults[t.Code] = t.Name
+	}
+	names, err := s.loc.NamesByID(ctx, ethnicityTypeEntity, defaults)
+	if err != nil {
+		return nil, s.mapError(ctx, err, "")
+	}
+	out := make([]personapi.EthnicityType, 0, len(types))
+	for _, t := range types {
+		out = append(out, toAPIEthnicityType(t, names[t.Code], nil, nil))
+	}
+	return out, nil
+}
+
+func (s Service) GetEthnicityType(ctx context.Context, token bearertoken.Token, ethnicityTypeID string) (personapi.EthnicityType, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return personapi.EthnicityType{}, err
+	}
+	t, langs, countries, err := s.app.GetEthnicityType(ctx, ethnicityTypeID)
+	if err != nil {
+		return personapi.EthnicityType{}, s.mapError(ctx, err, "")
+	}
+	names, err := s.loc.NamesByID(ctx, ethnicityTypeEntity, map[string]string{t.Code: t.Name})
+	if err != nil {
+		return personapi.EthnicityType{}, s.mapError(ctx, err, "")
+	}
+	return toAPIEthnicityType(t, names[t.Code], langs, countries), nil
+}
+
+func (s Service) UpsertEthnicityType(ctx context.Context, token bearertoken.Token, req personapi.UpsertEthnicityTypeRequest) (personapi.EthnicityType, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return personapi.EthnicityType{}, err
+	}
+	created, err := s.app.UpsertEthnicityType(ctx, domain.EthnicityType{
+		Code:       req.Code,
+		Name:       req.Name,
+		ParentID:   derefOr(req.ParentId, ""),
+		WikidataID: derefOr(req.WikidataId, ""),
+		SortOrder:  req.SortOrder,
+	})
+	if err != nil {
+		return personapi.EthnicityType{}, s.mapError(ctx, err, "")
+	}
+	// the just-written default-locale name, projected as a single-entry locale->text map fallback.
+	names, err := s.loc.NamesByID(ctx, ethnicityTypeEntity, map[string]string{created.Code: created.Name})
+	if err != nil {
+		return personapi.EthnicityType{}, s.mapError(ctx, err, "")
+	}
+	return toAPIEthnicityType(created, names[created.Code], nil, nil), nil
+}
+
+// toAPIEthnicityType maps a domain ethnicity type + its resolved i18n name (+ optional group-level
+// language/country RIDs) to the wire type. languages/countries are nil for list rows (populated only by
+// getEthnicityType) and serialized as empty lists.
+func toAPIEthnicityType(t domain.EthnicityType, name map[string]string, langs, countries []string) personapi.EthnicityType {
+	if langs == nil {
+		langs = []string{}
+	}
+	if countries == nil {
+		countries = []string{}
+	}
+	out := personapi.EthnicityType{
+		Id: t.ID, Code: t.Code, Name: name, HasChildren: t.HasChildren,
+		Status: t.Status, SortOrder: t.SortOrder, Languages: langs, Countries: countries,
+	}
+	if t.ParentID != "" {
+		out.ParentId = &t.ParentID
+	}
+	if t.WikidataID != "" {
+		out.WikidataId = &t.WikidataID
+	}
+	return out
+}
+
+func (s Service) ListEthnicities(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.Ethnicity, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	es, err := s.app.ListEthnicities(ctx, personID)
+	if err != nil {
+		return nil, s.mapError(ctx, err, personID)
+	}
+	out := make([]personapi.Ethnicity, 0, len(es))
+	for _, e := range es {
+		out = append(out, toAPIEthnicity(e))
+	}
+	return out, nil
+}
+
+func (s Service) AddEthnicity(ctx context.Context, token bearertoken.Token, personID string, req personapi.AddEthnicityRequest) (personapi.Ethnicity, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return personapi.Ethnicity{}, err
+	}
+	created, err := s.app.AddEthnicity(ctx, personID, req.Code, req.LegalBasis, derefOr(req.Source, ""), derefOr(req.Confidence, ""))
+	if err != nil {
+		return personapi.Ethnicity{}, s.mapError(ctx, err, personID)
+	}
+	return toAPIEthnicity(created), nil
+}
+
+func (s Service) UpdateEthnicity(ctx context.Context, token bearertoken.Token, personID, ethnicityID string, req personapi.UpdateEthnicityRequest) (personapi.Ethnicity, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return personapi.Ethnicity{}, err
+	}
+	created, err := s.app.UpdateEthnicity(ctx, personID, ethnicityID, req.Code, req.LegalBasis, derefOr(req.Status, ""))
+	if err != nil {
+		return personapi.Ethnicity{}, s.mapError(ctx, err, personID)
+	}
+	return toAPIEthnicity(created), nil
+}
+
+func (s Service) DeleteEthnicity(ctx context.Context, token bearertoken.Token, personID, ethnicityID string) error {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return err
+	}
+	if err := s.app.DeleteEthnicity(ctx, personID, ethnicityID); err != nil {
 		return s.mapError(ctx, err, personID)
 	}
 	return nil
@@ -1063,6 +1325,51 @@ func toAPIVariant(v domain.NameVariant) personapi.NameVariant {
 		Credentials:   strPtrOrNil(v.Credentials),
 		Preferred:     strPtrOrNil(v.Preferred),
 		IsPrimary:     v.IsPrimary,
+		VariantKind:   v.VariantKind,
+		Source:        strPtrOrNil(v.Source),
+		Confidence:    strPtrOrNil(v.Confidence),
+	}
+}
+
+func toAPIPhysicalDescription(d domain.PhysicalDescription) personapi.PhysicalDescription {
+	return personapi.PhysicalDescription{
+		Id:            d.ID,
+		PersonId:      d.PersonID,
+		HeightCm:      d.HeightCm,
+		WeightKg:      d.WeightKg,
+		EyeColorId:    strPtrOrNil(d.EyeColorID),
+		HairColorId:   strPtrOrNil(d.HairColorID),
+		Build:         strPtrOrNil(d.Build),
+		BloodType:     strPtrOrNil(d.BloodType),
+		EffectiveFrom: d.EffectiveFrom,
+		EffectiveTo:   strPtrOrNil(d.EffectiveTo),
+		Source:        strPtrOrNil(d.Source),
+		Confidence:    strPtrOrNil(d.Confidence),
+	}
+}
+
+func toAPIDistinguishingMark(m domain.DistinguishingMark) personapi.DistinguishingMark {
+	return personapi.DistinguishingMark{
+		Id:           m.ID,
+		PersonId:     m.PersonID,
+		Kind:         m.Kind,
+		BodyLocation: strPtrOrNil(m.BodyLocation),
+		Description:  strPtrOrNil(m.Description),
+		Source:       strPtrOrNil(m.Source),
+		Confidence:   strPtrOrNil(m.Confidence),
+	}
+}
+
+func toAPIEthnicity(e domain.Ethnicity) personapi.Ethnicity {
+	return personapi.Ethnicity{
+		Id:         e.ID,
+		PersonId:   e.PersonID,
+		Code:       e.Code,
+		Name:       strPtrOrNil(e.Name),
+		LegalBasis: e.LegalBasis,
+		Status:     e.Status,
+		Source:     strPtrOrNil(e.Source),
+		Confidence: strPtrOrNil(e.Confidence),
 	}
 }
 
@@ -1357,6 +1664,8 @@ func (s Service) mapError(ctx context.Context, err error, personID string) error
 		return personapi.NewPersonInvalid("merge source is not a provisional person")
 	case errors.Is(err, domain.ErrMergeIntoInvalid):
 		return personapi.NewPersonInvalid("merge target must be a distinct, non-provisional person")
+	case errors.Is(err, domain.ErrColorMismatch):
+		return personapi.NewPersonInvalid("color is not in the expected eye/hair palette (D-Color)")
 	case errors.Is(err, domain.ErrInvalid):
 		return personapi.NewPersonInvalid(err.Error())
 	case errors.Is(err, domain.ErrLifecycle):

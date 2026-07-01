@@ -32,7 +32,9 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/person/application"
 	"github.com/olegamysk/go-oikumenea/internal/person/domain"
 	personevents "github.com/olegamysk/go-oikumenea/internal/person/events"
+	platformcatalog "github.com/olegamysk/go-oikumenea/internal/platform/catalog"
 	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olegamysk/go-oikumenea/pkg/crypto"
 	"github.com/olegamysk/go-oikumenea/pkg/events"
 )
 
@@ -61,7 +63,24 @@ func newService(t *testing.T, graceHours int) (*application.Service, *pgxpool.Po
 		return auditadapters.NewRepository(conn)
 	}, func() int { return 50 })
 	repoFor := func(conn pdb.DBTX) domain.Repository { return adapters.NewRepository(conn) }
-	return application.NewService(pool, repoFor, audit, func() int { return graceHours }), pool
+	svc := application.NewService(pool, repoFor, audit, func() int { return graceHours }, testCipher(t))
+	// D-Color: wire the platform color catalog so eye/hair hard-FK palette checks run in tests.
+	svc.SetColorLookup(platformcatalog.NewColorService(pool, audit))
+	return svc, pool
+}
+
+// testCipher builds a local-dev envelope cipher for the pii:special declared ethnicity (D-PhysicalIdentity).
+func testCipher(t *testing.T) *crypto.Cipher {
+	t.Helper()
+	provider, err := crypto.NewLocalDevProvider(make([]byte, 32))
+	if err != nil {
+		t.Fatalf("local-dev key provider: %v", err)
+	}
+	cipher, err := crypto.NewCipher(provider, []byte("integration-blind-index-key"), 0)
+	if err != nil {
+		t.Fatalf("build cipher: %v", err)
+	}
+	return cipher
 }
 
 func code(t *testing.T, prefix string) string {

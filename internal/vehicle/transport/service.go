@@ -216,7 +216,7 @@ func (s VehicleService) CreateVehicle(ctx context.Context, token bearertoken.Tok
 		TypeID:          req.TypeId,
 		ModelID:         strOr(req.ModelId),
 		VIN:             strOr(req.Vin),
-		Color:           strOr(req.Color),
+		ColorID:         strOr(req.ColorId),
 		ManufactureDate: strOr(req.ManufactureDate),
 		Attributes:      strOr(req.Attributes),
 	})
@@ -270,7 +270,7 @@ func (s VehicleService) UpdateVehicle(ctx context.Context, token bearertoken.Tok
 		TypeID:          req.TypeId,
 		ModelID:         req.ModelId,
 		VIN:             req.Vin,
-		Color:           req.Color,
+		ColorID:         req.ColorId,
 		ManufactureDate: req.ManufactureDate,
 		Attributes:      req.Attributes,
 		Status:          req.Status,
@@ -541,7 +541,7 @@ func vehicleAPI(v domain.Vehicle, typeLabel, brandLabel, modelLabel string) vehi
 		Id: v.ID, TypeId: v.TypeID, TypeLabel: emptyToNil(typeLabel),
 		ModelId: emptyToNil(v.ModelID), ModelLabel: emptyToNil(modelLabel),
 		BrandId: emptyToNil(v.BrandID), BrandLabel: emptyToNil(brandLabel),
-		Vin: emptyToNil(v.VIN), Color: emptyToNil(v.Color),
+		Vin: emptyToNil(v.VIN), ColorId: emptyToNil(v.ColorID),
 		ManufactureDate: emptyToNil(v.ManufactureDate), Attributes: emptyToNil(v.Attributes),
 		Status: v.Status, CreatedAt: datetime.DateTime(v.CreatedAt), UpdatedAt: datetime.DateTime(v.UpdatedAt),
 	}
@@ -611,6 +611,8 @@ func (s VehicleService) mapError(ctx context.Context, err error) error {
 		return vehicleapi.NewRegionInvalid("")
 	case errors.Is(err, domain.ErrConflict):
 		return vehicleapi.NewConflict("code or identifier already exists in scope")
+	case errors.Is(err, domain.ErrColorMismatch):
+		return vehicleapi.NewInvalid("color is not a vehicle-palette color (D-Color)")
 	case errors.Is(err, domain.ErrInvalid):
 		return vehicleapi.NewInvalid("invalid request or unknown reference")
 	}

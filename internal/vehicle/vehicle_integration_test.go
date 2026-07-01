@@ -22,6 +22,7 @@ import (
 	auditadapters "github.com/olegamysk/go-oikumenea/internal/audit/adapters"
 	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
 	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
+	platformcatalog "github.com/olegamysk/go-oikumenea/internal/platform/catalog"
 	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/internal/vehicle/adapters"
 	"github.com/olegamysk/go-oikumenea/internal/vehicle/application"
@@ -51,7 +52,7 @@ func newService(t *testing.T, pool *pgxpool.Pool) *application.Service {
 	}, func() int { return 50 })
 	return application.NewService(pool, func(conn pdb.DBTX) domain.Repository {
 		return adapters.NewRepository(conn)
-	}, audit)
+	}, audit, platformcatalog.NewColorService(pool, audit))
 }
 
 func uniq(prefix string) string { return fmt.Sprintf("%s-%d", prefix, time.Now().UnixNano()) }
@@ -61,6 +62,16 @@ func uaCountryID(t *testing.T, pool *pgxpool.Pool) string {
 	var id string
 	if err := pool.QueryRow(context.Background(), "SELECT id FROM oikumenea.geo_countries WHERE code = 'UA'").Scan(&id); err != nil {
 		t.Fatalf("resolve UA: %v", err)
+	}
+	return id
+}
+
+func colorID(t *testing.T, pool *pgxpool.Pool, domain, code string) string {
+	t.Helper()
+	var id string
+	if err := pool.QueryRow(context.Background(),
+		"SELECT id FROM oikumenea.platform_colors WHERE domain = $1 AND code = $2 AND deleted_at IS NULL", domain, code).Scan(&id); err != nil {
+		t.Fatalf("resolve color %s/%s: %v", domain, code, err)
 	}
 	return id
 }
@@ -168,16 +179,26 @@ func TestVehicleVertical(t *testing.T) {
 		t.Fatalf("model brand mismatch")
 	}
 
-	// --- 2. create a vehicle with a VIN under a brand/model/type ---
+	// --- 2. create a vehicle with a VIN + a seeded vehicle-palette color (D-Color hard FK) ---
 	vin := uniq("VIN1")
 	plate := uniq("AA")
-	v, err := svc.CreateVehicle(ctx, domain.VehicleInput{TypeID: carType, ModelID: model.ID, VIN: vin, Color: "blue"})
+	blueID := colorID(t, pool, "vehicle", "blue")
+	v, err := svc.CreateVehicle(ctx, domain.VehicleInput{TypeID: carType, ModelID: model.ID, VIN: vin, ColorID: blueID})
 	if err != nil {
 		t.Fatalf("create vehicle: %v", err)
 	}
 	assertOneAction(t, pool, v.ID, "vehicle.create")
 	if v.BrandID != brand.ID {
 		t.Fatalf("expected derived brand %s, got %q", brand.ID, v.BrandID)
+	}
+	if v.ColorID != blueID {
+		t.Fatalf("expected color_id %s, got %q", blueID, v.ColorID)
+	}
+
+	// --- 2b. a color from the wrong palette (eye) is rejected (hard-FK domain check) ---
+	eyeBlue := colorID(t, pool, "eye", "blue")
+	if _, err := svc.CreateVehicle(ctx, domain.VehicleInput{TypeID: carType, VIN: uniq("VINBAD"), ColorID: eyeBlue}); !errors.Is(err, domain.ErrColorMismatch) {
+		t.Fatalf("expected ErrColorMismatch for an eye-palette color, got %v", err)
 	}
 
 	// --- 3. duplicate VIN → conflict ---

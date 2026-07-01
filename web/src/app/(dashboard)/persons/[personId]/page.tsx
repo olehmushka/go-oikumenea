@@ -19,6 +19,7 @@ import {
   PersonLifecycle,
   PersonRankLabel,
   PhoneManager,
+  PhysicalIdentityManager,
   RelationshipManager,
   ResidenceManager,
   SetRank,
@@ -161,6 +162,11 @@ export default async function PersonDetailPage({
           <h2 className="text-sm font-semibold text-slate-900"><T>Religion</T></h2>
           <PersonClergyManager personId={person.id} />
           <PersonAffiliationManager personId={person.id} />
+        </Card>
+
+        <Card>
+          <h2 className="text-sm font-semibold text-slate-900"><T>Physical identity</T></h2>
+          <PhysicalIdentityManager personId={person.id} />
         </Card>
       </div>
 

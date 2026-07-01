@@ -70,7 +70,7 @@ func newEnv(t *testing.T) env {
 	}, func() int { return 50 })
 	bus := events.NewBus()
 	mem := memapp.NewService(pool, func(conn pdb.DBTX) memdomain.Repository { return memadapters.NewRepository(conn) }, audit)
-	psn := personapp.NewService(pool, func(conn pdb.DBTX) persondomain.Repository { return personadapters.NewRepository(conn) }, audit, func() int { return 720 })
+	psn := personapp.NewService(pool, func(conn pdb.DBTX) persondomain.Repository { return personadapters.NewRepository(conn) }, audit, func() int { return 720 }, nil)
 	ord := orderapp.NewService(pool, func(conn pdb.DBTX) orderdomain.Repository { return orderadapters.NewRepository(conn) }, audit, bus)
 	mem.SubscribeOrderEvents(bus)
 	psn.SubscribeOrderEvents(bus)

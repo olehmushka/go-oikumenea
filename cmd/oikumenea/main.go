@@ -144,7 +144,25 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 		return nil, err
 	}
 
-	personSvc, err := person.Register(info, pool, auditSvc, locSvc, rankSvc, enforcer)
+	// The envelope cipher (D-CryptoProvider) is built here (before person) because person now seals the
+	// pii:special declared ethnicity (D-PhysicalIdentity, M31); document/religion reuse the same instance.
+	cipher, err := buildCipher(install)
+	if err != nil {
+		cleanup()
+		return nil, werror.Wrap(err, "build envelope cipher")
+	}
+
+	// Platform reference catalogs (M29 / D-OverlayFoundation + D-Color): the GDPR lawful-basis catalog
+	// and the per-domain color catalog. Composed here (not in platform.Bootstrap) because it needs the
+	// audit service + localization + the (unbound-now, bound-later) PEP enforcer. The returned color
+	// service is the hard-FK ColorLookup that person + vehicle validate eye/hair/vehicle colors against.
+	colorSvc, err := platform.RegisterCatalog(ctx, info, pool, auditSvc, locSvc, enforcer)
+	if err != nil {
+		cleanup()
+		return nil, err
+	}
+
+	personSvc, err := person.Register(info, pool, auditSvc, locSvc, rankSvc, enforcer, cipher, colorSvc)
 	if err != nil {
 		cleanup()
 		return nil, err
@@ -189,21 +207,9 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	}
 	authzSvc.SubscribePersonEvents(bus)
 
-	// Platform reference catalogs (M29 / D-OverlayFoundation): the GDPR lawful-basis catalog. Composed
-	// here (not in platform.Bootstrap) because it needs the audit service + the bound PEP enforcer.
-	if err := platform.RegisterCatalog(ctx, info, pool, auditSvc, enforcer); err != nil {
-		cleanup()
-		return nil, err
-	}
-
 	// Document: person-held papers and envelope-encrypted personal codes (D-Documents / D-PersonalCodes).
-	// The envelope cipher (D-CryptoProvider) + the personal-code validator registry are built from
-	// install config; the enforcer it holds is bound by authorization above.
-	cipher, err := buildCipher(install)
-	if err != nil {
-		cleanup()
-		return nil, werror.Wrap(err, "build envelope cipher")
-	}
+	// Reuses the envelope cipher built above (D-CryptoProvider) + the personal-code validator registry;
+	// the enforcer it holds is bound by authorization above.
 	documentSvc, err := document.Register(info, pool, auditSvc, locSvc, enforcer, cipher, personalcode.New(), personSvc)
 	if err != nil {
 		cleanup()
@@ -261,7 +267,7 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// model/type catalogs, the vehicle object (VIN), the brand→manufacturer link, and the ownership+
 	// plate registration record (plate region → the WOF geo_places gazetteer). Writes record via the
 	// audit service; translatable catalog names assemble via localization.
-	vehicleSvc, err := vehicle.Register(info, pool, auditSvc, locSvc, enforcer)
+	vehicleSvc, err := vehicle.Register(info, pool, auditSvc, locSvc, enforcer, colorSvc)
 	if err != nil {
 		cleanup()
 		return nil, err

@@ -30,7 +30,8 @@ intelligence (insurance/MTPL, inspection, accidents, theft, odometer, telematics
   - `vehicle_registration_number_types` — the plate-type catalog (regular/temporary/transit/diplomatic/
     military/old).
 - **Object** — `vehicle_vehicles`: the physical vehicle. `type_id`/`model_id` FK; `vin` (normalized,
-  unique among active when present, nullable, `pii:basic`); `color`; `manufacture_date`; `attributes`
+  unique among active when present, nullable, `pii:basic`); `color_id` (hard FK → `platform_colors`,
+  domain=`vehicle`; validated app-side — D-Color, M42); `manufacture_date`; `attributes`
   JSONB long-tail grab-bag; soft-delete. The **RID is the external handle** (no separate `code`).
 - **Reified Links** (D-Ontology):
   - `vehicle_brand_manufacturers` (`link__manufactured_by`, RID `17,2,1`): brand → a `company`-domain

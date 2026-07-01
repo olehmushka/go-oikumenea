@@ -61,6 +61,11 @@ export type NextOfKin = person.INextOfKin;
 export type Association = person.IAssociation;
 export type NameVariant = person.INameVariant;
 export type PersonRank = person.IPersonRank;
+// physical identity (M31, D-PhysicalIdentity)
+export type PhysicalDescription = person.IPhysicalDescription;
+export type DistinguishingMark = person.IDistinguishingMark;
+export type EthnicityType = person.IEthnicityType;
+export type Ethnicity = person.IEthnicity;
 
 // ── localization / language ──────────────────────────────────────────────────
 export type LocaleLanguage = localization.ILocaleLanguage;

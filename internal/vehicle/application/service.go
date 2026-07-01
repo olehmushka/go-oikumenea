@@ -35,11 +35,29 @@ type Service struct {
 	pool    *pgxpool.Pool
 	newRepo RepositoryFactory
 	audit   *auditapp.Service
+	colors  domain.ColorLookup
 }
 
-// NewService wires the service with the pool, repository factory, and audit service.
-func NewService(pool *pgxpool.Pool, newRepo RepositoryFactory, audit *auditapp.Service) *Service {
-	return &Service{pool: pool, newRepo: newRepo, audit: audit}
+// NewService wires the service with the pool, repository factory, audit service, and the color catalog
+// lookup (D-Color: hard-FK palette enforcement for the vehicle color).
+func NewService(pool *pgxpool.Pool, newRepo RepositoryFactory, audit *auditapp.Service, colors domain.ColorLookup) *Service {
+	return &Service{pool: pool, newRepo: newRepo, audit: audit, colors: colors}
+}
+
+// checkColor enforces the hard FK's palette: a non-empty color id must resolve to a domain='vehicle'
+// color (D-Color). Returns domain.ErrColorMismatch otherwise (unknown id maps there too).
+func (s *Service) checkColor(ctx context.Context, colorID string) error {
+	if colorID == "" || s.colors == nil {
+		return nil
+	}
+	d, err := s.colors.ColorDomain(ctx, colorID)
+	if err != nil {
+		return domain.ErrColorMismatch
+	}
+	if d != "vehicle" {
+		return domain.ErrColorMismatch
+	}
+	return nil
 }
 
 // ============================ catalogs ============================
@@ -134,6 +152,9 @@ func (s *Service) CreateVehicle(ctx context.Context, in domain.VehicleInput) (do
 	if err := in.Validate(); err != nil {
 		return domain.Vehicle{}, err
 	}
+	if err := s.checkColor(ctx, in.ColorID); err != nil {
+		return domain.Vehicle{}, err
+	}
 	var out domain.Vehicle
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
 		created, err := s.newRepo(tx).InsertVehicle(ctx, in)
@@ -147,6 +168,11 @@ func (s *Service) CreateVehicle(ctx context.Context, in domain.VehicleInput) (do
 }
 
 func (s *Service) UpdateVehicle(ctx context.Context, id string, up domain.VehicleUpdate) (domain.Vehicle, error) {
+	if up.ColorID != nil {
+		if err := s.checkColor(ctx, *up.ColorID); err != nil {
+			return domain.Vehicle{}, err
+		}
+	}
 	var out domain.Vehicle
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
 		v, err := s.newRepo(tx).UpdateVehicle(ctx, id, up)

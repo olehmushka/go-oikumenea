@@ -26,6 +26,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/person/domain"
 	personevents "github.com/olegamysk/go-oikumenea/internal/person/events"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olegamysk/go-oikumenea/pkg/crypto"
 	"github.com/olegamysk/go-oikumenea/pkg/events"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
@@ -71,18 +72,39 @@ type Service struct {
 	graceHours func() int
 	now        func() time.Time
 	membership MembershipReader
-	bus        *events.Bus // set when SubscribeOrderEvents wires the bus; used to publish PersonMerged
+	bus        *events.Bus           // set when SubscribeOrderEvents wires the bus; used to publish PersonMerged
+	cipher     *crypto.Cipher        // envelope cipher for the pii:special declared ethnicity (D-PhysicalIdentity)
+	colors     domain.ColorLookup    // late-bound color catalog (D-Color): eye/hair hard-FK palette check
 }
 
-// NewService wires the service with the pool, the repository factory, the audit service, and the
-// (refreshable) purge-grace window in hours. The membership reader is late-bound (SetMembershipReader).
-func NewService(pool *pgxpool.Pool, newRepo RepositoryFactory, audit *auditapp.Service, graceHours func() int) *Service {
-	return &Service{pool: pool, newRepo: newRepo, audit: audit, graceHours: graceHours, now: func() time.Time { return time.Now().UTC() }}
+// NewService wires the service with the pool, the repository factory, the audit service, the
+// (refreshable) purge-grace window in hours, and the envelope cipher (D-SpecialPII — seals the declared
+// ethnicity). The membership reader is late-bound (SetMembershipReader).
+func NewService(pool *pgxpool.Pool, newRepo RepositoryFactory, audit *auditapp.Service, graceHours func() int, cipher *crypto.Cipher) *Service {
+	return &Service{pool: pool, newRepo: newRepo, audit: audit, graceHours: graceHours, cipher: cipher, now: func() time.Time { return time.Now().UTC() }}
 }
 
 // SetMembershipReader binds the cross-module membership query seam used by the read-scope projection
 // (D-PersonReadScope). Called once at composition time, after membership is built, before serving.
 func (s *Service) SetMembershipReader(r MembershipReader) { s.membership = r }
+
+// SetColorLookup binds the cross-module color catalog query seam (D-Color) used to enforce the
+// eye/hair physical-description hard FKs against their palettes. Late-bound at composition time; when
+// unset (e.g. in tests that don't exercise color), the palette check is skipped.
+func (s *Service) SetColorLookup(c domain.ColorLookup) { s.colors = c }
+
+// checkColor enforces the hard FK's palette: a non-empty color id must resolve to a color in the wanted
+// palette (D-Color). Returns domain.ErrColorMismatch otherwise (unknown id maps there too).
+func (s *Service) checkColor(ctx context.Context, colorID, wantDomain string) error {
+	if colorID == "" || s.colors == nil {
+		return nil
+	}
+	d, err := s.colors.ColorDomain(ctx, colorID)
+	if err != nil || d != wantDomain {
+		return domain.ErrColorMismatch
+	}
+	return nil
+}
 
 // Page is a keyset-paginated slice of the directory.
 type Page struct {

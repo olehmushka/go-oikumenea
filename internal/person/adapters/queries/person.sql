@@ -131,16 +131,18 @@ DELETE FROM oikumenea.person_residences WHERE person_id = @person_id;
 -- ============================ name variants ============================
 
 -- name: UpsertNameVariant :one
--- Add or replace the variant for (person, locale). The i18n_locales FK validates the locale.
+-- Add or replace the canonical TRANSLITERATION variant for (person, locale) — the original one-per-locale
+-- name form (D-PersonNamesCLDR). The i18n_locales FK validates the locale. variant_kind is forced to
+-- 'transliteration' so the conflict targets the partial unique index; aliases use InsertNameAlias.
 INSERT INTO oikumenea.person_name_variants (
   person_id, locale, display_name, title, given, given2, surname, surname_prefix,
-  surname2, generation, credentials, preferred, is_primary
+  surname2, generation, credentials, preferred, is_primary, variant_kind
 ) VALUES (
   @person_id, @locale, @display_name, sqlc.narg('title'), sqlc.narg('given'), sqlc.narg('given2'),
   sqlc.narg('surname'), sqlc.narg('surname_prefix'), sqlc.narg('surname2'), sqlc.narg('generation'),
-  sqlc.narg('credentials'), sqlc.narg('preferred'), @is_primary
+  sqlc.narg('credentials'), sqlc.narg('preferred'), @is_primary, 'transliteration'
 )
-ON CONFLICT (person_id, locale) DO UPDATE SET
+ON CONFLICT (person_id, locale) WHERE variant_kind = 'transliteration' DO UPDATE SET
   display_name = excluded.display_name, title = excluded.title, given = excluded.given,
   given2 = excluded.given2, surname = excluded.surname, surname_prefix = excluded.surname_prefix,
   surname2 = excluded.surname2, generation = excluded.generation, credentials = excluded.credentials,
@@ -148,15 +150,39 @@ ON CONFLICT (person_id, locale) DO UPDATE SET
 RETURNING *;
 
 -- name: ClearPrimaryNameVariants :exec
+-- Demote the person's primary transliteration variant(s) (is_primary marks at most one transliteration).
 UPDATE oikumenea.person_name_variants SET is_primary = false
-WHERE person_id = @person_id AND is_primary;
+WHERE person_id = @person_id AND is_primary AND variant_kind = 'transliteration';
 
 -- name: DeleteNameVariant :one
-DELETE FROM oikumenea.person_name_variants WHERE person_id = @person_id AND locale = @locale
+-- Delete the TRANSLITERATION variant for a locale (aliases are deleted by id via DeleteNameAlias).
+DELETE FROM oikumenea.person_name_variants
+WHERE person_id = @person_id AND locale = @locale AND variant_kind = 'transliteration'
 RETURNING id;
 
 -- name: ListNameVariants :many
-SELECT * FROM oikumenea.person_name_variants WHERE person_id = @person_id ORDER BY locale;
+SELECT * FROM oikumenea.person_name_variants WHERE person_id = @person_id
+ORDER BY variant_kind, locale, id;
+
+-- name: InsertNameAlias :one
+-- Add an ALIAS name form (variant_kind in aka|former_legal|maiden|pseudonym|cover; D-PhysicalIdentity).
+-- Aliases are unconstrained per (person, locale) and addressed by their RID; they may carry attribution.
+INSERT INTO oikumenea.person_name_variants (
+  person_id, locale, display_name, title, given, given2, surname, surname_prefix,
+  surname2, generation, credentials, preferred, is_primary, variant_kind, source, confidence
+) VALUES (
+  @person_id, @locale, @display_name, sqlc.narg('title'), sqlc.narg('given'), sqlc.narg('given2'),
+  sqlc.narg('surname'), sqlc.narg('surname_prefix'), sqlc.narg('surname2'), sqlc.narg('generation'),
+  sqlc.narg('credentials'), sqlc.narg('preferred'), false, @variant_kind,
+  sqlc.narg('source'), sqlc.narg('confidence')
+)
+RETURNING *;
+
+-- name: DeleteNameAlias :one
+-- Delete one alias by its RID (holder-scoped). Refuses the transliteration kind (use DeleteNameVariant).
+DELETE FROM oikumenea.person_name_variants
+WHERE id = @id AND person_id = @person_id AND variant_kind <> 'transliteration'
+RETURNING id;
 
 -- ============================ citizenships ============================
 
@@ -715,3 +741,162 @@ RETURNING id;
 
 -- name: DeleteAllAssociations :exec
 DELETE FROM oikumenea.person_associations WHERE person_id_a = @person_id OR person_id_b = @person_id;
+
+-- ============================ physical descriptions (D-PhysicalIdentity, M31) ============================
+
+-- name: InsertPhysicalDescription :one
+INSERT INTO oikumenea.person_physical_descriptions (
+  person_id, height_cm, weight_kg, eye_color_id, hair_color_id, build, blood_type,
+  effective_from, effective_to, source, confidence
+) VALUES (
+  @person_id, sqlc.narg('height_cm'), sqlc.narg('weight_kg'), sqlc.narg('eye_color_id')::uuid,
+  sqlc.narg('hair_color_id')::uuid, sqlc.narg('build'), sqlc.narg('blood_type'),
+  COALESCE(sqlc.narg('effective_from')::date, (now() AT TIME ZONE 'UTC')::date), sqlc.narg('effective_to')::date,
+  sqlc.narg('source'), sqlc.narg('confidence')
+)
+RETURNING *;
+
+-- name: UpdatePhysicalDescription :one
+UPDATE oikumenea.person_physical_descriptions SET
+  height_cm = sqlc.narg('height_cm'), weight_kg = sqlc.narg('weight_kg'),
+  eye_color_id = sqlc.narg('eye_color_id')::uuid, hair_color_id = sqlc.narg('hair_color_id')::uuid,
+  build = sqlc.narg('build'), blood_type = sqlc.narg('blood_type'),
+  effective_from = COALESCE(sqlc.narg('effective_from')::date, effective_from),
+  effective_to = sqlc.narg('effective_to')::date,
+  source = sqlc.narg('source'), confidence = sqlc.narg('confidence')
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING *;
+
+-- name: DeletePhysicalDescription :one
+UPDATE oikumenea.person_physical_descriptions SET deleted_at = now()
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING id;
+
+-- name: ListPhysicalDescriptions :many
+SELECT * FROM oikumenea.person_physical_descriptions
+WHERE person_id = @person_id AND deleted_at IS NULL
+ORDER BY effective_from DESC, id;
+
+-- name: DeleteAllPhysicalDescriptions :exec
+DELETE FROM oikumenea.person_physical_descriptions WHERE person_id = @person_id;
+
+-- ============================ distinguishing marks (D-PhysicalIdentity, M31) ============================
+
+-- name: InsertDistinguishingMark :one
+INSERT INTO oikumenea.person_distinguishing_marks (
+  person_id, kind, body_location, description, source, confidence
+) VALUES (
+  @person_id, @kind, sqlc.narg('body_location'), sqlc.narg('description'),
+  sqlc.narg('source'), sqlc.narg('confidence')
+)
+RETURNING *;
+
+-- name: UpdateDistinguishingMark :one
+UPDATE oikumenea.person_distinguishing_marks SET
+  kind = @kind, body_location = sqlc.narg('body_location'), description = sqlc.narg('description'),
+  source = sqlc.narg('source'), confidence = sqlc.narg('confidence')
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING *;
+
+-- name: DeleteDistinguishingMark :one
+UPDATE oikumenea.person_distinguishing_marks SET deleted_at = now()
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING id;
+
+-- name: ListDistinguishingMarks :many
+SELECT * FROM oikumenea.person_distinguishing_marks
+WHERE person_id = @person_id AND deleted_at IS NULL
+ORDER BY kind, id;
+
+-- name: DeleteAllDistinguishingMarks :exec
+DELETE FROM oikumenea.person_distinguishing_marks WHERE person_id = @person_id;
+
+-- ============================ ethnicity-type catalog (D-PhysicalIdentity, M31) ============================
+
+-- name: ListEthnicityTypes :many
+-- Hierarchical catalog listing (D-PhysicalIdentity amendment, M43), mirroring listLanguages: filter to
+-- the forest roots (top_level), the immediate children of a parent RID, or a name/code substring. The
+-- has_children flag lets a tree browser show the expand affordance only where children exist.
+SELECT e.id, e.code, e.name, e.parent_id, e.wikidata_id, e.status, e.sort_order,
+  EXISTS (SELECT 1 FROM oikumenea.person_ethnicity_types c WHERE c.parent_id = e.id AND c.deleted_at IS NULL) AS has_children
+FROM oikumenea.person_ethnicity_types e
+WHERE e.deleted_at IS NULL
+  AND (NOT sqlc.arg(top_level)::boolean OR e.parent_id IS NULL)
+  AND (sqlc.narg(parent)::uuid IS NULL OR e.parent_id = sqlc.narg(parent)::uuid)
+  AND (NULLIF(sqlc.arg(query)::text, '') IS NULL
+       OR e.name ILIKE '%' || sqlc.arg(query)::text || '%'
+       OR e.code ILIKE '%' || sqlc.arg(query)::text || '%')
+ORDER BY (e.parent_id IS NULL) DESC, e.sort_order NULLS LAST, e.code
+LIMIT sqlc.arg(lim)::int;
+
+-- name: GetEthnicityTypeByCode :one
+SELECT * FROM oikumenea.person_ethnicity_types WHERE code = @code AND deleted_at IS NULL;
+
+-- name: GetEthnicityTypeByID :one
+SELECT e.id, e.code, e.name, e.parent_id, e.wikidata_id, e.status, e.sort_order,
+  EXISTS (SELECT 1 FROM oikumenea.person_ethnicity_types c WHERE c.parent_id = e.id AND c.deleted_at IS NULL) AS has_children
+FROM oikumenea.person_ethnicity_types e
+WHERE e.id = @id AND e.deleted_at IS NULL;
+
+-- name: ListEthnicityTypeLanguages :many
+-- Associated-language RIDs for a group (ethnolinguistic metadata; group-level, never a person's datum).
+SELECT l.id
+FROM oikumenea.person_ethnicity_type_languages pel
+JOIN oikumenea.language_languoids l ON l.id = pel.language_id
+WHERE pel.ethnicity_type_id = @ethnicity_type_id
+ORDER BY l.code;
+
+-- name: ListEthnicityTypeCountries :many
+-- Homeland-country RIDs for a group.
+SELECT c.id
+FROM oikumenea.person_ethnicity_type_countries pec
+JOIN oikumenea.geo_countries c ON c.id = pec.country_id
+WHERE pec.ethnicity_type_id = @ethnicity_type_id
+ORDER BY c.code;
+
+-- name: UpsertEthnicityType :one
+INSERT INTO oikumenea.person_ethnicity_types (code, name, parent_id, wikidata_id, sort_order)
+VALUES (@code, @name, sqlc.narg('parent_id')::uuid, sqlc.narg('wikidata_id'), sqlc.narg('sort_order'))
+ON CONFLICT (code) WHERE deleted_at IS NULL DO UPDATE SET
+  name = excluded.name, parent_id = excluded.parent_id, wikidata_id = excluded.wikidata_id,
+  sort_order = excluded.sort_order, status = 'active'
+RETURNING *;
+
+-- ============================ ethnicities — link__has_ethnicity (pii:special, encrypted) ============================
+
+-- name: InsertEthnicity :one
+-- The declared ethnicity is supplied as the envelope (ciphertext/wrapped_dek/key_ref/blind_index) sealed
+-- in the application; legal_basis FK validates the lawful basis.
+INSERT INTO oikumenea.person_ethnicities (
+  person_id, value_ciphertext, wrapped_dek, key_ref, value_blind_index, legal_basis, source, confidence
+) VALUES (
+  @person_id, @value_ciphertext, @wrapped_dek, @key_ref, @value_blind_index, @legal_basis,
+  sqlc.narg('source'), sqlc.narg('confidence')
+)
+RETURNING *;
+
+-- name: UpdateEthnicity :one
+-- Re-seal the declared value and/or flip status/legal_basis.
+UPDATE oikumenea.person_ethnicities SET
+  value_ciphertext = @value_ciphertext, wrapped_dek = @wrapped_dek, key_ref = @key_ref,
+  value_blind_index = @value_blind_index, legal_basis = @legal_basis,
+  status = @status, source = sqlc.narg('source'), confidence = sqlc.narg('confidence')
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING *;
+
+-- name: DeleteEthnicity :one
+UPDATE oikumenea.person_ethnicities SET deleted_at = now()
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING id;
+
+-- name: ListEthnicities :many
+SELECT * FROM oikumenea.person_ethnicities
+WHERE person_id = @person_id AND deleted_at IS NULL
+ORDER BY created_at DESC, id;
+
+-- name: CryptoEraseEthnicities :execrows
+-- Crypto-erase all of a person's ethnicities (drop the envelope, keep the row tombstone). The person-purge
+-- erasure path for the pii:special declared value (D-PhysicalIdentity / D-SpecialPII).
+UPDATE oikumenea.person_ethnicities
+SET value_ciphertext = NULL, wrapped_dek = NULL, key_ref = NULL, value_blind_index = NULL
+WHERE person_id = @person_id AND deleted_at IS NULL AND value_ciphertext IS NOT NULL;

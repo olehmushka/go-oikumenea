@@ -23,9 +23,9 @@ import (
 // Register builds the vehicle module over the platform pool, the audit service (writes record
 // in-transaction — D-Audit), and the localization service (translatable catalog name maps), then
 // registers the VehicleService onto the witchcraft router. It owns no resources of its own.
-func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, loc *locapp.Service, enforcer *pep.Enforcer) (*application.Service, error) {
+func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, loc *locapp.Service, enforcer *pep.Enforcer, colors domain.ColorLookup) (*application.Service, error) {
 	repoFor := func(conn db.DBTX) domain.Repository { return adapters.NewRepository(conn) }
-	svc := application.NewService(pool, repoFor, audit)
+	svc := application.NewService(pool, repoFor, audit, colors)
 	if err := vehicleapi.RegisterRoutesVehicleService(info.Router, transport.NewService(svc, loc, enforcer)); err != nil {
 		return nil, werror.Wrap(err, "register vehicle service routes")
 	}

@@ -323,6 +323,27 @@ the degenerate case (it *is* the code). Distinct from the translatable `name`. *
 sub-unit) and **mutable** — a correctable human-readable ID; for units the stable handle external
 systems reference is the **RID**, not the code.
 
+**Color (catalog).** A structural, operator-managed color in a **per-domain palette** —
+`eye` / `hair` / `vehicle` — owned by the [platform](modules/platform.md) module
+(`platform_colors`, the platform module's first RID-bearing Object). Each color has a stable
+`code`, a translatable `name`, and an optional `hex` swatch (nullable: biological
+eye/hair colors are categories, not precise hex). Referenced by **hard FK** from
+`vehicle_vehicles.color_id` and `person_physical_descriptions.eye_color_id`/`hair_color_id`; the
+referencing module validates the color's domain in the application layer (a single-column FK can't
+constrain the palette). Replaces the prior advisory free-text color fields (D-Color, M42).
+
+**Ethnicity (catalog).** The `person_ethnicity_types` **hierarchical** reference catalog (parent +
+closure, like the language forest) of ethnic groups, owned by the [person](modules/person.md) module —
+plaintext reference data with a stable `code`, i18n `name`, optional `wikidata_id`, and **group-level**
+M:N links to languages (Glottolog languoids — an *ethnolinguistic* association) and homeland
+countries. **Default seed is empty** (ethnicity is contentious); an operator loads it on purpose via the
+opt-in **CIA World Factbook** `ethnicity-scheme` import — fetched + parsed **live at runtime** by a
+`factbook` hermenea connector + mapper (public domain; no committed preset) — a flat catalog of group names +
+their homeland countries; the Factbook carries no hierarchy or language ties, so those schema features stay
+unpopulated by this source. A person's **declared** ethnicity is a separate,
+**envelope-encrypted** `pii:special` link (`person_ethnicities`); the catalog's group↔language tie is
+**never** inferred onto a person — declared ≠ inferred (D-PhysicalIdentity, M31/M43).
+
 **Locale.** A supported language for the deployment, identified by an ISO 639-3 code (e.g.
 `ukr`, `eng`). The set is **instance-admin-managed** (seeded with `ukr` + `eng`, more can be
 added). Owned by the [localization](modules/localization.md) module.

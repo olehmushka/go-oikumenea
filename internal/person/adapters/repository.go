@@ -348,6 +348,18 @@ func (r *Repository) Purge(ctx context.Context, id string) (domain.Person, error
 	if err := r.q.DeleteAllAssociations(ctx, id); err != nil {
 		return domain.Person{}, err
 	}
+	// physical identity (D-PhysicalIdentity, M31): physical descriptions (pii:basic) + distinguishing
+	// marks (pii:special ceiling) are hard-deleted; ethnicities (encrypted pii:special) are crypto-erased
+	// — the envelope is dropped but the row is kept as a tombstone.
+	if err := r.q.DeleteAllPhysicalDescriptions(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if err := r.q.DeleteAllDistinguishingMarks(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if _, err := r.q.CryptoEraseEthnicities(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
 	row, err := r.q.PurgePerson(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -1482,6 +1494,370 @@ func toPerson(r personsql.OikumeneaPersonPerson) domain.Person {
 	}
 }
 
+// ---------------------------------------------------------------- physical identity (M31)
+
+// name aliases (variant_kind != transliteration), addressed by RID.
+
+func (r *Repository) InsertNameAlias(ctx context.Context, v domain.NameVariant) (domain.NameVariant, error) {
+	row, err := r.q.InsertNameAlias(ctx, personsql.InsertNameAliasParams{
+		PersonID:      v.PersonID,
+		Locale:        v.Locale,
+		DisplayName:   v.DisplayName,
+		Title:         text(v.Title),
+		Given:         text(v.Given),
+		Given2:        text(v.Given2),
+		Surname:       text(v.Surname),
+		SurnamePrefix: text(v.SurnamePrefix),
+		Surname2:      text(v.Surname2),
+		Generation:    text(v.Generation),
+		Credentials:   text(v.Credentials),
+		Preferred:     text(v.Preferred),
+		VariantKind:   v.VariantKind,
+		Source:        text(v.Source),
+		Confidence:    text(v.Confidence),
+	})
+	if err != nil {
+		return domain.NameVariant{}, mapWriteErr(err)
+	}
+	return toNameVariant(row), nil
+}
+
+func (r *Repository) DeleteNameAlias(ctx context.Context, personID, id string) error {
+	if _, err := r.q.DeleteNameAlias(ctx, personsql.DeleteNameAliasParams{ID: id, PersonID: personID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrNameAliasNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+// physical descriptions.
+
+func (r *Repository) UpsertPhysicalDescription(ctx context.Context, d domain.PhysicalDescription) (domain.PhysicalDescription, error) {
+	if d.ID == "" {
+		row, err := r.q.InsertPhysicalDescription(ctx, personsql.InsertPhysicalDescriptionParams{
+			PersonID:      d.PersonID,
+			HeightCm:      int4(d.HeightCm),
+			WeightKg:      int4(d.WeightKg),
+			EyeColorID:    text(d.EyeColorID),
+			HairColorID:   text(d.HairColorID),
+			Build:         text(d.Build),
+			BloodType:     text(d.BloodType),
+			EffectiveFrom: dateText(d.EffectiveFrom),
+			EffectiveTo:   dateText(d.EffectiveTo),
+			Source:        text(d.Source),
+			Confidence:    text(d.Confidence),
+		})
+		if err != nil {
+			return domain.PhysicalDescription{}, mapWriteErr(err)
+		}
+		return toPhysicalDescription(row), nil
+	}
+	row, err := r.q.UpdatePhysicalDescription(ctx, personsql.UpdatePhysicalDescriptionParams{
+		HeightCm:      int4(d.HeightCm),
+		WeightKg:      int4(d.WeightKg),
+		EyeColorID:    text(d.EyeColorID),
+		HairColorID:   text(d.HairColorID),
+		Build:         text(d.Build),
+		BloodType:     text(d.BloodType),
+		EffectiveFrom: dateText(d.EffectiveFrom),
+		EffectiveTo:   dateText(d.EffectiveTo),
+		Source:        text(d.Source),
+		Confidence:    text(d.Confidence),
+		ID:            d.ID,
+		PersonID:      d.PersonID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.PhysicalDescription{}, domain.ErrPhysicalDescriptionNotFound
+		}
+		return domain.PhysicalDescription{}, mapWriteErr(err)
+	}
+	return toPhysicalDescription(row), nil
+}
+
+func (r *Repository) DeletePhysicalDescription(ctx context.Context, personID, id string) error {
+	if _, err := r.q.DeletePhysicalDescription(ctx, personsql.DeletePhysicalDescriptionParams{ID: id, PersonID: personID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrPhysicalDescriptionNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) ListPhysicalDescriptions(ctx context.Context, personID string) ([]domain.PhysicalDescription, error) {
+	rows, err := r.q.ListPhysicalDescriptions(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.PhysicalDescription, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toPhysicalDescription(row))
+	}
+	return out, nil
+}
+
+// distinguishing marks.
+
+func (r *Repository) UpsertDistinguishingMark(ctx context.Context, m domain.DistinguishingMark) (domain.DistinguishingMark, error) {
+	if m.ID == "" {
+		row, err := r.q.InsertDistinguishingMark(ctx, personsql.InsertDistinguishingMarkParams{
+			PersonID:     m.PersonID,
+			Kind:         m.Kind,
+			BodyLocation: text(m.BodyLocation),
+			Description:  text(m.Description),
+			Source:       text(m.Source),
+			Confidence:   text(m.Confidence),
+		})
+		if err != nil {
+			return domain.DistinguishingMark{}, mapWriteErr(err)
+		}
+		return toDistinguishingMark(row), nil
+	}
+	row, err := r.q.UpdateDistinguishingMark(ctx, personsql.UpdateDistinguishingMarkParams{
+		Kind:         m.Kind,
+		BodyLocation: text(m.BodyLocation),
+		Description:  text(m.Description),
+		Source:       text(m.Source),
+		Confidence:   text(m.Confidence),
+		ID:           m.ID,
+		PersonID:     m.PersonID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.DistinguishingMark{}, domain.ErrDistinguishingMarkNotFound
+		}
+		return domain.DistinguishingMark{}, mapWriteErr(err)
+	}
+	return toDistinguishingMark(row), nil
+}
+
+func (r *Repository) DeleteDistinguishingMark(ctx context.Context, personID, id string) error {
+	if _, err := r.q.DeleteDistinguishingMark(ctx, personsql.DeleteDistinguishingMarkParams{ID: id, PersonID: personID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrDistinguishingMarkNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) ListDistinguishingMarks(ctx context.Context, personID string) ([]domain.DistinguishingMark, error) {
+	rows, err := r.q.ListDistinguishingMarks(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.DistinguishingMark, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toDistinguishingMark(row))
+	}
+	return out, nil
+}
+
+// ethnicity-type catalog.
+
+func (r *Repository) ListEthnicityTypes(ctx context.Context, f domain.EthnicityTypeFilter) ([]domain.EthnicityType, error) {
+	lim := int32(f.Limit)
+	if lim <= 0 {
+		lim = 2000
+	}
+	rows, err := r.q.ListEthnicityTypes(ctx, personsql.ListEthnicityTypesParams{
+		TopLevel: f.TopLevel,
+		Parent:   text(f.Parent),
+		Query:    f.Query,
+		Lim:      lim,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.EthnicityType, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, domain.EthnicityType{
+			ID: row.ID, Code: row.Code, Name: row.Name,
+			ParentID: row.ParentID.String, WikidataID: row.WikidataID.String,
+			HasChildren: row.HasChildren, Status: row.Status, SortOrder: int4Ptr(row.SortOrder),
+		})
+	}
+	return out, nil
+}
+
+func (r *Repository) GetEthnicityTypeByCode(ctx context.Context, code string) (domain.EthnicityType, error) {
+	row, err := r.q.GetEthnicityTypeByCode(ctx, code)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.EthnicityType{}, domain.ErrUnknownEthnicityType
+		}
+		return domain.EthnicityType{}, err
+	}
+	return toEthnicityType(row), nil
+}
+
+func (r *Repository) GetEthnicityTypeByID(ctx context.Context, id string) (domain.EthnicityType, error) {
+	row, err := r.q.GetEthnicityTypeByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.EthnicityType{}, domain.ErrUnknownEthnicityType
+		}
+		return domain.EthnicityType{}, err
+	}
+	return domain.EthnicityType{
+		ID: row.ID, Code: row.Code, Name: row.Name,
+		ParentID: row.ParentID.String, WikidataID: row.WikidataID.String,
+		HasChildren: row.HasChildren, Status: row.Status, SortOrder: int4Ptr(row.SortOrder),
+	}, nil
+}
+
+func (r *Repository) ListEthnicityTypeLanguages(ctx context.Context, ethnicityTypeID string) ([]string, error) {
+	return r.q.ListEthnicityTypeLanguages(ctx, ethnicityTypeID)
+}
+
+func (r *Repository) ListEthnicityTypeCountries(ctx context.Context, ethnicityTypeID string) ([]string, error) {
+	return r.q.ListEthnicityTypeCountries(ctx, ethnicityTypeID)
+}
+
+func (r *Repository) UpsertEthnicityType(ctx context.Context, t domain.EthnicityType) (domain.EthnicityType, error) {
+	row, err := r.q.UpsertEthnicityType(ctx, personsql.UpsertEthnicityTypeParams{
+		Code:       t.Code,
+		Name:       t.Name,
+		ParentID:   text(t.ParentID),
+		WikidataID: text(t.WikidataID),
+		SortOrder:  int4(t.SortOrder),
+	})
+	if err != nil {
+		return domain.EthnicityType{}, mapWriteErr(err)
+	}
+	return toEthnicityType(row), nil
+}
+
+// ethnicities — the encrypted link__has_ethnicity.
+
+func (r *Repository) InsertEthnicity(ctx context.Context, e domain.StoredEthnicity) (domain.StoredEthnicity, error) {
+	row, err := r.q.InsertEthnicity(ctx, personsql.InsertEthnicityParams{
+		PersonID:        e.PersonID,
+		ValueCiphertext: e.ValueCiphertext,
+		WrappedDek:      e.WrappedDEK,
+		KeyRef:          text(e.KeyRef),
+		ValueBlindIndex: e.ValueBlindIndex,
+		LegalBasis:      e.LegalBasis,
+		Source:          text(e.Source),
+		Confidence:      text(e.Confidence),
+	})
+	if err != nil {
+		return domain.StoredEthnicity{}, mapWriteErr(err)
+	}
+	return toStoredEthnicity(row), nil
+}
+
+func (r *Repository) UpdateEthnicity(ctx context.Context, e domain.StoredEthnicity) (domain.StoredEthnicity, error) {
+	row, err := r.q.UpdateEthnicity(ctx, personsql.UpdateEthnicityParams{
+		ValueCiphertext: e.ValueCiphertext,
+		WrappedDek:      e.WrappedDEK,
+		KeyRef:          text(e.KeyRef),
+		ValueBlindIndex: e.ValueBlindIndex,
+		LegalBasis:      e.LegalBasis,
+		Status:          e.Status,
+		Source:          text(e.Source),
+		Confidence:      text(e.Confidence),
+		ID:              e.ID,
+		PersonID:        e.PersonID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.StoredEthnicity{}, domain.ErrEthnicityNotFound
+		}
+		return domain.StoredEthnicity{}, mapWriteErr(err)
+	}
+	return toStoredEthnicity(row), nil
+}
+
+func (r *Repository) DeleteEthnicity(ctx context.Context, personID, id string) error {
+	if _, err := r.q.DeleteEthnicity(ctx, personsql.DeleteEthnicityParams{ID: id, PersonID: personID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrEthnicityNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) ListEthnicities(ctx context.Context, personID string) ([]domain.StoredEthnicity, error) {
+	rows, err := r.q.ListEthnicities(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.StoredEthnicity, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toStoredEthnicity(row))
+	}
+	return out, nil
+}
+
+func (r *Repository) CryptoEraseEthnicities(ctx context.Context, personID string) (int64, error) {
+	return r.q.CryptoEraseEthnicities(ctx, personID)
+}
+
+// M31 row mappers.
+
+func toPhysicalDescription(r personsql.OikumeneaPersonPhysicalDescription) domain.PhysicalDescription {
+	return domain.PhysicalDescription{
+		ID:            r.ID,
+		PersonID:      r.PersonID,
+		HeightCm:      int4Ptr(r.HeightCm),
+		WeightKg:      int4Ptr(r.WeightKg),
+		EyeColorID:    strText(r.EyeColorID),
+		HairColorID:   strText(r.HairColorID),
+		Build:         strText(r.Build),
+		BloodType:     strText(r.BloodType),
+		EffectiveFrom: dateStr(r.EffectiveFrom),
+		EffectiveTo:   dateStr(r.EffectiveTo),
+		Source:        strText(r.Source),
+		Confidence:    strText(r.Confidence),
+	}
+}
+
+func toDistinguishingMark(r personsql.OikumeneaPersonDistinguishingMark) domain.DistinguishingMark {
+	return domain.DistinguishingMark{
+		ID:           r.ID,
+		PersonID:     r.PersonID,
+		Kind:         r.Kind,
+		BodyLocation: strText(r.BodyLocation),
+		Description:  strText(r.Description),
+		Source:       strText(r.Source),
+		Confidence:   strText(r.Confidence),
+	}
+}
+
+func toEthnicityType(r personsql.OikumeneaPersonEthnicityType) domain.EthnicityType {
+	return domain.EthnicityType{
+		ID:         r.ID,
+		Code:       r.Code,
+		Name:       r.Name,
+		ParentID:   r.ParentID.String,
+		WikidataID: r.WikidataID.String,
+		Status:     r.Status,
+		SortOrder:  int4Ptr(r.SortOrder),
+	}
+}
+
+func toStoredEthnicity(r personsql.OikumeneaPersonEthnicity) domain.StoredEthnicity {
+	return domain.StoredEthnicity{
+		ID:              r.ID,
+		PersonID:        r.PersonID,
+		ValueCiphertext: r.ValueCiphertext,
+		WrappedDEK:      r.WrappedDek,
+		KeyRef:          strText(r.KeyRef),
+		ValueBlindIndex: r.ValueBlindIndex,
+		LegalBasis:      r.LegalBasis,
+		Status:          r.Status,
+		Source:          strText(r.Source),
+		Confidence:      strText(r.Confidence),
+		CreatedAt:       r.CreatedAt.Time,
+		UpdatedAt:       r.UpdatedAt.Time,
+	}
+}
+
 func toNameVariant(r personsql.OikumeneaPersonNameVariant) domain.NameVariant {
 	return domain.NameVariant{
 		ID:       r.ID,
@@ -1499,7 +1875,10 @@ func toNameVariant(r personsql.OikumeneaPersonNameVariant) domain.NameVariant {
 			Credentials:   r.Credentials.String,
 			Preferred:     r.Preferred.String,
 		},
-		IsPrimary: r.IsPrimary,
+		IsPrimary:   r.IsPrimary,
+		VariantKind: r.VariantKind,
+		Source:      strText(r.Source),
+		Confidence:  strText(r.Confidence),
 	}
 }
 
@@ -1575,6 +1954,8 @@ func mapWriteErr(err error) error {
 			return domain.ErrUnknownPlatform
 		case strings.Contains(name, "type_code"):
 			return domain.ErrUnknownContactType
+		case strings.Contains(name, "legal_basis"):
+			return domain.ErrUnknownLegalBasis
 		case strings.Contains(name, "country"):
 			return domain.ErrUnknownCountry
 		}
@@ -1604,6 +1985,23 @@ func textPtr(p *string) pgtype.Text {
 		return pgtype.Text{}
 	}
 	return pgtype.Text{String: *p, Valid: true}
+}
+
+// int4 maps an optional int to a nullable integer column (nil => NULL).
+func int4(p *int) pgtype.Int4 {
+	if p == nil {
+		return pgtype.Int4{}
+	}
+	return pgtype.Int4{Int32: int32(*p), Valid: true}
+}
+
+// int4Ptr reads a nullable integer column into an *int (nil when NULL).
+func int4Ptr(v pgtype.Int4) *int {
+	if !v.Valid {
+		return nil
+	}
+	out := int(v.Int32)
+	return &out
 }
 
 func dateText(s string) pgtype.Date {

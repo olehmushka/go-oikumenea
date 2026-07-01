@@ -8,5 +8,9 @@
 # local-dev tooling connection/secrets (commit .env.example instead)
 .env
 
-oikumenea
-hermenea
+# compiled binaries dropped at the repo root by `go build ./cmd/oikumenea|./cmd/hermenea`.
+# MUST be anchored with a leading slash — a bare `oikumenea`/`hermenea` matches every same-named
+# directory in the tree (internal/hermenea, cmd/hermenea, migrations/hermenea, internal/conjure/oikumenea…)
+# and silently ignores real source.
+/oikumenea
+/hermenea

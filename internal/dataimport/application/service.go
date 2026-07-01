@@ -46,6 +46,9 @@ type LanguageScriptStoreFactory func(conn db.DBTX) domain.LanguageScriptStore
 // ExternalOrgStoreFactory binds the external-organizations store port to the caller's tx (D-ExternalOrgs).
 type ExternalOrgStoreFactory func(conn db.DBTX) domain.ExternalOrgStore
 
+// EthnicityStoreFactory binds the ethnicity-scheme store port to the caller's tx (D-PhysicalIdentity, M43).
+type EthnicityStoreFactory func(conn db.DBTX) domain.EthnicityStore
+
 // Envelope is the application-level canonical envelope (the transport maps the Conjure type onto it).
 type Envelope struct {
 	ObjectType    string
@@ -375,6 +378,84 @@ func LanguageScriptsHandler(newStore LanguageScriptStoreFactory) Handler {
 		}
 		return sum, nil
 	}
+}
+
+// EthnicitySchemeHandler builds the ethnicity taxonomy upsert handler (D-PhysicalIdentity amendment, M43).
+// Mirrors LanguageSchemeHandler: idempotency keyed on source_version (insert when absent, update when the
+// incoming edition differs, skip otherwise — never deletes); records MUST arrive parent-first (parent_id
+// FK is RESTRICT); the group's language + country ties are replaced on every insert/update; after the
+// batch the transitive closure is rebuilt once (the whole import is one tx). Group-level reference data —
+// the person's declared ethnicity (person_ethnicities) is untouched.
+func EthnicitySchemeHandler(newStore EthnicityStoreFactory) Handler {
+	return func(ctx context.Context, tx pgx.Tx, records []domain.Record, prov domain.Provenance) (domain.Summary, error) {
+		store := newStore(tx)
+		var sum domain.Summary
+		touched := false
+		for _, rec := range records {
+			e, err := ethnicityFields(rec)
+			if err != nil {
+				return domain.Summary{}, err
+			}
+			ver, found, err := store.GetVersion(ctx, e.Code)
+			if err != nil {
+				return domain.Summary{}, err
+			}
+			switch {
+			case !found:
+				if err := store.Insert(ctx, e, prov); err != nil {
+					return domain.Summary{}, err
+				}
+				sum.Created++
+				touched = true
+			case ver != prov.SourceVersion:
+				if err := store.UpdateImport(ctx, e, prov); err != nil {
+					return domain.Summary{}, err
+				}
+				sum.Updated++
+				touched = true
+			default:
+				sum.Skipped++
+				continue // unchanged edition: leave language/country ties as-is
+			}
+			if err := store.ReplaceLanguages(ctx, e.Code, e.Languages); err != nil {
+				return domain.Summary{}, err
+			}
+			if err := store.ReplaceCountries(ctx, e.Code, e.Countries); err != nil {
+				return domain.Summary{}, err
+			}
+		}
+		if touched {
+			if err := store.RebuildClosure(ctx); err != nil {
+				return domain.Summary{}, err
+			}
+		}
+		return sum, nil
+	}
+}
+
+// ethnicityFields decodes an ethnicity record. code + name are required; parent/wikidataId fold to "";
+// languages are lower-cased keys (glottocode or ISO-639-3), countries upper-cased ISO alpha-2.
+func ethnicityFields(rec domain.Record) (domain.Ethnicity, error) {
+	e := domain.Ethnicity{
+		Code:       strings.ToLower(strings.TrimSpace(recStr(rec["code"]))),
+		Name:       strings.TrimSpace(recStr(rec["name"])),
+		Parent:     strings.ToLower(strings.TrimSpace(recStr(rec["parent"]))),
+		WikidataID: strings.TrimSpace(recStr(rec["wikidataId"])),
+	}
+	if e.Code == "" || e.Name == "" {
+		return domain.Ethnicity{}, domain.ErrInvalidRecord
+	}
+	for _, l := range recStrList(rec["languages"]) {
+		if k := strings.ToLower(strings.TrimSpace(l)); k != "" {
+			e.Languages = append(e.Languages, k)
+		}
+	}
+	for _, c := range recStrList(rec["countries"]) {
+		if cc := strings.ToUpper(strings.TrimSpace(c)); cc != "" {
+			e.Countries = append(e.Countries, cc)
+		}
+	}
+	return e, nil
 }
 
 // ExternalOrgsHandler builds the external-organizations upsert handler (D-ExternalOrgs, M30). It resolves

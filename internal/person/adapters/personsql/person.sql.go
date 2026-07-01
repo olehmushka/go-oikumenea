@@ -72,9 +72,10 @@ func (q *Queries) ClearPrimaryMessengerLinks(ctx context.Context, personID strin
 
 const clearPrimaryNameVariants = `-- name: ClearPrimaryNameVariants :exec
 UPDATE oikumenea.person_name_variants SET is_primary = false
-WHERE person_id = $1 AND is_primary
+WHERE person_id = $1 AND is_primary AND variant_kind = 'transliteration'
 `
 
+// Demote the person's primary transliteration variant(s) (is_primary marks at most one transliteration).
 func (q *Queries) ClearPrimaryNameVariants(ctx context.Context, personID string) error {
 	_, err := q.db.Exec(ctx, clearPrimaryNameVariants, personID)
 	return err
@@ -109,6 +110,22 @@ WHERE account_id = $1 AND valid_to IS NULL AND deleted_at IS NULL
 func (q *Queries) CloseCurrentSocialAccountHandle(ctx context.Context, accountID string) error {
 	_, err := q.db.Exec(ctx, closeCurrentSocialAccountHandle, accountID)
 	return err
+}
+
+const cryptoEraseEthnicities = `-- name: CryptoEraseEthnicities :execrows
+UPDATE oikumenea.person_ethnicities
+SET value_ciphertext = NULL, wrapped_dek = NULL, key_ref = NULL, value_blind_index = NULL
+WHERE person_id = $1 AND deleted_at IS NULL AND value_ciphertext IS NOT NULL
+`
+
+// Crypto-erase all of a person's ethnicities (drop the envelope, keep the row tombstone). The person-purge
+// erasure path for the pii:special declared value (D-PhysicalIdentity / D-SpecialPII).
+func (q *Queries) CryptoEraseEthnicities(ctx context.Context, personID string) (int64, error) {
+	result, err := q.db.Exec(ctx, cryptoEraseEthnicities, personID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deactivatePerson = `-- name: DeactivatePerson :one
@@ -217,6 +234,15 @@ DELETE FROM oikumenea.company_shareholdings WHERE holder_kind = 'person' AND hol
 
 func (q *Queries) DeleteAllCompanyShareholdingsForPerson(ctx context.Context, personID string) error {
 	_, err := q.db.Exec(ctx, deleteAllCompanyShareholdingsForPerson, personID)
+	return err
+}
+
+const deleteAllDistinguishingMarks = `-- name: DeleteAllDistinguishingMarks :exec
+DELETE FROM oikumenea.person_distinguishing_marks WHERE person_id = $1
+`
+
+func (q *Queries) DeleteAllDistinguishingMarks(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllDistinguishingMarks, personID)
 	return err
 }
 
@@ -395,6 +421,15 @@ func (q *Queries) DeleteAllPhones(ctx context.Context, personID string) error {
 	return err
 }
 
+const deleteAllPhysicalDescriptions = `-- name: DeleteAllPhysicalDescriptions :exec
+DELETE FROM oikumenea.person_physical_descriptions WHERE person_id = $1
+`
+
+func (q *Queries) DeleteAllPhysicalDescriptions(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllPhysicalDescriptions, personID)
+	return err
+}
+
 const deleteAllResidences = `-- name: DeleteAllResidences :exec
 DELETE FROM oikumenea.person_residences WHERE person_id = $1
 `
@@ -490,6 +525,24 @@ func (q *Queries) DeleteCitizenship(ctx context.Context, arg DeleteCitizenshipPa
 	return id, err
 }
 
+const deleteDistinguishingMark = `-- name: DeleteDistinguishingMark :one
+UPDATE oikumenea.person_distinguishing_marks SET deleted_at = now()
+WHERE id = $1 AND person_id = $2 AND deleted_at IS NULL
+RETURNING id
+`
+
+type DeleteDistinguishingMarkParams struct {
+	ID       string
+	PersonID string
+}
+
+func (q *Queries) DeleteDistinguishingMark(ctx context.Context, arg DeleteDistinguishingMarkParams) (string, error) {
+	row := q.db.QueryRow(ctx, deleteDistinguishingMark, arg.ID, arg.PersonID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const deleteEmail = `-- name: DeleteEmail :one
 UPDATE oikumenea.person_emails SET deleted_at = now()
 WHERE id = $1 AND person_id = $2 AND deleted_at IS NULL
@@ -503,6 +556,24 @@ type DeleteEmailParams struct {
 
 func (q *Queries) DeleteEmail(ctx context.Context, arg DeleteEmailParams) (string, error) {
 	row := q.db.QueryRow(ctx, deleteEmail, arg.ID, arg.PersonID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
+const deleteEthnicity = `-- name: DeleteEthnicity :one
+UPDATE oikumenea.person_ethnicities SET deleted_at = now()
+WHERE id = $1 AND person_id = $2 AND deleted_at IS NULL
+RETURNING id
+`
+
+type DeleteEthnicityParams struct {
+	ID       string
+	PersonID string
+}
+
+func (q *Queries) DeleteEthnicity(ctx context.Context, arg DeleteEthnicityParams) (string, error) {
+	row := q.db.QueryRow(ctx, deleteEthnicity, arg.ID, arg.PersonID)
 	var id string
 	err := row.Scan(&id)
 	return id, err
@@ -565,8 +636,28 @@ func (q *Queries) DeleteMessengerLink(ctx context.Context, arg DeleteMessengerLi
 	return id, err
 }
 
+const deleteNameAlias = `-- name: DeleteNameAlias :one
+DELETE FROM oikumenea.person_name_variants
+WHERE id = $1 AND person_id = $2 AND variant_kind <> 'transliteration'
+RETURNING id
+`
+
+type DeleteNameAliasParams struct {
+	ID       string
+	PersonID string
+}
+
+// Delete one alias by its RID (holder-scoped). Refuses the transliteration kind (use DeleteNameVariant).
+func (q *Queries) DeleteNameAlias(ctx context.Context, arg DeleteNameAliasParams) (string, error) {
+	row := q.db.QueryRow(ctx, deleteNameAlias, arg.ID, arg.PersonID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const deleteNameVariant = `-- name: DeleteNameVariant :one
-DELETE FROM oikumenea.person_name_variants WHERE person_id = $1 AND locale = $2
+DELETE FROM oikumenea.person_name_variants
+WHERE person_id = $1 AND locale = $2 AND variant_kind = 'transliteration'
 RETURNING id
 `
 
@@ -575,6 +666,7 @@ type DeleteNameVariantParams struct {
 	Locale   string
 }
 
+// Delete the TRANSLITERATION variant for a locale (aliases are deleted by id via DeleteNameAlias).
 func (q *Queries) DeleteNameVariant(ctx context.Context, arg DeleteNameVariantParams) (string, error) {
 	row := q.db.QueryRow(ctx, deleteNameVariant, arg.PersonID, arg.Locale)
 	var id string
@@ -649,6 +741,24 @@ type DeletePhoneParams struct {
 
 func (q *Queries) DeletePhone(ctx context.Context, arg DeletePhoneParams) (string, error) {
 	row := q.db.QueryRow(ctx, deletePhone, arg.ID, arg.PersonID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
+const deletePhysicalDescription = `-- name: DeletePhysicalDescription :one
+UPDATE oikumenea.person_physical_descriptions SET deleted_at = now()
+WHERE id = $1 AND person_id = $2 AND deleted_at IS NULL
+RETURNING id
+`
+
+type DeletePhysicalDescriptionParams struct {
+	ID       string
+	PersonID string
+}
+
+func (q *Queries) DeletePhysicalDescription(ctx context.Context, arg DeletePhysicalDescriptionParams) (string, error) {
+	row := q.db.QueryRow(ctx, deletePhysicalDescription, arg.ID, arg.PersonID)
 	var id string
 	err := row.Scan(&id)
 	return id, err
@@ -753,6 +863,65 @@ func (q *Queries) GetActivePersonByCode(ctx context.Context, code pgtype.Text) (
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.DateOfDeath,
+	)
+	return i, err
+}
+
+const getEthnicityTypeByCode = `-- name: GetEthnicityTypeByCode :one
+SELECT id, code, name, status, sort_order, created_at, updated_at, deleted_at, parent_id, wikidata_id, source, source_version, imported_at FROM oikumenea.person_ethnicity_types WHERE code = $1 AND deleted_at IS NULL
+`
+
+func (q *Queries) GetEthnicityTypeByCode(ctx context.Context, code string) (OikumeneaPersonEthnicityType, error) {
+	row := q.db.QueryRow(ctx, getEthnicityTypeByCode, code)
+	var i OikumeneaPersonEthnicityType
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.Status,
+		&i.SortOrder,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.ParentID,
+		&i.WikidataID,
+		&i.Source,
+		&i.SourceVersion,
+		&i.ImportedAt,
+	)
+	return i, err
+}
+
+const getEthnicityTypeByID = `-- name: GetEthnicityTypeByID :one
+SELECT e.id, e.code, e.name, e.parent_id, e.wikidata_id, e.status, e.sort_order,
+  EXISTS (SELECT 1 FROM oikumenea.person_ethnicity_types c WHERE c.parent_id = e.id AND c.deleted_at IS NULL) AS has_children
+FROM oikumenea.person_ethnicity_types e
+WHERE e.id = $1 AND e.deleted_at IS NULL
+`
+
+type GetEthnicityTypeByIDRow struct {
+	ID          string
+	Code        string
+	Name        string
+	ParentID    pgtype.Text
+	WikidataID  pgtype.Text
+	Status      string
+	SortOrder   pgtype.Int4
+	HasChildren bool
+}
+
+func (q *Queries) GetEthnicityTypeByID(ctx context.Context, id string) (GetEthnicityTypeByIDRow, error) {
+	row := q.db.QueryRow(ctx, getEthnicityTypeByID, id)
+	var i GetEthnicityTypeByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.ParentID,
+		&i.WikidataID,
+		&i.Status,
+		&i.SortOrder,
+		&i.HasChildren,
 	)
 	return i, err
 }
@@ -998,6 +1167,52 @@ func (q *Queries) InsertCallSign(ctx context.Context, arg InsertCallSignParams) 
 	return i, err
 }
 
+const insertDistinguishingMark = `-- name: InsertDistinguishingMark :one
+
+INSERT INTO oikumenea.person_distinguishing_marks (
+  person_id, kind, body_location, description, source, confidence
+) VALUES (
+  $1, $2, $3, $4,
+  $5, $6
+)
+RETURNING id, person_id, kind, body_location, description, source, confidence, created_at, updated_at, deleted_at
+`
+
+type InsertDistinguishingMarkParams struct {
+	PersonID     string
+	Kind         string
+	BodyLocation pgtype.Text
+	Description  pgtype.Text
+	Source       pgtype.Text
+	Confidence   pgtype.Text
+}
+
+// ============================ distinguishing marks (D-PhysicalIdentity, M31) ============================
+func (q *Queries) InsertDistinguishingMark(ctx context.Context, arg InsertDistinguishingMarkParams) (OikumeneaPersonDistinguishingMark, error) {
+	row := q.db.QueryRow(ctx, insertDistinguishingMark,
+		arg.PersonID,
+		arg.Kind,
+		arg.BodyLocation,
+		arg.Description,
+		arg.Source,
+		arg.Confidence,
+	)
+	var i OikumeneaPersonDistinguishingMark
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.Kind,
+		&i.BodyLocation,
+		&i.Description,
+		&i.Source,
+		&i.Confidence,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const insertEmail = `-- name: InsertEmail :one
 
 INSERT INTO oikumenea.person_emails (person_id, type_code, address, provider, is_primary)
@@ -1032,6 +1247,61 @@ func (q *Queries) InsertEmail(ctx context.Context, arg InsertEmailParams) (Oikum
 		&i.Address,
 		&i.Provider,
 		&i.IsPrimary,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const insertEthnicity = `-- name: InsertEthnicity :one
+
+INSERT INTO oikumenea.person_ethnicities (
+  person_id, value_ciphertext, wrapped_dek, key_ref, value_blind_index, legal_basis, source, confidence
+) VALUES (
+  $1, $2, $3, $4, $5, $6,
+  $7, $8
+)
+RETURNING id, person_id, value_ciphertext, wrapped_dek, key_ref, value_blind_index, legal_basis, status, source, confidence, created_at, updated_at, deleted_at
+`
+
+type InsertEthnicityParams struct {
+	PersonID        string
+	ValueCiphertext []byte
+	WrappedDek      []byte
+	KeyRef          pgtype.Text
+	ValueBlindIndex []byte
+	LegalBasis      string
+	Source          pgtype.Text
+	Confidence      pgtype.Text
+}
+
+// ============================ ethnicities — link__has_ethnicity (pii:special, encrypted) ============================
+// The declared ethnicity is supplied as the envelope (ciphertext/wrapped_dek/key_ref/blind_index) sealed
+// in the application; legal_basis FK validates the lawful basis.
+func (q *Queries) InsertEthnicity(ctx context.Context, arg InsertEthnicityParams) (OikumeneaPersonEthnicity, error) {
+	row := q.db.QueryRow(ctx, insertEthnicity,
+		arg.PersonID,
+		arg.ValueCiphertext,
+		arg.WrappedDek,
+		arg.KeyRef,
+		arg.ValueBlindIndex,
+		arg.LegalBasis,
+		arg.Source,
+		arg.Confidence,
+	)
+	var i OikumeneaPersonEthnicity
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.ValueCiphertext,
+		&i.WrappedDek,
+		&i.KeyRef,
+		&i.ValueBlindIndex,
+		&i.LegalBasis,
+		&i.Status,
+		&i.Source,
+		&i.Confidence,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -1145,6 +1415,82 @@ func (q *Queries) InsertMessengerLink(ctx context.Context, arg InsertMessengerLi
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const insertNameAlias = `-- name: InsertNameAlias :one
+INSERT INTO oikumenea.person_name_variants (
+  person_id, locale, display_name, title, given, given2, surname, surname_prefix,
+  surname2, generation, credentials, preferred, is_primary, variant_kind, source, confidence
+) VALUES (
+  $1, $2, $3, $4, $5, $6,
+  $7, $8, $9, $10,
+  $11, $12, false, $13,
+  $14, $15
+)
+RETURNING id, person_id, locale, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, is_primary, created_at, updated_at, variant_kind, source, confidence
+`
+
+type InsertNameAliasParams struct {
+	PersonID      string
+	Locale        string
+	DisplayName   string
+	Title         pgtype.Text
+	Given         pgtype.Text
+	Given2        pgtype.Text
+	Surname       pgtype.Text
+	SurnamePrefix pgtype.Text
+	Surname2      pgtype.Text
+	Generation    pgtype.Text
+	Credentials   pgtype.Text
+	Preferred     pgtype.Text
+	VariantKind   string
+	Source        pgtype.Text
+	Confidence    pgtype.Text
+}
+
+// Add an ALIAS name form (variant_kind in aka|former_legal|maiden|pseudonym|cover; D-PhysicalIdentity).
+// Aliases are unconstrained per (person, locale) and addressed by their RID; they may carry attribution.
+func (q *Queries) InsertNameAlias(ctx context.Context, arg InsertNameAliasParams) (OikumeneaPersonNameVariant, error) {
+	row := q.db.QueryRow(ctx, insertNameAlias,
+		arg.PersonID,
+		arg.Locale,
+		arg.DisplayName,
+		arg.Title,
+		arg.Given,
+		arg.Given2,
+		arg.Surname,
+		arg.SurnamePrefix,
+		arg.Surname2,
+		arg.Generation,
+		arg.Credentials,
+		arg.Preferred,
+		arg.VariantKind,
+		arg.Source,
+		arg.Confidence,
+	)
+	var i OikumeneaPersonNameVariant
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.Locale,
+		&i.DisplayName,
+		&i.Title,
+		&i.Given,
+		&i.Given2,
+		&i.Surname,
+		&i.SurnamePrefix,
+		&i.Surname2,
+		&i.Generation,
+		&i.Credentials,
+		&i.Preferred,
+		&i.IsPrimary,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.VariantKind,
+		&i.Source,
+		&i.Confidence,
 	)
 	return i, err
 }
@@ -1382,6 +1728,70 @@ func (q *Queries) InsertPhone(ctx context.Context, arg InsertPhoneParams) (Oikum
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const insertPhysicalDescription = `-- name: InsertPhysicalDescription :one
+
+INSERT INTO oikumenea.person_physical_descriptions (
+  person_id, height_cm, weight_kg, eye_color_id, hair_color_id, build, blood_type,
+  effective_from, effective_to, source, confidence
+) VALUES (
+  $1, $2, $3, $4::uuid,
+  $5::uuid, $6, $7,
+  COALESCE($8::date, (now() AT TIME ZONE 'UTC')::date), $9::date,
+  $10, $11
+)
+RETURNING id, person_id, height_cm, weight_kg, build, blood_type, effective_from, effective_to, source, confidence, created_at, updated_at, deleted_at, eye_color_id, hair_color_id
+`
+
+type InsertPhysicalDescriptionParams struct {
+	PersonID      string
+	HeightCm      pgtype.Int4
+	WeightKg      pgtype.Int4
+	EyeColorID    pgtype.Text
+	HairColorID   pgtype.Text
+	Build         pgtype.Text
+	BloodType     pgtype.Text
+	EffectiveFrom pgtype.Date
+	EffectiveTo   pgtype.Date
+	Source        pgtype.Text
+	Confidence    pgtype.Text
+}
+
+// ============================ physical descriptions (D-PhysicalIdentity, M31) ============================
+func (q *Queries) InsertPhysicalDescription(ctx context.Context, arg InsertPhysicalDescriptionParams) (OikumeneaPersonPhysicalDescription, error) {
+	row := q.db.QueryRow(ctx, insertPhysicalDescription,
+		arg.PersonID,
+		arg.HeightCm,
+		arg.WeightKg,
+		arg.EyeColorID,
+		arg.HairColorID,
+		arg.Build,
+		arg.BloodType,
+		arg.EffectiveFrom,
+		arg.EffectiveTo,
+		arg.Source,
+		arg.Confidence,
+	)
+	var i OikumeneaPersonPhysicalDescription
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.HeightCm,
+		&i.WeightKg,
+		&i.Build,
+		&i.BloodType,
+		&i.EffectiveFrom,
+		&i.EffectiveTo,
+		&i.Source,
+		&i.Confidence,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.EyeColorID,
+		&i.HairColorID,
 	)
 	return i, err
 }
@@ -1680,6 +2090,43 @@ func (q *Queries) ListCitizenships(ctx context.Context, personID string) ([]Oiku
 	return items, nil
 }
 
+const listDistinguishingMarks = `-- name: ListDistinguishingMarks :many
+SELECT id, person_id, kind, body_location, description, source, confidence, created_at, updated_at, deleted_at FROM oikumenea.person_distinguishing_marks
+WHERE person_id = $1 AND deleted_at IS NULL
+ORDER BY kind, id
+`
+
+func (q *Queries) ListDistinguishingMarks(ctx context.Context, personID string) ([]OikumeneaPersonDistinguishingMark, error) {
+	rows, err := q.db.Query(ctx, listDistinguishingMarks, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonDistinguishingMark
+	for rows.Next() {
+		var i OikumeneaPersonDistinguishingMark
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.Kind,
+			&i.BodyLocation,
+			&i.Description,
+			&i.Source,
+			&i.Confidence,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listEmailTypes = `-- name: ListEmailTypes :many
 
 SELECT code, name, status, sort_order, created_at, updated_at, deleted_at FROM oikumenea.person_email_types WHERE deleted_at IS NULL ORDER BY sort_order, code
@@ -1738,6 +2185,175 @@ func (q *Queries) ListEmails(ctx context.Context, personID string) ([]OikumeneaP
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEthnicities = `-- name: ListEthnicities :many
+SELECT id, person_id, value_ciphertext, wrapped_dek, key_ref, value_blind_index, legal_basis, status, source, confidence, created_at, updated_at, deleted_at FROM oikumenea.person_ethnicities
+WHERE person_id = $1 AND deleted_at IS NULL
+ORDER BY created_at DESC, id
+`
+
+func (q *Queries) ListEthnicities(ctx context.Context, personID string) ([]OikumeneaPersonEthnicity, error) {
+	rows, err := q.db.Query(ctx, listEthnicities, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonEthnicity
+	for rows.Next() {
+		var i OikumeneaPersonEthnicity
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.ValueCiphertext,
+			&i.WrappedDek,
+			&i.KeyRef,
+			&i.ValueBlindIndex,
+			&i.LegalBasis,
+			&i.Status,
+			&i.Source,
+			&i.Confidence,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEthnicityTypeCountries = `-- name: ListEthnicityTypeCountries :many
+SELECT c.id
+FROM oikumenea.person_ethnicity_type_countries pec
+JOIN oikumenea.geo_countries c ON c.id = pec.country_id
+WHERE pec.ethnicity_type_id = $1
+ORDER BY c.code
+`
+
+// Homeland-country RIDs for a group.
+func (q *Queries) ListEthnicityTypeCountries(ctx context.Context, ethnicityTypeID string) ([]string, error) {
+	rows, err := q.db.Query(ctx, listEthnicityTypeCountries, ethnicityTypeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEthnicityTypeLanguages = `-- name: ListEthnicityTypeLanguages :many
+SELECT l.id
+FROM oikumenea.person_ethnicity_type_languages pel
+JOIN oikumenea.language_languoids l ON l.id = pel.language_id
+WHERE pel.ethnicity_type_id = $1
+ORDER BY l.code
+`
+
+// Associated-language RIDs for a group (ethnolinguistic metadata; group-level, never a person's datum).
+func (q *Queries) ListEthnicityTypeLanguages(ctx context.Context, ethnicityTypeID string) ([]string, error) {
+	rows, err := q.db.Query(ctx, listEthnicityTypeLanguages, ethnicityTypeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEthnicityTypes = `-- name: ListEthnicityTypes :many
+
+SELECT e.id, e.code, e.name, e.parent_id, e.wikidata_id, e.status, e.sort_order,
+  EXISTS (SELECT 1 FROM oikumenea.person_ethnicity_types c WHERE c.parent_id = e.id AND c.deleted_at IS NULL) AS has_children
+FROM oikumenea.person_ethnicity_types e
+WHERE e.deleted_at IS NULL
+  AND (NOT $1::boolean OR e.parent_id IS NULL)
+  AND ($2::uuid IS NULL OR e.parent_id = $2::uuid)
+  AND (NULLIF($3::text, '') IS NULL
+       OR e.name ILIKE '%' || $3::text || '%'
+       OR e.code ILIKE '%' || $3::text || '%')
+ORDER BY (e.parent_id IS NULL) DESC, e.sort_order NULLS LAST, e.code
+LIMIT $4::int
+`
+
+type ListEthnicityTypesParams struct {
+	TopLevel bool
+	Parent   pgtype.Text
+	Query    string
+	Lim      int32
+}
+
+type ListEthnicityTypesRow struct {
+	ID          string
+	Code        string
+	Name        string
+	ParentID    pgtype.Text
+	WikidataID  pgtype.Text
+	Status      string
+	SortOrder   pgtype.Int4
+	HasChildren bool
+}
+
+// ============================ ethnicity-type catalog (D-PhysicalIdentity, M31) ============================
+// Hierarchical catalog listing (D-PhysicalIdentity amendment, M43), mirroring listLanguages: filter to
+// the forest roots (top_level), the immediate children of a parent RID, or a name/code substring. The
+// has_children flag lets a tree browser show the expand affordance only where children exist.
+func (q *Queries) ListEthnicityTypes(ctx context.Context, arg ListEthnicityTypesParams) ([]ListEthnicityTypesRow, error) {
+	rows, err := q.db.Query(ctx, listEthnicityTypes,
+		arg.TopLevel,
+		arg.Parent,
+		arg.Query,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListEthnicityTypesRow
+	for rows.Next() {
+		var i ListEthnicityTypesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.ParentID,
+			&i.WikidataID,
+			&i.Status,
+			&i.SortOrder,
+			&i.HasChildren,
 		); err != nil {
 			return nil, err
 		}
@@ -1860,7 +2476,8 @@ func (q *Queries) ListMessengerLinks(ctx context.Context, personID string) ([]Oi
 }
 
 const listNameVariants = `-- name: ListNameVariants :many
-SELECT id, person_id, locale, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, is_primary, created_at, updated_at FROM oikumenea.person_name_variants WHERE person_id = $1 ORDER BY locale
+SELECT id, person_id, locale, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, is_primary, created_at, updated_at, variant_kind, source, confidence FROM oikumenea.person_name_variants WHERE person_id = $1
+ORDER BY variant_kind, locale, id
 `
 
 func (q *Queries) ListNameVariants(ctx context.Context, personID string) ([]OikumeneaPersonNameVariant, error) {
@@ -1889,6 +2506,9 @@ func (q *Queries) ListNameVariants(ctx context.Context, personID string) ([]Oiku
 			&i.IsPrimary,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.VariantKind,
+			&i.Source,
+			&i.Confidence,
 		); err != nil {
 			return nil, err
 		}
@@ -2227,6 +2847,48 @@ func (q *Queries) ListPhones(ctx context.Context, personID string) ([]OikumeneaP
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPhysicalDescriptions = `-- name: ListPhysicalDescriptions :many
+SELECT id, person_id, height_cm, weight_kg, build, blood_type, effective_from, effective_to, source, confidence, created_at, updated_at, deleted_at, eye_color_id, hair_color_id FROM oikumenea.person_physical_descriptions
+WHERE person_id = $1 AND deleted_at IS NULL
+ORDER BY effective_from DESC, id
+`
+
+func (q *Queries) ListPhysicalDescriptions(ctx context.Context, personID string) ([]OikumeneaPersonPhysicalDescription, error) {
+	rows, err := q.db.Query(ctx, listPhysicalDescriptions, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonPhysicalDescription
+	for rows.Next() {
+		var i OikumeneaPersonPhysicalDescription
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.HeightCm,
+			&i.WeightKg,
+			&i.Build,
+			&i.BloodType,
+			&i.EffectiveFrom,
+			&i.EffectiveTo,
+			&i.Source,
+			&i.Confidence,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.EyeColorID,
+			&i.HairColorID,
 		); err != nil {
 			return nil, err
 		}
@@ -2632,6 +3294,50 @@ func (q *Queries) UpdateCallSign(ctx context.Context, arg UpdateCallSignParams) 
 	return i, err
 }
 
+const updateDistinguishingMark = `-- name: UpdateDistinguishingMark :one
+UPDATE oikumenea.person_distinguishing_marks SET
+  kind = $1, body_location = $2, description = $3,
+  source = $4, confidence = $5
+WHERE id = $6 AND person_id = $7 AND deleted_at IS NULL
+RETURNING id, person_id, kind, body_location, description, source, confidence, created_at, updated_at, deleted_at
+`
+
+type UpdateDistinguishingMarkParams struct {
+	Kind         string
+	BodyLocation pgtype.Text
+	Description  pgtype.Text
+	Source       pgtype.Text
+	Confidence   pgtype.Text
+	ID           string
+	PersonID     string
+}
+
+func (q *Queries) UpdateDistinguishingMark(ctx context.Context, arg UpdateDistinguishingMarkParams) (OikumeneaPersonDistinguishingMark, error) {
+	row := q.db.QueryRow(ctx, updateDistinguishingMark,
+		arg.Kind,
+		arg.BodyLocation,
+		arg.Description,
+		arg.Source,
+		arg.Confidence,
+		arg.ID,
+		arg.PersonID,
+	)
+	var i OikumeneaPersonDistinguishingMark
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.Kind,
+		&i.BodyLocation,
+		&i.Description,
+		&i.Source,
+		&i.Confidence,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const updateEmail = `-- name: UpdateEmail :one
 UPDATE oikumenea.person_emails SET
   type_code = $1, address = $2, provider = $3, is_primary = $4
@@ -2665,6 +3371,61 @@ func (q *Queries) UpdateEmail(ctx context.Context, arg UpdateEmailParams) (Oikum
 		&i.Address,
 		&i.Provider,
 		&i.IsPrimary,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const updateEthnicity = `-- name: UpdateEthnicity :one
+UPDATE oikumenea.person_ethnicities SET
+  value_ciphertext = $1, wrapped_dek = $2, key_ref = $3,
+  value_blind_index = $4, legal_basis = $5,
+  status = $6, source = $7, confidence = $8
+WHERE id = $9 AND person_id = $10 AND deleted_at IS NULL
+RETURNING id, person_id, value_ciphertext, wrapped_dek, key_ref, value_blind_index, legal_basis, status, source, confidence, created_at, updated_at, deleted_at
+`
+
+type UpdateEthnicityParams struct {
+	ValueCiphertext []byte
+	WrappedDek      []byte
+	KeyRef          pgtype.Text
+	ValueBlindIndex []byte
+	LegalBasis      string
+	Status          string
+	Source          pgtype.Text
+	Confidence      pgtype.Text
+	ID              string
+	PersonID        string
+}
+
+// Re-seal the declared value and/or flip status/legal_basis.
+func (q *Queries) UpdateEthnicity(ctx context.Context, arg UpdateEthnicityParams) (OikumeneaPersonEthnicity, error) {
+	row := q.db.QueryRow(ctx, updateEthnicity,
+		arg.ValueCiphertext,
+		arg.WrappedDek,
+		arg.KeyRef,
+		arg.ValueBlindIndex,
+		arg.LegalBasis,
+		arg.Status,
+		arg.Source,
+		arg.Confidence,
+		arg.ID,
+		arg.PersonID,
+	)
+	var i OikumeneaPersonEthnicity
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.ValueCiphertext,
+		&i.WrappedDek,
+		&i.KeyRef,
+		&i.ValueBlindIndex,
+		&i.LegalBasis,
+		&i.Status,
+		&i.Source,
+		&i.Confidence,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -3028,6 +3789,69 @@ func (q *Queries) UpdatePhone(ctx context.Context, arg UpdatePhoneParams) (Oikum
 	return i, err
 }
 
+const updatePhysicalDescription = `-- name: UpdatePhysicalDescription :one
+UPDATE oikumenea.person_physical_descriptions SET
+  height_cm = $1, weight_kg = $2,
+  eye_color_id = $3::uuid, hair_color_id = $4::uuid,
+  build = $5, blood_type = $6,
+  effective_from = COALESCE($7::date, effective_from),
+  effective_to = $8::date,
+  source = $9, confidence = $10
+WHERE id = $11 AND person_id = $12 AND deleted_at IS NULL
+RETURNING id, person_id, height_cm, weight_kg, build, blood_type, effective_from, effective_to, source, confidence, created_at, updated_at, deleted_at, eye_color_id, hair_color_id
+`
+
+type UpdatePhysicalDescriptionParams struct {
+	HeightCm      pgtype.Int4
+	WeightKg      pgtype.Int4
+	EyeColorID    pgtype.Text
+	HairColorID   pgtype.Text
+	Build         pgtype.Text
+	BloodType     pgtype.Text
+	EffectiveFrom pgtype.Date
+	EffectiveTo   pgtype.Date
+	Source        pgtype.Text
+	Confidence    pgtype.Text
+	ID            string
+	PersonID      string
+}
+
+func (q *Queries) UpdatePhysicalDescription(ctx context.Context, arg UpdatePhysicalDescriptionParams) (OikumeneaPersonPhysicalDescription, error) {
+	row := q.db.QueryRow(ctx, updatePhysicalDescription,
+		arg.HeightCm,
+		arg.WeightKg,
+		arg.EyeColorID,
+		arg.HairColorID,
+		arg.Build,
+		arg.BloodType,
+		arg.EffectiveFrom,
+		arg.EffectiveTo,
+		arg.Source,
+		arg.Confidence,
+		arg.ID,
+		arg.PersonID,
+	)
+	var i OikumeneaPersonPhysicalDescription
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.HeightCm,
+		&i.WeightKg,
+		&i.Build,
+		&i.BloodType,
+		&i.EffectiveFrom,
+		&i.EffectiveTo,
+		&i.Source,
+		&i.Confidence,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.EyeColorID,
+		&i.HairColorID,
+	)
+	return i, err
+}
+
 const updateResidence = `-- name: UpdateResidence :one
 UPDATE oikumenea.person_residences SET
   country_id = $1, region = $2,
@@ -3232,22 +4056,66 @@ func (q *Queries) UpsertCitizenship(ctx context.Context, arg UpsertCitizenshipPa
 	return i, err
 }
 
+const upsertEthnicityType = `-- name: UpsertEthnicityType :one
+INSERT INTO oikumenea.person_ethnicity_types (code, name, parent_id, wikidata_id, sort_order)
+VALUES ($1, $2, $3::uuid, $4, $5)
+ON CONFLICT (code) WHERE deleted_at IS NULL DO UPDATE SET
+  name = excluded.name, parent_id = excluded.parent_id, wikidata_id = excluded.wikidata_id,
+  sort_order = excluded.sort_order, status = 'active'
+RETURNING id, code, name, status, sort_order, created_at, updated_at, deleted_at, parent_id, wikidata_id, source, source_version, imported_at
+`
+
+type UpsertEthnicityTypeParams struct {
+	Code       string
+	Name       string
+	ParentID   pgtype.Text
+	WikidataID pgtype.Text
+	SortOrder  pgtype.Int4
+}
+
+func (q *Queries) UpsertEthnicityType(ctx context.Context, arg UpsertEthnicityTypeParams) (OikumeneaPersonEthnicityType, error) {
+	row := q.db.QueryRow(ctx, upsertEthnicityType,
+		arg.Code,
+		arg.Name,
+		arg.ParentID,
+		arg.WikidataID,
+		arg.SortOrder,
+	)
+	var i OikumeneaPersonEthnicityType
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.Status,
+		&i.SortOrder,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.ParentID,
+		&i.WikidataID,
+		&i.Source,
+		&i.SourceVersion,
+		&i.ImportedAt,
+	)
+	return i, err
+}
+
 const upsertNameVariant = `-- name: UpsertNameVariant :one
 
 INSERT INTO oikumenea.person_name_variants (
   person_id, locale, display_name, title, given, given2, surname, surname_prefix,
-  surname2, generation, credentials, preferred, is_primary
+  surname2, generation, credentials, preferred, is_primary, variant_kind
 ) VALUES (
   $1, $2, $3, $4, $5, $6,
   $7, $8, $9, $10,
-  $11, $12, $13
+  $11, $12, $13, 'transliteration'
 )
-ON CONFLICT (person_id, locale) DO UPDATE SET
+ON CONFLICT (person_id, locale) WHERE variant_kind = 'transliteration' DO UPDATE SET
   display_name = excluded.display_name, title = excluded.title, given = excluded.given,
   given2 = excluded.given2, surname = excluded.surname, surname_prefix = excluded.surname_prefix,
   surname2 = excluded.surname2, generation = excluded.generation, credentials = excluded.credentials,
   preferred = excluded.preferred, is_primary = excluded.is_primary
-RETURNING id, person_id, locale, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, is_primary, created_at, updated_at
+RETURNING id, person_id, locale, display_name, title, given, given2, surname, surname_prefix, surname2, generation, credentials, preferred, is_primary, created_at, updated_at, variant_kind, source, confidence
 `
 
 type UpsertNameVariantParams struct {
@@ -3267,7 +4135,9 @@ type UpsertNameVariantParams struct {
 }
 
 // ============================ name variants ============================
-// Add or replace the variant for (person, locale). The i18n_locales FK validates the locale.
+// Add or replace the canonical TRANSLITERATION variant for (person, locale) — the original one-per-locale
+// name form (D-PersonNamesCLDR). The i18n_locales FK validates the locale. variant_kind is forced to
+// 'transliteration' so the conflict targets the partial unique index; aliases use InsertNameAlias.
 func (q *Queries) UpsertNameVariant(ctx context.Context, arg UpsertNameVariantParams) (OikumeneaPersonNameVariant, error) {
 	row := q.db.QueryRow(ctx, upsertNameVariant,
 		arg.PersonID,
@@ -3302,6 +4172,9 @@ func (q *Queries) UpsertNameVariant(ctx context.Context, arg UpsertNameVariantPa
 		&i.IsPrimary,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.VariantKind,
+		&i.Source,
+		&i.Confidence,
 	)
 	return i, err
 }

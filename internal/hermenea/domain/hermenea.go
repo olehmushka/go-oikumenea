@@ -26,6 +26,12 @@ const (
 	// run. A StreamingConnector — raw values.csv exceeds the 16 MiB in-memory cap, and an object-type
 	// needs several files, so the set is staged to disk and read by a PagedMapper.
 	ConnectorHTTPFiles = "http-files"
+	// ConnectorFactbook enumerates the CIA World Factbook country files (the `factbook/factbook.json`
+	// GitHub mirror) via one git-tree API call, then streams each `<region>/<cc>.json` to a temp directory
+	// for the paged ethnicity pipeline (D-PhysicalIdentity amendment, M43). A StreamingConnector: ~260
+	// country files (whole Factbook docs) exceed the 16 MiB in-memory cap, so the set is staged to disk and
+	// parsed by a PagedMapper. The locator is `owner/repo@ref` (default `factbook/factbook.json@master`).
+	ConnectorFactbook = "factbook"
 )
 
 // Job types in the queue.

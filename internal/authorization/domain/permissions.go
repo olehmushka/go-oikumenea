@@ -160,6 +160,11 @@ const (
 	// catalog writes ride the instance-plane `legal-basis.manage` (below).
 	PermLegalBasisRead Permission = "legal-basis.read"
 
+	// color (D-Color) — the per-domain color catalog (eye/hair/vehicle), referenced by hard FK from
+	// physical descriptions + vehicles. Instance-global reference data: read anywhere via the PEP (so
+	// any reader can populate a color picker); catalog writes ride the instance-plane `color.manage`.
+	PermColorRead Permission = "color.read"
+
 	// external organizations (D-ExternalOrgs, M30) — the registry of external orgs a person is tied to
 	// (parties, government bodies, foreign military, NGOs, registrants). Instance-global reference data,
 	// not tenant-unit scoped: read anywhere via the PEP; catalog + org writes ride the instance-plane
@@ -188,6 +193,7 @@ const (
 	PermVehicleCatalogManage     Permission = "vehicle.catalog.manage"
 	PermReligionCatalogManage    Permission = "religion.catalog.manage"
 	PermLegalBasisManage         Permission = "legal-basis.manage" // instance-admin manages the GDPR lawful-basis catalog (D-OverlayFoundation, M29)
+	PermColorManage              Permission = "color.manage"       // instance-admin manages the per-domain color catalog (D-Color)
 	PermExternalOrgManage        Permission = "externalorg.manage" // instance-admin manages the external-organizations registry (D-ExternalOrgs, M30)
 	PermInstanceConfig           Permission = "instance.config"
 	PermInstanceAdminManage      Permission = "instance.admin.manage"
@@ -219,6 +225,7 @@ var instanceScope = map[Permission]struct{}{
 	PermVehicleCatalogManage:     {},
 	PermReligionCatalogManage:    {},
 	PermLegalBasisManage:         {},
+	PermColorManage:              {},
 	PermExternalOrgManage:        {},
 	PermLocaleManage:             {},
 	PermTranslationManage:        {},
@@ -253,6 +260,7 @@ var catalog = func() map[Permission]struct{} {
 		PermVehicleRead, PermVehicleManage,
 		PermReligionRead, PermReligionOrgManage, PermClergyManage, PermAffiliationManage, PermSiteManage, PermScheduleManage,
 		PermLegalBasisRead, PermLegalBasisManage,
+		PermColorRead, PermColorManage,
 		PermExternalOrgRead, PermExternalOrgManage,
 		PermLocaleRead, PermTranslationRead, PermLocaleManage, PermTranslationManage,
 		PermRankSchemeManage, PermGraphManage, PermClosureRebuild, PermDocumentTypeManage, PermOrderTypeManage,
@@ -318,7 +326,7 @@ var readerPerms = []Permission{
 	PermRankSchemeRead, PermGraphRead, PermCountryRead, PermLanguageRead, PermLocationRead,
 	PermDomainRead, PermUnitKindRead, PermOrganizationRead,
 	PermDocumentTypeRead, PermPersonalCodeSchemeRead, PermOrderTypeRead,
-	PermReligionRead, PermLegalBasisRead, PermExternalOrgRead,
+	PermReligionRead, PermLegalBasisRead, PermColorRead, PermExternalOrgRead,
 	PermLocaleRead, PermTranslationRead,
 }
 

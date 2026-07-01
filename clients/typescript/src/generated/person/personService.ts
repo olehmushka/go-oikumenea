@@ -1,11 +1,16 @@
+import { IAddEthnicityRequest } from "./addEthnicityRequest";
+import { IAddNameAliasRequest } from "./addNameAliasRequest";
 import { IAssociation } from "./association";
 import { ICallSign } from "./callSign";
 import { ICitizenship } from "./citizenship";
 import { ICreatePersonRequest } from "./createPersonRequest";
 import { ICreateProvisionalPersonRequest } from "./createProvisionalPersonRequest";
 import { IDeactivateRequest } from "./deactivateRequest";
+import { IDistinguishingMark } from "./distinguishingMark";
 import { IEmail } from "./email";
 import { IEmailType } from "./emailType";
+import { IEthnicity } from "./ethnicity";
+import { IEthnicityType } from "./ethnicityType";
 import { IGuardianship } from "./guardianship";
 import { IKinship } from "./kinship";
 import { IMergePersonRequest } from "./mergePersonRequest";
@@ -18,6 +23,7 @@ import { IPersonLanguage } from "./personLanguage";
 import { IPersonPage } from "./personPage";
 import { IPhone } from "./phone";
 import { IPhoneType } from "./phoneType";
+import { IPhysicalDescription } from "./physicalDescription";
 import { IPlatform } from "./platform";
 import { IRelationType } from "./relationType";
 import { IResidence } from "./residence";
@@ -25,11 +31,14 @@ import { ISetRankRequest } from "./setRankRequest";
 import { ISocialAccount } from "./socialAccount";
 import { ISocialAccountHandle } from "./socialAccountHandle";
 import { ISponsorship } from "./sponsorship";
+import { IUpdateEthnicityRequest } from "./updateEthnicityRequest";
 import { IUpdatePersonRequest } from "./updatePersonRequest";
 import { IUpsertAssociationRequest } from "./upsertAssociationRequest";
 import { IUpsertCallSignRequest } from "./upsertCallSignRequest";
 import { IUpsertCitizenshipRequest } from "./upsertCitizenshipRequest";
+import { IUpsertDistinguishingMarkRequest } from "./upsertDistinguishingMarkRequest";
 import { IUpsertEmailRequest } from "./upsertEmailRequest";
+import { IUpsertEthnicityTypeRequest } from "./upsertEthnicityTypeRequest";
 import { IUpsertGuardianshipRequest } from "./upsertGuardianshipRequest";
 import { IUpsertKinshipRequest } from "./upsertKinshipRequest";
 import { IUpsertMessengerLinkRequest } from "./upsertMessengerLinkRequest";
@@ -38,6 +47,7 @@ import { IUpsertNextOfKinRequest } from "./upsertNextOfKinRequest";
 import { IUpsertPartnershipRequest } from "./upsertPartnershipRequest";
 import { IUpsertPersonLanguageRequest } from "./upsertPersonLanguageRequest";
 import { IUpsertPhoneRequest } from "./upsertPhoneRequest";
+import { IUpsertPhysicalDescriptionRequest } from "./upsertPhysicalDescriptionRequest";
 import { IUpsertResidenceRequest } from "./upsertResidenceRequest";
 import { IUpsertSocialAccountRequest } from "./upsertSocialAccountRequest";
 import { IUpsertSponsorshipRequest } from "./upsertSponsorshipRequest";
@@ -93,8 +103,43 @@ export interface IPersonService {
     purgePerson(personId: string): Promise<IPerson>;
     /** Add or replace a locale name form (transliteration). Keyed by (person, locale). */
     upsertNameVariant(personId: string, request: IUpsertNameVariantRequest): Promise<INameVariant>;
-    /** Remove a name variant. */
+    /** Remove a name variant (the canonical transliteration for a locale). */
     deleteNameVariant(personId: string, locale: string): Promise<void>;
+    /** Add an alias name form (aka/former_legal/maiden/pseudonym/cover). Returns the created NameVariant. */
+    addNameAlias(personId: string, request: IAddNameAliasRequest): Promise<INameVariant>;
+    /** Remove an alias by its RID. */
+    deleteNameAlias(personId: string, aliasId: string): Promise<void>;
+    /** List a person's effective-dated physical descriptions (D-PhysicalIdentity). */
+    listPhysicalDescriptions(personId: string): Promise<Array<IPhysicalDescription>>;
+    /** Add a physical description, or replace one when id is supplied. Returns Person:PersonInvalid for a bad measurement/blood type. */
+    upsertPhysicalDescription(personId: string, request: IUpsertPhysicalDescriptionRequest): Promise<IPhysicalDescription>;
+    /** Remove a physical description by id. */
+    deletePhysicalDescription(personId: string, descriptionId: string): Promise<void>;
+    /** List a person's distinguishing marks (D-PhysicalIdentity; pii:special ceiling). */
+    listDistinguishingMarks(personId: string): Promise<Array<IDistinguishingMark>>;
+    /** Add a distinguishing mark, or replace one when id is supplied. Returns Person:PersonInvalid for an unknown kind. */
+    upsertDistinguishingMark(personId: string, request: IUpsertDistinguishingMarkRequest): Promise<IDistinguishingMark>;
+    /** Remove a distinguishing mark by id. */
+    deleteDistinguishingMark(personId: string, markId: string): Promise<void>;
+    /**
+     * List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
+     * the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
+     * expansion), or a name/code substring (query). `hasChildren` is set on each entry.
+     *
+     */
+    listEthnicityTypes(topLevel?: boolean | null, parent?: string | null, query?: string | null, limit?: number | null): Promise<Array<IEthnicityType>>;
+    /** Fetch one ethnicity type by RID, including its group-level associated languages + homeland countries. */
+    getEthnicityType(ethnicityTypeId: string): Promise<IEthnicityType>;
+    /** Add or update a declared-ethnicity catalog entry (instance-admin managed). */
+    upsertEthnicityType(request: IUpsertEthnicityTypeRequest): Promise<IEthnicityType>;
+    /** List a person's declared ethnicities with the value decrypted (D-PhysicalIdentity / D-SpecialPII). */
+    listEthnicities(personId: string): Promise<Array<IEthnicity>>;
+    /** Declare an ethnicity (envelope-encrypted, lawful-basis-gated). Returns Person:PersonInvalid for an unknown code/legal basis. */
+    addEthnicity(personId: string, request: IAddEthnicityRequest): Promise<IEthnicity>;
+    /** Re-declare the ethnicity value and/or flip legal basis / status. */
+    updateEthnicity(personId: string, ethnicityId: string, request: IUpdateEthnicityRequest): Promise<IEthnicity>;
+    /** Remove a declared ethnicity by id. */
+    deleteEthnicity(personId: string, ethnicityId: string): Promise<void>;
     /** List a person's citizenships. */
     listCitizenships(personId: string): Promise<Array<ICitizenship>>;
     /** Add or replace the active citizenship for a country. Returns Person:PersonInvalid for an unknown country. */
@@ -421,7 +466,7 @@ export class PersonService implements IPersonService {
         );
     }
 
-    /** Remove a name variant. */
+    /** Remove a name variant (the canonical transliteration for a locale). */
     public deleteNameVariant(personId: string, locale: string): Promise<void> {
         return this.bridge.call<void>(
             "PersonService",
@@ -434,6 +479,287 @@ export class PersonService implements IPersonService {
             [
                 personId,
                 locale,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Add an alias name form (aka/former_legal/maiden/pseudonym/cover). Returns the created NameVariant. */
+    public addNameAlias(personId: string, request: IAddNameAliasRequest): Promise<INameVariant> {
+        return this.bridge.call<INameVariant>(
+            "PersonService",
+            "addNameAlias",
+            "POST",
+            "/person/v1/persons/{personId}/name-aliases",
+            request,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Remove an alias by its RID. */
+    public deleteNameAlias(personId: string, aliasId: string): Promise<void> {
+        return this.bridge.call<void>(
+            "PersonService",
+            "deleteNameAlias",
+            "DELETE",
+            "/person/v1/persons/{personId}/name-aliases/{aliasId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+                aliasId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** List a person's effective-dated physical descriptions (D-PhysicalIdentity). */
+    public listPhysicalDescriptions(personId: string): Promise<Array<IPhysicalDescription>> {
+        return this.bridge.call<Array<IPhysicalDescription>>(
+            "PersonService",
+            "listPhysicalDescriptions",
+            "GET",
+            "/person/v1/persons/{personId}/physical-descriptions",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Add a physical description, or replace one when id is supplied. Returns Person:PersonInvalid for a bad measurement/blood type. */
+    public upsertPhysicalDescription(personId: string, request: IUpsertPhysicalDescriptionRequest): Promise<IPhysicalDescription> {
+        return this.bridge.call<IPhysicalDescription>(
+            "PersonService",
+            "upsertPhysicalDescription",
+            "PUT",
+            "/person/v1/persons/{personId}/physical-descriptions",
+            request,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Remove a physical description by id. */
+    public deletePhysicalDescription(personId: string, descriptionId: string): Promise<void> {
+        return this.bridge.call<void>(
+            "PersonService",
+            "deletePhysicalDescription",
+            "DELETE",
+            "/person/v1/persons/{personId}/physical-descriptions/{descriptionId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+                descriptionId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** List a person's distinguishing marks (D-PhysicalIdentity; pii:special ceiling). */
+    public listDistinguishingMarks(personId: string): Promise<Array<IDistinguishingMark>> {
+        return this.bridge.call<Array<IDistinguishingMark>>(
+            "PersonService",
+            "listDistinguishingMarks",
+            "GET",
+            "/person/v1/persons/{personId}/distinguishing-marks",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Add a distinguishing mark, or replace one when id is supplied. Returns Person:PersonInvalid for an unknown kind. */
+    public upsertDistinguishingMark(personId: string, request: IUpsertDistinguishingMarkRequest): Promise<IDistinguishingMark> {
+        return this.bridge.call<IDistinguishingMark>(
+            "PersonService",
+            "upsertDistinguishingMark",
+            "PUT",
+            "/person/v1/persons/{personId}/distinguishing-marks",
+            request,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Remove a distinguishing mark by id. */
+    public deleteDistinguishingMark(personId: string, markId: string): Promise<void> {
+        return this.bridge.call<void>(
+            "PersonService",
+            "deleteDistinguishingMark",
+            "DELETE",
+            "/person/v1/persons/{personId}/distinguishing-marks/{markId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+                markId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
+     * the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
+     * expansion), or a name/code substring (query). `hasChildren` is set on each entry.
+     *
+     */
+    public listEthnicityTypes(topLevel?: boolean | null, parent?: string | null, query?: string | null, limit?: number | null): Promise<Array<IEthnicityType>> {
+        return this.bridge.call<Array<IEthnicityType>>(
+            "PersonService",
+            "listEthnicityTypes",
+            "GET",
+            "/person/v1/ethnicity-types",
+            __undefined,
+            __undefined,
+            {
+                "topLevel": topLevel,
+                "parent": parent,
+                "query": query,
+                "limit": limit,
+            },
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Fetch one ethnicity type by RID, including its group-level associated languages + homeland countries. */
+    public getEthnicityType(ethnicityTypeId: string): Promise<IEthnicityType> {
+        return this.bridge.call<IEthnicityType>(
+            "PersonService",
+            "getEthnicityType",
+            "GET",
+            "/person/v1/ethnicity-types/{ethnicityTypeId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                ethnicityTypeId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Add or update a declared-ethnicity catalog entry (instance-admin managed). */
+    public upsertEthnicityType(request: IUpsertEthnicityTypeRequest): Promise<IEthnicityType> {
+        return this.bridge.call<IEthnicityType>(
+            "PersonService",
+            "upsertEthnicityType",
+            "PUT",
+            "/person/v1/ethnicity-types",
+            request,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** List a person's declared ethnicities with the value decrypted (D-PhysicalIdentity / D-SpecialPII). */
+    public listEthnicities(personId: string): Promise<Array<IEthnicity>> {
+        return this.bridge.call<Array<IEthnicity>>(
+            "PersonService",
+            "listEthnicities",
+            "GET",
+            "/person/v1/persons/{personId}/ethnicities",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Declare an ethnicity (envelope-encrypted, lawful-basis-gated). Returns Person:PersonInvalid for an unknown code/legal basis. */
+    public addEthnicity(personId: string, request: IAddEthnicityRequest): Promise<IEthnicity> {
+        return this.bridge.call<IEthnicity>(
+            "PersonService",
+            "addEthnicity",
+            "POST",
+            "/person/v1/persons/{personId}/ethnicities",
+            request,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Re-declare the ethnicity value and/or flip legal basis / status. */
+    public updateEthnicity(personId: string, ethnicityId: string, request: IUpdateEthnicityRequest): Promise<IEthnicity> {
+        return this.bridge.call<IEthnicity>(
+            "PersonService",
+            "updateEthnicity",
+            "PUT",
+            "/person/v1/persons/{personId}/ethnicities/{ethnicityId}",
+            request,
+            __undefined,
+            __undefined,
+            [
+                personId,
+                ethnicityId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Remove a declared ethnicity by id. */
+    public deleteEthnicity(personId: string, ethnicityId: string): Promise<void> {
+        return this.bridge.call<void>(
+            "PersonService",
+            "deleteEthnicity",
+            "DELETE",
+            "/person/v1/persons/{personId}/ethnicities/{ethnicityId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+                ethnicityId,
             ],
             __undefined,
             __undefined

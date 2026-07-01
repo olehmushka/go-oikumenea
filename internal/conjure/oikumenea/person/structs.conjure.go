@@ -8,6 +8,67 @@ import (
 	"github.com/palantir/pkg/safeyaml"
 )
 
+// Declare an ethnicity for a person (self-declared, envelope-encrypted, lawful-basis-gated).
+type AddEthnicityRequest struct {
+	// A person_ethnicity_types code (validated against the catalog before sealing).
+	Code string `json:"code"`
+	// The GDPR lawful-basis code (an Art. 9 condition; platform_legal_basis_kinds).
+	LegalBasis string  `json:"legalBasis"`
+	Source     *string `json:"source,omitempty"`
+	Confidence *string `json:"confidence,omitempty"`
+}
+
+func (o AddEthnicityRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *AddEthnicityRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Add an alias name form (aka/former_legal/maiden/pseudonym/cover). Addressed by its RID; may carry attribution.
+type AddNameAliasRequest struct {
+	Locale string `json:"locale"`
+	// One of aka | former_legal | maiden | pseudonym | cover.
+	VariantKind   string  `json:"variantKind"`
+	DisplayName   string  `json:"displayName"`
+	Title         *string `json:"title,omitempty"`
+	Given         *string `json:"given,omitempty"`
+	Given2        *string `json:"given2,omitempty"`
+	Surname       *string `json:"surname,omitempty"`
+	SurnamePrefix *string `json:"surnamePrefix,omitempty"`
+	Surname2      *string `json:"surname2,omitempty"`
+	Generation    *string `json:"generation,omitempty"`
+	Credentials   *string `json:"credentials,omitempty"`
+	Preferred     *string `json:"preferred,omitempty"`
+	Source        *string `json:"source,omitempty"`
+	Confidence    *string `json:"confidence,omitempty"`
+}
+
+func (o AddNameAliasRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *AddNameAliasRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // A symmetric association / conflict-of-interest / prohibited-contact link (D-PersonRelationships; Link link__associated_with).
 type Association struct {
 	Id string `json:"id"`
@@ -185,6 +246,36 @@ func (o *DeactivateRequest) UnmarshalYAML(unmarshal func(interface{}) error) err
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// A tattoo/scar/piercing/birthmark (D-PhysicalIdentity, M31). pii:special ceiling — a mark can reveal Art. 9 data.
+type DistinguishingMark struct {
+	Id       string `json:"id"`
+	PersonId string `json:"personId"`
+	// One of tattoo | scar | piercing | birthmark.
+	Kind string `json:"kind"`
+	// Where on the body (e.g. left forearm); free text.
+	BodyLocation *string `json:"bodyLocation,omitempty"`
+	// The mark's appearance; free text.
+	Description *string `json:"description,omitempty"`
+	Source      *string `json:"source,omitempty"`
+	Confidence  *string `json:"confidence,omitempty"`
+}
+
+func (o DistinguishingMark) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *DistinguishingMark) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // A person's contact email (D-PersonContactChannels). pii:contact; distinct from the login email.
 type Email struct {
 	Id       string `json:"id"`
@@ -256,6 +347,119 @@ func (o EmailType) MarshalYAML() (interface{}, error) {
 }
 
 func (o *EmailType) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+A person's self-declared ethnicity (D-PhysicalIdentity / D-SpecialPII, M31). The declared value
+is envelope-encrypted at rest; `code` is the DECRYPTED catalog code returned only to authorized
+readers. A crypto-erased tombstone returns an empty code.
+*/
+type Ethnicity struct {
+	Id       string `json:"id"`
+	PersonId string `json:"personId"`
+	// The declared ethnicity-type code (decrypted); empty for a crypto-erased tombstone.
+	Code string `json:"code"`
+	// The catalog's default-locale display name for the declared code.
+	Name *string `json:"name,omitempty"`
+	// The GDPR lawful-basis code (platform_legal_basis_kinds; an Art. 9 condition for special-category data).
+	LegalBasis string `json:"legalBasis"`
+	// One of active | retired.
+	Status     string  `json:"status"`
+	Source     *string `json:"source,omitempty"`
+	Confidence *string `json:"confidence,omitempty"`
+}
+
+func (o Ethnicity) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *Ethnicity) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+A declared-ethnicity vocabulary entry in an instance-admin-managed, HIERARCHICAL taxonomy
+(D-PhysicalIdentity amendment, M43). Stable code + translatable name + optional parent (tree
+structure). `languages`/`countries` are GROUP-level ethnolinguistic + homeland associations
+(reference metadata about the group; NEVER a person's datum — a person's ethnicity and
+languages stay independent). This catalog is plaintext; a person's SELECTION is encrypted.
+*/
+type EthnicityType struct {
+	Id string `json:"id"`
+	// Stable, locale-agnostic identifier (D-Code).
+	Code string `json:"code"`
+	// The translatable label as a locale -> text map (all enabled locales; D-i18n).
+	Name map[string]string `json:"name"`
+	// The RID of the immediate parent group (absent for forest roots).
+	ParentId *string `json:"parentId,omitempty"`
+	// Whether this group has children (lets a tree browser show the expand affordance).
+	HasChildren bool `json:"hasChildren"`
+	// Wikidata Q-id anchor (external linkage; from the opt-in import).
+	WikidataId *string `json:"wikidataId,omitempty"`
+	// One of active | retired.
+	Status    string `json:"status"`
+	SortOrder *int   `json:"sortOrder,omitempty"`
+	// Associated-language RIDs (Glottolog languoids) — group-level, populated on getEthnicityType.
+	Languages []string `json:"languages"`
+	// Homeland-country RIDs (geo_countries) — group-level, populated on getEthnicityType.
+	Countries []string `json:"countries"`
+}
+
+func (o EthnicityType) MarshalJSON() ([]byte, error) {
+	if o.Name == nil {
+		o.Name = make(map[string]string)
+	}
+	if o.Languages == nil {
+		o.Languages = make([]string, 0)
+	}
+	if o.Countries == nil {
+		o.Countries = make([]string, 0)
+	}
+	type _tmpEthnicityType EthnicityType
+	return safejson.Marshal(_tmpEthnicityType(o))
+}
+
+func (o *EthnicityType) UnmarshalJSON(data []byte) error {
+	type _tmpEthnicityType EthnicityType
+	var rawEthnicityType _tmpEthnicityType
+	if err := safejson.Unmarshal(data, &rawEthnicityType); err != nil {
+		return err
+	}
+	if rawEthnicityType.Name == nil {
+		rawEthnicityType.Name = make(map[string]string)
+	}
+	if rawEthnicityType.Languages == nil {
+		rawEthnicityType.Languages = make([]string, 0)
+	}
+	if rawEthnicityType.Countries == nil {
+		rawEthnicityType.Countries = make([]string, 0)
+	}
+	*o = EthnicityType(rawEthnicityType)
+	return nil
+}
+
+func (o EthnicityType) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *EthnicityType) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -397,6 +601,12 @@ type NameVariant struct {
 	Credentials   *string `json:"credentials,omitempty"`
 	Preferred     *string `json:"preferred,omitempty"`
 	IsPrimary     bool    `json:"isPrimary"`
+	// transliteration (the canonical per-locale form) | aka | former_legal | maiden | pseudonym | cover (D-PhysicalIdentity).
+	VariantKind string `json:"variantKind"`
+	// Alias attribution — how the name was learned (self_declared | operator_verified | imported); null for transliterations.
+	Source *string `json:"source,omitempty"`
+	// Alias attribution confidence weight (confirmed | probable | possible).
+	Confidence *string `json:"confidence,omitempty"`
 }
 
 func (o NameVariant) MarshalYAML() (interface{}, error) {
@@ -832,6 +1042,46 @@ func (o *PhoneType) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// An effective-dated physical description (D-PhysicalIdentity, M31). pii:basic.
+type PhysicalDescription struct {
+	Id       string `json:"id"`
+	PersonId string `json:"personId"`
+	// Height in centimetres (1–299).
+	HeightCm *int `json:"heightCm,omitempty"`
+	// Weight in whole kilograms (1–699).
+	WeightKg *int `json:"weightKg,omitempty"`
+	// Eye color — a platform_colors RID (domain='eye', D-Color). Resolve label/hex via the platform color catalog.
+	EyeColorId *string `json:"eyeColorId,omitempty"`
+	// Hair color — a platform_colors RID (domain='hair', D-Color). Resolve label/hex via the platform color catalog.
+	HairColorId *string `json:"hairColorId,omitempty"`
+	// Free-text physique (slim | athletic | heavy | ...).
+	Build *string `json:"build,omitempty"`
+	// One of A+|A-|B+|B-|AB+|AB-|O+|O-|unknown.
+	BloodType *string `json:"bloodType,omitempty"`
+	// ISO-8601 date the description took effect.
+	EffectiveFrom string `json:"effectiveFrom"`
+	// ISO-8601 date it ceased; null = current.
+	EffectiveTo *string `json:"effectiveTo,omitempty"`
+	Source      *string `json:"source,omitempty"`
+	Confidence  *string `json:"confidence,omitempty"`
+}
+
+func (o PhysicalDescription) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *PhysicalDescription) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // An instance-admin catalog entry naming a social network / messenger (D-PersonSocialChannels). Stable code + translatable name + category.
 type Platform struct {
 	// Stable, locale-agnostic identifier (D-Code); immutable by convention.
@@ -1097,6 +1347,30 @@ func (o *Sponsorship) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// Re-declare the ethnicity value and/or flip legal basis / status.
+type UpdateEthnicityRequest struct {
+	Code       string `json:"code"`
+	LegalBasis string `json:"legalBasis"`
+	// active | retired; defaults to active.
+	Status *string `json:"status,omitempty"`
+}
+
+func (o UpdateEthnicityRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpdateEthnicityRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 /*
 Update a person's names (canonical + CLDR parts), birthdate, date_of_death, sex,
 country_of_birth, and attributes. Omitted fields are unchanged; an empty string clears an
@@ -1215,6 +1489,34 @@ func (o *UpsertCitizenshipRequest) UnmarshalYAML(unmarshal func(interface{}) err
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// Add a distinguishing mark, or replace one when id is supplied.
+type UpsertDistinguishingMarkRequest struct {
+	// The RID of an existing mark row to replace; omit to add a new row.
+	Id *string `json:"id,omitempty"`
+	// One of tattoo | scar | piercing | birthmark.
+	Kind         string  `json:"kind"`
+	BodyLocation *string `json:"bodyLocation,omitempty"`
+	Description  *string `json:"description,omitempty"`
+	Source       *string `json:"source,omitempty"`
+	Confidence   *string `json:"confidence,omitempty"`
+}
+
+func (o UpsertDistinguishingMarkRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertDistinguishingMarkRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // Add a contact email, or replace one when id is supplied. provider is derived from the address.
 type UpsertEmailRequest struct {
 	// The URN RID of an existing email row to replace; omit to add a new row.
@@ -1233,6 +1535,33 @@ func (o UpsertEmailRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *UpsertEmailRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Add or update a declared-ethnicity catalog entry (instance-admin managed).
+type UpsertEthnicityTypeRequest struct {
+	Code string `json:"code"`
+	// The default-locale display name (other locales arrive via the localization store).
+	Name string `json:"name"`
+	// The RID of the parent group (absent for a root). D-PhysicalIdentity amendment, M43.
+	ParentId   *string `json:"parentId,omitempty"`
+	WikidataId *string `json:"wikidataId,omitempty"`
+	SortOrder  *int    `json:"sortOrder,omitempty"`
+}
+
+func (o UpsertEthnicityTypeRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertEthnicityTypeRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -1463,6 +1792,41 @@ func (o UpsertPhoneRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *UpsertPhoneRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Add a physical description, or replace one when id is supplied.
+type UpsertPhysicalDescriptionRequest struct {
+	// The RID of an existing description row to replace; omit to add a new row.
+	Id       *string `json:"id,omitempty"`
+	HeightCm *int    `json:"heightCm,omitempty"`
+	WeightKg *int    `json:"weightKg,omitempty"`
+	// A platform_colors RID (domain='eye', D-Color).
+	EyeColorId *string `json:"eyeColorId,omitempty"`
+	// A platform_colors RID (domain='hair', D-Color).
+	HairColorId *string `json:"hairColorId,omitempty"`
+	Build       *string `json:"build,omitempty"`
+	BloodType   *string `json:"bloodType,omitempty"`
+	// ISO-8601 date; defaults to today on insert.
+	EffectiveFrom *string `json:"effectiveFrom,omitempty"`
+	EffectiveTo   *string `json:"effectiveTo,omitempty"`
+	Source        *string `json:"source,omitempty"`
+	Confidence    *string `json:"confidence,omitempty"`
+}
+
+func (o UpsertPhysicalDescriptionRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertPhysicalDescriptionRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

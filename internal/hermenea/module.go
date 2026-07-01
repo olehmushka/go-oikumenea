@@ -22,6 +22,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/loader"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/runtime"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/transport"
+	"github.com/olegamysk/go-oikumenea/internal/hermenea/factbookethnicities"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/wikidataorgs"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/wof"
 	werror "github.com/palantir/witchcraft-go-error"
@@ -63,6 +64,13 @@ func Register(ctx context.Context, info witchcraft.InitInfo, pool *pgxpool.Pool,
 	//     SPARQL JSON result set fetched live by the `http` connector (?format=json&query=…). Emits
 	//     Wikidata-id-keyed party/government/military/NGO/registrant records.
 	svc.RegisterMapper(wikidataorgs.ObjectType, wikidataorgs.Mapper{})
+	//   - ethnicity-scheme: the ethnicity catalog (D-PhysicalIdentity amendment, M43) fed LIVE from the CIA
+	//     World Factbook (public domain). The `factbook` StreamingConnector enumerates the ~260 country files
+	//     (one git-tree API call) and stages them; this PagedMapper parses each country's "Ethnic groups"
+	//     free-text in Go, derives the country's ISO code from its Internet ccTLD, and dedups group→countries
+	//     across all files — a FLAT, country-linked catalog (the Factbook has no hierarchy/language). No
+	//     committed preset: the catalog is derived at import time.
+	svc.RegisterPagedMapper(factbookethnicities.ObjectType, factbookethnicities.PagedMapper{})
 
 	// Seed declaratively-configured sources (idempotent upsert + schedule).
 	for _, cs := range cfg.Sources {

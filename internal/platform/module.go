@@ -10,6 +10,7 @@ import (
 	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
 	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
 	platformapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/platform"
+	locapp "github.com/olegamysk/go-oikumenea/internal/localization/application"
 	"github.com/olegamysk/go-oikumenea/internal/platform/catalog"
 	"github.com/olegamysk/go-oikumenea/internal/platform/config"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
@@ -52,10 +53,11 @@ func Bootstrap(ctx context.Context, info witchcraft.InitInfo) (*pgxpool.Pool, fu
 // GDPR lawful-basis catalog read+upsert surface (PlatformCatalogService). Unlike Bootstrap (which runs
 // first), this is composed later in the InitFunc, once the audit service + PEP enforcer exist. It owns
 // no resources (the pool is owned by platform), so there is no cleanup.
-func RegisterCatalog(ctx context.Context, info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, enforcer *pep.Enforcer) error {
+func RegisterCatalog(ctx context.Context, info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, loc *locapp.Service, enforcer *pep.Enforcer) (*catalog.ColorService, error) {
 	svc := catalog.NewService(pool, audit)
-	if err := platformapi.RegisterRoutesPlatformCatalogService(info.Router, transport.NewCatalogService(svc, enforcer)); err != nil {
-		return werror.WrapWithContextParams(ctx, err, "register platform catalog routes")
+	colorSvc := catalog.NewColorService(pool, audit)
+	if err := platformapi.RegisterRoutesPlatformCatalogService(info.Router, transport.NewCatalogService(svc, colorSvc, loc, enforcer)); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "register platform catalog routes")
 	}
-	return nil
+	return colorSvc, nil
 }

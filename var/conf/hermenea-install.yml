@@ -77,6 +77,22 @@ sources:
       https://iso639-3.sil.org/sites/iso639-3/files/downloads/iso-639-3.tab
     cron: "@weekly"
     enabled: true
+  # Ethnicity catalog (D-PhysicalIdentity amendment, M43) — OPT-IN, default DISABLED. Ethnicity is
+  # contentious, so no catalog loads unless an operator enables this on purpose. Fed LIVE from the CIA World
+  # Factbook (PUBLIC DOMAIN) at import time — NO committed preset: the `factbook` StreamingConnector
+  # enumerates the ~260 country files in the `factbook/factbook.json` GitHub mirror (one git-tree API call)
+  # and stages them; the ethnicity PagedMapper parses each country's "Ethnic groups" free-text, derives the
+  # country's ISO code from its Internet ccTLD, and dedups group→countries across all files. A FLAT,
+  # country-linked catalog (the Factbook has no hierarchy / no language ties). The locator is `owner/repo@ref`.
+  # The catalog is plaintext reference data; a person's declared ethnicity stays encrypted, and the group's
+  # country links are group-level metadata, never inferred onto a person.
+  - code: factbook-ethnicities
+    name: "CIA World Factbook ethnic groups (live, opt-in)"
+    connector-type: factbook
+    object-type: ethnicity-scheme
+    locator: "factbook/factbook.json@master"
+    cron: "@weekly"
+    enabled: false
   - code: wof-geo-ua
     name: "Who's On First — Ukraine (admin)"
     connector-type: wof-sqlite

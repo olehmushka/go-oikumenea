@@ -62,6 +62,14 @@ func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Serv
 		func(conn db.DBTX) domain.ExternalOrgStore { return adapters.NewExternalOrgRepo(conn) },
 	))
 
+	// ethnicity-scheme: the hierarchical ethnicity taxonomy (D-PhysicalIdentity amendment, M43) fed from
+	// Wikidata by the hermenea `wikidataethnicities` mapper. Parent-first upsert; the group's language +
+	// country ties are replaced and the closure rebuilt at the end of the batch. Default catalog is empty
+	// (opt-in) — the person's declared ethnicity is unaffected by this reference-data import.
+	svc.Register(domain.ObjectTypeEthnicityScheme, application.EthnicitySchemeHandler(
+		func(conn db.DBTX) domain.EthnicityStore { return adapters.NewEthnicityRepo(conn) },
+	))
+
 	if err := dataimportapi.RegisterRoutesImportService(info.Router, transport.NewService(svc, enforcer)); err != nil {
 		return nil, werror.Wrap(err, "register import service routes")
 	}

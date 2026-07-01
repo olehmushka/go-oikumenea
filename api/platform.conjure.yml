@@ -44,6 +44,40 @@ types:
             type: string
             docs: art6 | art9.
           sortOrder: optional<integer>
+      Color:
+        docs: |
+          One entry in a per-domain color palette (D-Color). The per-domain `code` is the stable handle;
+          `name` is the translatable label (locale -> text map, D-i18n); `hex` is an optional
+          representative swatch (biological eye/hair colors are categories, not precise hex).
+        fields:
+          id: string
+          domain:
+            type: string
+            docs: The palette this color belongs to — eye | hair | vehicle.
+          code: string
+          name:
+            type: map<string, string>
+            docs: The translatable label as a locale -> text map (all enabled locales; D-i18n).
+          hex: optional<string>
+          status:
+            type: string
+            docs: active | retired.
+          sortOrder: optional<integer>
+      ColorList:
+        fields:
+          colors: list<Color>
+      UpsertColorRequest:
+        docs: Add or update a color (instance-admin; `color.manage`). Upserts on (domain, code).
+        fields:
+          domain:
+            type: string
+            docs: eye | hair | vehicle.
+          code: string
+          name:
+            type: string
+            docs: The default-locale display name (other locales arrive via the localization store).
+          hex: optional<string>
+          sortOrder: optional<integer>
     errors:
       DemoError:
         docs: |
@@ -90,3 +124,18 @@ services:
             param-type: path
           request: UpsertLegalBasisKindRequest
         returns: LegalBasisKind
+      listColors:
+        http: GET /colors
+        docs: List the color catalog (D-Color), optionally filtered to one domain (eye | hair | vehicle).
+        args:
+          domain:
+            type: optional<string>
+            param-type: query
+            docs: Restrict to one palette; omit to list every domain.
+        returns: ColorList
+      upsertColor:
+        http: PUT /colors
+        docs: Add or update a color (instance-admin; `color.manage`). Upserts on (domain, code).
+        args:
+          request: UpsertColorRequest
+        returns: Color

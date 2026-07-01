@@ -1,5 +1,8 @@
+import { IColor } from "./color";
+import { IColorList } from "./colorList";
 import { ILegalBasisKind } from "./legalBasisKind";
 import { ILegalBasisKindList } from "./legalBasisKindList";
+import { IUpsertColorRequest } from "./upsertColorRequest";
 import { IUpsertLegalBasisKindRequest } from "./upsertLegalBasisKindRequest";
 import type { IHttpApiBridge } from "conjure-client";
 
@@ -17,6 +20,10 @@ export interface IPlatformCatalogService {
     listLegalBasisKinds(): Promise<ILegalBasisKindList>;
     /** Add or update a lawful-basis catalog entry (instance-admin; `legal-basis.manage`). */
     upsertLegalBasisKind(code: string, request: IUpsertLegalBasisKindRequest): Promise<ILegalBasisKind>;
+    /** List the color catalog (D-Color), optionally filtered to one domain (eye | hair | vehicle). */
+    listColors(domain?: string | null): Promise<IColorList>;
+    /** Add or update a color (instance-admin; `color.manage`). Upserts on (domain, code). */
+    upsertColor(request: IUpsertColorRequest): Promise<IColor>;
 }
 
 export class PlatformCatalogService implements IPlatformCatalogService {
@@ -52,6 +59,40 @@ export class PlatformCatalogService implements IPlatformCatalogService {
             [
                 code,
             ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** List the color catalog (D-Color), optionally filtered to one domain (eye | hair | vehicle). */
+    public listColors(domain?: string | null): Promise<IColorList> {
+        return this.bridge.call<IColorList>(
+            "PlatformCatalogService",
+            "listColors",
+            "GET",
+            "/platform/v1/colors",
+            __undefined,
+            __undefined,
+            {
+                "domain": domain,
+            },
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Add or update a color (instance-admin; `color.manage`). Upserts on (domain, code). */
+    public upsertColor(request: IUpsertColorRequest): Promise<IColor> {
+        return this.bridge.call<IColor>(
+            "PlatformCatalogService",
+            "upsertColor",
+            "PUT",
+            "/platform/v1/colors",
+            request,
+            __undefined,
+            __undefined,
+            __undefined,
             __undefined,
             __undefined
         );

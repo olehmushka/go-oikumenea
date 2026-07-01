@@ -582,11 +582,25 @@ through the holder.
   **attribution convention**; the structured **`legal_basis`** catalog
   ([platform](platform.md) `platform_legal_basis_kinds`, GDPR Art. 6/9), NOT NULL on every
   `pii:special` store. No automatic candidate matching (parked).
-- **M31 · Physical identity (D-PhysicalIdentity).** `person_name_variants.variant_kind`
-  (`aka|former_legal|maiden|pseudonym|cover` — aliases fold in, no new table);
-  `person_physical_descriptions` (+ `blood_type`, `pii:basic`) + `person_distinguishing_marks`
-  (`pii:special` ceiling); declared-only `person_ethnicity_types` + encrypted `person_ethnicities`
-  link (`pii:special`). Biometrics **excluded**.
+- **M31 · Physical identity (D-PhysicalIdentity) — DELIVERED (migration `0030`).**
+  `person_name_variants.variant_kind` (`transliteration|aka|former_legal|maiden|pseudonym|cover` —
+  aliases fold in, no new table; the one-per-locale rule is partial to `transliteration`, aliases are
+  free-form by RID + `source`/`confidence`); `person_physical_descriptions` (+ `blood_type`,
+  `pii:basic`) + `person_distinguishing_marks` (`pii:special` ceiling); declared-only open
+  `person_ethnicity_types` + the encrypted `person_ethnicities` link (`link__has_ethnicity`, RID
+  `6,2,9`, `pii:special`). The declared ethnicity **code itself is envelope-encrypted** (reuses
+  `pkg/crypto`, blind-indexed, NO plaintext catalog FK — the Art. 9 datum never sits in plaintext) with
+  a NOT-NULL `legal_basis`; crypto-erased on purge. Biometrics **excluded**. *(M42 · D-Color: the
+  description's `eye_color`/`hair_color` later became hard FKs `eye_color_id`/`hair_color_id` →
+  `platform_colors` (domains `eye`/`hair`), validated app-side; see [platform](platform.md).)*
+  *(M43 · D-PhysicalIdentity amendment: `person_ethnicity_types` became a **hierarchical** catalog —
+  `parent_id` + `person_ethnicity_type_closure` + `wikidata_id` + group-level M:N to Glottolog
+  `language_languoids` (ethnolinguistic) and `geo_countries` (homelands); fed by the opt-in **CIA World
+  Factbook** `ethnicity-scheme` import — fetched + parsed live at runtime by a `factbook` hermenea
+  connector + mapper (public domain; no committed preset; default catalog empty) — which populates a flat
+  catalog + homeland-country ties (the Factbook carries no hierarchy/language, so those columns stay
+  unpopulated by this source). The **encrypted** `person_ethnicities` link is unchanged; the
+  group↔language tie is **never** inferred onto a person — declared ≠ inferred.)*
 - **M32 · Addresses (D-PersonAddresses).** `person_addresses` → `location_locations`
   ([location](location.md), M19): `role ∈ {home,work,mailing,other}`, effective-dated, `is_primary`,
   `privacy_seeking`, `pii:contact`, purge-erased; `person_residences` retained for legal-residence.

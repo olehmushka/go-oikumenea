@@ -11,20 +11,28 @@ import (
 	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
 	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
 	platformapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/platform"
+	locapp "github.com/olegamysk/go-oikumenea/internal/localization/application"
 	"github.com/olegamysk/go-oikumenea/internal/platform/catalog"
 	"github.com/palantir/pkg/bearertoken"
 	werror "github.com/palantir/witchcraft-go-error"
 )
 
+// colorEntity is the localization-store entity type for color names (D-i18n). Keyed by the color RID
+// (the per-domain `code` is not globally unique).
+const colorEntity = "color"
+
 // CatalogService adapts the platform catalog application service to the generated server interface.
 type CatalogService struct {
-	app *catalog.Service
-	pep *pep.Enforcer
+	app   *catalog.Service
+	color *catalog.ColorService
+	loc   *locapp.Service
+	pep   *pep.Enforcer
 }
 
-// NewCatalogService builds the transport adapter over the catalog service + PEP enforcer.
-func NewCatalogService(app *catalog.Service, enforcer *pep.Enforcer) CatalogService {
-	return CatalogService{app: app, pep: enforcer}
+// NewCatalogService builds the transport adapter over the lawful-basis + color catalog services, the
+// localization service (for color name locale->text maps), and the PEP enforcer.
+func NewCatalogService(app *catalog.Service, color *catalog.ColorService, loc *locapp.Service, enforcer *pep.Enforcer) CatalogService {
+	return CatalogService{app: app, color: color, loc: loc, pep: enforcer}
 }
 
 // compile-time assertion that the transport satisfies the generated server interface.
@@ -73,5 +81,76 @@ func toAPILegalBasis(k catalog.LegalBasisKind) platformapi.LegalBasisKind {
 		Article:   k.Article,
 		Status:    k.Status,
 		SortOrder: k.SortOrder,
+	}
+}
+
+// ListColors implements GET /colors (D-Color). Reference data: read anywhere via the PEP.
+func (s CatalogService) ListColors(ctx context.Context, token bearertoken.Token, domain *string) (platformapi.ColorList, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermColorRead)); err != nil {
+		return platformapi.ColorList{}, err
+	}
+	d := ""
+	if domain != nil {
+		d = *domain
+	}
+	colors, err := s.color.List(ctx, d)
+	if err != nil {
+		return platformapi.ColorList{}, werror.WrapWithContextParams(ctx, err, "list colors failed")
+	}
+	names, err := s.colorNames(ctx, colors)
+	if err != nil {
+		return platformapi.ColorList{}, werror.WrapWithContextParams(ctx, err, "resolve color names failed")
+	}
+	out := make([]platformapi.Color, 0, len(colors))
+	for _, c := range colors {
+		out = append(out, toAPIColor(c, names[c.ID]))
+	}
+	return platformapi.ColorList{Colors: out}, nil
+}
+
+// UpsertColor implements PUT /colors (instance-admin; `color.manage`).
+func (s CatalogService) UpsertColor(ctx context.Context, token bearertoken.Token, req platformapi.UpsertColorRequest) (platformapi.Color, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermColorManage)); err != nil {
+		return platformapi.Color{}, err
+	}
+	saved, err := s.color.Upsert(ctx, catalog.Color{
+		Domain:    req.Domain,
+		Code:      req.Code,
+		Name:      req.Name,
+		Hex:       req.Hex,
+		SortOrder: req.SortOrder,
+	})
+	if err != nil {
+		if errors.Is(err, catalog.ErrInvalidColor) {
+			return platformapi.Color{}, platformapi.NewDemoError("color upsert: domain (eye|hair|vehicle), code, and name are required")
+		}
+		return platformapi.Color{}, werror.WrapWithContextParams(ctx, err, "upsert color failed")
+	}
+	names, err := s.colorNames(ctx, []catalog.Color{saved})
+	if err != nil {
+		return platformapi.Color{}, werror.WrapWithContextParams(ctx, err, "resolve color name failed")
+	}
+	return toAPIColor(saved, names[saved.ID]), nil
+}
+
+// colorNames overlays each color's default-locale name with the localization store (D-i18n), keyed by
+// the color RID, returning id -> (locale -> text).
+func (s CatalogService) colorNames(ctx context.Context, colors []catalog.Color) (map[string]map[string]string, error) {
+	defaults := make(map[string]string, len(colors))
+	for _, c := range colors {
+		defaults[c.ID] = c.Name
+	}
+	return s.loc.NamesByID(ctx, colorEntity, defaults)
+}
+
+func toAPIColor(c catalog.Color, name map[string]string) platformapi.Color {
+	return platformapi.Color{
+		Id:        c.ID,
+		Domain:    c.Domain,
+		Code:      c.Code,
+		Name:      name,
+		Hex:       c.Hex,
+		Status:    c.Status,
+		SortOrder: c.SortOrder,
 	}
 }

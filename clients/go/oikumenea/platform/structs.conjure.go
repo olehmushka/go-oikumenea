@@ -8,6 +8,102 @@ import (
 )
 
 /*
+One entry in a per-domain color palette (D-Color). The per-domain `code` is the stable handle;
+`name` is the translatable label (locale -> text map, D-i18n); `hex` is an optional
+representative swatch (biological eye/hair colors are categories, not precise hex).
+*/
+type Color struct {
+	Id string `json:"id"`
+	// The palette this color belongs to — eye | hair | vehicle.
+	Domain string `json:"domain"`
+	Code   string `json:"code"`
+	// The translatable label as a locale -> text map (all enabled locales; D-i18n).
+	Name map[string]string `json:"name"`
+	Hex  *string           `json:"hex,omitempty"`
+	// active | retired.
+	Status    string `json:"status"`
+	SortOrder *int   `json:"sortOrder,omitempty"`
+}
+
+func (o Color) MarshalJSON() ([]byte, error) {
+	if o.Name == nil {
+		o.Name = make(map[string]string)
+	}
+	type _tmpColor Color
+	return safejson.Marshal(_tmpColor(o))
+}
+
+func (o *Color) UnmarshalJSON(data []byte) error {
+	type _tmpColor Color
+	var rawColor _tmpColor
+	if err := safejson.Unmarshal(data, &rawColor); err != nil {
+		return err
+	}
+	if rawColor.Name == nil {
+		rawColor.Name = make(map[string]string)
+	}
+	*o = Color(rawColor)
+	return nil
+}
+
+func (o Color) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *Color) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type ColorList struct {
+	Colors []Color `json:"colors"`
+}
+
+func (o ColorList) MarshalJSON() ([]byte, error) {
+	if o.Colors == nil {
+		o.Colors = make([]Color, 0)
+	}
+	type _tmpColorList ColorList
+	return safejson.Marshal(_tmpColorList(o))
+}
+
+func (o *ColorList) UnmarshalJSON(data []byte) error {
+	type _tmpColorList ColorList
+	var rawColorList _tmpColorList
+	if err := safejson.Unmarshal(data, &rawColorList); err != nil {
+		return err
+	}
+	if rawColorList.Colors == nil {
+		rawColorList.Colors = make([]Color, 0)
+	}
+	*o = ColorList(rawColorList)
+	return nil
+}
+
+func (o ColorList) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ColorList) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
 A structured GDPR lawful basis (D-OverlayFoundation, M29) — an Article 6 lawful basis or an
 Article 9 special-category condition. Referenced by FK from every future pii:special overlay
 store; the `code` is the stable handle.
@@ -72,6 +168,33 @@ func (o LegalBasisKindList) MarshalYAML() (interface{}, error) {
 }
 
 func (o *LegalBasisKindList) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Add or update a color (instance-admin; `color.manage`). Upserts on (domain, code).
+type UpsertColorRequest struct {
+	// eye | hair | vehicle.
+	Domain string `json:"domain"`
+	Code   string `json:"code"`
+	// The default-locale display name (other locales arrive via the localization store).
+	Name      string  `json:"name"`
+	Hex       *string `json:"hex,omitempty"`
+	SortOrder *int    `json:"sortOrder,omitempty"`
+}
+
+func (o UpsertColorRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertColorRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

@@ -56,8 +56,42 @@ type PersonServiceClient interface {
 	PurgePerson(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (Person, error)
 	// Add or replace a locale name form (transliteration). Keyed by (person, locale).
 	UpsertNameVariant(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertNameVariantRequest) (NameVariant, error)
-	// Remove a name variant.
+	// Remove a name variant (the canonical transliteration for a locale).
 	DeleteNameVariant(ctx context.Context, authHeader bearertoken.Token, personIdArg string, localeArg string) error
+	// Add an alias name form (aka/former_legal/maiden/pseudonym/cover). Returns the created NameVariant.
+	AddNameAlias(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg AddNameAliasRequest) (NameVariant, error)
+	// Remove an alias by its RID.
+	DeleteNameAlias(ctx context.Context, authHeader bearertoken.Token, personIdArg string, aliasIdArg string) error
+	// List a person's effective-dated physical descriptions (D-PhysicalIdentity).
+	ListPhysicalDescriptions(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]PhysicalDescription, error)
+	// Add a physical description, or replace one when id is supplied. Returns Person:PersonInvalid for a bad measurement/blood type.
+	UpsertPhysicalDescription(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertPhysicalDescriptionRequest) (PhysicalDescription, error)
+	// Remove a physical description by id.
+	DeletePhysicalDescription(ctx context.Context, authHeader bearertoken.Token, personIdArg string, descriptionIdArg string) error
+	// List a person's distinguishing marks (D-PhysicalIdentity; pii:special ceiling).
+	ListDistinguishingMarks(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]DistinguishingMark, error)
+	// Add a distinguishing mark, or replace one when id is supplied. Returns Person:PersonInvalid for an unknown kind.
+	UpsertDistinguishingMark(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertDistinguishingMarkRequest) (DistinguishingMark, error)
+	// Remove a distinguishing mark by id.
+	DeleteDistinguishingMark(ctx context.Context, authHeader bearertoken.Token, personIdArg string, markIdArg string) error
+	/*
+	   List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
+	   the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
+	   expansion), or a name/code substring (query). `hasChildren` is set on each entry.
+	*/
+	ListEthnicityTypes(ctx context.Context, authHeader bearertoken.Token, topLevelArg *bool, parentArg *string, queryArg *string, limitArg *int) ([]EthnicityType, error)
+	// Fetch one ethnicity type by RID, including its group-level associated languages + homeland countries.
+	GetEthnicityType(ctx context.Context, authHeader bearertoken.Token, ethnicityTypeIdArg string) (EthnicityType, error)
+	// Add or update a declared-ethnicity catalog entry (instance-admin managed).
+	UpsertEthnicityType(ctx context.Context, authHeader bearertoken.Token, requestArg UpsertEthnicityTypeRequest) (EthnicityType, error)
+	// List a person's declared ethnicities with the value decrypted (D-PhysicalIdentity / D-SpecialPII).
+	ListEthnicities(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Ethnicity, error)
+	// Declare an ethnicity (envelope-encrypted, lawful-basis-gated). Returns Person:PersonInvalid for an unknown code/legal basis.
+	AddEthnicity(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg AddEthnicityRequest) (Ethnicity, error)
+	// Re-declare the ethnicity value and/or flip legal basis / status.
+	UpdateEthnicity(ctx context.Context, authHeader bearertoken.Token, personIdArg string, ethnicityIdArg string, requestArg UpdateEthnicityRequest) (Ethnicity, error)
+	// Remove a declared ethnicity by id.
+	DeleteEthnicity(ctx context.Context, authHeader bearertoken.Token, personIdArg string, ethnicityIdArg string) error
 	// List a person's citizenships.
 	ListCitizenships(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Citizenship, error)
 	// Add or replace the active citizenship for a country. Returns Person:PersonInvalid for an unknown country.
@@ -383,6 +417,261 @@ func (c *personServiceClient) DeleteNameVariant(ctx context.Context, authHeader 
 	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
 	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
 		return werror.WrapWithContextParams(ctx, err, "deleteNameVariant failed")
+	}
+	return nil
+}
+
+func (c *personServiceClient) AddNameAlias(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg AddNameAliasRequest) (NameVariant, error) {
+	var returnVal *NameVariant
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("AddNameAlias"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/name-aliases", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(NameVariant), werror.WrapWithContextParams(ctx, err, "addNameAlias failed")
+	}
+	if returnVal == nil {
+		return *new(NameVariant), werror.ErrorWithContextParams(ctx, "addNameAlias response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) DeleteNameAlias(ctx context.Context, authHeader bearertoken.Token, personIdArg string, aliasIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeleteNameAlias"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/name-aliases/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(aliasIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deleteNameAlias failed")
+	}
+	return nil
+}
+
+func (c *personServiceClient) ListPhysicalDescriptions(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]PhysicalDescription, error) {
+	var returnVal []PhysicalDescription
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListPhysicalDescriptions"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/physical-descriptions", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listPhysicalDescriptions failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listPhysicalDescriptions response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) UpsertPhysicalDescription(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertPhysicalDescriptionRequest) (PhysicalDescription, error) {
+	var returnVal *PhysicalDescription
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertPhysicalDescription"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/physical-descriptions", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(PhysicalDescription), werror.WrapWithContextParams(ctx, err, "upsertPhysicalDescription failed")
+	}
+	if returnVal == nil {
+		return *new(PhysicalDescription), werror.ErrorWithContextParams(ctx, "upsertPhysicalDescription response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) DeletePhysicalDescription(ctx context.Context, authHeader bearertoken.Token, personIdArg string, descriptionIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeletePhysicalDescription"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/physical-descriptions/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(descriptionIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deletePhysicalDescription failed")
+	}
+	return nil
+}
+
+func (c *personServiceClient) ListDistinguishingMarks(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]DistinguishingMark, error) {
+	var returnVal []DistinguishingMark
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListDistinguishingMarks"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/distinguishing-marks", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listDistinguishingMarks failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listDistinguishingMarks response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) UpsertDistinguishingMark(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertDistinguishingMarkRequest) (DistinguishingMark, error) {
+	var returnVal *DistinguishingMark
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertDistinguishingMark"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/distinguishing-marks", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(DistinguishingMark), werror.WrapWithContextParams(ctx, err, "upsertDistinguishingMark failed")
+	}
+	if returnVal == nil {
+		return *new(DistinguishingMark), werror.ErrorWithContextParams(ctx, "upsertDistinguishingMark response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) DeleteDistinguishingMark(ctx context.Context, authHeader bearertoken.Token, personIdArg string, markIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeleteDistinguishingMark"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/distinguishing-marks/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(markIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deleteDistinguishingMark failed")
+	}
+	return nil
+}
+
+func (c *personServiceClient) ListEthnicityTypes(ctx context.Context, authHeader bearertoken.Token, topLevelArg *bool, parentArg *string, queryArg *string, limitArg *int) ([]EthnicityType, error) {
+	var returnVal []EthnicityType
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListEthnicityTypes"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/ethnicity-types"))
+	queryParams := make(url.Values)
+	if topLevelArg != nil {
+		queryParams.Set("topLevel", fmt.Sprint(*topLevelArg))
+	}
+	if parentArg != nil {
+		queryParams.Set("parent", fmt.Sprint(*parentArg))
+	}
+	if queryArg != nil {
+		queryParams.Set("query", fmt.Sprint(*queryArg))
+	}
+	if limitArg != nil {
+		queryParams.Set("limit", fmt.Sprint(*limitArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listEthnicityTypes failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listEthnicityTypes response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) GetEthnicityType(ctx context.Context, authHeader bearertoken.Token, ethnicityTypeIdArg string) (EthnicityType, error) {
+	var returnVal *EthnicityType
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("GetEthnicityType"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/ethnicity-types/%s", url.PathEscape(fmt.Sprint(ethnicityTypeIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(EthnicityType), werror.WrapWithContextParams(ctx, err, "getEthnicityType failed")
+	}
+	if returnVal == nil {
+		return *new(EthnicityType), werror.ErrorWithContextParams(ctx, "getEthnicityType response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) UpsertEthnicityType(ctx context.Context, authHeader bearertoken.Token, requestArg UpsertEthnicityTypeRequest) (EthnicityType, error) {
+	var returnVal *EthnicityType
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertEthnicityType"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/ethnicity-types"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(EthnicityType), werror.WrapWithContextParams(ctx, err, "upsertEthnicityType failed")
+	}
+	if returnVal == nil {
+		return *new(EthnicityType), werror.ErrorWithContextParams(ctx, "upsertEthnicityType response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) ListEthnicities(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Ethnicity, error) {
+	var returnVal []Ethnicity
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListEthnicities"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/ethnicities", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listEthnicities failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listEthnicities response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) AddEthnicity(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg AddEthnicityRequest) (Ethnicity, error) {
+	var returnVal *Ethnicity
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("AddEthnicity"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/ethnicities", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(Ethnicity), werror.WrapWithContextParams(ctx, err, "addEthnicity failed")
+	}
+	if returnVal == nil {
+		return *new(Ethnicity), werror.ErrorWithContextParams(ctx, "addEthnicity response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) UpdateEthnicity(ctx context.Context, authHeader bearertoken.Token, personIdArg string, ethnicityIdArg string, requestArg UpdateEthnicityRequest) (Ethnicity, error) {
+	var returnVal *Ethnicity
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpdateEthnicity"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/ethnicities/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(ethnicityIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(Ethnicity), werror.WrapWithContextParams(ctx, err, "updateEthnicity failed")
+	}
+	if returnVal == nil {
+		return *new(Ethnicity), werror.ErrorWithContextParams(ctx, "updateEthnicity response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) DeleteEthnicity(ctx context.Context, authHeader bearertoken.Token, personIdArg string, ethnicityIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeleteEthnicity"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/ethnicities/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(ethnicityIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deleteEthnicity failed")
 	}
 	return nil
 }
@@ -1113,8 +1402,42 @@ type PersonServiceClientWithAuth interface {
 	PurgePerson(ctx context.Context, personIdArg string) (Person, error)
 	// Add or replace a locale name form (transliteration). Keyed by (person, locale).
 	UpsertNameVariant(ctx context.Context, personIdArg string, requestArg UpsertNameVariantRequest) (NameVariant, error)
-	// Remove a name variant.
+	// Remove a name variant (the canonical transliteration for a locale).
 	DeleteNameVariant(ctx context.Context, personIdArg string, localeArg string) error
+	// Add an alias name form (aka/former_legal/maiden/pseudonym/cover). Returns the created NameVariant.
+	AddNameAlias(ctx context.Context, personIdArg string, requestArg AddNameAliasRequest) (NameVariant, error)
+	// Remove an alias by its RID.
+	DeleteNameAlias(ctx context.Context, personIdArg string, aliasIdArg string) error
+	// List a person's effective-dated physical descriptions (D-PhysicalIdentity).
+	ListPhysicalDescriptions(ctx context.Context, personIdArg string) ([]PhysicalDescription, error)
+	// Add a physical description, or replace one when id is supplied. Returns Person:PersonInvalid for a bad measurement/blood type.
+	UpsertPhysicalDescription(ctx context.Context, personIdArg string, requestArg UpsertPhysicalDescriptionRequest) (PhysicalDescription, error)
+	// Remove a physical description by id.
+	DeletePhysicalDescription(ctx context.Context, personIdArg string, descriptionIdArg string) error
+	// List a person's distinguishing marks (D-PhysicalIdentity; pii:special ceiling).
+	ListDistinguishingMarks(ctx context.Context, personIdArg string) ([]DistinguishingMark, error)
+	// Add a distinguishing mark, or replace one when id is supplied. Returns Person:PersonInvalid for an unknown kind.
+	UpsertDistinguishingMark(ctx context.Context, personIdArg string, requestArg UpsertDistinguishingMarkRequest) (DistinguishingMark, error)
+	// Remove a distinguishing mark by id.
+	DeleteDistinguishingMark(ctx context.Context, personIdArg string, markIdArg string) error
+	/*
+	   List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
+	   the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
+	   expansion), or a name/code substring (query). `hasChildren` is set on each entry.
+	*/
+	ListEthnicityTypes(ctx context.Context, topLevelArg *bool, parentArg *string, queryArg *string, limitArg *int) ([]EthnicityType, error)
+	// Fetch one ethnicity type by RID, including its group-level associated languages + homeland countries.
+	GetEthnicityType(ctx context.Context, ethnicityTypeIdArg string) (EthnicityType, error)
+	// Add or update a declared-ethnicity catalog entry (instance-admin managed).
+	UpsertEthnicityType(ctx context.Context, requestArg UpsertEthnicityTypeRequest) (EthnicityType, error)
+	// List a person's declared ethnicities with the value decrypted (D-PhysicalIdentity / D-SpecialPII).
+	ListEthnicities(ctx context.Context, personIdArg string) ([]Ethnicity, error)
+	// Declare an ethnicity (envelope-encrypted, lawful-basis-gated). Returns Person:PersonInvalid for an unknown code/legal basis.
+	AddEthnicity(ctx context.Context, personIdArg string, requestArg AddEthnicityRequest) (Ethnicity, error)
+	// Re-declare the ethnicity value and/or flip legal basis / status.
+	UpdateEthnicity(ctx context.Context, personIdArg string, ethnicityIdArg string, requestArg UpdateEthnicityRequest) (Ethnicity, error)
+	// Remove a declared ethnicity by id.
+	DeleteEthnicity(ctx context.Context, personIdArg string, ethnicityIdArg string) error
 	// List a person's citizenships.
 	ListCitizenships(ctx context.Context, personIdArg string) ([]Citizenship, error)
 	// Add or replace the active citizenship for a country. Returns Person:PersonInvalid for an unknown country.
@@ -1274,6 +1597,66 @@ func (c *personServiceClientWithAuth) UpsertNameVariant(ctx context.Context, per
 
 func (c *personServiceClientWithAuth) DeleteNameVariant(ctx context.Context, personIdArg string, localeArg string) error {
 	return c.client.DeleteNameVariant(ctx, c.authHeader, personIdArg, localeArg)
+}
+
+func (c *personServiceClientWithAuth) AddNameAlias(ctx context.Context, personIdArg string, requestArg AddNameAliasRequest) (NameVariant, error) {
+	return c.client.AddNameAlias(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) DeleteNameAlias(ctx context.Context, personIdArg string, aliasIdArg string) error {
+	return c.client.DeleteNameAlias(ctx, c.authHeader, personIdArg, aliasIdArg)
+}
+
+func (c *personServiceClientWithAuth) ListPhysicalDescriptions(ctx context.Context, personIdArg string) ([]PhysicalDescription, error) {
+	return c.client.ListPhysicalDescriptions(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertPhysicalDescription(ctx context.Context, personIdArg string, requestArg UpsertPhysicalDescriptionRequest) (PhysicalDescription, error) {
+	return c.client.UpsertPhysicalDescription(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) DeletePhysicalDescription(ctx context.Context, personIdArg string, descriptionIdArg string) error {
+	return c.client.DeletePhysicalDescription(ctx, c.authHeader, personIdArg, descriptionIdArg)
+}
+
+func (c *personServiceClientWithAuth) ListDistinguishingMarks(ctx context.Context, personIdArg string) ([]DistinguishingMark, error) {
+	return c.client.ListDistinguishingMarks(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertDistinguishingMark(ctx context.Context, personIdArg string, requestArg UpsertDistinguishingMarkRequest) (DistinguishingMark, error) {
+	return c.client.UpsertDistinguishingMark(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) DeleteDistinguishingMark(ctx context.Context, personIdArg string, markIdArg string) error {
+	return c.client.DeleteDistinguishingMark(ctx, c.authHeader, personIdArg, markIdArg)
+}
+
+func (c *personServiceClientWithAuth) ListEthnicityTypes(ctx context.Context, topLevelArg *bool, parentArg *string, queryArg *string, limitArg *int) ([]EthnicityType, error) {
+	return c.client.ListEthnicityTypes(ctx, c.authHeader, topLevelArg, parentArg, queryArg, limitArg)
+}
+
+func (c *personServiceClientWithAuth) GetEthnicityType(ctx context.Context, ethnicityTypeIdArg string) (EthnicityType, error) {
+	return c.client.GetEthnicityType(ctx, c.authHeader, ethnicityTypeIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertEthnicityType(ctx context.Context, requestArg UpsertEthnicityTypeRequest) (EthnicityType, error) {
+	return c.client.UpsertEthnicityType(ctx, c.authHeader, requestArg)
+}
+
+func (c *personServiceClientWithAuth) ListEthnicities(ctx context.Context, personIdArg string) ([]Ethnicity, error) {
+	return c.client.ListEthnicities(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) AddEthnicity(ctx context.Context, personIdArg string, requestArg AddEthnicityRequest) (Ethnicity, error) {
+	return c.client.AddEthnicity(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) UpdateEthnicity(ctx context.Context, personIdArg string, ethnicityIdArg string, requestArg UpdateEthnicityRequest) (Ethnicity, error) {
+	return c.client.UpdateEthnicity(ctx, c.authHeader, personIdArg, ethnicityIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) DeleteEthnicity(ctx context.Context, personIdArg string, ethnicityIdArg string) error {
+	return c.client.DeleteEthnicity(ctx, c.authHeader, personIdArg, ethnicityIdArg)
 }
 
 func (c *personServiceClientWithAuth) ListCitizenships(ctx context.Context, personIdArg string) ([]Citizenship, error) {
@@ -1547,6 +1930,126 @@ func (c *personServiceClientWithTokenProvider) DeleteNameVariant(ctx context.Con
 		return err
 	}
 	return c.client.DeleteNameVariant(ctx, bearertoken.Token(token), personIdArg, localeArg)
+}
+
+func (c *personServiceClientWithTokenProvider) AddNameAlias(ctx context.Context, personIdArg string, requestArg AddNameAliasRequest) (NameVariant, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(NameVariant), err
+	}
+	return c.client.AddNameAlias(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) DeleteNameAlias(ctx context.Context, personIdArg string, aliasIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeleteNameAlias(ctx, bearertoken.Token(token), personIdArg, aliasIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListPhysicalDescriptions(ctx context.Context, personIdArg string) ([]PhysicalDescription, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListPhysicalDescriptions(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertPhysicalDescription(ctx context.Context, personIdArg string, requestArg UpsertPhysicalDescriptionRequest) (PhysicalDescription, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(PhysicalDescription), err
+	}
+	return c.client.UpsertPhysicalDescription(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) DeletePhysicalDescription(ctx context.Context, personIdArg string, descriptionIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeletePhysicalDescription(ctx, bearertoken.Token(token), personIdArg, descriptionIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListDistinguishingMarks(ctx context.Context, personIdArg string) ([]DistinguishingMark, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListDistinguishingMarks(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertDistinguishingMark(ctx context.Context, personIdArg string, requestArg UpsertDistinguishingMarkRequest) (DistinguishingMark, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(DistinguishingMark), err
+	}
+	return c.client.UpsertDistinguishingMark(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) DeleteDistinguishingMark(ctx context.Context, personIdArg string, markIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeleteDistinguishingMark(ctx, bearertoken.Token(token), personIdArg, markIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListEthnicityTypes(ctx context.Context, topLevelArg *bool, parentArg *string, queryArg *string, limitArg *int) ([]EthnicityType, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListEthnicityTypes(ctx, bearertoken.Token(token), topLevelArg, parentArg, queryArg, limitArg)
+}
+
+func (c *personServiceClientWithTokenProvider) GetEthnicityType(ctx context.Context, ethnicityTypeIdArg string) (EthnicityType, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(EthnicityType), err
+	}
+	return c.client.GetEthnicityType(ctx, bearertoken.Token(token), ethnicityTypeIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertEthnicityType(ctx context.Context, requestArg UpsertEthnicityTypeRequest) (EthnicityType, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(EthnicityType), err
+	}
+	return c.client.UpsertEthnicityType(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListEthnicities(ctx context.Context, personIdArg string) ([]Ethnicity, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListEthnicities(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) AddEthnicity(ctx context.Context, personIdArg string, requestArg AddEthnicityRequest) (Ethnicity, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Ethnicity), err
+	}
+	return c.client.AddEthnicity(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpdateEthnicity(ctx context.Context, personIdArg string, ethnicityIdArg string, requestArg UpdateEthnicityRequest) (Ethnicity, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Ethnicity), err
+	}
+	return c.client.UpdateEthnicity(ctx, bearertoken.Token(token), personIdArg, ethnicityIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) DeleteEthnicity(ctx context.Context, personIdArg string, ethnicityIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeleteEthnicity(ctx, bearertoken.Token(token), personIdArg, ethnicityIdArg)
 }
 
 func (c *personServiceClientWithTokenProvider) ListCitizenships(ctx context.Context, personIdArg string) ([]Citizenship, error) {

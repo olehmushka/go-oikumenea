@@ -5,6 +5,7 @@
 package domain
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"time"
@@ -27,7 +28,16 @@ var (
 	ErrConflict        = errors.New("vehicle: code or identifier already exists in scope")
 	ErrInvalid         = errors.New("vehicle: invalid request or unknown reference")
 	ErrRegionInvalid   = errors.New("vehicle: plate region is not a geo_places region")
+	// ErrColorMismatch is returned when color_id does not resolve to a domain='vehicle' color (D-Color).
+	ErrColorMismatch = errors.New("vehicle: color is not a vehicle-palette color")
 )
+
+// ColorLookup resolves a color RID to its palette domain (D-Color). Implemented by the platform color
+// catalog; used to enforce the hard FK's palette (color_id must be a domain='vehicle' color). A
+// cross-module query interface call (the domain owns the port; main wires the concrete).
+type ColorLookup interface {
+	ColorDomain(ctx context.Context, id string) (string, error)
+}
 
 // ---- catalogs ----
 
@@ -63,7 +73,8 @@ type Vehicle struct {
 	ID, TypeID           string
 	ModelID              string // "" = unknown model
 	BrandID              string // derived from model; "" when no model
-	VIN, Color           string // "" = none
+	VIN                  string // "" = none
+	ColorID              string // platform_colors.id (domain='vehicle'); "" = none
 	ManufactureDate      string // ISO date; "" = none
 	Attributes           string // JSON object string; "{}" when unset
 	Status               string
@@ -114,7 +125,7 @@ type VehicleInput struct {
 	TypeID          string
 	ModelID         string // "" = none
 	VIN             string // normalized; "" = none
-	Color           string
+	ColorID         string // platform_colors.id (domain='vehicle'); "" = none
 	ManufactureDate string // ISO date; "" = none
 	Attributes      string // JSON object string; "" → "{}"
 }
@@ -124,7 +135,7 @@ type VehicleUpdate struct {
 	TypeID          *string
 	ModelID         *string
 	VIN             *string
-	Color           *string
+	ColorID         *string
 	ManufactureDate *string
 	Attributes      *string
 	Status          *string

@@ -75,7 +75,9 @@ types:
             docs: The brand of the model (derived), when a model is set.
           brandLabel: optional<string>
           vin: optional<string>
-          color: optional<string>
+          colorId:
+            type: optional<string>
+            docs: The vehicle's color — a platform_colors RID (domain='vehicle', D-Color). Resolve label/hex via the platform color catalog.
           manufactureDate: optional<string>
           attributes:
             type: optional<string>
@@ -203,18 +205,22 @@ types:
           typeId: string
           modelId: optional<string>
           vin: optional<string>
-          color: optional<string>
+          colorId:
+            type: optional<string>
+            docs: A platform_colors RID (domain='vehicle', D-Color).
           manufactureDate: optional<string>
           attributes:
             type: optional<string>
             docs: A JSON object string; defaults to {}.
       UpdateVehicleRequest:
-        docs: Update type/model/vin/color/date/attributes/status; omitted fields are unchanged.
+        docs: Update type/model/vin/colorId/date/attributes/status; omitted fields are unchanged.
         fields:
           typeId: optional<string>
           modelId: optional<string>
           vin: optional<string>
-          color: optional<string>
+          colorId:
+            type: optional<string>
+            docs: A platform_colors RID (domain='vehicle', D-Color).
           manufactureDate: optional<string>
           attributes: optional<string>
           status: optional<string>

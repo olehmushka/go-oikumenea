@@ -48,11 +48,11 @@ func TestPersonValidate(t *testing.T) {
 func TestNormalizeSex(t *testing.T) {
 	cases := map[string]string{
 		"0": "not_known", "1": "male", "2": "female", "9": "not_applicable",
-		" 1 ":  "male",           // surrounding whitespace tolerated
-		"male": "male",           // already canonical, passed through
-		"":     "",               // empty stays empty (defaulted upstream)
-		"7":    "7",              // unknown numeric passes through for Validate to reject
-		"robot": "robot",         // garbage passes through
+		" 1 ":   "male",  // surrounding whitespace tolerated
+		"male":  "male",  // already canonical, passed through
+		"":      "",      // empty stays empty (defaulted upstream)
+		"7":     "7",     // unknown numeric passes through for Validate to reject
+		"robot": "robot", // garbage passes through
 	}
 	for in, want := range cases {
 		if got := NormalizeSex(in); got != want {
@@ -223,9 +223,9 @@ func TestRelationLinkType(t *testing.T) {
 	// Native UUIDv8 RIDs: byte6 low nibble = kind (2=link), byte8 low 6 bits = service (6=person),
 	// byte9 = type-code low 8 bits. partnered_with=2, kin_parent_of=3, associated_with=7.
 	cases := map[string]string{
-		"00000000-0000-8201-8602-000000000000": LinkPartnership,  // person/link/type 2
-		"00000000-0000-8201-8603-000000000000": LinkKinship,      // type 3
-		"00000000-0000-8201-8607-000000000000": LinkAssociation,  // type 7
+		"00000000-0000-8201-8602-000000000000": LinkPartnership, // person/link/type 2
+		"00000000-0000-8201-8603-000000000000": LinkKinship,     // type 3
+		"00000000-0000-8201-8607-000000000000": LinkAssociation, // type 7
 	}
 	for rid, want := range cases {
 		if got := RelationLinkType(rid); got != want {
