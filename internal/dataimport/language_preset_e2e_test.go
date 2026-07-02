@@ -17,8 +17,8 @@ import (
 
 	"github.com/olegamysk/go-oikumenea/internal/dataimport/application"
 	"github.com/olegamysk/go-oikumenea/internal/dataimport/domain"
-	hdomain "github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/cldrscripts"
+	hdomain "github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/glottolog"
 )
 

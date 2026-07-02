@@ -193,14 +193,14 @@ function Merge({ org, orgs, onDone, setErr }: { org: Org; orgs: Org[]; onDone: (
 
 // CountryOptions loads the country list once via the geo SDK.
 function CountryOptions() {
-  const [countries, setCountries] = useState<{ id: string; code: string; name: string }[]>([]);
+  const [countries, setCountries] = useState<{ id: string; code: string; name: LocaleMap }[]>([]);
   useEffect(() => {
-    api.geo.listCountries().then((r) => setCountries((r.countries ?? []) as { id: string; code: string; name: string }[])).catch(() => {});
+    api.geo.listCountries().then((r) => setCountries((r.countries ?? []) as { id: string; code: string; name: LocaleMap }[])).catch(() => {});
   }, []);
   return (
     <>
       <option value="">— country (optional) —</option>
-      {countries.map((c) => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
+      {countries.map((c) => <option key={c.id} value={c.id}>{c.code} — {pickLabel(c.name) || c.code}</option>)}
     </>
   );
 }

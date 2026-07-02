@@ -31,8 +31,8 @@ type PagedMapper struct{}
 var _ domain.PagedMapper = PagedMapper{}
 
 var (
-	parenRe = regexp.MustCompile(`\([^)]*\)`)         // "(2001 est.)" and other caveats
-	noteRe  = regexp.MustCompile(`(?i)\bnote\s*:`)    // a trailing "note:" clause
+	parenRe = regexp.MustCompile(`\([^)]*\)`)      // "(2001 est.)" and other caveats
+	noteRe  = regexp.MustCompile(`(?i)\bnote\s*:`) // a trailing "note:" clause
 	tokRe   = regexp.MustCompile(`^(.+?)\s+(?:less than\s+)?<?\s*\d[\d.,]*\s*%$`)
 	wsRe    = regexp.MustCompile(`\s+`)
 	slugRe  = regexp.MustCompile(`[^a-z0-9]+`)

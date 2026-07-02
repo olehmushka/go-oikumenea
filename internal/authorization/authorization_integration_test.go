@@ -2,18 +2,27 @@
 
 // Integration tests for the authorization module against a real Postgres (M7 exit criteria — the PDP
 // centerpiece): decisions over the tenant unit-graph closure with per-assignment scope × graph.
+//
 //   - `subtree` cascades to descendants over the (authority-bearing) graph; `unit` leaks nothing down;
+//
 //   - the union is taken across graphs (command + operational both contribute);
+//
 //   - a directory-only graph rejects subtree grants (D-DirectoryGraphs);
+//
 //   - expired assignments are inactive at decision time (D-TimeBoundGrants);
+//
 //   - the instance-admin plane is allowed everything; instance-scope actions are denied to others;
+//
 //   - no self-escalation: granting requires assignment.grant reaching the target;
+//
 //   - the effective read/write reach expands a subtree over the closure (D-RLSDefenseInDepth);
+//
 //   - base roles are immutable; a role with an instance-scope permission is rejected;
+//
 //   - a grant write + its audit row share one transaction.
 //
-//	OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable" \
-//	  go test -tags integration ./internal/authorization/...
+//     OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable" \
+//     go test -tags integration ./internal/authorization/...
 package authorization_test
 
 import (

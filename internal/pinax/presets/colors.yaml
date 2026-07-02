@@ -1,0 +1,26 @@
+# pinax preset — colors (platform_colors palettes). D-Pinax (M45), objectType colors.
+# Seeds the per-domain color palettes the NEW seeded reference catalogs point at via color_id:
+# rank/religion/ethnicity/country. The eye/hair/vehicle palettes are owned by the migration
+# (0030_person_physical_identity) and already origin='seeded' — this preset deliberately does NOT
+# duplicate them (that would churn on --reconcile for no gain). (domain, code)-keyed idempotent upsert;
+# origin='seeded'. This is the bootstrap fixture — the FULL palette set is produced by
+# deploy/pinax-presets/gen and overwrites this file.
+preset: colors
+objectType: colors
+source: pinax-curated
+sourceVersion: "1"
+license: CC0-1.0
+dependsOn: []
+records:
+  # country palette (referenced fill-if-empty by the countries preset)
+  - {domain: country, code: blue, name: Blue, hex: "#0057B7", sortOrder: 10}
+  - {domain: country, code: yellow, name: Yellow, hex: "#FFD700", sortOrder: 20}
+  - {domain: country, code: red, name: Red, hex: "#B22234", sortOrder: 30}
+  # rank palette
+  - {domain: rank, code: gold, name: Gold, hex: "#D4AF37", sortOrder: 10}
+  - {domain: rank, code: silver, name: Silver, hex: "#C0C0C0", sortOrder: 20}
+  # religion palette
+  - {domain: religion, code: gold, name: Gold, hex: "#D4AF37", sortOrder: 10}
+  - {domain: religion, code: white, name: White, hex: "#F5F5F5", sortOrder: 20}
+  # ethnicity palette
+  - {domain: ethnicity, code: neutral, name: Neutral, hex: "#9AA0A6", sortOrder: 10}

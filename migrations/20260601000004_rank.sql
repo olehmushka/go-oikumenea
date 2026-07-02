@@ -224,5 +224,21 @@ COMMENT ON COLUMN oikumenea.rank_ranks.abbreviation IS 'pii:none';
 COMMENT ON COLUMN oikumenea.rank_ranks.grade_code IS 'pii:none';
 COMMENT ON COLUMN oikumenea.rank_ranks.sort_order IS 'pii:none';
 
+-- pinax origin marker (D-Pinax, M45): 'seeded' = managed by the bundled `ranks` preset (safe to
+-- --reconcile), 'operator' = created via the admin API (never touched by re-seeding). The rows seeded
+-- above are seeded-owned; the ADD COLUMN default 'operator' is the runtime default for API-created rows.
+ALTER TABLE oikumenea.rank_systems    ADD COLUMN origin text NOT NULL DEFAULT 'operator' CHECK (origin IN ('seeded','operator'));
+ALTER TABLE oikumenea.rank_categories ADD COLUMN origin text NOT NULL DEFAULT 'operator' CHECK (origin IN ('seeded','operator'));
+ALTER TABLE oikumenea.rank_types      ADD COLUMN origin text NOT NULL DEFAULT 'operator' CHECK (origin IN ('seeded','operator'));
+ALTER TABLE oikumenea.rank_ranks      ADD COLUMN origin text NOT NULL DEFAULT 'operator' CHECK (origin IN ('seeded','operator'));
+UPDATE oikumenea.rank_systems    SET origin = 'seeded';
+UPDATE oikumenea.rank_categories SET origin = 'seeded';
+UPDATE oikumenea.rank_types      SET origin = 'seeded';
+UPDATE oikumenea.rank_ranks      SET origin = 'seeded';
+COMMENT ON COLUMN oikumenea.rank_systems.origin IS 'pii:none';
+COMMENT ON COLUMN oikumenea.rank_categories.origin IS 'pii:none';
+COMMENT ON COLUMN oikumenea.rank_types.origin IS 'pii:none';
+COMMENT ON COLUMN oikumenea.rank_ranks.origin IS 'pii:none';
+
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
 UPDATE oikumenea.schema_version SET revision = '0004_rank', applied_at = now() WHERE singleton;

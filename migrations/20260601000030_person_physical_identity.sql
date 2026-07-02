@@ -41,7 +41,7 @@ INSERT INTO oikumenea.platform_rid_types (service_code, kind, type_code, type_na
 -- ===================================================================================================
 CREATE TABLE oikumenea.platform_colors (
   id         uuid PRIMARY KEY DEFAULT oikumenea.new_id(1,1,1),  -- platform / object / color
-  domain     text NOT NULL CHECK (domain IN ('eye','hair','vehicle')),
+  domain     text NOT NULL CHECK (domain IN ('eye','hair','vehicle','rank','religion','ethnicity','country')),  -- +pinax palettes (D-Pinax, M45)
   code       text NOT NULL,
   name       text NOT NULL,  -- default-locale label; full i18n overlaid from the localization store
   hex        text CHECK (hex IS NULL OR hex ~ '^#[0-9A-Fa-f]{6}$'),  -- nullable representative swatch
@@ -329,6 +329,32 @@ ALTER TABLE oikumenea.vehicle_vehicles DROP COLUMN color;
 CREATE INDEX vehicle_vehicles_color_idx
   ON oikumenea.vehicle_vehicles (color_id) WHERE deleted_at IS NULL;
 COMMENT ON COLUMN oikumenea.vehicle_vehicles.color_id IS 'pii:none';
+
+-- ---------------------------------------------------------------------------------------------------
+-- pinax origin marker (D-Pinax, M45): 'seeded' = managed by a bundled preset (`colors` palettes;
+-- `ethnicities` catalog via the import path), 'operator' = created via the admin API. platform_colors'
+-- migration-seeded palettes are seeded-owned; person_ethnicity_types seeds empty (default 'operator',
+-- and the ethnicity import handler stamps origin='seeded' on loaded rows — D-Pinax).
+ALTER TABLE oikumenea.platform_colors        ADD COLUMN origin text NOT NULL DEFAULT 'operator' CHECK (origin IN ('seeded','operator'));
+ALTER TABLE oikumenea.person_ethnicity_types ADD COLUMN origin text NOT NULL DEFAULT 'operator' CHECK (origin IN ('seeded','operator'));
+UPDATE oikumenea.platform_colors SET origin = 'seeded';
+COMMENT ON COLUMN oikumenea.platform_colors.origin IS 'pii:none';
+COMMENT ON COLUMN oikumenea.person_ethnicity_types.origin IS 'pii:none';
+
+-- pinax structural color (D-Pinax, M45 + D-Color): a nullable display color on the seeded reference
+-- catalogs, referencing the shared platform_colors palette by hard FK. These ALTERs live here (not in
+-- each table's own earlier migration) because platform_colors is created above in THIS migration — a
+-- forward reference from 0000/0004/0023 would fail. Palette rows for the new domains arrive via the
+-- bundled `colors` preset; the domain match (e.g. a country references a 'country'-domain color) is
+-- validated app-side via the D-Color ColorLookup, as with eye/hair/vehicle.
+ALTER TABLE oikumenea.geo_countries          ADD COLUMN color_id uuid REFERENCES oikumenea.platform_colors(id) ON DELETE RESTRICT;
+ALTER TABLE oikumenea.rank_ranks             ADD COLUMN color_id uuid REFERENCES oikumenea.platform_colors(id) ON DELETE RESTRICT;
+ALTER TABLE oikumenea.religion_taxa          ADD COLUMN color_id uuid REFERENCES oikumenea.platform_colors(id) ON DELETE RESTRICT;
+ALTER TABLE oikumenea.person_ethnicity_types ADD COLUMN color_id uuid REFERENCES oikumenea.platform_colors(id) ON DELETE RESTRICT;
+COMMENT ON COLUMN oikumenea.geo_countries.color_id IS 'pii:none';
+COMMENT ON COLUMN oikumenea.rank_ranks.color_id IS 'pii:none';
+COMMENT ON COLUMN oikumenea.religion_taxa.color_id IS 'pii:none';
+COMMENT ON COLUMN oikumenea.person_ethnicity_types.color_id IS 'pii:none';
 
 -- ---------------------------------------------------------------------------------------------------
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).

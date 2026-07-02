@@ -11,6 +11,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olegamysk/go-oikumenea/internal/audit"
 	auditadapters "github.com/olegamysk/go-oikumenea/internal/audit/adapters"
 	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
@@ -20,6 +21,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/company"
 	identityapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/identityfederation"
 	"github.com/olegamysk/go-oikumenea/internal/dataimport"
+	importdomain "github.com/olegamysk/go-oikumenea/internal/dataimport/domain"
 	"github.com/olegamysk/go-oikumenea/internal/document"
 	"github.com/olegamysk/go-oikumenea/internal/education"
 	"github.com/olegamysk/go-oikumenea/internal/externalorg"
@@ -32,10 +34,14 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/membership"
 	"github.com/olegamysk/go-oikumenea/internal/order"
 	"github.com/olegamysk/go-oikumenea/internal/person"
+	"github.com/olegamysk/go-oikumenea/internal/pinax"
 	"github.com/olegamysk/go-oikumenea/internal/platform"
 	"github.com/olegamysk/go-oikumenea/internal/platform/config"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/internal/rank"
+	rankadapters "github.com/olegamysk/go-oikumenea/internal/rank/adapters"
+	rankapp "github.com/olegamysk/go-oikumenea/internal/rank/application"
+	rankdomain "github.com/olegamysk/go-oikumenea/internal/rank/domain"
 	"github.com/olegamysk/go-oikumenea/internal/religion"
 	"github.com/olegamysk/go-oikumenea/internal/tenant"
 	"github.com/olegamysk/go-oikumenea/internal/vehicle"
@@ -43,6 +49,8 @@ import (
 	"github.com/olegamysk/go-oikumenea/pkg/events"
 	"github.com/olegamysk/go-oikumenea/pkg/personalcode"
 	werror "github.com/palantir/witchcraft-go-error"
+	"github.com/palantir/witchcraft-go-logging/wlog"
+	_ "github.com/palantir/witchcraft-go-logging/wlog-zap" // register the default (zap) logging provider for CLI-constructed loggers
 	"github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
 	"gopkg.in/yaml.v3"
@@ -61,8 +69,12 @@ func main() {
 		// Break-glass first/lost-admin recovery reuses the bootstrap seed transaction (D-Bootstrap).
 		// Operator-host-gated: possession of operator DB/host access is the authorization.
 		os.Exit(runAdminCLI(cmd, os.Args[2:]))
+	case "seed":
+		// pinax reference-plane seed (D-Pinax, M45): manually apply the bundled presets (for
+		// pinax.autoseed:false, or an explicit refresh). Operator-host-gated, like the admin CLIs.
+		os.Exit(runSeedCLI(os.Args[2:]))
 	default:
-		fmt.Fprintf(os.Stderr, "unknown subcommand %q (known: serve, bootstrap-admin, recover-admin)\n", cmd)
+		fmt.Fprintf(os.Stderr, "unknown subcommand %q (known: serve, bootstrap-admin, recover-admin, seed)\n", cmd)
 		os.Exit(2)
 	}
 }
@@ -220,9 +232,27 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// Data import (M16 / D-Hermenea): the generic POST /import/{objectType} endpoint the out-of-process
 	// hermenea companion calls to load reference data (it never touches this DB). Idempotent,
 	// non-destructive, audited as a `system` actor; the enforcer it holds is bound by authorization.
-	if _, err := dataimport.Register(info, pool, auditSvc, enforcer, install.Hermenea.BaseURL, os.Getenv("OIKUMENEA_HERMENEA_TOKEN"), install.Hermenea.InsecureSkipVerify); err != nil {
+	importSvc, err := dataimport.Register(info, pool, auditSvc, enforcer, install.Hermenea.BaseURL, os.Getenv("OIKUMENEA_HERMENEA_TOKEN"), install.Hermenea.InsecureSkipVerify)
+	if err != nil {
 		cleanup()
 		return nil, err
+	}
+
+	// pinax reference-plane autoseed (D-Pinax, M45): self-seed the go:embed-ed bundled presets through
+	// the import service above (create-if-absent, version-gated) so a fresh oikumenea is usable without
+	// the hermenea companion. A malformed bundle fails boot (NewSeeder); a runtime seed error is logged
+	// and NON-fatal (the seed is idempotent — it retries next boot, and `oikumenea seed` surfaces it).
+	// Gated by pinax.autoseed (default on); flip to false to seed manually via the `seed` subcommand.
+	if install.Pinax.AutoseedEnabled() {
+		seeder, err := pinax.NewSeeder(pool, importSvc, pinaxNativeImporters(rankSvc))
+		if err != nil {
+			cleanup()
+			return nil, werror.Wrap(err, "load pinax presets")
+		}
+		if _, err := seeder.Seed(ctx, false); err != nil {
+			svc1log.FromContext(ctx).Error("pinax autoseed failed (non-fatal; retries next boot)",
+				svc1log.Stacktrace(err))
+		}
 	}
 
 	// Geo + Location (M16 / D-Geo + M19 / D-Location): the read-only GET /geo/countries lookup (clients
@@ -504,6 +534,109 @@ func runAdminCLI(cmd string, args []string) int {
 	}
 	fmt.Fprintf(os.Stdout, "%s: seeded instance admin (person=%s account=%s)\n", cmd, res.PersonID, res.AccountID)
 	return 0
+}
+
+// ---------------------------------------------------------------- pinax seed CLI
+
+// runSeedCLI manually applies the bundled pinax reference-plane presets (D-Pinax, M45) — for a
+// pinax.autoseed:false deployment, or an explicit refresh. It mirrors the admin CLI (load config, open
+// the operator pool, respect the schema-version gate) and drives the SAME import handlers the boot
+// autoseeder uses. `--reconcile` re-runs every preset with update-on-change (create-if-absent otherwise).
+func runSeedCLI(args []string) int {
+	const cmd = "seed"
+	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
+	var configPath string
+	var reconcile bool
+	fs.StringVar(&configPath, "config", "var/conf/install.yml", "path to the install config")
+	fs.BoolVar(&reconcile, "reconcile", false, "update existing seeded rows to the preset version (not just create-if-absent)")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	install, err := loadInstall(configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: load install config: %v\n", cmd, err)
+		return 1
+	}
+
+	// Attach a real service logger so the seeder's svc1log calls emit structured lines to stderr instead
+	// of the "logger not set on context" warning the bare Background() context triggers off the server path.
+	ctx := svc1log.WithLogger(context.Background(), svc1log.New(os.Stderr, wlog.InfoLevel))
+	pool, err := db.NewPool(ctx, install.Postgres.DSN, install.Environment)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: connect database: %v\n", cmd, err)
+		return 1
+	}
+	defer pool.Close()
+
+	rev, err := db.ReadSchemaRevision(ctx, pool)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: read schema version: %v\n", cmd, err)
+		return 1
+	}
+	if rev != db.ExpectedSchemaRevision {
+		fmt.Fprintf(os.Stderr, "%s: schema revision %q != expected %q; run migrations first\n", cmd, rev, db.ExpectedSchemaRevision)
+		return 1
+	}
+
+	auditSvc := auditapp.NewService(pool,
+		func(conn db.DBTX) auditdomain.Repository { return auditadapters.NewRepository(conn) },
+		func() int { return 50 })
+
+	seeder, err := pinax.NewSeeder(pool, dataimport.NewImportService(pool, auditSvc), pinaxNativeImporters(newRankService(pool, auditSvc)))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: load pinax presets: %v\n", cmd, err)
+		return 1
+	}
+	summaries, err := seeder.Seed(ctx, reconcile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", cmd, err)
+		return 1
+	}
+	if len(summaries) == 0 {
+		fmt.Fprintf(os.Stdout, "%s: all presets already up to date; nothing to do%s\n", cmd,
+			map[bool]string{true: " (use --reconcile to force)", false: ""}[!reconcile])
+		return 0
+	}
+	for name, sum := range summaries {
+		fmt.Fprintf(os.Stdout, "%s: %-16s created=%d updated=%d skipped=%d\n", cmd, name, sum.Created, sum.Updated, sum.Skipped)
+	}
+	return 0
+}
+
+// pinaxNativeImporters builds the pinax native-importer registry (D-Pinax, M45): presets that own their
+// own transaction / nested decoding and cannot go through the flat canonical-record import path.
+// Currently just `ranks` — rank.Service.ImportPreset over the system→category→type→rank subtree, which
+// manages its own transaction (so it can't run inside the shared import tx the flat handlers use).
+func pinaxNativeImporters(rankSvc *rankapp.Service) map[string]pinax.NativeImporter {
+	return map[string]pinax.NativeImporter{
+		"ranks": func(ctx context.Context, records []map[string]any, _ bool) (importdomain.Summary, error) {
+			// ImportPreset is an idempotent upsert; each record is one rank system. Boot autoseed is
+			// version-gated (systems start empty), so create-if-absent vs reconcile collapses here.
+			var sum importdomain.Summary
+			for _, rec := range records {
+				p, err := rankapp.PresetFromMap(rec)
+				if err != nil {
+					return importdomain.Summary{}, err
+				}
+				s, err := rankSvc.ImportPreset(ctx, p)
+				if err != nil {
+					return importdomain.Summary{}, err
+				}
+				sum.Created += s.Created
+				sum.Updated += s.Updated
+				sum.Skipped += s.Skipped
+			}
+			return sum, nil
+		},
+	}
+}
+
+// newRankService builds the rank application service off the pool + audit alone (no router) — for the
+// pinax seed CLI (the boot path reuses the already-registered rankSvc).
+func newRankService(pool *pgxpool.Pool, auditSvc *auditapp.Service) *rankapp.Service {
+	return rankapp.NewService(pool,
+		func(conn db.DBTX) rankdomain.Repository { return rankadapters.NewRepository(conn) }, auditSvc)
 }
 
 // loadInstall reads and parses the install config (plaintext for local-dev; ECV-decryption of secret

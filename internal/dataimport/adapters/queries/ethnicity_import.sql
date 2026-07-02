@@ -12,7 +12,7 @@ SELECT source_version FROM oikumenea.person_ethnicity_types WHERE code = $1 AND 
 -- uuid so the parent_id FK fails loudly (RESTRICT) rather than silently NULLing a not-yet-loaded parent
 -- (records must arrive parent-first).
 INSERT INTO oikumenea.person_ethnicity_types (
-  code, name, parent_id, wikidata_id, status, source, source_version, imported_at)
+  code, name, parent_id, wikidata_id, status, source, source_version, imported_at, origin)
 SELECT sqlc.arg(code)::text,
        sqlc.arg(name)::text,
        CASE WHEN NULLIF(sqlc.arg(parent_code)::text, '') IS NULL THEN NULL
@@ -23,7 +23,8 @@ SELECT sqlc.arg(code)::text,
        'active',
        sqlc.arg(source)::text,
        sqlc.arg(source_version)::text,
-       sqlc.arg(imported_at)::timestamptz;
+       sqlc.arg(imported_at)::timestamptz,
+       'seeded'::text;  -- import-path rows are pinax seeded-owned (D-Pinax, M45)
 
 -- name: UpdateEthnicityImport :exec
 UPDATE oikumenea.person_ethnicity_types SET

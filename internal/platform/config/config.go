@@ -41,6 +41,10 @@ type Install struct {
 	// secret — so the trigger token lives only in oikumenea, never in the web tier. Empty BaseURL
 	// disables the proxy (the routes are not served).
 	Hermenea Hermenea `yaml:"hermenea"`
+
+	// Pinax configures the reference-plane bundled-preset autoseeder (D-Pinax, M45): whether oikumenea
+	// self-seeds its `go:embed`-ed YAML presets on boot. Absent block => default (autoseed on).
+	Pinax Pinax `yaml:"pinax"`
 }
 
 // Hermenea is the import-control proxy target: oikumenea forwards UI-triggered sync/list calls to the
@@ -52,6 +56,18 @@ type Hermenea struct {
 	// InsecureSkipVerify disables TLS verification (for the self-signed local-dev cert). Never in prod.
 	InsecureSkipVerify bool `yaml:"insecure-skip-verify"`
 }
+
+// Pinax is the reference-plane seed control (D-Pinax, M45). Autoseed self-seeds the go:embed-ed YAML
+// presets on boot — create-if-absent / fill-if-empty / never-delete, version-gated via pinax_seed_state.
+type Pinax struct {
+	// Autoseed gates boot-time self-seeding. A pointer so an ABSENT field defaults to true (opt-out,
+	// not opt-in): a fresh install seeds the world by default; set `pinax.autoseed: false` to skip and
+	// seed manually via `oikumenea seed`.
+	Autoseed *bool `yaml:"autoseed"`
+}
+
+// AutoseedEnabled reports whether boot-time autoseed is on, defaulting to true when unset (D-Pinax).
+func (p Pinax) AutoseedEnabled() bool { return p.Autoseed == nil || *p.Autoseed }
 
 // Postgres holds the operator-supplied connection string.
 type Postgres struct {

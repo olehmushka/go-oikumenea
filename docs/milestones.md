@@ -70,6 +70,8 @@ migrates, and demos** on its own, so the service is runnable at every step.
 | **M41** | Unified org-graph (verticals reuse tenant) | education + company adopt `tenant_organizations`/`tenant_units` (education drops its duplicate `education_unit_closure`); each vertical keeps a `<vertical>_org_profiles` sidecar; `pdp_scoped` domain flag splits operational (reach-RLS, auto-graphs) from reference (university/company: instance-global) (D-UnifiedOrgGraph) | M40, M20, M21, M22 |
 | **M42** | Structural color | replace free-text color (`vehicle.color`, person `eye_color`/`hair_color`) with `platform_colors` — a per-domain (`eye`/`hair`/`vehicle`) operator-managed catalog (RID `1,1,1`, i18n name, nullable `hex`) referenced by **hard FK**; in-place creation from a `ColorPicker` (D-Color) | M26, M31 |
 | **M43** | Ethnicity catalog & ethnolinguistic links | promote `person_ethnicity_types` to a **hierarchical** catalog (parent + closure) with group-level M:N to languages (Glottolog) + homeland countries; opt-in **CIA World Factbook** `ethnicity-scheme` import — fetched + parsed live at runtime by a `factbook` StreamingConnector + PagedMapper (public domain; flat catalog + homeland-country ties — Factbook has no hierarchy/language; default empty); the encrypted person↔ethnicity link is unchanged; the group↔language tie is never inferred onto a person (D-PhysicalIdentity amendment) | M31, M18 |
+| **M44** | Finance (bank accounts & payment cards) | a new `finance` module (RID service 19): bank accounts (**envelope-encrypted IBAN** + blind index) held by a polymorphic person\|company holder link, and payment cards (**envelope-encrypted PAN** + BIN/last-4 display, `debit`/`credit`, **no CVV** — PCI Req 3.2) hanging off an account; a **bank is a `company`-domain `tenant_organization`** (M21/M41), not a new entity (**D-Finance**; retires the final `todo.md` idea — banks/accounts/cards) | M5, M21, M9 |
+| **M45** | Pinax reference plane | name + consolidate the instance-global world-model catalogs (colors, countries, Glottolog languages + writing systems, rank systems, religion taxa, ethnicity types + lang/country links) as **`pinax`** — a plane-wide `origin` marker + **bundled YAML seed presets** `go:embed`-ed into oikumenea and boot-**autoseeded** (`pinax.autoseed`, create-if-absent / fill-if-empty / never-delete) through the same `/import` application service the hermenea connectors use; massive data (cities/regions) stays a remote connector (**D-Pinax**) | M18, M16, M42, M43 |
 
 M1/M2 and M3/M4 are independent and may be built in parallel. Everything after M2 assumes audit + i18n exist.
 M12 is **verified** — see its section below (D-PersonContactChannels, D-DocumentAttrSchema, expanded D-PersonalCodes, D-PersonBio amendment); additive person/document enrichments, proven end-to-end (integration suites + a live HTTP demo on the running server).
@@ -137,6 +139,8 @@ Legend: `✅` done · `🚧` in progress · `⬜` not started · `➖` not appli
 | **M42** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — structural color (D-Color, migration `0030_person_physical_identity` — squashed with M31/M43). `platform_colors` is platform's first RID Object (`1,1,1`): per-domain palette (`eye`/`hair`/`vehicle`, TEXT+CHECK), stable `code` + i18n `name` (localization store keyed by RID, entity `color`), nullable `hex` swatch, seeded eye/hair/vehicle baselines. The three free-text columns became hard FKs — `vehicle_vehicles.color_id`, `person_physical_descriptions.eye_color_id`/`hair_color_id` (`uuid REFERENCES … ON DELETE RESTRICT`, backfilled by `lower(text)` match then dropped). A single-column FK can't enforce the palette, so person/vehicle application services validate the color's `domain` via a cross-module `ColorLookup` (the platform color service), returning `ErrColorMismatch`. Catalog read/upsert on `PlatformCatalogService` (`color.read` reader-tier / `color.manage` instance-plane, audited `color.upsert`); `api.platformCatalog.listColors`/`upsertColor` in Go+TS SDKs. Web `ColorPicker` (per-domain typeahead + swatch + **create-in-place**) wired into the vehicle form + the person physical-identity card. Integration tests green: person eye/hair color round-trip + wrong-palette (`vehicle` color as eye) rejected; vehicle color round-trip + eye-palette color rejected; person + vehicle suites re-run green. `tsc` + `next build` clean; live smoke (create color → list → set on person/vehicle) |
 | **M43** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — ethnicity taxonomy & ethnolinguistic links (D-PhysicalIdentity amendment, migration `0030_person_physical_identity` — squashed with M31/M42). `person_ethnicity_types` promoted from a flat, seeded-empty catalog to a **hierarchical** one (no new RID types — the catalog keeps `6,1,13`, `parent_id` is a plain self-FK): `parent_id` + `wikidata_id` + import provenance, `person_ethnicity_type_closure` (recursive-CTE rebuild, like `language_languoid_closure`), and group-level M:N `person_ethnicity_type_languages` (→ `language_languoids`) + `person_ethnicity_type_countries` (→ `geo_countries`) — bare associations, RID-less. **The encrypted person↔ethnicity link (`person_ethnicities`) is unchanged**; the group↔language tie is reference metadata **never inferred onto a person**. Opt-in import from the **CIA World Factbook** (public domain), fetched + parsed **LIVE at runtime — no committed preset, no Python**: new `ethnicity-scheme` dataimport handler (closure-rebuilding, idempotent — a clone of `language-scheme`) + `EthnicityStore`/`EthnicityRepo`; a `factbook` **StreamingConnector** (`internal/hermenea/connector`) that enumerates the ~260 country files in the `factbook/factbook.json` GitHub mirror via one git-tree API call + stages them, and the `factbookethnicities` **PagedMapper** that parses each country's "Ethnic groups" free-text in Go, derives ISO from the Internet ccTLD (`.uk`→GB exception), and dedups group→countries. Source `factbook-ethnicities` in `hermenea-install.yml` (`connector-type: factbook`, locator `factbook/factbook.json@master`) **`enabled: false`** (default catalog stays EMPTY). Factbook is **flat + homeland-country-linked** (no hierarchy/language ties — the parent/closure/language-M:N machinery stays in the schema, unpopulated by this source). Live test (env-gated `OIKUMENEA_FACTBOOK_E2E`) proves the runtime path: **634 ethnic groups fetched+parsed from GitHub** (Ukrainian→UA, Russian→RU+UA, White→GB). Wikidata (richer, hierarchical) was evaluated but its endpoints 403 datacenter/CI IPs (Wikimedia bot policy T400119); Factbook over GitHub is reachable at runtime. Person read surface: `listEthnicityTypes(topLevel|parent|query)` + computed `hasChildren` + `getEthnicityType` (assembles group languages/countries), i18n `name` map; web `EthnicityPicker` (lazy tree + search, yields the catalog `code`) replaces the flat `<select>` in the person ethnicity form. Integration tests green: dataimport (parent resolved, closure depth, language/country ties w/ unresolved-key drop, idempotent re-run + version bump) + person read (roots/children filters, `hasChildren`, `getEthnicityType` languages/countries); the existing encrypted ethnicity add/list/purge tests unchanged. Go+TS SDK regen; web `tsc` + `next build` green |
 | **M40** | ✅ | ✅ | ✅ | ✅ | ⬜ | 🚧 | backend verified, UI pending — Domains + Organizations multi-domain tenant (D-TenantOrganizations). **Decided/Designed**: D-TenantOrganizations + amendments (D-Graph/D-Graphs/D-Code/L-SingleDomain/L-UnitIsTenant) + CLAUDE.md; ontology-mapping rows + `pkg/rid` (`4,1,5..8`); tenant.md/glossary; `api/tenant.conjure.yml` (`Domain`/`UnitKind`/`Organization` + catalog/org endpoints + `org`-required `listUnits` + nullable `orgId` on `Graph`). **Migrated**: `0003_tenant.sql` edited in place (4 new tables + `org_id`/`domain_id`/`kind_id` on units + nullable `org_id`/per-org+global indexes on graphs) + `platform_rid_types` seed; **full 29-migration set applies cleanly** (religion `0023` global-graph seed reconciled to `org_id IS NULL`); re-hash atlas.sum with stable atlas before commit. **Backend**: Conjure+sqlc regen; `internal/tenant` reworked (domain/org/unit-kind services, `CreateOrganization` seeds per-org `command`+`operational` graphs in-tx, boot-seeds domain+unit-kind catalogs, dropped global graph seed; edges/closure resolve the graph within the unit's org with a global fallback); authz `domain/unit-kind/organization` perms + org-aware `ResolveGraph`; religion `CreateChildOrg` inherits the parent's org. **Verified**: `go build ./...` + 27 unit-test packages green; **all 7 affected integration suites pass on a live DB** (tenant, authz PDP per-org graph, membership, order, person read-scope, religion, RLS). **UI ⬜**: web organizations/domain/unit-kind console + TS SDK regen remain |
+| **M45** | ✅ | ✅ | ✅ | ✅ | ➖ | ✅ | verified — the **`pinax`** reference plane (D-Pinax + [pinax plane note](architecture/pinax.md)): a plane-wide `origin` marker (`seeded`/`operator`), **bundled YAML seed presets** `go:embed`-ed into oikumenea + boot-**autoseeded** (`pinax.autoseed`, default on) through the same application import service the HTTP `/import` wraps — **create-if-absent / fill-if-empty / never-delete**, version-gated via `pinax_seed_state`, `--reconcile` (`oikumenea seed`) for explicit refresh. All 7 handlers built (`internal/pinax` seeder + native-importer escape hatch for ranks; `internal/dataimport` handlers for religions/colors + country fill-if-empty enrichment inc. **low-res border polygons** → `geom`/`centroid`/`bbox`; languages/writing-systems/ethnicities reuse the existing import handlers with `CreateOnly`); in-place migration edits (`origin` + `color_id` + `pinax_seed_state`) landed. **Full data bundle** produced by the reproducible generator [`deploy/pinax-presets/gen`](../deploy/pinax-presets/): languages **27 177** Glottolog 5.3 (topo-sorted), 998 CLDR script links, 250 countries (174 with Natural-Earth borders), 100 religion taxa + theism, 634 Factbook ethnic groups, 206 ranks, color palettes. Verified e2e: fresh 27k-languoid load (closure+`family_code`), country polygons materialize `geom`/centroid/bbox, version-gated re-boot no-op, operator row survives `--reconcile`, `autoseed:false` gate; unit + integration tests green. Massive `geo_places` stays a remote hermenea connector. UI `➖` (headless). **i18n translation overlay (D-i18n):** two new locales **`spa`** (LATAM) + **`por`** (Brazil) seeded in migration `0002`; a generic `translations` object-type/handler resolves each entity's natural key→i18n `entity_id` (code for country/ethnicity_type, RID for languoid/writing_system/religion_taxon/rank_*/color) and writes `i18n_translations` create-if-absent; the `translations` preset (1243 rows: CLDR uk/en/es-419/pt for **264 countries, ~600 languages, ~210 scripts** + curated **colors/religions/ranks**) is generated by `deploy/pinax-presets/gen`. Country name went `string`→`map<string,string>` (geo.conjure + geo transport `NamesByID` + regen Go/TS SDK + web `CountrySelect`); colors were already map-typed. Verified: `NamesByID` returns 4-locale maps e2e (country Україна/Ucrania/Ucrânia, languoid українська/ucraniano, color Синій/Azul, rank Coronel). Ethnicities have no multilingual source (English-only). |
+| **M44** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | designed — `finance` module (bank accounts + payment cards, D-Finance): a `company`-domain `tenant_organization` is the bank; `finance_accounts` (envelope-encrypted IBAN + blind index) held via the polymorphic `finance_account_holders` link (person\|company, `primary`/`joint`/`authorized_signer`); `finance_cards` (envelope-encrypted PAN + BIN/last-4, `debit`/`credit`, **no CVV**) under an account; `finance_account_types`/`finance_card_networks` catalogs. RID service 19; reuses `pkg/crypto` + `pkg/personalcode` (IBAN ISO-13616 / PAN Luhn validators). `D-Finance` block + [finance module doc](modules/finance.md) exist ⇒ Designed ✅; backend/migration/UI pending |
 
 Notes on the planned tier (M16–M37): all have a landed `D-<Name>` decision (in
 [roadmap-decisions.md](architecture/roadmap-decisions.md)), so all are at least
@@ -164,6 +168,12 @@ across the board — grounded in migrations `0012_person_contacts` + `0016_perso
 `PersonForms.tsx` console managers, and a live HTTP demo against the running server (email
 provider-derivation, phone E.164 + country-derivation, call-sign uniqueness `409`, `date_of_death`
 round-trip).
+
+**M44** (D-Finance) is a standalone **decided + designed** milestone off the final `todo.md` idea
+(banks → bank accounts → cards): authoritative first-party financial directory data — **not** an OSINT overlay
+(so it carries no M29 `source`/`confidence` attribution) and **not** payroll (M39). A bank reuses the
+M21/M41 company org registry; IBAN/PAN reuse the M9 `document_personal_codes` envelope-encryption seam.
+CVV2/CVC2 is excluded outright (PCI-DSS Req 3.2) and no balance/transaction ledger is in scope.
 
 ---
 
@@ -1294,3 +1304,91 @@ session (draft macro-category 6.1–6.3). Hard requirements to carry in: mandato
 
 **Status: deferred.** A separate operational-HR concern (the org as **payer**), intentionally out of
 the OSINT-dossier scope. Designed when that module is opened. No `D-<Name>` decision exists yet.
+
+## M44 — Finance (bank accounts & payment cards)
+
+**Goal.** A new `finance` module holding **bank accounts (IBAN) and payment cards** as authoritative,
+encrypted-at-rest directory data, with a person (or company) as the account holder and a bank modeled
+as a company org. Binding via **D-Finance**. Retires the final `todo.md` idea (banks/accounts/cards).
+
+- **Delivers:**
+  - **Objects (RID service 19):** `finance_accounts` (`19,1,1`) — `institution_id` → a `company`-domain
+    `tenant_organizations` row (the bank, M21/M41), **envelope-encrypted IBAN** (`iban_ciphertext`/
+    `iban_wrapped_dek`/`key_ref`/`iban_blind_index`, `pii:sensitive`, blind index unique among active),
+    `currency` (ISO 4217), `account_type_id`, `status`; `finance_cards` (`19,1,2`) — `account_id` →
+    `finance_accounts` (structural containment FK, CASCADE), **envelope-encrypted PAN** + display
+    `bin`/`last_four`, `network_id`, `card_type ∈ {debit,credit}`, optional `expiry_month`/`expiry_year`,
+    optional `cardholder_person_id`.
+  - **Catalogs:** `finance_account_types` (`19,1,3`; current/savings/deposit/loan…) + `finance_card_networks`
+    (`19,1,4`; visa/mastercard/amex…), instance-admin-extensible (D-Code/D-i18n).
+  - **Link:** `finance_account_holders` (`link__held_by`, `19,2,1`) — the ownership edge; **polymorphic**
+    `holder_kind ∈ {person,company}` + `holder_id` (text, no FK), `role ∈ {primary,joint,authorized_signer}`,
+    effective-dated. This is the "person → bank account" relation; joint/corporate accounts fall out of it.
+  - **Reuse:** `pkg/crypto` `Cipher.Seal/Open/BlindIndex` (D-CryptoProvider) + `pkg/personalcode`
+    validator precedence (compiled IBAN ISO-13616 mod-97 + PAN Luhn/BIN-network). A `finance`
+    `PersonPurged` subscriber crypto-erases person-solely-held accounts + their cards (mirrors
+    [document](modules/document.md)).
+- **Implements:** D-Finance (extends D-Ontology, D-PersonalCodes, D-UnifiedOrgGraph). See
+  [finance](modules/finance.md).
+- **Excluded / parked:** **CVV2/CVC2/CID** — never stored (**PCI-DSS Req 3.2**, prohibited even
+  encrypted). Storing the full PAN brings **PCI-DSS cardholder-data scope**; a BIN+last-4-only,
+  out-of-scope mode is parked as **DS-54**. Account **balances / transactions** are out of scope
+  (this is a directory of accounts, not a payments ledger) — parked as **DS-55**. No M29
+  `source`/`confidence` attribution (authoritative first-party, not an overlay).
+- **Exit (verified when):** an integration test proves a person holds an account (IBAN **ciphertext at
+  rest holds no plaintext** + blind-index present/unique + decrypt round-trips), a **joint** second
+  holder is added, a card under the account (PAN encrypted, BIN/last-4 clear, duplicate PAN → conflict),
+  and a **person purge crypto-erases** the solely-held account + its cards while a company-held account
+  survives; catalog reads return `locale → text` name maps.
+
+## M45 — Pinax reference plane
+
+**Goal.** Name and consolidate the **reference plane** — the instance-global, read-mostly world-model
+catalogs — as **`pinax`**, and give it a single seeding contract: an `origin` marker + bundled YAML
+presets self-seeded at boot, sharing one import pipeline with the hermenea connectors. Binding via
+**D-Pinax**; see the [pinax plane note](architecture/pinax.md).
+
+- **Delivers:**
+  - **The `pinax` plane (a naming convention, no new RID service):** `platform_colors`,
+    `geo_countries`, `language_languoids` + `writing_systems`, `rank_*` systems, `religion_taxa`, and
+    `person_ethnicity_types` (+ closure / `_languages` / `_countries`) grouped as the world model —
+    distinct from the operational core and from the small structural type/kind catalogs (which stay
+    migration-seeded).
+  - **`origin` marker, plane-wide:** `origin TEXT NOT NULL DEFAULT 'operator' CHECK (origin IN
+    ('seeded','operator'))` on every seeded reference table; the seeder writes `'seeded'`, ordinary API
+    inserts default `'operator'`, `--reconcile` touches `'seeded'` only.
+  - **Bundled YAML presets (7):** languages (Glottolog ~27k, CLDR names, `language↔country`) · writing
+    systems + CLDR-derived `language↔writing_system` wiring · countries (WOF enrichment, **no live
+    calls**) · religions (`religion_taxa`) · ethnicities (Factbook, deduped, + country/language refs) ·
+    ranks (UA + US per branch) · colors (`platform_colors` palettes). Each preset has a manifest
+    (`source` / `source_version` / `license` / `depends_on` / translation provenance).
+  - **`go:embed` + boot autoseed in oikumenea:** presets embedded in the binary, self-seeded on boot
+    via the same application import service the HTTP `POST /import/{objectType}` wraps (in-process);
+    config **`pinax.autoseed`** (default `true`), version-gated by a new `pinax_seed_state` table; an
+    explicit `oikumenea seed` (`--reconcile`) for `autoseed:false` / manual refresh.
+  - **Seed algorithm — create-if-absent, fill-if-empty, never delete:** matched on `code`
+    (`INSERT … ON CONFLICT (code) DO NOTHING`); migration-seeded skeletons (locales, countries) are
+    enriched fill-if-empty (coords / translations / `color_id`, never overwriting non-empty values); a
+    vanished-upstream code persists (no auto-delete/deprecate).
+  - **Colors:** extend `platform_colors.domain` with `rank`/`religion`/`ethnicity`/`country`, add
+    `color_id` FKs to the seeded catalogs, seed palettes; `platform_colors` joins the plane (gains
+    `origin`).
+- **Implements:** D-Pinax (extends D-Ontology, D-i18n, D-Hermenea, D-DataIngestion; amends D-Languages,
+  D-Geo, D-Rank, D-Religion, D-PhysicalIdentity/M43, D-Color). See the
+  [pinax plane note](architecture/pinax.md).
+- **Approach / consequence:** **in-place edits** to existing migrations (`0004_rank`, `0018_language`,
+  `0023_religion`, the `geo_countries` migration, `0030` ethnicity, `platform_colors`) add `origin` +
+  `color_id` + `pinax_seed_state` — **no new migration file** (re-hash `atlas.sum` + `DROP SCHEMA`
+  reset). **No new RID service, no new module.** Reverses M15's "ranks folded into migration `0004`
+  seed" and M43's "live Factbook fetch, no committed preset" in favor of bundled YAML.
+- **Excluded / deferred:** currency (ISO 4217; no currency table yet) and religion↔country relations —
+  considered, out of scope for M45. A physical `pinax` service/DB and a separate `pinax.*` schema were
+  both rejected (see D-Pinax *Why not*).
+- **Exit (verified when):** a **fresh oikumenea boots with `hermenea` down** and self-seeds the 7
+  presets (create-if-absent; languages have CLDR names + wired writing systems; countries enriched
+  fill-if-empty; ethnicity catalog populated from the bundled Factbook preset with country refs); a
+  **second boot is a no-op** (version-gated, `origin='seeded'` untouched); an **operator-added** rank/
+  religion/ethnicity row (`origin='operator'`) **survives** a re-run; an operator-corrected name
+  survives (its higher-provenance `locale→text` entry is not clobbered); `pinax.autoseed:false` skips
+  seeding and `oikumenea seed` performs it; the massive `geo_places` backfill still runs via the remote
+  hermenea connector.

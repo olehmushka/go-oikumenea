@@ -60,7 +60,9 @@ func (s *Service) SeedSource(ctx context.Context, src domain.Source) error {
 }
 
 // ListSources / ListRuns / ListJobs back the read endpoints.
-func (s *Service) ListSources(ctx context.Context) ([]domain.Source, error) { return s.store.ListSources(ctx) }
+func (s *Service) ListSources(ctx context.Context) ([]domain.Source, error) {
+	return s.store.ListSources(ctx)
+}
 func (s *Service) ListRuns(ctx context.Context, limit int) ([]domain.Run, error) {
 	return s.store.ListRuns(ctx, limit)
 }

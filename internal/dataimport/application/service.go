@@ -49,12 +49,25 @@ type ExternalOrgStoreFactory func(conn db.DBTX) domain.ExternalOrgStore
 // EthnicityStoreFactory binds the ethnicity-scheme store port to the caller's tx (D-PhysicalIdentity, M43).
 type EthnicityStoreFactory func(conn db.DBTX) domain.EthnicityStore
 
+// ReligionStoreFactory binds the religion-scheme store port to the caller's tx (D-Religion + D-Pinax, M45).
+type ReligionStoreFactory func(conn db.DBTX) domain.ReligionStore
+
+// ColorStoreFactory binds the colors store port to the caller's tx (D-Color + D-Pinax, M45).
+type ColorStoreFactory func(conn db.DBTX) domain.ColorStore
+
+// TranslationStoreFactory binds the translations store port to the caller's tx (D-Pinax + D-i18n, M45).
+type TranslationStoreFactory func(conn db.DBTX) domain.TranslationStore
+
 // Envelope is the application-level canonical envelope (the transport maps the Conjure type onto it).
 type Envelope struct {
 	ObjectType    string
 	Source        string
 	SourceVersion string
 	Records       []domain.Record
+	// CreateOnly requests the pinax boot-autoseed semantics (D-Pinax): insert absent rows, never update
+	// an existing one. The pinax seeder sets it true on boot; false (the default, and every hermenea
+	// import) keeps update-on-change.
+	CreateOnly bool
 }
 
 // Service runs imports over a registry of per-object-type handlers. It owns its writes, so it holds the
@@ -85,7 +98,7 @@ func (s *Service) Import(ctx context.Context, objectType string, env Envelope) (
 	if strings.TrimSpace(env.Source) == "" {
 		return domain.Summary{}, domain.ErrInvalidRecord
 	}
-	prov := domain.Provenance{Source: env.Source, SourceVersion: env.SourceVersion, ImportedAt: time.Now().UTC()}
+	prov := domain.Provenance{Source: env.Source, SourceVersion: env.SourceVersion, ImportedAt: time.Now().UTC(), CreateOnly: env.CreateOnly}
 	var sum domain.Summary
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
 		out, err := h(ctx, tx, env.Records, prov)
@@ -128,6 +141,8 @@ func GeoCountriesHandler(newStore StoreFactory) Handler {
 					return domain.Summary{}, err
 				}
 				sum.Created++
+			case prov.CreateOnly:
+				sum.Skipped++ // pinax boot autoseed: never overwrite an existing row's name
 			case existing != name:
 				if err := store.UpdateImport(ctx, code, name, prov); err != nil {
 					return domain.Summary{}, err
@@ -135,6 +150,15 @@ func GeoCountriesHandler(newStore StoreFactory) Handler {
 				sum.Updated++
 			default:
 				sum.Skipped++
+			}
+			// Pinax country enrichment (D-Pinax, M45): fill-if-empty, independent of the name
+			// create/update/skip above — never overwrites a column already set (migration skeleton or the
+			// WOF geo-places connector). The hermenea geo-countries path carries only code+name, so its
+			// enrichment is empty and this is a no-op there.
+			if enr := geoEnrichment(rec); !enr.Empty() {
+				if err := store.Enrich(ctx, code, enr); err != nil {
+					return domain.Summary{}, err
+				}
 			}
 		}
 		return sum, nil
@@ -152,6 +176,25 @@ func geoFields(rec domain.Record) (code, name string, err error) {
 		return "", "", domain.ErrInvalidRecord
 	}
 	return code, name, nil
+}
+
+// geoEnrichment reads the optional pinax country-enrichment fields from a record (D-Pinax, M45). Absent
+// fields fold to ""/nil, so an ordinary hermenea geo-countries record (code+name only) yields an empty
+// enrichment (Empty()==true) and no enrichment write.
+func geoEnrichment(rec domain.Record) domain.GeoCountryEnrichment {
+	e := domain.GeoCountryEnrichment{
+		ISOA3:       strings.ToUpper(strings.TrimSpace(recStr(rec["isoA3"]))),
+		NumericCode: strings.TrimSpace(recStr(rec["numericCode"])),
+		Latitude:    recOptFloat(rec["latitude"]),
+		Longitude:   recOptFloat(rec["longitude"]),
+		ColorCode:   strings.TrimSpace(recStr(rec["colorCode"])),
+	}
+	if g := rec["geometry"]; g != nil {
+		if b, err := json.Marshal(g); err == nil {
+			e.GeometryJSON = string(b)
+		}
+	}
+	return e
 }
 
 // GeoPlacesHandler builds the geo-places upsert handler (D-GeoPlaces). Idempotency is keyed on
@@ -260,6 +303,9 @@ func LanguageSchemeHandler(newStore LanguoidStoreFactory) Handler {
 				}
 				sum.Created++
 				touched = true
+			case prov.CreateOnly:
+				sum.Skipped++
+				continue // pinax boot autoseed: never overwrite an existing languoid or its ties
 			case ver != prov.SourceVersion:
 				if err := store.UpdateImport(ctx, l, prov); err != nil {
 					return domain.Summary{}, err
@@ -367,6 +413,8 @@ func LanguageScriptsHandler(newStore LanguageScriptStoreFactory) Handler {
 					return domain.Summary{}, err
 				}
 				sum.Created++
+			case prov.CreateOnly:
+				sum.Skipped++ // pinax boot autoseed: never overwrite an existing language↔script link
 			case cur != isPrimary:
 				if err := store.UpdateLink(ctx, lid, wid, isPrimary, prov); err != nil {
 					return domain.Summary{}, err
@@ -407,6 +455,9 @@ func EthnicitySchemeHandler(newStore EthnicityStoreFactory) Handler {
 				}
 				sum.Created++
 				touched = true
+			case prov.CreateOnly:
+				sum.Skipped++
+				continue // pinax boot autoseed: never overwrite an existing ethnicity type or its ties
 			case ver != prov.SourceVersion:
 				if err := store.UpdateImport(ctx, e, prov); err != nil {
 					return domain.Summary{}, err
@@ -456,6 +507,225 @@ func ethnicityFields(rec domain.Record) (domain.Ethnicity, error) {
 		}
 	}
 	return e, nil
+}
+
+// ReligionSchemeHandler builds the faith-taxonomy upsert handler (D-Religion + D-Pinax, M45). Mirrors
+// EthnicitySchemeHandler: idempotency keyed on source_version (insert when absent, update when the
+// incoming edition differs, skip otherwise — never deletes); records MUST arrive parent-first (parent_id
+// FK is RESTRICT); the taxon's theism classifications are replaced on every insert/update; after the
+// batch the closure is rebuilt and each taxon's denormalized root religion_id re-derived (one tx). The
+// migration seeds a curated tree, so a boot autoseed (CreateOnly) skips existing taxa and inserts only
+// genuinely-new nodes.
+func ReligionSchemeHandler(newStore ReligionStoreFactory) Handler {
+	return func(ctx context.Context, tx pgx.Tx, records []domain.Record, prov domain.Provenance) (domain.Summary, error) {
+		store := newStore(tx)
+		var sum domain.Summary
+		touched := false
+		for _, rec := range records {
+			r, err := religionFields(rec)
+			if err != nil {
+				return domain.Summary{}, err
+			}
+			ver, found, err := store.GetVersion(ctx, r.Code)
+			if err != nil {
+				return domain.Summary{}, err
+			}
+			switch {
+			case !found:
+				if err := store.Insert(ctx, r, prov); err != nil {
+					return domain.Summary{}, err
+				}
+				sum.Created++
+				touched = true
+			case prov.CreateOnly:
+				sum.Skipped++
+				continue // pinax boot autoseed: never overwrite an existing taxon or its ties
+			case ver != prov.SourceVersion:
+				if err := store.UpdateImport(ctx, r, prov); err != nil {
+					return domain.Summary{}, err
+				}
+				sum.Updated++
+				touched = true
+			default:
+				sum.Skipped++
+				continue // unchanged edition: leave classifications as-is
+			}
+			if err := store.ReplaceClassifications(ctx, r.Code, r.Classifications); err != nil {
+				return domain.Summary{}, err
+			}
+		}
+		if touched {
+			if err := store.RebuildClosure(ctx); err != nil {
+				return domain.Summary{}, err
+			}
+		}
+		return sum, nil
+	}
+}
+
+// religionFields decodes a religion-scheme record. code + name + rank are required (rank is the level
+// marker resolved to a religion_taxon_ranks RID in SQL); parent/description/wikidataId/icon fold to "";
+// classifications are lower-cased theism codes.
+func religionFields(rec domain.Record) (domain.Religion, error) {
+	r := domain.Religion{
+		Code:        strings.ToLower(strings.TrimSpace(recStr(rec["code"]))),
+		Name:        strings.TrimSpace(recStr(rec["name"])),
+		Parent:      strings.ToLower(strings.TrimSpace(recStr(rec["parent"]))),
+		RankCode:    strings.ToLower(strings.TrimSpace(recStr(rec["rank"]))),
+		Description: strings.TrimSpace(recStr(rec["description"])),
+		WikidataID:  strings.TrimSpace(recStr(rec["wikidataId"])),
+		Icon:        strings.TrimSpace(recStr(rec["icon"])),
+		SortOrder:   recOptInt(rec["sortOrder"]),
+	}
+	if r.Code == "" || r.Name == "" || r.RankCode == "" {
+		return domain.Religion{}, domain.ErrInvalidRecord
+	}
+	for _, c := range recStrList(rec["classifications"]) {
+		if k := strings.ToLower(strings.TrimSpace(c)); k != "" {
+			r.Classifications = append(r.Classifications, k)
+		}
+	}
+	return r, nil
+}
+
+// ColorsHandler builds the platform_colors palette upsert handler (D-Color + D-Pinax, M45). Idempotency
+// is keyed on the (domain, code) pair: insert when absent, update when name/hex changed, skip otherwise —
+// never deletes. On a pinax boot autoseed (CreateOnly) an existing color is never overwritten.
+func ColorsHandler(newStore ColorStoreFactory) Handler {
+	return func(ctx context.Context, tx pgx.Tx, records []domain.Record, prov domain.Provenance) (domain.Summary, error) {
+		store := newStore(tx)
+		var sum domain.Summary
+		for _, rec := range records {
+			c, err := colorFields(rec)
+			if err != nil {
+				return domain.Summary{}, err
+			}
+			name, hex, found, err := store.Get(ctx, c.Domain, c.Code)
+			if err != nil {
+				return domain.Summary{}, err
+			}
+			switch {
+			case !found:
+				if err := store.Insert(ctx, c); err != nil {
+					return domain.Summary{}, err
+				}
+				sum.Created++
+			case prov.CreateOnly:
+				sum.Skipped++ // pinax boot autoseed: never overwrite an existing color
+			case name != c.Name || hex != c.Hex:
+				if err := store.UpdateImport(ctx, c); err != nil {
+					return domain.Summary{}, err
+				}
+				sum.Updated++
+			default:
+				sum.Skipped++
+			}
+		}
+		return sum, nil
+	}
+}
+
+// colorFields decodes a colors record. domain + code + name are required; hex folds to "" when absent.
+func colorFields(rec domain.Record) (domain.Color, error) {
+	c := domain.Color{
+		Domain:    strings.ToLower(strings.TrimSpace(recStr(rec["domain"]))),
+		Code:      strings.ToLower(strings.TrimSpace(recStr(rec["code"]))),
+		Name:      strings.TrimSpace(recStr(rec["name"])),
+		Hex:       strings.TrimSpace(recStr(rec["hex"])),
+		SortOrder: recOptInt(rec["sortOrder"]),
+	}
+	if c.Domain == "" || c.Code == "" || c.Name == "" {
+		return domain.Color{}, domain.ErrInvalidRecord
+	}
+	return c, nil
+}
+
+// TranslationsHandler builds the pinax i18n translation-overlay handler (D-Pinax + D-i18n, M45). Each
+// record carries an entity's natural key + a locale→text map for one field; the handler resolves the key
+// to the entity_id the read path uses (skipping records whose entity is not seeded yet — resilient to a
+// partly-seeded plane) and writes each locale create-if-absent. It runs after the entity presets (the
+// `translations` preset dependsOn them). CreateOnly vs reconcile is moot: writes are always
+// create-if-absent (the store has no provenance column, so a re-seed never clobbers an operator edit).
+func TranslationsHandler(newStore TranslationStoreFactory) Handler {
+	return func(ctx context.Context, tx pgx.Tx, records []domain.Record, _ domain.Provenance) (domain.Summary, error) {
+		store := newStore(tx)
+		var sum domain.Summary
+		for _, rec := range records {
+			t, err := translationFields(rec)
+			if err != nil {
+				return domain.Summary{}, err
+			}
+			entityID, ok, err := store.Resolve(ctx, t.EntityType, t.Key)
+			if err != nil {
+				return domain.Summary{}, err
+			}
+			if !ok {
+				sum.Skipped++ // entity not seeded (yet) — leave its translations for a later run
+				continue
+			}
+			wrote := false
+			for locale, text := range t.Names {
+				if strings.TrimSpace(text) == "" {
+					continue
+				}
+				if err := store.Upsert(ctx, t.EntityType, entityID, t.Field, locale, text); err != nil {
+					return domain.Summary{}, err
+				}
+				wrote = true
+			}
+			if wrote {
+				sum.Created++
+			} else {
+				sum.Skipped++
+			}
+		}
+		return sum, nil
+	}
+}
+
+// translationFields decodes a translations record. entityType + key + a non-empty names map are required;
+// field defaults to "name".
+func translationFields(rec domain.Record) (domain.Translation, error) {
+	t := domain.Translation{
+		EntityType: strings.TrimSpace(recStr(rec["entityType"])),
+		Key:        strings.TrimSpace(recStr(rec["key"])),
+		Field:      strings.TrimSpace(recStr(rec["field"])),
+		Names:      map[string]string{},
+	}
+	if t.Field == "" {
+		t.Field = "name"
+	}
+	if m, ok := rec["names"].(map[string]any); ok {
+		for locale, v := range m {
+			if s, ok := v.(string); ok {
+				t.Names[strings.ToLower(strings.TrimSpace(locale))] = s
+			}
+		}
+	}
+	if t.EntityType == "" || t.Key == "" || len(t.Names) == 0 {
+		return domain.Translation{}, domain.ErrInvalidRecord
+	}
+	return t, nil
+}
+
+// recOptInt reads an optional JSON number as *int (nil when absent/null/non-numeric).
+func recOptInt(v any) *int {
+	switch n := v.(type) {
+	case float64:
+		i := int(n)
+		return &i
+	case int:
+		return &n
+	case int64:
+		i := int(n)
+		return &i
+	case json.Number:
+		if i, err := n.Int64(); err == nil {
+			x := int(i)
+			return &x
+		}
+	}
+	return nil
 }
 
 // ExternalOrgsHandler builds the external-organizations upsert handler (D-ExternalOrgs, M30). It resolves

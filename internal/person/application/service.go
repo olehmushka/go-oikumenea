@@ -72,9 +72,9 @@ type Service struct {
 	graceHours func() int
 	now        func() time.Time
 	membership MembershipReader
-	bus        *events.Bus           // set when SubscribeOrderEvents wires the bus; used to publish PersonMerged
-	cipher     *crypto.Cipher        // envelope cipher for the pii:special declared ethnicity (D-PhysicalIdentity)
-	colors     domain.ColorLookup    // late-bound color catalog (D-Color): eye/hair hard-FK palette check
+	bus        *events.Bus        // set when SubscribeOrderEvents wires the bus; used to publish PersonMerged
+	cipher     *crypto.Cipher     // envelope cipher for the pii:special declared ethnicity (D-PhysicalIdentity)
+	colors     domain.ColorLookup // late-bound color catalog (D-Color): eye/hair hard-FK palette check
 }
 
 // NewService wires the service with the pool, the repository factory, the audit service, the

@@ -32,8 +32,8 @@ import (
 
 // synthetic codes these tests own (scoped cleanup — the shared test DB runs package binaries in parallel).
 var (
-	testEthCodes  = []string{"zzeth-sl", "zzeth-es", "zzeth-uk", "zzeth-ru"}
-	testEthLangs  = []string{"zzukl001", "zzrul001"}
+	testEthCodes = []string{"zzeth-sl", "zzeth-es", "zzeth-uk", "zzeth-ru"}
+	testEthLangs = []string{"zzukl001", "zzrul001"}
 )
 
 func newEthnicityImportService(t *testing.T, pool *pgxpool.Pool) *application.Service {

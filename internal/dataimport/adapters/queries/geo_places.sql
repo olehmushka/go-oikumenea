@@ -70,16 +70,19 @@ WHERE wof_id = sqlc.arg(wof_id)::bigint;
 -- name: EnrichGeoCountryFromWOF :exec
 -- Mirror a country place's wof_id + geometry onto its ISO-keyed geo_countries row (D-GeoPlaces). Only
 -- the WOF-derived columns are touched; name/status/source provenance stay owned by the geo-countries
--- importer (D-Geo). iso_a3 / numeric_code are set only when supplied.
+-- importer (D-Geo). WOF UPGRADES the border: when it carries geometry, its high-res shape OVERWRITES
+-- whatever was there (e.g. the pinax low-res bootstrap border, D-Pinax M45) and re-derives centroid/bbox;
+-- when a WOF country record lacks geometry/concordances the existing value is KEPT (COALESCE), so WOF
+-- never downgrades the pinax baseline to NULL. iso_a3 / numeric_code likewise upgrade-or-keep.
 WITH g AS (
   SELECT CASE WHEN sqlc.arg(geometry)::text = '' THEN NULL
               ELSE ST_SetSRID(ST_GeomFromGeoJSON(sqlc.arg(geometry)::text), 4326) END AS geom
 )
 UPDATE oikumenea.geo_countries SET
   wof_id       = sqlc.arg(wof_id)::bigint,
-  iso_a3       = NULLIF(sqlc.arg(iso_a3)::text, ''),
-  numeric_code = NULLIF(sqlc.arg(numeric_code)::text, ''),
-  geom         = (SELECT geom FROM g),
-  centroid     = (SELECT ST_PointOnSurface(geom) FROM g),
-  bbox         = (SELECT ST_Envelope(geom) FROM g)
+  iso_a3       = COALESCE(NULLIF(sqlc.arg(iso_a3)::text, ''), iso_a3),
+  numeric_code = COALESCE(NULLIF(sqlc.arg(numeric_code)::text, ''), numeric_code),
+  geom         = COALESCE((SELECT geom FROM g), geom),
+  centroid     = COALESCE((SELECT ST_PointOnSurface(geom) FROM g), centroid),
+  bbox         = COALESCE((SELECT ST_Envelope(geom) FROM g), bbox)
 WHERE code = sqlc.arg(code)::text;

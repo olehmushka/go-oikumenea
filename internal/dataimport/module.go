@@ -29,7 +29,11 @@ import (
 // the import endpoint): when hermeneaBaseURL is set, oikumenea also serves the HermeneaService routes
 // (/hermenea/v1/*) and forwards UI-triggered sync/list calls to the companion using the trigger token,
 // gated on import.manage (D-Hermenea). Empty hermeneaBaseURL leaves the proxy unregistered.
-func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, enforcer *pep.Enforcer, hermeneaBaseURL, hermeneaToken string, hermeneaInsecureTLS bool) (*application.Service, error) {
+// NewImportService builds the import application service and registers every object-type upsert
+// handler over the pool + audit (writes record in-transaction — D-Audit). It registers NO routes, so
+// it is reusable off the request path — notably by the `oikumenea seed` CLI and the pinax boot
+// autoseeder (D-Pinax, M45), which drive the same handlers without a witchcraft router.
+func NewImportService(pool *pgxpool.Pool, audit *auditapp.Service) *application.Service {
 	svc := application.NewService(pool, audit)
 
 	// geo-countries: the first importable catalog (M16). The store factory binds the sqlc adapter to
@@ -69,6 +73,34 @@ func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Serv
 	svc.Register(domain.ObjectTypeEthnicityScheme, application.EthnicitySchemeHandler(
 		func(conn db.DBTX) domain.EthnicityStore { return adapters.NewEthnicityRepo(conn) },
 	))
+
+	// religion-scheme: the recursive faith taxonomy (D-Religion + D-Pinax, M45) seeded from the bundled
+	// `religions` preset. Parent-first upsert; theism classifications replaced per taxon; the handler
+	// rebuilds the closure + re-derives the denormalized root religion_id at the end of the batch.
+	svc.Register(domain.ObjectTypeReligionScheme, application.ReligionSchemeHandler(
+		func(conn db.DBTX) domain.ReligionStore { return adapters.NewReligionRepo(conn) },
+	))
+
+	// colors: the per-domain platform_colors palettes (D-Color + D-Pinax, M45) seeded from the bundled
+	// `colors` preset. (domain, code)-keyed idempotent upsert; the seeded reference catalogs point at
+	// these via color_id (countries fill-if-empty in the geo-countries handler).
+	svc.Register(domain.ObjectTypeColors, application.ColorsHandler(
+		func(conn db.DBTX) domain.ColorStore { return adapters.NewColorRepo(conn) },
+	))
+
+	// translations: the pinax i18n overlay (D-Pinax + D-i18n, M45) — seeds i18n_translations for the
+	// seeded reference catalogs (country/languoid/writing_system/religion_taxon/ethnicity_type/rank_*)
+	// from bundled CLDR + curated translations. Resolves each entity's natural key to its read-path
+	// entity_id and writes create-if-absent. Runs after the entity presets (the preset dependsOn them).
+	svc.Register(domain.ObjectTypeTranslations, application.TranslationsHandler(
+		func(conn db.DBTX) domain.TranslationStore { return adapters.NewTranslationRepo(conn) },
+	))
+
+	return svc
+}
+
+func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, enforcer *pep.Enforcer, hermeneaBaseURL, hermeneaToken string, hermeneaInsecureTLS bool) (*application.Service, error) {
+	svc := NewImportService(pool, audit)
 
 	if err := dataimportapi.RegisterRoutesImportService(info.Router, transport.NewService(svc, enforcer)); err != nil {
 		return nil, werror.Wrap(err, "register import service routes")

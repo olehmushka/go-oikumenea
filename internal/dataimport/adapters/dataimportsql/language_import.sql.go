@@ -117,7 +117,7 @@ func (q *Queries) InsertLanguoidCountry(ctx context.Context, arg InsertLanguoidC
 const insertLanguoidImport = `-- name: InsertLanguoidImport :exec
 INSERT INTO oikumenea.language_languoids (
   code, level, name, parent_id, iso639_3, macroarea, latitude, longitude, status,
-  glottolog_version, source, source_version, imported_at)
+  glottolog_version, source, source_version, imported_at, origin)
 SELECT $1::text,
        $2::text,
        $3::text,
@@ -132,7 +132,8 @@ SELECT $1::text,
        NULLIF($10::text, ''),
        $11::text,
        $10::text,
-       $12::timestamptz
+       $12::timestamptz,
+       'seeded'::text
 `
 
 type InsertLanguoidImportParams struct {
@@ -278,6 +279,7 @@ func (q *Queries) UpdateLanguageWritingSystem(ctx context.Context, arg UpdateLan
 }
 
 const updateLanguoidImport = `-- name: UpdateLanguoidImport :exec
+
 UPDATE oikumenea.language_languoids SET
   level             = $1::text,
   name              = $2::text,
@@ -311,6 +313,7 @@ type UpdateLanguoidImportParams struct {
 	Code          string
 }
 
+// import-path rows are pinax seeded-owned (D-Pinax, M45)
 func (q *Queries) UpdateLanguoidImport(ctx context.Context, arg UpdateLanguoidImportParams) error {
 	_, err := q.db.Exec(ctx, updateLanguoidImport,
 		arg.Level,

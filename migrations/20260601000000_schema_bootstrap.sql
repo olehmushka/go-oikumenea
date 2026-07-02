@@ -107,6 +107,19 @@ CREATE TABLE oikumenea.schema_version (
 );
 INSERT INTO oikumenea.schema_version (singleton, revision) VALUES (true, '0000_schema_bootstrap');
 
+-- pinax_seed_state: per-preset applied-version marker the boot autoseeder reads (D-Pinax, M45). The
+-- `pinax` reference plane's bundled YAML presets are `go:embed`-ed into oikumenea and self-seeded on
+-- boot; this table lets a warm DB do an O(#presets) no-op check (skip a preset whose source_version is
+-- already applied) instead of re-parsing + re-upserting on every restart. One row per preset name.
+CREATE TABLE oikumenea.pinax_seed_state (
+  preset         text PRIMARY KEY,             -- preset name (e.g. 'languages', 'countries', 'ranks')
+  source_version text NOT NULL,               -- the applied preset source_version
+  applied_at     timestamptz NOT NULL DEFAULT now(),
+  summary        jsonb                        -- last import summary {created,updated,skipped}
+);
+COMMENT ON COLUMN oikumenea.pinax_seed_state.preset IS 'pii:none';
+COMMENT ON COLUMN oikumenea.pinax_seed_state.source_version IS 'pii:none';
+
 -- RID registries (D-ResourceIdentifiers). The numeric service + per-module type codes that new_id()
 -- packs and the rid_* decoders read. Natural-key reference tables (no RID PK → seeded directly in
 -- this migration). `pkg/rid` mirrors these in Go and asserts equality at boot so the two cannot drift.
@@ -190,6 +203,11 @@ CREATE TABLE oikumenea.geo_countries (
   geom         geometry(Geometry, 4326),       -- country shape, mirrored from the WOF country place
   centroid     geometry(Point, 4326),          -- representative interior point (ST_PointOnSurface)
   bbox         geometry(Geometry, 4326),       -- bounding box (ST_Envelope — a Point/Line for degenerate inputs, so generic)
+  -- origin marks who owns the row for the pinax seed pipeline (D-Pinax, M45): 'seeded' = managed by a
+  -- bundled preset (safe to enrich fill-if-empty / --reconcile), 'operator' = created via the admin API
+  -- (never touched by re-seeding). DEFAULT is 'seeded' during this migration so the bootstrap country
+  -- skeleton below is seeded-owned; flipped to 'operator' (the runtime default) right after the seed.
+  origin       text NOT NULL DEFAULT 'seeded' CHECK (origin IN ('seeded','operator')),
   created_at   timestamptz NOT NULL DEFAULT now(),
   updated_at   timestamptz NOT NULL DEFAULT now(),
 
@@ -462,6 +480,10 @@ INSERT INTO oikumenea.geo_countries (code, name, sort_order) VALUES
   ('ZA', 'South Africa', 2460),
   ('ZM', 'Zambia', 2470),
   ('ZW', 'Zimbabwe', 2480);
+-- The bootstrap country skeleton above is seeded-owned; make 'operator' the runtime default so rows
+-- created later via the admin API are operator-owned and never touched by re-seeding (D-Pinax).
+ALTER TABLE oikumenea.geo_countries ALTER COLUMN origin SET DEFAULT 'operator';
+COMMENT ON COLUMN oikumenea.geo_countries.origin IS 'pii:none';
 
 -- geo_places: the Who's-On-First administrative gazetteer (D-GeoPlaces, M16/hermenea). One row per
 -- WOF place across four placetypes — country / region / county / locality (city·town·village; WOF has

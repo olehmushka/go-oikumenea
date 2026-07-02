@@ -453,9 +453,9 @@ idea]`. It is not on the stage board; once promoted to a milestone it is marked 
 then deleted. `todo.md` may legitimately not exist when nothing is pending. The parked-seam
 counterpart for *known* future seams is **DS-N** in [open-questions.md](open-questions.md).
 
-## Planned domains (M16–M39)
+## Planned domains (M16–M45)
 
-> Vocabulary for the [milestones.md](milestones.md) M16–M39 planned cluster (derived from the
+> Vocabulary for the [milestones.md](milestones.md) M16–M45 planned cluster (derived from the
 > superbrain/OSINT draft + the original `todo.md`). Designed and decision-backed
 > ([roadmap-decisions.md](architecture/roadmap-decisions.md)); full module docs follow at
 > implementation time (the **religion** vertical, the shared [location](modules/location.md), and the
@@ -466,6 +466,27 @@ ingestion + the background-job runtime **out of process**, with its **own Postgr
 oikumenea **only over HTTP** (D-Hermenea, M16 — supersedes D-Worker, folds D-DataIngestion/M17). It
 fetches → stages → maps → **loads** datasets by calling oikumenea's `POST /import/{objectType}`. The
 name pairs *hermenea* (interpretation) with *oikumenea*. See [hermenea](modules/hermenea.md).
+
+**Pinax.** The **reference plane** (D-Pinax, M45) — the instance-global, read-mostly **world-model**
+catalogs (`platform_colors`, `geo_countries`, `language_languoids` + `writing_systems`, `rank_*`,
+`religion_taxa`, `person_ethnicity_types` + its links), grouped as a **naming convention** (not a new
+RID service, not a separate schema/DB) distinct from the operational core and from the small structural
+type/kind catalogs (which stay migration-seeded). Governed by one seeding contract: **bundled YAML seed
+presets** `go:embed`-ed into oikumenea and self-**autoseeded** at boot (`pinax.autoseed`, default on)
+through the same application import service the HTTP `/import` wraps — **create-if-absent /
+fill-if-empty / never-delete**, version-gated via `pinax_seed_state`. A *pinax* (πίναξ) was an ancient
+catalogue/register (Callimachus' *Pinakes*). See the [pinax plane note](architecture/pinax.md).
+
+**`origin` (seeded / operator).** The plane-wide marker (D-Pinax) on every seeded reference table —
+`origin ∈ {seeded, operator}`, default `operator`. The boot seeder writes `seeded`; ordinary API
+inserts default `operator`. Re-seeding never touches an `operator` row (protects operator-added
+catalog entries), and an explicit `oikumenea seed --reconcile` updates `seeded` rows only.
+
+**Seed preset (bundled).** A versioned YAML reference dataset shipped inside the oikumenea binary
+(languages, writing-systems + wiring, countries-enrichment, religions, ethnicities, ranks, colors),
+with a manifest (`source` / `source_version` / `license` / `depends_on` / translation provenance).
+The "seed" end of the one import pipeline — a `bundled_file` source, versus a remote hermenea
+**connector** for the massive `geo_places` set (D-Pinax).
 
 **Background worker (hermenea).** The cron **scheduler** + `worker_jobs` **queue** inside hermenea
 (D-Hermenea, was the in-process D-Worker): at-least-once with idempotency keys, exponential backoff
@@ -642,17 +663,39 @@ except the explicitly-isolated political-leaning spectrum.
 resolved-country/vpn/tor emitted by the OIDC/JWKS validation middleware; **not** OSINT enrichment and
 **not** stored credentials (L-AuthzOnly holds).
 
+**Finance module.** The planned `finance` module (D-Finance, M44 — RID service 19) holding **bank
+accounts and payment cards** as authoritative, encrypted-at-rest directory data. Authoritative
+first-party (unlike the M35 financial overlay), and a directory of accounts only — no balance/
+transaction ledger. See [finance](modules/finance.md).
+
+**Bank / financial institution.** A bank is **not** a bespoke entity — it is an existing
+`company`-domain [tenant](modules/tenant.md) *Organization* (M21/M41) an account references as its
+holding institution (D-Finance, M44).
+
+**Bank account.** `finance_accounts` (D-Finance, M44): an account held at a *bank* by a person or
+company; its **IBAN** is `pii:sensitive`, **envelope-encrypted** + blind-indexed (the
+`document_personal_codes` pattern); carries `currency` (ISO 4217) + an *account type*.
+
+**Account holder.** The `finance_account_holders` reified Link (`link__held_by`, M44): a **polymorphic**
+person|company holder of a *bank account* with a `role` (`primary`/`joint`/`authorized_signer`),
+effective-dated — the edge that expresses "person → bank account" and supports joint/corporate accounts.
+
+**Payment card.** `finance_cards` (D-Finance, M44): a debit/credit card hanging off a *bank account*;
+the full **PAN** is `pii:sensitive`, **envelope-encrypted** + blind-indexed, with a clear **BIN**
+(first 6) + **last-4** for display. **CVV2/CVC2 is never stored** (PCI-DSS Req 3.2). Storing the PAN
+brings the deployment into **PCI-DSS cardholder-data scope**.
+
 ---
 
 ## Alphabetical index
 
-Account · Action (type) · Action RID · Affiliation type · Append-only event log · Atomic permission · Audit log · Authority-bearing · Background worker · Beneficial owner (UBO) · Blind index ·
+Account · Account holder · Action (type) · Action RID · Affiliation type · Append-only event log · Atomic permission · Audit log · Authority-bearing · Background worker · Bank / financial institution · Bank account · Beneficial owner (UBO) · Blind index ·
 Call sign · Canonical envelope · Canonical graph · Citizenship · Clergy credential · Clergy grade · Clergy office · Closure · Code · Company (legal entity) · Country · Data ingestion / connector · Document · Document attribute schema · Document type · Dormant seam ·
-Education reference layer · Educational institution · Effective permissions · Email (contact) · Email type · Envelope encryption · Environment slot · Expand/contract · External identity ·
+Education reference layer · Educational institution · Effective permissions · Email (contact) · Email type · Envelope encryption · Environment slot · Expand/contract · External identity · Finance module ·
 Gate · Graph (named hierarchy) · Hermenea · Instance admin · Languoid · Level · Link (type) · Link RID · Locale · Location · Membership · Name (CLDR) ·
 Object (type) · Object-set · Ontology · Order ·
-Order category · Order item · Order type · Org kind · PDP · PDP context · Person · Personal code ·
-Personal-code scheme · Phone (contact) · Phone type · PII tier · Position · Public precision · Public/shadow · Rank · Rank category · Rank preset ·
+Order category · Order item · Order type · Org kind · Payment card · PDP · PDP context · Person · Personal code ·
+Personal-code scheme · Phone (contact) · Phone type · PII tier · Pinax (reference plane) · Position · `origin` (seeded/operator) · Public precision · Public/shadow · Rank · Rank category · Rank preset ·
 Rank scheme · Rank system · Rank type · Religion (faith) · Religious affiliation · Religious organization · Religious site · Residence · Reversibility · RID (Resource Identifier) · RLS backstop · Role · Role assignment · Scope ·
 Service principal (hermenea-importer) · Service schedule · Service type · Site type · Stage board · Standardized grade (NATO STANAG 2116) · Sub-tradition · Subdivision · Supported language · TODO-N · Tradition family · Translation · Transliteration · Unit · Unit graph (DAG) · Unit kind ·
 Vacancy · Vehicle · Vehicle brand · Vehicle registration · Visibility · Writing system

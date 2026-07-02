@@ -18,11 +18,11 @@ WITH g AS (
 )
 UPDATE oikumenea.geo_countries SET
   wof_id       = $1::bigint,
-  iso_a3       = NULLIF($2::text, ''),
-  numeric_code = NULLIF($3::text, ''),
-  geom         = (SELECT geom FROM g),
-  centroid     = (SELECT ST_PointOnSurface(geom) FROM g),
-  bbox         = (SELECT ST_Envelope(geom) FROM g)
+  iso_a3       = COALESCE(NULLIF($2::text, ''), iso_a3),
+  numeric_code = COALESCE(NULLIF($3::text, ''), numeric_code),
+  geom         = COALESCE((SELECT geom FROM g), geom),
+  centroid     = COALESCE((SELECT ST_PointOnSurface(geom) FROM g), centroid),
+  bbox         = COALESCE((SELECT ST_Envelope(geom) FROM g), bbox)
 WHERE code = $4::text
 `
 
@@ -36,7 +36,10 @@ type EnrichGeoCountryFromWOFParams struct {
 
 // Mirror a country place's wof_id + geometry onto its ISO-keyed geo_countries row (D-GeoPlaces). Only
 // the WOF-derived columns are touched; name/status/source provenance stay owned by the geo-countries
-// importer (D-Geo). iso_a3 / numeric_code are set only when supplied.
+// importer (D-Geo). WOF UPGRADES the border: when it carries geometry, its high-res shape OVERWRITES
+// whatever was there (e.g. the pinax low-res bootstrap border, D-Pinax M45) and re-derives centroid/bbox;
+// when a WOF country record lacks geometry/concordances the existing value is KEPT (COALESCE), so WOF
+// never downgrades the pinax baseline to NULL. iso_a3 / numeric_code likewise upgrade-or-keep.
 func (q *Queries) EnrichGeoCountryFromWOF(ctx context.Context, arg EnrichGeoCountryFromWOFParams) error {
 	_, err := q.db.Exec(ctx, enrichGeoCountryFromWOF,
 		arg.WofID,

@@ -12,7 +12,7 @@ SELECT source_version FROM oikumenea.language_languoids WHERE code = $1;
 -- not-yet-loaded parent (records must arrive parent-first).
 INSERT INTO oikumenea.language_languoids (
   code, level, name, parent_id, iso639_3, macroarea, latitude, longitude, status,
-  glottolog_version, source, source_version, imported_at)
+  glottolog_version, source, source_version, imported_at, origin)
 SELECT sqlc.arg(code)::text,
        sqlc.arg(level)::text,
        sqlc.arg(name)::text,
@@ -27,7 +27,8 @@ SELECT sqlc.arg(code)::text,
        NULLIF(sqlc.arg(source_version)::text, ''),
        sqlc.arg(source)::text,
        sqlc.arg(source_version)::text,
-       sqlc.arg(imported_at)::timestamptz;
+       sqlc.arg(imported_at)::timestamptz,
+       'seeded'::text;  -- import-path rows are pinax seeded-owned (D-Pinax, M45)
 
 -- name: UpdateLanguoidImport :exec
 UPDATE oikumenea.language_languoids SET

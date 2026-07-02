@@ -1,0 +1,319 @@
+# pinax preset — rank systems (curated, hand-authored). D-Pinax (M45), objectType `ranks`
+# (native importer over rank.Service.ImportPreset). Grade codes align to NATO STANAG 2116 (the
+# rank_grades comparability scale); ranks sharing a NATO grade carry the same gradeCode.
+#
+# Branches modeled per system = the service branches whose rank NAMES differ. Ukraine's Air Force /
+# Air Assault / Special Ops reuse the Ground Forces ladder, so only Navy is separate. US: all six
+# services differ (Army/Marines/Air Force/Space Force use the same OFFICER titles; Navy/Coast Guard
+# use naval officer titles).
+preset: ranks
+objectType: ranks
+source: curated
+sourceVersion: '3'
+license: CC0-1.0
+dependsOn: []   # country resolved against the migration-seeded geo_countries skeleton
+records:
+- code: ua-armed-forces
+  name: Збройні сили України
+  country: UA
+  sortOrder: 1
+  categories:
+  - code: army
+    name: Сухопутні війська
+    sortOrder: 0
+    types:
+    - code: enlisted
+      name: Рядовий і сержантський склад
+      sortOrder: 0
+      ranks:
+      - {code: soldat, name: Солдат, gradeCode: OR-1, sortOrder: 0}
+      - {code: starshyi-soldat, name: Старший солдат, gradeCode: OR-2, sortOrder: 10}
+      - {code: molodshyi-serzhant, name: Молодший сержант, gradeCode: OR-3, sortOrder: 20}
+      - {code: serzhant, name: Сержант, gradeCode: OR-4, sortOrder: 30}
+      - {code: starshyi-serzhant, name: Старший сержант, gradeCode: OR-5, sortOrder: 40}
+      - {code: holovnyi-serzhant, name: Головний сержант, gradeCode: OR-6, sortOrder: 50}
+      - {code: shtab-serzhant, name: Штаб-сержант, gradeCode: OR-7, sortOrder: 60}
+      - {code: master-serzhant, name: Майстер-сержант, gradeCode: OR-8, sortOrder: 70}
+      - {code: starshyi-master-serzhant, name: Старший майстер-сержант, gradeCode: OR-8, sortOrder: 80}
+      - {code: holovnyi-master-serzhant, name: Головний майстер-сержант, gradeCode: OR-9, sortOrder: 90}
+    - code: officers
+      name: Офіцерський склад
+      sortOrder: 1
+      ranks:
+      - {code: molodshyi-leitenant, name: Молодший лейтенант, gradeCode: OF-1, sortOrder: 0}
+      - {code: leitenant, name: Лейтенант, gradeCode: OF-1, sortOrder: 10}
+      - {code: starshyi-leitenant, name: Старший лейтенант, gradeCode: OF-2, sortOrder: 20}
+      - {code: kapitan, name: Капітан, gradeCode: OF-2, sortOrder: 30}
+      - {code: maior, name: Майор, gradeCode: OF-3, sortOrder: 40}
+      - {code: pidpolkovnyk, name: Підполковник, gradeCode: OF-4, sortOrder: 50}
+      - {code: polkovnyk, name: Полковник, gradeCode: OF-5, sortOrder: 60}
+      - {code: bryhadnyi-heneral, name: Бригадний генерал, gradeCode: OF-6, sortOrder: 70}
+      - {code: heneral-maior, name: Генерал-майор, gradeCode: OF-7, sortOrder: 80}
+      - {code: heneral-leitenant, name: Генерал-лейтенант, gradeCode: OF-8, sortOrder: 90}
+      - {code: heneral, name: Генерал, gradeCode: OF-9, sortOrder: 100}
+  - code: navy
+    name: Військово-Морські Сили
+    sortOrder: 1
+    types:
+    - code: enlisted
+      name: Рядовий і старшинський склад
+      sortOrder: 0
+      ranks:
+      - {code: matros, name: Матрос, gradeCode: OR-1, sortOrder: 0}
+      - {code: starshyi-matros, name: Старший матрос, gradeCode: OR-2, sortOrder: 10}
+      - {code: starshyna-2-statti, name: Старшина 2 статті, gradeCode: OR-3, sortOrder: 20}
+      - {code: starshyna-1-statti, name: Старшина 1 статті, gradeCode: OR-4, sortOrder: 30}
+      - {code: holovnyi-starshyna, name: Головний старшина, gradeCode: OR-5, sortOrder: 40}
+      - {code: holovnyi-korabelnyi-starshyna, name: Головний корабельний старшина, gradeCode: OR-6, sortOrder: 50}
+      - {code: shtab-starshyna, name: Штаб-старшина, gradeCode: OR-7, sortOrder: 60}
+      - {code: master-starshyna, name: Майстер-старшина, gradeCode: OR-8, sortOrder: 70}
+      - {code: starshyi-master-starshyna, name: Старший майстер-старшина, gradeCode: OR-8, sortOrder: 80}
+      - {code: holovnyi-master-starshyna, name: Головний майстер-старшина, gradeCode: OR-9, sortOrder: 90}
+    - code: officers
+      name: Офіцерський склад
+      sortOrder: 1
+      ranks:
+      - {code: molodshyi-leitenant, name: Молодший лейтенант, gradeCode: OF-1, sortOrder: 0}
+      - {code: leitenant, name: Лейтенант, gradeCode: OF-1, sortOrder: 10}
+      - {code: starshyi-leitenant, name: Старший лейтенант, gradeCode: OF-2, sortOrder: 20}
+      - {code: kapitan-leitenant, name: Капітан-лейтенант, gradeCode: OF-2, sortOrder: 30}
+      - {code: kapitan-3-ranhu, name: Капітан 3 рангу, gradeCode: OF-3, sortOrder: 40}
+      - {code: kapitan-2-ranhu, name: Капітан 2 рангу, gradeCode: OF-4, sortOrder: 50}
+      - {code: kapitan-1-ranhu, name: Капітан 1 рангу, gradeCode: OF-5, sortOrder: 60}
+      - {code: kontr-admiral, name: Контр-адмірал, gradeCode: OF-7, sortOrder: 70}
+      - {code: vitse-admiral, name: Віце-адмірал, gradeCode: OF-8, sortOrder: 80}
+      - {code: admiral, name: Адмірал, gradeCode: OF-9, sortOrder: 90}
+- code: us-armed-forces
+  name: US Armed Forces
+  country: US
+  sortOrder: 0
+  categories:
+  - code: army
+    name: Army
+    sortOrder: 0
+    types:
+    - code: enlisted
+      name: Enlisted
+      sortOrder: 0
+      ranks:
+      - {code: e1, name: Private, abbreviation: PV1, gradeCode: OR-1, sortOrder: 0}
+      - {code: e2, name: Private Second Class, abbreviation: PV2, gradeCode: OR-2, sortOrder: 10}
+      - {code: e3, name: Private First Class, abbreviation: PFC, gradeCode: OR-3, sortOrder: 20}
+      - {code: e4-spc, name: Specialist, abbreviation: SPC, gradeCode: OR-4, sortOrder: 25}
+      - {code: e4, name: Corporal, abbreviation: CPL, gradeCode: OR-4, sortOrder: 30}
+      - {code: e5, name: Sergeant, abbreviation: SGT, gradeCode: OR-5, sortOrder: 40}
+      - {code: e6, name: Staff Sergeant, abbreviation: SSG, gradeCode: OR-6, sortOrder: 50}
+      - {code: e7, name: Sergeant First Class, abbreviation: SFC, gradeCode: OR-7, sortOrder: 60}
+      - {code: e8, name: Master Sergeant, abbreviation: MSG, gradeCode: OR-8, sortOrder: 70}
+      - {code: e8-1sg, name: First Sergeant, abbreviation: 1SG, gradeCode: OR-8, sortOrder: 75}
+      - {code: e9, name: Sergeant Major, abbreviation: SGM, gradeCode: OR-9, sortOrder: 80}
+      - {code: e9-csm, name: Command Sergeant Major, abbreviation: CSM, gradeCode: OR-9, sortOrder: 85}
+    - code: warrant
+      name: Warrant Officers
+      sortOrder: 1
+      ranks:
+      - {code: w1, name: Warrant Officer 1, abbreviation: WO1, gradeCode: WO-1, sortOrder: 0}
+      - {code: w2, name: Chief Warrant Officer 2, abbreviation: CW2, gradeCode: WO-2, sortOrder: 10}
+      - {code: w3, name: Chief Warrant Officer 3, abbreviation: CW3, gradeCode: WO-3, sortOrder: 20}
+      - {code: w4, name: Chief Warrant Officer 4, abbreviation: CW4, gradeCode: WO-4, sortOrder: 30}
+      - {code: w5, name: Chief Warrant Officer 5, abbreviation: CW5, gradeCode: WO-5, sortOrder: 40}
+    - code: officers
+      name: Officers
+      sortOrder: 2
+      children:
+      - code: company-grade
+        name: Company-grade Officers
+        sortOrder: 0
+        ranks:
+        - {code: o1, name: Second Lieutenant, abbreviation: 2LT, gradeCode: OF-1, sortOrder: 0}
+        - {code: o2, name: First Lieutenant, abbreviation: 1LT, gradeCode: OF-1, sortOrder: 10}
+        - {code: o3, name: Captain, abbreviation: CPT, gradeCode: OF-2, sortOrder: 20}
+      - code: field-grade
+        name: Field-grade Officers
+        sortOrder: 1
+        ranks:
+        - {code: o4, name: Major, abbreviation: MAJ, gradeCode: OF-3, sortOrder: 0}
+        - {code: o5, name: Lieutenant Colonel, abbreviation: LTC, gradeCode: OF-4, sortOrder: 10}
+        - {code: o6, name: Colonel, abbreviation: COL, gradeCode: OF-5, sortOrder: 20}
+      - code: general-officers
+        name: General Officers
+        sortOrder: 2
+        ranks:
+        - {code: o7, name: Brigadier General, abbreviation: BG, gradeCode: OF-6, sortOrder: 0}
+        - {code: o8, name: Major General, abbreviation: MG, gradeCode: OF-7, sortOrder: 10}
+        - {code: o9, name: Lieutenant General, abbreviation: LTG, gradeCode: OF-8, sortOrder: 20}
+        - {code: o10, name: General, abbreviation: GEN, gradeCode: OF-9, sortOrder: 30}
+  - code: marine-corps
+    name: Marine Corps
+    sortOrder: 1
+    types:
+    - code: enlisted
+      name: Enlisted
+      sortOrder: 0
+      ranks:
+      - {code: pvt, name: Private, abbreviation: Pvt, gradeCode: OR-1, sortOrder: 0}
+      - {code: pfc, name: Private First Class, abbreviation: PFC, gradeCode: OR-2, sortOrder: 10}
+      - {code: lcpl, name: Lance Corporal, abbreviation: LCpl, gradeCode: OR-3, sortOrder: 20}
+      - {code: cpl, name: Corporal, abbreviation: Cpl, gradeCode: OR-4, sortOrder: 30}
+      - {code: sgt, name: Sergeant, abbreviation: Sgt, gradeCode: OR-5, sortOrder: 40}
+      - {code: ssgt, name: Staff Sergeant, abbreviation: SSgt, gradeCode: OR-6, sortOrder: 50}
+      - {code: gysgt, name: Gunnery Sergeant, abbreviation: GySgt, gradeCode: OR-7, sortOrder: 60}
+      - {code: msgt, name: Master Sergeant, abbreviation: MSgt, gradeCode: OR-8, sortOrder: 70}
+      - {code: first-sgt, name: First Sergeant, abbreviation: 1stSgt, gradeCode: OR-8, sortOrder: 75}
+      - {code: mgysgt, name: Master Gunnery Sergeant, abbreviation: MGySgt, gradeCode: OR-9, sortOrder: 80}
+      - {code: sgtmaj, name: Sergeant Major, abbreviation: SgtMaj, gradeCode: OR-9, sortOrder: 85}
+    - code: warrant
+      name: Warrant Officers
+      sortOrder: 1
+      ranks:
+      - {code: wo1, name: Warrant Officer 1, abbreviation: WO, gradeCode: WO-1, sortOrder: 0}
+      - {code: cwo2, name: Chief Warrant Officer 2, abbreviation: CWO2, gradeCode: WO-2, sortOrder: 10}
+      - {code: cwo3, name: Chief Warrant Officer 3, abbreviation: CWO3, gradeCode: WO-3, sortOrder: 20}
+      - {code: cwo4, name: Chief Warrant Officer 4, abbreviation: CWO4, gradeCode: WO-4, sortOrder: 30}
+      - {code: cwo5, name: Chief Warrant Officer 5, abbreviation: CWO5, gradeCode: WO-5, sortOrder: 40}
+    - code: officers
+      name: Officers
+      sortOrder: 2
+      ranks:
+      - {code: o1, name: Second Lieutenant, abbreviation: 2ndLt, gradeCode: OF-1, sortOrder: 0}
+      - {code: o2, name: First Lieutenant, abbreviation: 1stLt, gradeCode: OF-1, sortOrder: 10}
+      - {code: o3, name: Captain, abbreviation: Capt, gradeCode: OF-2, sortOrder: 20}
+      - {code: o4, name: Major, abbreviation: Maj, gradeCode: OF-3, sortOrder: 30}
+      - {code: o5, name: Lieutenant Colonel, abbreviation: LtCol, gradeCode: OF-4, sortOrder: 40}
+      - {code: o6, name: Colonel, abbreviation: Col, gradeCode: OF-5, sortOrder: 50}
+      - {code: o7, name: Brigadier General, abbreviation: BGen, gradeCode: OF-6, sortOrder: 60}
+      - {code: o8, name: Major General, abbreviation: MajGen, gradeCode: OF-7, sortOrder: 70}
+      - {code: o9, name: Lieutenant General, abbreviation: LtGen, gradeCode: OF-8, sortOrder: 80}
+      - {code: o10, name: General, abbreviation: Gen, gradeCode: OF-9, sortOrder: 90}
+  - code: navy
+    name: Navy
+    sortOrder: 2
+    types:
+    - code: enlisted
+      name: Enlisted
+      sortOrder: 0
+      ranks:
+      - {code: sr, name: Seaman Recruit, abbreviation: SR, gradeCode: OR-1, sortOrder: 0}
+      - {code: sa, name: Seaman Apprentice, abbreviation: SA, gradeCode: OR-2, sortOrder: 10}
+      - {code: sn, name: Seaman, abbreviation: SN, gradeCode: OR-3, sortOrder: 20}
+      - {code: po3, name: Petty Officer Third Class, abbreviation: PO3, gradeCode: OR-4, sortOrder: 30}
+      - {code: po2, name: Petty Officer Second Class, abbreviation: PO2, gradeCode: OR-5, sortOrder: 40}
+      - {code: po1, name: Petty Officer First Class, abbreviation: PO1, gradeCode: OR-6, sortOrder: 50}
+      - {code: cpo, name: Chief Petty Officer, abbreviation: CPO, gradeCode: OR-7, sortOrder: 60}
+      - {code: scpo, name: Senior Chief Petty Officer, abbreviation: SCPO, gradeCode: OR-8, sortOrder: 70}
+      - {code: mcpo, name: Master Chief Petty Officer, abbreviation: MCPO, gradeCode: OR-9, sortOrder: 80}
+    - code: warrant
+      name: Warrant Officers
+      sortOrder: 1
+      ranks:
+      - {code: cwo2, name: Chief Warrant Officer 2, abbreviation: CWO2, gradeCode: WO-2, sortOrder: 0}
+      - {code: cwo3, name: Chief Warrant Officer 3, abbreviation: CWO3, gradeCode: WO-3, sortOrder: 10}
+      - {code: cwo4, name: Chief Warrant Officer 4, abbreviation: CWO4, gradeCode: WO-4, sortOrder: 20}
+      - {code: cwo5, name: Chief Warrant Officer 5, abbreviation: CWO5, gradeCode: WO-5, sortOrder: 30}
+    - code: officers
+      name: Officers
+      sortOrder: 2
+      ranks:
+      - {code: ens, name: Ensign, abbreviation: ENS, gradeCode: OF-1, sortOrder: 0}
+      - {code: ltjg, name: Lieutenant Junior Grade, abbreviation: LTJG, gradeCode: OF-1, sortOrder: 10}
+      - {code: lt, name: Lieutenant, abbreviation: LT, gradeCode: OF-2, sortOrder: 20}
+      - {code: lcdr, name: Lieutenant Commander, abbreviation: LCDR, gradeCode: OF-3, sortOrder: 30}
+      - {code: cdr, name: Commander, abbreviation: CDR, gradeCode: OF-4, sortOrder: 40}
+      - {code: capt, name: Captain, abbreviation: CAPT, gradeCode: OF-5, sortOrder: 50}
+      - {code: rdml, name: Rear Admiral (Lower Half), abbreviation: RDML, gradeCode: OF-6, sortOrder: 60}
+      - {code: radm, name: Rear Admiral, abbreviation: RADM, gradeCode: OF-7, sortOrder: 70}
+      - {code: vadm, name: Vice Admiral, abbreviation: VADM, gradeCode: OF-8, sortOrder: 80}
+      - {code: adm, name: Admiral, abbreviation: ADM, gradeCode: OF-9, sortOrder: 90}
+  - code: air-force
+    name: Air Force
+    sortOrder: 3
+    types:
+    - code: enlisted
+      name: Enlisted
+      sortOrder: 0
+      ranks:
+      - {code: ab, name: Airman Basic, abbreviation: AB, gradeCode: OR-1, sortOrder: 0}
+      - {code: amn, name: Airman, abbreviation: Amn, gradeCode: OR-2, sortOrder: 10}
+      - {code: a1c, name: Airman First Class, abbreviation: A1C, gradeCode: OR-3, sortOrder: 20}
+      - {code: sra, name: Senior Airman, abbreviation: SrA, gradeCode: OR-4, sortOrder: 30}
+      - {code: ssgt, name: Staff Sergeant, abbreviation: SSgt, gradeCode: OR-5, sortOrder: 40}
+      - {code: tsgt, name: Technical Sergeant, abbreviation: TSgt, gradeCode: OR-6, sortOrder: 50}
+      - {code: msgt, name: Master Sergeant, abbreviation: MSgt, gradeCode: OR-7, sortOrder: 60}
+      - {code: smsgt, name: Senior Master Sergeant, abbreviation: SMSgt, gradeCode: OR-8, sortOrder: 70}
+      - {code: cmsgt, name: Chief Master Sergeant, abbreviation: CMSgt, gradeCode: OR-9, sortOrder: 80}
+    - code: officers
+      name: Officers
+      sortOrder: 1
+      ranks:
+      - {code: o1, name: Second Lieutenant, abbreviation: 2d Lt, gradeCode: OF-1, sortOrder: 0}
+      - {code: o2, name: First Lieutenant, abbreviation: 1st Lt, gradeCode: OF-1, sortOrder: 10}
+      - {code: o3, name: Captain, abbreviation: Capt, gradeCode: OF-2, sortOrder: 20}
+      - {code: o4, name: Major, abbreviation: Maj, gradeCode: OF-3, sortOrder: 30}
+      - {code: o5, name: Lieutenant Colonel, abbreviation: Lt Col, gradeCode: OF-4, sortOrder: 40}
+      - {code: o6, name: Colonel, abbreviation: Col, gradeCode: OF-5, sortOrder: 50}
+      - {code: o7, name: Brigadier General, abbreviation: Brig Gen, gradeCode: OF-6, sortOrder: 60}
+      - {code: o8, name: Major General, abbreviation: Maj Gen, gradeCode: OF-7, sortOrder: 70}
+      - {code: o9, name: Lieutenant General, abbreviation: Lt Gen, gradeCode: OF-8, sortOrder: 80}
+      - {code: o10, name: General, abbreviation: Gen, gradeCode: OF-9, sortOrder: 90}
+  - code: space-force
+    name: Space Force
+    sortOrder: 4
+    types:
+    - code: enlisted
+      name: Enlisted
+      sortOrder: 0
+      ranks:
+      - {code: spc1, name: Specialist 1, abbreviation: Spc1, gradeCode: OR-1, sortOrder: 0}
+      - {code: spc2, name: Specialist 2, abbreviation: Spc2, gradeCode: OR-2, sortOrder: 10}
+      - {code: spc3, name: Specialist 3, abbreviation: Spc3, gradeCode: OR-3, sortOrder: 20}
+      - {code: spc4, name: Specialist 4, abbreviation: Spc4, gradeCode: OR-4, sortOrder: 30}
+      - {code: sgt, name: Sergeant, abbreviation: Sgt, gradeCode: OR-5, sortOrder: 40}
+      - {code: tsgt, name: Technical Sergeant, abbreviation: TSgt, gradeCode: OR-6, sortOrder: 50}
+      - {code: msgt, name: Master Sergeant, abbreviation: MSgt, gradeCode: OR-7, sortOrder: 60}
+      - {code: smsgt, name: Senior Master Sergeant, abbreviation: SMSgt, gradeCode: OR-8, sortOrder: 70}
+      - {code: cmsgt, name: Chief Master Sergeant, abbreviation: CMSgt, gradeCode: OR-9, sortOrder: 80}
+    - code: officers
+      name: Officers
+      sortOrder: 1
+      ranks:
+      - {code: o1, name: Second Lieutenant, abbreviation: 2d Lt, gradeCode: OF-1, sortOrder: 0}
+      - {code: o2, name: First Lieutenant, abbreviation: 1st Lt, gradeCode: OF-1, sortOrder: 10}
+      - {code: o3, name: Captain, abbreviation: Capt, gradeCode: OF-2, sortOrder: 20}
+      - {code: o4, name: Major, abbreviation: Maj, gradeCode: OF-3, sortOrder: 30}
+      - {code: o5, name: Lieutenant Colonel, abbreviation: Lt Col, gradeCode: OF-4, sortOrder: 40}
+      - {code: o6, name: Colonel, abbreviation: Col, gradeCode: OF-5, sortOrder: 50}
+      - {code: o7, name: Brigadier General, abbreviation: Brig Gen, gradeCode: OF-6, sortOrder: 60}
+      - {code: o8, name: Major General, abbreviation: Maj Gen, gradeCode: OF-7, sortOrder: 70}
+      - {code: o9, name: Lieutenant General, abbreviation: Lt Gen, gradeCode: OF-8, sortOrder: 80}
+      - {code: o10, name: General, abbreviation: Gen, gradeCode: OF-9, sortOrder: 90}
+  - code: coast-guard
+    name: Coast Guard
+    sortOrder: 5
+    types:
+    - code: enlisted
+      name: Enlisted
+      sortOrder: 0
+      ranks:
+      - {code: sr, name: Seaman Recruit, abbreviation: SR, gradeCode: OR-1, sortOrder: 0}
+      - {code: sa, name: Seaman Apprentice, abbreviation: SA, gradeCode: OR-2, sortOrder: 10}
+      - {code: sn, name: Seaman, abbreviation: SN, gradeCode: OR-3, sortOrder: 20}
+      - {code: po3, name: Petty Officer Third Class, abbreviation: PO3, gradeCode: OR-4, sortOrder: 30}
+      - {code: po2, name: Petty Officer Second Class, abbreviation: PO2, gradeCode: OR-5, sortOrder: 40}
+      - {code: po1, name: Petty Officer First Class, abbreviation: PO1, gradeCode: OR-6, sortOrder: 50}
+      - {code: cpo, name: Chief Petty Officer, abbreviation: CPO, gradeCode: OR-7, sortOrder: 60}
+      - {code: scpo, name: Senior Chief Petty Officer, abbreviation: SCPO, gradeCode: OR-8, sortOrder: 70}
+      - {code: mcpo, name: Master Chief Petty Officer, abbreviation: MCPO, gradeCode: OR-9, sortOrder: 80}
+    - code: officers
+      name: Officers
+      sortOrder: 1
+      ranks:
+      - {code: ens, name: Ensign, abbreviation: ENS, gradeCode: OF-1, sortOrder: 0}
+      - {code: ltjg, name: Lieutenant Junior Grade, abbreviation: LTJG, gradeCode: OF-1, sortOrder: 10}
+      - {code: lt, name: Lieutenant, abbreviation: LT, gradeCode: OF-2, sortOrder: 20}
+      - {code: lcdr, name: Lieutenant Commander, abbreviation: LCDR, gradeCode: OF-3, sortOrder: 30}
+      - {code: cdr, name: Commander, abbreviation: CDR, gradeCode: OF-4, sortOrder: 40}
+      - {code: capt, name: Captain, abbreviation: CAPT, gradeCode: OF-5, sortOrder: 50}
+      - {code: rdml, name: Rear Admiral (Lower Half), abbreviation: RDML, gradeCode: OF-6, sortOrder: 60}
+      - {code: radm, name: Rear Admiral, abbreviation: RADM, gradeCode: OF-7, sortOrder: 70}
+      - {code: vadm, name: Vice Admiral, abbreviation: VADM, gradeCode: OF-8, sortOrder: 80}
+      - {code: adm, name: Admiral, abbreviation: ADM, gradeCode: OF-9, sortOrder: 90}

@@ -82,7 +82,7 @@ func (q *Queries) InsertEthnicityCountry(ctx context.Context, arg InsertEthnicit
 
 const insertEthnicityImport = `-- name: InsertEthnicityImport :exec
 INSERT INTO oikumenea.person_ethnicity_types (
-  code, name, parent_id, wikidata_id, status, source, source_version, imported_at)
+  code, name, parent_id, wikidata_id, status, source, source_version, imported_at, origin)
 SELECT $1::text,
        $2::text,
        CASE WHEN NULLIF($3::text, '') IS NULL THEN NULL
@@ -93,7 +93,8 @@ SELECT $1::text,
        'active',
        $5::text,
        $6::text,
-       $7::timestamptz
+       $7::timestamptz,
+       'seeded'::text
 `
 
 type InsertEthnicityImportParams struct {
@@ -164,6 +165,7 @@ func (q *Queries) RebuildEthnicityClosure(ctx context.Context) error {
 }
 
 const updateEthnicityImport = `-- name: UpdateEthnicityImport :exec
+
 UPDATE oikumenea.person_ethnicity_types SET
   name           = $1::text,
   parent_id      = CASE WHEN NULLIF($2::text, '') IS NULL THEN NULL
@@ -188,6 +190,7 @@ type UpdateEthnicityImportParams struct {
 	Code          string
 }
 
+// import-path rows are pinax seeded-owned (D-Pinax, M45)
 func (q *Queries) UpdateEthnicityImport(ctx context.Context, arg UpdateEthnicityImportParams) error {
 	_, err := q.db.Exec(ctx, updateEthnicityImport,
 		arg.Name,

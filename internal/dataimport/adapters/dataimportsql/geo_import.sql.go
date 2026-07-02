@@ -11,6 +11,58 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const enrichGeoCountryFillEmpty = `-- name: EnrichGeoCountryFillEmpty :exec
+UPDATE oikumenea.geo_countries SET
+  iso_a3       = COALESCE(iso_a3, NULLIF($1::text, '')),
+  numeric_code = COALESCE(numeric_code, NULLIF($2::text, '')),
+  geom         = COALESCE(geom, gj.g),
+  -- centroid: prefer a point derived from the border polygon; fall back to the representative lat/lng
+  -- point (so a country with no bundled polygon — a small nation — is still locatable).
+  centroid     = COALESCE(centroid,
+                   CASE WHEN gj.g IS NOT NULL THEN ST_PointOnSurface(gj.g) END,
+                   CASE WHEN $3::float8 IS NOT NULL AND $4::float8 IS NOT NULL
+                        THEN ST_SetSRID(ST_MakePoint($4::float8, $3::float8), 4326)
+                        END),
+  bbox         = COALESCE(bbox, CASE WHEN gj.g IS NOT NULL THEN ST_Envelope(gj.g) END),
+  color_id     = COALESCE(color_id,
+                   (SELECT id FROM oikumenea.platform_colors
+                    WHERE domain = 'country' AND code = NULLIF($5::text, '')
+                      AND deleted_at IS NULL))
+FROM (SELECT CASE WHEN NULLIF($7::text, '') IS NULL THEN NULL
+                  ELSE ST_SetSRID(ST_GeomFromGeoJSON($7::text), 4326) END AS g) AS gj
+WHERE code = $6::text
+`
+
+type EnrichGeoCountryFillEmptyParams struct {
+	IsoA3       string
+	NumericCode string
+	Latitude    pgtype.Float8
+	Longitude   pgtype.Float8
+	ColorCode   string
+	Code        string
+	Geometry    string
+}
+
+// Pinax country enrichment (D-Pinax, M45): fill-if-empty only — every column is set via COALESCE(col,
+// new) so a value already present (from the migration skeleton or the WOF geo-places connector) is
+// NEVER overwritten, only a currently-NULL column is filled. Safe to run on boot autoseed and on
+// --reconcile alike. `geom` is a low-res country border (GeoJSON Polygon/MultiPolygon) materialized via
+// ST_GeomFromGeoJSON; centroid (ST_PointOnSurface) + bbox (ST_Envelope) are derived from it. The WOF
+// geo-places connector later replaces `geom` with the high-res shape (its EnrichCountry is an
+// unconditional UPDATE). color_id resolves the domain='country' palette code (unresolved = untouched).
+func (q *Queries) EnrichGeoCountryFillEmpty(ctx context.Context, arg EnrichGeoCountryFillEmptyParams) error {
+	_, err := q.db.Exec(ctx, enrichGeoCountryFillEmpty,
+		arg.IsoA3,
+		arg.NumericCode,
+		arg.Latitude,
+		arg.Longitude,
+		arg.ColorCode,
+		arg.Code,
+		arg.Geometry,
+	)
+	return err
+}
+
 const getGeoCountryName = `-- name: GetGeoCountryName :one
 
 SELECT name FROM oikumenea.geo_countries WHERE code = $1
@@ -28,8 +80,8 @@ func (q *Queries) GetGeoCountryName(ctx context.Context, code string) (string, e
 }
 
 const insertGeoCountryImport = `-- name: InsertGeoCountryImport :exec
-INSERT INTO oikumenea.geo_countries (code, name, source, source_version, imported_at)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO oikumenea.geo_countries (code, name, source, source_version, imported_at, origin)
+VALUES ($1, $2, $3, $4, $5, 'seeded')
 `
 
 type InsertGeoCountryImportParams struct {
@@ -52,6 +104,7 @@ func (q *Queries) InsertGeoCountryImport(ctx context.Context, arg InsertGeoCount
 }
 
 const updateGeoCountryImport = `-- name: UpdateGeoCountryImport :exec
+
 UPDATE oikumenea.geo_countries
 SET name = $2, source = $3, source_version = $4, imported_at = $5
 WHERE code = $1
@@ -65,6 +118,7 @@ type UpdateGeoCountryImportParams struct {
 	ImportedAt    pgtype.Timestamptz
 }
 
+// import-path rows are pinax seeded-owned (D-Pinax, M45)
 func (q *Queries) UpdateGeoCountryImport(ctx context.Context, arg UpdateGeoCountryImportParams) error {
 	_, err := q.db.Exec(ctx, updateGeoCountryImport,
 		arg.Code,

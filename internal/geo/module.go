@@ -31,7 +31,7 @@ func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Serv
 
 	svc := application.NewService(pool, repoFor, audit)
 
-	if err := geoapi.RegisterRoutesGeoService(info.Router, transport.NewService(svc, enforcer)); err != nil {
+	if err := geoapi.RegisterRoutesGeoService(info.Router, transport.NewService(svc, loc, enforcer)); err != nil {
 		return nil, werror.Wrap(err, "register geo service routes")
 	}
 	if err := locationapi.RegisterRoutesLocationService(info.Router, transport.NewLocationService(svc, loc, enforcer)); err != nil {

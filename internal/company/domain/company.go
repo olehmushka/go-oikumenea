@@ -58,14 +58,14 @@ type IndustryClass struct {
 // ---- objects ----
 
 type Company struct {
-	ID, Code, LegalName       string
-	ShortName                 string // "" = none
-	LegalFormID               string
-	OwnershipCategory         string
-	CountryID                 string // "" = none
-	FoundedOn, DissolvedOn    string // ISO date; "" = none
-	State                     string
-	CreatedAt, UpdatedAt      time.Time
+	ID, Code, LegalName    string
+	ShortName              string // "" = none
+	LegalFormID            string
+	OwnershipCategory      string
+	CountryID              string // "" = none
+	FoundedOn, DissolvedOn string // ISO date; "" = none
+	State                  string
+	CreatedAt, UpdatedAt   time.Time
 }
 
 type Registration struct {
@@ -113,22 +113,22 @@ type PersonAppointment struct {
 // ---- ownership / affiliation links ----
 
 type Founding struct {
-	ID, CompanyID            string
-	CompanyLabel             string // best-effort
-	HolderKind, HolderID     string
-	HolderLabel              string // best-effort (company legal name)
-	FoundedOn                string // ISO date; "" = none
-	CreatedAt, UpdatedAt     time.Time
+	ID, CompanyID        string
+	CompanyLabel         string // best-effort
+	HolderKind, HolderID string
+	HolderLabel          string // best-effort (company legal name)
+	FoundedOn            string // ISO date; "" = none
+	CreatedAt, UpdatedAt time.Time
 }
 
 type Shareholding struct {
-	ID, CompanyID            string
-	CompanyLabel             string
-	HolderKind, HolderID     string
-	HolderLabel              string
-	StakePct                 *float64
+	ID, CompanyID              string
+	CompanyLabel               string
+	HolderKind, HolderID       string
+	HolderLabel                string
+	StakePct                   *float64
 	EffectiveFrom, EffectiveTo string // ISO date; "" = none
-	CreatedAt, UpdatedAt     time.Time
+	CreatedAt, UpdatedAt       time.Time
 }
 
 type Beneficiary struct {
@@ -141,17 +141,17 @@ type Beneficiary struct {
 }
 
 type Succession struct {
-	ID, PredecessorID, SuccessorID string
+	ID, PredecessorID, SuccessorID   string
 	PredecessorLabel, SuccessorLabel string
-	Kind                           string
-	EffectiveOn                    string // ISO date; "" = none
-	CreatedAt, UpdatedAt           time.Time
+	Kind                             string
+	EffectiveOn                      string // ISO date; "" = none
+	CreatedAt, UpdatedAt             time.Time
 }
 
 type Branch struct {
-	ID, BranchID, ParentID     string
-	BranchLabel, ParentLabel   string
-	CreatedAt, UpdatedAt       time.Time
+	ID, BranchID, ParentID   string
+	BranchLabel, ParentLabel string
+	CreatedAt, UpdatedAt     time.Time
 }
 
 // OwnershipGraph is the one-hop ownership/affiliation neighbourhood of a company.
@@ -176,9 +176,9 @@ type PersonAffiliations struct {
 // ---- inputs ----
 
 type CompanyInput struct {
-	Code, LegalName, LegalFormID  string
-	ShortName, OwnershipCategory  *string
-	CountryID, FoundedOn          *string
+	Code, LegalName, LegalFormID string
+	ShortName, OwnershipCategory *string
+	CountryID, FoundedOn         *string
 }
 
 type CompanyUpdate struct {

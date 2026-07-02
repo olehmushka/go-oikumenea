@@ -66,8 +66,8 @@ type Repository interface {
 	InsertShareholding(ctx context.Context, companyID string, in ShareholdingInput) (Shareholding, error)
 	GetShareholding(ctx context.Context, id string) (Shareholding, error)
 	SoftDeleteShareholding(ctx context.Context, id string) (int64, error)
-	ListShareholdersByCompany(ctx context.Context, companyID string) ([]Shareholding, error)            // stakes IN this company
-	ListHoldingsByCompanyHolder(ctx context.Context, companyID string) ([]Shareholding, error)          // stakes this company holds
+	ListShareholdersByCompany(ctx context.Context, companyID string) ([]Shareholding, error)   // stakes IN this company
+	ListHoldingsByCompanyHolder(ctx context.Context, companyID string) ([]Shareholding, error) // stakes this company holds
 	ListShareholdingsByPersonHolder(ctx context.Context, personID string) ([]Shareholding, error)
 
 	// beneficiaries

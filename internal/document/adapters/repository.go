@@ -94,14 +94,14 @@ func (r *Repository) ListDocumentTypes(ctx context.Context) ([]domain.DocumentTy
 
 func (r *Repository) InsertDocument(ctx context.Context, d domain.Document) (domain.Document, error) {
 	row, err := r.q.InsertDocument(ctx, documentsql.InsertDocumentParams{
-		PersonID:       d.PersonID,
-		TypeID:         d.TypeID,
-		Number:         text(d.Number),
+		PersonID:         d.PersonID,
+		TypeID:           d.TypeID,
+		Number:           text(d.Number),
 		Issuer:           text(d.Issuer),
 		IssuingCountryID: text(d.IssuingCountry),
-		IssuedOn:       dateText(d.IssuedOn),
-		ExpiresOn:      dateText(d.ExpiresOn),
-		Attributes:     d.Attributes,
+		IssuedOn:         dateText(d.IssuedOn),
+		ExpiresOn:        dateText(d.ExpiresOn),
+		Attributes:       d.Attributes,
 	})
 	if err != nil {
 		return domain.Document{}, mapWriteErr(err)
@@ -122,14 +122,14 @@ func (r *Repository) GetDocument(ctx context.Context, id string) (domain.Documen
 
 func (r *Repository) UpdateDocument(ctx context.Context, id string, patch domain.DocumentPatch) (domain.Document, error) {
 	row, err := r.q.UpdateDocument(ctx, documentsql.UpdateDocumentParams{
-		Number:         textPtr(patch.Number),
+		Number:           textPtr(patch.Number),
 		Issuer:           textPtr(patch.Issuer),
 		IssuingCountryID: textPtr(patch.IssuingCountry),
-		IssuedOn:       datePtr(patch.IssuedOn),
-		ExpiresOn:      datePtr(patch.ExpiresOn),
-		Attributes:     rawPtr(patch.Attributes),
-		Status:         textPtr(patch.Status),
-		ID:             id,
+		IssuedOn:         datePtr(patch.IssuedOn),
+		ExpiresOn:        datePtr(patch.ExpiresOn),
+		Attributes:       rawPtr(patch.Attributes),
+		Status:           textPtr(patch.Status),
+		ID:               id,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

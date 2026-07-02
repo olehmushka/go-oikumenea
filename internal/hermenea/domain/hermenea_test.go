@@ -11,12 +11,12 @@ func TestBackoff(t *testing.T) {
 		attempts int
 		want     time.Duration
 	}{
-		{1, time.Second},      // base
-		{2, 2 * time.Second},  // base*2
-		{3, 4 * time.Second},  // base*4
-		{4, 8 * time.Second},  // base*8
+		{1, time.Second},       // base
+		{2, 2 * time.Second},   // base*2
+		{3, 4 * time.Second},   // base*4
+		{4, 8 * time.Second},   // base*8
 		{10, 30 * time.Second}, // capped at max
-		{0, time.Second},      // floor at 1 attempt
+		{0, time.Second},       // floor at 1 attempt
 	}
 	for _, c := range cases {
 		if got := Backoff(c.attempts, base, max); got != c.want {

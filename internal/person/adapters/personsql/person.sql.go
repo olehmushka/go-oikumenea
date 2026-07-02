@@ -868,7 +868,7 @@ func (q *Queries) GetActivePersonByCode(ctx context.Context, code pgtype.Text) (
 }
 
 const getEthnicityTypeByCode = `-- name: GetEthnicityTypeByCode :one
-SELECT id, code, name, status, sort_order, created_at, updated_at, deleted_at, parent_id, wikidata_id, source, source_version, imported_at FROM oikumenea.person_ethnicity_types WHERE code = $1 AND deleted_at IS NULL
+SELECT id, code, name, status, sort_order, created_at, updated_at, deleted_at, parent_id, wikidata_id, source, source_version, imported_at, origin, color_id FROM oikumenea.person_ethnicity_types WHERE code = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetEthnicityTypeByCode(ctx context.Context, code string) (OikumeneaPersonEthnicityType, error) {
@@ -888,6 +888,8 @@ func (q *Queries) GetEthnicityTypeByCode(ctx context.Context, code string) (Oiku
 		&i.Source,
 		&i.SourceVersion,
 		&i.ImportedAt,
+		&i.Origin,
+		&i.ColorID,
 	)
 	return i, err
 }
@@ -4062,7 +4064,7 @@ VALUES ($1, $2, $3::uuid, $4, $5)
 ON CONFLICT (code) WHERE deleted_at IS NULL DO UPDATE SET
   name = excluded.name, parent_id = excluded.parent_id, wikidata_id = excluded.wikidata_id,
   sort_order = excluded.sort_order, status = 'active'
-RETURNING id, code, name, status, sort_order, created_at, updated_at, deleted_at, parent_id, wikidata_id, source, source_version, imported_at
+RETURNING id, code, name, status, sort_order, created_at, updated_at, deleted_at, parent_id, wikidata_id, source, source_version, imported_at, origin, color_id
 `
 
 type UpsertEthnicityTypeParams struct {
@@ -4096,6 +4098,8 @@ func (q *Queries) UpsertEthnicityType(ctx context.Context, arg UpsertEthnicityTy
 		&i.Source,
 		&i.SourceVersion,
 		&i.ImportedAt,
+		&i.Origin,
+		&i.ColorID,
 	)
 	return i, err
 }

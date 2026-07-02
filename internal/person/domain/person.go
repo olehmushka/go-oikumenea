@@ -1128,7 +1128,7 @@ type Repository interface {
 	// ethnicity-type catalog (hierarchical — D-PhysicalIdentity amendment, M43)
 	ListEthnicityTypes(ctx context.Context, f EthnicityTypeFilter) ([]EthnicityType, error)
 	GetEthnicityTypeByCode(ctx context.Context, code string) (EthnicityType, error) // ErrUnknownEthnicityType
-	GetEthnicityTypeByID(ctx context.Context, id string) (EthnicityType, error)      // ErrUnknownEthnicityType
+	GetEthnicityTypeByID(ctx context.Context, id string) (EthnicityType, error)     // ErrUnknownEthnicityType
 	ListEthnicityTypeLanguages(ctx context.Context, ethnicityTypeID string) ([]string, error)
 	ListEthnicityTypeCountries(ctx context.Context, ethnicityTypeID string) ([]string, error)
 	UpsertEthnicityType(ctx context.Context, t EthnicityType) (EthnicityType, error)

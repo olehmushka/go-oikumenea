@@ -15,6 +15,7 @@ type fakeGeoStore struct {
 	names    map[string]string
 	inserts  int
 	updates  int
+	enriched int
 	lastProv domain.Provenance
 }
 
@@ -37,6 +38,11 @@ func (f *fakeGeoStore) UpdateImport(_ context.Context, code, name string, prov d
 	return nil
 }
 
+func (f *fakeGeoStore) Enrich(_ context.Context, _ string, _ domain.GeoCountryEnrichment) error {
+	f.enriched++
+	return nil
+}
+
 // TestGeoCountriesHandler exercises the code-keyed create/update/skip + provenance + validation paths.
 func TestGeoCountriesHandler(t *testing.T) {
 	store := &fakeGeoStore{names: map[string]string{"UA": "Ukraine"}}
@@ -44,8 +50,8 @@ func TestGeoCountriesHandler(t *testing.T) {
 	prov := domain.Provenance{Source: "iso-3166", SourceVersion: "2024"}
 
 	recs := []domain.Record{
-		{"code": "ua", "name": "Ukraine"},          // unchanged -> skip (code lower-cased)
-		{"code": "PL", "name": "Poland"},           // new -> create
+		{"code": "ua", "name": "Ukraine"},           // unchanged -> skip (code lower-cased)
+		{"code": "PL", "name": "Poland"},            // new -> create
 		{"code": "UA", "name": "Ukraine (updated)"}, // changed -> update
 	}
 	sum, err := h(context.Background(), pgx.Tx(nil), recs, prov)
@@ -83,6 +89,132 @@ func TestGeoCountriesHandler_InvalidRecord(t *testing.T) {
 		if _, err := h(context.Background(), pgx.Tx(nil), []domain.Record{rec}, domain.Provenance{}); err == nil {
 			t.Fatalf("expected ErrInvalidRecord for %v", rec)
 		}
+	}
+}
+
+// fakeReligionStore is an in-memory domain.ReligionStore recording source_version per code and counting
+// the create/update/skip + closure-rebuild paths (no DB needed for control-flow tests).
+type fakeReligionStore struct {
+	versions map[string]string
+	inserts  int
+	updates  int
+	classes  int
+	rebuilds int
+}
+
+func (f *fakeReligionStore) GetVersion(_ context.Context, code string) (string, bool, error) {
+	v, ok := f.versions[code]
+	return v, ok, nil
+}
+func (f *fakeReligionStore) Insert(_ context.Context, r domain.Religion, prov domain.Provenance) error {
+	f.versions[r.Code] = prov.SourceVersion
+	f.inserts++
+	return nil
+}
+func (f *fakeReligionStore) UpdateImport(_ context.Context, r domain.Religion, prov domain.Provenance) error {
+	f.versions[r.Code] = prov.SourceVersion
+	f.updates++
+	return nil
+}
+func (f *fakeReligionStore) ReplaceClassifications(_ context.Context, _ string, _ []string) error {
+	f.classes++
+	return nil
+}
+func (f *fakeReligionStore) RebuildClosure(_ context.Context) error { f.rebuilds++; return nil }
+
+// TestReligionSchemeHandler exercises the source_version-keyed create/update/skip logic, the
+// CreateOnly (boot autoseed) never-overwrite branch, and the closure rebuild only when the tree changed.
+func TestReligionSchemeHandler(t *testing.T) {
+	store := &fakeReligionStore{versions: map[string]string{"christianity": "2026.06"}}
+	h := ReligionSchemeHandler(func(db.DBTX) domain.ReligionStore { return store })
+	recs := []domain.Record{
+		{"code": "christianity", "name": "Christianity", "rank": "religion"},           // exists, same version -> skip
+		{"code": "calvinism", "name": "Calvinism", "rank": "tradition", "parent": "p"}, // new -> create
+	}
+	sum, err := h(context.Background(), pgx.Tx(nil), recs, domain.Provenance{Source: "religion-presets", SourceVersion: "2026.06"})
+	if err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if sum.Created != 1 || sum.Skipped != 1 {
+		t.Fatalf("summary = %+v, want created=1 skipped=1", sum)
+	}
+	if store.rebuilds != 1 {
+		t.Fatalf("closure must rebuild once when the tree changed, got %d", store.rebuilds)
+	}
+
+	// Boot autoseed (CreateOnly) over the now-current tree: everything skipped, no rebuild.
+	store.inserts, store.updates, store.rebuilds = 0, 0, 0
+	sum, err = h(context.Background(), pgx.Tx(nil), recs, domain.Provenance{Source: "religion-presets", SourceVersion: "2027.01", CreateOnly: true})
+	if err != nil {
+		t.Fatalf("handler create-only: %v", err)
+	}
+	if sum.Created != 0 || sum.Updated != 0 || sum.Skipped != 2 {
+		t.Fatalf("create-only summary = %+v, want all-skipped", sum)
+	}
+	if store.rebuilds != 0 {
+		t.Fatalf("no rebuild expected on a pure no-op, got %d", store.rebuilds)
+	}
+
+	// A record missing its required rank is rejected.
+	if _, err := h(context.Background(), pgx.Tx(nil), []domain.Record{{"code": "x", "name": "X"}}, domain.Provenance{}); err == nil {
+		t.Fatalf("expected ErrInvalidRecord for a record with no rank")
+	}
+}
+
+// fakeColorStore is an in-memory domain.ColorStore keyed on (domain, code), counting insert/update.
+type fakeColorStore struct {
+	colors  map[string][2]string // "domain/code" -> {name, hex}
+	inserts int
+	updates int
+}
+
+func (f *fakeColorStore) key(d, c string) string { return d + "/" + c }
+func (f *fakeColorStore) Get(_ context.Context, d, c string) (string, string, bool, error) {
+	v, ok := f.colors[f.key(d, c)]
+	return v[0], v[1], ok, nil
+}
+func (f *fakeColorStore) Insert(_ context.Context, c domain.Color) error {
+	f.colors[f.key(c.Domain, c.Code)] = [2]string{c.Name, c.Hex}
+	f.inserts++
+	return nil
+}
+func (f *fakeColorStore) UpdateImport(_ context.Context, c domain.Color) error {
+	f.colors[f.key(c.Domain, c.Code)] = [2]string{c.Name, c.Hex}
+	f.updates++
+	return nil
+}
+
+// TestColorsHandler exercises the (domain,code)-keyed create/update/skip logic and the CreateOnly branch.
+func TestColorsHandler(t *testing.T) {
+	store := &fakeColorStore{colors: map[string][2]string{"country/blue": {"Blue", "#0057B7"}}}
+	h := ColorsHandler(func(db.DBTX) domain.ColorStore { return store })
+	recs := []domain.Record{
+		{"domain": "country", "code": "blue", "name": "Blue", "hex": "#0057B7"},  // unchanged -> skip
+		{"domain": "country", "code": "red", "name": "Red", "hex": "#B22234"},    // new -> create
+		{"domain": "country", "code": "blue", "name": "Azure", "hex": "#0057B7"}, // name changed -> update
+	}
+	sum, err := h(context.Background(), pgx.Tx(nil), recs, domain.Provenance{})
+	if err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if sum.Created != 1 || sum.Updated != 1 || sum.Skipped != 1 {
+		t.Fatalf("summary = %+v, want created=1 updated=1 skipped=1", sum)
+	}
+
+	// CreateOnly (boot autoseed): an existing color is never overwritten even when it differs.
+	store.inserts, store.updates = 0, 0
+	sum, err = h(context.Background(), pgx.Tx(nil), []domain.Record{{"domain": "country", "code": "red", "name": "Crimson", "hex": "#FF0000"}},
+		domain.Provenance{CreateOnly: true})
+	if err != nil {
+		t.Fatalf("handler create-only: %v", err)
+	}
+	if store.updates != 0 || sum.Skipped != 1 {
+		t.Fatalf("create-only must skip an existing color: updates=%d sum=%+v", store.updates, sum)
+	}
+
+	// A record missing domain/code/name is rejected.
+	if _, err := h(context.Background(), pgx.Tx(nil), []domain.Record{{"code": "x", "name": "X"}}, domain.Provenance{}); err == nil {
+		t.Fatalf("expected ErrInvalidRecord for a color with no domain")
 	}
 }
 

@@ -827,5 +827,11 @@ FROM (VALUES
 JOIN oikumenea.religion_taxa t ON t.code = v.code AND t.deleted_at IS NULL
 ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
 
+-- pinax origin marker (D-Pinax, M45): 'seeded' = managed by the bundled `religions` preset, 'operator'
+-- = created via the admin API. The curated taxa seeded above are seeded-owned; runtime default 'operator'.
+ALTER TABLE oikumenea.religion_taxa ADD COLUMN origin text NOT NULL DEFAULT 'operator' CHECK (origin IN ('seeded','operator'));
+UPDATE oikumenea.religion_taxa SET origin = 'seeded';
+COMMENT ON COLUMN oikumenea.religion_taxa.origin IS 'pii:none';
+
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
 UPDATE oikumenea.schema_version SET revision = '0023_religion', applied_at = now() WHERE singleton;

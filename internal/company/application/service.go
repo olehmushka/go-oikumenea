@@ -44,8 +44,8 @@ type Service struct {
 	audit   *auditapp.Service
 	tenant  *tenantapp.Service
 
-	domMu     sync.Mutex
-	domID     string // cached `company` domain RID (seeded at boot, stable)
+	domMu sync.Mutex
+	domID string // cached `company` domain RID (seeded at boot, stable)
 }
 
 // NewService wires the service with the pool, repository factory, the audit service, and the tenant

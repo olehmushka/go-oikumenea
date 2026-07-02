@@ -114,9 +114,13 @@ Real-world entities with identity over time → Objects.
 | `CryptoWallet` / `Personality` / `PoliticalLeaning` *(planned, M35)* | [person](modules/person.md) | no | soft-delete | wallet attribution + declared personality (`pii:sensitive`); **inferred** political-leaning (`pii:special`, never merged with declared); D-PersonOverlays |
 | `HealthRecord` / `Insurance` *(planned, M36)* | [person](modules/person.md) | no | soft-delete | category-level health (`pii:special`, no diagnosis, never inferred) + insurance (`pii:sensitive`); D-HealthVulnerability |
 | `AccountLoginEvent` *(planned, M37)* | [identity-federation](modules/identity-federation.md) | no | retention-bounded + purge-erased | first-party login/IP security log on the account seam (`pii:contact`); D-LoginSecurityLog |
+| `BankAccount` *(planned, M44)* | [finance](modules/finance.md) | no | `status` + soft-delete; **crypto-erase on purge** | `finance_accounts` (**RID service 19**, `19,1,1`); `institution_id` → a `company`-domain `tenant_organizations` (the bank, M41); **envelope-encrypted IBAN** + blind index (unique among active), `currency` (ISO 4217), `account_type_id`; `pii:sensitive` value; D-Finance |
+| `PaymentCard` *(planned, M44)* | [finance](modules/finance.md) | no | soft-delete; **crypto-erase on purge** | `finance_cards` (`19,1,2`); `account_id` → `finance_accounts` (containment FK); **envelope-encrypted PAN** + display `bin`/`last_four`, `card_type ∈ {debit,credit}`, `network_id`, optional expiry + `cardholder_person_id`; **no CVV column** (PCI-DSS Req 3.2); `pii:sensitive`; D-Finance |
+| `AccountType` / `CardNetwork` *(planned, M44)* | [finance](modules/finance.md) | yes (`code`/`name`) | `status` + soft-delete | catalogs (`19,1,3` / `19,1,4`): account kinds (current/savings/deposit/loan…) + card networks (visa/mastercard/amex…) |
 
 (Planned-cluster RID type codes are allocated in `pkg/rid` + migration `0000` on build — person
-service object 11+ / link 9+, account/platform as noted, external-organizations = service 18.)
+service object 11+ / link 9+, account/platform as noted, external-organizations = service 18,
+**finance = service 19** (M44).)
 
 **Non-Objects (correctly):** `Atomic permission` is **code, not data** — a closed vocabulary in Go,
 not a table ([authorization](modules/authorization.md)). `Vacancy` is a **derived predicate** (active
@@ -197,6 +201,7 @@ Links additionally carry `valid_from`/`valid_to`
 | `HOLDS_GOVERNMENT_POSITION` *(planned, M33)* | `Person` → `ExternalOrganization` | [person](modules/person.md) | title/body/level; **`pep_trigger`** (auto-true, persists post-office); `pii:basic` | **temporal**; feeds M34 PEP; D-InstitutionalTies |
 | `LOBBYING_FOR` *(planned, M33)* | `Person` → `ExternalOrganization` | [person](modules/person.md) | registrant/client, issues[], filing_id, source_url; `pii:basic` | `source`/`confidence`; D-InstitutionalTies |
 | `SERVED_IN` *(planned, M33)* | `Person` → `ExternalOrganization` (military) | [person](modules/person.md) / [membership](modules/membership.md) | reuse the membership shape + rank; `units[]`/`deployments[]`/`discharge_type`/`clearance_level` (latter two `pii:sensitive`) | **temporal**; foreign/historical military service against an external-org stub; D-InstitutionalTies |
+| `HELD_BY` *(planned, M44)* | `BankAccount` → `Person`\|`Company` | [finance](modules/finance.md) | reified `finance_account_holders` (`19,2,1`); **polymorphic holder** (`holder_kind`+`holder_id`, no FK — F-014); `role ∈ {primary,joint,authorized_signer}` | **temporal**; joint/corporate accounts; person-holder rows `pii:basic`, holder-scoped, purge-erased; a card→account is a **containment FK, not a Link**; D-Finance |
 
 The `Assignment` is the centerpiece and deserves emphasis: an ontology would model it as a **reified
 Link** `(subject, role, target_unit, scope, graph)`. Two non-obvious semantics

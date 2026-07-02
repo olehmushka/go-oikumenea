@@ -68,9 +68,9 @@ func TestIsSenior(t *testing.T) {
 	wo1 := Grade{Code: "WO-1", Tier: TierWarrant, Ordinal: 1}
 
 	tests := []struct {
-		name         string
-		a, b         Grade
-		want, known  bool
+		name        string
+		a, b        Grade
+		want, known bool
 	}{
 		{"officer over officer by ordinal", of5a, of4, true, true},
 		{"junior officer not senior", of4, of5a, false, true},

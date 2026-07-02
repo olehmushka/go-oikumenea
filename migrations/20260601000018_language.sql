@@ -502,5 +502,16 @@ FROM (VALUES
 JOIN oikumenea.writing_systems w ON w.code = v.code
 ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
 
+-- pinax origin marker (D-Pinax, M45): 'seeded' = managed by the bundled `languages` / `writing-systems`
+-- presets, 'operator' = created via the admin API. Migration-seeded rows are marked seeded; the runtime
+-- default 'operator' applies to API-created rows. (The Glottolog forest is loaded via the import path,
+-- whose handler stamps origin='seeded' — D-Pinax; this marks the migration-seeded skeleton + scripts.)
+ALTER TABLE oikumenea.language_languoids ADD COLUMN origin text NOT NULL DEFAULT 'operator' CHECK (origin IN ('seeded','operator'));
+ALTER TABLE oikumenea.writing_systems    ADD COLUMN origin text NOT NULL DEFAULT 'operator' CHECK (origin IN ('seeded','operator'));
+UPDATE oikumenea.language_languoids SET origin = 'seeded';
+UPDATE oikumenea.writing_systems    SET origin = 'seeded';
+COMMENT ON COLUMN oikumenea.language_languoids.origin IS 'pii:none';
+COMMENT ON COLUMN oikumenea.writing_systems.origin IS 'pii:none';
+
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
 UPDATE oikumenea.schema_version SET revision = '0018_language', applied_at = now() WHERE singleton;

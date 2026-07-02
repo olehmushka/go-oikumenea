@@ -10,11 +10,11 @@
 
 -- name: InsertSystem :one
 -- Create a rank system (the top level). The RID PK defaults at the database; sort_order appends last.
-INSERT INTO oikumenea.rank_systems (code, name, sort_order, country_id)
+INSERT INTO oikumenea.rank_systems (code, name, sort_order, country_id, origin)
 VALUES (@code, @name, COALESCE(
   sqlc.narg('sort_order')::int,
   (SELECT COALESCE(max(sort_order) + 1, 0) FROM oikumenea.rank_systems WHERE deleted_at IS NULL)
-), sqlc.narg('country_id'))
+), sqlc.narg('country_id'), 'seeded')  -- preset-imported = pinax seeded-owned (D-Pinax, M45)
 RETURNING *;
 
 -- name: GetSystem :one
@@ -66,12 +66,12 @@ SELECT * FROM oikumenea.rank_grades WHERE code = @code;
 -- name: InsertCategory :one
 -- Create a category under a system. The RID PK defaults at the database; sort_order appends last among
 -- the system's active categories.
-INSERT INTO oikumenea.rank_categories (system_id, code, name, sort_order)
+INSERT INTO oikumenea.rank_categories (system_id, code, name, sort_order, origin)
 VALUES (@system_id, @code, @name, COALESCE(
   sqlc.narg('sort_order')::int,
   (SELECT COALESCE(max(sort_order) + 1, 0)
      FROM oikumenea.rank_categories WHERE system_id = @system_id AND deleted_at IS NULL)
-))
+), 'seeded')  -- preset-imported = pinax seeded-owned (D-Pinax, M45)
 RETURNING *;
 
 -- name: GetCategory :one
@@ -107,7 +107,7 @@ FROM oikumenea.rank_types WHERE category_id = @category_id AND deleted_at IS NUL
 -- parent_type_id NULL = a root type of the category. system_id is denormalized from the category (so a
 -- nested type's system equals its root category's). sort_order appends last among ACTIVE SIBLINGS (same
 -- category + same parent), comparing parent with IS NOT DISTINCT FROM so NULL matches NULL.
-INSERT INTO oikumenea.rank_types (system_id, category_id, parent_type_id, code, name, sort_order)
+INSERT INTO oikumenea.rank_types (system_id, category_id, parent_type_id, code, name, sort_order, origin)
 VALUES (
   (SELECT system_id FROM oikumenea.rank_categories WHERE id = @category_id),
   @category_id, sqlc.narg('parent_type_id')::uuid, @code, @name, COALESCE(
@@ -117,7 +117,7 @@ VALUES (
      WHERE category_id = @category_id
        AND parent_type_id IS NOT DISTINCT FROM sqlc.narg('parent_type_id')::uuid
        AND deleted_at IS NULL)
-))
+), 'seeded')  -- preset-imported = pinax seeded-owned (D-Pinax, M45)
 RETURNING *;
 
 -- name: GetType :one
@@ -163,14 +163,14 @@ FROM oikumenea.rank_types WHERE parent_type_id = @parent_type_id AND deleted_at 
 -- name: InsertRank :one
 -- system_id is denormalized from the owning type (so a rank's system equals its type's). grade_code is
 -- the optional standardized cross-system grade (validated against rank_grades by the application).
-INSERT INTO oikumenea.rank_ranks (system_id, type_id, code, name, abbreviation, grade_code, sort_order)
+INSERT INTO oikumenea.rank_ranks (system_id, type_id, code, name, abbreviation, grade_code, sort_order, origin)
 VALUES (
   (SELECT system_id FROM oikumenea.rank_types WHERE id = @type_id),
   @type_id, @code, @name, sqlc.narg('abbreviation'), sqlc.narg('grade_code'), COALESCE(
   sqlc.narg('sort_order')::int,
   (SELECT COALESCE(max(sort_order) + 1, 0)
      FROM oikumenea.rank_ranks WHERE type_id = @type_id AND deleted_at IS NULL)
-))
+), 'seeded')  -- preset-imported = pinax seeded-owned (D-Pinax, M45)
 RETURNING *;
 
 -- name: GetRank :one

@@ -56,6 +56,27 @@ const ObjectTypeExternalOrgs = "external-organizations"
 // plaintext reference data — the person's SELECTION (person_ethnicities) is unaffected.
 const ObjectTypeEthnicityScheme = "ethnicity-scheme"
 
+// ObjectTypeReligionScheme is the routing key for the recursive faith taxonomy (D-Religion + D-Pinax,
+// M45) — religion_taxa nodes (+ their theism classifications) seeded from the bundled `religions` preset.
+// Records arrive parent-first (the taxon `parent_id` FK is RESTRICT); the rank code resolves to a
+// religion_taxon_ranks RID in SQL; after the batch the handler rebuilds the closure and re-derives each
+// taxon's denormalized root religion_id. The migration already seeds a curated tree — a boot autoseed is
+// create-if-absent, so existing taxa are skipped and only genuinely-new nodes are inserted.
+const ObjectTypeReligionScheme = "religion-scheme"
+
+// ObjectTypeTranslations is the routing key for the pinax i18n translation overlay (D-Pinax + D-i18n,
+// M45): (entity_type, entity_id, field, locale) → text rows for the seeded reference catalogs. Records
+// carry the entity's natural key(s); the handler resolves them to the entity_id the read path uses
+// (code→RID for languoid/writing_system/religion_taxon/rank_*, the code itself for country/ethnicity_type)
+// and inserts create-if-absent. Depends on the entity presets (the rows must exist to resolve).
+const ObjectTypeTranslations = "translations"
+
+// ObjectTypeColors is the routing key for the per-domain platform_colors palettes (D-Color + D-Pinax,
+// M45) seeded from the bundled `colors` preset. Idempotency is keyed on (domain, code): insert when
+// absent, update when name/hex changed, skip otherwise — never deletes. Seeds the eye/hair/vehicle
+// palettes plus the rank/religion/ethnicity/country palettes the seeded reference catalogs point at.
+const ObjectTypeColors = "colors"
+
 // Record is one object-type-specific record decoded from the canonical envelope (a JSON object). The
 // registered handler interprets its own shape.
 type Record = map[string]any
@@ -66,6 +87,11 @@ type Provenance struct {
 	Source        string
 	SourceVersion string
 	ImportedAt    time.Time
+	// CreateOnly selects the pinax boot-autoseed semantics (D-Pinax, M45): when true a handler INSERTS
+	// absent rows but NEVER updates an existing one (create-if-absent, never-overwrite) — so re-seeding
+	// can't clobber operator edits or upstream-corrected data. Default false keeps the hermenea import
+	// path's update-on-change behavior (and `oikumenea seed --reconcile`).
+	CreateOnly bool
 }
 
 // Summary is the per-import outcome: rows created, updated, or skipped (already current — idempotent).
@@ -75,13 +101,39 @@ type Summary struct {
 	Skipped int
 }
 
+// GeoCountryEnrichment is the pinax country enrichment payload (D-Pinax, M45): the extra reference
+// columns the bundled `countries` preset carries beyond code+name. Applied fill-if-empty — a column
+// already set (migration skeleton or the WOF geo-places connector) is never overwritten. All fields are
+// optional; a record with none is not enriched. GeometryJSON is a GeoJSON geometry (a low-res country
+// border Polygon/MultiPolygon) that fills `geom` and derives `centroid`+`bbox` in SQL; the WOF connector
+// later upgrades `geom` to high-res (its EnrichCountry is an unconditional UPDATE). Latitude/Longitude are
+// a representative point used as the `centroid` FALLBACK for countries with no bundled polygon (small
+// nations absent from the low-res border set), so every country is at least locatable. ColorCode resolves
+// the domain='country' palette.
+type GeoCountryEnrichment struct {
+	ISOA3        string
+	NumericCode  string
+	GeometryJSON string // GeoJSON geometry text ("" = none)
+	Latitude     *float64
+	Longitude    *float64
+	ColorCode    string
+}
+
+// Empty reports whether the enrichment carries nothing to apply (so the handler can skip the call).
+func (e GeoCountryEnrichment) Empty() bool {
+	return e.ISOA3 == "" && e.NumericCode == "" && e.GeometryJSON == "" &&
+		e.Latitude == nil && e.Longitude == nil && e.ColorCode == ""
+}
+
 // GeoCountryStore is the port the geo-countries upsert handler drives (the M16 first catalog). Reads
-// the existing name to decide create/update/skip; writes stamp provenance. Adapters implement it over
-// the caller's transaction so the upsert and its audit row commit together (D-Audit).
+// the existing name to decide create/update/skip; writes stamp provenance. Enrich fills the pinax
+// reference columns fill-if-empty (never overwriting). Adapters implement it over the caller's
+// transaction so the upsert and its audit row commit together (D-Audit).
 type GeoCountryStore interface {
 	GetName(ctx context.Context, code string) (name string, found bool, err error)
 	Insert(ctx context.Context, code, name string, prov Provenance) error
 	UpdateImport(ctx context.Context, code, name string, prov Provenance) error
+	Enrich(ctx context.Context, code string, e GeoCountryEnrichment) error
 }
 
 // GeoPlace is one Who's-On-First gazetteer record decoded from a canonical-envelope record. Optional
@@ -190,6 +242,73 @@ type ExternalOrgStore interface {
 	GetByWikidata(ctx context.Context, wikidataID string) (name string, found bool, err error)
 	Insert(ctx context.Context, kindID string, o ExternalOrg, prov Provenance) error
 	UpdateImport(ctx context.Context, kindID string, o ExternalOrg, prov Provenance) error
+}
+
+// Religion is one religion-scheme record (D-Religion + D-Pinax, M45). Code is the import/idempotency
+// key; Parent is the parent taxon code ("" = root religion); RankCode is the level marker
+// (religion/branch/tradition/sub_tradition/denomination) resolved to a religion_taxon_ranks RID in SQL.
+// Classifications are theism-classification codes tied M:N (unresolved codes silently dropped).
+type Religion struct {
+	Code            string
+	Name            string
+	Parent          string
+	RankCode        string
+	Description     string
+	WikidataID      string
+	Icon            string
+	SortOrder       *int
+	Classifications []string
+}
+
+// ReligionStore is the port the religion-scheme upsert handler drives (D-Religion + D-Pinax). Mirrors
+// EthnicityStore: idempotency keyed on source_version, the taxon's theism classifications replaced on
+// every insert/update, and — after the batch — a transitive-closure rebuild followed by re-deriving each
+// taxon's denormalized root religion_id (RebuildClosure does both). Never deletes a taxon.
+type ReligionStore interface {
+	GetVersion(ctx context.Context, code string) (sourceVersion string, found bool, err error)
+	Insert(ctx context.Context, r Religion, prov Provenance) error
+	UpdateImport(ctx context.Context, r Religion, prov Provenance) error
+	ReplaceClassifications(ctx context.Context, code string, classificationCodes []string) error
+	RebuildClosure(ctx context.Context) error
+}
+
+// Color is one platform_colors palette record (D-Color + D-Pinax, M45). Idempotency is keyed on the
+// (Domain, Code) pair; Hex is an optional swatch ("" = none). No provenance columns exist on
+// platform_colors — origin='seeded' (set in SQL) marks preset ownership.
+type Color struct {
+	Domain    string // eye | hair | vehicle | rank | religion | ethnicity | country
+	Code      string
+	Name      string
+	Hex       string
+	SortOrder *int
+}
+
+// ColorStore is the port the colors upsert handler drives (D-Color + D-Pinax). Reads the existing
+// name+hex to decide create/update/skip. Never deletes a color.
+type ColorStore interface {
+	Get(ctx context.Context, domain, code string) (name, hex string, found bool, err error)
+	Insert(ctx context.Context, c Color) error
+	UpdateImport(ctx context.Context, c Color) error
+}
+
+// Translation is one pinax translation record (D-Pinax + D-i18n, M45): a reference entity's translated
+// `field` (default "name") in one or more locales. EntityType selects the read-path slot; Key is the
+// entity's natural key (a single code, or a "system/category[/type]/code" path for rank_*); Names is the
+// locale→text map. The handler resolves Key→entity_id and inserts each locale create-if-absent.
+type Translation struct {
+	EntityType string
+	Key        string
+	Field      string // "" defaults to "name"
+	Names      map[string]string
+}
+
+// TranslationStore is the port the translations handler drives (D-Pinax + D-i18n). Resolve maps an
+// entity's natural key to the entity_id the read path uses (found=false → the entity is not seeded yet,
+// so the record is skipped). Upsert writes one (entity_type, entity_id, field, locale)→text row
+// create-if-absent (never clobbering an operator-corrected translation).
+type TranslationStore interface {
+	Resolve(ctx context.Context, entityType, key string) (entityID string, found bool, err error)
+	Upsert(ctx context.Context, entityType, entityID, field, locale, text string) error
 }
 
 // LanguageScriptStore is the port the language-scripts upsert handler drives (D-Languages). A link ties

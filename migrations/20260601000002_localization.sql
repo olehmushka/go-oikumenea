@@ -104,10 +104,15 @@ COMMENT ON COLUMN oikumenea.i18n_translations.locale IS 'pii:none';
 -- Translatable labels of structural/catalog entities (unit/rank/role names) are not personal data.
 COMMENT ON COLUMN oikumenea.i18n_translations.text IS 'pii:none';
 
--- Seed the out-of-the-box locales (D-i18n): ukr (default) + eng, both enabled.
+-- Seed the out-of-the-box locales (D-i18n): ukr (default) + eng, plus the two roadmap locales
+-- spa (Spanish — LATAM/es-419) and por (Portuguese — Brazil/pt-BR); all ISO 639-3, all enabled. The
+-- pinax reference presets carry translations for these locales (D-Pinax, M45); the regional variant is
+-- just which CLDR source the translation text is drawn from, stored under the ISO-639-3 macro-code.
 INSERT INTO oikumenea.i18n_locales (code, name, enabled, is_default, sort_order) VALUES
   ('ukr', 'Українська', true, true,  0),
-  ('eng', 'English',    true, false, 10);
+  ('eng', 'English',    true, false, 10),
+  ('spa', 'Español (Latinoamérica)', true, false, 20),
+  ('por', 'Português (Brasil)',      true, false, 30);
 
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
 UPDATE oikumenea.schema_version SET revision = '0002_localization', applied_at = now() WHERE singleton;

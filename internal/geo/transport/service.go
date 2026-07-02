@@ -15,19 +15,37 @@ import (
 	geoapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/geo"
 	"github.com/olegamysk/go-oikumenea/internal/geo/application"
 	"github.com/olegamysk/go-oikumenea/internal/geo/domain"
+	locapp "github.com/olegamysk/go-oikumenea/internal/localization/application"
 	"github.com/palantir/pkg/bearertoken"
 	werror "github.com/palantir/witchcraft-go-error"
 )
 
+// entityCountry is the i18n entity_type country `name` locale-maps are stored under (D-i18n). Keyed by
+// the country CODE (the natural key), so the pinax translations preset resolves it without a RID lookup.
+const entityCountry = "country"
+
 // Service adapts *application.Service to the generated geoapi.GeoService interface.
 type Service struct {
 	app *application.Service
+	loc *locapp.Service
 	pep *pep.Enforcer
 }
 
-// NewService builds the transport adapter over the geo application service + PEP enforcer.
-func NewService(app *application.Service, enforcer *pep.Enforcer) Service {
-	return Service{app: app, pep: enforcer}
+// NewService builds the transport adapter over the geo application service, the localization store (for
+// country name locale-maps, D-i18n), and the PEP enforcer.
+func NewService(app *application.Service, loc *locapp.Service, enforcer *pep.Enforcer) Service {
+	return Service{app: app, loc: loc, pep: enforcer}
+}
+
+// countryNames returns each country's `name` locale->text map (D-i18n), keyed by country code (the
+// entity_id the translations preset stores under). The default-locale slot falls back to the `name`
+// column; the i18n store overlays the other locales.
+func (s Service) countryNames(ctx context.Context, countries []domain.Country) (map[string]map[string]string, error) {
+	defaults := make(map[string]string, len(countries))
+	for _, c := range countries {
+		defaults[c.Code] = c.Name
+	}
+	return s.loc.NamesByID(ctx, entityCountry, defaults)
 }
 
 // compile-time assertion that the transport satisfies the generated server interface.
@@ -42,18 +60,22 @@ func (s Service) ListCountries(ctx context.Context, token bearertoken.Token) (ge
 	if err != nil {
 		return geoapi.CountryList{}, werror.WrapWithContextParams(ctx, err, "list countries failed")
 	}
+	names, err := s.countryNames(ctx, countries)
+	if err != nil {
+		return geoapi.CountryList{}, werror.WrapWithContextParams(ctx, err, "resolve country names failed")
+	}
 	out := make([]geoapi.Country, 0, len(countries))
 	for _, c := range countries {
-		out = append(out, toAPICountry(c))
+		out = append(out, toAPICountry(c, names[c.Code]))
 	}
 	return geoapi.CountryList{Countries: out}, nil
 }
 
-func toAPICountry(c domain.Country) geoapi.Country {
+func toAPICountry(c domain.Country, name map[string]string) geoapi.Country {
 	return geoapi.Country{
 		Id:     c.ID,
 		Code:   c.Code,
-		Name:   c.Name,
+		Name:   name,
 		Status: c.Status,
 	}
 }
@@ -91,7 +113,11 @@ func (s Service) ResolveCoordinate(ctx context.Context, token bearertoken.Token,
 	}
 	var out geoapi.CoordinateResolution
 	if res.Country != nil {
-		c := toAPICountry(*res.Country)
+		names, err := s.countryNames(ctx, []domain.Country{*res.Country})
+		if err != nil {
+			return geoapi.CoordinateResolution{}, werror.WrapWithContextParams(ctx, err, "resolve country name failed")
+		}
+		c := toAPICountry(*res.Country, names[res.Country.Code])
 		out.Country = &c
 	}
 	if res.Place != nil {

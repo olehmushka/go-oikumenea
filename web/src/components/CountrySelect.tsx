@@ -7,8 +7,9 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api/client";
+import { pickLabel, type LocaleMap } from "@/lib/i18n";
 
-export type Country = { id: string; code: string; name: string; status: string };
+export type Country = { id: string; code: string; name: LocaleMap; status: string };
 
 let cache: Country[] | null = null;
 
@@ -75,7 +76,7 @@ export function CountrySelect({
       {includeEmpty ? <option value="">—</option> : null}
       {countries.map((c) => (
         <option key={c.id} value={c.id}>
-          {c.code} — {c.name}
+          {c.code} — {pickLabel(c.name) || c.code}
         </option>
       ))}
     </select>

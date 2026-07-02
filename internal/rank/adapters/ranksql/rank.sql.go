@@ -62,7 +62,7 @@ func (q *Queries) CountActiveTypesInCategory(ctx context.Context, categoryID str
 }
 
 const getCategory = `-- name: GetCategory :one
-SELECT id, system_id, code, name, sort_order, created_at, updated_at, deleted_at FROM oikumenea.rank_categories WHERE id = $1 AND deleted_at IS NULL
+SELECT id, system_id, code, name, sort_order, created_at, updated_at, deleted_at, origin FROM oikumenea.rank_categories WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetCategory(ctx context.Context, id string) (OikumeneaRankCategory, error) {
@@ -77,12 +77,13 @@ func (q *Queries) GetCategory(ctx context.Context, id string) (OikumeneaRankCate
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Origin,
 	)
 	return i, err
 }
 
 const getCategoryByCodeInSystem = `-- name: GetCategoryByCodeInSystem :one
-SELECT id, system_id, code, name, sort_order, created_at, updated_at, deleted_at FROM oikumenea.rank_categories
+SELECT id, system_id, code, name, sort_order, created_at, updated_at, deleted_at, origin FROM oikumenea.rank_categories
 WHERE system_id = $1 AND code = $2 AND deleted_at IS NULL
 `
 
@@ -103,6 +104,7 @@ func (q *Queries) GetCategoryByCodeInSystem(ctx context.Context, arg GetCategory
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Origin,
 	)
 	return i, err
 }
@@ -137,7 +139,7 @@ func (q *Queries) GetGrade(ctx context.Context, code string) (OikumeneaRankGrade
 }
 
 const getRank = `-- name: GetRank :one
-SELECT id, system_id, type_id, code, name, abbreviation, grade_code, sort_order, created_at, updated_at, deleted_at FROM oikumenea.rank_ranks WHERE id = $1 AND deleted_at IS NULL
+SELECT id, system_id, type_id, code, name, abbreviation, grade_code, sort_order, created_at, updated_at, deleted_at, origin, color_id FROM oikumenea.rank_ranks WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetRank(ctx context.Context, id string) (OikumeneaRankRank, error) {
@@ -155,12 +157,14 @@ func (q *Queries) GetRank(ctx context.Context, id string) (OikumeneaRankRank, er
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Origin,
+		&i.ColorID,
 	)
 	return i, err
 }
 
 const getRankByCodeInType = `-- name: GetRankByCodeInType :one
-SELECT id, system_id, type_id, code, name, abbreviation, grade_code, sort_order, created_at, updated_at, deleted_at FROM oikumenea.rank_ranks
+SELECT id, system_id, type_id, code, name, abbreviation, grade_code, sort_order, created_at, updated_at, deleted_at, origin, color_id FROM oikumenea.rank_ranks
 WHERE type_id = $1 AND code = $2 AND deleted_at IS NULL
 `
 
@@ -184,12 +188,14 @@ func (q *Queries) GetRankByCodeInType(ctx context.Context, arg GetRankByCodeInTy
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Origin,
+		&i.ColorID,
 	)
 	return i, err
 }
 
 const getSystem = `-- name: GetSystem :one
-SELECT id, code, name, sort_order, country_id, created_at, updated_at, deleted_at FROM oikumenea.rank_systems WHERE id = $1 AND deleted_at IS NULL
+SELECT id, code, name, sort_order, country_id, created_at, updated_at, deleted_at, origin FROM oikumenea.rank_systems WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetSystem(ctx context.Context, id string) (OikumeneaRankSystem, error) {
@@ -204,12 +210,13 @@ func (q *Queries) GetSystem(ctx context.Context, id string) (OikumeneaRankSystem
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Origin,
 	)
 	return i, err
 }
 
 const getSystemByCode = `-- name: GetSystemByCode :one
-SELECT id, code, name, sort_order, country_id, created_at, updated_at, deleted_at FROM oikumenea.rank_systems WHERE code = $1 AND deleted_at IS NULL
+SELECT id, code, name, sort_order, country_id, created_at, updated_at, deleted_at, origin FROM oikumenea.rank_systems WHERE code = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetSystemByCode(ctx context.Context, code string) (OikumeneaRankSystem, error) {
@@ -224,12 +231,13 @@ func (q *Queries) GetSystemByCode(ctx context.Context, code string) (OikumeneaRa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Origin,
 	)
 	return i, err
 }
 
 const getType = `-- name: GetType :one
-SELECT id, system_id, category_id, parent_type_id, code, name, sort_order, created_at, updated_at, deleted_at FROM oikumenea.rank_types WHERE id = $1 AND deleted_at IS NULL
+SELECT id, system_id, category_id, parent_type_id, code, name, sort_order, created_at, updated_at, deleted_at, origin FROM oikumenea.rank_types WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetType(ctx context.Context, id string) (OikumeneaRankType, error) {
@@ -246,12 +254,13 @@ func (q *Queries) GetType(ctx context.Context, id string) (OikumeneaRankType, er
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Origin,
 	)
 	return i, err
 }
 
 const getTypeByCodeInParent = `-- name: GetTypeByCodeInParent :one
-SELECT id, system_id, category_id, parent_type_id, code, name, sort_order, created_at, updated_at, deleted_at FROM oikumenea.rank_types
+SELECT id, system_id, category_id, parent_type_id, code, name, sort_order, created_at, updated_at, deleted_at, origin FROM oikumenea.rank_types
 WHERE category_id = $1
   AND parent_type_id IS NOT DISTINCT FROM $2::uuid
   AND code = $3 AND deleted_at IS NULL
@@ -279,19 +288,20 @@ func (q *Queries) GetTypeByCodeInParent(ctx context.Context, arg GetTypeByCodeIn
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Origin,
 	)
 	return i, err
 }
 
 const insertCategory = `-- name: InsertCategory :one
 
-INSERT INTO oikumenea.rank_categories (system_id, code, name, sort_order)
+INSERT INTO oikumenea.rank_categories (system_id, code, name, sort_order, origin)
 VALUES ($1, $2, $3, COALESCE(
   $4::int,
   (SELECT COALESCE(max(sort_order) + 1, 0)
      FROM oikumenea.rank_categories WHERE system_id = $1 AND deleted_at IS NULL)
-))
-RETURNING id, system_id, code, name, sort_order, created_at, updated_at, deleted_at
+), 'seeded')  -- preset-imported = pinax seeded-owned (D-Pinax, M45)
+RETURNING id, system_id, code, name, sort_order, created_at, updated_at, deleted_at, origin
 `
 
 type InsertCategoryParams struct {
@@ -321,21 +331,22 @@ func (q *Queries) InsertCategory(ctx context.Context, arg InsertCategoryParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Origin,
 	)
 	return i, err
 }
 
 const insertRank = `-- name: InsertRank :one
 
-INSERT INTO oikumenea.rank_ranks (system_id, type_id, code, name, abbreviation, grade_code, sort_order)
+INSERT INTO oikumenea.rank_ranks (system_id, type_id, code, name, abbreviation, grade_code, sort_order, origin)
 VALUES (
   (SELECT system_id FROM oikumenea.rank_types WHERE id = $1),
   $1, $2, $3, $4, $5, COALESCE(
   $6::int,
   (SELECT COALESCE(max(sort_order) + 1, 0)
      FROM oikumenea.rank_ranks WHERE type_id = $1 AND deleted_at IS NULL)
-))
-RETURNING id, system_id, type_id, code, name, abbreviation, grade_code, sort_order, created_at, updated_at, deleted_at
+), 'seeded')  -- preset-imported = pinax seeded-owned (D-Pinax, M45)
+RETURNING id, system_id, type_id, code, name, abbreviation, grade_code, sort_order, created_at, updated_at, deleted_at, origin, color_id
 `
 
 type InsertRankParams struct {
@@ -372,6 +383,8 @@ func (q *Queries) InsertRank(ctx context.Context, arg InsertRankParams) (Oikumen
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Origin,
+		&i.ColorID,
 	)
 	return i, err
 }
@@ -379,12 +392,12 @@ func (q *Queries) InsertRank(ctx context.Context, arg InsertRankParams) (Oikumen
 const insertSystem = `-- name: InsertSystem :one
 
 
-INSERT INTO oikumenea.rank_systems (code, name, sort_order, country_id)
+INSERT INTO oikumenea.rank_systems (code, name, sort_order, country_id, origin)
 VALUES ($1, $2, COALESCE(
   $3::int,
   (SELECT COALESCE(max(sort_order) + 1, 0) FROM oikumenea.rank_systems WHERE deleted_at IS NULL)
-), $4)
-RETURNING id, code, name, sort_order, country_id, created_at, updated_at, deleted_at
+), $4, 'seeded')  -- preset-imported = pinax seeded-owned (D-Pinax, M45)
+RETURNING id, code, name, sort_order, country_id, created_at, updated_at, deleted_at, origin
 `
 
 type InsertSystemParams struct {
@@ -420,13 +433,14 @@ func (q *Queries) InsertSystem(ctx context.Context, arg InsertSystemParams) (Oik
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Origin,
 	)
 	return i, err
 }
 
 const insertType = `-- name: InsertType :one
 
-INSERT INTO oikumenea.rank_types (system_id, category_id, parent_type_id, code, name, sort_order)
+INSERT INTO oikumenea.rank_types (system_id, category_id, parent_type_id, code, name, sort_order, origin)
 VALUES (
   (SELECT system_id FROM oikumenea.rank_categories WHERE id = $1),
   $1, $2::uuid, $3, $4, COALESCE(
@@ -436,8 +450,8 @@ VALUES (
      WHERE category_id = $1
        AND parent_type_id IS NOT DISTINCT FROM $2::uuid
        AND deleted_at IS NULL)
-))
-RETURNING id, system_id, category_id, parent_type_id, code, name, sort_order, created_at, updated_at, deleted_at
+), 'seeded')  -- preset-imported = pinax seeded-owned (D-Pinax, M45)
+RETURNING id, system_id, category_id, parent_type_id, code, name, sort_order, created_at, updated_at, deleted_at, origin
 `
 
 type InsertTypeParams struct {
@@ -472,12 +486,13 @@ func (q *Queries) InsertType(ctx context.Context, arg InsertTypeParams) (Oikumen
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Origin,
 	)
 	return i, err
 }
 
 const listCategories = `-- name: ListCategories :many
-SELECT id, system_id, code, name, sort_order, created_at, updated_at, deleted_at FROM oikumenea.rank_categories WHERE deleted_at IS NULL ORDER BY sort_order, code
+SELECT id, system_id, code, name, sort_order, created_at, updated_at, deleted_at, origin FROM oikumenea.rank_categories WHERE deleted_at IS NULL ORDER BY sort_order, code
 `
 
 func (q *Queries) ListCategories(ctx context.Context) ([]OikumeneaRankCategory, error) {
@@ -498,6 +513,7 @@ func (q *Queries) ListCategories(ctx context.Context) ([]OikumeneaRankCategory, 
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.Origin,
 		); err != nil {
 			return nil, err
 		}
@@ -544,7 +560,7 @@ func (q *Queries) ListGrades(ctx context.Context) ([]OikumeneaRankGrade, error) 
 }
 
 const listRanks = `-- name: ListRanks :many
-SELECT id, system_id, type_id, code, name, abbreviation, grade_code, sort_order, created_at, updated_at, deleted_at FROM oikumenea.rank_ranks WHERE deleted_at IS NULL ORDER BY type_id, sort_order, code
+SELECT id, system_id, type_id, code, name, abbreviation, grade_code, sort_order, created_at, updated_at, deleted_at, origin, color_id FROM oikumenea.rank_ranks WHERE deleted_at IS NULL ORDER BY type_id, sort_order, code
 `
 
 // All active ranks across the scheme; the transport groups by type_id when assembling the tree.
@@ -569,6 +585,8 @@ func (q *Queries) ListRanks(ctx context.Context) ([]OikumeneaRankRank, error) {
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.Origin,
+			&i.ColorID,
 		); err != nil {
 			return nil, err
 		}
@@ -581,7 +599,7 @@ func (q *Queries) ListRanks(ctx context.Context) ([]OikumeneaRankRank, error) {
 }
 
 const listSystems = `-- name: ListSystems :many
-SELECT id, code, name, sort_order, country_id, created_at, updated_at, deleted_at FROM oikumenea.rank_systems WHERE deleted_at IS NULL ORDER BY sort_order, code
+SELECT id, code, name, sort_order, country_id, created_at, updated_at, deleted_at, origin FROM oikumenea.rank_systems WHERE deleted_at IS NULL ORDER BY sort_order, code
 `
 
 func (q *Queries) ListSystems(ctx context.Context) ([]OikumeneaRankSystem, error) {
@@ -602,6 +620,7 @@ func (q *Queries) ListSystems(ctx context.Context) ([]OikumeneaRankSystem, error
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.Origin,
 		); err != nil {
 			return nil, err
 		}
@@ -614,7 +633,7 @@ func (q *Queries) ListSystems(ctx context.Context) ([]OikumeneaRankSystem, error
 }
 
 const listTypes = `-- name: ListTypes :many
-SELECT id, system_id, category_id, parent_type_id, code, name, sort_order, created_at, updated_at, deleted_at FROM oikumenea.rank_types WHERE deleted_at IS NULL ORDER BY category_id, sort_order, code
+SELECT id, system_id, category_id, parent_type_id, code, name, sort_order, created_at, updated_at, deleted_at, origin FROM oikumenea.rank_types WHERE deleted_at IS NULL ORDER BY category_id, sort_order, code
 `
 
 // All active types across the scheme; the transport weaves the per-category tree from parent_type_id.
@@ -639,6 +658,7 @@ func (q *Queries) ListTypes(ctx context.Context) ([]OikumeneaRankType, error) {
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.Origin,
 		); err != nil {
 			return nil, err
 		}
@@ -707,7 +727,7 @@ UPDATE oikumenea.rank_categories SET
   name       = COALESCE($1, name),
   sort_order = COALESCE($2::int, sort_order)
 WHERE id = $3 AND deleted_at IS NULL
-RETURNING id, system_id, code, name, sort_order, created_at, updated_at, deleted_at
+RETURNING id, system_id, code, name, sort_order, created_at, updated_at, deleted_at, origin
 `
 
 type UpdateCategoryParams struct {
@@ -729,6 +749,7 @@ func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Origin,
 	)
 	return i, err
 }
@@ -740,7 +761,7 @@ UPDATE oikumenea.rank_ranks SET
   grade_code   = COALESCE($3, grade_code),
   sort_order   = COALESCE($4::int, sort_order)
 WHERE id = $5 AND deleted_at IS NULL
-RETURNING id, system_id, type_id, code, name, abbreviation, grade_code, sort_order, created_at, updated_at, deleted_at
+RETURNING id, system_id, type_id, code, name, abbreviation, grade_code, sort_order, created_at, updated_at, deleted_at, origin, color_id
 `
 
 type UpdateRankParams struct {
@@ -774,6 +795,8 @@ func (q *Queries) UpdateRank(ctx context.Context, arg UpdateRankParams) (Oikumen
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Origin,
+		&i.ColorID,
 	)
 	return i, err
 }
@@ -784,7 +807,7 @@ UPDATE oikumenea.rank_systems SET
   sort_order = COALESCE($2::int, sort_order),
   country_id = COALESCE($3, country_id)
 WHERE id = $4 AND deleted_at IS NULL
-RETURNING id, code, name, sort_order, country_id, created_at, updated_at, deleted_at
+RETURNING id, code, name, sort_order, country_id, created_at, updated_at, deleted_at, origin
 `
 
 type UpdateSystemParams struct {
@@ -813,6 +836,7 @@ func (q *Queries) UpdateSystem(ctx context.Context, arg UpdateSystemParams) (Oik
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Origin,
 	)
 	return i, err
 }
@@ -822,7 +846,7 @@ UPDATE oikumenea.rank_types SET
   name       = COALESCE($1, name),
   sort_order = COALESCE($2::int, sort_order)
 WHERE id = $3 AND deleted_at IS NULL
-RETURNING id, system_id, category_id, parent_type_id, code, name, sort_order, created_at, updated_at, deleted_at
+RETURNING id, system_id, category_id, parent_type_id, code, name, sort_order, created_at, updated_at, deleted_at, origin
 `
 
 type UpdateTypeParams struct {
@@ -845,6 +869,7 @@ func (q *Queries) UpdateType(ctx context.Context, arg UpdateTypeParams) (Oikumen
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Origin,
 	)
 	return i, err
 }

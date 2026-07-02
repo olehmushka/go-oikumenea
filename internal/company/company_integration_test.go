@@ -74,8 +74,8 @@ func seedTenantCatalog(t *testing.T, pool *pgxpool.Pool) {
 	}
 }
 
-func ptr(s string) *string  { return &s }
-func fptr(f float64) *float64 { return &f }
+func ptr(s string) *string      { return &s }
+func fptr(f float64) *float64   { return &f }
 func uniq(prefix string) string { return fmt.Sprintf("%s-%d", prefix, time.Now().UnixNano()) }
 
 func seedPerson(t *testing.T, pool *pgxpool.Pool) string {

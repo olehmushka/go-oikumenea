@@ -65,7 +65,30 @@ func (r *GeoCountryRepo) UpdateImport(ctx context.Context, code, name string, pr
 	})
 }
 
+// Enrich fills the pinax country reference columns fill-if-empty (D-Pinax, M45): iso_a3, numeric_code,
+// centroid (from lat/lng), and color_id (resolved from the domain='country' palette code). Every column
+// is COALESCE(col, new) in SQL, so a value already present is never overwritten.
+func (r *GeoCountryRepo) Enrich(ctx context.Context, code string, e domain.GeoCountryEnrichment) error {
+	return r.q.EnrichGeoCountryFillEmpty(ctx, dataimportsql.EnrichGeoCountryFillEmptyParams{
+		Code:        code,
+		IsoA3:       e.ISOA3,
+		NumericCode: e.NumericCode,
+		Geometry:    e.GeometryJSON,
+		Latitude:    f8(e.Latitude),
+		Longitude:   f8(e.Longitude),
+		ColorCode:   e.ColorCode,
+	})
+}
+
 func text(s string) pgtype.Text { return pgtype.Text{String: s, Valid: s != ""} }
+
+// int4 maps an optional int to a pgtype.Int4 (nil → NULL) for the seeded catalogs' sort_order.
+func int4(p *int) pgtype.Int4 {
+	if p == nil {
+		return pgtype.Int4{}
+	}
+	return pgtype.Int4{Int32: int32(*p), Valid: true}
+}
 
 func ts(t time.Time) pgtype.Timestamptz { return pgtype.Timestamptz{Time: t, Valid: !t.IsZero()} }
 

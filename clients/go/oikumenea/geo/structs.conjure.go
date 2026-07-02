@@ -31,16 +31,37 @@ func (o *CoordinateResolution) UnmarshalYAML(unmarshal func(interface{}) error) 
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
-// A country in the ISO-3166-1 registry. `id` is the RID (the reference key); `code` is the stable ISO-3166-1 alpha-2 lookup code; `name` is the default-locale (English) name.
+// A country in the ISO-3166-1 registry. `id` is the RID (the reference key); `code` is the stable ISO-3166-1 alpha-2 lookup code; `name` is the locale->text display name.
 type Country struct {
 	// The country's RID (location service); what person/document/rank reference.
 	Id string `json:"id"`
 	// ISO-3166-1 alpha-2 code (e.g. UA, PL); the stable, locale-agnostic lookup key.
 	Code string `json:"code"`
-	// Default-locale (English) display name; other locales arrive via the i18n store.
-	Name string `json:"name"`
+	// locale->text display name (all enabled locales; default-locale `name` column + i18n store, keyed by country code).
+	Name map[string]string `json:"name"`
 	// active | retired.
 	Status string `json:"status"`
+}
+
+func (o Country) MarshalJSON() ([]byte, error) {
+	if o.Name == nil {
+		o.Name = make(map[string]string)
+	}
+	type _tmpCountry Country
+	return safejson.Marshal(_tmpCountry(o))
+}
+
+func (o *Country) UnmarshalJSON(data []byte) error {
+	type _tmpCountry Country
+	var rawCountry _tmpCountry
+	if err := safejson.Unmarshal(data, &rawCountry); err != nil {
+		return err
+	}
+	if rawCountry.Name == nil {
+		rawCountry.Name = make(map[string]string)
+	}
+	*o = Country(rawCountry)
+	return nil
 }
 
 func (o Country) MarshalYAML() (interface{}, error) {

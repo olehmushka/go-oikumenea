@@ -829,6 +829,42 @@ type OikumeneaEducationScholarship struct {
 	DeletedAt  pgtype.Timestamptz
 }
 
+type OikumeneaExternalOrgKind struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name      string
+	Status    string
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaExternalOrganization struct {
+	// pii:none
+	ID string
+	// pii:none
+	KindID string
+	// pii:none
+	Name string
+	// pii:none
+	Code pgtype.Text
+	// pii:none
+	CountryID pgtype.Text
+	// pii:none
+	WikidataID pgtype.Text
+	Status     string
+	Source     string
+	Confidence string
+	AsOf       pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
+}
+
 type OikumeneaGeoCountry struct {
 	// pii:none
 	ID string
@@ -851,7 +887,9 @@ type OikumeneaGeoCountry struct {
 	// pii:none
 	Centroid interface{}
 	// pii:none
-	Bbox      interface{}
+	Bbox interface{}
+	// pii:none
+	Origin    string
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	// pii:none
@@ -860,6 +898,8 @@ type OikumeneaGeoCountry struct {
 	SourceVersion pgtype.Text
 	// pii:none
 	ImportedAt pgtype.Timestamptz
+	// pii:none
+	ColorID pgtype.Text
 }
 
 type OikumeneaGeoPlace struct {
@@ -972,6 +1012,8 @@ type OikumeneaLanguageLanguoid struct {
 	ImportedAt       pgtype.Timestamptz
 	CreatedAt        pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
+	// pii:none
+	Origin string
 }
 
 type OikumeneaLanguageLanguoidClosure struct {
@@ -1201,6 +1243,24 @@ type OikumeneaPersonCitizenship struct {
 	DeletedAt pgtype.Timestamptz
 }
 
+type OikumeneaPersonDistinguishingMark struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:basic
+	Kind string
+	// pii:special
+	BodyLocation pgtype.Text
+	// pii:special
+	Description pgtype.Text
+	Source      pgtype.Text
+	Confidence  pgtype.Text
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+	DeletedAt   pgtype.Timestamptz
+}
+
 type OikumeneaPersonDormitoryStay struct {
 	// pii:none
 	ID string
@@ -1295,6 +1355,81 @@ type OikumeneaPersonEmailType struct {
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaPersonEthnicity struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:special
+	ValueCiphertext []byte
+	// pii:special
+	WrappedDek []byte
+	KeyRef     pgtype.Text
+	// pii:special
+	ValueBlindIndex []byte
+	// pii:none
+	LegalBasis string
+	// pii:none
+	Status     string
+	Source     pgtype.Text
+	Confidence pgtype.Text
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
+}
+
+type OikumeneaPersonEthnicityType struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	Status    string
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+	// pii:none
+	ParentID pgtype.Text
+	// pii:none
+	WikidataID pgtype.Text
+	// pii:none
+	Source pgtype.Text
+	// pii:none
+	SourceVersion pgtype.Text
+	// pii:none
+	ImportedAt pgtype.Timestamptz
+	// pii:none
+	Origin string
+	// pii:none
+	ColorID pgtype.Text
+}
+
+type OikumeneaPersonEthnicityTypeClosure struct {
+	// pii:none
+	AncestorID string
+	// pii:none
+	DescendantID string
+	// pii:none
+	Depth int32
+}
+
+type OikumeneaPersonEthnicityTypeCountry struct {
+	// pii:none
+	EthnicityTypeID string
+	// pii:none
+	CountryID string
+}
+
+type OikumeneaPersonEthnicityTypeLanguage struct {
+	// pii:none
+	EthnicityTypeID string
+	// pii:none
+	LanguageID string
 }
 
 type OikumeneaPersonGovernanceMembership struct {
@@ -1430,6 +1565,12 @@ type OikumeneaPersonNameVariant struct {
 	IsPrimary bool
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
+	// pii:none
+	VariantKind string
+	// pii:none
+	Source pgtype.Text
+	// pii:none
+	Confidence pgtype.Text
 }
 
 type OikumeneaPersonNextOfKin struct {
@@ -1544,6 +1685,34 @@ type OikumeneaPersonPhoneType struct {
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaPersonPhysicalDescription struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:basic
+	HeightCm pgtype.Int4
+	// pii:basic
+	WeightKg pgtype.Int4
+	// pii:basic
+	Build pgtype.Text
+	// pii:basic
+	BloodType pgtype.Text
+	// pii:basic
+	EffectiveFrom pgtype.Date
+	// pii:basic
+	EffectiveTo pgtype.Date
+	Source      pgtype.Text
+	Confidence  pgtype.Text
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+	DeletedAt   pgtype.Timestamptz
+	// pii:basic
+	EyeColorID pgtype.Text
+	// pii:basic
+	HairColorID pgtype.Text
 }
 
 type OikumeneaPersonPlatform struct {
@@ -1729,6 +1898,35 @@ type OikumeneaPersonSponsorship struct {
 	EducationRole pgtype.Text
 }
 
+type OikumeneaPinaxSeedState struct {
+	// pii:none
+	Preset string
+	// pii:none
+	SourceVersion string
+	AppliedAt     pgtype.Timestamptz
+	Summary       []byte
+}
+
+type OikumeneaPlatformColor struct {
+	// pii:none
+	ID string
+	// pii:none
+	Domain string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	Hex       pgtype.Text
+	Status    string
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+	// pii:none
+	Origin string
+}
+
 type OikumeneaPlatformLegalBasisKind struct {
 	// pii:none
 	Code string
@@ -1775,6 +1973,8 @@ type OikumeneaRankCategory struct {
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
+	// pii:none
+	Origin string
 }
 
 type OikumeneaRankGrade struct {
@@ -1808,6 +2008,10 @@ type OikumeneaRankRank struct {
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
+	// pii:none
+	Origin string
+	// pii:none
+	ColorID pgtype.Text
 }
 
 type OikumeneaRankSystem struct {
@@ -1824,6 +2028,8 @@ type OikumeneaRankSystem struct {
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
+	// pii:none
+	Origin string
 }
 
 type OikumeneaRankType struct {
@@ -1844,6 +2050,8 @@ type OikumeneaRankType struct {
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
+	// pii:none
+	Origin string
 }
 
 type OikumeneaReligionAffiliation struct {
@@ -2165,6 +2373,10 @@ type OikumeneaReligionTaxa struct {
 	CreatedAt     pgtype.Timestamptz
 	UpdatedAt     pgtype.Timestamptz
 	DeletedAt     pgtype.Timestamptz
+	// pii:none
+	Origin string
+	// pii:none
+	ColorID pgtype.Text
 }
 
 type OikumeneaReligionTaxaClosure struct {
@@ -2540,15 +2752,15 @@ type OikumeneaVehicleVehicle struct {
 	// pii:none
 	ModelID pgtype.Text
 	// pii:basic
-	Vin pgtype.Text
-	// pii:none
-	Color           pgtype.Text
+	Vin             pgtype.Text
 	ManufactureDate pgtype.Date
 	Attributes      []byte
 	Status          string
 	CreatedAt       pgtype.Timestamptz
 	UpdatedAt       pgtype.Timestamptz
 	DeletedAt       pgtype.Timestamptz
+	// pii:none
+	ColorID pgtype.Text
 }
 
 type OikumeneaWritingSystem struct {
@@ -2562,6 +2774,8 @@ type OikumeneaWritingSystem struct {
 	ScriptType pgtype.Text
 	CreatedAt  pgtype.Timestamptz
 	UpdatedAt  pgtype.Timestamptz
+	// pii:none
+	Origin string
 }
 
 type OikumeneaWritingSystemScriptType struct {

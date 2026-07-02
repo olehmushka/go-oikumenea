@@ -1,4 +1,4 @@
-# Roadmap decisions (planned tier — M16–M41)
+# Roadmap decisions (planned tier — M16–M45)
 
 The landed architectural decisions for the **planned milestones M16–M39** — verticals that are
 **decided and designed but not yet built** (no `internal/` or `migrations/` artifacts exist for them
@@ -23,7 +23,9 @@ D-GeoSubdivisions, pulls PostGIS forward) · **D-DataIngestion** (M17→folded i
 SDKs from the Conjure contract; *in implementation*) · **D-UnitCodeLifecycle** (M28) ·
 **D-TenantOrganizations** (M40, Domains + Organizations: a multi-domain tenant over the unit graph) ·
 **D-UnifiedOrgGraph** (M41, verticals reuse the tenant org-graph + per-vertical sidecars; `pdp_scoped`
-reference/operational split).
+reference/operational split) · **D-Pinax** (M45, the `pinax` reference plane: an `origin` marker +
+bundled YAML seed presets `go:embed`-ed into oikumenea and boot-autoseeded create-if-absent, one
+import pipeline shared with the hermenea connectors).
 
 The **person-intelligence / OSINT-enrichment cluster** (M29–M37, derived from
 [`draft_superbrain_schema.md`](../draft_superbrain_schema.md)): **D-OverlayFoundation** (M29, the
@@ -1523,3 +1525,192 @@ yields useful, lawful security signal.
 **Consequence.** New `account_login_events` on the account service (RID `account` object); IdP
 middleware emits an event per validated request; retention sweep + purge erasure. New account RID on
 build. Lands as **M37** ([milestones](../milestones.md)).
+
+### D-Finance — Bank accounts & payment cards, banks as company orgs (extends D-Ontology, D-PersonalCodes, D-UnifiedOrgGraph)
+
+**Decision.** A new **`finance`** module (**RID service 19**, tables `finance_*`) holds **bank
+accounts and payment cards** as authoritative, operator-asserted **directory** data — a person (or
+company) holds bank accounts; each account is held at a **bank**, and cards hang off an account. A
+**bank is not a new entity**: it is an existing **`company`-domain `tenant_organization`** (M21 /
+M41 / D-UnifiedOrgGraph) that an account references as its holding institution — optionally flagged
+via an existing `company_industry_classes` (NACE/KVED banking) assignment, never a bespoke bank table.
+
+- **Reference catalogs** (instance-scope, `code` + translatable `name`, D-Code/D-i18n):
+  - `finance_account_types` (`19,1,3`) — `current`/`savings`/`deposit`/`loan`/… ; instance-extensible.
+  - `finance_card_networks` (`19,1,4`) — `visa`/`mastercard`/`amex`/… .
+- **Objects:**
+  - `finance_accounts` (`19,1,1`) — `institution_id` → `tenant_organizations` (a `company`-domain
+    org); the **IBAN** as an **envelope-encrypted** value (`iban_ciphertext` / `iban_wrapped_dek` /
+    `key_ref` / **`iban_blind_index`** — the `document_personal_codes` shape exactly, `pii:sensitive`,
+    blind index **unique among active**); `currency` (ISO 4217); `account_type_id` → catalog; `status`;
+    soft-delete.
+  - `finance_cards` (`19,1,2)` — `account_id` → `finance_accounts` (**structural containment FK**,
+    CASCADE, like `OrderItem`→`Order` — **not** a reified Link); the full **PAN** envelope-encrypted
+    (`pan_ciphertext`/`pan_wrapped_dek`/`key_ref`/**`pan_blind_index`**, `pii:sensitive`) with the
+    display-only clear `bin CHAR(6)` + `last_four CHAR(4)`; `network_id` → catalog; `card_type` TEXT+
+    CHECK ∈ {`debit`,`credit`}; nullable `expiry_month`/`expiry_year`; optional nullable
+    `cardholder_person_id` → `person_persons`; **NO CVV/CVC column ever** (see *Why not* d); soft-delete.
+- **Reified Link:**
+  - `finance_account_holders` (`link__held_by`, `19,2,1`) — the **ownership** edge: `account_id` →
+    account; a **polymorphic holder** `holder_kind ∈ {person,company}` + `holder_id` (text, **no FK** —
+    the RID self-describes, F-014; mirrors D-Vehicles `registered_to` / D-Companies `owns_stake`);
+    `role ∈ {primary,joint,authorized_signer}`; **temporal** (`effective_from`/`effective_to`). Joint
+    accounts and the raw todo's "person → bank account → card" relation both fall out of this edge.
+- **Encryption & validation** reuse `pkg/crypto` (`Cipher.Seal/Open/BlindIndex`, D-CryptoProvider) and
+  the `pkg/personalcode` validator precedence (compiled > regex > accept-warn, D-PersonalCodes): an
+  **IBAN** validator (ISO 13616 mod-97 + strip-spaces normalization) and a **PAN** validator (Luhn +
+  BIN→network detection). Both values are blind-indexed for dedup/uniqueness.
+- **PII / purge:** IBAN & PAN are `pii:sensitive`; BIN/last4/blind-index are `pii:none`. On
+  `PersonPurged` a `finance` subscriber erases the person's holder edges and **crypto-erases** any
+  account (and its cards) the person **solely** holds (mirrors [document](../modules/document.md)
+  `ErasePersonRecords`). Company-held accounts are unaffected by a person purge.
+- **Authorization:** perms `finance.read` / `finance.manage` (+ instance-scope `finance.catalog.manage`);
+  account/card reads are **scoped through the holder** (D-PersonReadScope) + shadow gate for person
+  holders, and via the company for corporate accounts; all writes are audited Actions (D-Audit).
+
+> **PCI-DSS scope warning.** Storing the full PAN (even envelope-encrypted) brings the deployment into
+> **PCI-DSS cardholder-data scope** — the operator inherits the applicable control obligations.
+> **CVV2/CVC2/CID is excluded outright** (PCI-DSS Req 3.2 prohibits storing it after authorization,
+> encrypted or not). A **BIN+last-4-only** mode (never persist the full PAN, so the deployment stays
+> out of scope) is parked as **DS-54** for operators who don't need the full number.
+
+**Why.** Bank accounts and cards are a first-class part of a personnel dossier the operator asserts
+(payroll destination, sanctioned-account cross-check, next-of-kin finance), and they need the same
+directory discipline as documents: catalog-typed, encrypted-at-rest, holder-scoped, purge-erased.
+Modeling the bank as a **company org** reuses the M21/M41 legal-entity registry (one shared record per
+bank, its own ownership graph) instead of a parallel institution table. Modeling ownership as a
+**polymorphic, temporal holder Link** captures joint accounts, corporate accounts, and account
+transfers as history with the membership/vehicle discipline. Encrypting IBAN/PAN as
+`document_personal_codes`-shape envelopes means **zero new crypto machinery**.
+
+**Why not** (a) *Extend the [document](../modules/document.md) module*: a document/personal-code is a
+flat person-held value; an account has **multiple holders + child cards** — an ownership graph, not a
+code. A dedicated module keeps that graph and the card hierarchy clean while still reusing the
+encryption seam. (b) *Fold into M35 (financial/behavioral overlays)*: that tier is **inferred OSINT
+overlay** (crypto-wallet attribution with `source`/`confidence`, never merged with declared) — this is
+**authoritative first-party** data, a different posture, so it does **not** carry the M29 attribution
+columns. (c) *Fold into M39 (compensation/payroll)*: payroll is the org **as payer** (operational HR) —
+an account directory is person-held finance, distinct. (d) *Store CVV (raw todo listed it "optional")*:
+**forbidden** — PCI-DSS Req 3.2 prohibits storing CVV2/CVC2 after authorization even encrypted; there
+is no compliant way to keep it, so it is dropped entirely. (e) *A single-owner `owner_id` column*:
+excludes joint/corporate accounts; the reified polymorphic Link is strictly richer. (f) *A bespoke
+`bank`/`institution` table*: banks **are** companies — reuse the M21 registry.
+
+**Consequence.** New `finance` module + the tables above; RID **service 19** allocated (added to
+`pkg/rid` + migration `0000` on build); a `finance` `PersonPurged` subscriber extends the crypto-erase
+path; new Object/Link kinds in [ontology-mapping](../ontology-mapping.md); IBAN/PAN validators added to
+`pkg/personalcode` on build. Parks **DS-54** (BIN+last-4-only, out-of-PCI-scope mode) and **DS-55**
+(account balance/transaction ledger — explicitly **out of scope**: this is a directory of accounts, not
+a payments system). **Depends on** the person directory (M5), D-Companies/D-UnifiedOrgGraph (M21/M41),
+D-CryptoProvider + D-PersonalCodes (M0/M9), audit (M1). Retires the final `todo.md` idea (banks/accounts/
+cards). Lands as **M44** ([milestones](../milestones.md)). Additive / expand-only.
+
+---
+
+### D-Pinax — The reference plane: a named world-model plane with an `origin` marker + bundled YAML seed presets self-seeded at boot (extends D-Ontology, D-i18n, D-Hermenea, D-DataIngestion; amends D-Languages, D-Geo, D-Rank, D-Religion, D-PhysicalIdentity/M43, D-Color)
+
+**Decision.** Name and consolidate the **reference plane** — the instance-global, externally-sourced
+or curated, read-mostly **world-model** catalogs — as **`pinax`** (a *naming convention*, **not** a
+new RID service): `platform_colors`, `geo_countries`, `language_languoids` + `writing_systems`,
+`rank_*` systems, `religion_taxa`, and `person_ethnicity_types` (+ its closure / `_languages` /
+`_countries` links). `pinax` is a cross-cutting plane spanning existing services (1/6/12/13/rank/
+religion), distinguished from the **operational core** (person / membership / order / unit — operator-
+authored, org-scoped) and from the **small structural type/kind catalogs** (relation/phone/email
+types, document schemes, unit-kinds, `*_kinds`… — which **stay migration-seeded**). The plane is
+governed by one shared seeding contract:
+
+- **Seed vs connector by cardinality — one import pipeline, two connector *kinds*.** Bounded/curated
+  world content ships as **bundled YAML presets** loaded at boot; massive/growing data (cities,
+  regions, `geo_places`) stays a **remote hermenea connector** (D-GeoPlaces, unchanged). Both funnel
+  through the **same application-layer import service** the HTTP `POST /import/{objectType}` wraps —
+  sharing per-import provenance `(source, source_version, imported_at)` and idempotency. The only
+  difference is the byte source: a **bundled file** vs a **remote fetch**. "Seed" is just a
+  `bundled_file` connector.
+- **`go:embed` + boot autoseed, in oikumenea.** The bundled presets are embedded in the **oikumenea**
+  binary and self-seeded on boot via that same application import service (in-process, not over
+  HTTP) — so a **fresh oikumenea is usable standalone**; hermenea is reserved for the big/live
+  connectors. Gated by config **`pinax.autoseed`** (ECV/refreshable, **default `true`**), and
+  **version-gated** via a `pinax_seed_state` table so a warm DB does an O(#presets) no-op check, not a
+  27k-row re-upsert, on every restart. An explicit `oikumenea seed` command (`--reconcile`) covers
+  `autoseed:false` and manual refresh.
+- **The seed algorithm: create-if-absent, fill-if-empty, never delete.** Matched on natural-key
+  `code`: **absent → INSERT** (`origin='seeded'`); **present → do nothing** (a bulk
+  `INSERT … ON CONFLICT (code) DO NOTHING`). Skeleton rows created by migration (locales, countries)
+  are **enriched fill-if-empty** — the seeder fills `coordinates` / translations / `color_id` only
+  where `NULL`/blank, and **never overwrites** a non-empty value. A code that **vanishes upstream**
+  simply **persists** (no auto-delete / auto-deprecate ⇒ no orphaned operational FK — the generalized
+  fix for the Crimea-FK class of bug). Upstream **corrections** to already-seeded rows propagate
+  **only** via the explicit `--reconcile` (which touches `origin='seeded'` rows only). Invariant:
+  **the boot seeder never overwrites existing data; it only fills gaps.**
+- **`origin` marker, plane-wide.** Every seeded reference table gains
+  `origin TEXT NOT NULL DEFAULT 'operator' CHECK (origin IN ('seeded','operator'))`; the seeder writes
+  `'seeded'`, ordinary API inserts default `'operator'`. Reconcile only ever touches `origin='seeded'`.
+  Its role reduces to: **label provenance**, **protect operator-created rows** from clobber, and
+  **gate `--reconcile`**. Operator-*edited names* don't collide because i18n is a `locale → text` map
+  with **per-entry provenance** (D-i18n): the seeded `cldr|curated` entry and an operator/official
+  entry coexist; reconcile touches only the former, and the UI prefers the higher-provenance entry.
+- **Translations: CLDR where authoritative, curated-and-marked elsewhere.** Country and language
+  display names come from **CLDR** (`ukr`/`eng`, the same CLDR M18 already uses for scripts); religion,
+  rank, and ethnicity names are hand-authored and marked **`source:curated`** so a later official
+  translation supersedes cleanly. The **`language↔writing_system`** and **`language↔country`** wirings
+  are **derived from CLDR** in the generator, not hand-authored.
+- **Ethnicity seeds normally — the catalog is public reference data.** Only the *person↔ethnicity
+  declaration* is Art. 9 (`pii:special`), and it stays **envelope-encrypted** in `person_ethnicities`,
+  untouched. So `person_ethnicity_types` **reuses its existing `0030` schema** (catalog + closure +
+  `_languages` + `_countries` + provenance — **no new module**); the loader is retargeted from the
+  M43 opt-in **live** Factbook fetch to a **bundled Factbook YAML preset** (deduped catalog + homeland-
+  country refs; language refs curated), seeded with the rest. This **amends D-PhysicalIdentity/M43**
+  ("seeded empty, `enabled:false`") to "bundled preset, seeded by default".
+- **Colors via D-Color.** "Seeded colors" extends `platform_colors.domain` (`eye`/`hair`/`vehicle`)
+  with `rank`/`religion`/`ethnicity`/`country`, adds a `color_id` FK to the seeded catalogs where a
+  display color is meaningful, and seeds those palettes; `platform_colors` itself joins the plane and
+  gains `origin`.
+- **Preset package + manifest.** One versioned reference-data tree; each preset carries a manifest —
+  `source`, `source_version`, `license`, **`depends_on`** (inter-preset topo order:
+  locales → languages / countries → religions → ethnicity), and translation provenance. Machine-
+  generated presets (the 27k Glottolog forest) come from a reproducible generator; curated presets
+  (religion / rank / ethnicity names) are hand-authored YAML.
+
+**The bundle (7 presets, final).** (1) **languages** — Glottolog ~27k languoids + hierarchy, CLDR
+names, `language↔country`; (2) **writing systems** — ISO-15924 scripts (already migration-seeded) +
+the CLDR-derived `language↔writing_system` wiring; (3) **countries** — WOF enrichment of the
+migration-seeded skeleton (**no live WOF calls**), CLDR names, coordinates, color; (4) **religions** —
+`religion_taxa`; (5) **ethnicities** — Factbook catalog (deduped) + country & (curated) language refs;
+(6) **ranks** — UA (per branch) + US (per branch); (7) **colors** — `platform_colors` palettes.
+**Considered and deferred:** currency (ISO 4217; no currency table yet) and religion↔country relations.
+
+**Why.** Reference data was scattered across the world-model modules with **no visible boundary** and
+**two divergent load paths** (rank seeds baked into migration `0004`; languages loaded via the import
+path), and live-fetching bounded catalogs at boot coupled a usable core to hermenea + third-party
+availability. A named plane + one create-if-absent seed pipeline + embedded presets yields: a fresh
+core **usable offline**, **uniform provenance/idempotency**, **operator-safe** re-runs (never clobber),
+**reproducible upstream bumps** (regenerate a preset, boot fills the new codes), and — because the
+`/import` boundary is preserved — an **extraction seam** if the plane ever needs its own service (the
+same extraction-ready posture as the modular monolith). Physical separation (own DB/service) was
+**rejected**: the design leans on single-Postgres FK integrity (closure tables, `person SPEAKS`,
+ethnicity↔country↔language, rank-on-person), and reference data has no independent scaling/release/team
+force — a runtime split would be unearned complexity that trades FK integrity for network hops.
+
+**Why not** (a) *A separate `pinax` runtime service + DB*: loses the FK integrity the whole model
+relies on; see above. (b) *Fold reference ownership into hermenea*: hermenea is the ingestion **verb**;
+the plane is the **noun** it writes — fusing them rebuilds the coupling. hermenea stays a pure pipeline;
+the preset-authoring toolchain may live adjacent to it as a build-time concern. (c) *Seed via SQL
+migrations*: baking 27k languoids + translations into DDL is unmaintainable, regenerating from a new
+upstream means regenerating SQL, and it already bit us (editing `0004`'s rank seed broke other modules'
+`seedRank` tests). Migrations keep only the minimal skeleton (locales; FK-required rows). (d) *Upsert /
+overwrite on reconcile by default*: clobbers operator edits and risks orphaning on upstream deletion;
+create-if-absent + fill-if-empty + explicit `--reconcile` is strictly safer. (e) *A new schema
+(`pinax.*`) for the plane*: considered; rejected in favor of a **naming convention** (keeps the
+one-schema `oikumenea` decision + sqlc/migration conventions intact) — the `origin` marker + module
+grouping give the boundary without a schema split.
+
+**Consequence.** **In-place edits** to existing migrations (`0004_rank`, `0018_language`,
+`0023_religion`, the `geo_countries` migration, `0030` ethnicity, and `platform_colors`) add the
+`origin` column, new `color_id` FKs + `platform_colors` domains, and a `pinax_seed_state` table —
+**no new migration file** (honoring the `atlas migrate hash` + `DROP SCHEMA` reset flow). **No new RID
+service.** Reverses **M15**'s "ranks folded into migration `0004` seed" and **M43**'s "live Factbook
+fetch, no committed preset" in favor of bundled YAML. Amends **D-Languages / D-Geo / D-Rank /
+D-Religion** (their catalogs join the plane + gain `origin`), **D-PhysicalIdentity/M43** (ethnicity
+loader + default-seeded), and **D-Color** (new domains + `color_id` on seeded catalogs). **Depends on**
+D-Languages (M18), D-Hermenea/D-DataIngestion (M16), D-Color (M42), D-PhysicalIdentity/M43. Lands as
+**M45** ([milestones](../milestones.md)); see the [pinax plane note](pinax.md). Additive / expand-only.

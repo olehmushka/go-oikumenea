@@ -12,7 +12,7 @@ types:
     default-package: oikumenea.geo
     objects:
       Country:
-        docs: A country in the ISO-3166-1 registry. `id` is the RID (the reference key); `code` is the stable ISO-3166-1 alpha-2 lookup code; `name` is the default-locale (English) name.
+        docs: A country in the ISO-3166-1 registry. `id` is the RID (the reference key); `code` is the stable ISO-3166-1 alpha-2 lookup code; `name` is the locale->text display name.
         fields:
           id:
             type: string
@@ -21,8 +21,8 @@ types:
             type: string
             docs: ISO-3166-1 alpha-2 code (e.g. UA, PL); the stable, locale-agnostic lookup key.
           name:
-            type: string
-            docs: Default-locale (English) display name; other locales arrive via the i18n store.
+            type: map<string, string>
+            docs: locale->text display name (all enabled locales; default-locale `name` column + i18n store, keyed by country code).
           status:
             type: string
             docs: active | retired.

@@ -887,7 +887,9 @@ type OikumeneaGeoCountry struct {
 	// pii:none
 	Centroid interface{}
 	// pii:none
-	Bbox      interface{}
+	Bbox interface{}
+	// pii:none
+	Origin    string
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	// pii:none
@@ -896,6 +898,8 @@ type OikumeneaGeoCountry struct {
 	SourceVersion pgtype.Text
 	// pii:none
 	ImportedAt pgtype.Timestamptz
+	// pii:none
+	ColorID pgtype.Text
 }
 
 type OikumeneaGeoPlace struct {
@@ -1008,6 +1012,8 @@ type OikumeneaLanguageLanguoid struct {
 	ImportedAt       pgtype.Timestamptz
 	CreatedAt        pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
+	// pii:none
+	Origin string
 }
 
 type OikumeneaLanguageLanguoidClosure struct {
@@ -1397,6 +1403,10 @@ type OikumeneaPersonEthnicityType struct {
 	SourceVersion pgtype.Text
 	// pii:none
 	ImportedAt pgtype.Timestamptz
+	// pii:none
+	Origin string
+	// pii:none
+	ColorID pgtype.Text
 }
 
 type OikumeneaPersonEthnicityTypeClosure struct {
@@ -1888,6 +1898,15 @@ type OikumeneaPersonSponsorship struct {
 	EducationRole pgtype.Text
 }
 
+type OikumeneaPinaxSeedState struct {
+	// pii:none
+	Preset string
+	// pii:none
+	SourceVersion string
+	AppliedAt     pgtype.Timestamptz
+	Summary       []byte
+}
+
 type OikumeneaPlatformColor struct {
 	// pii:none
 	ID string
@@ -1904,6 +1923,8 @@ type OikumeneaPlatformColor struct {
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
+	// pii:none
+	Origin string
 }
 
 type OikumeneaPlatformLegalBasisKind struct {
@@ -1952,6 +1973,8 @@ type OikumeneaRankCategory struct {
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
+	// pii:none
+	Origin string
 }
 
 type OikumeneaRankGrade struct {
@@ -1985,6 +2008,10 @@ type OikumeneaRankRank struct {
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
+	// pii:none
+	Origin string
+	// pii:none
+	ColorID pgtype.Text
 }
 
 type OikumeneaRankSystem struct {
@@ -2001,6 +2028,8 @@ type OikumeneaRankSystem struct {
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
+	// pii:none
+	Origin string
 }
 
 type OikumeneaRankType struct {
@@ -2021,6 +2050,8 @@ type OikumeneaRankType struct {
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
+	// pii:none
+	Origin string
 }
 
 type OikumeneaReligionAffiliation struct {
@@ -2342,6 +2373,10 @@ type OikumeneaReligionTaxa struct {
 	CreatedAt     pgtype.Timestamptz
 	UpdatedAt     pgtype.Timestamptz
 	DeletedAt     pgtype.Timestamptz
+	// pii:none
+	Origin string
+	// pii:none
+	ColorID pgtype.Text
 }
 
 type OikumeneaReligionTaxaClosure struct {
@@ -2739,6 +2774,8 @@ type OikumeneaWritingSystem struct {
 	ScriptType pgtype.Text
 	CreatedAt  pgtype.Timestamptz
 	UpdatedAt  pgtype.Timestamptz
+	// pii:none
+	Origin string
 }
 
 type OikumeneaWritingSystemScriptType struct {
