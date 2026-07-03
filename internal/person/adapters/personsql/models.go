@@ -1191,6 +1191,32 @@ type OikumeneaOrderOrderType struct {
 	DeletedAt pgtype.Timestamptz
 }
 
+type OikumeneaPersonAddress struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:contact
+	LocationID string
+	// pii:none
+	Role string
+	// pii:contact
+	ValidFrom pgtype.Date
+	// pii:contact
+	ValidTo pgtype.Date
+	// pii:none
+	IsPrimary bool
+	// pii:none
+	PrivacySeeking bool
+	// pii:none
+	Source string
+	// pii:none
+	Confidence string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
+}
+
 type OikumeneaPersonAssociation struct {
 	// pii:none
 	ID string

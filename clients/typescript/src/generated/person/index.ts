@@ -1,5 +1,6 @@
 export * from "./addEthnicityRequest";
 export * from "./addNameAliasRequest";
+export * from "./address";
 export * from "./association";
 export * from "./callSign";
 export * from "./citizenship";
@@ -39,6 +40,7 @@ export * from "./socialAccountHandle";
 export * from "./sponsorship";
 export * from "./updateEthnicityRequest";
 export * from "./updatePersonRequest";
+export * from "./upsertAddressRequest";
 export * from "./upsertAssociationRequest";
 export * from "./upsertCallSignRequest";
 export * from "./upsertCitizenshipRequest";

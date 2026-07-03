@@ -1,5 +1,6 @@
 import { IAddEthnicityRequest } from "./addEthnicityRequest";
 import { IAddNameAliasRequest } from "./addNameAliasRequest";
+import { IAddress } from "./address";
 import { IAssociation } from "./association";
 import { ICallSign } from "./callSign";
 import { ICitizenship } from "./citizenship";
@@ -33,6 +34,7 @@ import { ISocialAccountHandle } from "./socialAccountHandle";
 import { ISponsorship } from "./sponsorship";
 import { IUpdateEthnicityRequest } from "./updateEthnicityRequest";
 import { IUpdatePersonRequest } from "./updatePersonRequest";
+import { IUpsertAddressRequest } from "./upsertAddressRequest";
 import { IUpsertAssociationRequest } from "./upsertAssociationRequest";
 import { IUpsertCallSignRequest } from "./upsertCallSignRequest";
 import { IUpsertCitizenshipRequest } from "./upsertCitizenshipRequest";
@@ -121,6 +123,12 @@ export interface IPersonService {
     upsertDistinguishingMark(personId: string, request: IUpsertDistinguishingMarkRequest): Promise<IDistinguishingMark>;
     /** Remove a distinguishing mark by id. */
     deleteDistinguishingMark(personId: string, markId: string): Promise<void>;
+    /** List a person's addresses (D-PersonAddresses, M32; pii:contact), primary first. */
+    listAddresses(personId: string): Promise<Array<IAddress>>;
+    /** Add an address, or replace one when id is supplied. Returns Person:PersonInvalid for an unknown role/location. */
+    upsertAddress(personId: string, request: IUpsertAddressRequest): Promise<IAddress>;
+    /** Remove an address by id. */
+    deleteAddress(personId: string, addressId: string): Promise<void>;
     /**
      * List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
      * the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
@@ -626,6 +634,61 @@ export class PersonService implements IPersonService {
             [
                 personId,
                 markId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** List a person's addresses (D-PersonAddresses, M32; pii:contact), primary first. */
+    public listAddresses(personId: string): Promise<Array<IAddress>> {
+        return this.bridge.call<Array<IAddress>>(
+            "PersonService",
+            "listAddresses",
+            "GET",
+            "/person/v1/persons/{personId}/addresses",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Add an address, or replace one when id is supplied. Returns Person:PersonInvalid for an unknown role/location. */
+    public upsertAddress(personId: string, request: IUpsertAddressRequest): Promise<IAddress> {
+        return this.bridge.call<IAddress>(
+            "PersonService",
+            "upsertAddress",
+            "PUT",
+            "/person/v1/persons/{personId}/addresses",
+            request,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Remove an address by id. */
+    public deleteAddress(personId: string, addressId: string): Promise<void> {
+        return this.bridge.call<void>(
+            "PersonService",
+            "deleteAddress",
+            "DELETE",
+            "/person/v1/persons/{personId}/addresses/{addressId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+                addressId,
             ],
             __undefined,
             __undefined

@@ -267,6 +267,10 @@ func (r *Repository) Purge(ctx context.Context, id string) (domain.Person, error
 	if err := r.q.DeleteAllResidences(ctx, id); err != nil {
 		return domain.Person{}, err
 	}
+	// addresses (D-PersonAddresses, M32): pii:contact — hard-deleted on purge (mirrors residences).
+	if err := r.q.DeleteAllAddresses(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
 	if err := r.q.DeleteAllEmails(ctx, id); err != nil {
 		return domain.Person{}, err
 	}
@@ -517,6 +521,74 @@ func (r *Repository) ListResidences(ctx context.Context, personID string) ([]dom
 		out = append(out, toResidence(row))
 	}
 	return out, nil
+}
+
+// ---------------------------------------------------------------- addresses (D-PersonAddresses, M32)
+
+// UpsertAddress inserts a new address when a.ID is empty, otherwise replaces the named row.
+func (r *Repository) UpsertAddress(ctx context.Context, a domain.Address) (domain.Address, error) {
+	if a.ID == "" {
+		row, err := r.q.InsertAddress(ctx, personsql.InsertAddressParams{
+			PersonID:       a.PersonID,
+			LocationID:     a.LocationID,
+			Role:           a.Role,
+			ValidFrom:      dateText(a.ValidFrom),
+			ValidTo:        dateText(a.ValidTo),
+			IsPrimary:      a.IsPrimary,
+			PrivacySeeking: a.PrivacySeeking,
+			Source:         a.Source,
+			Confidence:     a.Confidence,
+		})
+		if err != nil {
+			return domain.Address{}, mapWriteErr(err)
+		}
+		return toAddress(row), nil
+	}
+	row, err := r.q.UpdateAddress(ctx, personsql.UpdateAddressParams{
+		LocationID:     a.LocationID,
+		Role:           a.Role,
+		ValidFrom:      dateText(a.ValidFrom),
+		ValidTo:        dateText(a.ValidTo),
+		IsPrimary:      a.IsPrimary,
+		PrivacySeeking: a.PrivacySeeking,
+		Source:         a.Source,
+		Confidence:     a.Confidence,
+		ID:             a.ID,
+		PersonID:       a.PersonID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Address{}, domain.ErrAddressNotFound
+		}
+		return domain.Address{}, mapWriteErr(err)
+	}
+	return toAddress(row), nil
+}
+
+func (r *Repository) DeleteAddress(ctx context.Context, personID, addressID string) error {
+	if _, err := r.q.DeleteAddress(ctx, personsql.DeleteAddressParams{ID: addressID, PersonID: personID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrAddressNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) ListAddresses(ctx context.Context, personID string) ([]domain.Address, error) {
+	rows, err := r.q.ListAddresses(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Address, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toAddress(row))
+	}
+	return out, nil
+}
+
+func (r *Repository) DemotePrimaryAddresses(ctx context.Context, personID, exceptID string) error {
+	return r.q.DemotePrimaryAddresses(ctx, personsql.DemotePrimaryAddressesParams{PersonID: personID, ExceptID: exceptID})
 }
 
 // ---------------------------------------------------------------- emails
@@ -1902,6 +1974,21 @@ func toResidence(r personsql.OikumeneaPersonResidence) domain.Residence {
 		Region:    r.Region.String,
 		ValidFrom: dateStr(r.ValidFrom),
 		ValidTo:   dateStr(r.ValidTo),
+	}
+}
+
+func toAddress(r personsql.OikumeneaPersonAddress) domain.Address {
+	return domain.Address{
+		ID:             r.ID,
+		PersonID:       r.PersonID,
+		LocationID:     r.LocationID,
+		Role:           r.Role,
+		ValidFrom:      dateStr(r.ValidFrom),
+		ValidTo:        dateStr(r.ValidTo),
+		IsPrimary:      r.IsPrimary,
+		PrivacySeeking: r.PrivacySeeking,
+		Source:         r.Source,
+		Confidence:     r.Confidence,
 	}
 }
 

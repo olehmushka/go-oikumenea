@@ -76,6 +76,9 @@ var (
 	ErrEthnicityNotFound           = errors.New("ethnicity not found")
 	ErrUnknownLegalBasis           = errors.New("legal basis does not exist")
 	ErrColorMismatch               = errors.New("color is not an eye/hair-palette color") // D-Color hard-FK palette check
+	// D-PersonAddresses (M32)
+	ErrAddressNotFound = errors.New("address not found")
+	ErrUnknownLocation = errors.New("location does not exist")
 )
 
 // Social-account attribution vocabularies (D-PersonSocialChannels): source records how the account was
@@ -347,6 +350,14 @@ type ColorLookup interface {
 	ColorDomain(ctx context.Context, id string) (string, error)
 }
 
+// LocationLookup verifies a location RID exists (D-PersonAddresses; M19 Location). Implemented by the
+// geo/location service; the person application uses it to reject an unknown location_id with a clean 400
+// before writing an address, rather than surfacing a raw FK violation. A cross-module query port — the
+// domain owns the interface; main wires the concrete geo service.
+type LocationLookup interface {
+	LocationExists(ctx context.Context, id string) error // ErrUnknownLocation when absent
+}
+
 // PhysicalDescription is an effective-dated physical description (D-PhysicalIdentity; pii:basic). The
 // optional measurements use pointers so "unset" is distinct from zero. Free-text eye/hair/build are
 // advisory; blood type is a closed vocabulary.
@@ -511,6 +522,47 @@ func (r Residence) Validate() error {
 	}
 	if !validDate(r.ValidTo) {
 		return wrapInvalid("validTo must be an ISO-8601 date (YYYY-MM-DD)")
+	}
+	return nil
+}
+
+// Address is a person's precise, effective-dated address (D-PersonAddresses; M32) — a reified link
+// link__lives_at to a shared location_locations row (M19). Distinct from Residence (country-grade legal
+// residence): an Address is the geocoded overlay. pii:contact; purge-erased. PrivacySeeking flags a
+// mailing address that deliberately differs from home. Source/Confidence follow the attribution
+// convention; the application defaults Source when the request omits it.
+type Address struct {
+	ID             string
+	PersonID       string
+	LocationID     string // location_locations.id (M19); required
+	Role           string // home|work|mailing|other
+	ValidFrom      string // ISO-8601 date or "" (defaults to today on insert)
+	ValidTo        string // ISO-8601 date or "" (current)
+	IsPrimary      bool
+	PrivacySeeking bool
+	Source         string
+	Confidence     string
+}
+
+var validAddressRole = map[string]bool{"home": true, "work": true, "mailing": true, "other": true}
+
+// Validate enforces a known role, a non-empty location, parseable dates, and (when set) a recognised
+// source/confidence from the attribution vocabulary.
+func (a Address) Validate() error {
+	if a.LocationID == "" {
+		return wrapInvalid("locationId is required (resolve/create via the location service)")
+	}
+	if !validAddressRole[a.Role] {
+		return wrapInvalid("role must be one of home|work|mailing|other")
+	}
+	if !validDate(a.ValidFrom) || !validDate(a.ValidTo) {
+		return wrapInvalid("validFrom/validTo must be ISO-8601 dates (YYYY-MM-DD)")
+	}
+	if a.Source != "" && !validSource[a.Source] {
+		return wrapInvalid("source must be one of self_declared|operator_verified|imported")
+	}
+	if a.Confidence != "" && !validConfidence[a.Confidence] {
+		return wrapInvalid("confidence must be one of confirmed|probable|possible")
 	}
 	return nil
 }
@@ -1012,6 +1064,12 @@ type Repository interface {
 	UpsertResidence(ctx context.Context, r Residence) (Residence, error)
 	DeleteResidence(ctx context.Context, personID, residenceID string) error
 	ListResidences(ctx context.Context, personID string) ([]Residence, error)
+
+	// addresses (D-PersonAddresses, M32; a.ID == "" => insert; otherwise replace that row)
+	UpsertAddress(ctx context.Context, a Address) (Address, error) // ErrAddressNotFound on update miss
+	DeleteAddress(ctx context.Context, personID, addressID string) error
+	ListAddresses(ctx context.Context, personID string) ([]Address, error)
+	DemotePrimaryAddresses(ctx context.Context, personID, exceptID string) error // clear is_primary on other active rows
 
 	// emails (e.ID == "" => insert; otherwise replace that row)
 	UpsertEmail(ctx context.Context, e Email) (Email, error)

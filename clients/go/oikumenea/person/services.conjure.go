@@ -74,6 +74,12 @@ type PersonServiceClient interface {
 	UpsertDistinguishingMark(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertDistinguishingMarkRequest) (DistinguishingMark, error)
 	// Remove a distinguishing mark by id.
 	DeleteDistinguishingMark(ctx context.Context, authHeader bearertoken.Token, personIdArg string, markIdArg string) error
+	// List a person's addresses (D-PersonAddresses, M32; pii:contact), primary first.
+	ListAddresses(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Address, error)
+	// Add an address, or replace one when id is supplied. Returns Person:PersonInvalid for an unknown role/location.
+	UpsertAddress(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertAddressRequest) (Address, error)
+	// Remove an address by id.
+	DeleteAddress(ctx context.Context, authHeader bearertoken.Token, personIdArg string, addressIdArg string) error
 	/*
 	   List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
 	   the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
@@ -541,6 +547,53 @@ func (c *personServiceClient) DeleteDistinguishingMark(ctx context.Context, auth
 	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
 	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
 		return werror.WrapWithContextParams(ctx, err, "deleteDistinguishingMark failed")
+	}
+	return nil
+}
+
+func (c *personServiceClient) ListAddresses(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Address, error) {
+	var returnVal []Address
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListAddresses"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/addresses", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listAddresses failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listAddresses response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) UpsertAddress(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertAddressRequest) (Address, error) {
+	var returnVal *Address
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertAddress"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/addresses", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(Address), werror.WrapWithContextParams(ctx, err, "upsertAddress failed")
+	}
+	if returnVal == nil {
+		return *new(Address), werror.ErrorWithContextParams(ctx, "upsertAddress response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) DeleteAddress(ctx context.Context, authHeader bearertoken.Token, personIdArg string, addressIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeleteAddress"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/addresses/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(addressIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deleteAddress failed")
 	}
 	return nil
 }
@@ -1420,6 +1473,12 @@ type PersonServiceClientWithAuth interface {
 	UpsertDistinguishingMark(ctx context.Context, personIdArg string, requestArg UpsertDistinguishingMarkRequest) (DistinguishingMark, error)
 	// Remove a distinguishing mark by id.
 	DeleteDistinguishingMark(ctx context.Context, personIdArg string, markIdArg string) error
+	// List a person's addresses (D-PersonAddresses, M32; pii:contact), primary first.
+	ListAddresses(ctx context.Context, personIdArg string) ([]Address, error)
+	// Add an address, or replace one when id is supplied. Returns Person:PersonInvalid for an unknown role/location.
+	UpsertAddress(ctx context.Context, personIdArg string, requestArg UpsertAddressRequest) (Address, error)
+	// Remove an address by id.
+	DeleteAddress(ctx context.Context, personIdArg string, addressIdArg string) error
 	/*
 	   List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
 	   the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
@@ -1629,6 +1688,18 @@ func (c *personServiceClientWithAuth) UpsertDistinguishingMark(ctx context.Conte
 
 func (c *personServiceClientWithAuth) DeleteDistinguishingMark(ctx context.Context, personIdArg string, markIdArg string) error {
 	return c.client.DeleteDistinguishingMark(ctx, c.authHeader, personIdArg, markIdArg)
+}
+
+func (c *personServiceClientWithAuth) ListAddresses(ctx context.Context, personIdArg string) ([]Address, error) {
+	return c.client.ListAddresses(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertAddress(ctx context.Context, personIdArg string, requestArg UpsertAddressRequest) (Address, error) {
+	return c.client.UpsertAddress(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) DeleteAddress(ctx context.Context, personIdArg string, addressIdArg string) error {
+	return c.client.DeleteAddress(ctx, c.authHeader, personIdArg, addressIdArg)
 }
 
 func (c *personServiceClientWithAuth) ListEthnicityTypes(ctx context.Context, topLevelArg *bool, parentArg *string, queryArg *string, limitArg *int) ([]EthnicityType, error) {
@@ -1994,6 +2065,30 @@ func (c *personServiceClientWithTokenProvider) DeleteDistinguishingMark(ctx cont
 		return err
 	}
 	return c.client.DeleteDistinguishingMark(ctx, bearertoken.Token(token), personIdArg, markIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListAddresses(ctx context.Context, personIdArg string) ([]Address, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListAddresses(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertAddress(ctx context.Context, personIdArg string, requestArg UpsertAddressRequest) (Address, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Address), err
+	}
+	return c.client.UpsertAddress(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) DeleteAddress(ctx context.Context, personIdArg string, addressIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeleteAddress(ctx, bearertoken.Token(token), personIdArg, addressIdArg)
 }
 
 func (c *personServiceClientWithTokenProvider) ListEthnicityTypes(ctx context.Context, topLevelArg *bool, parentArg *string, queryArg *string, limitArg *int) ([]EthnicityType, error) {

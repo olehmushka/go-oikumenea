@@ -288,6 +288,34 @@ types:
           validTo:
             type: optional<string>
             docs: ISO-8601 date the residence ended; null = current.
+      Address:
+        docs: |
+          A person's precise, effective-dated address (D-PersonAddresses, M32) — a reified link to a
+          shared location_locations row (M19 Location). Distinct from Residence (country-grade legal
+          residence); an Address is the geocoded overlay. pii:contact; purge-erased.
+        fields:
+          id: string
+          personId: string
+          locationId:
+            type: string
+            docs: The location_locations RID this address resolves to (create/resolve via the location service).
+          role:
+            type: string
+            docs: One of home | work | mailing | other.
+          validFrom:
+            type: string
+            docs: ISO-8601 date the address became effective.
+          validTo:
+            type: optional<string>
+            docs: ISO-8601 date the address ended; null = current.
+          isPrimary:
+            type: boolean
+            docs: The person's primary address (at most one active primary per person).
+          privacySeeking:
+            type: boolean
+            docs: A mailing address that deliberately differs from home (itself a signal).
+          source: optional<string>
+          confidence: optional<string>
       Email:
         docs: A person's contact email (D-PersonContactChannels). pii:contact; distinct from the login email.
         fields:
@@ -805,6 +833,26 @@ types:
           region: optional<string>
           validFrom: string
           validTo: optional<string>
+      UpsertAddressRequest:
+        docs: Add an address, or replace one when id is supplied (D-PersonAddresses, M32).
+        fields:
+          id:
+            type: optional<string>
+            docs: The RID of an existing address row to replace; omit to add a new row.
+          locationId:
+            type: string
+            docs: The location_locations RID this address resolves to.
+          role:
+            type: string
+            docs: One of home | work | mailing | other.
+          validFrom:
+            type: optional<string>
+            docs: ISO-8601 date the address became effective; defaults to today.
+          validTo: optional<string>
+          isPrimary: optional<boolean>
+          privacySeeking: optional<boolean>
+          source: optional<string>
+          confidence: optional<string>
       UpsertEmailRequest:
         docs: Add a contact email, or replace one when id is supplied. provider is derived from the address.
         fields:
@@ -1202,6 +1250,33 @@ services:
             type: string
             param-type: path
           markId:
+            type: string
+            param-type: path
+      listAddresses:
+        http: GET /persons/{personId}/addresses
+        docs: List a person's addresses (D-PersonAddresses, M32; pii:contact), primary first.
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<Address>
+      upsertAddress:
+        http: PUT /persons/{personId}/addresses
+        docs: Add an address, or replace one when id is supplied. Returns Person:PersonInvalid for an unknown role/location.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertAddressRequest
+        returns: Address
+      deleteAddress:
+        http: DELETE /persons/{personId}/addresses/{addressId}
+        docs: Remove an address by id.
+        args:
+          personId:
+            type: string
+            param-type: path
+          addressId:
             type: string
             param-type: path
       listEthnicityTypes:

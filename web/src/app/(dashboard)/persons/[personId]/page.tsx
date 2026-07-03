@@ -4,6 +4,7 @@ import { oikumenea } from "@/lib/api/server";
 import { Card, EmptyState, ErrorNotice, Mono, PageHeader, Pill } from "@/components/ui";
 import { T } from "@/components/T";
 import {
+  AddressManager,
   CallSignManager,
   CitizenshipManager,
   DocumentManager,
@@ -151,6 +152,7 @@ export default async function PersonDetailPage({
           <h2 className="text-sm font-semibold text-slate-900"><T>Citizenship &amp; residence</T></h2>
           <CitizenshipManager personId={person.id} citizenships={person.citizenships} />
           <ResidenceManager personId={person.id} residences={person.residences} />
+          <AddressManager personId={person.id} />
         </Card>
 
         <Card>

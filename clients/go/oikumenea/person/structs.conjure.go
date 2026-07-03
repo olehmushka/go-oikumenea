@@ -69,6 +69,46 @@ func (o *AddNameAliasRequest) UnmarshalYAML(unmarshal func(interface{}) error) e
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+/*
+A person's precise, effective-dated address (D-PersonAddresses, M32) — a reified link to a
+shared location_locations row (M19 Location). Distinct from Residence (country-grade legal
+residence); an Address is the geocoded overlay. pii:contact; purge-erased.
+*/
+type Address struct {
+	Id       string `json:"id"`
+	PersonId string `json:"personId"`
+	// The location_locations RID this address resolves to (create/resolve via the location service).
+	LocationId string `json:"locationId"`
+	// One of home | work | mailing | other.
+	Role string `json:"role"`
+	// ISO-8601 date the address became effective.
+	ValidFrom string `json:"validFrom"`
+	// ISO-8601 date the address ended; null = current.
+	ValidTo *string `json:"validTo,omitempty"`
+	// The person's primary address (at most one active primary per person).
+	IsPrimary bool `json:"isPrimary"`
+	// A mailing address that deliberately differs from home (itself a signal).
+	PrivacySeeking bool    `json:"privacySeeking"`
+	Source         *string `json:"source,omitempty"`
+	Confidence     *string `json:"confidence,omitempty"`
+}
+
+func (o Address) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *Address) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // A symmetric association / conflict-of-interest / prohibited-contact link (D-PersonRelationships; Link link__associated_with).
 type Association struct {
 	Id string `json:"id"`
@@ -1403,6 +1443,39 @@ func (o UpdatePersonRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *UpdatePersonRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Add an address, or replace one when id is supplied (D-PersonAddresses, M32).
+type UpsertAddressRequest struct {
+	// The RID of an existing address row to replace; omit to add a new row.
+	Id *string `json:"id,omitempty"`
+	// The location_locations RID this address resolves to.
+	LocationId string `json:"locationId"`
+	// One of home | work | mailing | other.
+	Role string `json:"role"`
+	// ISO-8601 date the address became effective; defaults to today.
+	ValidFrom      *string `json:"validFrom,omitempty"`
+	ValidTo        *string `json:"validTo,omitempty"`
+	IsPrimary      *bool   `json:"isPrimary,omitempty"`
+	PrivacySeeking *bool   `json:"privacySeeking,omitempty"`
+	Source         *string `json:"source,omitempty"`
+	Confidence     *string `json:"confidence,omitempty"`
+}
+
+func (o UpsertAddressRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertAddressRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

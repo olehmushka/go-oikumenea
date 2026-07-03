@@ -84,7 +84,8 @@ var typeNames = map[typeKey]string{
 	{SvcPerson, int(KindLink), 6}: "next_of_kin",
 	{SvcPerson, int(KindLink), 7}: "associated_with",
 	{SvcPerson, int(KindLink), 8}: "speaks",
-	{SvcPerson, int(KindLink), 9}: "has_ethnicity",
+	{SvcPerson, int(KindLink), 9}:  "has_ethnicity",
+	{SvcPerson, int(KindLink), 10}: "lives_at",
 	// membership
 	{SvcMembership, int(KindObject), 1}: "position",
 	{SvcMembership, int(KindLink), 1}:   "member_of",

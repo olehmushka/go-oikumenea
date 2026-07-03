@@ -171,6 +171,33 @@ func (q *Queries) DeactivatePerson(ctx context.Context, arg DeactivatePersonPara
 	return i, err
 }
 
+const deleteAddress = `-- name: DeleteAddress :one
+UPDATE oikumenea.person_addresses SET deleted_at = now()
+WHERE id = $1 AND person_id = $2 AND deleted_at IS NULL
+RETURNING id
+`
+
+type DeleteAddressParams struct {
+	ID       string
+	PersonID string
+}
+
+func (q *Queries) DeleteAddress(ctx context.Context, arg DeleteAddressParams) (string, error) {
+	row := q.db.QueryRow(ctx, deleteAddress, arg.ID, arg.PersonID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
+const deleteAllAddresses = `-- name: DeleteAllAddresses :exec
+DELETE FROM oikumenea.person_addresses WHERE person_id = $1
+`
+
+func (q *Queries) DeleteAllAddresses(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllAddresses, personID)
+	return err
+}
+
 const deleteAllAssociations = `-- name: DeleteAllAssociations :exec
 DELETE FROM oikumenea.person_associations WHERE person_id_a = $1 OR person_id_b = $1
 `
@@ -818,6 +845,24 @@ func (q *Queries) DeleteSponsorship(ctx context.Context, arg DeleteSponsorshipPa
 	return id, err
 }
 
+const demotePrimaryAddresses = `-- name: DemotePrimaryAddresses :exec
+UPDATE oikumenea.person_addresses SET is_primary = false
+WHERE person_id = $1 AND is_primary AND deleted_at IS NULL
+  AND ($2::text = '' OR id::text <> $2::text)
+`
+
+type DemotePrimaryAddressesParams struct {
+	PersonID string
+	ExceptID string
+}
+
+// Clear is_primary on a person's other active addresses so at most one primary survives (the caller
+// then sets the target row primary). exceptId = "" demotes every active primary.
+func (q *Queries) DemotePrimaryAddresses(ctx context.Context, arg DemotePrimaryAddressesParams) error {
+	_, err := q.db.Exec(ctx, demotePrimaryAddresses, arg.PersonID, arg.ExceptID)
+	return err
+}
+
 const emailPersonID = `-- name: EmailPersonID :one
 SELECT person_id FROM oikumenea.person_emails WHERE id = $1 AND deleted_at IS NULL
 `
@@ -1098,6 +1143,61 @@ func (q *Queries) HasActivePartnershipExcept(ctx context.Context, arg HasActiveP
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const insertAddress = `-- name: InsertAddress :one
+
+INSERT INTO oikumenea.person_addresses (
+  person_id, location_id, role, valid_from, valid_to, is_primary, privacy_seeking, source, confidence
+) VALUES (
+  $1, $2, $3, $4::date, $5::date,
+  $6, $7, $8, $9
+)
+RETURNING id, person_id, location_id, role, valid_from, valid_to, is_primary, privacy_seeking, source, confidence, created_at, updated_at, deleted_at
+`
+
+type InsertAddressParams struct {
+	PersonID       string
+	LocationID     string
+	Role           string
+	ValidFrom      pgtype.Date
+	ValidTo        pgtype.Date
+	IsPrimary      bool
+	PrivacySeeking bool
+	Source         string
+	Confidence     string
+}
+
+// ============================ addresses (D-PersonAddresses, M32) ============================
+func (q *Queries) InsertAddress(ctx context.Context, arg InsertAddressParams) (OikumeneaPersonAddress, error) {
+	row := q.db.QueryRow(ctx, insertAddress,
+		arg.PersonID,
+		arg.LocationID,
+		arg.Role,
+		arg.ValidFrom,
+		arg.ValidTo,
+		arg.IsPrimary,
+		arg.PrivacySeeking,
+		arg.Source,
+		arg.Confidence,
+	)
+	var i OikumeneaPersonAddress
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.LocationID,
+		&i.Role,
+		&i.ValidFrom,
+		&i.ValidTo,
+		&i.IsPrimary,
+		&i.PrivacySeeking,
+		&i.Source,
+		&i.Confidence,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
 }
 
 const insertAssociation = `-- name: InsertAssociation :one
@@ -1985,6 +2085,46 @@ func (q *Queries) InsertSponsorship(ctx context.Context, arg InsertSponsorshipPa
 		&i.EducationRole,
 	)
 	return i, err
+}
+
+const listAddresses = `-- name: ListAddresses :many
+SELECT id, person_id, location_id, role, valid_from, valid_to, is_primary, privacy_seeking, source, confidence, created_at, updated_at, deleted_at FROM oikumenea.person_addresses
+WHERE person_id = $1 AND deleted_at IS NULL
+ORDER BY is_primary DESC, valid_from DESC, id
+`
+
+func (q *Queries) ListAddresses(ctx context.Context, personID string) ([]OikumeneaPersonAddress, error) {
+	rows, err := q.db.Query(ctx, listAddresses, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonAddress
+	for rows.Next() {
+		var i OikumeneaPersonAddress
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.LocationID,
+			&i.Role,
+			&i.ValidFrom,
+			&i.ValidTo,
+			&i.IsPrimary,
+			&i.PrivacySeeking,
+			&i.Source,
+			&i.Confidence,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listAssociations = `-- name: ListAssociations :many
@@ -3217,6 +3357,61 @@ func (q *Queries) ReactivatePerson(ctx context.Context, id string) (OikumeneaPer
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.DateOfDeath,
+	)
+	return i, err
+}
+
+const updateAddress = `-- name: UpdateAddress :one
+UPDATE oikumenea.person_addresses SET
+  location_id = $1, role = $2,
+  valid_from = $3::date, valid_to = $4::date,
+  is_primary = $5, privacy_seeking = $6,
+  source = $7, confidence = $8
+WHERE id = $9 AND person_id = $10 AND deleted_at IS NULL
+RETURNING id, person_id, location_id, role, valid_from, valid_to, is_primary, privacy_seeking, source, confidence, created_at, updated_at, deleted_at
+`
+
+type UpdateAddressParams struct {
+	LocationID     string
+	Role           string
+	ValidFrom      pgtype.Date
+	ValidTo        pgtype.Date
+	IsPrimary      bool
+	PrivacySeeking bool
+	Source         string
+	Confidence     string
+	ID             string
+	PersonID       string
+}
+
+func (q *Queries) UpdateAddress(ctx context.Context, arg UpdateAddressParams) (OikumeneaPersonAddress, error) {
+	row := q.db.QueryRow(ctx, updateAddress,
+		arg.LocationID,
+		arg.Role,
+		arg.ValidFrom,
+		arg.ValidTo,
+		arg.IsPrimary,
+		arg.PrivacySeeking,
+		arg.Source,
+		arg.Confidence,
+		arg.ID,
+		arg.PersonID,
+	)
+	var i OikumeneaPersonAddress
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.LocationID,
+		&i.Role,
+		&i.ValidFrom,
+		&i.ValidTo,
+		&i.IsPrimary,
+		&i.PrivacySeeking,
+		&i.Source,
+		&i.Confidence,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }

@@ -811,6 +811,46 @@ ORDER BY kind, id;
 -- name: DeleteAllDistinguishingMarks :exec
 DELETE FROM oikumenea.person_distinguishing_marks WHERE person_id = @person_id;
 
+-- ============================ addresses (D-PersonAddresses, M32) ============================
+
+-- name: InsertAddress :one
+INSERT INTO oikumenea.person_addresses (
+  person_id, location_id, role, valid_from, valid_to, is_primary, privacy_seeking, source, confidence
+) VALUES (
+  @person_id, @location_id, @role, @valid_from::date, sqlc.narg('valid_to')::date,
+  @is_primary, @privacy_seeking, @source, @confidence
+)
+RETURNING *;
+
+-- name: UpdateAddress :one
+UPDATE oikumenea.person_addresses SET
+  location_id = @location_id, role = @role,
+  valid_from = @valid_from::date, valid_to = sqlc.narg('valid_to')::date,
+  is_primary = @is_primary, privacy_seeking = @privacy_seeking,
+  source = @source, confidence = @confidence
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING *;
+
+-- name: DeleteAddress :one
+UPDATE oikumenea.person_addresses SET deleted_at = now()
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING id;
+
+-- name: ListAddresses :many
+SELECT * FROM oikumenea.person_addresses
+WHERE person_id = @person_id AND deleted_at IS NULL
+ORDER BY is_primary DESC, valid_from DESC, id;
+
+-- name: DemotePrimaryAddresses :exec
+-- Clear is_primary on a person's other active addresses so at most one primary survives (the caller
+-- then sets the target row primary). exceptId = "" demotes every active primary.
+UPDATE oikumenea.person_addresses SET is_primary = false
+WHERE person_id = @person_id AND is_primary AND deleted_at IS NULL
+  AND (@except_id::text = '' OR id::text <> @except_id::text);
+
+-- name: DeleteAllAddresses :exec
+DELETE FROM oikumenea.person_addresses WHERE person_id = @person_id;
+
 -- ============================ ethnicity-type catalog (D-PhysicalIdentity, M31) ============================
 
 -- name: ListEthnicityTypes :many

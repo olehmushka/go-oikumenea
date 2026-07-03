@@ -259,10 +259,15 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// resolve a country to its RID) plus the audited LocationService CRUD + spatial queries over the
 	// shared place entity. Both live on the `location` RID service (12); Location writes record via the
 	// audit service and assemble place-type name maps via localization.
-	if _, err := geo.Register(info, pool, auditSvc, locSvc, enforcer); err != nil {
+	geoSvc, err := geo.Register(info, pool, auditSvc, locSvc, enforcer)
+	if err != nil {
 		cleanup()
 		return nil, err
 	}
+	// Person addresses (M32 / D-PersonAddresses) verify their location_id against the location service
+	// before writing; bind that cross-module query seam now that geo exists (late-bound: person is built
+	// above, before geo — mirrors SetMembershipReader).
+	personSvc.SetLocationLookup(geoSvc)
 
 	// Language (M18 / D-Languages): read-only lookup over the Glottolog languoid forest + ISO-15924
 	// writing systems. The registry is written by the hermenea import pipeline (language-scheme /

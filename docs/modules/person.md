@@ -179,6 +179,23 @@ lifecycle timestamps) are `pii:none` (D-PIITiers); the name parts, `birthdate`, 
 All `id`/`person_id`/lifecycle columns on both tables are `pii:none`; `country`/dates on citizenship
 are `pii:basic`, residence columns are `pii:contact` (locator data) — D-PIITiers.
 
+**`person_addresses`** (precise, effective-dated address history over M19 Location — D-PersonAddresses,
+M32; the reified link `link__lives_at`, RID `6,2,10`). Distinct from `person_residences` (country-grade
+legal residence, kept): an address is the geocoded overlay that dedups against shared
+`location_locations` rows and enables spatial queries.
+- `id` PK (RID `6,2,10`)
+- `person_id uuid NOT NULL REFERENCES person_persons(id) ON DELETE CASCADE`
+- `location_id uuid NOT NULL REFERENCES location_locations(id) ON DELETE RESTRICT` — the M19 place; `pii:contact`
+- `role TEXT NOT NULL CHECK (role IN ('home','work','mailing','other'))`
+- `valid_from DATE NOT NULL` (defaults to today), `valid_to DATE` (NULL = current) — `pii:contact`
+- `is_primary BOOLEAN` — at most one **active** primary per person
+  (`UNIQUE (person_id) WHERE is_primary AND deleted_at IS NULL`; the app demotes the prior primary in-tx)
+- `privacy_seeking BOOLEAN` — a mailing address that deliberately differs from home (itself a signal)
+- `source`/`confidence` — the attribution column-set (D-OverlayFoundation)
+- `created_at`, `updated_at`, `deleted_at`; index `(person_id) WHERE deleted_at IS NULL`
+- The location's existence is verified before write via the cross-module `LocationLookup` seam (the
+  geo/location service). `pii:contact` → **hard-deleted** on person purge.
+
 **`person_email_types`** / **`person_phone_types`** (instance-admin catalogs — D-Code/D-i18n)
 - `code TEXT PRIMARY KEY` — natural key (e.g. `personal`, `work`, `other`; phone `mobile`, `home`,
   `work`, `other`); locale-agnostic, immutable by convention. Not an RID (catalog carve-out, like
@@ -398,6 +415,9 @@ DATA-GOVERNANCE:
 | `GET /persons/{id}/residences` | List a person's residence history | `person.read` |
 | `PUT /persons/{id}/residences` | Upsert a residence row | `person.update` |
 | `DELETE /persons/{id}/residences/{id}` | Remove a residence row | `person.update` |
+| `GET /persons/{id}/addresses` | List a person's addresses (M32; primary first) | `person.read` |
+| `PUT /persons/{id}/addresses` | Upsert an address over an M19 location | `person.update` |
+| `DELETE /persons/{id}/addresses/{id}` | Remove an address row | `person.update` |
 | `GET /persons/{id}/emails` | List a person's contact emails | `person.read` |
 | `PUT /persons/{id}/emails` | Upsert a contact email (type, address, primary) | `person.update` |
 | `DELETE /persons/{id}/emails/{id}` | Remove a contact email | `person.update` |
@@ -601,9 +621,10 @@ through the holder.
   catalog + homeland-country ties (the Factbook carries no hierarchy/language, so those columns stay
   unpopulated by this source). The **encrypted** `person_ethnicities` link is unchanged; the
   group↔language tie is **never** inferred onto a person — declared ≠ inferred.)*
-- **M32 · Addresses (D-PersonAddresses).** `person_addresses` → `location_locations`
+- **M32 · Addresses (D-PersonAddresses).** ***Built*** — `person_addresses` → `location_locations`
   ([location](location.md), M19): `role ∈ {home,work,mailing,other}`, effective-dated, `is_primary`,
   `privacy_seeking`, `pii:contact`, purge-erased; `person_residences` retained for legal-residence.
+  See the `person_addresses` data-model entry + endpoints above.
 - **M33 · Institutional ties (D-InstitutionalTies).** Per-type person↔org links —
   `person_party_memberships` (`pii:special`), `person_government_positions` (`pep_trigger`, feeds M34),
   `person_lobbying_relationships`, foreign-military service (reuse [membership](membership.md) against

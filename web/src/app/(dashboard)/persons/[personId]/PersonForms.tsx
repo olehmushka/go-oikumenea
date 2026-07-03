@@ -12,6 +12,7 @@ import { ColorPicker } from "@/components/ColorPicker";
 import { EthnicityPicker } from "@/components/EthnicityPicker";
 import { ReligionTaxonPicker } from "@/components/ReligionTaxonPicker";
 import { PersonLink } from "@/components/PositionForms";
+import { SearchSelect } from "@/components/SearchSelect";
 import { T } from "@/components/T";
 import { pickLabel } from "@/lib/i18n";
 import { useLocale, useTg } from "@/lib/locale";
@@ -32,6 +33,7 @@ import type {
   Kinship,
   LocaleMap,
   MessengerLink,
+  Address,
   NameVariant,
   NextOfKin,
   Partnership,
@@ -591,6 +593,99 @@ export function ResidenceManager({
         <button className="btn-ghost" disabled={busy}>
           <T>Add</T>
         </button>
+      </form>
+    </ChannelBlock>
+  );
+}
+
+/* ------------------------------------------------------------------ addresses (M32) */
+
+const ADDRESS_ROLES = ["home", "work", "mailing", "other"] as const;
+
+// AddressManager — a person's precise, effective-dated addresses over the M19 Location entity
+// (D-PersonAddresses, M32). Self-fetches (addresses are a separate endpoint, not embedded on Person);
+// the location is chosen via the shared location typeahead. One primary per person is server-enforced.
+export function AddressManager({ personId }: { personId: string }) {
+  const tr = useTg();
+  const [addrs, setAddrs] = useState<Address[] | null>(null);
+  const [err, setErr] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = () => {
+    api.person.listAddresses(personId).then(setAddrs).catch(setErr);
+  };
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personId]);
+
+  const run = async (fn: () => Promise<unknown>, after?: () => void) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await fn();
+      after?.();
+      load();
+    } catch (e) {
+      setErr(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <ChannelBlock title="Addresses" err={err}>
+      <ItemList
+        items={addrs ?? undefined}
+        render={(a) => {
+          const period = [a.validFrom, a.validTo].filter(Boolean).join(" → ");
+          return (
+            <span className="inline-flex flex-wrap items-center gap-x-1">
+              {a.isPrimary ? <span title={tr("primary")}>★</span> : null}
+              <span className="font-medium">{a.role}</span>
+              <span className="mx-1 text-slate-300">·</span>
+              <span className="font-mono text-xs text-slate-500">{ridTail(a.locationId)}</span>
+              {period ? <span className="ml-1 text-xs text-slate-400">({period})</span> : null}
+              {a.privacySeeking ? <span className="ml-1" title={tr("privacy-seeking")}>🔒</span> : null}
+            </span>
+          );
+        }}
+        del={(a) => `/person/v1/persons/${personId}/addresses/${a.id}`}
+        delConfirm="Remove this address?"
+      />
+      <form
+        className="mt-2 grid grid-cols-[1fr_6rem_8rem_auto_auto_auto] items-center gap-2"
+        onSubmit={(ev) => {
+          ev.preventDefault();
+          const f = new FormData(ev.currentTarget);
+          const form = ev.currentTarget;
+          run(
+            () =>
+              api.person.upsertAddress(personId, {
+                locationId: s(f, "locationId")!,
+                role: s(f, "role") ?? "home",
+                validFrom: s(f, "validFrom"),
+                isPrimary: f.get("isPrimary") === "on",
+                privacySeeking: f.get("privacySeeking") === "on",
+              }),
+            () => form.reset(),
+          );
+        }}
+      >
+        <SearchSelect kind="location" name="locationId" required placeholder="Search a location…" />
+        <select name="role" className="input" defaultValue="home">
+          {ADDRESS_ROLES.map((r) => (
+            <option key={r} value={r}>{r}</option>
+          ))}
+        </select>
+        <input name="validFrom" type="date" className="input" />
+        <label className="flex items-center gap-1 text-xs text-slate-500">
+          <input name="isPrimary" type="checkbox" /> <T>primary</T>
+        </label>
+        <label className="flex items-center gap-1 text-xs text-slate-500">
+          <input name="privacySeeking" type="checkbox" /> <T>private</T>
+        </label>
+        <button className="btn-ghost" disabled={busy}><T>Add</T></button>
       </form>
     </ChannelBlock>
   );

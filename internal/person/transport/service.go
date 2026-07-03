@@ -403,6 +403,53 @@ func (s Service) DeleteDistinguishingMark(ctx context.Context, token bearertoken
 	return nil
 }
 
+func (s Service) ListAddresses(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.Address, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+		return nil, err
+	}
+	as, err := s.app.ListAddresses(ctx, personID)
+	if err != nil {
+		return nil, s.mapError(ctx, err, personID)
+	}
+	out := make([]personapi.Address, 0, len(as))
+	for _, a := range as {
+		out = append(out, toAPIAddress(a))
+	}
+	return out, nil
+}
+
+func (s Service) UpsertAddress(ctx context.Context, token bearertoken.Token, personID string, req personapi.UpsertAddressRequest) (personapi.Address, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return personapi.Address{}, err
+	}
+	created, err := s.app.UpsertAddress(ctx, domain.Address{
+		ID:             derefOr(req.Id, ""),
+		PersonID:       personID,
+		LocationID:     req.LocationId,
+		Role:           req.Role,
+		ValidFrom:      derefOr(req.ValidFrom, ""),
+		ValidTo:        derefOr(req.ValidTo, ""),
+		IsPrimary:      derefOr(req.IsPrimary, false),
+		PrivacySeeking: derefOr(req.PrivacySeeking, false),
+		Source:         derefOr(req.Source, ""),
+		Confidence:     derefOr(req.Confidence, ""),
+	})
+	if err != nil {
+		return personapi.Address{}, s.mapError(ctx, err, personID)
+	}
+	return toAPIAddress(created), nil
+}
+
+func (s Service) DeleteAddress(ctx context.Context, token bearertoken.Token, personID, addressID string) error {
+	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
+		return err
+	}
+	if err := s.app.DeleteAddress(ctx, personID, addressID); err != nil {
+		return s.mapError(ctx, err, personID)
+	}
+	return nil
+}
+
 func (s Service) ListEthnicityTypes(ctx context.Context, token bearertoken.Token, topLevel *bool, parent *string, query *string, limit *int) ([]personapi.EthnicityType, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
 		return nil, err
@@ -1412,6 +1459,21 @@ func toAPIResidence(r domain.Residence) personapi.Residence {
 	}
 }
 
+func toAPIAddress(a domain.Address) personapi.Address {
+	return personapi.Address{
+		Id:             a.ID,
+		PersonId:       a.PersonID,
+		LocationId:     a.LocationID,
+		Role:           a.Role,
+		ValidFrom:      a.ValidFrom,
+		ValidTo:        strPtrOrNil(a.ValidTo),
+		IsPrimary:      a.IsPrimary,
+		PrivacySeeking: a.PrivacySeeking,
+		Source:         strPtrOrNil(a.Source),
+		Confidence:     strPtrOrNil(a.Confidence),
+	}
+}
+
 func toAPIResidences(rs []domain.Residence) []personapi.Residence {
 	out := make([]personapi.Residence, 0, len(rs))
 	for _, r := range rs {
@@ -1610,6 +1672,7 @@ func (s Service) mapError(ctx context.Context, err error, personID string) error
 		errors.Is(err, domain.ErrMessengerLinkNotFound),
 		errors.Is(err, domain.ErrSocialAccountNotFound),
 		errors.Is(err, domain.ErrLanguageNotFound),
+		errors.Is(err, domain.ErrAddressNotFound),
 		errors.Is(err, domain.ErrRelationshipNotFound):
 		return personapi.NewPersonNotFound(personID)
 	case errors.Is(err, domain.ErrCodeConflict):
@@ -1666,6 +1729,8 @@ func (s Service) mapError(ctx context.Context, err error, personID string) error
 		return personapi.NewPersonInvalid("merge target must be a distinct, non-provisional person")
 	case errors.Is(err, domain.ErrColorMismatch):
 		return personapi.NewPersonInvalid("color is not in the expected eye/hair palette (D-Color)")
+	case errors.Is(err, domain.ErrUnknownLocation):
+		return personapi.NewPersonInvalid("location does not exist (D-PersonAddresses)")
 	case errors.Is(err, domain.ErrInvalid):
 		return personapi.NewPersonInvalid(err.Error())
 	case errors.Is(err, domain.ErrLifecycle):

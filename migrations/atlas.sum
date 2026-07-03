@@ -1,4 +1,4 @@
-h1:J6Ri2ikvYeC3DB2HE/F1QHfSntzF9VBZBaECpiN6oYk=
+h1:tApCfbTnuF29PWpsdhqrEFeSaYQL5FuMk88SohnHOyY=
 20260601000000_schema_bootstrap.sql h1:6sV+mR08nzCE04BwP0m6mCw5S1m0UaNM3QJBSdJPsgw=
 20260601000001_audit_log.sql h1:05zSf1Iu4OCsA7wKvAUcwm5/eabnU6rx95xDlgqXors=
 20260601000002_localization.sql h1:FFqBmCn3JHkXa66o5lVcVLQqLD2gTADGTyePujf9YfI=
@@ -30,3 +30,4 @@ h1:J6Ri2ikvYeC3DB2HE/F1QHfSntzF9VBZBaECpiN6oYk=
 20260601000028_overlay_foundation.sql h1:9MJ4k73dgNO2NvM+DV6UdouAAzyimD4aAM9vCWshwt0=
 20260601000029_external_orgs.sql h1:lIDyGapHebMxMShvwGMgaSXFBq03EkNFgFayE5DCNK8=
 20260601000030_person_physical_identity.sql h1:CcLIu23BvGR76QrulO/p6CMb90/AkpteqX9fAILnCbM=
+20260601000031_person_addresses.sql h1:4uewcVubyn0nwUwTA2oWrH446VZso4FKBuAbfvIj7K0=

@@ -44,6 +44,7 @@ export type Person = person.IPerson;
 export type PersonPage = person.IPersonPage;
 export type Citizenship = person.ICitizenship;
 export type Residence = person.IResidence;
+export type Address = person.IAddress;
 export type Email = person.IEmail;
 export type Phone = person.IPhone;
 export type CallSign = person.ICallSign;

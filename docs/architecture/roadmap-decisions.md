@@ -1386,6 +1386,22 @@ loses geospatial query + dedup against shared `location_locations`. (c) *GPS mov
 writes, purge erasure. New person link RID on build. Lands as **M32**
 ([milestones](../milestones.md)).
 
+**Built (M32).** Migration `0031_person_addresses` — `person_addresses` is the reified link
+`link__lives_at` (RID `6,2,10`, `pkg/rid` + `platform_rid_types`) `Person` → `location_locations`
+(M19, `ON DELETE RESTRICT`): `role ∈ {home,work,mailing,other}`, `valid_from`/`valid_to`,
+`is_primary` (one active primary per person — a partial-unique index; the app demotes the prior
+primary in-tx), `privacy_seeking`, and the attribution column-set (`source` NOT NULL default
+`operator_verified` + `confidence`). `pii:contact` → **hard-deleted** on purge (added to the person
+`Purge` erasure list, beside `person_residences`; `person_residences` itself is unchanged). Location
+existence is verified before write via a new **`domain.LocationLookup`** port on the person module
+(mirrors `ColorLookup`), satisfied by a `LocationExists` method on the geo/location service and
+late-bound `personSvc.SetLocationLookup(geoSvc)` in `cmd/oikumenea/main.go` (person is built before
+geo, so the seam is late-bound like `SetMembershipReader`); an unknown location normalizes to
+`Person:PersonInvalid`. Audited `PersonService` endpoints
+(`GET|PUT /persons/{id}/addresses`, `DELETE …/{addressId}`) on `person.read`/`person.update`; Go+TS
+SDKs regenerated; a `/persons/[id]` **Addresses** console card picks the location via the shared
+`SearchSelect` typeahead.
+
 ### D-InstitutionalTies — Person↔organization affiliation edges (party / government / lobbying / foreign-military / references) (extends D-Ontology, D-OverlayFoundation, D-ExternalOrgs)
 
 **Decision.** Model the draft's macro-category 7 as **per-type reified person↔org links**, the org

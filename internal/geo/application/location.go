@@ -36,6 +36,14 @@ func (s *Service) GetLocation(ctx context.Context, id string) (domain.Location, 
 	return s.newRepo(s.pool).GetLocation(ctx, id)
 }
 
+// LocationExists reports whether a location RID resolves to a live row (domain.ErrLocationNotFound
+// otherwise). It is the cross-module verification seam consumers use before FK-referencing a location
+// (D-PersonAddresses, M32 — the person module's domain.LocationLookup port is satisfied by this method).
+func (s *Service) LocationExists(ctx context.Context, id string) error {
+	_, err := s.newRepo(s.pool).GetLocation(ctx, id)
+	return err
+}
+
 // ListLocationTypes reads the active place-type catalog.
 func (s *Service) ListLocationTypes(ctx context.Context) ([]domain.LocationType, error) {
 	return s.newRepo(s.pool).ListLocationTypes(ctx)

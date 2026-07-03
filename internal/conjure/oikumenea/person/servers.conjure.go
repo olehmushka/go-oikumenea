@@ -77,6 +77,12 @@ type PersonService interface {
 	UpsertDistinguishingMark(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertDistinguishingMarkRequest) (DistinguishingMark, error)
 	// Remove a distinguishing mark by id.
 	DeleteDistinguishingMark(ctx context.Context, authHeader bearertoken.Token, personIdArg string, markIdArg string) error
+	// List a person's addresses (D-PersonAddresses, M32; pii:contact), primary first.
+	ListAddresses(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Address, error)
+	// Add an address, or replace one when id is supplied. Returns Person:PersonInvalid for an unknown role/location.
+	UpsertAddress(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertAddressRequest) (Address, error)
+	// Remove an address by id.
+	DeleteAddress(ctx context.Context, authHeader bearertoken.Token, personIdArg string, addressIdArg string) error
 	/*
 	   List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
 	   the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
@@ -265,6 +271,15 @@ func RegisterRoutesPersonService(router wrouter.Router, impl PersonService, rout
 	}
 	if err := resource.Delete("DeleteDistinguishingMark", "/person/v1/persons/{personId}/distinguishing-marks/{markId}", httpserver.NewJSONHandler(handler.HandleDeleteDistinguishingMark, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteDistinguishingMark route")
+	}
+	if err := resource.Get("ListAddresses", "/person/v1/persons/{personId}/addresses", httpserver.NewJSONHandler(handler.HandleListAddresses, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listAddresses route")
+	}
+	if err := resource.Put("UpsertAddress", "/person/v1/persons/{personId}/addresses", httpserver.NewJSONHandler(handler.HandleUpsertAddress, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertAddress route")
+	}
+	if err := resource.Delete("DeleteAddress", "/person/v1/persons/{personId}/addresses/{addressId}", httpserver.NewJSONHandler(handler.HandleDeleteAddress, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteAddress route")
 	}
 	if err := resource.Get("ListEthnicityTypes", "/person/v1/ethnicity-types", httpserver.NewJSONHandler(handler.HandleListEthnicityTypes, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listEthnicityTypes route")
@@ -880,6 +895,76 @@ func (p *personServiceHandler) HandleDeleteDistinguishingMark(rw http.ResponseWr
 		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"markId\" not present")
 	}
 	if err := p.impl.DeleteDistinguishingMark(req.Context(), bearertoken.Token(authHeader), personIdArg, markIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (p *personServiceHandler) HandleListAddresses(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.ListAddresses(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpsertAddress(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg UpsertAddressRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertAddress(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleDeleteAddress(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	addressIdArg, ok := pathParams["addressId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"addressId\" not present")
+	}
+	if err := p.impl.DeleteAddress(req.Context(), bearertoken.Token(authHeader), personIdArg, addressIdArg); err != nil {
 		return err
 	}
 	rw.WriteHeader(http.StatusNoContent)
