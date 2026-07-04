@@ -294,7 +294,7 @@ function CompanyDetail({ company }: { company: Company }) {
             </ul>
           )}
           <form key={`loc-${nonce}`} onSubmit={addLocation} className="mt-3 grid grid-cols-[1fr_auto_auto] gap-2">
-            <SearchSelect kind="location" name="locationId" required placeholder={tr("Search a location…")} />
+            <SearchSelect kind="location" name="locationId" required allowCreate placeholder={tr("Search a location…")} />
             <select name="role" className="input">{["registered", "operating", "branch"].map((r) => <option key={r} value={r}>{r}</option>)}</select>
             <button className="btn" disabled={busy}><T>Add</T></button>
           </form>

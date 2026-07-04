@@ -210,6 +210,64 @@ Key properties:
 - **No cross-request caching.** A decision may be memoized within one request; a revoke or role
   edit takes effect on the next request immediately.
 
+### The model in Zanzibar/FGA notation (documentation only)
+
+The same semantics, written in the OpenFGA/Zanzibar modeling DSL. **No engine consumes this** — it
+is kept purely as notation, because it states the cascade/union semantics in a form directly
+comparable with other authorization systems. (Adopting OpenFGA as the actual engine was evaluated
+and deferred, 2026-07: it would replace only the small decision loop while adding a model-generator
++ tuple-projection layer, so the custom PDP stays. Revisit if per-object/relationship-derived
+grants become a recurring requirement across modules, if external systems need a standard ReBAC
+query API, or if closure maintenance breaks down at scale.)
+
+```
+model
+  schema 1.1
+
+type person
+
+type system                                  # the instance-admin plane (D-InstanceAdmin)
+  relations
+    define admin: [person]                   # active authz_instance_admins rows
+
+type assignment                              # one per authz_role_assignments row (link__has_role);
+  relations                                  # expires_at = a decision-time condition on this tuple
+    define holder: [person]                  # (D-TimeBoundGrants)
+
+type unit
+  relations
+    define sys: [system]                     # every unit belongs to system:instance
+    define parent_command: [unit]            # one parent relation PER registry graph — a new graph
+    define parent_operational: [unit]        # adds a relation (D-Graphs); multi-parent = many tuples
+
+    # Generated per permission code in the catalog. Shown for unit.read; granting
+    # (person, role, target, scope, graph) writes one assignment#holder tuple plus, for EACH
+    # permission the role carries, one <perm>_{here|sub_<graph>} tuple at the target — the role is
+    # expanded at grant time, which is exactly "no per-permission filtering within an assignment".
+    define unit_read_here: [assignment#holder]                    # scope=unit: no `from parent_*`,
+                                                                  #   so it cascades NOTHING
+    define unit_read_sub_command: [assignment#holder]
+        or unit_read_sub_command from parent_command              # scope=subtree over `command`
+    define unit_read_sub_operational: [assignment#holder]
+        or unit_read_sub_operational from parent_operational      # …over `operational`
+    define unit_read: unit_read_here
+        or unit_read_sub_command
+        or unit_read_sub_operational                              # union across graphs (D-Graphs)
+        or admin from sys                                         # instance plane allows everything
+
+    # The reach projection (shadow gate + RLS GUCs) as synthetic unions:
+    define readable: unit_read or person_read # … or every other `*.read` permission
+    define writable: unit_create or unit_update # … or every other mutating permission
+```
+
+Reading the algorithm off the notation: `authorize(person, action, unit)` is
+`check(person, <action>, unit:U)`; the effective read/write unit-set is
+`list-objects(person, readable|writable, unit)`. Directory-only graphs get **no** `sub_<graph>`
+relations generated at all, so a subtree grant on one confers nothing anywhere — not even at its
+target (D-DirectoryGraphs; the write path rejects such grants, and both `Decide` and `ReachSet`
+enforce it as defense-in-depth). Permission relations are *generated* per catalog code (99 today),
+mirroring that permissions are code, not data.
+
 ### The shadow-visibility gate
 
 After the permission decision a `shadow` unit is visible only when the PDP grants a `*.read` reaching

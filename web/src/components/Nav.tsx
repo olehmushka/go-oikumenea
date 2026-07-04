@@ -13,6 +13,7 @@ const TOOLS: { href: string; key: string }[] = [
   { href: "/authorize", key: "nav.authorize" },
   { href: "/roles", key: "nav.roles" },
   { href: "/organizations", key: "nav.organizations" },
+  { href: "/domains", key: "nav.domains" },
   { href: "/graphs", key: "nav.graphs" },
   { href: "/memberships", key: "nav.memberships" },
   { href: "/orders", key: "nav.orders" },

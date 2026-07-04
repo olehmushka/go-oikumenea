@@ -26,7 +26,7 @@ type LanguageService interface {
 	   name/code substring. `limit` caps the page (default/clamped server-side) since the catalog is
 	   large (~26k); narrow with the filters.
 	*/
-	ListLanguages(ctx context.Context, authHeader bearertoken.Token, levelArg *string, familyArg *string, parentArg *string, topLevelArg *bool, queryArg *string, limitArg *int) (LanguoidList, error)
+	ListLanguages(ctx context.Context, authHeader bearertoken.Token, levelArg *string, familyArg *string, parentArg *string, topLevelArg *bool, queryArg *string, limitArg *int, pageTokenArg *string) (LanguoidList, error)
 	// Fetch one languoid by its RID.
 	GetLanguage(ctx context.Context, authHeader bearertoken.Token, idArg string) (Languoid, error)
 	// List the ISO-15924 writing systems in code order.
@@ -97,7 +97,12 @@ func (l *languageServiceHandler) HandleListLanguages(rw http.ResponseWriter, req
 		}
 		limitArg = &limitArgInternal
 	}
-	respArg, err := l.impl.ListLanguages(req.Context(), bearertoken.Token(authHeader), levelArg, familyArg, parentArg, topLevelArg, queryArg, limitArg)
+	var pageTokenArg *string
+	if pageTokenArgStr := req.URL.Query().Get("pageToken"); pageTokenArgStr != "" {
+		pageTokenArgInternal := pageTokenArgStr
+		pageTokenArg = &pageTokenArgInternal
+	}
+	respArg, err := l.impl.ListLanguages(req.Context(), bearertoken.Token(authHeader), levelArg, familyArg, parentArg, topLevelArg, queryArg, limitArg, pageTokenArg)
 	if err != nil {
 		return err
 	}

@@ -35,15 +35,38 @@ func NewService(pool *pgxpool.Pool, newRepo RepositoryFactory) *Service {
 	return &Service{pool: pool, newRepo: newRepo}
 }
 
+// clampLimit bounds a requested page size to [1, maxLimit], applying the default when unset.
+func clampLimit(limit int) int {
+	if limit <= 0 {
+		return defaultLimit
+	}
+	if limit > maxLimit {
+		return maxLimit
+	}
+	return limit
+}
+
 // ListLanguoids returns matching languoids in code order, clamping the limit to [1, maxLimit].
 func (s *Service) ListLanguoids(ctx context.Context, f domain.Filter) ([]domain.Languoid, error) {
-	if f.Limit <= 0 {
-		f.Limit = defaultLimit
-	}
-	if f.Limit > maxLimit {
-		f.Limit = maxLimit
-	}
+	f.Limit = clampLimit(f.Limit)
 	return s.newRepo(s.pool).ListLanguoids(ctx, f)
+}
+
+// ListLanguoidsPage is the paged read for the transport layer: it returns a page of at most the clamped
+// limit plus a keyset cursor for the next page (the last glottocode), empty when the page is the last.
+// It over-fetches one row past the limit to detect whether more rows exist without a second COUNT query.
+func (s *Service) ListLanguoidsPage(ctx context.Context, f domain.Filter) ([]domain.Languoid, string, error) {
+	lim := clampLimit(f.Limit)
+	f.Limit = lim + 1
+	rows, err := s.newRepo(s.pool).ListLanguoids(ctx, f)
+	if err != nil {
+		return nil, "", err
+	}
+	if len(rows) > lim {
+		rows = rows[:lim]
+		return rows, rows[len(rows)-1].Code, nil
+	}
+	return rows, "", nil
 }
 
 // GetLanguoid returns one languoid by RID (found=false when absent).

@@ -66,6 +66,27 @@ FROM (VALUES
 ) AS v(tradition_code, code, name, so)
 JOIN oikumenea.religion_taxa t ON t.code = v.tradition_code AND t.deleted_at IS NULL;
 
+-- i18n: affiliation-type ("religion membership") names in every enabled locale. eng is the seed name
+-- column; ukr/spa/por are curated. The default-locale (ukr) row overrides the English name column that
+-- LabelsByID otherwise assigns to the default locale (localization/service.go).
+INSERT INTO oikumenea.i18n_translations (entity_type, entity_id, field, locale, text)
+SELECT 'religion_affiliation_type', a.id::text, 'name', 'eng', a.name
+FROM oikumenea.religion_affiliation_types a
+ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
+INSERT INTO oikumenea.i18n_translations (entity_type, entity_id, field, locale, text)
+SELECT 'religion_affiliation_type', a.id::text, 'name', v.locale, v.text
+FROM (VALUES
+  ('adherent','ukr','Прихильник'),       ('adherent','spa','Adherente'),        ('adherent','por','Aderente'),
+  ('member','ukr','Член'),               ('member','spa','Miembro'),            ('member','por','Membro'),
+  ('catechumen','ukr','Катехумен'),      ('catechumen','spa','Catecúmeno'),     ('catechumen','por','Catecúmeno'),
+  ('baptized','ukr','Хрещений'),         ('baptized','spa','Bautizado'),        ('baptized','por','Batizado'),
+  ('confirmed','ukr','Конфірмований'),   ('confirmed','spa','Confirmado'),      ('confirmed','por','Crismado'),
+  ('shahada','ukr','Шахада'),            ('shahada','spa','Shahada'),           ('shahada','por','Chahada'),
+  ('bar_bat_mitzvah','ukr','Бар / Бат-міцва'),('bar_bat_mitzvah','spa','Bar / Bat mitzvá'),('bar_bat_mitzvah','por','Bar / Bat mitzvá')
+) AS v(code, locale, text)
+JOIN oikumenea.religion_affiliation_types a ON a.code = v.code AND a.deleted_at IS NULL
+ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
+
 -- ===================================================================================================
 -- religion_affiliations — the reified `pii:special` Link link__affiliated_with (Person → a religion /
 -- tradition unit / community unit + an affiliation type). The optional belief detail is envelope-

@@ -18,7 +18,7 @@ export interface ILanguageService {
      * large (~26k); narrow with the filters.
      *
      */
-    listLanguages(level?: string | null, family?: string | null, parent?: string | null, topLevel?: boolean | null, query?: string | null, limit?: number | null): Promise<ILanguoidList>;
+    listLanguages(level?: string | null, family?: string | null, parent?: string | null, topLevel?: boolean | null, query?: string | null, limit?: number | null, pageToken?: string | null): Promise<ILanguoidList>;
     /** Fetch one languoid by its RID. */
     getLanguage(id: string): Promise<ILanguoid>;
     /** List the ISO-15924 writing systems in code order. */
@@ -35,7 +35,7 @@ export class LanguageService implements ILanguageService {
      * large (~26k); narrow with the filters.
      *
      */
-    public listLanguages(level?: string | null, family?: string | null, parent?: string | null, topLevel?: boolean | null, query?: string | null, limit?: number | null): Promise<ILanguoidList> {
+    public listLanguages(level?: string | null, family?: string | null, parent?: string | null, topLevel?: boolean | null, query?: string | null, limit?: number | null, pageToken?: string | null): Promise<ILanguoidList> {
         return this.bridge.call<ILanguoidList>(
             "LanguageService",
             "listLanguages",
@@ -50,6 +50,7 @@ export class LanguageService implements ILanguageService {
                 "topLevel": topLevel,
                 "query": query,
                 "limit": limit,
+                "pageToken": pageToken,
             },
             __undefined,
             __undefined,

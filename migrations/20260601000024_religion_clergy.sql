@@ -212,6 +212,51 @@ JOIN oikumenea.religion_taxa t ON t.code = v.tradition_code AND t.deleted_at IS 
 INSERT INTO oikumenea.religion_office_types (tradition_taxon_id, code, name, sort_order) VALUES
   (NULL,'head_priest','Head priest',100);
 
+-- i18n: clergy-grade ("Ступені духовенства") + grade-category names in every enabled locale. eng is the
+-- seed name column; ukr/spa/por are curated. The default-locale (ukr) row overrides the English name
+-- column that LabelsByID otherwise assigns to the default locale (localization/service.go).
+INSERT INTO oikumenea.i18n_translations (entity_type, entity_id, field, locale, text)
+SELECT 'religion_grade_category', c.id::text, 'name', 'eng', c.name
+FROM oikumenea.religion_grade_categories c
+ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
+INSERT INTO oikumenea.i18n_translations (entity_type, entity_id, field, locale, text)
+SELECT 'religion_grade_category', c.id::text, 'name', v.locale, v.text
+FROM (VALUES
+  ('major_orders','ukr','Вищі свячення'),               ('major_orders','spa','Órdenes mayores'),        ('major_orders','por','Ordens maiores'),
+  ('minor_orders','ukr','Нижчі свячення'),              ('minor_orders','spa','Órdenes menores'),        ('minor_orders','por','Ordens menores'),
+  ('religious_leadership','ukr','Релігійне провідництво'),('religious_leadership','spa','Liderazgo religioso'),('religious_leadership','por','Liderança religiosa'),
+  ('clergy','ukr','Духовенство'),                       ('clergy','spa','Clero'),                        ('clergy','por','Clero'),
+  ('monastic','ukr','Чернецтво'),                       ('monastic','spa','Monástico'),                  ('monastic','por','Monástico'),
+  ('priestly','ukr','Жрецтво'),                         ('priestly','spa','Sacerdotal'),                 ('priestly','por','Sacerdotal')
+) AS v(code, locale, text)
+JOIN oikumenea.religion_grade_categories c ON c.code = v.code AND c.deleted_at IS NULL
+ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
+
+INSERT INTO oikumenea.i18n_translations (entity_type, entity_id, field, locale, text)
+SELECT 'religion_clergy_grade', g.id::text, 'name', 'eng', g.name
+FROM oikumenea.religion_clergy_grades g
+ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
+INSERT INTO oikumenea.i18n_translations (entity_type, entity_id, field, locale, text)
+SELECT 'religion_clergy_grade', g.id::text, 'name', v.locale, v.text
+FROM (VALUES
+  ('bishop','ukr','Єпископ'),           ('bishop','spa','Obispo'),                ('bishop','por','Bispo'),
+  ('presbyter','ukr','Пресвітер / священник'),('presbyter','spa','Presbítero / sacerdote'),('presbyter','por','Presbítero / sacerdote'),
+  ('deacon','ukr','Диякон'),            ('deacon','spa','Diácono'),               ('deacon','por','Diácono'),
+  ('subdeacon','ukr','Іподиякон'),      ('subdeacon','spa','Subdiácono'),         ('subdeacon','por','Subdiácono'),
+  ('reader','ukr','Читець'),            ('reader','spa','Lector'),                ('reader','por','Leitor'),
+  ('mufti','ukr','Муфтій'),             ('mufti','spa','Muftí'),                  ('mufti','por','Mufti'),
+  ('imam','ukr','Імам'),                ('imam','spa','Imán'),                    ('imam','por','Imã'),
+  ('sheikh','ukr','Шейх'),              ('sheikh','spa','Jeque'),                 ('sheikh','por','Xeique'),
+  ('rabbi','ukr','Рабин'),              ('rabbi','spa','Rabino'),                 ('rabbi','por','Rabino'),
+  ('cantor','ukr','Кантор (хаззан)'),   ('cantor','spa','Cantor (jazán)'),        ('cantor','por','Cantor (hazã)'),
+  ('bhikkhu','ukr','Бгіккху'),          ('bhikkhu','spa','Bhikkhu'),              ('bhikkhu','por','Bhikkhu'),
+  ('lama','ukr','Лама'),                ('lama','spa','Lama'),                    ('lama','por','Lama'),
+  ('pujari','ukr','Пуджарі'),           ('pujari','spa','Pujari'),                ('pujari','por','Pujari'),
+  ('swami','ukr','Свамі'),              ('swami','spa','Suami'),                  ('swami','por','Swami')
+) AS v(code, locale, text)
+JOIN oikumenea.religion_clergy_grades g ON g.code = v.code AND g.deleted_at IS NULL
+ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
+
 -- ===================================================================================================
 -- RLS backstop (D-RLSDefenseInDepth) on religion_clergy_credentials (unit-scoped via org_unit_id).
 -- Mirrors religion_org_classifications. The app-layer PDP over the canonical graph remains AUTHORITATIVE;

@@ -47,6 +47,12 @@ types:
         docs: A page of languoids in code order.
         fields:
           languoids: list<Languoid>
+          nextPageToken:
+            type: optional<string>
+            docs: |
+              Keyset cursor (the last glottocode on this page) to fetch the next page; absent when the
+              page is the last one. Pass it back as `pageToken`. The filters must be held constant across
+              a paged sweep.
       WritingSystem:
         docs: An ISO-15924 script. `id` is the RID; `code` is the ISO-15924 lookup code.
         fields:
@@ -114,6 +120,12 @@ services:
             type: optional<integer>
             param-type: query
             docs: Max rows to return (server clamps to a sane maximum).
+          pageToken:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Keyset cursor from a previous page's `nextPageToken` (a glottocode); returns the rows that
+              sort after it in code order. Omit for the first page.
         returns: LanguoidList
       getLanguage:
         http: GET /languages/{id}

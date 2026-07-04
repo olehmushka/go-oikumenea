@@ -672,7 +672,7 @@ export function AddressManager({ personId }: { personId: string }) {
           );
         }}
       >
-        <SearchSelect kind="location" name="locationId" required placeholder="Search a location…" />
+        <SearchSelect kind="location" name="locationId" required allowCreate placeholder="Search a location…" />
         <select name="role" className="input" defaultValue="home">
           {ADDRESS_ROLES.map((r) => (
             <option key={r} value={r}>{r}</option>

@@ -71,6 +71,12 @@ func (o *Languoid) UnmarshalYAML(unmarshal func(interface{}) error) error {
 // A page of languoids in code order.
 type LanguoidList struct {
 	Languoids []Languoid `json:"languoids"`
+	/*
+	   Keyset cursor (the last glottocode on this page) to fetch the next page; absent when the
+	   page is the last one. Pass it back as `pageToken`. The filters must be held constant across
+	   a paged sweep.
+	*/
+	NextPageToken *string `json:"nextPageToken,omitempty"`
 }
 
 func (o LanguoidList) MarshalJSON() ([]byte, error) {

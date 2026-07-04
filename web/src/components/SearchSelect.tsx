@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api/client";
 import { useLocale, useTg } from "@/lib/locale";
 import { pickLabel } from "@/lib/i18n";
+import { Modal } from "@/components/Modal";
+import { LocationForm, type Location } from "@/components/LocationForm";
 
 /**
  * Server-query searchable picker (D-WebUI UX). Like LanguagePicker (and unlike EntitySelect's
@@ -70,12 +72,16 @@ export function SearchSelect({
   onChange,
   required = false,
   placeholder = "Search…",
+  allowCreate = false,
 }: {
   kind: SearchKind;
   name?: string;
   onChange?: (id: string) => void;
   required?: boolean;
   placeholder?: string;
+  // When set (and kind === "location"), show a "＋" button that opens a modal to create a new location
+  // inline; on create it is auto-selected here. No-op for other kinds (only locations have a form).
+  allowCreate?: boolean;
 }) {
   const { locale } = useLocale();
   const tr = useTg();
@@ -85,7 +91,9 @@ export function SearchSelect({
   const [selected, setSelected] = useState<Result | null>(null);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [creating, setCreating] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
+  const canCreate = allowCreate && kind === "location";
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
@@ -125,6 +133,10 @@ export function SearchSelect({
     setQuery("");
     onChange?.(r.id);
   }
+  function onLocationCreated(loc: Location) {
+    setCreating(false);
+    choose(cfg.toResult(loc as unknown as Record<string, unknown>, locale));
+  }
   function clear() {
     setSelected(null);
     setQuery("");
@@ -147,18 +159,30 @@ export function SearchSelect({
           </button>
         </div>
       ) : (
-        <input
-          className="input"
-          placeholder={tr(placeholder)}
-          value={query}
-          required={required}
-          autoComplete="off"
-          onFocus={() => setOpen(true)}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setOpen(true);
-          }}
-        />
+        <div className="flex items-center gap-2">
+          <input
+            className="input flex-1"
+            placeholder={tr(placeholder)}
+            value={query}
+            required={required}
+            autoComplete="off"
+            onFocus={() => setOpen(true)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setOpen(true);
+            }}
+          />
+          {canCreate ? (
+            <button
+              type="button"
+              className="btn-ghost shrink-0"
+              title={tr("Create a location")}
+              onClick={() => setCreating(true)}
+            >
+              ＋
+            </button>
+          ) : null}
+        </div>
       )}
       {open && !selected && (query.trim().length >= 1 || results.length > 0) ? (
         <div className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md border border-slate-200 bg-white shadow-lg">
@@ -180,6 +204,11 @@ export function SearchSelect({
             ))
           )}
         </div>
+      ) : null}
+      {canCreate ? (
+        <Modal open={creating} title={tr("Create a location")} onClose={() => setCreating(false)}>
+          <LocationForm onCreated={onLocationCreated} submitLabel={tr("Create and select")} />
+        </Modal>
       ) : null}
     </div>
   );

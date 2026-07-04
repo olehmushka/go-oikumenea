@@ -64,8 +64,9 @@ WHERE ($1::text = '' OR l.level = $1::text)
   AND ($3::text = '' OR l.parent_id::text = $3::text)
   AND (NOT $4::bool OR l.parent_id IS NULL)
   AND ($5::text = '' OR l.name ILIKE '%' || $5::text || '%' OR l.code ILIKE $5::text || '%')
+  AND ($6::text = '' OR l.code > $6::text)
 ORDER BY l.code
-LIMIT $6::int
+LIMIT $7::int
 `
 
 type ListLanguoidsParams struct {
@@ -74,6 +75,7 @@ type ListLanguoidsParams struct {
 	Parent   string
 	TopLevel bool
 	Q        string
+	After    string
 	Lim      int32
 }
 
@@ -94,8 +96,9 @@ type ListLanguoidsRow struct {
 // RID-keyed Glottolog languoid forest + ISO-15924 writing-system registry. The catalog is written by
 // the hermenea import pipeline (language-scheme / language-scripts), not here.
 // Languoids in code order, optionally filtered by level, root family (family_code), immediate parent
-// (one tree level), top-level-only, and a name/glottocode substring. The empty-string / false
-// sentinels disable each filter; the limit is clamped by the application. has_children flags whether
+// (one tree level), top-level-only, a name/glottocode substring, and a keyset cursor (after: return
+// rows whose code sorts strictly after it, for pagination). The empty-string / false sentinels disable
+// each filter; the limit is clamped by the application. has_children flags whether
 // the node has any non-dialect child, so a tree browser can show an expand affordance only where it
 // leads somewhere (family → language; languages whose only children are dialects read as leaves).
 func (q *Queries) ListLanguoids(ctx context.Context, arg ListLanguoidsParams) ([]ListLanguoidsRow, error) {
@@ -105,6 +108,7 @@ func (q *Queries) ListLanguoids(ctx context.Context, arg ListLanguoidsParams) ([
 		arg.Parent,
 		arg.TopLevel,
 		arg.Q,
+		arg.After,
 		arg.Lim,
 	)
 	if err != nil {

@@ -56,15 +56,15 @@ func deref(p *string) string {
 }
 
 // ListLanguages implements GET /languages.
-func (s Service) ListLanguages(ctx context.Context, token bearertoken.Token, level, family, parent *string, topLevel *bool, query *string, limit *int) (languageapi.LanguoidList, error) {
+func (s Service) ListLanguages(ctx context.Context, token bearertoken.Token, level, family, parent *string, topLevel *bool, query *string, limit *int, pageToken *string) (languageapi.LanguoidList, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermLanguageRead)); err != nil {
 		return languageapi.LanguoidList{}, err
 	}
-	f := domain.Filter{Level: deref(level), Family: deref(family), Parent: deref(parent), TopLevel: topLevel != nil && *topLevel, Query: deref(query)}
+	f := domain.Filter{Level: deref(level), Family: deref(family), Parent: deref(parent), TopLevel: topLevel != nil && *topLevel, Query: deref(query), After: deref(pageToken)}
 	if limit != nil {
 		f.Limit = *limit
 	}
-	langs, err := s.app.ListLanguoids(ctx, f)
+	langs, next, err := s.app.ListLanguoidsPage(ctx, f)
 	if err != nil {
 		return languageapi.LanguoidList{}, werror.WrapWithContextParams(ctx, err, "list languoids failed")
 	}
@@ -80,7 +80,11 @@ func (s Service) ListLanguages(ctx context.Context, token bearertoken.Token, lev
 	for _, l := range langs {
 		out = append(out, toAPILanguoid(l, names[l.ID]))
 	}
-	return languageapi.LanguoidList{Languoids: out}, nil
+	list := languageapi.LanguoidList{Languoids: out}
+	if next != "" {
+		list.NextPageToken = &next
+	}
+	return list, nil
 }
 
 // GetLanguage implements GET /languages/{id}.

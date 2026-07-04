@@ -23,7 +23,7 @@ type LanguageServiceClient interface {
 	   name/code substring. `limit` caps the page (default/clamped server-side) since the catalog is
 	   large (~26k); narrow with the filters.
 	*/
-	ListLanguages(ctx context.Context, authHeader bearertoken.Token, levelArg *string, familyArg *string, parentArg *string, topLevelArg *bool, queryArg *string, limitArg *int) (LanguoidList, error)
+	ListLanguages(ctx context.Context, authHeader bearertoken.Token, levelArg *string, familyArg *string, parentArg *string, topLevelArg *bool, queryArg *string, limitArg *int, pageTokenArg *string) (LanguoidList, error)
 	// Fetch one languoid by its RID.
 	GetLanguage(ctx context.Context, authHeader bearertoken.Token, idArg string) (Languoid, error)
 	// List the ISO-15924 writing systems in code order.
@@ -38,7 +38,7 @@ func NewLanguageServiceClient(client httpclient.Client) LanguageServiceClient {
 	return &languageServiceClient{client: client}
 }
 
-func (c *languageServiceClient) ListLanguages(ctx context.Context, authHeader bearertoken.Token, levelArg *string, familyArg *string, parentArg *string, topLevelArg *bool, queryArg *string, limitArg *int) (LanguoidList, error) {
+func (c *languageServiceClient) ListLanguages(ctx context.Context, authHeader bearertoken.Token, levelArg *string, familyArg *string, parentArg *string, topLevelArg *bool, queryArg *string, limitArg *int, pageTokenArg *string) (LanguoidList, error) {
 	var returnVal *LanguoidList
 	var requestParams []httpclient.RequestParam
 	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListLanguages"))
@@ -62,6 +62,9 @@ func (c *languageServiceClient) ListLanguages(ctx context.Context, authHeader be
 	}
 	if limitArg != nil {
 		queryParams.Set("limit", fmt.Sprint(*limitArg))
+	}
+	if pageTokenArg != nil {
+		queryParams.Set("pageToken", fmt.Sprint(*pageTokenArg))
 	}
 	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
 	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
@@ -119,7 +122,7 @@ type LanguageServiceClientWithAuth interface {
 	   name/code substring. `limit` caps the page (default/clamped server-side) since the catalog is
 	   large (~26k); narrow with the filters.
 	*/
-	ListLanguages(ctx context.Context, levelArg *string, familyArg *string, parentArg *string, topLevelArg *bool, queryArg *string, limitArg *int) (LanguoidList, error)
+	ListLanguages(ctx context.Context, levelArg *string, familyArg *string, parentArg *string, topLevelArg *bool, queryArg *string, limitArg *int, pageTokenArg *string) (LanguoidList, error)
 	// Fetch one languoid by its RID.
 	GetLanguage(ctx context.Context, idArg string) (Languoid, error)
 	// List the ISO-15924 writing systems in code order.
@@ -135,8 +138,8 @@ type languageServiceClientWithAuth struct {
 	authHeader bearertoken.Token
 }
 
-func (c *languageServiceClientWithAuth) ListLanguages(ctx context.Context, levelArg *string, familyArg *string, parentArg *string, topLevelArg *bool, queryArg *string, limitArg *int) (LanguoidList, error) {
-	return c.client.ListLanguages(ctx, c.authHeader, levelArg, familyArg, parentArg, topLevelArg, queryArg, limitArg)
+func (c *languageServiceClientWithAuth) ListLanguages(ctx context.Context, levelArg *string, familyArg *string, parentArg *string, topLevelArg *bool, queryArg *string, limitArg *int, pageTokenArg *string) (LanguoidList, error) {
+	return c.client.ListLanguages(ctx, c.authHeader, levelArg, familyArg, parentArg, topLevelArg, queryArg, limitArg, pageTokenArg)
 }
 
 func (c *languageServiceClientWithAuth) GetLanguage(ctx context.Context, idArg string) (Languoid, error) {
@@ -156,12 +159,12 @@ type languageServiceClientWithTokenProvider struct {
 	tokenProvider httpclient.TokenProvider
 }
 
-func (c *languageServiceClientWithTokenProvider) ListLanguages(ctx context.Context, levelArg *string, familyArg *string, parentArg *string, topLevelArg *bool, queryArg *string, limitArg *int) (LanguoidList, error) {
+func (c *languageServiceClientWithTokenProvider) ListLanguages(ctx context.Context, levelArg *string, familyArg *string, parentArg *string, topLevelArg *bool, queryArg *string, limitArg *int, pageTokenArg *string) (LanguoidList, error) {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
 		return *new(LanguoidList), err
 	}
-	return c.client.ListLanguages(ctx, bearertoken.Token(token), levelArg, familyArg, parentArg, topLevelArg, queryArg, limitArg)
+	return c.client.ListLanguages(ctx, bearertoken.Token(token), levelArg, familyArg, parentArg, topLevelArg, queryArg, limitArg, pageTokenArg)
 }
 
 func (c *languageServiceClientWithTokenProvider) GetLanguage(ctx context.Context, idArg string) (Languoid, error) {

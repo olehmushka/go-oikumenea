@@ -153,9 +153,10 @@ func (r Reach) Reachable(unitID string) bool {
 	return ok
 }
 
-// ReachSet expands the subject's active grants into the effective read/write unit-sets: each grant's
-// target (always), plus the authority-bearing subtree descendants for a subtree grant; classified
-// into Readable / Writable by whether the role carries any read / any mutating permission.
+// ReachSet expands the subject's active grants into the effective read/write unit-sets: a `unit`
+// grant's target, and a subtree grant's target + descendants when its graph is authority-bearing (a
+// directory-only subtree grant contributes nothing at all, mirroring Decide — D-DirectoryGraphs);
+// classified into Readable / Writable by whether the role carries any read / any mutating permission.
 func (p PDP) ReachSet(ctx context.Context, grants []ActiveGrant, isInstanceAdmin bool) (Reach, error) {
 	if isInstanceAdmin {
 		return Reach{InstanceAdmin: true, Readable: map[string]struct{}{}, Writable: map[string]struct{}{}}, nil
@@ -172,13 +173,14 @@ func (p PDP) ReachSet(ctx context.Context, grants []ActiveGrant, isInstanceAdmin
 			if err != nil {
 				return Reach{}, err
 			}
-			if bearing {
-				desc, err := p.closure.DescendantUnitIDs(ctx, g.GraphID, g.TargetUnitID)
-				if err != nil {
-					return Reach{}, err
-				}
-				units = append(units, desc...)
+			if !bearing {
+				continue // directory-only graph confers nothing, not even the target — matches Decide (D-DirectoryGraphs)
 			}
+			desc, err := p.closure.DescendantUnitIDs(ctx, g.GraphID, g.TargetUnitID)
+			if err != nil {
+				return Reach{}, err
+			}
+			units = append(units, desc...)
 		}
 		for _, u := range units {
 			if hasRead {

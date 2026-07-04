@@ -123,6 +123,53 @@ FROM (VALUES
 ) AS v(tradition_code, code, name, so)
 JOIN oikumenea.religion_taxa t ON t.code = v.tradition_code AND t.deleted_at IS NULL;
 
+-- i18n: site-type ("Типи об’єктів") + service-type ("Типи служінь") names in every enabled locale. eng
+-- is the seed name column; ukr/spa/por are curated. The default-locale (ukr) row overrides the English
+-- name column that LabelsByID otherwise assigns to the default locale. Codes shared across traditions
+-- (e.g. 'temple') resolve to every matching row via the JOIN — the shared label applies to all.
+INSERT INTO oikumenea.i18n_translations (entity_type, entity_id, field, locale, text)
+SELECT 'religion_site_type', s.id::text, 'name', 'eng', s.name
+FROM oikumenea.religion_site_types s
+ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
+INSERT INTO oikumenea.i18n_translations (entity_type, entity_id, field, locale, text)
+SELECT 'religion_site_type', s.id::text, 'name', v.locale, v.text
+FROM (VALUES
+  ('office','ukr','Офіс'),          ('office','spa','Oficina'),      ('office','por','Escritório'),
+  ('online','ukr','Онлайн'),        ('online','spa','En línea'),     ('online','por','Online'),
+  ('mission','ukr','Місія'),        ('mission','spa','Misión'),      ('mission','por','Missão'),
+  ('shrine','ukr','Святиня'),       ('shrine','spa','Santuario'),    ('shrine','por','Santuário'),
+  ('church','ukr','Церква'),        ('church','spa','Iglesia'),      ('church','por','Igreja'),
+  ('cathedral','ukr','Собор'),      ('cathedral','spa','Catedral'),  ('cathedral','por','Catedral'),
+  ('chapel','ukr','Каплиця'),       ('chapel','spa','Capilla'),      ('chapel','por','Capela'),
+  ('monastery','ukr','Монастир'),   ('monastery','spa','Monasterio'),('monastery','por','Mosteiro'),
+  ('mosque','ukr','Мечеть'),        ('mosque','spa','Mezquita'),     ('mosque','por','Mesquita'),
+  ('synagogue','ukr','Синагога'),   ('synagogue','spa','Sinagoga'),  ('synagogue','por','Sinagoga'),
+  ('temple','ukr','Храм'),          ('temple','spa','Templo'),       ('temple','por','Templo'),
+  ('gurdwara','ukr','Гурдвара'),    ('gurdwara','spa','Gurdwara'),   ('gurdwara','por','Gurdwara')
+) AS v(code, locale, text)
+JOIN oikumenea.religion_site_types s ON s.code = v.code AND s.deleted_at IS NULL
+ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
+
+INSERT INTO oikumenea.i18n_translations (entity_type, entity_id, field, locale, text)
+SELECT 'religion_service_type', s.id::text, 'name', 'eng', s.name
+FROM oikumenea.religion_service_types s
+ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
+INSERT INTO oikumenea.i18n_translations (entity_type, entity_id, field, locale, text)
+SELECT 'religion_service_type', s.id::text, 'name', v.locale, v.text
+FROM (VALUES
+  ('main','ukr','Головне богослужіння'),   ('main','spa','Servicio principal'), ('main','por','Serviço principal'),
+  ('youth','ukr','Молодіжне богослужіння'),('youth','spa','Servicio juvenil'),  ('youth','por','Serviço jovem'),
+  ('prayer','ukr','Молитва'),              ('prayer','spa','Oración'),          ('prayer','por','Oração'),
+  ('special','ukr','Особливе богослужіння'),('special','spa','Servicio especial'),('special','por','Serviço especial'),
+  ('daily_mass','ukr','Щоденна меса'),     ('daily_mass','spa','Misa diaria'),  ('daily_mass','por','Missa diária'),
+  ('jumua','ukr','П’ятнична молитва (джума)'),('jumua','spa','Oración del viernes (yumu''a)'),('jumua','por','Oração de sexta-feira (jumuʿah)'),
+  ('shabbat','ukr','Шабатнє богослужіння'),('shabbat','spa','Servicio de Shabat'),('shabbat','por','Serviço de Shabat'),
+  ('puja','ukr','Пуджа'),                  ('puja','spa','Puyá'),               ('puja','por','Puja'),
+  ('meditation','ukr','Медитація'),        ('meditation','spa','Meditación'),   ('meditation','por','Meditação')
+) AS v(code, locale, text)
+JOIN oikumenea.religion_service_types s ON s.code = v.code AND s.deleted_at IS NULL
+ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
+
 -- ===================================================================================================
 -- religion_sites — the reified Link link__site_of (worship-community Unit ↔ a shared Location). One
 -- shared location may be published at different precisions by different owners (the precision lives on

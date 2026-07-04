@@ -40,6 +40,9 @@ type Filter struct {
 	TopLevel bool
 	Query    string
 	Limit    int
+	// After is a keyset cursor: when non-empty, only languoids whose code sorts strictly after it are
+	// returned (the list is ordered by code). Empty disables the criterion (first page).
+	After string
 }
 
 // Repository is the language module's port: a read-only view of the languoid + writing-system registry.

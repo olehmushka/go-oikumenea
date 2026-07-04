@@ -36,6 +36,7 @@ func (r *Repository) ListLanguoids(ctx context.Context, f domain.Filter) ([]doma
 		Parent:   f.Parent,
 		TopLevel: f.TopLevel,
 		Q:        f.Query,
+		After:    f.After,
 		Lim:      int32(f.Limit),
 	})
 	if err != nil {

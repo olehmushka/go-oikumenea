@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api/client";
 import { PageHeader, Card, Table, Mono, Pill } from "@/components/ui";
+import { UnitSelect } from "@/components/UnitSelect";
 import { ErrorBox } from "@/components/ErrorBox";
 import { T } from "@/components/T";
 import { useTg } from "@/lib/locale";
@@ -185,7 +186,6 @@ function AffiliationTypesPanel() {
 
 // ClergyRosterPanel lists the people holding a credential conferred by a given organization unit.
 function ClergyRosterPanel() {
-  const tr = useTg();
   const [unitId, setUnitId] = useState("");
   const [rows, setRows] = useState<ClergyCredential[] | null>(null);
   const [err, setErr] = useState<unknown>(null);
@@ -201,11 +201,11 @@ function ClergyRosterPanel() {
     <Card>
       <h2 className="mb-3 text-sm font-semibold text-slate-700"><T>Clergy roster (by org unit)</T></h2>
       {err ? <div className="mb-3"><ErrorBox error={err} /></div> : null}
-      <form onSubmit={lookup} className="mb-3 flex gap-2">
-        <input className="input flex-1" placeholder={tr("org unit RID")} value={unitId} onChange={(e) => setUnitId(e.target.value)} />
-        <button className="btn" type="submit"><T>Lookup</T></button>
+      <form onSubmit={lookup} className="mb-3 flex items-start gap-2">
+        <div className="flex-1"><UnitSelect onChange={setUnitId} /></div>
+        <button className="btn" type="submit" disabled={!unitId.trim()}><T>Lookup</T></button>
       </form>
-      {rows === null ? <p className="text-sm text-slate-400"><T>Enter a unit RID.</T></p> : rows.length === 0 ? (
+      {rows === null ? <p className="text-sm text-slate-400"><T>Select an org unit.</T></p> : rows.length === 0 ? (
         <p className="text-sm text-slate-400"><T>No credentials conferred by this unit.</T></p>
       ) : (
         <ul className="space-y-0.5 text-sm text-slate-700">
@@ -223,14 +223,74 @@ function ClergyRosterPanel() {
   );
 }
 
+// TaxaTable renders the taxonomy as an indented TREE (religion → branch → tradition → …). The flat list
+// is assembled into a forest via parentId (a node whose parent isn't in the current — possibly filtered —
+// set becomes a root), then walked in pre-order so children follow their parent. Rows with children carry
+// a collapse toggle; the tree is fully expanded by default so the hierarchy is visible at a glance.
 function TaxaTable({ taxa, selected, onSelect }: { taxa: Taxon[]; selected: Taxon | null; onSelect: (t: Taxon) => void }) {
   const tr = useTg();
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  const { roots, childrenOf } = useMemo(() => {
+    const ids = new Set(taxa.map((t) => t.id));
+    const childrenOf = new Map<string, Taxon[]>();
+    const roots: Taxon[] = [];
+    for (const t of taxa) {
+      if (t.parentId && ids.has(t.parentId)) {
+        const arr = childrenOf.get(t.parentId) ?? [];
+        arr.push(t);
+        childrenOf.set(t.parentId, arr);
+      } else {
+        roots.push(t);
+      }
+    }
+    return { roots, childrenOf };
+  }, [taxa]);
+
+  const rows = useMemo(() => {
+    const out: { taxon: Taxon; depth: number; hasChildren: boolean }[] = [];
+    const walk = (nodes: Taxon[], depth: number) => {
+      for (const t of nodes) {
+        const kids = childrenOf.get(t.id) ?? [];
+        out.push({ taxon: t, depth, hasChildren: kids.length > 0 });
+        if (kids.length > 0 && !collapsed.has(t.id)) walk(kids, depth + 1);
+      }
+    };
+    walk(roots, 0);
+    return out;
+  }, [roots, childrenOf, collapsed]);
+
+  function toggle(id: string) {
+    setCollapsed((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  }
+
   if (taxa.length === 0) return <p className="text-sm text-slate-400"><T>No taxa match.</T></p>;
   return (
     <Table head={["Name", "Rank", "Code", "Wikidata"].map(tr)}>
-      {taxa.map((t) => (
+      {rows.map(({ taxon: t, depth, hasChildren }) => (
         <tr key={t.id} className={`cursor-pointer hover:bg-slate-50 ${selected?.id === t.id ? "bg-slate-50" : ""}`} onClick={() => onSelect(t)}>
-          <td className="py-1.5">{pickLabel(t.name)}</td>
+          <td className="py-1.5">
+            <span className="inline-flex items-center" style={{ paddingLeft: `${depth * 1.25}rem` }}>
+              {hasChildren ? (
+                <button
+                  type="button"
+                  className="mr-1 w-4 shrink-0 text-slate-400 hover:text-slate-700"
+                  aria-label={collapsed.has(t.id) ? tr("expand") : tr("collapse")}
+                  onClick={(e) => { e.stopPropagation(); toggle(t.id); }}
+                >
+                  {collapsed.has(t.id) ? "▸" : "▾"}
+                </button>
+              ) : (
+                <span className="mr-1 inline-block w-4 shrink-0" />
+              )}
+              {pickLabel(t.name)}
+            </span>
+          </td>
           <td><Pill>{t.rankCode}</Pill></td>
           <td><Mono>{t.code}</Mono></td>
           <td>{t.wikidataId ? <Mono>{t.wikidataId}</Mono> : <span className="text-slate-300">—</span>}</td>
@@ -529,9 +589,9 @@ function UnitSitesPanel() {
     <Card>
       <h2 className="mb-3 text-sm font-semibold text-slate-700"><T>Sites &amp; aliases (by org unit)</T></h2>
       {err ? <div className="mb-3"><ErrorBox error={err} /></div> : null}
-      <div className="mb-3 flex gap-2">
-        <input className="input flex-1" placeholder={tr("org unit RID")} value={unitId} onChange={(e) => setUnitId(e.target.value)} />
-        <button className="btn" onClick={load}><T>Load</T></button>
+      <div className="mb-3 flex items-start gap-2">
+        <div className="flex-1"><UnitSelect onChange={setUnitId} /></div>
+        <button className="btn" onClick={load} disabled={!unitId.trim()}><T>Load</T></button>
       </div>
       {sites !== null && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

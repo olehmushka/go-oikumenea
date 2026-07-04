@@ -69,8 +69,8 @@ export interface ListDef {
   search?: string;
   /**
    * when set, the explore page shows a search box whose text is sent to the backend as this query
-   * param for a name/code substring match (e.g. "query" for languoids). Use for large catalogs whose
-   * list endpoint isn't paginated and can't be browsed past its limit.
+   * param for a name/code substring match (e.g. "query" for languoids). Handy for large catalogs to
+   * jump straight to a row; pairs with keyset pagination (nextPageToken) for browsing.
    */
   searchParam?: string;
   /**

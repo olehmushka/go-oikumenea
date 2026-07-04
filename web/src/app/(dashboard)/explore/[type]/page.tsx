@@ -41,8 +41,8 @@ export default async function ExplorePage({
   const { pageToken, q, org, view } = await searchParams;
   // Units support a hierarchical (expand-on-click) Tree view alongside the flat Table.
   const treeView = type === "unit" && view === "tree";
-  // Backend substring search (e.g. languoids): the catalog is large and the list isn't paginable past
-  // its limit, so the query param is the only way to reach rows beyond the first page.
+  // Backend substring search (e.g. languoids): the catalog is large, so the query param narrows it;
+  // browsing beyond the first page is via keyset pagination (pageToken/nextPageToken, the Pager below).
   const query = def.list.searchParam ? (q ?? "").trim() : "";
 
   // Org-scoped lists (units; M40) require an `org` RID before the backend will list anything; without
