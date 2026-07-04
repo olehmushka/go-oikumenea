@@ -1458,6 +1458,32 @@ type OikumeneaPersonEthnicityTypeLanguage struct {
 	LanguageID string
 }
 
+type OikumeneaPersonExternalReference struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:none
+	Kind string
+	// pii:basic
+	Url string
+	// pii:basic
+	ExternalID pgtype.Text
+	// pii:basic
+	Categories []string
+	// pii:none
+	LastChecked pgtype.Timestamptz
+	// pii:none
+	Disputed bool
+	// pii:none
+	Source string
+	// pii:none
+	Confidence string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
+}
+
 type OikumeneaPersonGovernanceMembership struct {
 	// pii:none
 	ID string
@@ -1472,6 +1498,38 @@ type OikumeneaPersonGovernanceMembership struct {
 	CreatedAt     pgtype.Timestamptz
 	UpdatedAt     pgtype.Timestamptz
 	DeletedAt     pgtype.Timestamptz
+}
+
+type OikumeneaPersonGovernmentPosition struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:basic
+	Title string
+	// pii:basic
+	Body string
+	// pii:none
+	OrgID pgtype.Text
+	// pii:none
+	CountryID pgtype.Text
+	// pii:none
+	Level string
+	// pii:basic
+	RoleType pgtype.Text
+	// pii:basic
+	ValidFrom pgtype.Date
+	// pii:basic
+	ValidTo pgtype.Date
+	// pii:none
+	PepTrigger bool
+	// pii:none
+	Source string
+	// pii:none
+	Confidence string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
 }
 
 type OikumeneaPersonGrantHolding struct {
@@ -1540,6 +1598,36 @@ type OikumeneaPersonLanguage struct {
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaPersonLobbyingRelationship struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:basic
+	Registrant string
+	// pii:basic
+	Client pgtype.Text
+	// pii:basic
+	LegislativeBody pgtype.Text
+	// pii:basic
+	Issues []string
+	// pii:basic
+	FilingID pgtype.Text
+	// pii:basic
+	SourceUrl pgtype.Text
+	// pii:basic
+	ValidFrom pgtype.Date
+	// pii:basic
+	ValidTo pgtype.Date
+	// pii:none
+	Source string
+	// pii:none
+	Confidence string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
 }
 
 type OikumeneaPersonMessengerLink struct {
@@ -1633,6 +1721,38 @@ type OikumeneaPersonPartnership struct {
 	CreatedAt   pgtype.Timestamptz
 	UpdatedAt   pgtype.Timestamptz
 	DeletedAt   pgtype.Timestamptz
+}
+
+type OikumeneaPersonPartyMembership struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:special
+	PartyCiphertext []byte
+	// pii:special
+	PartyWrappedDek []byte
+	// pii:none
+	PartyKeyRef pgtype.Text
+	// pii:special
+	PartyBlindIndex []byte
+	// pii:basic
+	Role string
+	// pii:basic
+	ValidFrom pgtype.Date
+	// pii:basic
+	ValidTo pgtype.Date
+	// pii:none
+	LegalBasis string
+	// pii:none
+	Status string
+	// pii:none
+	Source string
+	// pii:none
+	Confidence string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
 }
 
 type OikumeneaPersonPerson struct {

@@ -83,6 +83,30 @@ type PersonService interface {
 	UpsertAddress(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertAddressRequest) (Address, error)
 	// Remove an address by id.
 	DeleteAddress(ctx context.Context, authHeader bearertoken.Token, personIdArg string, addressIdArg string) error
+	// List a person's party memberships (D-InstitutionalTies, M33; pii:special, decrypted).
+	ListPartyMemberships(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]PartyMembership, error)
+	// Add a party membership, or replace one when id is supplied. Requires legalBasis (Art. 9).
+	UpsertPartyMembership(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertPartyMembershipRequest) (PartyMembership, error)
+	// Remove a party membership by id.
+	DeletePartyMembership(ctx context.Context, authHeader bearertoken.Token, personIdArg string, membershipIdArg string) error
+	// List a person's government positions (D-InstitutionalTies, M33; pii:basic).
+	ListGovernmentPositions(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]GovernmentPosition, error)
+	// Add a government position, or replace one when id is supplied.
+	UpsertGovernmentPosition(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertGovernmentPositionRequest) (GovernmentPosition, error)
+	// Remove a government position by id.
+	DeleteGovernmentPosition(ctx context.Context, authHeader bearertoken.Token, personIdArg string, positionIdArg string) error
+	// List a person's lobbying relationships (D-InstitutionalTies, M33; pii:basic).
+	ListLobbyingRelationships(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]LobbyingRelationship, error)
+	// Add a lobbying relationship, or replace one when id is supplied.
+	UpsertLobbyingRelationship(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertLobbyingRelationshipRequest) (LobbyingRelationship, error)
+	// Remove a lobbying relationship by id.
+	DeleteLobbyingRelationship(ctx context.Context, authHeader bearertoken.Token, personIdArg string, relationshipIdArg string) error
+	// List a person's external references (D-InstitutionalTies, M33; pii:basic).
+	ListExternalReferences(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]ExternalReference, error)
+	// Add an external reference (idempotent by url), or replace one when id is supplied.
+	UpsertExternalReference(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertExternalReferenceRequest) (ExternalReference, error)
+	// Remove an external reference by id.
+	DeleteExternalReference(ctx context.Context, authHeader bearertoken.Token, personIdArg string, referenceIdArg string) error
 	/*
 	   List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
 	   the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
@@ -280,6 +304,42 @@ func RegisterRoutesPersonService(router wrouter.Router, impl PersonService, rout
 	}
 	if err := resource.Delete("DeleteAddress", "/person/v1/persons/{personId}/addresses/{addressId}", httpserver.NewJSONHandler(handler.HandleDeleteAddress, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteAddress route")
+	}
+	if err := resource.Get("ListPartyMemberships", "/person/v1/persons/{personId}/party-memberships", httpserver.NewJSONHandler(handler.HandleListPartyMemberships, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listPartyMemberships route")
+	}
+	if err := resource.Put("UpsertPartyMembership", "/person/v1/persons/{personId}/party-memberships", httpserver.NewJSONHandler(handler.HandleUpsertPartyMembership, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertPartyMembership route")
+	}
+	if err := resource.Delete("DeletePartyMembership", "/person/v1/persons/{personId}/party-memberships/{membershipId}", httpserver.NewJSONHandler(handler.HandleDeletePartyMembership, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deletePartyMembership route")
+	}
+	if err := resource.Get("ListGovernmentPositions", "/person/v1/persons/{personId}/government-positions", httpserver.NewJSONHandler(handler.HandleListGovernmentPositions, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listGovernmentPositions route")
+	}
+	if err := resource.Put("UpsertGovernmentPosition", "/person/v1/persons/{personId}/government-positions", httpserver.NewJSONHandler(handler.HandleUpsertGovernmentPosition, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertGovernmentPosition route")
+	}
+	if err := resource.Delete("DeleteGovernmentPosition", "/person/v1/persons/{personId}/government-positions/{positionId}", httpserver.NewJSONHandler(handler.HandleDeleteGovernmentPosition, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteGovernmentPosition route")
+	}
+	if err := resource.Get("ListLobbyingRelationships", "/person/v1/persons/{personId}/lobbying-relationships", httpserver.NewJSONHandler(handler.HandleListLobbyingRelationships, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listLobbyingRelationships route")
+	}
+	if err := resource.Put("UpsertLobbyingRelationship", "/person/v1/persons/{personId}/lobbying-relationships", httpserver.NewJSONHandler(handler.HandleUpsertLobbyingRelationship, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertLobbyingRelationship route")
+	}
+	if err := resource.Delete("DeleteLobbyingRelationship", "/person/v1/persons/{personId}/lobbying-relationships/{relationshipId}", httpserver.NewJSONHandler(handler.HandleDeleteLobbyingRelationship, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteLobbyingRelationship route")
+	}
+	if err := resource.Get("ListExternalReferences", "/person/v1/persons/{personId}/external-references", httpserver.NewJSONHandler(handler.HandleListExternalReferences, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listExternalReferences route")
+	}
+	if err := resource.Put("UpsertExternalReference", "/person/v1/persons/{personId}/external-references", httpserver.NewJSONHandler(handler.HandleUpsertExternalReference, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertExternalReference route")
+	}
+	if err := resource.Delete("DeleteExternalReference", "/person/v1/persons/{personId}/external-references/{referenceId}", httpserver.NewJSONHandler(handler.HandleDeleteExternalReference, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteExternalReference route")
 	}
 	if err := resource.Get("ListEthnicityTypes", "/person/v1/ethnicity-types", httpserver.NewJSONHandler(handler.HandleListEthnicityTypes, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listEthnicityTypes route")
@@ -965,6 +1025,286 @@ func (p *personServiceHandler) HandleDeleteAddress(rw http.ResponseWriter, req *
 		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"addressId\" not present")
 	}
 	if err := p.impl.DeleteAddress(req.Context(), bearertoken.Token(authHeader), personIdArg, addressIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (p *personServiceHandler) HandleListPartyMemberships(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.ListPartyMemberships(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpsertPartyMembership(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg UpsertPartyMembershipRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertPartyMembership(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleDeletePartyMembership(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	membershipIdArg, ok := pathParams["membershipId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"membershipId\" not present")
+	}
+	if err := p.impl.DeletePartyMembership(req.Context(), bearertoken.Token(authHeader), personIdArg, membershipIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (p *personServiceHandler) HandleListGovernmentPositions(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.ListGovernmentPositions(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpsertGovernmentPosition(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg UpsertGovernmentPositionRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertGovernmentPosition(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleDeleteGovernmentPosition(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	positionIdArg, ok := pathParams["positionId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"positionId\" not present")
+	}
+	if err := p.impl.DeleteGovernmentPosition(req.Context(), bearertoken.Token(authHeader), personIdArg, positionIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (p *personServiceHandler) HandleListLobbyingRelationships(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.ListLobbyingRelationships(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpsertLobbyingRelationship(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg UpsertLobbyingRelationshipRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertLobbyingRelationship(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleDeleteLobbyingRelationship(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	relationshipIdArg, ok := pathParams["relationshipId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"relationshipId\" not present")
+	}
+	if err := p.impl.DeleteLobbyingRelationship(req.Context(), bearertoken.Token(authHeader), personIdArg, relationshipIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (p *personServiceHandler) HandleListExternalReferences(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.ListExternalReferences(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpsertExternalReference(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg UpsertExternalReferenceRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertExternalReference(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleDeleteExternalReference(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	referenceIdArg, ok := pathParams["referenceId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"referenceId\" not present")
+	}
+	if err := p.impl.DeleteExternalReference(req.Context(), bearertoken.Token(authHeader), personIdArg, referenceIdArg); err != nil {
 		return err
 	}
 	rw.WriteHeader(http.StatusNoContent)

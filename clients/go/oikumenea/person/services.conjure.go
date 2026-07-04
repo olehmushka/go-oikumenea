@@ -80,6 +80,30 @@ type PersonServiceClient interface {
 	UpsertAddress(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertAddressRequest) (Address, error)
 	// Remove an address by id.
 	DeleteAddress(ctx context.Context, authHeader bearertoken.Token, personIdArg string, addressIdArg string) error
+	// List a person's party memberships (D-InstitutionalTies, M33; pii:special, decrypted).
+	ListPartyMemberships(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]PartyMembership, error)
+	// Add a party membership, or replace one when id is supplied. Requires legalBasis (Art. 9).
+	UpsertPartyMembership(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertPartyMembershipRequest) (PartyMembership, error)
+	// Remove a party membership by id.
+	DeletePartyMembership(ctx context.Context, authHeader bearertoken.Token, personIdArg string, membershipIdArg string) error
+	// List a person's government positions (D-InstitutionalTies, M33; pii:basic).
+	ListGovernmentPositions(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]GovernmentPosition, error)
+	// Add a government position, or replace one when id is supplied.
+	UpsertGovernmentPosition(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertGovernmentPositionRequest) (GovernmentPosition, error)
+	// Remove a government position by id.
+	DeleteGovernmentPosition(ctx context.Context, authHeader bearertoken.Token, personIdArg string, positionIdArg string) error
+	// List a person's lobbying relationships (D-InstitutionalTies, M33; pii:basic).
+	ListLobbyingRelationships(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]LobbyingRelationship, error)
+	// Add a lobbying relationship, or replace one when id is supplied.
+	UpsertLobbyingRelationship(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertLobbyingRelationshipRequest) (LobbyingRelationship, error)
+	// Remove a lobbying relationship by id.
+	DeleteLobbyingRelationship(ctx context.Context, authHeader bearertoken.Token, personIdArg string, relationshipIdArg string) error
+	// List a person's external references (D-InstitutionalTies, M33; pii:basic).
+	ListExternalReferences(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]ExternalReference, error)
+	// Add an external reference (idempotent by url), or replace one when id is supplied.
+	UpsertExternalReference(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertExternalReferenceRequest) (ExternalReference, error)
+	// Remove an external reference by id.
+	DeleteExternalReference(ctx context.Context, authHeader bearertoken.Token, personIdArg string, referenceIdArg string) error
 	/*
 	   List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
 	   the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
@@ -594,6 +618,194 @@ func (c *personServiceClient) DeleteAddress(ctx context.Context, authHeader bear
 	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
 	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
 		return werror.WrapWithContextParams(ctx, err, "deleteAddress failed")
+	}
+	return nil
+}
+
+func (c *personServiceClient) ListPartyMemberships(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]PartyMembership, error) {
+	var returnVal []PartyMembership
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListPartyMemberships"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/party-memberships", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listPartyMemberships failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listPartyMemberships response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) UpsertPartyMembership(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertPartyMembershipRequest) (PartyMembership, error) {
+	var returnVal *PartyMembership
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertPartyMembership"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/party-memberships", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(PartyMembership), werror.WrapWithContextParams(ctx, err, "upsertPartyMembership failed")
+	}
+	if returnVal == nil {
+		return *new(PartyMembership), werror.ErrorWithContextParams(ctx, "upsertPartyMembership response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) DeletePartyMembership(ctx context.Context, authHeader bearertoken.Token, personIdArg string, membershipIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeletePartyMembership"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/party-memberships/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(membershipIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deletePartyMembership failed")
+	}
+	return nil
+}
+
+func (c *personServiceClient) ListGovernmentPositions(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]GovernmentPosition, error) {
+	var returnVal []GovernmentPosition
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListGovernmentPositions"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/government-positions", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listGovernmentPositions failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listGovernmentPositions response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) UpsertGovernmentPosition(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertGovernmentPositionRequest) (GovernmentPosition, error) {
+	var returnVal *GovernmentPosition
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertGovernmentPosition"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/government-positions", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(GovernmentPosition), werror.WrapWithContextParams(ctx, err, "upsertGovernmentPosition failed")
+	}
+	if returnVal == nil {
+		return *new(GovernmentPosition), werror.ErrorWithContextParams(ctx, "upsertGovernmentPosition response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) DeleteGovernmentPosition(ctx context.Context, authHeader bearertoken.Token, personIdArg string, positionIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeleteGovernmentPosition"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/government-positions/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(positionIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deleteGovernmentPosition failed")
+	}
+	return nil
+}
+
+func (c *personServiceClient) ListLobbyingRelationships(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]LobbyingRelationship, error) {
+	var returnVal []LobbyingRelationship
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListLobbyingRelationships"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/lobbying-relationships", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listLobbyingRelationships failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listLobbyingRelationships response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) UpsertLobbyingRelationship(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertLobbyingRelationshipRequest) (LobbyingRelationship, error) {
+	var returnVal *LobbyingRelationship
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertLobbyingRelationship"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/lobbying-relationships", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(LobbyingRelationship), werror.WrapWithContextParams(ctx, err, "upsertLobbyingRelationship failed")
+	}
+	if returnVal == nil {
+		return *new(LobbyingRelationship), werror.ErrorWithContextParams(ctx, "upsertLobbyingRelationship response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) DeleteLobbyingRelationship(ctx context.Context, authHeader bearertoken.Token, personIdArg string, relationshipIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeleteLobbyingRelationship"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/lobbying-relationships/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(relationshipIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deleteLobbyingRelationship failed")
+	}
+	return nil
+}
+
+func (c *personServiceClient) ListExternalReferences(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]ExternalReference, error) {
+	var returnVal []ExternalReference
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListExternalReferences"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/external-references", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listExternalReferences failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listExternalReferences response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) UpsertExternalReference(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertExternalReferenceRequest) (ExternalReference, error) {
+	var returnVal *ExternalReference
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertExternalReference"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/external-references", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(ExternalReference), werror.WrapWithContextParams(ctx, err, "upsertExternalReference failed")
+	}
+	if returnVal == nil {
+		return *new(ExternalReference), werror.ErrorWithContextParams(ctx, "upsertExternalReference response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) DeleteExternalReference(ctx context.Context, authHeader bearertoken.Token, personIdArg string, referenceIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeleteExternalReference"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/external-references/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(referenceIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deleteExternalReference failed")
 	}
 	return nil
 }
@@ -1479,6 +1691,30 @@ type PersonServiceClientWithAuth interface {
 	UpsertAddress(ctx context.Context, personIdArg string, requestArg UpsertAddressRequest) (Address, error)
 	// Remove an address by id.
 	DeleteAddress(ctx context.Context, personIdArg string, addressIdArg string) error
+	// List a person's party memberships (D-InstitutionalTies, M33; pii:special, decrypted).
+	ListPartyMemberships(ctx context.Context, personIdArg string) ([]PartyMembership, error)
+	// Add a party membership, or replace one when id is supplied. Requires legalBasis (Art. 9).
+	UpsertPartyMembership(ctx context.Context, personIdArg string, requestArg UpsertPartyMembershipRequest) (PartyMembership, error)
+	// Remove a party membership by id.
+	DeletePartyMembership(ctx context.Context, personIdArg string, membershipIdArg string) error
+	// List a person's government positions (D-InstitutionalTies, M33; pii:basic).
+	ListGovernmentPositions(ctx context.Context, personIdArg string) ([]GovernmentPosition, error)
+	// Add a government position, or replace one when id is supplied.
+	UpsertGovernmentPosition(ctx context.Context, personIdArg string, requestArg UpsertGovernmentPositionRequest) (GovernmentPosition, error)
+	// Remove a government position by id.
+	DeleteGovernmentPosition(ctx context.Context, personIdArg string, positionIdArg string) error
+	// List a person's lobbying relationships (D-InstitutionalTies, M33; pii:basic).
+	ListLobbyingRelationships(ctx context.Context, personIdArg string) ([]LobbyingRelationship, error)
+	// Add a lobbying relationship, or replace one when id is supplied.
+	UpsertLobbyingRelationship(ctx context.Context, personIdArg string, requestArg UpsertLobbyingRelationshipRequest) (LobbyingRelationship, error)
+	// Remove a lobbying relationship by id.
+	DeleteLobbyingRelationship(ctx context.Context, personIdArg string, relationshipIdArg string) error
+	// List a person's external references (D-InstitutionalTies, M33; pii:basic).
+	ListExternalReferences(ctx context.Context, personIdArg string) ([]ExternalReference, error)
+	// Add an external reference (idempotent by url), or replace one when id is supplied.
+	UpsertExternalReference(ctx context.Context, personIdArg string, requestArg UpsertExternalReferenceRequest) (ExternalReference, error)
+	// Remove an external reference by id.
+	DeleteExternalReference(ctx context.Context, personIdArg string, referenceIdArg string) error
 	/*
 	   List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
 	   the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
@@ -1700,6 +1936,54 @@ func (c *personServiceClientWithAuth) UpsertAddress(ctx context.Context, personI
 
 func (c *personServiceClientWithAuth) DeleteAddress(ctx context.Context, personIdArg string, addressIdArg string) error {
 	return c.client.DeleteAddress(ctx, c.authHeader, personIdArg, addressIdArg)
+}
+
+func (c *personServiceClientWithAuth) ListPartyMemberships(ctx context.Context, personIdArg string) ([]PartyMembership, error) {
+	return c.client.ListPartyMemberships(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertPartyMembership(ctx context.Context, personIdArg string, requestArg UpsertPartyMembershipRequest) (PartyMembership, error) {
+	return c.client.UpsertPartyMembership(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) DeletePartyMembership(ctx context.Context, personIdArg string, membershipIdArg string) error {
+	return c.client.DeletePartyMembership(ctx, c.authHeader, personIdArg, membershipIdArg)
+}
+
+func (c *personServiceClientWithAuth) ListGovernmentPositions(ctx context.Context, personIdArg string) ([]GovernmentPosition, error) {
+	return c.client.ListGovernmentPositions(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertGovernmentPosition(ctx context.Context, personIdArg string, requestArg UpsertGovernmentPositionRequest) (GovernmentPosition, error) {
+	return c.client.UpsertGovernmentPosition(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) DeleteGovernmentPosition(ctx context.Context, personIdArg string, positionIdArg string) error {
+	return c.client.DeleteGovernmentPosition(ctx, c.authHeader, personIdArg, positionIdArg)
+}
+
+func (c *personServiceClientWithAuth) ListLobbyingRelationships(ctx context.Context, personIdArg string) ([]LobbyingRelationship, error) {
+	return c.client.ListLobbyingRelationships(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertLobbyingRelationship(ctx context.Context, personIdArg string, requestArg UpsertLobbyingRelationshipRequest) (LobbyingRelationship, error) {
+	return c.client.UpsertLobbyingRelationship(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) DeleteLobbyingRelationship(ctx context.Context, personIdArg string, relationshipIdArg string) error {
+	return c.client.DeleteLobbyingRelationship(ctx, c.authHeader, personIdArg, relationshipIdArg)
+}
+
+func (c *personServiceClientWithAuth) ListExternalReferences(ctx context.Context, personIdArg string) ([]ExternalReference, error) {
+	return c.client.ListExternalReferences(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertExternalReference(ctx context.Context, personIdArg string, requestArg UpsertExternalReferenceRequest) (ExternalReference, error) {
+	return c.client.UpsertExternalReference(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) DeleteExternalReference(ctx context.Context, personIdArg string, referenceIdArg string) error {
+	return c.client.DeleteExternalReference(ctx, c.authHeader, personIdArg, referenceIdArg)
 }
 
 func (c *personServiceClientWithAuth) ListEthnicityTypes(ctx context.Context, topLevelArg *bool, parentArg *string, queryArg *string, limitArg *int) ([]EthnicityType, error) {
@@ -2089,6 +2373,102 @@ func (c *personServiceClientWithTokenProvider) DeleteAddress(ctx context.Context
 		return err
 	}
 	return c.client.DeleteAddress(ctx, bearertoken.Token(token), personIdArg, addressIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListPartyMemberships(ctx context.Context, personIdArg string) ([]PartyMembership, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListPartyMemberships(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertPartyMembership(ctx context.Context, personIdArg string, requestArg UpsertPartyMembershipRequest) (PartyMembership, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(PartyMembership), err
+	}
+	return c.client.UpsertPartyMembership(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) DeletePartyMembership(ctx context.Context, personIdArg string, membershipIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeletePartyMembership(ctx, bearertoken.Token(token), personIdArg, membershipIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListGovernmentPositions(ctx context.Context, personIdArg string) ([]GovernmentPosition, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListGovernmentPositions(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertGovernmentPosition(ctx context.Context, personIdArg string, requestArg UpsertGovernmentPositionRequest) (GovernmentPosition, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(GovernmentPosition), err
+	}
+	return c.client.UpsertGovernmentPosition(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) DeleteGovernmentPosition(ctx context.Context, personIdArg string, positionIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeleteGovernmentPosition(ctx, bearertoken.Token(token), personIdArg, positionIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListLobbyingRelationships(ctx context.Context, personIdArg string) ([]LobbyingRelationship, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListLobbyingRelationships(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertLobbyingRelationship(ctx context.Context, personIdArg string, requestArg UpsertLobbyingRelationshipRequest) (LobbyingRelationship, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(LobbyingRelationship), err
+	}
+	return c.client.UpsertLobbyingRelationship(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) DeleteLobbyingRelationship(ctx context.Context, personIdArg string, relationshipIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeleteLobbyingRelationship(ctx, bearertoken.Token(token), personIdArg, relationshipIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListExternalReferences(ctx context.Context, personIdArg string) ([]ExternalReference, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListExternalReferences(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertExternalReference(ctx context.Context, personIdArg string, requestArg UpsertExternalReferenceRequest) (ExternalReference, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(ExternalReference), err
+	}
+	return c.client.UpsertExternalReference(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) DeleteExternalReference(ctx context.Context, personIdArg string, referenceIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeleteExternalReference(ctx, bearertoken.Token(token), personIdArg, referenceIdArg)
 }
 
 func (c *personServiceClientWithTokenProvider) ListEthnicityTypes(ctx context.Context, topLevelArg *bool, parentArg *string, queryArg *string, limitArg *int) ([]EthnicityType, error) {

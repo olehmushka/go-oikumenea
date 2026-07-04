@@ -67,6 +67,11 @@ export type PhysicalDescription = person.IPhysicalDescription;
 export type DistinguishingMark = person.IDistinguishingMark;
 export type EthnicityType = person.IEthnicityType;
 export type Ethnicity = person.IEthnicity;
+// institutional & political ties (M33, D-InstitutionalTies)
+export type PartyMembership = person.IPartyMembership;
+export type GovernmentPosition = person.IGovernmentPosition;
+export type LobbyingRelationship = person.ILobbyingRelationship;
+export type ExternalReference = person.IExternalReference;
 
 // ── localization / language ──────────────────────────────────────────────────
 export type LocaleLanguage = localization.ILocaleLanguage;

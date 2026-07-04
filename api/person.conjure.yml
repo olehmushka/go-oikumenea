@@ -316,6 +316,150 @@ types:
             docs: A mailing address that deliberately differs from home (itself a signal).
           source: optional<string>
           confidence: optional<string>
+      PartyMembership:
+        docs: |
+          A person's political-party affiliation (D-InstitutionalTies, M33) — a reified link. Political
+          opinion is a GDPR Art. 9 special category, so the party identity is envelope-encrypted at rest;
+          `party` here is the decrypted value ("" for a crypto-erased tombstone). legalBasis is required.
+          pii:special.
+        fields:
+          id: string
+          personId: string
+          party:
+            type: string
+            docs: The party name (or an external-organizations RID). Decrypted; "" when crypto-erased.
+          role:
+            type: string
+            docs: One of member | official | candidate | donor | supporter | other.
+          validFrom: optional<string>
+          validTo:
+            type: optional<string>
+            docs: ISO-8601 date the affiliation ended; null = current.
+          legalBasis:
+            type: string
+            docs: The platform_legal_basis_kinds code authorizing this Art. 9 processing.
+          status:
+            type: string
+            docs: active | retired.
+          source: optional<string>
+          confidence: optional<string>
+      UpsertPartyMembershipRequest:
+        docs: Add a party membership, or replace one when id is supplied (D-InstitutionalTies, M33).
+        fields:
+          id: optional<string>
+          party: string
+          role: optional<string>
+          validFrom: optional<string>
+          validTo: optional<string>
+          legalBasis: string
+          status: optional<string>
+          source: optional<string>
+          confidence: optional<string>
+      GovernmentPosition:
+        docs: |
+          A public office a person holds or held (D-InstitutionalTies, M33) — a reified link. pepTrigger
+          persists after the position ends and feeds the M34 PEP watchlist check. pii:basic.
+        fields:
+          id: string
+          personId: string
+          title:
+            type: string
+            docs: e.g. "Minister of Defence", "Senator".
+          body:
+            type: string
+            docs: The government body, e.g. "Ministry of Defence", "US Senate".
+          orgId:
+            type: optional<string>
+            docs: Optional resolved body RID (polymorphic — external org / company / unit).
+          countryId: optional<string>
+          level:
+            type: string
+            docs: One of international | national | regional | local.
+          roleType: optional<string>
+          validFrom: optional<string>
+          validTo: optional<string>
+          pepTrigger:
+            type: boolean
+            docs: Politically-exposed-person flag; persists after the office ends.
+          source: optional<string>
+          confidence: optional<string>
+      UpsertGovernmentPositionRequest:
+        docs: Add a government position, or replace one when id is supplied (D-InstitutionalTies, M33).
+        fields:
+          id: optional<string>
+          title: string
+          body: string
+          orgId: optional<string>
+          countryId: optional<string>
+          level: optional<string>
+          roleType: optional<string>
+          validFrom: optional<string>
+          validTo: optional<string>
+          pepTrigger: optional<boolean>
+          source: optional<string>
+          confidence: optional<string>
+      LobbyingRelationship:
+        docs: |
+          A public lobbying filing (D-InstitutionalTies, M33) — a reified link: the person as registrant
+          lobbying for a client before a legislative body on a set of issues. pii:basic.
+        fields:
+          id: string
+          personId: string
+          registrant: string
+          client: optional<string>
+          legislativeBody: optional<string>
+          issues: list<string>
+          filingId: optional<string>
+          sourceUrl: optional<string>
+          validFrom: optional<string>
+          validTo: optional<string>
+          source: optional<string>
+          confidence: optional<string>
+      UpsertLobbyingRelationshipRequest:
+        docs: Add a lobbying relationship, or replace one when id is supplied (D-InstitutionalTies, M33).
+        fields:
+          id: optional<string>
+          registrant: string
+          client: optional<string>
+          legislativeBody: optional<string>
+          issues: optional<list<string>>
+          filingId: optional<string>
+          sourceUrl: optional<string>
+          validFrom: optional<string>
+          validTo: optional<string>
+          source: optional<string>
+          confidence: optional<string>
+      ExternalReference:
+        docs: |
+          An off-platform pointer about a person (D-InstitutionalTies, M33) — an Object. Mirrors a social
+          account; a hermenea import target (idempotent by URL). pii:basic.
+        fields:
+          id: string
+          personId: string
+          kind:
+            type: string
+            docs: One of wikipedia | news | registry | social | court | academic | other.
+          url: string
+          externalId: optional<string>
+          categories: list<string>
+          lastChecked: optional<string>
+          disputed: boolean
+          source: optional<string>
+          confidence: optional<string>
+      UpsertExternalReferenceRequest:
+        docs: Add an external reference (idempotent by url), or replace one when id is supplied (M33).
+        fields:
+          id: optional<string>
+          kind: optional<string>
+          url: string
+          externalId: optional<string>
+          categories: optional<list<string>>
+          lastChecked:
+            type: optional<string>
+            docs: RFC-3339 timestamp of the last verification check.
+          disputed: optional<boolean>
+          source: optional<string>
+          confidence: optional<string>
       Email:
         docs: A person's contact email (D-PersonContactChannels). pii:contact; distinct from the login email.
         fields:
@@ -1277,6 +1421,114 @@ services:
             type: string
             param-type: path
           addressId:
+            type: string
+            param-type: path
+      listPartyMemberships:
+        http: GET /persons/{personId}/party-memberships
+        docs: List a person's party memberships (D-InstitutionalTies, M33; pii:special, decrypted).
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<PartyMembership>
+      upsertPartyMembership:
+        http: PUT /persons/{personId}/party-memberships
+        docs: Add a party membership, or replace one when id is supplied. Requires legalBasis (Art. 9).
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertPartyMembershipRequest
+        returns: PartyMembership
+      deletePartyMembership:
+        http: DELETE /persons/{personId}/party-memberships/{membershipId}
+        docs: Remove a party membership by id.
+        args:
+          personId:
+            type: string
+            param-type: path
+          membershipId:
+            type: string
+            param-type: path
+      listGovernmentPositions:
+        http: GET /persons/{personId}/government-positions
+        docs: List a person's government positions (D-InstitutionalTies, M33; pii:basic).
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<GovernmentPosition>
+      upsertGovernmentPosition:
+        http: PUT /persons/{personId}/government-positions
+        docs: Add a government position, or replace one when id is supplied.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertGovernmentPositionRequest
+        returns: GovernmentPosition
+      deleteGovernmentPosition:
+        http: DELETE /persons/{personId}/government-positions/{positionId}
+        docs: Remove a government position by id.
+        args:
+          personId:
+            type: string
+            param-type: path
+          positionId:
+            type: string
+            param-type: path
+      listLobbyingRelationships:
+        http: GET /persons/{personId}/lobbying-relationships
+        docs: List a person's lobbying relationships (D-InstitutionalTies, M33; pii:basic).
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<LobbyingRelationship>
+      upsertLobbyingRelationship:
+        http: PUT /persons/{personId}/lobbying-relationships
+        docs: Add a lobbying relationship, or replace one when id is supplied.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertLobbyingRelationshipRequest
+        returns: LobbyingRelationship
+      deleteLobbyingRelationship:
+        http: DELETE /persons/{personId}/lobbying-relationships/{relationshipId}
+        docs: Remove a lobbying relationship by id.
+        args:
+          personId:
+            type: string
+            param-type: path
+          relationshipId:
+            type: string
+            param-type: path
+      listExternalReferences:
+        http: GET /persons/{personId}/external-references
+        docs: List a person's external references (D-InstitutionalTies, M33; pii:basic).
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<ExternalReference>
+      upsertExternalReference:
+        http: PUT /persons/{personId}/external-references
+        docs: Add an external reference (idempotent by url), or replace one when id is supplied.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertExternalReferenceRequest
+        returns: ExternalReference
+      deleteExternalReference:
+        http: DELETE /persons/{personId}/external-references/{referenceId}
+        docs: Remove an external reference by id.
+        args:
+          personId:
+            type: string
+            param-type: path
+          referenceId:
             type: string
             param-type: path
       listEthnicityTypes:

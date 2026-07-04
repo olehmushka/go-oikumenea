@@ -105,6 +105,12 @@ var repointOwnedStmts = []string{
 	`UPDATE oikumenea.person_next_of_kin      SET contact_id = $2 WHERE contact_id = $1`,
 	`UPDATE oikumenea.person_associations     SET person_id_a = $2 WHERE person_id_a = $1`,
 	`UPDATE oikumenea.person_associations     SET person_id_b = $2 WHERE person_id_b = $1`,
+	// institutional & political ties (M33): a provisional OSINT stub often carries exactly these edges
+	// before it is merged into a canonical person (D-InstitutionalTies / D-OverlayFoundation).
+	`UPDATE oikumenea.person_party_memberships      SET person_id = $2 WHERE person_id = $1`,
+	`UPDATE oikumenea.person_government_positions   SET person_id = $2 WHERE person_id = $1`,
+	`UPDATE oikumenea.person_lobbying_relationships SET person_id = $2 WHERE person_id = $1`,
+	`UPDATE oikumenea.person_external_references    SET person_id = $2 WHERE person_id = $1`,
 }
 
 // RepointPersonOwned runs the person-owned re-point UPDATEs fromID → toID in the caller's transaction.
@@ -362,6 +368,21 @@ func (r *Repository) Purge(ctx context.Context, id string) (domain.Person, error
 		return domain.Person{}, err
 	}
 	if _, err := r.q.CryptoEraseEthnicities(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	// institutional & political ties (D-InstitutionalTies, M33): party memberships (encrypted pii:special)
+	// are crypto-erased — envelope dropped, row kept as a tombstone; the plaintext pii:basic ties
+	// (government positions / lobbying / external references) are hard-deleted.
+	if _, err := r.q.CryptoErasePartyMemberships(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if err := r.q.DeleteAllGovernmentPositions(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if err := r.q.DeleteAllLobbyingRelationships(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if err := r.q.DeleteAllExternalReferences(ctx, id); err != nil {
 		return domain.Person{}, err
 	}
 	row, err := r.q.PurgePerson(ctx, id)
@@ -2130,4 +2151,371 @@ func ts(t *time.Time) pgtype.Timestamptz {
 		return pgtype.Timestamptz{}
 	}
 	return pgtype.Timestamptz{Time: *t, Valid: true}
+}
+
+// ---------------------------------------------------------------- institutional & political ties (M33)
+
+// InsertPartyMembership stores a new encrypted party membership (the party envelope is sealed upstream).
+func (r *Repository) InsertPartyMembership(ctx context.Context, p domain.StoredPartyMembership) (domain.StoredPartyMembership, error) {
+	row, err := r.q.InsertPartyMembership(ctx, personsql.InsertPartyMembershipParams{
+		PersonID:        p.PersonID,
+		PartyCiphertext: p.PartyCiphertext,
+		PartyWrappedDek: p.PartyWrappedDEK,
+		PartyKeyRef:     text(p.PartyKeyRef),
+		PartyBlindIndex: p.PartyBlindIndex,
+		Role:            p.Role,
+		ValidFrom:       dateText(p.ValidFrom),
+		ValidTo:         dateText(p.ValidTo),
+		LegalBasis:      p.LegalBasis,
+		Source:          p.Source,
+		Confidence:      p.Confidence,
+	})
+	if err != nil {
+		return domain.StoredPartyMembership{}, mapWriteErr(err)
+	}
+	return toStoredParty(row), nil
+}
+
+// UpdatePartyMembership re-seals the party and/or flips role/dates/status on an existing row.
+func (r *Repository) UpdatePartyMembership(ctx context.Context, p domain.StoredPartyMembership) (domain.StoredPartyMembership, error) {
+	if p.Status == "" {
+		p.Status = "active"
+	}
+	row, err := r.q.UpdatePartyMembership(ctx, personsql.UpdatePartyMembershipParams{
+		PartyCiphertext: p.PartyCiphertext,
+		PartyWrappedDek: p.PartyWrappedDEK,
+		PartyKeyRef:     text(p.PartyKeyRef),
+		PartyBlindIndex: p.PartyBlindIndex,
+		Role:            p.Role,
+		ValidFrom:       dateText(p.ValidFrom),
+		ValidTo:         dateText(p.ValidTo),
+		LegalBasis:      p.LegalBasis,
+		Status:          p.Status,
+		Source:          p.Source,
+		Confidence:      p.Confidence,
+		ID:              p.ID,
+		PersonID:        p.PersonID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.StoredPartyMembership{}, domain.ErrPartyMembershipNotFound
+		}
+		return domain.StoredPartyMembership{}, mapWriteErr(err)
+	}
+	return toStoredParty(row), nil
+}
+
+func (r *Repository) DeletePartyMembership(ctx context.Context, personID, id string) error {
+	if _, err := r.q.DeletePartyMembership(ctx, personsql.DeletePartyMembershipParams{ID: id, PersonID: personID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrPartyMembershipNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) ListPartyMemberships(ctx context.Context, personID string) ([]domain.StoredPartyMembership, error) {
+	rows, err := r.q.ListPartyMemberships(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.StoredPartyMembership, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toStoredParty(row))
+	}
+	return out, nil
+}
+
+func (r *Repository) CryptoErasePartyMemberships(ctx context.Context, personID string) (int64, error) {
+	return r.q.CryptoErasePartyMemberships(ctx, personID)
+}
+
+// UpsertGovernmentPosition inserts a new row when g.ID is empty, otherwise replaces the named row.
+func (r *Repository) UpsertGovernmentPosition(ctx context.Context, g domain.GovernmentPosition) (domain.GovernmentPosition, error) {
+	if g.ID == "" {
+		row, err := r.q.InsertGovernmentPosition(ctx, personsql.InsertGovernmentPositionParams{
+			PersonID:   g.PersonID,
+			Title:      g.Title,
+			Body:       g.Body,
+			OrgID:      text(g.OrgID),
+			CountryID:  text(g.CountryID),
+			Level:      g.Level,
+			RoleType:   text(g.RoleType),
+			ValidFrom:  dateText(g.ValidFrom),
+			ValidTo:    dateText(g.ValidTo),
+			PepTrigger: g.PEPTrigger,
+			Source:     g.Source,
+			Confidence: g.Confidence,
+		})
+		if err != nil {
+			return domain.GovernmentPosition{}, mapWriteErr(err)
+		}
+		return toGovernmentPosition(row), nil
+	}
+	row, err := r.q.UpdateGovernmentPosition(ctx, personsql.UpdateGovernmentPositionParams{
+		Title:      g.Title,
+		Body:       g.Body,
+		OrgID:      text(g.OrgID),
+		CountryID:  text(g.CountryID),
+		Level:      g.Level,
+		RoleType:   text(g.RoleType),
+		ValidFrom:  dateText(g.ValidFrom),
+		ValidTo:    dateText(g.ValidTo),
+		PepTrigger: g.PEPTrigger,
+		Source:     g.Source,
+		Confidence: g.Confidence,
+		ID:         g.ID,
+		PersonID:   g.PersonID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.GovernmentPosition{}, domain.ErrGovernmentPositionNotFound
+		}
+		return domain.GovernmentPosition{}, mapWriteErr(err)
+	}
+	return toGovernmentPosition(row), nil
+}
+
+func (r *Repository) DeleteGovernmentPosition(ctx context.Context, personID, id string) error {
+	if _, err := r.q.DeleteGovernmentPosition(ctx, personsql.DeleteGovernmentPositionParams{ID: id, PersonID: personID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrGovernmentPositionNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) ListGovernmentPositions(ctx context.Context, personID string) ([]domain.GovernmentPosition, error) {
+	rows, err := r.q.ListGovernmentPositions(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.GovernmentPosition, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toGovernmentPosition(row))
+	}
+	return out, nil
+}
+
+func (r *Repository) IsPoliticallyExposed(ctx context.Context, personID string) (bool, error) {
+	n, err := r.q.CountActivePEPPositions(ctx, personID)
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// UpsertLobbyingRelationship inserts a new row when l.ID is empty, otherwise replaces the named row.
+func (r *Repository) UpsertLobbyingRelationship(ctx context.Context, l domain.LobbyingRelationship) (domain.LobbyingRelationship, error) {
+	if l.Issues == nil {
+		l.Issues = []string{}
+	}
+	if l.ID == "" {
+		row, err := r.q.InsertLobbyingRelationship(ctx, personsql.InsertLobbyingRelationshipParams{
+			PersonID:        l.PersonID,
+			Registrant:      l.Registrant,
+			Client:          text(l.Client),
+			LegislativeBody: text(l.LegislativeBody),
+			Issues:          l.Issues,
+			FilingID:        text(l.FilingID),
+			SourceUrl:       text(l.SourceURL),
+			ValidFrom:       dateText(l.ValidFrom),
+			ValidTo:         dateText(l.ValidTo),
+			Source:          l.Source,
+			Confidence:      l.Confidence,
+		})
+		if err != nil {
+			return domain.LobbyingRelationship{}, mapWriteErr(err)
+		}
+		return toLobbying(row), nil
+	}
+	row, err := r.q.UpdateLobbyingRelationship(ctx, personsql.UpdateLobbyingRelationshipParams{
+		Registrant:      l.Registrant,
+		Client:          text(l.Client),
+		LegislativeBody: text(l.LegislativeBody),
+		Issues:          l.Issues,
+		FilingID:        text(l.FilingID),
+		SourceUrl:       text(l.SourceURL),
+		ValidFrom:       dateText(l.ValidFrom),
+		ValidTo:         dateText(l.ValidTo),
+		Source:          l.Source,
+		Confidence:      l.Confidence,
+		ID:              l.ID,
+		PersonID:        l.PersonID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.LobbyingRelationship{}, domain.ErrLobbyingNotFound
+		}
+		return domain.LobbyingRelationship{}, mapWriteErr(err)
+	}
+	return toLobbying(row), nil
+}
+
+func (r *Repository) DeleteLobbyingRelationship(ctx context.Context, personID, id string) error {
+	if _, err := r.q.DeleteLobbyingRelationship(ctx, personsql.DeleteLobbyingRelationshipParams{ID: id, PersonID: personID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrLobbyingNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) ListLobbyingRelationships(ctx context.Context, personID string) ([]domain.LobbyingRelationship, error) {
+	rows, err := r.q.ListLobbyingRelationships(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.LobbyingRelationship, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toLobbying(row))
+	}
+	return out, nil
+}
+
+// UpsertExternalReference inserts idempotently by (person, url) when r.ID is empty; otherwise replaces
+// the named row by RID.
+func (r *Repository) UpsertExternalReference(ctx context.Context, e domain.ExternalReference) (domain.ExternalReference, error) {
+	if e.Categories == nil {
+		e.Categories = []string{}
+	}
+	if e.ID == "" {
+		row, err := r.q.UpsertExternalReference(ctx, personsql.UpsertExternalReferenceParams{
+			PersonID:    e.PersonID,
+			Kind:        e.Kind,
+			Url:         e.URL,
+			ExternalID:  text(e.ExternalID),
+			Categories:  e.Categories,
+			LastChecked: ts(e.LastChecked),
+			Disputed:    e.Disputed,
+			Source:      e.Source,
+			Confidence:  e.Confidence,
+		})
+		if err != nil {
+			return domain.ExternalReference{}, mapWriteErr(err)
+		}
+		return toExternalReference(row), nil
+	}
+	row, err := r.q.UpdateExternalReference(ctx, personsql.UpdateExternalReferenceParams{
+		Kind:        e.Kind,
+		Url:         e.URL,
+		ExternalID:  text(e.ExternalID),
+		Categories:  e.Categories,
+		LastChecked: ts(e.LastChecked),
+		Disputed:    e.Disputed,
+		Source:      e.Source,
+		Confidence:  e.Confidence,
+		ID:          e.ID,
+		PersonID:    e.PersonID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ExternalReference{}, domain.ErrExternalReferenceNotFound
+		}
+		return domain.ExternalReference{}, mapWriteErr(err)
+	}
+	return toExternalReference(row), nil
+}
+
+func (r *Repository) DeleteExternalReference(ctx context.Context, personID, id string) error {
+	if _, err := r.q.DeleteExternalReference(ctx, personsql.DeleteExternalReferenceParams{ID: id, PersonID: personID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrExternalReferenceNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) ListExternalReferences(ctx context.Context, personID string) ([]domain.ExternalReference, error) {
+	rows, err := r.q.ListExternalReferences(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.ExternalReference, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toExternalReference(row))
+	}
+	return out, nil
+}
+
+// M33 row mappers.
+
+func toStoredParty(r personsql.OikumeneaPersonPartyMembership) domain.StoredPartyMembership {
+	return domain.StoredPartyMembership{
+		ID:              r.ID,
+		PersonID:        r.PersonID,
+		PartyCiphertext: r.PartyCiphertext,
+		PartyWrappedDEK: r.PartyWrappedDek,
+		PartyKeyRef:     strText(r.PartyKeyRef),
+		PartyBlindIndex: r.PartyBlindIndex,
+		Role:            r.Role,
+		ValidFrom:       dateStr(r.ValidFrom),
+		ValidTo:         dateStr(r.ValidTo),
+		LegalBasis:      r.LegalBasis,
+		Status:          r.Status,
+		Source:          r.Source,
+		Confidence:      r.Confidence,
+		CreatedAt:       r.CreatedAt.Time,
+		UpdatedAt:       r.UpdatedAt.Time,
+	}
+}
+
+func toGovernmentPosition(r personsql.OikumeneaPersonGovernmentPosition) domain.GovernmentPosition {
+	return domain.GovernmentPosition{
+		ID:         r.ID,
+		PersonID:   r.PersonID,
+		Title:      r.Title,
+		Body:       r.Body,
+		OrgID:      strText(r.OrgID),
+		CountryID:  strText(r.CountryID),
+		Level:      r.Level,
+		RoleType:   strText(r.RoleType),
+		ValidFrom:  dateStr(r.ValidFrom),
+		ValidTo:    dateStr(r.ValidTo),
+		PEPTrigger: r.PepTrigger,
+		Source:     r.Source,
+		Confidence: r.Confidence,
+		CreatedAt:  r.CreatedAt.Time,
+		UpdatedAt:  r.UpdatedAt.Time,
+	}
+}
+
+func toLobbying(r personsql.OikumeneaPersonLobbyingRelationship) domain.LobbyingRelationship {
+	return domain.LobbyingRelationship{
+		ID:              r.ID,
+		PersonID:        r.PersonID,
+		Registrant:      r.Registrant,
+		Client:          strText(r.Client),
+		LegislativeBody: strText(r.LegislativeBody),
+		Issues:          r.Issues,
+		FilingID:        strText(r.FilingID),
+		SourceURL:       strText(r.SourceUrl),
+		ValidFrom:       dateStr(r.ValidFrom),
+		ValidTo:         dateStr(r.ValidTo),
+		Source:          r.Source,
+		Confidence:      r.Confidence,
+		CreatedAt:       r.CreatedAt.Time,
+		UpdatedAt:       r.UpdatedAt.Time,
+	}
+}
+
+func toExternalReference(r personsql.OikumeneaPersonExternalReference) domain.ExternalReference {
+	return domain.ExternalReference{
+		ID:          r.ID,
+		PersonID:    r.PersonID,
+		Kind:        r.Kind,
+		URL:         r.Url,
+		ExternalID:  strText(r.ExternalID),
+		Categories:  r.Categories,
+		LastChecked: tsPtr(r.LastChecked),
+		Disputed:    r.Disputed,
+		Source:      r.Source,
+		Confidence:  r.Confidence,
+		CreatedAt:   r.CreatedAt.Time,
+		UpdatedAt:   r.UpdatedAt.Time,
+	}
 }

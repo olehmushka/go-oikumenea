@@ -12,13 +12,17 @@ import { IEmail } from "./email";
 import { IEmailType } from "./emailType";
 import { IEthnicity } from "./ethnicity";
 import { IEthnicityType } from "./ethnicityType";
+import { IExternalReference } from "./externalReference";
+import { IGovernmentPosition } from "./governmentPosition";
 import { IGuardianship } from "./guardianship";
 import { IKinship } from "./kinship";
+import { ILobbyingRelationship } from "./lobbyingRelationship";
 import { IMergePersonRequest } from "./mergePersonRequest";
 import { IMessengerLink } from "./messengerLink";
 import { INameVariant } from "./nameVariant";
 import { INextOfKin } from "./nextOfKin";
 import { IPartnership } from "./partnership";
+import { IPartyMembership } from "./partyMembership";
 import { IPerson } from "./person";
 import { IPersonLanguage } from "./personLanguage";
 import { IPersonPage } from "./personPage";
@@ -41,12 +45,16 @@ import { IUpsertCitizenshipRequest } from "./upsertCitizenshipRequest";
 import { IUpsertDistinguishingMarkRequest } from "./upsertDistinguishingMarkRequest";
 import { IUpsertEmailRequest } from "./upsertEmailRequest";
 import { IUpsertEthnicityTypeRequest } from "./upsertEthnicityTypeRequest";
+import { IUpsertExternalReferenceRequest } from "./upsertExternalReferenceRequest";
+import { IUpsertGovernmentPositionRequest } from "./upsertGovernmentPositionRequest";
 import { IUpsertGuardianshipRequest } from "./upsertGuardianshipRequest";
 import { IUpsertKinshipRequest } from "./upsertKinshipRequest";
+import { IUpsertLobbyingRelationshipRequest } from "./upsertLobbyingRelationshipRequest";
 import { IUpsertMessengerLinkRequest } from "./upsertMessengerLinkRequest";
 import { IUpsertNameVariantRequest } from "./upsertNameVariantRequest";
 import { IUpsertNextOfKinRequest } from "./upsertNextOfKinRequest";
 import { IUpsertPartnershipRequest } from "./upsertPartnershipRequest";
+import { IUpsertPartyMembershipRequest } from "./upsertPartyMembershipRequest";
 import { IUpsertPersonLanguageRequest } from "./upsertPersonLanguageRequest";
 import { IUpsertPhoneRequest } from "./upsertPhoneRequest";
 import { IUpsertPhysicalDescriptionRequest } from "./upsertPhysicalDescriptionRequest";
@@ -129,6 +137,30 @@ export interface IPersonService {
     upsertAddress(personId: string, request: IUpsertAddressRequest): Promise<IAddress>;
     /** Remove an address by id. */
     deleteAddress(personId: string, addressId: string): Promise<void>;
+    /** List a person's party memberships (D-InstitutionalTies, M33; pii:special, decrypted). */
+    listPartyMemberships(personId: string): Promise<Array<IPartyMembership>>;
+    /** Add a party membership, or replace one when id is supplied. Requires legalBasis (Art. 9). */
+    upsertPartyMembership(personId: string, request: IUpsertPartyMembershipRequest): Promise<IPartyMembership>;
+    /** Remove a party membership by id. */
+    deletePartyMembership(personId: string, membershipId: string): Promise<void>;
+    /** List a person's government positions (D-InstitutionalTies, M33; pii:basic). */
+    listGovernmentPositions(personId: string): Promise<Array<IGovernmentPosition>>;
+    /** Add a government position, or replace one when id is supplied. */
+    upsertGovernmentPosition(personId: string, request: IUpsertGovernmentPositionRequest): Promise<IGovernmentPosition>;
+    /** Remove a government position by id. */
+    deleteGovernmentPosition(personId: string, positionId: string): Promise<void>;
+    /** List a person's lobbying relationships (D-InstitutionalTies, M33; pii:basic). */
+    listLobbyingRelationships(personId: string): Promise<Array<ILobbyingRelationship>>;
+    /** Add a lobbying relationship, or replace one when id is supplied. */
+    upsertLobbyingRelationship(personId: string, request: IUpsertLobbyingRelationshipRequest): Promise<ILobbyingRelationship>;
+    /** Remove a lobbying relationship by id. */
+    deleteLobbyingRelationship(personId: string, relationshipId: string): Promise<void>;
+    /** List a person's external references (D-InstitutionalTies, M33; pii:basic). */
+    listExternalReferences(personId: string): Promise<Array<IExternalReference>>;
+    /** Add an external reference (idempotent by url), or replace one when id is supplied. */
+    upsertExternalReference(personId: string, request: IUpsertExternalReferenceRequest): Promise<IExternalReference>;
+    /** Remove an external reference by id. */
+    deleteExternalReference(personId: string, referenceId: string): Promise<void>;
     /**
      * List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
      * the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
@@ -689,6 +721,226 @@ export class PersonService implements IPersonService {
             [
                 personId,
                 addressId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** List a person's party memberships (D-InstitutionalTies, M33; pii:special, decrypted). */
+    public listPartyMemberships(personId: string): Promise<Array<IPartyMembership>> {
+        return this.bridge.call<Array<IPartyMembership>>(
+            "PersonService",
+            "listPartyMemberships",
+            "GET",
+            "/person/v1/persons/{personId}/party-memberships",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Add a party membership, or replace one when id is supplied. Requires legalBasis (Art. 9). */
+    public upsertPartyMembership(personId: string, request: IUpsertPartyMembershipRequest): Promise<IPartyMembership> {
+        return this.bridge.call<IPartyMembership>(
+            "PersonService",
+            "upsertPartyMembership",
+            "PUT",
+            "/person/v1/persons/{personId}/party-memberships",
+            request,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Remove a party membership by id. */
+    public deletePartyMembership(personId: string, membershipId: string): Promise<void> {
+        return this.bridge.call<void>(
+            "PersonService",
+            "deletePartyMembership",
+            "DELETE",
+            "/person/v1/persons/{personId}/party-memberships/{membershipId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+                membershipId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** List a person's government positions (D-InstitutionalTies, M33; pii:basic). */
+    public listGovernmentPositions(personId: string): Promise<Array<IGovernmentPosition>> {
+        return this.bridge.call<Array<IGovernmentPosition>>(
+            "PersonService",
+            "listGovernmentPositions",
+            "GET",
+            "/person/v1/persons/{personId}/government-positions",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Add a government position, or replace one when id is supplied. */
+    public upsertGovernmentPosition(personId: string, request: IUpsertGovernmentPositionRequest): Promise<IGovernmentPosition> {
+        return this.bridge.call<IGovernmentPosition>(
+            "PersonService",
+            "upsertGovernmentPosition",
+            "PUT",
+            "/person/v1/persons/{personId}/government-positions",
+            request,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Remove a government position by id. */
+    public deleteGovernmentPosition(personId: string, positionId: string): Promise<void> {
+        return this.bridge.call<void>(
+            "PersonService",
+            "deleteGovernmentPosition",
+            "DELETE",
+            "/person/v1/persons/{personId}/government-positions/{positionId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+                positionId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** List a person's lobbying relationships (D-InstitutionalTies, M33; pii:basic). */
+    public listLobbyingRelationships(personId: string): Promise<Array<ILobbyingRelationship>> {
+        return this.bridge.call<Array<ILobbyingRelationship>>(
+            "PersonService",
+            "listLobbyingRelationships",
+            "GET",
+            "/person/v1/persons/{personId}/lobbying-relationships",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Add a lobbying relationship, or replace one when id is supplied. */
+    public upsertLobbyingRelationship(personId: string, request: IUpsertLobbyingRelationshipRequest): Promise<ILobbyingRelationship> {
+        return this.bridge.call<ILobbyingRelationship>(
+            "PersonService",
+            "upsertLobbyingRelationship",
+            "PUT",
+            "/person/v1/persons/{personId}/lobbying-relationships",
+            request,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Remove a lobbying relationship by id. */
+    public deleteLobbyingRelationship(personId: string, relationshipId: string): Promise<void> {
+        return this.bridge.call<void>(
+            "PersonService",
+            "deleteLobbyingRelationship",
+            "DELETE",
+            "/person/v1/persons/{personId}/lobbying-relationships/{relationshipId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+                relationshipId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** List a person's external references (D-InstitutionalTies, M33; pii:basic). */
+    public listExternalReferences(personId: string): Promise<Array<IExternalReference>> {
+        return this.bridge.call<Array<IExternalReference>>(
+            "PersonService",
+            "listExternalReferences",
+            "GET",
+            "/person/v1/persons/{personId}/external-references",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Add an external reference (idempotent by url), or replace one when id is supplied. */
+    public upsertExternalReference(personId: string, request: IUpsertExternalReferenceRequest): Promise<IExternalReference> {
+        return this.bridge.call<IExternalReference>(
+            "PersonService",
+            "upsertExternalReference",
+            "PUT",
+            "/person/v1/persons/{personId}/external-references",
+            request,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Remove an external reference by id. */
+    public deleteExternalReference(personId: string, referenceId: string): Promise<void> {
+        return this.bridge.call<void>(
+            "PersonService",
+            "deleteExternalReference",
+            "DELETE",
+            "/person/v1/persons/{personId}/external-references/{referenceId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+                referenceId,
             ],
             __undefined,
             __undefined

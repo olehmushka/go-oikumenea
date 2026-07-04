@@ -940,3 +940,157 @@ ORDER BY created_at DESC, id;
 UPDATE oikumenea.person_ethnicities
 SET value_ciphertext = NULL, wrapped_dek = NULL, key_ref = NULL, value_blind_index = NULL
 WHERE person_id = @person_id AND deleted_at IS NULL AND value_ciphertext IS NOT NULL;
+
+-- ============================ institutional & political ties (D-InstitutionalTies, M33) ============================
+
+-- ---- party memberships (link__party_membership, pii:special, envelope-encrypted party) ----
+
+-- name: InsertPartyMembership :one
+-- The party identity is supplied as the envelope (ciphertext/wrapped_dek/key_ref/blind_index) sealed in the
+-- application; legal_basis FK validates the lawful basis (Art. 9 political opinion).
+INSERT INTO oikumenea.person_party_memberships (
+  person_id, party_ciphertext, party_wrapped_dek, party_key_ref, party_blind_index,
+  role, valid_from, valid_to, legal_basis, source, confidence
+) VALUES (
+  @person_id, @party_ciphertext, @party_wrapped_dek, @party_key_ref, @party_blind_index,
+  @role, sqlc.narg('valid_from')::date, sqlc.narg('valid_to')::date, @legal_basis, @source, @confidence
+)
+RETURNING *;
+
+-- name: UpdatePartyMembership :one
+-- Re-seal the party and/or flip role/dates/status/legal_basis.
+UPDATE oikumenea.person_party_memberships SET
+  party_ciphertext = @party_ciphertext, party_wrapped_dek = @party_wrapped_dek,
+  party_key_ref = @party_key_ref, party_blind_index = @party_blind_index,
+  role = @role, valid_from = sqlc.narg('valid_from')::date, valid_to = sqlc.narg('valid_to')::date,
+  legal_basis = @legal_basis, status = @status, source = @source, confidence = @confidence
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING *;
+
+-- name: DeletePartyMembership :one
+UPDATE oikumenea.person_party_memberships SET deleted_at = now()
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING id;
+
+-- name: ListPartyMemberships :many
+SELECT * FROM oikumenea.person_party_memberships
+WHERE person_id = @person_id AND deleted_at IS NULL
+ORDER BY created_at DESC, id;
+
+-- name: CryptoErasePartyMemberships :execrows
+-- Crypto-erase a person's party memberships on purge (drop the envelope, keep the row tombstone).
+UPDATE oikumenea.person_party_memberships
+SET party_ciphertext = NULL, party_wrapped_dek = NULL, party_key_ref = NULL, party_blind_index = NULL
+WHERE person_id = @person_id AND deleted_at IS NULL AND party_ciphertext IS NOT NULL;
+
+-- ---- government positions (link__government_position, pii:basic, feeds M34 PEP) ----
+
+-- name: InsertGovernmentPosition :one
+INSERT INTO oikumenea.person_government_positions (
+  person_id, title, body, org_id, country_id, level, role_type,
+  valid_from, valid_to, pep_trigger, source, confidence
+) VALUES (
+  @person_id, @title, @body, sqlc.narg('org_id')::uuid, sqlc.narg('country_id')::uuid, @level,
+  sqlc.narg('role_type'), sqlc.narg('valid_from')::date, sqlc.narg('valid_to')::date,
+  @pep_trigger, @source, @confidence
+)
+RETURNING *;
+
+-- name: UpdateGovernmentPosition :one
+UPDATE oikumenea.person_government_positions SET
+  title = @title, body = @body, org_id = sqlc.narg('org_id')::uuid, country_id = sqlc.narg('country_id')::uuid,
+  level = @level, role_type = sqlc.narg('role_type'),
+  valid_from = sqlc.narg('valid_from')::date, valid_to = sqlc.narg('valid_to')::date,
+  pep_trigger = @pep_trigger, source = @source, confidence = @confidence
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING *;
+
+-- name: DeleteGovernmentPosition :one
+UPDATE oikumenea.person_government_positions SET deleted_at = now()
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING id;
+
+-- name: ListGovernmentPositions :many
+SELECT * FROM oikumenea.person_government_positions
+WHERE person_id = @person_id AND deleted_at IS NULL
+ORDER BY valid_from DESC NULLS LAST, created_at DESC, id;
+
+-- name: CountActivePEPPositions :one
+-- PEP derivation (D-Watchlists, M34): a person is politically exposed if any active pep_trigger position exists.
+SELECT count(*) FROM oikumenea.person_government_positions
+WHERE person_id = @person_id AND pep_trigger AND deleted_at IS NULL;
+
+-- name: DeleteAllGovernmentPositions :exec
+DELETE FROM oikumenea.person_government_positions WHERE person_id = @person_id;
+
+-- ---- lobbying relationships (link__lobbying_rel, pii:basic) ----
+
+-- name: InsertLobbyingRelationship :one
+INSERT INTO oikumenea.person_lobbying_relationships (
+  person_id, registrant, client, legislative_body, issues, filing_id, source_url,
+  valid_from, valid_to, source, confidence
+) VALUES (
+  @person_id, @registrant, sqlc.narg('client'), sqlc.narg('legislative_body'), @issues,
+  sqlc.narg('filing_id'), sqlc.narg('source_url'), sqlc.narg('valid_from')::date, sqlc.narg('valid_to')::date,
+  @source, @confidence
+)
+RETURNING *;
+
+-- name: UpdateLobbyingRelationship :one
+UPDATE oikumenea.person_lobbying_relationships SET
+  registrant = @registrant, client = sqlc.narg('client'), legislative_body = sqlc.narg('legislative_body'),
+  issues = @issues, filing_id = sqlc.narg('filing_id'), source_url = sqlc.narg('source_url'),
+  valid_from = sqlc.narg('valid_from')::date, valid_to = sqlc.narg('valid_to')::date,
+  source = @source, confidence = @confidence
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING *;
+
+-- name: DeleteLobbyingRelationship :one
+UPDATE oikumenea.person_lobbying_relationships SET deleted_at = now()
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING id;
+
+-- name: ListLobbyingRelationships :many
+SELECT * FROM oikumenea.person_lobbying_relationships
+WHERE person_id = @person_id AND deleted_at IS NULL
+ORDER BY valid_from DESC NULLS LAST, created_at DESC, id;
+
+-- name: DeleteAllLobbyingRelationships :exec
+DELETE FROM oikumenea.person_lobbying_relationships WHERE person_id = @person_id;
+
+-- ---- external references (object external_reference, pii:basic; a hermenea import target) ----
+
+-- name: UpsertExternalReference :one
+-- Idempotent by (person, url): a re-imported reference updates in place rather than duplicating. Edits by
+-- RID use UpdateExternalReference.
+INSERT INTO oikumenea.person_external_references (
+  person_id, kind, url, external_id, categories, last_checked, disputed, source, confidence
+) VALUES (
+  @person_id, @kind, @url, sqlc.narg('external_id'), @categories, sqlc.narg('last_checked'),
+  @disputed, @source, @confidence
+)
+ON CONFLICT (person_id, url) WHERE deleted_at IS NULL DO UPDATE SET
+  kind = excluded.kind, external_id = excluded.external_id, categories = excluded.categories,
+  last_checked = excluded.last_checked, disputed = excluded.disputed,
+  source = excluded.source, confidence = excluded.confidence
+RETURNING *;
+
+-- name: UpdateExternalReference :one
+UPDATE oikumenea.person_external_references SET
+  kind = @kind, url = @url, external_id = sqlc.narg('external_id'), categories = @categories,
+  last_checked = sqlc.narg('last_checked'), disputed = @disputed, source = @source, confidence = @confidence
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING *;
+
+-- name: DeleteExternalReference :one
+UPDATE oikumenea.person_external_references SET deleted_at = now()
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING id;
+
+-- name: ListExternalReferences :many
+SELECT * FROM oikumenea.person_external_references
+WHERE person_id = @person_id AND deleted_at IS NULL
+ORDER BY created_at DESC, id;
+
+-- name: DeleteAllExternalReferences :exec
+DELETE FROM oikumenea.person_external_references WHERE person_id = @person_id;

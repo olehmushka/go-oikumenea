@@ -112,6 +112,19 @@ func (q *Queries) CloseCurrentSocialAccountHandle(ctx context.Context, accountID
 	return err
 }
 
+const countActivePEPPositions = `-- name: CountActivePEPPositions :one
+SELECT count(*) FROM oikumenea.person_government_positions
+WHERE person_id = $1 AND pep_trigger AND deleted_at IS NULL
+`
+
+// PEP derivation (D-Watchlists, M34): a person is politically exposed if any active pep_trigger position exists.
+func (q *Queries) CountActivePEPPositions(ctx context.Context, personID string) (int64, error) {
+	row := q.db.QueryRow(ctx, countActivePEPPositions, personID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const cryptoEraseEthnicities = `-- name: CryptoEraseEthnicities :execrows
 UPDATE oikumenea.person_ethnicities
 SET value_ciphertext = NULL, wrapped_dek = NULL, key_ref = NULL, value_blind_index = NULL
@@ -122,6 +135,21 @@ WHERE person_id = $1 AND deleted_at IS NULL AND value_ciphertext IS NOT NULL
 // erasure path for the pii:special declared value (D-PhysicalIdentity / D-SpecialPII).
 func (q *Queries) CryptoEraseEthnicities(ctx context.Context, personID string) (int64, error) {
 	result, err := q.db.Exec(ctx, cryptoEraseEthnicities, personID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const cryptoErasePartyMemberships = `-- name: CryptoErasePartyMemberships :execrows
+UPDATE oikumenea.person_party_memberships
+SET party_ciphertext = NULL, party_wrapped_dek = NULL, party_key_ref = NULL, party_blind_index = NULL
+WHERE person_id = $1 AND deleted_at IS NULL AND party_ciphertext IS NOT NULL
+`
+
+// Crypto-erase a person's party memberships on purge (drop the envelope, keep the row tombstone).
+func (q *Queries) CryptoErasePartyMemberships(ctx context.Context, personID string) (int64, error) {
+	result, err := q.db.Exec(ctx, cryptoErasePartyMemberships, personID)
 	if err != nil {
 		return 0, err
 	}
@@ -284,6 +312,24 @@ func (q *Queries) DeleteAllEmails(ctx context.Context, personID string) error {
 	return err
 }
 
+const deleteAllExternalReferences = `-- name: DeleteAllExternalReferences :exec
+DELETE FROM oikumenea.person_external_references WHERE person_id = $1
+`
+
+func (q *Queries) DeleteAllExternalReferences(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllExternalReferences, personID)
+	return err
+}
+
+const deleteAllGovernmentPositions = `-- name: DeleteAllGovernmentPositions :exec
+DELETE FROM oikumenea.person_government_positions WHERE person_id = $1
+`
+
+func (q *Queries) DeleteAllGovernmentPositions(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllGovernmentPositions, personID)
+	return err
+}
+
 const deleteAllGuardianships = `-- name: DeleteAllGuardianships :exec
 DELETE FROM oikumenea.person_guardianships WHERE guardian_id = $1 OR ward_id = $1
 `
@@ -299,6 +345,15 @@ DELETE FROM oikumenea.person_kinships WHERE parent_id = $1 OR child_id = $1
 
 func (q *Queries) DeleteAllKinships(ctx context.Context, personID string) error {
 	_, err := q.db.Exec(ctx, deleteAllKinships, personID)
+	return err
+}
+
+const deleteAllLobbyingRelationships = `-- name: DeleteAllLobbyingRelationships :exec
+DELETE FROM oikumenea.person_lobbying_relationships WHERE person_id = $1
+`
+
+func (q *Queries) DeleteAllLobbyingRelationships(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllLobbyingRelationships, personID)
 	return err
 }
 
@@ -606,6 +661,42 @@ func (q *Queries) DeleteEthnicity(ctx context.Context, arg DeleteEthnicityParams
 	return id, err
 }
 
+const deleteExternalReference = `-- name: DeleteExternalReference :one
+UPDATE oikumenea.person_external_references SET deleted_at = now()
+WHERE id = $1 AND person_id = $2 AND deleted_at IS NULL
+RETURNING id
+`
+
+type DeleteExternalReferenceParams struct {
+	ID       string
+	PersonID string
+}
+
+func (q *Queries) DeleteExternalReference(ctx context.Context, arg DeleteExternalReferenceParams) (string, error) {
+	row := q.db.QueryRow(ctx, deleteExternalReference, arg.ID, arg.PersonID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
+const deleteGovernmentPosition = `-- name: DeleteGovernmentPosition :one
+UPDATE oikumenea.person_government_positions SET deleted_at = now()
+WHERE id = $1 AND person_id = $2 AND deleted_at IS NULL
+RETURNING id
+`
+
+type DeleteGovernmentPositionParams struct {
+	ID       string
+	PersonID string
+}
+
+func (q *Queries) DeleteGovernmentPosition(ctx context.Context, arg DeleteGovernmentPositionParams) (string, error) {
+	row := q.db.QueryRow(ctx, deleteGovernmentPosition, arg.ID, arg.PersonID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const deleteGuardianship = `-- name: DeleteGuardianship :one
 UPDATE oikumenea.person_guardianships SET deleted_at = now()
 WHERE id = $1 AND deleted_at IS NULL AND (guardian_id = $2 OR ward_id = $2)
@@ -637,6 +728,24 @@ type DeleteKinshipParams struct {
 
 func (q *Queries) DeleteKinship(ctx context.Context, arg DeleteKinshipParams) (string, error) {
 	row := q.db.QueryRow(ctx, deleteKinship, arg.ID, arg.PersonID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
+const deleteLobbyingRelationship = `-- name: DeleteLobbyingRelationship :one
+UPDATE oikumenea.person_lobbying_relationships SET deleted_at = now()
+WHERE id = $1 AND person_id = $2 AND deleted_at IS NULL
+RETURNING id
+`
+
+type DeleteLobbyingRelationshipParams struct {
+	ID       string
+	PersonID string
+}
+
+func (q *Queries) DeleteLobbyingRelationship(ctx context.Context, arg DeleteLobbyingRelationshipParams) (string, error) {
+	row := q.db.QueryRow(ctx, deleteLobbyingRelationship, arg.ID, arg.PersonID)
 	var id string
 	err := row.Scan(&id)
 	return id, err
@@ -732,6 +841,24 @@ type DeletePartnershipParams struct {
 
 func (q *Queries) DeletePartnership(ctx context.Context, arg DeletePartnershipParams) (string, error) {
 	row := q.db.QueryRow(ctx, deletePartnership, arg.ID, arg.PersonID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
+const deletePartyMembership = `-- name: DeletePartyMembership :one
+UPDATE oikumenea.person_party_memberships SET deleted_at = now()
+WHERE id = $1 AND person_id = $2 AND deleted_at IS NULL
+RETURNING id
+`
+
+type DeletePartyMembershipParams struct {
+	ID       string
+	PersonID string
+}
+
+func (q *Queries) DeletePartyMembership(ctx context.Context, arg DeletePartyMembershipParams) (string, error) {
+	row := q.db.QueryRow(ctx, deletePartyMembership, arg.ID, arg.PersonID)
 	var id string
 	err := row.Scan(&id)
 	return id, err
@@ -1411,6 +1538,72 @@ func (q *Queries) InsertEthnicity(ctx context.Context, arg InsertEthnicityParams
 	return i, err
 }
 
+const insertGovernmentPosition = `-- name: InsertGovernmentPosition :one
+
+INSERT INTO oikumenea.person_government_positions (
+  person_id, title, body, org_id, country_id, level, role_type,
+  valid_from, valid_to, pep_trigger, source, confidence
+) VALUES (
+  $1, $2, $3, $4::uuid, $5::uuid, $6,
+  $7, $8::date, $9::date,
+  $10, $11, $12
+)
+RETURNING id, person_id, title, body, org_id, country_id, level, role_type, valid_from, valid_to, pep_trigger, source, confidence, created_at, updated_at, deleted_at
+`
+
+type InsertGovernmentPositionParams struct {
+	PersonID   string
+	Title      string
+	Body       string
+	OrgID      pgtype.Text
+	CountryID  pgtype.Text
+	Level      string
+	RoleType   pgtype.Text
+	ValidFrom  pgtype.Date
+	ValidTo    pgtype.Date
+	PepTrigger bool
+	Source     string
+	Confidence string
+}
+
+// ---- government positions (link__government_position, pii:basic, feeds M34 PEP) ----
+func (q *Queries) InsertGovernmentPosition(ctx context.Context, arg InsertGovernmentPositionParams) (OikumeneaPersonGovernmentPosition, error) {
+	row := q.db.QueryRow(ctx, insertGovernmentPosition,
+		arg.PersonID,
+		arg.Title,
+		arg.Body,
+		arg.OrgID,
+		arg.CountryID,
+		arg.Level,
+		arg.RoleType,
+		arg.ValidFrom,
+		arg.ValidTo,
+		arg.PepTrigger,
+		arg.Source,
+		arg.Confidence,
+	)
+	var i OikumeneaPersonGovernmentPosition
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.Title,
+		&i.Body,
+		&i.OrgID,
+		&i.CountryID,
+		&i.Level,
+		&i.RoleType,
+		&i.ValidFrom,
+		&i.ValidTo,
+		&i.PepTrigger,
+		&i.Source,
+		&i.Confidence,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const insertGuardianship = `-- name: InsertGuardianship :one
 
 INSERT INTO oikumenea.person_guardianships (guardian_id, ward_id, relation_code, status, effective_from, effective_to)
@@ -1475,6 +1668,69 @@ func (q *Queries) InsertKinship(ctx context.Context, arg InsertKinshipParams) (O
 		&i.ParentID,
 		&i.ChildID,
 		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const insertLobbyingRelationship = `-- name: InsertLobbyingRelationship :one
+
+INSERT INTO oikumenea.person_lobbying_relationships (
+  person_id, registrant, client, legislative_body, issues, filing_id, source_url,
+  valid_from, valid_to, source, confidence
+) VALUES (
+  $1, $2, $3, $4, $5,
+  $6, $7, $8::date, $9::date,
+  $10, $11
+)
+RETURNING id, person_id, registrant, client, legislative_body, issues, filing_id, source_url, valid_from, valid_to, source, confidence, created_at, updated_at, deleted_at
+`
+
+type InsertLobbyingRelationshipParams struct {
+	PersonID        string
+	Registrant      string
+	Client          pgtype.Text
+	LegislativeBody pgtype.Text
+	Issues          []string
+	FilingID        pgtype.Text
+	SourceUrl       pgtype.Text
+	ValidFrom       pgtype.Date
+	ValidTo         pgtype.Date
+	Source          string
+	Confidence      string
+}
+
+// ---- lobbying relationships (link__lobbying_rel, pii:basic) ----
+func (q *Queries) InsertLobbyingRelationship(ctx context.Context, arg InsertLobbyingRelationshipParams) (OikumeneaPersonLobbyingRelationship, error) {
+	row := q.db.QueryRow(ctx, insertLobbyingRelationship,
+		arg.PersonID,
+		arg.Registrant,
+		arg.Client,
+		arg.LegislativeBody,
+		arg.Issues,
+		arg.FilingID,
+		arg.SourceUrl,
+		arg.ValidFrom,
+		arg.ValidTo,
+		arg.Source,
+		arg.Confidence,
+	)
+	var i OikumeneaPersonLobbyingRelationship
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.Registrant,
+		&i.Client,
+		&i.LegislativeBody,
+		&i.Issues,
+		&i.FilingID,
+		&i.SourceUrl,
+		&i.ValidFrom,
+		&i.ValidTo,
+		&i.Source,
+		&i.Confidence,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -1666,6 +1922,73 @@ func (q *Queries) InsertPartnership(ctx context.Context, arg InsertPartnershipPa
 		&i.Status,
 		&i.EffectiveFrom,
 		&i.EffectiveTo,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const insertPartyMembership = `-- name: InsertPartyMembership :one
+
+
+INSERT INTO oikumenea.person_party_memberships (
+  person_id, party_ciphertext, party_wrapped_dek, party_key_ref, party_blind_index,
+  role, valid_from, valid_to, legal_basis, source, confidence
+) VALUES (
+  $1, $2, $3, $4, $5,
+  $6, $7::date, $8::date, $9, $10, $11
+)
+RETURNING id, person_id, party_ciphertext, party_wrapped_dek, party_key_ref, party_blind_index, role, valid_from, valid_to, legal_basis, status, source, confidence, created_at, updated_at, deleted_at
+`
+
+type InsertPartyMembershipParams struct {
+	PersonID        string
+	PartyCiphertext []byte
+	PartyWrappedDek []byte
+	PartyKeyRef     pgtype.Text
+	PartyBlindIndex []byte
+	Role            string
+	ValidFrom       pgtype.Date
+	ValidTo         pgtype.Date
+	LegalBasis      string
+	Source          string
+	Confidence      string
+}
+
+// ============================ institutional & political ties (D-InstitutionalTies, M33) ============================
+// ---- party memberships (link__party_membership, pii:special, envelope-encrypted party) ----
+// The party identity is supplied as the envelope (ciphertext/wrapped_dek/key_ref/blind_index) sealed in the
+// application; legal_basis FK validates the lawful basis (Art. 9 political opinion).
+func (q *Queries) InsertPartyMembership(ctx context.Context, arg InsertPartyMembershipParams) (OikumeneaPersonPartyMembership, error) {
+	row := q.db.QueryRow(ctx, insertPartyMembership,
+		arg.PersonID,
+		arg.PartyCiphertext,
+		arg.PartyWrappedDek,
+		arg.PartyKeyRef,
+		arg.PartyBlindIndex,
+		arg.Role,
+		arg.ValidFrom,
+		arg.ValidTo,
+		arg.LegalBasis,
+		arg.Source,
+		arg.Confidence,
+	)
+	var i OikumeneaPersonPartyMembership
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.PartyCiphertext,
+		&i.PartyWrappedDek,
+		&i.PartyKeyRef,
+		&i.PartyBlindIndex,
+		&i.Role,
+		&i.ValidFrom,
+		&i.ValidTo,
+		&i.LegalBasis,
+		&i.Status,
+		&i.Source,
+		&i.Confidence,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -2507,6 +2830,89 @@ func (q *Queries) ListEthnicityTypes(ctx context.Context, arg ListEthnicityTypes
 	return items, nil
 }
 
+const listExternalReferences = `-- name: ListExternalReferences :many
+SELECT id, person_id, kind, url, external_id, categories, last_checked, disputed, source, confidence, created_at, updated_at, deleted_at FROM oikumenea.person_external_references
+WHERE person_id = $1 AND deleted_at IS NULL
+ORDER BY created_at DESC, id
+`
+
+func (q *Queries) ListExternalReferences(ctx context.Context, personID string) ([]OikumeneaPersonExternalReference, error) {
+	rows, err := q.db.Query(ctx, listExternalReferences, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonExternalReference
+	for rows.Next() {
+		var i OikumeneaPersonExternalReference
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.Kind,
+			&i.Url,
+			&i.ExternalID,
+			&i.Categories,
+			&i.LastChecked,
+			&i.Disputed,
+			&i.Source,
+			&i.Confidence,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGovernmentPositions = `-- name: ListGovernmentPositions :many
+SELECT id, person_id, title, body, org_id, country_id, level, role_type, valid_from, valid_to, pep_trigger, source, confidence, created_at, updated_at, deleted_at FROM oikumenea.person_government_positions
+WHERE person_id = $1 AND deleted_at IS NULL
+ORDER BY valid_from DESC NULLS LAST, created_at DESC, id
+`
+
+func (q *Queries) ListGovernmentPositions(ctx context.Context, personID string) ([]OikumeneaPersonGovernmentPosition, error) {
+	rows, err := q.db.Query(ctx, listGovernmentPositions, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonGovernmentPosition
+	for rows.Next() {
+		var i OikumeneaPersonGovernmentPosition
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.Title,
+			&i.Body,
+			&i.OrgID,
+			&i.CountryID,
+			&i.Level,
+			&i.RoleType,
+			&i.ValidFrom,
+			&i.ValidTo,
+			&i.PepTrigger,
+			&i.Source,
+			&i.Confidence,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listGuardianships = `-- name: ListGuardianships :many
 SELECT id, guardian_id, ward_id, relation_code, status, effective_from, effective_to, created_at, updated_at, deleted_at FROM oikumenea.person_guardianships
 WHERE deleted_at IS NULL AND (guardian_id = $1 OR ward_id = $1)
@@ -2564,6 +2970,48 @@ func (q *Queries) ListKinships(ctx context.Context, personID string) ([]Oikumene
 			&i.ParentID,
 			&i.ChildID,
 			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLobbyingRelationships = `-- name: ListLobbyingRelationships :many
+SELECT id, person_id, registrant, client, legislative_body, issues, filing_id, source_url, valid_from, valid_to, source, confidence, created_at, updated_at, deleted_at FROM oikumenea.person_lobbying_relationships
+WHERE person_id = $1 AND deleted_at IS NULL
+ORDER BY valid_from DESC NULLS LAST, created_at DESC, id
+`
+
+func (q *Queries) ListLobbyingRelationships(ctx context.Context, personID string) ([]OikumeneaPersonLobbyingRelationship, error) {
+	rows, err := q.db.Query(ctx, listLobbyingRelationships, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonLobbyingRelationship
+	for rows.Next() {
+		var i OikumeneaPersonLobbyingRelationship
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.Registrant,
+			&i.Client,
+			&i.LegislativeBody,
+			&i.Issues,
+			&i.FilingID,
+			&i.SourceUrl,
+			&i.ValidFrom,
+			&i.ValidTo,
+			&i.Source,
+			&i.Confidence,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
@@ -2720,6 +3168,49 @@ func (q *Queries) ListPartnerships(ctx context.Context, personID string) ([]Oiku
 			&i.Status,
 			&i.EffectiveFrom,
 			&i.EffectiveTo,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPartyMemberships = `-- name: ListPartyMemberships :many
+SELECT id, person_id, party_ciphertext, party_wrapped_dek, party_key_ref, party_blind_index, role, valid_from, valid_to, legal_basis, status, source, confidence, created_at, updated_at, deleted_at FROM oikumenea.person_party_memberships
+WHERE person_id = $1 AND deleted_at IS NULL
+ORDER BY created_at DESC, id
+`
+
+func (q *Queries) ListPartyMemberships(ctx context.Context, personID string) ([]OikumeneaPersonPartyMembership, error) {
+	rows, err := q.db.Query(ctx, listPartyMemberships, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonPartyMembership
+	for rows.Next() {
+		var i OikumeneaPersonPartyMembership
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.PartyCiphertext,
+			&i.PartyWrappedDek,
+			&i.PartyKeyRef,
+			&i.PartyBlindIndex,
+			&i.Role,
+			&i.ValidFrom,
+			&i.ValidTo,
+			&i.LegalBasis,
+			&i.Status,
+			&i.Source,
+			&i.Confidence,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
@@ -3630,6 +4121,123 @@ func (q *Queries) UpdateEthnicity(ctx context.Context, arg UpdateEthnicityParams
 	return i, err
 }
 
+const updateExternalReference = `-- name: UpdateExternalReference :one
+UPDATE oikumenea.person_external_references SET
+  kind = $1, url = $2, external_id = $3, categories = $4,
+  last_checked = $5, disputed = $6, source = $7, confidence = $8
+WHERE id = $9 AND person_id = $10 AND deleted_at IS NULL
+RETURNING id, person_id, kind, url, external_id, categories, last_checked, disputed, source, confidence, created_at, updated_at, deleted_at
+`
+
+type UpdateExternalReferenceParams struct {
+	Kind        string
+	Url         string
+	ExternalID  pgtype.Text
+	Categories  []string
+	LastChecked pgtype.Timestamptz
+	Disputed    bool
+	Source      string
+	Confidence  string
+	ID          string
+	PersonID    string
+}
+
+func (q *Queries) UpdateExternalReference(ctx context.Context, arg UpdateExternalReferenceParams) (OikumeneaPersonExternalReference, error) {
+	row := q.db.QueryRow(ctx, updateExternalReference,
+		arg.Kind,
+		arg.Url,
+		arg.ExternalID,
+		arg.Categories,
+		arg.LastChecked,
+		arg.Disputed,
+		arg.Source,
+		arg.Confidence,
+		arg.ID,
+		arg.PersonID,
+	)
+	var i OikumeneaPersonExternalReference
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.Kind,
+		&i.Url,
+		&i.ExternalID,
+		&i.Categories,
+		&i.LastChecked,
+		&i.Disputed,
+		&i.Source,
+		&i.Confidence,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const updateGovernmentPosition = `-- name: UpdateGovernmentPosition :one
+UPDATE oikumenea.person_government_positions SET
+  title = $1, body = $2, org_id = $3::uuid, country_id = $4::uuid,
+  level = $5, role_type = $6,
+  valid_from = $7::date, valid_to = $8::date,
+  pep_trigger = $9, source = $10, confidence = $11
+WHERE id = $12 AND person_id = $13 AND deleted_at IS NULL
+RETURNING id, person_id, title, body, org_id, country_id, level, role_type, valid_from, valid_to, pep_trigger, source, confidence, created_at, updated_at, deleted_at
+`
+
+type UpdateGovernmentPositionParams struct {
+	Title      string
+	Body       string
+	OrgID      pgtype.Text
+	CountryID  pgtype.Text
+	Level      string
+	RoleType   pgtype.Text
+	ValidFrom  pgtype.Date
+	ValidTo    pgtype.Date
+	PepTrigger bool
+	Source     string
+	Confidence string
+	ID         string
+	PersonID   string
+}
+
+func (q *Queries) UpdateGovernmentPosition(ctx context.Context, arg UpdateGovernmentPositionParams) (OikumeneaPersonGovernmentPosition, error) {
+	row := q.db.QueryRow(ctx, updateGovernmentPosition,
+		arg.Title,
+		arg.Body,
+		arg.OrgID,
+		arg.CountryID,
+		arg.Level,
+		arg.RoleType,
+		arg.ValidFrom,
+		arg.ValidTo,
+		arg.PepTrigger,
+		arg.Source,
+		arg.Confidence,
+		arg.ID,
+		arg.PersonID,
+	)
+	var i OikumeneaPersonGovernmentPosition
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.Title,
+		&i.Body,
+		&i.OrgID,
+		&i.CountryID,
+		&i.Level,
+		&i.RoleType,
+		&i.ValidFrom,
+		&i.ValidTo,
+		&i.PepTrigger,
+		&i.Source,
+		&i.Confidence,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const updateGuardianship = `-- name: UpdateGuardianship :one
 UPDATE oikumenea.person_guardianships SET
   guardian_id = $1, ward_id = $2, relation_code = $3,
@@ -3700,6 +4308,67 @@ func (q *Queries) UpdateKinship(ctx context.Context, arg UpdateKinshipParams) (O
 		&i.ParentID,
 		&i.ChildID,
 		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const updateLobbyingRelationship = `-- name: UpdateLobbyingRelationship :one
+UPDATE oikumenea.person_lobbying_relationships SET
+  registrant = $1, client = $2, legislative_body = $3,
+  issues = $4, filing_id = $5, source_url = $6,
+  valid_from = $7::date, valid_to = $8::date,
+  source = $9, confidence = $10
+WHERE id = $11 AND person_id = $12 AND deleted_at IS NULL
+RETURNING id, person_id, registrant, client, legislative_body, issues, filing_id, source_url, valid_from, valid_to, source, confidence, created_at, updated_at, deleted_at
+`
+
+type UpdateLobbyingRelationshipParams struct {
+	Registrant      string
+	Client          pgtype.Text
+	LegislativeBody pgtype.Text
+	Issues          []string
+	FilingID        pgtype.Text
+	SourceUrl       pgtype.Text
+	ValidFrom       pgtype.Date
+	ValidTo         pgtype.Date
+	Source          string
+	Confidence      string
+	ID              string
+	PersonID        string
+}
+
+func (q *Queries) UpdateLobbyingRelationship(ctx context.Context, arg UpdateLobbyingRelationshipParams) (OikumeneaPersonLobbyingRelationship, error) {
+	row := q.db.QueryRow(ctx, updateLobbyingRelationship,
+		arg.Registrant,
+		arg.Client,
+		arg.LegislativeBody,
+		arg.Issues,
+		arg.FilingID,
+		arg.SourceUrl,
+		arg.ValidFrom,
+		arg.ValidTo,
+		arg.Source,
+		arg.Confidence,
+		arg.ID,
+		arg.PersonID,
+	)
+	var i OikumeneaPersonLobbyingRelationship
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.Registrant,
+		&i.Client,
+		&i.LegislativeBody,
+		&i.Issues,
+		&i.FilingID,
+		&i.SourceUrl,
+		&i.ValidFrom,
+		&i.ValidTo,
+		&i.Source,
+		&i.Confidence,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -3823,6 +4492,71 @@ func (q *Queries) UpdatePartnership(ctx context.Context, arg UpdatePartnershipPa
 		&i.Status,
 		&i.EffectiveFrom,
 		&i.EffectiveTo,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const updatePartyMembership = `-- name: UpdatePartyMembership :one
+UPDATE oikumenea.person_party_memberships SET
+  party_ciphertext = $1, party_wrapped_dek = $2,
+  party_key_ref = $3, party_blind_index = $4,
+  role = $5, valid_from = $6::date, valid_to = $7::date,
+  legal_basis = $8, status = $9, source = $10, confidence = $11
+WHERE id = $12 AND person_id = $13 AND deleted_at IS NULL
+RETURNING id, person_id, party_ciphertext, party_wrapped_dek, party_key_ref, party_blind_index, role, valid_from, valid_to, legal_basis, status, source, confidence, created_at, updated_at, deleted_at
+`
+
+type UpdatePartyMembershipParams struct {
+	PartyCiphertext []byte
+	PartyWrappedDek []byte
+	PartyKeyRef     pgtype.Text
+	PartyBlindIndex []byte
+	Role            string
+	ValidFrom       pgtype.Date
+	ValidTo         pgtype.Date
+	LegalBasis      string
+	Status          string
+	Source          string
+	Confidence      string
+	ID              string
+	PersonID        string
+}
+
+// Re-seal the party and/or flip role/dates/status/legal_basis.
+func (q *Queries) UpdatePartyMembership(ctx context.Context, arg UpdatePartyMembershipParams) (OikumeneaPersonPartyMembership, error) {
+	row := q.db.QueryRow(ctx, updatePartyMembership,
+		arg.PartyCiphertext,
+		arg.PartyWrappedDek,
+		arg.PartyKeyRef,
+		arg.PartyBlindIndex,
+		arg.Role,
+		arg.ValidFrom,
+		arg.ValidTo,
+		arg.LegalBasis,
+		arg.Status,
+		arg.Source,
+		arg.Confidence,
+		arg.ID,
+		arg.PersonID,
+	)
+	var i OikumeneaPersonPartyMembership
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.PartyCiphertext,
+		&i.PartyWrappedDek,
+		&i.PartyKeyRef,
+		&i.PartyBlindIndex,
+		&i.Role,
+		&i.ValidFrom,
+		&i.ValidTo,
+		&i.LegalBasis,
+		&i.Status,
+		&i.Source,
+		&i.Confidence,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -4295,6 +5029,67 @@ func (q *Queries) UpsertEthnicityType(ctx context.Context, arg UpsertEthnicityTy
 		&i.ImportedAt,
 		&i.Origin,
 		&i.ColorID,
+	)
+	return i, err
+}
+
+const upsertExternalReference = `-- name: UpsertExternalReference :one
+
+INSERT INTO oikumenea.person_external_references (
+  person_id, kind, url, external_id, categories, last_checked, disputed, source, confidence
+) VALUES (
+  $1, $2, $3, $4, $5, $6,
+  $7, $8, $9
+)
+ON CONFLICT (person_id, url) WHERE deleted_at IS NULL DO UPDATE SET
+  kind = excluded.kind, external_id = excluded.external_id, categories = excluded.categories,
+  last_checked = excluded.last_checked, disputed = excluded.disputed,
+  source = excluded.source, confidence = excluded.confidence
+RETURNING id, person_id, kind, url, external_id, categories, last_checked, disputed, source, confidence, created_at, updated_at, deleted_at
+`
+
+type UpsertExternalReferenceParams struct {
+	PersonID    string
+	Kind        string
+	Url         string
+	ExternalID  pgtype.Text
+	Categories  []string
+	LastChecked pgtype.Timestamptz
+	Disputed    bool
+	Source      string
+	Confidence  string
+}
+
+// ---- external references (object external_reference, pii:basic; a hermenea import target) ----
+// Idempotent by (person, url): a re-imported reference updates in place rather than duplicating. Edits by
+// RID use UpdateExternalReference.
+func (q *Queries) UpsertExternalReference(ctx context.Context, arg UpsertExternalReferenceParams) (OikumeneaPersonExternalReference, error) {
+	row := q.db.QueryRow(ctx, upsertExternalReference,
+		arg.PersonID,
+		arg.Kind,
+		arg.Url,
+		arg.ExternalID,
+		arg.Categories,
+		arg.LastChecked,
+		arg.Disputed,
+		arg.Source,
+		arg.Confidence,
+	)
+	var i OikumeneaPersonExternalReference
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.Kind,
+		&i.Url,
+		&i.ExternalID,
+		&i.Categories,
+		&i.LastChecked,
+		&i.Disputed,
+		&i.Source,
+		&i.Confidence,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }

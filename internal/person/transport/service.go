@@ -1673,6 +1673,10 @@ func (s Service) mapError(ctx context.Context, err error, personID string) error
 		errors.Is(err, domain.ErrSocialAccountNotFound),
 		errors.Is(err, domain.ErrLanguageNotFound),
 		errors.Is(err, domain.ErrAddressNotFound),
+		errors.Is(err, domain.ErrPartyMembershipNotFound),
+		errors.Is(err, domain.ErrGovernmentPositionNotFound),
+		errors.Is(err, domain.ErrLobbyingNotFound),
+		errors.Is(err, domain.ErrExternalReferenceNotFound),
 		errors.Is(err, domain.ErrRelationshipNotFound):
 		return personapi.NewPersonNotFound(personID)
 	case errors.Is(err, domain.ErrCodeConflict):

@@ -11,6 +11,7 @@ import {
   EditPerson,
   MergeProvisional,
   EmailManager,
+  InstitutionalTiesManager,
   MessengerLinkManager,
   NameVariantManager,
   PersonAffiliationManager,
@@ -169,6 +170,11 @@ export default async function PersonDetailPage({
         <Card>
           <h2 className="text-sm font-semibold text-slate-900"><T>Physical identity</T></h2>
           <PhysicalIdentityManager personId={person.id} />
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <h2 className="text-sm font-semibold text-slate-900"><T>Institutional &amp; political ties</T></h2>
+          <InstitutionalTiesManager personId={person.id} />
         </Card>
       </div>
 

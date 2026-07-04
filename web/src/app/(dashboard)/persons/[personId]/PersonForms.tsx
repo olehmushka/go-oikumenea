@@ -29,6 +29,10 @@ import type {
   DocumentDoc,
   Email,
   Ethnicity,
+  ExternalReference,
+  GovernmentPosition,
+  LobbyingRelationship,
+  PartyMembership,
   Guardianship,
   Kinship,
   LocaleMap,
@@ -970,6 +974,219 @@ export function PhysicalIdentityManager({ personId }: { personId: string }) {
               <option key={b.code} value={b.code}>{b.name}</option>
             ))}
           </select>
+          <button className="btn-ghost" disabled={busy}><T>Add</T></button>
+        </form>
+      </ChannelBlock>
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ institutional & political ties (M33) */
+
+const PARTY_ROLES = ["member", "official", "candidate", "donor", "supporter", "other"] as const;
+const GOV_LEVELS = ["international", "national", "regional", "local"] as const;
+const REF_KINDS = ["wikipedia", "news", "registry", "social", "court", "academic", "other"] as const;
+
+// InstitutionalTiesManager owns the M33 panels (D-InstitutionalTies): party memberships (pii:special,
+// encrypted party — legalBasis required), government positions (PEP-triggering), lobbying relationships,
+// and external references. Each panel self-fetches its own endpoint.
+export function InstitutionalTiesManager({ personId }: { personId: string }) {
+  const [parties, setParties] = useState<PartyMembership[] | null>(null);
+  const [govs, setGovs] = useState<GovernmentPosition[] | null>(null);
+  const [lobs, setLobs] = useState<LobbyingRelationship[] | null>(null);
+  const [refs, setRefs] = useState<ExternalReference[] | null>(null);
+  const [bases, setBases] = useState<{ code: string; name: string }[]>([]);
+  const [err, setErr] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = () => {
+    api.person.listPartyMemberships(personId).then(setParties).catch(setErr);
+    api.person.listGovernmentPositions(personId).then(setGovs).catch(setErr);
+    api.person.listLobbyingRelationships(personId).then(setLobs).catch(setErr);
+    api.person.listExternalReferences(personId).then(setRefs).catch(setErr);
+  };
+  useEffect(() => {
+    load();
+    // Party affiliation is GDPR Art. 9 (political opinion) — offer the Art. 9 lawful bases.
+    api.platformCatalog.listLegalBasisKinds()
+      .then((r) => setBases((r?.kinds ?? []).filter((k) => k.article === "art9").map((k) => ({ code: k.code, name: k.name }))))
+      .catch(setErr);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personId]);
+
+  const run = async (fn: () => Promise<unknown>, after?: () => void) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await fn();
+      after?.();
+      load();
+    } catch (e) {
+      setErr(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <ChannelBlock title="Party memberships" err={err}>
+        <p className="mt-1 text-xs text-amber-600"><T>Special-category data (GDPR Art. 9, political opinion) — encrypted at rest.</T></p>
+        <ItemList
+          items={parties ?? undefined}
+          render={(p) => {
+            const period = [p.validFrom, p.validTo].filter(Boolean).join(" → ");
+            return (
+              <span className="inline-flex flex-wrap items-center gap-x-1">
+                <span className="font-medium">{p.party || "—"}</span>
+                <span className="mx-1 text-slate-300">·</span>
+                <span className="text-xs text-slate-500">{p.role}</span>
+                <span className="ml-1 text-xs text-slate-400">· {p.legalBasis}</span>
+                {period ? <span className="ml-1 text-xs text-slate-400">({period})</span> : null}
+              </span>
+            );
+          }}
+          del={(p) => `/person/v1/persons/${personId}/party-memberships/${p.id}`}
+          delConfirm="Remove this party membership?"
+        />
+        <form
+          className="mt-2 grid grid-cols-[1fr_7rem_1fr_auto] gap-2"
+          onSubmit={(ev) => {
+            ev.preventDefault();
+            const f = new FormData(ev.currentTarget);
+            const party = s(f, "party");
+            const legalBasis = s(f, "legalBasis");
+            if (!party || !legalBasis) return;
+            const form = ev.currentTarget;
+            run(
+              () => api.person.upsertPartyMembership(personId, { party, role: s(f, "role") ?? "member", legalBasis }),
+              () => form.reset(),
+            );
+          }}
+        >
+          <input name="party" className="input" placeholder="party name…" required />
+          <select name="role" className="input" defaultValue="member">
+            {PARTY_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+          <select name="legalBasis" className="input" defaultValue="explicit_consent" required>
+            {bases.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
+          </select>
+          <button className="btn-ghost" disabled={busy}><T>Add</T></button>
+        </form>
+      </ChannelBlock>
+
+      <ChannelBlock title="Government positions" err={null}>
+        <ItemList
+          items={govs ?? undefined}
+          render={(g) => {
+            const period = [g.validFrom, g.validTo].filter(Boolean).join(" → ");
+            return (
+              <span className="inline-flex flex-wrap items-center gap-x-1">
+                {g.pepTrigger ? <span title="Politically exposed person">🏛️</span> : null}
+                <span className="font-medium">{g.title}</span>
+                <span className="mx-1 text-slate-300">·</span>
+                <span className="text-xs text-slate-500">{g.body}</span>
+                <span className="ml-1 text-xs text-slate-400">· {g.level}</span>
+                {period ? <span className="ml-1 text-xs text-slate-400">({period})</span> : null}
+              </span>
+            );
+          }}
+          del={(g) => `/person/v1/persons/${personId}/government-positions/${g.id}`}
+          delConfirm="Remove this government position?"
+        />
+        <form
+          className="mt-2 grid grid-cols-[1fr_1fr_7rem_auto] gap-2"
+          onSubmit={(ev) => {
+            ev.preventDefault();
+            const f = new FormData(ev.currentTarget);
+            const title = s(f, "title");
+            const body = s(f, "body");
+            if (!title || !body) return;
+            const form = ev.currentTarget;
+            run(
+              () => api.person.upsertGovernmentPosition(personId, { title, body, level: s(f, "level") ?? "national" }),
+              () => form.reset(),
+            );
+          }}
+        >
+          <input name="title" className="input" placeholder="title…" required />
+          <input name="body" className="input" placeholder="government body…" required />
+          <select name="level" className="input" defaultValue="national">
+            {GOV_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
+          </select>
+          <button className="btn-ghost" disabled={busy}><T>Add</T></button>
+        </form>
+      </ChannelBlock>
+
+      <ChannelBlock title="Lobbying relationships" err={null}>
+        <ItemList
+          items={lobs ?? undefined}
+          render={(l) => (
+            <span className="inline-flex flex-wrap items-center gap-x-1">
+              <span className="font-medium">{l.registrant}</span>
+              {l.client ? <><span className="mx-1 text-slate-300">→</span><span className="text-xs text-slate-500">{l.client}</span></> : null}
+              {l.issues.length ? <span className="ml-1 text-xs text-slate-400">· {l.issues.join(", ")}</span> : null}
+            </span>
+          )}
+          del={(l) => `/person/v1/persons/${personId}/lobbying-relationships/${l.id}`}
+          delConfirm="Remove this lobbying relationship?"
+        />
+        <form
+          className="mt-2 grid grid-cols-[1fr_1fr_1fr_auto] gap-2"
+          onSubmit={(ev) => {
+            ev.preventDefault();
+            const f = new FormData(ev.currentTarget);
+            const registrant = s(f, "registrant");
+            if (!registrant) return;
+            const form = ev.currentTarget;
+            const issues = (s(f, "issues") ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+            run(
+              () => api.person.upsertLobbyingRelationship(personId, {
+                registrant, client: s(f, "client"), legislativeBody: s(f, "legislativeBody"), issues,
+              }),
+              () => form.reset(),
+            );
+          }}
+        >
+          <input name="registrant" className="input" placeholder="registrant…" required />
+          <input name="client" className="input" placeholder="client…" />
+          <input name="issues" className="input" placeholder="issues (comma-separated)…" />
+          <button className="btn-ghost" disabled={busy}><T>Add</T></button>
+        </form>
+      </ChannelBlock>
+
+      <ChannelBlock title="External references" err={null}>
+        <ItemList
+          items={refs ?? undefined}
+          render={(r) => (
+            <span className="inline-flex flex-wrap items-center gap-x-1">
+              {r.disputed ? <span title="Disputed">⚠️</span> : null}
+              <span className="text-xs font-medium text-slate-500">{r.kind}</span>
+              <span className="mx-1 text-slate-300">·</span>
+              <a href={r.url} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline">{r.url}</a>
+            </span>
+          )}
+          del={(r) => `/person/v1/persons/${personId}/external-references/${r.id}`}
+          delConfirm="Remove this external reference?"
+        />
+        <form
+          className="mt-2 grid grid-cols-[7rem_1fr_auto] gap-2"
+          onSubmit={(ev) => {
+            ev.preventDefault();
+            const f = new FormData(ev.currentTarget);
+            const url = s(f, "url");
+            if (!url) return;
+            const form = ev.currentTarget;
+            run(
+              () => api.person.upsertExternalReference(personId, { kind: s(f, "kind") ?? "other", url }),
+              () => form.reset(),
+            );
+          }}
+        >
+          <select name="kind" className="input" defaultValue="wikipedia">
+            {REF_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+          </select>
+          <input name="url" type="url" className="input" placeholder="https://…" required />
           <button className="btn-ghost" disabled={busy}><T>Add</T></button>
         </form>
       </ChannelBlock>

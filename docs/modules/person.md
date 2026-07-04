@@ -625,11 +625,19 @@ through the holder.
   ([location](location.md), M19): `role ∈ {home,work,mailing,other}`, effective-dated, `is_primary`,
   `privacy_seeking`, `pii:contact`, purge-erased; `person_residences` retained for legal-residence.
   See the `person_addresses` data-model entry + endpoints above.
-- **M33 · Institutional ties (D-InstitutionalTies).** Per-type person↔org links —
-  `person_party_memberships` (`pii:special`), `person_government_positions` (`pep_trigger`, feeds M34),
-  `person_lobbying_relationships`, foreign-military service (reuse [membership](membership.md) against
-  M30 [external-organizations](external-organizations.md) + rank), `person_external_references`; an
-  `emergency` `person_relation_type` (no new entity). Org side = external-org / company / unit.
+- **M33 · Institutional ties (D-InstitutionalTies) — DELIVERED (migration `0032`).** Per-type person↔org
+  links — `person_party_memberships` (link `6,2,11`, `pii:special`: the party identity is
+  **envelope-encrypted + blind-indexed**, NOT-NULL `legal_basis` Art. 9, crypto-erased on purge),
+  `person_government_positions` (link `6,2,12`, `pep_trigger` auto-true + persists post-office, feeds the
+  M34 PEP seam `IsPoliticallyExposed`; optional polymorphic `org_id` + `country_id`),
+  `person_lobbying_relationships` (link `6,2,13`, `issues[]`/`filing_id`/`source_url`), foreign-military
+  service (reuse [membership](membership.md) against M30
+  [external-organizations](external-organizations.md) + rank — no table), `person_external_references`
+  (object `6,1,14`, idempotent by `(person,url)`, a hermenea import target); an `emergency`
+  `person_relation_type` (M14 catalog seed, no new entity). Org side = external-org / company / unit
+  (free-text label + optional resolved RID). Inferred political leaning is a **separate** M35 overlay,
+  never merged with the declared party membership. All four carry the `source`/`confidence` attribution
+  and are re-pointed on merge; party is crypto-erased and the plaintext ties hard-deleted on purge.
 - **M34 · Watchlists (D-Watchlists).** Live-lookup sanctions/PEP/Interpol **via
   [hermenea](hermenea.md)** — only `person_watchlist_matches` metadata persisted (≤24h cache, never the
   lists); PEP derived from M33 government positions; `person_regulatory_sanctions` overlay

@@ -507,6 +507,102 @@ func (o *EthnicityType) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+/*
+An off-platform pointer about a person (D-InstitutionalTies, M33) — an Object. Mirrors a social
+account; a hermenea import target (idempotent by URL). pii:basic.
+*/
+type ExternalReference struct {
+	Id       string `json:"id"`
+	PersonId string `json:"personId"`
+	// One of wikipedia | news | registry | social | court | academic | other.
+	Kind        string   `json:"kind"`
+	Url         string   `json:"url"`
+	ExternalId  *string  `json:"externalId,omitempty"`
+	Categories  []string `json:"categories"`
+	LastChecked *string  `json:"lastChecked,omitempty"`
+	Disputed    bool     `json:"disputed"`
+	Source      *string  `json:"source,omitempty"`
+	Confidence  *string  `json:"confidence,omitempty"`
+}
+
+func (o ExternalReference) MarshalJSON() ([]byte, error) {
+	if o.Categories == nil {
+		o.Categories = make([]string, 0)
+	}
+	type _tmpExternalReference ExternalReference
+	return safejson.Marshal(_tmpExternalReference(o))
+}
+
+func (o *ExternalReference) UnmarshalJSON(data []byte) error {
+	type _tmpExternalReference ExternalReference
+	var rawExternalReference _tmpExternalReference
+	if err := safejson.Unmarshal(data, &rawExternalReference); err != nil {
+		return err
+	}
+	if rawExternalReference.Categories == nil {
+		rawExternalReference.Categories = make([]string, 0)
+	}
+	*o = ExternalReference(rawExternalReference)
+	return nil
+}
+
+func (o ExternalReference) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ExternalReference) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+A public office a person holds or held (D-InstitutionalTies, M33) — a reified link. pepTrigger
+persists after the position ends and feeds the M34 PEP watchlist check. pii:basic.
+*/
+type GovernmentPosition struct {
+	Id       string `json:"id"`
+	PersonId string `json:"personId"`
+	// e.g. "Minister of Defence", "Senator".
+	Title string `json:"title"`
+	// The government body, e.g. "Ministry of Defence", "US Senate".
+	Body string `json:"body"`
+	// Optional resolved body RID (polymorphic — external org / company / unit).
+	OrgId     *string `json:"orgId,omitempty"`
+	CountryId *string `json:"countryId,omitempty"`
+	// One of international | national | regional | local.
+	Level     string  `json:"level"`
+	RoleType  *string `json:"roleType,omitempty"`
+	ValidFrom *string `json:"validFrom,omitempty"`
+	ValidTo   *string `json:"validTo,omitempty"`
+	// Politically-exposed-person flag; persists after the office ends.
+	PepTrigger bool    `json:"pepTrigger"`
+	Source     *string `json:"source,omitempty"`
+	Confidence *string `json:"confidence,omitempty"`
+}
+
+func (o GovernmentPosition) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *GovernmentPosition) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // A legal guardian→ward link, distinct from blood kinship (D-PersonRelationships; Link link__guardian_of).
 type Guardianship struct {
 	Id string `json:"id"`
@@ -559,6 +655,62 @@ func (o Kinship) MarshalYAML() (interface{}, error) {
 }
 
 func (o *Kinship) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+A public lobbying filing (D-InstitutionalTies, M33) — a reified link: the person as registrant
+lobbying for a client before a legislative body on a set of issues. pii:basic.
+*/
+type LobbyingRelationship struct {
+	Id              string   `json:"id"`
+	PersonId        string   `json:"personId"`
+	Registrant      string   `json:"registrant"`
+	Client          *string  `json:"client,omitempty"`
+	LegislativeBody *string  `json:"legislativeBody,omitempty"`
+	Issues          []string `json:"issues"`
+	FilingId        *string  `json:"filingId,omitempty"`
+	SourceUrl       *string  `json:"sourceUrl,omitempty"`
+	ValidFrom       *string  `json:"validFrom,omitempty"`
+	ValidTo         *string  `json:"validTo,omitempty"`
+	Source          *string  `json:"source,omitempty"`
+	Confidence      *string  `json:"confidence,omitempty"`
+}
+
+func (o LobbyingRelationship) MarshalJSON() ([]byte, error) {
+	if o.Issues == nil {
+		o.Issues = make([]string, 0)
+	}
+	type _tmpLobbyingRelationship LobbyingRelationship
+	return safejson.Marshal(_tmpLobbyingRelationship(o))
+}
+
+func (o *LobbyingRelationship) UnmarshalJSON(data []byte) error {
+	type _tmpLobbyingRelationship LobbyingRelationship
+	var rawLobbyingRelationship _tmpLobbyingRelationship
+	if err := safejson.Unmarshal(data, &rawLobbyingRelationship); err != nil {
+		return err
+	}
+	if rawLobbyingRelationship.Issues == nil {
+		rawLobbyingRelationship.Issues = make([]string, 0)
+	}
+	*o = LobbyingRelationship(rawLobbyingRelationship)
+	return nil
+}
+
+func (o LobbyingRelationship) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *LobbyingRelationship) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -724,6 +876,46 @@ func (o Partnership) MarshalYAML() (interface{}, error) {
 }
 
 func (o *Partnership) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+A person's political-party affiliation (D-InstitutionalTies, M33) — a reified link. Political
+opinion is a GDPR Art. 9 special category, so the party identity is envelope-encrypted at rest;
+`party` here is the decrypted value ("" for a crypto-erased tombstone). legalBasis is required.
+pii:special.
+*/
+type PartyMembership struct {
+	Id       string `json:"id"`
+	PersonId string `json:"personId"`
+	// The party name (or an external-organizations RID). Decrypted; "" when crypto-erased.
+	Party string `json:"party"`
+	// One of member | official | candidate | donor | supporter | other.
+	Role      string  `json:"role"`
+	ValidFrom *string `json:"validFrom,omitempty"`
+	// ISO-8601 date the affiliation ended; null = current.
+	ValidTo *string `json:"validTo,omitempty"`
+	// The platform_legal_basis_kinds code authorizing this Art. 9 processing.
+	LegalBasis string `json:"legalBasis"`
+	// active | retired.
+	Status     string  `json:"status"`
+	Source     *string `json:"source,omitempty"`
+	Confidence *string `json:"confidence,omitempty"`
+}
+
+func (o PartyMembership) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *PartyMembership) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -1642,6 +1834,68 @@ func (o *UpsertEthnicityTypeRequest) UnmarshalYAML(unmarshal func(interface{}) e
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// Add an external reference (idempotent by url), or replace one when id is supplied (M33).
+type UpsertExternalReferenceRequest struct {
+	Id         *string   `json:"id,omitempty"`
+	Kind       *string   `json:"kind,omitempty"`
+	Url        string    `json:"url"`
+	ExternalId *string   `json:"externalId,omitempty"`
+	Categories *[]string `json:"categories,omitempty"`
+	// RFC-3339 timestamp of the last verification check.
+	LastChecked *string `json:"lastChecked,omitempty"`
+	Disputed    *bool   `json:"disputed,omitempty"`
+	Source      *string `json:"source,omitempty"`
+	Confidence  *string `json:"confidence,omitempty"`
+}
+
+func (o UpsertExternalReferenceRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertExternalReferenceRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Add a government position, or replace one when id is supplied (D-InstitutionalTies, M33).
+type UpsertGovernmentPositionRequest struct {
+	Id         *string `json:"id,omitempty"`
+	Title      string  `json:"title"`
+	Body       string  `json:"body"`
+	OrgId      *string `json:"orgId,omitempty"`
+	CountryId  *string `json:"countryId,omitempty"`
+	Level      *string `json:"level,omitempty"`
+	RoleType   *string `json:"roleType,omitempty"`
+	ValidFrom  *string `json:"validFrom,omitempty"`
+	ValidTo    *string `json:"validTo,omitempty"`
+	PepTrigger *bool   `json:"pepTrigger,omitempty"`
+	Source     *string `json:"source,omitempty"`
+	Confidence *string `json:"confidence,omitempty"`
+}
+
+func (o UpsertGovernmentPositionRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertGovernmentPositionRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // Record or replace a guardian→ward link between the path person and counterpartId; role names the path person's side.
 type UpsertGuardianshipRequest struct {
 	Id *string `json:"id,omitempty"`
@@ -1692,6 +1946,37 @@ func (o UpsertKinshipRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *UpsertKinshipRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Add a lobbying relationship, or replace one when id is supplied (D-InstitutionalTies, M33).
+type UpsertLobbyingRelationshipRequest struct {
+	Id              *string   `json:"id,omitempty"`
+	Registrant      string    `json:"registrant"`
+	Client          *string   `json:"client,omitempty"`
+	LegislativeBody *string   `json:"legislativeBody,omitempty"`
+	Issues          *[]string `json:"issues,omitempty"`
+	FilingId        *string   `json:"filingId,omitempty"`
+	SourceUrl       *string   `json:"sourceUrl,omitempty"`
+	ValidFrom       *string   `json:"validFrom,omitempty"`
+	ValidTo         *string   `json:"validTo,omitempty"`
+	Source          *string   `json:"source,omitempty"`
+	Confidence      *string   `json:"confidence,omitempty"`
+}
+
+func (o UpsertLobbyingRelationshipRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertLobbyingRelationshipRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -1815,6 +2100,35 @@ func (o UpsertPartnershipRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *UpsertPartnershipRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Add a party membership, or replace one when id is supplied (D-InstitutionalTies, M33).
+type UpsertPartyMembershipRequest struct {
+	Id         *string `json:"id,omitempty"`
+	Party      string  `json:"party"`
+	Role       *string `json:"role,omitempty"`
+	ValidFrom  *string `json:"validFrom,omitempty"`
+	ValidTo    *string `json:"validTo,omitempty"`
+	LegalBasis string  `json:"legalBasis"`
+	Status     *string `json:"status,omitempty"`
+	Source     *string `json:"source,omitempty"`
+	Confidence *string `json:"confidence,omitempty"`
+}
+
+func (o UpsertPartyMembershipRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertPartyMembershipRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

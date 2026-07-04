@@ -1198,4 +1198,31 @@ type Repository interface {
 	ListEthnicities(ctx context.Context, personID string) ([]StoredEthnicity, error)
 	// CryptoEraseEthnicities drops the envelope on all of a person's ethnicities (purge erasure path).
 	CryptoEraseEthnicities(ctx context.Context, personID string) (int64, error)
+
+	// institutional & political ties (D-InstitutionalTies, M33)
+
+	// party memberships — the encrypted link__party_membership (p.ID == "" => insert; else replace)
+	InsertPartyMembership(ctx context.Context, p StoredPartyMembership) (StoredPartyMembership, error)
+	UpdatePartyMembership(ctx context.Context, p StoredPartyMembership) (StoredPartyMembership, error) // ErrPartyMembershipNotFound
+	DeletePartyMembership(ctx context.Context, personID, id string) error                              // ErrPartyMembershipNotFound
+	ListPartyMemberships(ctx context.Context, personID string) ([]StoredPartyMembership, error)
+	// CryptoErasePartyMemberships drops the envelope on all of a person's party memberships (purge path).
+	CryptoErasePartyMemberships(ctx context.Context, personID string) (int64, error)
+
+	// government positions — link__government_position (g.ID == "" => insert; else replace that row)
+	UpsertGovernmentPosition(ctx context.Context, g GovernmentPosition) (GovernmentPosition, error) // ErrGovernmentPositionNotFound
+	DeleteGovernmentPosition(ctx context.Context, personID, id string) error                        // ErrGovernmentPositionNotFound
+	ListGovernmentPositions(ctx context.Context, personID string) ([]GovernmentPosition, error)
+	// IsPoliticallyExposed reports whether the person has any active pep_trigger position (M34 seam).
+	IsPoliticallyExposed(ctx context.Context, personID string) (bool, error)
+
+	// lobbying relationships — link__lobbying_rel (l.ID == "" => insert; else replace that row)
+	UpsertLobbyingRelationship(ctx context.Context, l LobbyingRelationship) (LobbyingRelationship, error) // ErrLobbyingNotFound
+	DeleteLobbyingRelationship(ctx context.Context, personID, id string) error                            // ErrLobbyingNotFound
+	ListLobbyingRelationships(ctx context.Context, personID string) ([]LobbyingRelationship, error)
+
+	// external references — object external_reference (r.ID == "" => upsert-by-url; else replace that row)
+	UpsertExternalReference(ctx context.Context, r ExternalReference) (ExternalReference, error) // ErrExternalReferenceNotFound
+	DeleteExternalReference(ctx context.Context, personID, id string) error                      // ErrExternalReferenceNotFound
+	ListExternalReferences(ctx context.Context, personID string) ([]ExternalReference, error)
 }
