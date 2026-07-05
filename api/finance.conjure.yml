@@ -1,0 +1,349 @@
+# Finance module API (M44 — docs/modules/finance.md / D-Finance). Bank accounts & payment cards as
+# authoritative, operator-asserted FIRST-PARTY directory data (NOT an OSINT overlay: no source/confidence
+# attribution). A person or company holds accounts; each account is held at a BANK — an existing
+# `company`-domain tenant_organizations row (M21/M41), referenced by institutionId, never a new entity.
+# Cards hang off an account. The sensitive identifiers (IBAN, card PAN) are ENVELOPE-ENCRYPTED at rest
+# exactly like document_personal_codes (D-CryptoProvider); the plaintext is accepted on write and
+# decrypted on read only for authorized callers, never listed. There is NO CVV field, ever (PCI-DSS
+# Req 3.2).
+#
+# RID-bearing fields are typed `string` (the canonical RID text): Conjure reserves `rid` as a built-in
+# primitive, so a type named `Rid` cannot be used. Translatable catalog labels (account-type /
+# card-network names) are returned as a `locale -> text` map assembled from the i18n store (D-i18n: all
+# locales in every response, no negotiation); create/update requests carry the default-locale value as a
+# plain `string`. Finance entities carry no unit scope of their own; reads gate on `finance.read`,
+# account/card/holder writes on `finance.manage`, catalog management on the instance-scope
+# `finance.catalog.manage` — all satisfied anywhere via the PEP. Person-held rows are additionally
+# holder-scoped (D-PersonReadScope). Writes are audited in-process under a `system` actor (D-Audit).
+# Generated Go lands in internal/conjure, never hand-edited.
+types:
+  definitions:
+    default-package: oikumenea.finance
+    objects:
+      # ---- reference catalogs ----
+      AccountType:
+        docs: A bank-account kind (current/savings/deposit/loan…); instance-extensible.
+        fields:
+          id: string
+          code: string
+          name:
+            type: map<string, string>
+            docs: Default-locale fallback + i18n translations.
+          status: string
+          sortOrder: optional<integer>
+      CardNetwork:
+        docs: A payment-card network (visa/mastercard/amex…); instance-extensible.
+        fields:
+          id: string
+          code: string
+          name: map<string, string>
+          status: string
+          sortOrder: optional<integer>
+      # ---- objects ----
+      Account:
+        docs: |
+          A bank account at registry grade. The RID is the external handle (no separate code). The IBAN
+          is envelope-encrypted at rest; `iban` is populated (decrypted) only on getAccount for authorized
+          callers, never in a list. Soft-deleted, not destroyed.
+        fields:
+          id: string
+          institutionId:
+            type: string
+            docs: The holding bank — a `company`-domain tenant_organizations RID.
+          institutionLabel:
+            type: optional<string>
+            docs: Best-effort bank organization name.
+          iban:
+            type: optional<string>
+            docs: The decrypted IBAN; present only on getAccount for authorized callers.
+          currency:
+            type: optional<string>
+            docs: ISO 4217 (e.g. UAH, USD).
+          accountTypeId: optional<string>
+          accountTypeLabel: optional<string>
+          status:
+            type: string
+            docs: One of active | closed | frozen.
+          createdAt: datetime
+          updatedAt: datetime
+      Card:
+        docs: |
+          A payment card contained by exactly one account. The full PAN is envelope-encrypted; `pan` is
+          populated (decrypted) only on getCard for authorized callers. bin (first 6) + lastFour are the
+          display-only clear digits, always returned. No CVV exists.
+        fields:
+          id: string
+          accountId: string
+          pan:
+            type: optional<string>
+            docs: The decrypted PAN; present only on getCard for authorized callers.
+          bin: optional<string>
+          lastFour: optional<string>
+          networkId: optional<string>
+          networkLabel: optional<string>
+          cardType:
+            type: string
+            docs: One of debit | credit.
+          expiryMonth: optional<integer>
+          expiryYear: optional<integer>
+          cardholderPersonId:
+            type: optional<string>
+            docs: An optional named cardholder (a person RID), independent of the account's holders.
+          status:
+            type: string
+            docs: One of active | blocked | expired.
+          createdAt: datetime
+          updatedAt: datetime
+      # ---- reified link ----
+      AccountHolder:
+        docs: |
+          The ownership edge (link__held_by). The holder is a person OR a company (polymorphic). Temporal:
+          an ended holding closes effectiveTo, so the edge set is the holding history.
+        fields:
+          id: string
+          accountId: string
+          holderKind:
+            type: string
+            docs: One of person | company.
+          holderId: string
+          holderLabel:
+            type: optional<string>
+            docs: Best-effort display label (company legal name for company holders; empty for persons).
+          role:
+            type: string
+            docs: One of primary | joint | authorized_signer.
+          effectiveFrom: datetime
+          effectiveTo: optional<datetime>
+          createdAt: datetime
+          updatedAt: datetime
+      # ---- person view ----
+      PersonAccount:
+        docs: An account a person holds, enriched with the bank + the person's holding role (read-only).
+        fields:
+          id: string
+          institutionId: string
+          institutionLabel: optional<string>
+          currency: optional<string>
+          accountTypeLabel: optional<string>
+          role:
+            type: string
+            docs: The person's holding role on this account (primary | joint | authorized_signer).
+          status: string
+          createdAt: datetime
+      PersonAccounts:
+        docs: A person's held accounts (newest first).
+        fields:
+          accounts: list<PersonAccount>
+      # ---- pages / lists ----
+      AccountPage:
+        fields:
+          accounts: list<Account>
+          nextPageToken: optional<string>
+      AccountTypeList:
+        fields:
+          types: list<AccountType>
+      CardNetworkList:
+        fields:
+          networks: list<CardNetwork>
+      CardList:
+        fields:
+          cards: list<Card>
+      AccountHolderList:
+        fields:
+          holders: list<AccountHolder>
+      # ---- request bodies ----
+      UpsertAccountTypeRequest:
+        docs: Create/update (by code) an account-type catalog entry. name is the default-locale fallback.
+        fields:
+          code: string
+          name: string
+          sortOrder: optional<integer>
+      UpsertCardNetworkRequest:
+        fields:
+          code: string
+          name: string
+          sortOrder: optional<integer>
+      CreateAccountRequest:
+        docs: Create a bank account. The IBAN is validated (ISO 13616 mod-97), encrypted, and blind-indexed.
+        fields:
+          institutionId: string
+          iban: string
+          currency: optional<string>
+          accountTypeId: optional<string>
+      UpdateAccountRequest:
+        docs: Update currency/accountTypeId/status and optionally re-key the IBAN; omitted fields are unchanged.
+        fields:
+          iban: optional<string>
+          currency: optional<string>
+          accountTypeId: optional<string>
+          status: optional<string>
+      AddAccountHolderRequest:
+        docs: Add a holder (person or company) to the account; role defaults to primary.
+        fields:
+          holderKind: string
+          holderId: string
+          role: optional<string>
+      AddCardRequest:
+        docs: Add a card to the account. The PAN is validated (Luhn), encrypted, and blind-indexed; bin/lastFour derive from it.
+        fields:
+          pan: string
+          networkId: optional<string>
+          cardType: string
+          expiryMonth: optional<integer>
+          expiryYear: optional<integer>
+          cardholderPersonId: optional<string>
+      UpdateCardRequest:
+        docs: Update network/type/expiry/cardholder/status; omitted fields are unchanged. The PAN is not re-keyed here.
+        fields:
+          networkId: optional<string>
+          cardType: optional<string>
+          expiryMonth: optional<integer>
+          expiryYear: optional<integer>
+          cardholderPersonId: optional<string>
+          status: optional<string>
+    errors:
+      AccountNotFound:
+        namespace: Finance
+        code: NOT_FOUND
+        safe-args:
+          accountId: string
+      CardNotFound:
+        namespace: Finance
+        code: NOT_FOUND
+        safe-args:
+          cardId: string
+      HolderNotFound:
+        namespace: Finance
+        code: NOT_FOUND
+        safe-args:
+          holderId: string
+      Conflict:
+        docs: A code/identifier already exists in scope (catalog code, duplicate active IBAN, duplicate active PAN).
+        namespace: Finance
+        code: CONFLICT
+        safe-args:
+          reason: string
+      Invalid:
+        docs: A malformed request or an unknown referenced entity (institution/account-type/network/holder/IBAN/PAN).
+        namespace: Finance
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
+services:
+  FinanceService:
+    name: Finance Service
+    package: oikumenea.finance
+    base-path: /finance/v1
+    default-auth: header
+    docs: |
+      Bank accounts & payment cards: account-type / card-network catalogs, accounts (encrypted IBAN),
+      the polymorphic holder link, and cards (encrypted PAN + clear BIN/last-4). Reads gate on
+      `finance.read`; account/card/holder writes on `finance.manage`; catalog-entry writes on
+      `finance.catalog.manage`. Writes are audited in-process (D-Audit).
+    endpoints:
+      # ---- catalogs ----
+      listAccountTypes:
+        http: GET /account-types
+        returns: AccountTypeList
+      upsertAccountType:
+        http: PUT /account-types
+        args:
+          request: UpsertAccountTypeRequest
+        returns: AccountType
+      listCardNetworks:
+        http: GET /card-networks
+        returns: CardNetworkList
+      upsertCardNetwork:
+        http: PUT /card-networks
+        args:
+          request: UpsertCardNetworkRequest
+        returns: CardNetwork
+      # ---- accounts ----
+      createAccount:
+        http: POST /accounts
+        args:
+          request: CreateAccountRequest
+        returns: Account
+      listAccounts:
+        http: GET /accounts
+        args:
+          institutionId:
+            type: optional<string>
+            param-type: query
+            docs: Optional filter to one holding bank.
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: AccountPage
+      getAccount:
+        http: GET /accounts/{accountId}
+        docs: Returns the account with the decrypted IBAN for authorized callers.
+        args:
+          accountId: { type: string, param-type: path }
+        returns: Account
+      updateAccount:
+        http: PUT /accounts/{accountId}
+        args:
+          accountId: { type: string, param-type: path }
+          request: UpdateAccountRequest
+        returns: Account
+      deleteAccount:
+        http: DELETE /accounts/{accountId}
+        args:
+          accountId: { type: string, param-type: path }
+      # ---- holders (ownership) ----
+      listAccountHolders:
+        http: GET /accounts/{accountId}/holders
+        args:
+          accountId: { type: string, param-type: path }
+        returns: AccountHolderList
+      addAccountHolder:
+        http: POST /accounts/{accountId}/holders
+        args:
+          accountId: { type: string, param-type: path }
+          request: AddAccountHolderRequest
+        returns: AccountHolder
+      endAccountHolding:
+        http: POST /holders/{holderId}/end
+        docs: End an active holding (closes effectiveTo); the account and its history remain.
+        args:
+          holderId: { type: string, param-type: path }
+        returns: AccountHolder
+      # ---- cards ----
+      listCards:
+        http: GET /accounts/{accountId}/cards
+        args:
+          accountId: { type: string, param-type: path }
+        returns: CardList
+      addCard:
+        http: POST /accounts/{accountId}/cards
+        args:
+          accountId: { type: string, param-type: path }
+          request: AddCardRequest
+        returns: Card
+      getCard:
+        http: GET /cards/{cardId}
+        docs: Returns the card with the decrypted PAN for authorized callers.
+        args:
+          cardId: { type: string, param-type: path }
+        returns: Card
+      updateCard:
+        http: PUT /cards/{cardId}
+        args:
+          cardId: { type: string, param-type: path }
+          request: UpdateCardRequest
+        returns: Card
+      deleteCard:
+        http: DELETE /cards/{cardId}
+        args:
+          cardId: { type: string, param-type: path }
+      # ---- person view ----
+      listPersonAccounts:
+        http: GET /persons/{personId}/accounts
+        docs: Read-only view of the accounts a person holds.
+        args:
+          personId: { type: string, param-type: path }
+        returns: PersonAccounts

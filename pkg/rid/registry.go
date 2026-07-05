@@ -31,6 +31,7 @@ var serviceNames = map[int]string{
 	SvcReligion:    "religion",
 	SvcVehicle:     "vehicle",
 	SvcExternalOrg: "external_organization",
+	SvcFinance:     "finance",
 }
 
 type typeKey struct {
@@ -202,6 +203,12 @@ var typeNames = map[typeKey]string{
 	// external-organizations (M30 / D-ExternalOrgs) — the external-org node-space + its kind catalog
 	{SvcExternalOrg, int(KindObject), 1}: "external_organization",
 	{SvcExternalOrg, int(KindObject), 2}: "external_org_kind",
+	// finance (M44 / D-Finance) — bank accounts + payment cards + catalogs + the polymorphic holder link
+	{SvcFinance, int(KindObject), 1}: "account",
+	{SvcFinance, int(KindObject), 2}: "card",
+	{SvcFinance, int(KindObject), 3}: "account_type",
+	{SvcFinance, int(KindObject), 4}: "card_network",
+	{SvcFinance, int(KindLink), 1}:   "held_by",
 }
 
 // Bare person link-type names (the dispatch tokens), derived from the registry above.

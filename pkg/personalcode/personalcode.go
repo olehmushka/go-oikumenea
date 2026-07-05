@@ -66,6 +66,11 @@ func New() *Registry {
 		"cl-rut":   validateCLRUT,
 		"mx-curp":  validateMXCURP,
 		"mx-rfc":   validateMXRFC,
+		// M44 finance identifiers (D-Finance): the IBAN (ISO 13616 mod-97) and the payment-card PAN
+		// (Luhn). Both are envelope-encrypted + blind-indexed by the finance module exactly like a
+		// personal code; validation runs on the plaintext before encryption.
+		"iban": validateIBAN,
+		"pan":  validatePAN,
 	}}
 }
 
@@ -370,4 +375,83 @@ func validateMXRFC(value string) (string, error) {
 		return "", errors.Join(ErrInvalid, errors.New("RFC must be 13 characters in the RFC format"))
 	}
 	return s, nil
+}
+
+// reIBAN is the structural guard for an IBAN before the mod-97 check: 2 letters (country) + 2 check
+// digits + up to 30 alphanumerics (ISO 13616 caps the total at 34).
+var reIBAN = regexp.MustCompile(`^[A-Z]{2}[0-9]{2}[A-Z0-9]{1,30}$`)
+
+// validateIBAN validates an IBAN (ISO 13616): spaces are stripped and it is upper-cased; then the
+// first four characters are moved to the end, each letter is expanded to its A=10…Z=35 numeric value,
+// and the resulting integer must be ≡ 1 (mod 97). The normalized form is the bare, space-free IBAN.
+func validateIBAN(value string) (string, error) {
+	var b strings.Builder
+	for _, r := range strings.ToUpper(value) {
+		if (r >= '0' && r <= '9') || (r >= 'A' && r <= 'Z') {
+			b.WriteRune(r)
+		}
+	}
+	norm := b.String()
+	if len(norm) < 15 || len(norm) > 34 || !reIBAN.MatchString(norm) {
+		return "", errors.Join(ErrInvalid, errors.New("IBAN must be 15-34 alphanumerics in the ISO 13616 format"))
+	}
+	// Rearrange (move the first 4 chars to the end) and expand letters to digits, taking the running
+	// remainder mod 97 so we never build an arbitrarily large integer.
+	rearranged := norm[4:] + norm[:4]
+	rem := 0
+	for _, r := range rearranged {
+		switch {
+		case r >= '0' && r <= '9':
+			rem = (rem*10 + int(r-'0')) % 97
+		default: // A..Z → 10..35, a two-digit expansion
+			v := int(r-'A') + 10
+			rem = (rem*100 + v) % 97
+		}
+	}
+	if rem != 1 {
+		return "", errors.Join(ErrInvalid, errors.New("IBAN check digits do not satisfy the mod-97 checksum"))
+	}
+	return norm, nil
+}
+
+// validatePAN validates a payment-card PAN (Primary Account Number): separators are stripped, the
+// length must be 12–19 digits, and the Luhn checksum must pass. The normalized form is the bare digit
+// string; SplitPAN derives the display BIN + last-4 from it.
+func validatePAN(value string) (string, error) {
+	d := digitsOnly(value)
+	if len(d) < 12 || len(d) > 19 {
+		return "", errors.Join(ErrInvalid, errors.New("PAN must be 12-19 digits"))
+	}
+	// Luhn: double every second digit from the right; a doubled value >9 has 9 subtracted.
+	sum, alt := 0, false
+	for i := len(d) - 1; i >= 0; i-- {
+		n := int(d[i] - '0')
+		if alt {
+			if n *= 2; n > 9 {
+				n -= 9
+			}
+		}
+		sum += n
+		alt = !alt
+	}
+	if sum%10 != 0 {
+		return "", errors.Join(ErrInvalid, errors.New("PAN fails the Luhn checksum"))
+	}
+	return d, nil
+}
+
+// SplitPAN returns the display-only BIN (first 6 digits) and last-4 of a normalized PAN (as produced
+// by the "pan" validator). A short value yields what it can; callers should validate first.
+func SplitPAN(normalized string) (bin, last4 string) {
+	if len(normalized) >= 6 {
+		bin = normalized[:6]
+	} else {
+		bin = normalized
+	}
+	if len(normalized) >= 4 {
+		last4 = normalized[len(normalized)-4:]
+	} else {
+		last4 = normalized
+	}
+	return bin, last4
 }

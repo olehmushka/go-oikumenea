@@ -52,7 +52,7 @@ follow the [document](document.md) `document_personal_codes` layout exactly (cip
 plain containment FK (a card belongs to exactly one account). Account/card reads are holder-scoped
 (person holders) or company-scoped (corporate accounts); reference catalogs are instance-global.
 RLS: person-held finance rows gate through the holder (like documents); no bespoke RLS beyond the
-holder-scope gate. Migration (on build): `finance_*` in the next free revision (e.g. `0031_finance`).
+holder-scope gate. Migration `0034_finance` (M44, built).
 
 ## Conjure API surface
 

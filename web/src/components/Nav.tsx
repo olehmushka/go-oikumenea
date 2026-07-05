@@ -23,6 +23,7 @@ const TOOLS: { href: string; key: string }[] = [
   { href: "/education", key: "nav.education" },
   { href: "/companies", key: "nav.companies" },
   { href: "/vehicles", key: "nav.vehicles" },
+  { href: "/finance", key: "nav.finance" },
   { href: "/external-orgs", key: "nav.externalOrgs" },
   { href: "/religion", key: "nav.religion" },
   { href: "/localization", key: "nav.localization" },

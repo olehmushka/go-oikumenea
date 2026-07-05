@@ -26,6 +26,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/document"
 	"github.com/olegamysk/go-oikumenea/internal/education"
 	"github.com/olegamysk/go-oikumenea/internal/externalorg"
+	"github.com/olegamysk/go-oikumenea/internal/finance"
 	"github.com/olegamysk/go-oikumenea/internal/geo"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation/bootstrap"
@@ -333,6 +334,18 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 		return nil, err
 	}
 	vehicleSvc.SubscribePersonEvents(bus)
+
+	// Finance (M44 / D-Finance): bank accounts (envelope-encrypted IBAN) + payment cards (envelope-
+	// encrypted PAN, no CVV) as authoritative first-party directory data. A bank is a `company`-domain
+	// tenant organization (M21/M41); ownership is a polymorphic person|company holder link. Reuses the
+	// shared cipher (D-CryptoProvider) + the personal-code validator registry (D-PersonalCodes: IBAN/PAN)
+	// already built for the document module. A person purge crypto-erases solely-held accounts + cards.
+	financeSvc, err := finance.Register(info, pool, auditSvc, locSvc, enforcer, cipher, personalcode.New())
+	if err != nil {
+		cleanup()
+		return nil, err
+	}
+	financeSvc.SubscribePersonEvents(bus)
 
 	// External organizations (M30 / D-ExternalOrgs): the registry of external orgs a person is tied to
 	// (parties, government bodies, foreign military, NGOs, registrants) — the node-space the M33

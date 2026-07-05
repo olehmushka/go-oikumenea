@@ -166,6 +166,60 @@ func TestMXRFC(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------- M44 finance schemes
+
+func TestIBAN(t *testing.T) {
+	r := New()
+	// Well-known valid IBANs (ISO 13616 reference examples); spaces + lower case normalize away.
+	for _, ok := range []struct{ in, norm string }{
+		{"GB82 WEST 1234 5698 7654 32", "GB82WEST12345698765432"},
+		{"de89 3704 0044 0532 0130 00", "DE89370400440532013000"},
+		{"UA903052992990004149123456789", "UA903052992990004149123456789"},
+	} {
+		res, err := r.Validate("iban", ok.in, "")
+		if err != nil || res.Outcome != OutcomeValidated || res.Normalized != ok.norm {
+			t.Fatalf("valid IBAN %q rejected/not normalized: %+v err %v", ok.in, res, err)
+		}
+	}
+	for _, bad := range []string{
+		"GB82WEST12345698765433", // corrupted check
+		"GB00WEST12345698765432", // wrong check digits
+		"XX",                     // too short
+		"1234567890123456",       // no country letters
+	} {
+		if _, err := r.Validate("iban", bad, ""); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("IBAN %q should be invalid, got %v", bad, err)
+		}
+	}
+}
+
+func TestPAN(t *testing.T) {
+	r := New()
+	// Visa/Mastercard/Amex test numbers (all Luhn-valid); separators normalize away.
+	for _, ok := range []struct{ in, norm, bin, last4 string }{
+		{"4111 1111 1111 1111", "4111111111111111", "411111", "1111"},
+		{"5555-5555-5555-4444", "5555555555554444", "555555", "4444"},
+		{"3782 822463 10005", "378282246310005", "378282", "0005"},
+	} {
+		res, err := r.Validate("pan", ok.in, "")
+		if err != nil || res.Outcome != OutcomeValidated || res.Normalized != ok.norm {
+			t.Fatalf("valid PAN %q rejected/not normalized: %+v err %v", ok.in, res, err)
+		}
+		if bin, last4 := SplitPAN(res.Normalized); bin != ok.bin || last4 != ok.last4 {
+			t.Fatalf("SplitPAN(%q) = %q/%q, want %q/%q", ok.norm, bin, last4, ok.bin, ok.last4)
+		}
+	}
+	for _, bad := range []string{
+		"4111111111111112", // Luhn fails
+		"411111",           // too short
+		"41111111111111111111", // too long (20)
+	} {
+		if _, err := r.Validate("pan", bad, ""); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("PAN %q should be invalid, got %v", bad, err)
+		}
+	}
+}
+
 // TestNewSchemesRegistered guards that every M12 scheme expected to carry a compiled validator does.
 func TestNewSchemesRegistered(t *testing.T) {
 	r := New()

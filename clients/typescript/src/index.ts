@@ -32,6 +32,7 @@ import {
   education,
   educationref,
   externalorg,
+  finance,
   geo,
   hermenea,
   identityfederation,
@@ -108,6 +109,8 @@ export interface OikumeneaClient {
   readonly religion: religion.ReligionService;
   readonly tenant: tenant.TenantService;
   readonly vehicle: vehicle.VehicleService;
+  /** Bank accounts & payment cards — encrypted IBAN/PAN directory data (D-Finance, M44). */
+  readonly finance: finance.FinanceService;
   /** The hermenea ingestion/scheduler control + read API, proxied through oikumenea (D-Hermenea). */
   readonly hermenea: hermenea.HermeneaService;
   /** The underlying conjure HTTP bridge, for advanced use (custom endpoints, binary bodies). */
@@ -220,6 +223,7 @@ export function createOikumeneaClient(
     religion: new religion.ReligionService(bridge),
     tenant: new tenant.TenantService(bridge),
     vehicle: new vehicle.VehicleService(bridge),
+    finance: new finance.FinanceService(bridge),
     hermenea: new hermenea.HermeneaService(bridge),
     bridge,
     request,

@@ -31,6 +31,7 @@ import {
 import { PersonEducationManager } from "./PersonEducation";
 import { PersonCompaniesManager } from "./PersonCompanies";
 import { PersonVehiclesManager } from "./PersonVehicles";
+import { PersonFinanceManager } from "./PersonFinance";
 import { AccountManager } from "./PersonAccount";
 import type {
   Association,
@@ -245,6 +246,11 @@ async function PersonRelations({ personId, person }: { personId: string; person:
         <Card className="lg:col-span-2">
           <h2 className="text-sm font-semibold text-slate-900"><T>Vehicles</T></h2>
           <PersonVehiclesManager personId={person.id} />
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <h2 className="text-sm font-semibold text-slate-900"><T>Bank accounts</T></h2>
+          <PersonFinanceManager personId={person.id} />
         </Card>
       </div>
 

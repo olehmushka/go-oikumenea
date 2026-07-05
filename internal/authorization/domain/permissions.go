@@ -133,6 +133,13 @@ const (
 	PermVehicleRead   Permission = "vehicle.read"
 	PermVehicleManage Permission = "vehicle.manage"
 
+	// finance (D-Finance, M44) — bank accounts + payment cards. Authoritative first-party directory data
+	// (not tenant-unit scoped): reads/writes are satisfied anywhere via the PEP; person-held rows are
+	// additionally holder-scoped (D-PersonReadScope). Catalog writes ride the instance-plane
+	// `finance.catalog.manage` (below). Holding an account never grants authority (parallel to D-Rank).
+	PermFinanceRead   Permission = "finance.read"
+	PermFinanceManage Permission = "finance.manage"
+
 	// religion (D-Religion, M22) — the multi-faith taxonomy (religion_taxa + closure) + the per-faith
 	// catalogs are instance-global reference data (read anywhere; catalog writes on the instance plane
 	// as `religion.catalog.manage`, below). The per-unit organization attributes (profile/
@@ -195,6 +202,7 @@ const (
 	PermLegalBasisManage         Permission = "legal-basis.manage" // instance-admin manages the GDPR lawful-basis catalog (D-OverlayFoundation, M29)
 	PermColorManage              Permission = "color.manage"       // instance-admin manages the per-domain color catalog (D-Color)
 	PermExternalOrgManage        Permission = "externalorg.manage" // instance-admin manages the external-organizations registry (D-ExternalOrgs, M30)
+	PermFinanceCatalogManage     Permission = "finance.catalog.manage" // instance-admin manages the account-type / card-network catalogs (D-Finance, M44)
 	PermInstanceConfig           Permission = "instance.config"
 	PermInstanceAdminManage      Permission = "instance.admin.manage"
 	// import — the generic reference-data import endpoint (M16 / D-Hermenea). Held by the
@@ -227,6 +235,7 @@ var instanceScope = map[Permission]struct{}{
 	PermLegalBasisManage:         {},
 	PermColorManage:              {},
 	PermExternalOrgManage:        {},
+	PermFinanceCatalogManage:     {},
 	PermLocaleManage:             {},
 	PermTranslationManage:        {},
 	PermInstanceConfig:           {},
@@ -258,13 +267,14 @@ var catalog = func() map[Permission]struct{} {
 		PermEducationRead, PermEducationManage, PermEducationPositionManage, PermEducationEnrollmentManage,
 		PermCompanyRead, PermCompanyManage, PermCompanyPositionManage,
 		PermVehicleRead, PermVehicleManage,
+		PermFinanceRead, PermFinanceManage,
 		PermReligionRead, PermReligionOrgManage, PermClergyManage, PermAffiliationManage, PermSiteManage, PermScheduleManage,
 		PermLegalBasisRead, PermLegalBasisManage,
 		PermColorRead, PermColorManage,
 		PermExternalOrgRead, PermExternalOrgManage,
 		PermLocaleRead, PermTranslationRead, PermLocaleManage, PermTranslationManage,
 		PermRankSchemeManage, PermGraphManage, PermClosureRebuild, PermDocumentTypeManage, PermOrderTypeManage,
-		PermPersonalCodeSchemeManage, PermCountryManage, PermLocationTypesManage, PermEducationCatalogManage, PermCompanyCatalogManage, PermVehicleCatalogManage, PermReligionCatalogManage, PermInstanceConfig, PermInstanceAdminManage,
+		PermPersonalCodeSchemeManage, PermCountryManage, PermLocationTypesManage, PermEducationCatalogManage, PermCompanyCatalogManage, PermVehicleCatalogManage, PermFinanceCatalogManage, PermReligionCatalogManage, PermInstanceConfig, PermInstanceAdminManage,
 		PermImportManage,
 	}
 	m := make(map[Permission]struct{}, len(all))

@@ -27,6 +27,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/clients/go/oikumenea/document"
 	"github.com/olegamysk/go-oikumenea/clients/go/oikumenea/education"
 	"github.com/olegamysk/go-oikumenea/clients/go/oikumenea/educationref"
+	"github.com/olegamysk/go-oikumenea/clients/go/oikumenea/finance"
 	"github.com/olegamysk/go-oikumenea/clients/go/oikumenea/geo"
 	"github.com/olegamysk/go-oikumenea/clients/go/oikumenea/hermenea"
 	"github.com/olegamysk/go-oikumenea/clients/go/oikumenea/identityfederation"
@@ -58,6 +59,7 @@ type Client struct {
 	Document           document.DocumentServiceClientWithAuth
 	Education          education.EducationServiceClientWithAuth
 	EducationReference educationref.EducationReferenceServiceClientWithAuth
+	Finance            finance.FinanceServiceClientWithAuth
 	Geo                geo.GeoServiceClientWithAuth
 	IdentityFederation identityfederation.IdentityFederationServiceClientWithAuth
 	// Import is the generic reference-data import endpoint (POST /import/{objectType}); hermenea's
@@ -104,6 +106,7 @@ func NewWithTokenProvider(baseURL string, tokenProvider httpclient.TokenProvider
 		Document:           document.NewDocumentServiceClientWithTokenProvider(document.NewDocumentServiceClient(hc), tokenProvider),
 		Education:          education.NewEducationServiceClientWithTokenProvider(education.NewEducationServiceClient(hc), tokenProvider),
 		EducationReference: educationref.NewEducationReferenceServiceClientWithTokenProvider(educationref.NewEducationReferenceServiceClient(hc), tokenProvider),
+		Finance:            finance.NewFinanceServiceClientWithTokenProvider(finance.NewFinanceServiceClient(hc), tokenProvider),
 		Geo:                geo.NewGeoServiceClientWithTokenProvider(geo.NewGeoServiceClient(hc), tokenProvider),
 		IdentityFederation: identityfederation.NewIdentityFederationServiceClientWithTokenProvider(identityfederation.NewIdentityFederationServiceClient(hc), tokenProvider),
 		Import:             dataimport.NewImportServiceClientWithTokenProvider(dataimport.NewImportServiceClient(hc), tokenProvider),
