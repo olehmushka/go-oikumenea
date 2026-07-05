@@ -314,3 +314,76 @@ func TestGeoPlacesHandler_InvalidRecord(t *testing.T) {
 		}
 	}
 }
+
+// fakeRegulatorySanctionStore is an in-memory domain.RegulatorySanctionStore for testing the M34
+// person-regulatory-sanctions handler's resolve/create/update/skip logic without a database.
+type fakeRegulatorySanctionStore struct {
+	people   map[string]bool                       // person RIDs that resolve
+	rows     map[string]domain.RegulatorySanction  // keyed by person|externalId
+	inserts  int
+	updates  int
+}
+
+func rsKey(personID, externalID string) string { return personID + "|" + externalID }
+
+func (f *fakeRegulatorySanctionStore) PersonExists(_ context.Context, personID string) (bool, error) {
+	return f.people[personID], nil
+}
+func (f *fakeRegulatorySanctionStore) Get(_ context.Context, personID, externalID string) (domain.RegulatorySanction, bool, error) {
+	s, ok := f.rows[rsKey(personID, externalID)]
+	return s, ok, nil
+}
+func (f *fakeRegulatorySanctionStore) Insert(_ context.Context, s domain.RegulatorySanction, _ domain.Provenance) error {
+	f.rows[rsKey(s.PersonID, s.ExternalID)] = s
+	f.inserts++
+	return nil
+}
+func (f *fakeRegulatorySanctionStore) UpdateImport(_ context.Context, s domain.RegulatorySanction, _ domain.Provenance) error {
+	f.rows[rsKey(s.PersonID, s.ExternalID)] = s
+	f.updates++
+	return nil
+}
+
+// TestRegulatorySanctionsHandler exercises the person-resolve skip, create, idempotent no-op re-run, and
+// update-on-change paths (D-Watchlists, M34).
+func TestRegulatorySanctionsHandler(t *testing.T) {
+	store := &fakeRegulatorySanctionStore{people: map[string]bool{"P1": true}, rows: map[string]domain.RegulatorySanction{}}
+	h := RegulatorySanctionsHandler(func(db.DBTX) domain.RegulatorySanctionStore { return store })
+	prov := domain.Provenance{Source: "reg-source", SourceVersion: "v1"}
+
+	recs := []domain.Record{
+		{"personId": "P1", "regulator": "SEC", "actionType": "fine", "amount": 5000.0, "currency": "USD", "externalId": "A"}, // new -> create
+		{"personId": "MISSING", "regulator": "SEC", "externalId": "B"},                                                       // unresolved person -> skip
+		{"regulator": "SEC", "externalId": "C"},                                                                             // missing personId -> invalid
+	}
+	if _, err := h(context.Background(), pgx.Tx(nil), []domain.Record{recs[2]}, prov); err == nil {
+		t.Fatal("expected ErrInvalidRecord for a record missing personId")
+	}
+	sum, err := h(context.Background(), pgx.Tx(nil), recs[:2], prov)
+	if err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if sum.Created != 1 || sum.Skipped != 1 || sum.Updated != 0 {
+		t.Fatalf("summary = %+v, want created=1 skipped=1 (unresolved person)", sum)
+	}
+
+	// Re-running the identical record is an idempotent no-op (skip).
+	store.inserts, store.updates = 0, 0
+	sum2, err := h(context.Background(), pgx.Tx(nil), recs[:1], prov)
+	if err != nil {
+		t.Fatalf("handler re-run: %v", err)
+	}
+	if sum2.Created != 0 || sum2.Updated != 0 || sum2.Skipped != 1 {
+		t.Fatalf("re-run summary = %+v, want all-skipped (idempotent)", sum2)
+	}
+
+	// A changed field on the same (person, externalId) updates in place.
+	changed := []domain.Record{{"personId": "P1", "regulator": "SEC", "actionType": "ban", "externalId": "A"}}
+	sum3, err := h(context.Background(), pgx.Tx(nil), changed, prov)
+	if err != nil {
+		t.Fatalf("handler update: %v", err)
+	}
+	if sum3.Updated != 1 || sum3.Created != 0 {
+		t.Fatalf("update summary = %+v, want updated=1", sum3)
+	}
+}

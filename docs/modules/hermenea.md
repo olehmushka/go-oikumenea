@@ -112,6 +112,7 @@ stamped from the envelope on each upsert (D-DataIngestion lineage, retained unde
 | `POST /sources` / `PUT /sources/{id}` | Register / edit a source (incl. its cron) |
 | `GET /runs` | List import-run lineage (paginated) |
 | `GET /jobs` | List worker jobs (status/attempts/last_error) |
+| `POST /watchlist/check` | **Live watchlist screening** (D-Watchlists, M34) — the first **synchronous** surface oikumenea calls: hermenea owns egress to OFAC/EU/UN/INTERPOL + a ≤24h cache (`hermenea.watchlist_cache`), returns per-person **match metadata only**. The real INTERPOL Red Notices connector ships; sanctions providers are a documented stub |
 
 **Oikumenea — import endpoint** (in [platform](platform.md), the only write path hermenea uses):
 

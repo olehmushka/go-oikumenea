@@ -25,6 +25,13 @@ type HermeneaService interface {
 	ListRuns(ctx context.Context, authHeader bearertoken.Token) ([]ImportRun, error)
 	// List worker jobs (most recent first).
 	ListJobs(ctx context.Context, authHeader bearertoken.Token) ([]WorkerJob, error)
+	/*
+	   Run a live watchlist screening check (D-Watchlists, M34): the first SYNCHRONOUS oikumenea→hermenea
+	   call. Hermenea owns the outbound egress to OFAC/EU/UN/INTERPOL and a ≤24h cache; only per-person
+	   match metadata is returned. The real interpol.api.bund.dev connector ships; sanctions providers
+	   are a documented pluggable stub.
+	*/
+	CheckWatchlist(ctx context.Context, authHeader bearertoken.Token, requestArg WatchlistQuery) (WatchlistResult, error)
 }
 
 // RegisterRoutesHermeneaService registers handlers for the HermeneaService endpoints with a witchcraft wrouter.
@@ -45,6 +52,9 @@ func RegisterRoutesHermeneaService(router wrouter.Router, impl HermeneaService, 
 	}
 	if err := resource.Get("ListJobs", "/hermenea/v1/jobs", httpserver.NewJSONHandler(handler.HandleListJobs, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listJobs route")
+	}
+	if err := resource.Post("CheckWatchlist", "/hermenea/v1/watchlist/check", httpserver.NewJSONHandler(handler.HandleCheckWatchlist, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add checkWatchlist route")
 	}
 	return nil
 }
@@ -106,6 +116,23 @@ func (h *hermeneaServiceHandler) HandleListJobs(rw http.ResponseWriter, req *htt
 		return errors.WrapWithPermissionDenied(err)
 	}
 	respArg, err := h.impl.ListJobs(req.Context(), bearertoken.Token(authHeader))
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (h *hermeneaServiceHandler) HandleCheckWatchlist(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var requestArg WatchlistQuery
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := h.impl.CheckWatchlist(req.Context(), bearertoken.Token(authHeader), requestArg)
 	if err != nil {
 		return err
 	}

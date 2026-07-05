@@ -1677,6 +1677,7 @@ func (s Service) mapError(ctx context.Context, err error, personID string) error
 		errors.Is(err, domain.ErrGovernmentPositionNotFound),
 		errors.Is(err, domain.ErrLobbyingNotFound),
 		errors.Is(err, domain.ErrExternalReferenceNotFound),
+		errors.Is(err, domain.ErrRegulatorySanctionNotFound),
 		errors.Is(err, domain.ErrRelationshipNotFound):
 		return personapi.NewPersonNotFound(personID)
 	case errors.Is(err, domain.ErrCodeConflict):
@@ -1735,6 +1736,8 @@ func (s Service) mapError(ctx context.Context, err error, personID string) error
 		return personapi.NewPersonInvalid("color is not in the expected eye/hair palette (D-Color)")
 	case errors.Is(err, domain.ErrUnknownLocation):
 		return personapi.NewPersonInvalid("location does not exist (D-PersonAddresses)")
+	case errors.Is(err, domain.ErrWatchlistUnavailable):
+		return personapi.NewPersonInvalid("watchlist screening is not configured (D-Watchlists)")
 	case errors.Is(err, domain.ErrInvalid):
 		return personapi.NewPersonInvalid(err.Error())
 	case errors.Is(err, domain.ErrLifecycle):

@@ -20,6 +20,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
 	"github.com/olegamysk/go-oikumenea/internal/company"
 	identityapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/identityfederation"
+	hermeneaapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/hermenea"
 	"github.com/olegamysk/go-oikumenea/internal/dataimport"
 	importdomain "github.com/olegamysk/go-oikumenea/internal/dataimport/domain"
 	"github.com/olegamysk/go-oikumenea/internal/document"
@@ -45,9 +46,11 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/religion"
 	"github.com/olegamysk/go-oikumenea/internal/tenant"
 	"github.com/olegamysk/go-oikumenea/internal/vehicle"
+	"github.com/olegamysk/go-oikumenea/internal/watchlistclient"
 	"github.com/olegamysk/go-oikumenea/pkg/crypto"
 	"github.com/olegamysk/go-oikumenea/pkg/events"
 	"github.com/olegamysk/go-oikumenea/pkg/personalcode"
+	"github.com/palantir/conjure-go-runtime/v2/conjure-go-client/httpclient"
 	werror "github.com/palantir/witchcraft-go-error"
 	"github.com/palantir/witchcraft-go-logging/wlog"
 	_ "github.com/palantir/witchcraft-go-logging/wlog-zap" // register the default (zap) logging provider for CLI-constructed loggers
@@ -268,6 +271,28 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// before writing; bind that cross-module query seam now that geo exists (late-bound: person is built
 	// above, before geo — mirrors SetMembershipReader).
 	personSvc.SetLocationLookup(geoSvc)
+
+	// Watchlist screening seam (M34 / D-Watchlists): CheckWatchlists runs a live screening check OUT to
+	// the hermenea companion (which owns the OFAC/EU/UN/INTERPOL egress + the ≤24h cache). Wire the seam
+	// only when the companion is configured — otherwise CheckWatchlists returns a clear "not configured"
+	// error. Reuses the OIKUMENEA_HERMENEA trigger secret + trust direction (the web tier never reaches
+	// the companion directly). Late-bound, mirroring SetLocationLookup.
+	if install.Hermenea.BaseURL != "" {
+		wlParams := []httpclient.ClientParam{
+			httpclient.WithBaseURLs([]string{install.Hermenea.BaseURL}),
+			httpclient.WithMaxRetries(0),
+		}
+		if install.Hermenea.InsecureSkipVerify {
+			wlParams = append(wlParams, httpclient.WithTLSInsecureSkipVerify())
+		}
+		wlHTTP, err := httpclient.NewClient(wlParams...)
+		if err != nil {
+			cleanup()
+			return nil, werror.Wrap(err, "build hermenea watchlist client")
+		}
+		personSvc.SetWatchlistLookup(watchlistclient.New(
+			hermeneaapi.NewHermeneaServiceClient(wlHTTP), os.Getenv("OIKUMENEA_HERMENEA_TOKEN")))
+	}
 
 	// Language (M18 / D-Languages): read-only lookup over the Glottolog languoid forest + ISO-15924
 	// writing systems. The registry is written by the hermenea import pipeline (language-scheme /

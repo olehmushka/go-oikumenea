@@ -77,6 +77,13 @@ const ObjectTypeTranslations = "translations"
 // palettes plus the rank/religion/ethnicity/country palettes the seeded reference catalogs point at.
 const ObjectTypeColors = "colors"
 
+// ObjectTypeRegulatorySanctions is the routing key for the person regulatory-sanction overlay
+// (D-Watchlists, M34). A person-scoped import target (unusual — most targets are instance-global
+// reference catalogs): each record references a person by RID and carries a regulatory action.
+// Idempotency is keyed on (person, externalId): insert when absent, update when the incoming edition
+// differs, skip otherwise — never deletes. A record whose person RID does not resolve is skipped.
+const ObjectTypeRegulatorySanctions = "person-regulatory-sanctions"
+
 // Record is one object-type-specific record decoded from the canonical envelope (a JSON object). The
 // registered handler interprets its own shape.
 type Record = map[string]any
@@ -242,6 +249,46 @@ type ExternalOrgStore interface {
 	GetByWikidata(ctx context.Context, wikidataID string) (name string, found bool, err error)
 	Insert(ctx context.Context, kindID string, o ExternalOrg, prov Provenance) error
 	UpdateImport(ctx context.Context, kindID string, o ExternalOrg, prov Provenance) error
+}
+
+// RegulatorySanction is one person regulatory-sanction record decoded from a canonical-envelope record
+// (D-Watchlists, M34). PersonID (a person RID) + ExternalID form the idempotency key; a record whose
+// person RID does not resolve is skipped by the handler. Amount is optional (Currency required with it).
+type RegulatorySanction struct {
+	PersonID     string
+	Regulator    string
+	ActionType   string // fine|ban|license_revocation|warning|settlement|debarment|other ("" => other)
+	Amount       *float64
+	Currency     string
+	Status       string // active|appealed|overturned|expired|settled ("" => active)
+	SanctionDate string // ISO date or ""
+	SourceURL    string
+	ExternalID   string
+}
+
+// RegulatorySanctionStore is the port the regulatory-sanctions upsert handler drives (D-Watchlists). The
+// handler skips a record whose person RID does not resolve, then keys idempotency on (person, externalId):
+// insert when absent, update when it changed, skip otherwise — never deletes. Rows are stamped
+// source=imported in the attribution columns.
+type RegulatorySanctionStore interface {
+	PersonExists(ctx context.Context, personID string) (bool, error)
+	// Get returns the existing (person, externalId) sanction's comparable fields (found=false when absent),
+	// so the handler can skip an unchanged re-import.
+	Get(ctx context.Context, personID, externalID string) (existing RegulatorySanction, found bool, err error)
+	Insert(ctx context.Context, s RegulatorySanction, prov Provenance) error
+	UpdateImport(ctx context.Context, s RegulatorySanction, prov Provenance) error
+}
+
+// SameAs reports whether two sanction records carry identical comparable fields (idempotency check).
+func (s RegulatorySanction) SameAs(o RegulatorySanction) bool {
+	if (s.Amount == nil) != (o.Amount == nil) {
+		return false
+	}
+	if s.Amount != nil && *s.Amount != *o.Amount {
+		return false
+	}
+	return s.Regulator == o.Regulator && s.ActionType == o.ActionType && s.Currency == o.Currency &&
+		s.Status == o.Status && s.SanctionDate == o.SanctionDate && s.SourceURL == o.SourceURL
 }
 
 // Religion is one religion-scheme record (D-Religion + D-Pinax, M45). Code is the import/idempotency

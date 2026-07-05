@@ -23,6 +23,13 @@ type HermeneaServiceClient interface {
 	ListRuns(ctx context.Context, authHeader bearertoken.Token) ([]ImportRun, error)
 	// List worker jobs (most recent first).
 	ListJobs(ctx context.Context, authHeader bearertoken.Token) ([]WorkerJob, error)
+	/*
+	   Run a live watchlist screening check (D-Watchlists, M34): the first SYNCHRONOUS oikumenea→hermenea
+	   call. Hermenea owns the outbound egress to OFAC/EU/UN/INTERPOL and a ≤24h cache; only per-person
+	   match metadata is returned. The real interpol.api.bund.dev connector ships; sanctions providers
+	   are a documented pluggable stub.
+	*/
+	CheckWatchlist(ctx context.Context, authHeader bearertoken.Token, requestArg WatchlistQuery) (WatchlistResult, error)
 }
 
 type hermeneaServiceClient struct {
@@ -101,6 +108,24 @@ func (c *hermeneaServiceClient) ListJobs(ctx context.Context, authHeader bearert
 	return returnVal, nil
 }
 
+func (c *hermeneaServiceClient) CheckWatchlist(ctx context.Context, authHeader bearertoken.Token, requestArg WatchlistQuery) (WatchlistResult, error) {
+	var returnVal *WatchlistResult
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("CheckWatchlist"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/hermenea/v1/watchlist/check"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(WatchlistResult), werror.WrapWithContextParams(ctx, err, "checkWatchlist failed")
+	}
+	if returnVal == nil {
+		return *new(WatchlistResult), werror.ErrorWithContextParams(ctx, "checkWatchlist response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 // The ingestion/scheduler companion's control + read API.
 type HermeneaServiceClientWithAuth interface {
 	// Enqueue a sync job for a registered source (the push trigger from oikumenea).
@@ -111,6 +136,13 @@ type HermeneaServiceClientWithAuth interface {
 	ListRuns(ctx context.Context) ([]ImportRun, error)
 	// List worker jobs (most recent first).
 	ListJobs(ctx context.Context) ([]WorkerJob, error)
+	/*
+	   Run a live watchlist screening check (D-Watchlists, M34): the first SYNCHRONOUS oikumenea→hermenea
+	   call. Hermenea owns the outbound egress to OFAC/EU/UN/INTERPOL and a ≤24h cache; only per-person
+	   match metadata is returned. The real interpol.api.bund.dev connector ships; sanctions providers
+	   are a documented pluggable stub.
+	*/
+	CheckWatchlist(ctx context.Context, requestArg WatchlistQuery) (WatchlistResult, error)
 }
 
 func NewHermeneaServiceClientWithAuth(client HermeneaServiceClient, authHeader bearertoken.Token) HermeneaServiceClientWithAuth {
@@ -136,6 +168,10 @@ func (c *hermeneaServiceClientWithAuth) ListRuns(ctx context.Context) ([]ImportR
 
 func (c *hermeneaServiceClientWithAuth) ListJobs(ctx context.Context) ([]WorkerJob, error) {
 	return c.client.ListJobs(ctx, c.authHeader)
+}
+
+func (c *hermeneaServiceClientWithAuth) CheckWatchlist(ctx context.Context, requestArg WatchlistQuery) (WatchlistResult, error) {
+	return c.client.CheckWatchlist(ctx, c.authHeader, requestArg)
 }
 
 func NewHermeneaServiceClientWithTokenProvider(client HermeneaServiceClient, tokenProvider httpclient.TokenProvider) HermeneaServiceClientWithAuth {
@@ -177,4 +213,12 @@ func (c *hermeneaServiceClientWithTokenProvider) ListJobs(ctx context.Context) (
 		return nil, err
 	}
 	return c.client.ListJobs(ctx, bearertoken.Token(token))
+}
+
+func (c *hermeneaServiceClientWithTokenProvider) CheckWatchlist(ctx context.Context, requestArg WatchlistQuery) (WatchlistResult, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(WatchlistResult), err
+	}
+	return c.client.CheckWatchlist(ctx, bearertoken.Token(token), requestArg)
 }

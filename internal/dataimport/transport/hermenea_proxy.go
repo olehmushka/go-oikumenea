@@ -68,3 +68,13 @@ func (p HermeneaProxy) ListJobs(ctx context.Context, authHeader bearertoken.Toke
 	}
 	return p.client.ListJobs(ctx, p.token)
 }
+
+// CheckWatchlist proxies a live watchlist screening check (D-Watchlists, M34) to the companion, after
+// the import.manage check. In normal operation oikumenea's person module calls hermenea directly for a
+// screening; this proxy route exposes the same for operators/diagnostics.
+func (p HermeneaProxy) CheckWatchlist(ctx context.Context, authHeader bearertoken.Token, req hermeneaapi.WatchlistQuery) (hermeneaapi.WatchlistResult, error) {
+	if err := p.authorize(ctx, authHeader); err != nil {
+		return hermeneaapi.WatchlistResult{}, err
+	}
+	return p.client.CheckWatchlist(ctx, p.token, req)
+}

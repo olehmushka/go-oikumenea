@@ -24,6 +24,28 @@ type Install struct {
 
 	// Worker tunes the runtime loops + retry policy. Zero fields fall back to documented defaults.
 	Worker Worker `yaml:"worker"`
+
+	// Watchlist tunes the live screening check (D-Watchlists, M34). Zero fields fall back to defaults.
+	Watchlist Watchlist `yaml:"watchlist"`
+}
+
+// Watchlist configures the live watchlist screening surface (D-Watchlists, M34).
+type Watchlist struct {
+	// TTLMs is the screening-cache lifetime (default 86400000 = 24h, the D-Watchlists ≤24h bound).
+	TTLMs int `yaml:"ttl-ms"`
+	// InterpolBaseURL overrides the INTERPOL Red Notices endpoint (default the public endpoint; a test
+	// points it at a fake server).
+	InterpolBaseURL string `yaml:"interpol-base-url"`
+	// InterpolEnabled toggles the real INTERPOL connector (default true).
+	InterpolEnabled *bool `yaml:"interpol-enabled"`
+}
+
+// InterpolEnabledOrDefault returns InterpolEnabled, defaulting to true when unset.
+func (w Watchlist) InterpolEnabledOrDefault() bool {
+	if w.InterpolEnabled == nil {
+		return true
+	}
+	return *w.InterpolEnabled
 }
 
 // Postgres holds hermenea's connection string.

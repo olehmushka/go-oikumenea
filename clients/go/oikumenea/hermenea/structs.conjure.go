@@ -91,6 +91,90 @@ func (o *JobRef) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+/*
+A person-identity query for a live watchlist screening check (D-Watchlists, M34). oikumenea sends
+this; hermenea owns egress to the OFAC/EU/UN/INTERPOL providers + a ≤24h cache. Only match
+metadata comes back — never the lists themselves.
+*/
+type WatchlistQuery struct {
+	// An opaque caller key (the person RID) used to key the ≤24h cache; not sent upstream.
+	SubjectKey string `json:"subjectKey"`
+	// The name screened against the providers.
+	FullName string `json:"fullName"`
+	// ISO-8601 date, when known, to disambiguate matches.
+	Birthdate *string `json:"birthdate,omitempty"`
+	// ISO-3166 alpha-2, when known.
+	Nationality *string `json:"nationality,omitempty"`
+}
+
+func (o WatchlistQuery) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *WatchlistQuery) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Per-person match metadata returned by a screening check (D-Watchlists, M34).
+type WatchlistResult struct {
+	// Any hit across the queried providers.
+	OnList bool `json:"onList"`
+	// The list codes matched, e.g. INTERPOL_RED, OFAC_SDN.
+	Lists   []string `json:"lists"`
+	Program *string  `json:"program,omitempty"`
+	// 0..1 best-match score across providers.
+	MatchScore *float64 `json:"matchScore,omitempty"`
+	// RFC-3339 time the check ran (cache hit or fresh).
+	CheckedAt string `json:"checkedAt"`
+	// RFC-3339 time the cache lapses (checkedAt + TTL).
+	NextCheckDue *string `json:"nextCheckDue,omitempty"`
+}
+
+func (o WatchlistResult) MarshalJSON() ([]byte, error) {
+	if o.Lists == nil {
+		o.Lists = make([]string, 0)
+	}
+	type _tmpWatchlistResult WatchlistResult
+	return safejson.Marshal(_tmpWatchlistResult(o))
+}
+
+func (o *WatchlistResult) UnmarshalJSON(data []byte) error {
+	type _tmpWatchlistResult WatchlistResult
+	var rawWatchlistResult _tmpWatchlistResult
+	if err := safejson.Unmarshal(data, &rawWatchlistResult); err != nil {
+		return err
+	}
+	if rawWatchlistResult.Lists == nil {
+		rawWatchlistResult.Lists = make([]string, 0)
+	}
+	*o = WatchlistResult(rawWatchlistResult)
+	return nil
+}
+
+func (o WatchlistResult) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *WatchlistResult) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // One unit of queued work in hermenea's runtime.
 type WorkerJob struct {
 	Id         string  `json:"id"`

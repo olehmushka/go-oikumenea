@@ -12,6 +12,7 @@ import {
   MergeProvisional,
   EmailManager,
   InstitutionalTiesManager,
+  WatchlistManager,
   MessengerLinkManager,
   NameVariantManager,
   PersonAffiliationManager,
@@ -175,6 +176,11 @@ export default async function PersonDetailPage({
         <Card className="lg:col-span-2">
           <h2 className="text-sm font-semibold text-slate-900"><T>Institutional &amp; political ties</T></h2>
           <InstitutionalTiesManager personId={person.id} />
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <h2 className="text-sm font-semibold text-slate-900"><T>Watchlists &amp; regulatory exposure</T></h2>
+          <WatchlistManager personId={person.id} />
         </Card>
       </div>
 

@@ -14,13 +14,15 @@ import (
 )
 
 // Service orchestrates ingestion over the store (hermenea's DB), the connector registry, the per
-// object-type mapper registries (in-memory + paged), and the loader (oikumenea's import endpoint).
+// object-type mapper registries (in-memory + paged), and the loader (oikumenea's import endpoint). It
+// also holds the optional live watchlist checker (D-Watchlists, M34), the one synchronous surface.
 type Service struct {
 	store        domain.Store
 	connectors   map[string]domain.Connector
 	mappers      map[string]domain.Mapper
 	pagedMappers map[string]domain.PagedMapper
 	loader       domain.Loader
+	watchlist    domain.WatchlistChecker
 }
 
 // NewService wires the service with its store, connector registry, and loader. Mappers are registered
@@ -33,6 +35,18 @@ func NewService(store domain.Store, connectors map[string]domain.Connector, load
 		pagedMappers: map[string]domain.PagedMapper{},
 		loader:       loader,
 	}
+}
+
+// SetWatchlistChecker binds the live screening checker (D-Watchlists, M34). Composition-time.
+func (s *Service) SetWatchlistChecker(w domain.WatchlistChecker) { s.watchlist = w }
+
+// CheckWatchlist runs a live screening check for a person-identity query (the synchronous
+// oikumenea→hermenea surface). Returns ErrNoWatchlist when no checker is configured.
+func (s *Service) CheckWatchlist(ctx context.Context, q domain.WatchlistQuery) (domain.WatchlistResult, error) {
+	if s.watchlist == nil {
+		return domain.WatchlistResult{}, domain.ErrNoWatchlist
+	}
+	return s.watchlist.Check(ctx, q)
 }
 
 // RegisterMapper registers the in-memory raw→records mapper for an object-type (composition-time).

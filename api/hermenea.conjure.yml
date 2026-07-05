@@ -62,6 +62,43 @@ types:
           maxAttempts: integer
           runAfter: string
           lastError: optional<string>
+      WatchlistQuery:
+        docs: |
+          A person-identity query for a live watchlist screening check (D-Watchlists, M34). oikumenea sends
+          this; hermenea owns egress to the OFAC/EU/UN/INTERPOL providers + a ≤24h cache. Only match
+          metadata comes back — never the lists themselves.
+        fields:
+          subjectKey:
+            type: string
+            docs: An opaque caller key (the person RID) used to key the ≤24h cache; not sent upstream.
+          fullName:
+            type: string
+            docs: The name screened against the providers.
+          birthdate:
+            type: optional<string>
+            docs: ISO-8601 date, when known, to disambiguate matches.
+          nationality:
+            type: optional<string>
+            docs: ISO-3166 alpha-2, when known.
+      WatchlistResult:
+        docs: Per-person match metadata returned by a screening check (D-Watchlists, M34).
+        fields:
+          onList:
+            type: boolean
+            docs: Any hit across the queried providers.
+          lists:
+            type: list<string>
+            docs: The list codes matched, e.g. INTERPOL_RED, OFAC_SDN.
+          program: optional<string>
+          matchScore:
+            type: optional<double>
+            docs: 0..1 best-match score across providers.
+          checkedAt:
+            type: string
+            docs: RFC-3339 time the check ran (cache hit or fresh).
+          nextCheckDue:
+            type: optional<string>
+            docs: RFC-3339 time the cache lapses (checkedAt + TTL).
     errors:
       UnknownSource:
         docs: No import source is registered under the requested code.
@@ -97,3 +134,13 @@ services:
         http: GET /jobs
         docs: List worker jobs (most recent first).
         returns: list<WorkerJob>
+      checkWatchlist:
+        http: POST /watchlist/check
+        docs: |
+          Run a live watchlist screening check (D-Watchlists, M34): the first SYNCHRONOUS oikumenea→hermenea
+          call. Hermenea owns the outbound egress to OFAC/EU/UN/INTERPOL and a ≤24h cache; only per-person
+          match metadata is returned. The real interpol.api.bund.dev connector ships; sanctions providers
+          are a documented pluggable stub.
+        args:
+          request: WatchlistQuery
+        returns: WatchlistResult

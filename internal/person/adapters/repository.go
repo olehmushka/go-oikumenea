@@ -6,6 +6,7 @@ package adapters
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -111,6 +112,11 @@ var repointOwnedStmts = []string{
 	`UPDATE oikumenea.person_government_positions   SET person_id = $2 WHERE person_id = $1`,
 	`UPDATE oikumenea.person_lobbying_relationships SET person_id = $2 WHERE person_id = $1`,
 	`UPDATE oikumenea.person_external_references    SET person_id = $2 WHERE person_id = $1`,
+	// watchlists & regulatory exposure (M34): the durable regulatory-sanction overlay is re-homed onto the
+	// canonical person. The single-per-person transient watchlist MATCH is NOT re-homed (its partial-unique
+	// person_id would collide) — the stub's row is hard-dropped by the merge's Purge step, and a re-check
+	// regenerates the screening result on the canonical person (D-Watchlists).
+	`UPDATE oikumenea.person_regulatory_sanctions   SET person_id = $2 WHERE person_id = $1`,
 }
 
 // RepointPersonOwned runs the person-owned re-point UPDATEs fromID → toID in the caller's transaction.
@@ -383,6 +389,14 @@ func (r *Repository) Purge(ctx context.Context, id string) (domain.Person, error
 		return domain.Person{}, err
 	}
 	if err := r.q.DeleteAllExternalReferences(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	// watchlists & regulatory exposure (M34): both are pii:sensitive screening/overlay data — hard-erased
+	// on purge (a transient screening result and a durable overlay; neither is a legal-retention record).
+	if err := r.q.DeleteAllWatchlistMatches(ctx, id); err != nil {
+		return domain.Person{}, err
+	}
+	if err := r.q.DeleteAllRegulatorySanctions(ctx, id); err != nil {
 		return domain.Person{}, err
 	}
 	row, err := r.q.PurgePerson(ctx, id)
@@ -2153,6 +2167,38 @@ func ts(t *time.Time) pgtype.Timestamptz {
 	return pgtype.Timestamptz{Time: *t, Valid: true}
 }
 
+// numArg maps an optional float to a nullable numeric column (via its decimal string form; nil => NULL).
+func numArg(p *float64) pgtype.Numeric {
+	var n pgtype.Numeric
+	if p == nil {
+		return n
+	}
+	if err := n.Scan(strconv.FormatFloat(*p, 'f', -1, 64)); err != nil {
+		return pgtype.Numeric{}
+	}
+	return n
+}
+
+// numPtr maps a stored numeric back into an optional float64 (via its string Value()).
+func numPtr(n pgtype.Numeric) *float64 {
+	if !n.Valid {
+		return nil
+	}
+	v, err := n.Value()
+	if err != nil || v == nil {
+		return nil
+	}
+	s, ok := v.(string)
+	if !ok {
+		return nil
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return nil
+	}
+	return &f
+}
+
 // ---------------------------------------------------------------- institutional & political ties (M33)
 
 // InsertPartyMembership stores a new encrypted party membership (the party envelope is sealed upstream).
@@ -2517,5 +2563,153 @@ func toExternalReference(r personsql.OikumeneaPersonExternalReference) domain.Ex
 		Confidence:  r.Confidence,
 		CreatedAt:   r.CreatedAt.Time,
 		UpdatedAt:   r.UpdatedAt.Time,
+	}
+}
+
+// ---------------------------------------------------------------- watchlists & regulatory exposure (M34)
+
+// UpsertWatchlistMatch inserts or (on the partial-unique person_id) refreshes the single screening result.
+func (r *Repository) UpsertWatchlistMatch(ctx context.Context, m domain.WatchlistMatch) (domain.WatchlistMatch, error) {
+	if m.Lists == nil {
+		m.Lists = []string{}
+	}
+	row, err := r.q.UpsertWatchlistMatch(ctx, personsql.UpsertWatchlistMatchParams{
+		PersonID:     m.PersonID,
+		OnList:       m.OnList,
+		Lists:        m.Lists,
+		Program:      text(m.Program),
+		MatchScore:   numArg(m.MatchScore),
+		Pep:          m.PEP,
+		LastChecked:  pgtype.Timestamptz{Time: m.LastChecked, Valid: true},
+		NextCheckDue: ts(m.NextCheckDue),
+		Source:       m.Source,
+		Confidence:   m.Confidence,
+	})
+	if err != nil {
+		return domain.WatchlistMatch{}, mapWriteErr(err)
+	}
+	return toWatchlistMatch(row), nil
+}
+
+func (r *Repository) GetWatchlistMatch(ctx context.Context, personID string) (domain.WatchlistMatch, bool, error) {
+	row, err := r.q.GetWatchlistMatch(ctx, personID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.WatchlistMatch{}, false, nil
+		}
+		return domain.WatchlistMatch{}, false, err
+	}
+	return toWatchlistMatch(row), true, nil
+}
+
+// DeleteWatchlistMatch hard-deletes a person's screening result (purge path).
+func (r *Repository) DeleteWatchlistMatch(ctx context.Context, personID string) error {
+	return r.q.DeleteAllWatchlistMatches(ctx, personID)
+}
+
+// UpsertRegulatorySanction inserts idempotently by (person, external_id) when x.ID is empty; otherwise
+// replaces the named row by RID.
+func (r *Repository) UpsertRegulatorySanction(ctx context.Context, x domain.RegulatorySanction) (domain.RegulatorySanction, error) {
+	if x.ID == "" {
+		row, err := r.q.UpsertRegulatorySanction(ctx, personsql.UpsertRegulatorySanctionParams{
+			PersonID:     x.PersonID,
+			Regulator:    x.Regulator,
+			ActionType:   x.ActionType,
+			Amount:       numArg(x.Amount),
+			Currency:     text(x.Currency),
+			Status:       x.Status,
+			SanctionDate: dateText(x.SanctionDate),
+			SourceUrl:    text(x.SourceURL),
+			ExternalID:   text(x.ExternalID),
+			LegalBasis:   text(x.LegalBasis),
+			Source:       x.Source,
+			Confidence:   x.Confidence,
+		})
+		if err != nil {
+			return domain.RegulatorySanction{}, mapWriteErr(err)
+		}
+		return toRegulatorySanction(row), nil
+	}
+	row, err := r.q.UpdateRegulatorySanction(ctx, personsql.UpdateRegulatorySanctionParams{
+		Regulator:    x.Regulator,
+		ActionType:   x.ActionType,
+		Amount:       numArg(x.Amount),
+		Currency:     text(x.Currency),
+		Status:       x.Status,
+		SanctionDate: dateText(x.SanctionDate),
+		SourceUrl:    text(x.SourceURL),
+		ExternalID:   text(x.ExternalID),
+		LegalBasis:   text(x.LegalBasis),
+		Source:       x.Source,
+		Confidence:   x.Confidence,
+		ID:           x.ID,
+		PersonID:     x.PersonID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.RegulatorySanction{}, domain.ErrRegulatorySanctionNotFound
+		}
+		return domain.RegulatorySanction{}, mapWriteErr(err)
+	}
+	return toRegulatorySanction(row), nil
+}
+
+func (r *Repository) DeleteRegulatorySanction(ctx context.Context, personID, id string) error {
+	if _, err := r.q.DeleteRegulatorySanction(ctx, personsql.DeleteRegulatorySanctionParams{ID: id, PersonID: personID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrRegulatorySanctionNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) ListRegulatorySanctions(ctx context.Context, personID string) ([]domain.RegulatorySanction, error) {
+	rows, err := r.q.ListRegulatorySanctions(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.RegulatorySanction, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toRegulatorySanction(row))
+	}
+	return out, nil
+}
+
+func toWatchlistMatch(r personsql.OikumeneaPersonWatchlistMatch) domain.WatchlistMatch {
+	return domain.WatchlistMatch{
+		ID:           r.ID,
+		PersonID:     r.PersonID,
+		OnList:       r.OnList,
+		Lists:        r.Lists,
+		Program:      strText(r.Program),
+		MatchScore:   numPtr(r.MatchScore),
+		PEP:          r.Pep,
+		LastChecked:  r.LastChecked.Time,
+		NextCheckDue: tsPtr(r.NextCheckDue),
+		Source:       r.Source,
+		Confidence:   r.Confidence,
+		CreatedAt:    r.CreatedAt.Time,
+		UpdatedAt:    r.UpdatedAt.Time,
+	}
+}
+
+func toRegulatorySanction(r personsql.OikumeneaPersonRegulatorySanction) domain.RegulatorySanction {
+	return domain.RegulatorySanction{
+		ID:           r.ID,
+		PersonID:     r.PersonID,
+		Regulator:    r.Regulator,
+		ActionType:   r.ActionType,
+		Amount:       numPtr(r.Amount),
+		Currency:     strText(r.Currency),
+		Status:       r.Status,
+		SanctionDate: dateStr(r.SanctionDate),
+		SourceURL:    strText(r.SourceUrl),
+		ExternalID:   strText(r.ExternalID),
+		LegalBasis:   strText(r.LegalBasis),
+		Source:       r.Source,
+		Confidence:   r.Confidence,
+		CreatedAt:    r.CreatedAt.Time,
+		UpdatedAt:    r.UpdatedAt.Time,
 	}
 }

@@ -1,4 +1,5 @@
-h1:uRmpBRnAxIA0cfO2VAB3m2V6g32iJwQbdATSLc0KjV0=
+h1:oKdpw/JwdJiwY9JFVftAAmZS5zakdXJkN1HdxPbdgUQ=
 0001_hermenea_init.sql h1:Fd81dKgLjXmbiOAKWUHYFzBxdcfWBdVmKWi6c1I1Mn8=
 0002_http_files_connector.sql h1:NpAtc1Vij9dSCExN3l5HWoPEexS0ZleqzyGepw7H+Qg=
 0003_factbook_connector.sql h1:JNBoaSzglmiC3JY6nMwb47Q6wqwlBKev7tH2u93s1Jk=
+0004_watchlist_cache.sql h1:vZscpCyixixLqP6MNzyC1J0I6sJAyeBzWdFPni8xsoA=

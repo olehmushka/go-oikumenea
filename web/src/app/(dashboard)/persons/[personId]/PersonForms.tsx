@@ -47,11 +47,13 @@ import type {
   PhysicalDescription,
   Phone,
   Platform,
+  RegulatorySanction,
   RelationType,
   Residence,
   SocialAccount,
   SocialAccountHandle,
   Sponsorship,
+  WatchlistMatch,
 } from "@/lib/api/types";
 
 type CodeRow = { id: string; schemeCode?: string; status?: string };
@@ -986,6 +988,8 @@ export function PhysicalIdentityManager({ personId }: { personId: string }) {
 const PARTY_ROLES = ["member", "official", "candidate", "donor", "supporter", "other"] as const;
 const GOV_LEVELS = ["international", "national", "regional", "local"] as const;
 const REF_KINDS = ["wikipedia", "news", "registry", "social", "court", "academic", "other"] as const;
+const SANCTION_ACTIONS = ["fine", "ban", "license_revocation", "warning", "settlement", "debarment", "other"] as const;
+const SANCTION_STATUSES = ["active", "appealed", "overturned", "expired", "settled"] as const;
 
 // InstitutionalTiesManager owns the M33 panels (D-InstitutionalTies): party memberships (pii:special,
 // encrypted party — legalBasis required), government positions (PEP-triggering), lobbying relationships,
@@ -1187,6 +1191,132 @@ export function InstitutionalTiesManager({ personId }: { personId: string }) {
             {REF_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
           </select>
           <input name="url" type="url" className="input" placeholder="https://…" required />
+          <button className="btn-ghost" disabled={busy}><T>Add</T></button>
+        </form>
+      </ChannelBlock>
+    </>
+  );
+}
+
+// WatchlistManager owns the M34 panels (D-Watchlists): a live screening check (CheckWatchlists runs OUT
+// to the hermenea companion and persists ONLY match metadata — never the lists) with a PEP badge, and the
+// durable regulatory-sanction overlay (pii:sensitive). Screening never stores the underlying lists.
+export function WatchlistManager({ personId }: { personId: string }) {
+  const [match, setMatch] = useState<WatchlistMatch | null>(null);
+  const [sanctions, setSanctions] = useState<RegulatorySanction[] | null>(null);
+  const [bases, setBases] = useState<{ code: string; name: string }[]>([]);
+  const [err, setErr] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = () => {
+    api.person.getWatchlistMatch(personId).then((m) => setMatch(m ?? null)).catch(setErr);
+    api.person.listRegulatorySanctions(personId).then(setSanctions).catch(setErr);
+  };
+  useEffect(() => {
+    load();
+    api.platformCatalog.listLegalBasisKinds()
+      .then((r) => setBases((r?.kinds ?? []).map((k) => ({ code: k.code, name: k.name }))))
+      .catch(setErr);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personId]);
+
+  const run = async (fn: () => Promise<unknown>, after?: () => void) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await fn();
+      after?.();
+      load();
+    } catch (e) {
+      setErr(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <ChannelBlock title="Watchlist screening" err={err}>
+        <p className="mt-1 text-xs text-amber-600"><T>Live screening via the companion — only match metadata is stored, never the lists.</T></p>
+        {match ? (
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+            {match.onList
+              ? <span className="rounded bg-red-100 px-1.5 py-0.5 text-xs font-semibold text-red-700"><T>On a list</T></span>
+              : <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-semibold text-emerald-700"><T>No match</T></span>}
+            {match.pep ? <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-700" title="Politically exposed person">PEP</span> : null}
+            {match.lists.length ? <span className="text-xs text-slate-500">{match.lists.join(", ")}</span> : null}
+            {match.program ? <span className="text-xs text-slate-400">· {match.program}</span> : null}
+            {typeof match.matchScore === "number" ? <span className="text-xs text-slate-400">· {Math.round(match.matchScore * 100)}%</span> : null}
+            <span className="text-xs text-slate-400">· <T>checked</T> {new Date(match.lastChecked).toLocaleString()}</span>
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-slate-400"><T>Never screened.</T></p>
+        )}
+        <button
+          className="btn-ghost mt-2"
+          disabled={busy}
+          onClick={() => run(() => api.person.checkWatchlists(personId))}
+        >
+          <T>Run watchlist check</T>
+        </button>
+      </ChannelBlock>
+
+      <ChannelBlock title="Regulatory sanctions" err={null}>
+        <p className="mt-1 text-xs text-amber-600"><T>Sensitive-tier regulatory exposure.</T></p>
+        <ItemList
+          items={sanctions ?? undefined}
+          render={(x) => {
+            const amt = typeof x.amount === "number" ? `${x.amount.toLocaleString()} ${x.currency ?? ""}`.trim() : "";
+            return (
+              <span className="inline-flex flex-wrap items-center gap-x-1">
+                <span className="font-medium">{x.regulator}</span>
+                <span className="mx-1 text-slate-300">·</span>
+                <span className="text-xs text-slate-500">{x.actionType}</span>
+                <span className="ml-1 text-xs text-slate-400">· {x.status}</span>
+                {amt ? <span className="ml-1 text-xs text-slate-400">· {amt}</span> : null}
+                {x.sanctionDate ? <span className="ml-1 text-xs text-slate-400">({x.sanctionDate})</span> : null}
+              </span>
+            );
+          }}
+          del={(x) => `/person/v1/persons/${personId}/regulatory-sanctions/${x.id}`}
+          delConfirm="Remove this regulatory sanction?"
+        />
+        <form
+          className="mt-2 grid grid-cols-[1fr_8rem_6rem_5rem_auto] gap-2"
+          onSubmit={(ev) => {
+            ev.preventDefault();
+            const f = new FormData(ev.currentTarget);
+            const regulator = s(f, "regulator");
+            if (!regulator) return;
+            const form = ev.currentTarget;
+            const amountStr = s(f, "amount");
+            const amount = amountStr ? Number(amountStr) : undefined;
+            run(
+              () => api.person.upsertRegulatorySanction(personId, {
+                regulator,
+                actionType: s(f, "actionType") ?? "other",
+                status: s(f, "status") ?? "active",
+                amount: Number.isFinite(amount) ? amount : undefined,
+                currency: s(f, "currency"),
+                legalBasis: s(f, "legalBasis"),
+              }),
+              () => form.reset(),
+            );
+          }}
+        >
+          <input name="regulator" className="input" placeholder="regulator (SEC, FCA…)…" required />
+          <select name="actionType" className="input" defaultValue="fine">
+            {SANCTION_ACTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+          <input name="amount" className="input" type="number" step="any" placeholder="amount" />
+          <input name="currency" className="input" placeholder="USD" />
+          <select name="status" className="input" defaultValue="active">
+            {SANCTION_STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
+          </select>
+          <select name="legalBasis" className="input col-span-4" defaultValue="">
+            <option value="">legal basis (optional)…</option>
+            {bases.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
+          </select>
           <button className="btn-ghost" disabled={busy}><T>Add</T></button>
         </form>
       </ChannelBlock>

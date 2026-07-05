@@ -1,6 +1,8 @@
 import { IImportRun } from "./importRun";
 import { IImportSource } from "./importSource";
 import { IJobRef } from "./jobRef";
+import { IWatchlistQuery } from "./watchlistQuery";
+import { IWatchlistResult } from "./watchlistResult";
 import { IWorkerJob } from "./workerJob";
 import type { IHttpApiBridge } from "conjure-client";
 
@@ -17,6 +19,14 @@ export interface IHermeneaService {
     listRuns(): Promise<Array<IImportRun>>;
     /** List worker jobs (most recent first). */
     listJobs(): Promise<Array<IWorkerJob>>;
+    /**
+     * Run a live watchlist screening check (D-Watchlists, M34): the first SYNCHRONOUS oikumenea→hermenea
+     * call. Hermenea owns the outbound egress to OFAC/EU/UN/INTERPOL and a ≤24h cache; only per-person
+     * match metadata is returned. The real interpol.api.bund.dev connector ships; sanctions providers
+     * are a documented pluggable stub.
+     *
+     */
+    checkWatchlist(request: IWatchlistQuery): Promise<IWatchlistResult>;
 }
 
 export class HermeneaService implements IHermeneaService {
@@ -81,6 +91,28 @@ export class HermeneaService implements IHermeneaService {
             "GET",
             "/hermenea/v1/jobs",
             __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Run a live watchlist screening check (D-Watchlists, M34): the first SYNCHRONOUS oikumenea→hermenea
+     * call. Hermenea owns the outbound egress to OFAC/EU/UN/INTERPOL and a ≤24h cache; only per-person
+     * match metadata is returned. The real interpol.api.bund.dev connector ships; sanctions providers
+     * are a documented pluggable stub.
+     *
+     */
+    public checkWatchlist(request: IWatchlistQuery): Promise<IWatchlistResult> {
+        return this.bridge.call<IWatchlistResult>(
+            "HermeneaService",
+            "checkWatchlist",
+            "POST",
+            "/hermenea/v1/watchlist/check",
+            request,
             __undefined,
             __undefined,
             __undefined,

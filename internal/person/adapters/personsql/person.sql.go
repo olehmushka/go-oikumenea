@@ -512,6 +512,15 @@ func (q *Queries) DeleteAllPhysicalDescriptions(ctx context.Context, personID st
 	return err
 }
 
+const deleteAllRegulatorySanctions = `-- name: DeleteAllRegulatorySanctions :exec
+DELETE FROM oikumenea.person_regulatory_sanctions WHERE person_id = $1
+`
+
+func (q *Queries) DeleteAllRegulatorySanctions(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllRegulatorySanctions, personID)
+	return err
+}
+
 const deleteAllResidences = `-- name: DeleteAllResidences :exec
 DELETE FROM oikumenea.person_residences WHERE person_id = $1
 `
@@ -549,6 +558,16 @@ DELETE FROM oikumenea.person_sponsorships WHERE sponsor_id = $1 OR sponsored_id 
 
 func (q *Queries) DeleteAllSponsorships(ctx context.Context, personID string) error {
 	_, err := q.db.Exec(ctx, deleteAllSponsorships, personID)
+	return err
+}
+
+const deleteAllWatchlistMatches = `-- name: DeleteAllWatchlistMatches :exec
+DELETE FROM oikumenea.person_watchlist_matches WHERE person_id = $1
+`
+
+// Hard delete on purge (a transient screening result, not a record to tombstone).
+func (q *Queries) DeleteAllWatchlistMatches(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllWatchlistMatches, personID)
 	return err
 }
 
@@ -918,6 +937,24 @@ func (q *Queries) DeletePhysicalDescription(ctx context.Context, arg DeletePhysi
 	return id, err
 }
 
+const deleteRegulatorySanction = `-- name: DeleteRegulatorySanction :one
+UPDATE oikumenea.person_regulatory_sanctions SET deleted_at = now()
+WHERE id = $1 AND person_id = $2 AND deleted_at IS NULL
+RETURNING id
+`
+
+type DeleteRegulatorySanctionParams struct {
+	ID       string
+	PersonID string
+}
+
+func (q *Queries) DeleteRegulatorySanction(ctx context.Context, arg DeleteRegulatorySanctionParams) (string, error) {
+	row := q.db.QueryRow(ctx, deleteRegulatorySanction, arg.ID, arg.PersonID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const deleteResidence = `-- name: DeleteResidence :one
 UPDATE oikumenea.person_residences SET deleted_at = now()
 WHERE id = $1 AND person_id = $2 AND deleted_at IS NULL
@@ -1239,6 +1276,33 @@ func (q *Queries) GetSocialAccount(ctx context.Context, arg GetSocialAccountPara
 		&i.Source,
 		&i.Confidence,
 		&i.IsPrimary,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const getWatchlistMatch = `-- name: GetWatchlistMatch :one
+SELECT id, person_id, on_list, lists, program, match_score, pep, last_checked, next_check_due, source, confidence, created_at, updated_at, deleted_at FROM oikumenea.person_watchlist_matches
+WHERE person_id = $1 AND deleted_at IS NULL
+`
+
+func (q *Queries) GetWatchlistMatch(ctx context.Context, personID string) (OikumeneaPersonWatchlistMatch, error) {
+	row := q.db.QueryRow(ctx, getWatchlistMatch, personID)
+	var i OikumeneaPersonWatchlistMatch
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.OnList,
+		&i.Lists,
+		&i.Program,
+		&i.MatchScore,
+		&i.Pep,
+		&i.LastChecked,
+		&i.NextCheckDue,
+		&i.Source,
+		&i.Confidence,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -3568,6 +3632,49 @@ func (q *Queries) ListPlatforms(ctx context.Context) ([]OikumeneaPersonPlatform,
 	return items, nil
 }
 
+const listRegulatorySanctions = `-- name: ListRegulatorySanctions :many
+SELECT id, person_id, regulator, action_type, amount, currency, status, sanction_date, source_url, external_id, legal_basis, source, confidence, created_at, updated_at, deleted_at FROM oikumenea.person_regulatory_sanctions
+WHERE person_id = $1 AND deleted_at IS NULL
+ORDER BY sanction_date DESC NULLS LAST, created_at DESC, id
+`
+
+func (q *Queries) ListRegulatorySanctions(ctx context.Context, personID string) ([]OikumeneaPersonRegulatorySanction, error) {
+	rows, err := q.db.Query(ctx, listRegulatorySanctions, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonRegulatorySanction
+	for rows.Next() {
+		var i OikumeneaPersonRegulatorySanction
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.Regulator,
+			&i.ActionType,
+			&i.Amount,
+			&i.Currency,
+			&i.Status,
+			&i.SanctionDate,
+			&i.SourceUrl,
+			&i.ExternalID,
+			&i.LegalBasis,
+			&i.Source,
+			&i.Confidence,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRelationTypes = `-- name: ListRelationTypes :many
 
 
@@ -4783,6 +4890,70 @@ func (q *Queries) UpdatePhysicalDescription(ctx context.Context, arg UpdatePhysi
 	return i, err
 }
 
+const updateRegulatorySanction = `-- name: UpdateRegulatorySanction :one
+UPDATE oikumenea.person_regulatory_sanctions SET
+  regulator = $1, action_type = $2, amount = $3,
+  currency = $4, status = $5, sanction_date = $6::date,
+  source_url = $7, external_id = $8,
+  legal_basis = $9, source = $10, confidence = $11
+WHERE id = $12 AND person_id = $13 AND deleted_at IS NULL
+RETURNING id, person_id, regulator, action_type, amount, currency, status, sanction_date, source_url, external_id, legal_basis, source, confidence, created_at, updated_at, deleted_at
+`
+
+type UpdateRegulatorySanctionParams struct {
+	Regulator    string
+	ActionType   string
+	Amount       pgtype.Numeric
+	Currency     pgtype.Text
+	Status       string
+	SanctionDate pgtype.Date
+	SourceUrl    pgtype.Text
+	ExternalID   pgtype.Text
+	LegalBasis   pgtype.Text
+	Source       string
+	Confidence   string
+	ID           string
+	PersonID     string
+}
+
+func (q *Queries) UpdateRegulatorySanction(ctx context.Context, arg UpdateRegulatorySanctionParams) (OikumeneaPersonRegulatorySanction, error) {
+	row := q.db.QueryRow(ctx, updateRegulatorySanction,
+		arg.Regulator,
+		arg.ActionType,
+		arg.Amount,
+		arg.Currency,
+		arg.Status,
+		arg.SanctionDate,
+		arg.SourceUrl,
+		arg.ExternalID,
+		arg.LegalBasis,
+		arg.Source,
+		arg.Confidence,
+		arg.ID,
+		arg.PersonID,
+	)
+	var i OikumeneaPersonRegulatorySanction
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.Regulator,
+		&i.ActionType,
+		&i.Amount,
+		&i.Currency,
+		&i.Status,
+		&i.SanctionDate,
+		&i.SourceUrl,
+		&i.ExternalID,
+		&i.LegalBasis,
+		&i.Source,
+		&i.Confidence,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const updateResidence = `-- name: UpdateResidence :one
 UPDATE oikumenea.person_residences SET
   country_id = $1, region = $2,
@@ -5201,6 +5372,142 @@ func (q *Queries) UpsertPersonRank(ctx context.Context, arg UpsertPersonRankPara
 		&i.PersonID,
 		&i.SystemID,
 		&i.RankID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const upsertRegulatorySanction = `-- name: UpsertRegulatorySanction :one
+
+INSERT INTO oikumenea.person_regulatory_sanctions (
+  person_id, regulator, action_type, amount, currency, status, sanction_date,
+  source_url, external_id, legal_basis, source, confidence
+) VALUES (
+  $1, $2, $3, $4, $5, $6,
+  $7::date, $8, $9,
+  $10, $11, $12
+)
+ON CONFLICT (person_id, external_id) WHERE external_id IS NOT NULL AND deleted_at IS NULL DO UPDATE SET
+  regulator = excluded.regulator, action_type = excluded.action_type, amount = excluded.amount,
+  currency = excluded.currency, status = excluded.status, sanction_date = excluded.sanction_date,
+  source_url = excluded.source_url, legal_basis = excluded.legal_basis,
+  source = excluded.source, confidence = excluded.confidence
+RETURNING id, person_id, regulator, action_type, amount, currency, status, sanction_date, source_url, external_id, legal_basis, source, confidence, created_at, updated_at, deleted_at
+`
+
+type UpsertRegulatorySanctionParams struct {
+	PersonID     string
+	Regulator    string
+	ActionType   string
+	Amount       pgtype.Numeric
+	Currency     pgtype.Text
+	Status       string
+	SanctionDate pgtype.Date
+	SourceUrl    pgtype.Text
+	ExternalID   pgtype.Text
+	LegalBasis   pgtype.Text
+	Source       string
+	Confidence   string
+}
+
+// ---- regulatory sanctions (object regulatory_sanction, pii:sensitive; a hermenea import target) ----
+// Idempotent by (person, external_id): a re-imported sanction updates in place. Edits by RID use
+// UpdateRegulatorySanction. A NULL external_id never conflicts (always inserts a fresh row).
+func (q *Queries) UpsertRegulatorySanction(ctx context.Context, arg UpsertRegulatorySanctionParams) (OikumeneaPersonRegulatorySanction, error) {
+	row := q.db.QueryRow(ctx, upsertRegulatorySanction,
+		arg.PersonID,
+		arg.Regulator,
+		arg.ActionType,
+		arg.Amount,
+		arg.Currency,
+		arg.Status,
+		arg.SanctionDate,
+		arg.SourceUrl,
+		arg.ExternalID,
+		arg.LegalBasis,
+		arg.Source,
+		arg.Confidence,
+	)
+	var i OikumeneaPersonRegulatorySanction
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.Regulator,
+		&i.ActionType,
+		&i.Amount,
+		&i.Currency,
+		&i.Status,
+		&i.SanctionDate,
+		&i.SourceUrl,
+		&i.ExternalID,
+		&i.LegalBasis,
+		&i.Source,
+		&i.Confidence,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const upsertWatchlistMatch = `-- name: UpsertWatchlistMatch :one
+
+INSERT INTO oikumenea.person_watchlist_matches (
+  person_id, on_list, lists, program, match_score, pep, last_checked, next_check_due, source, confidence
+) VALUES (
+  $1, $2, $3, $4, $5, $6,
+  $7, $8, $9, $10
+)
+ON CONFLICT (person_id) WHERE deleted_at IS NULL DO UPDATE SET
+  on_list = excluded.on_list, lists = excluded.lists, program = excluded.program,
+  match_score = excluded.match_score, pep = excluded.pep, last_checked = excluded.last_checked,
+  next_check_due = excluded.next_check_due, source = excluded.source, confidence = excluded.confidence
+RETURNING id, person_id, on_list, lists, program, match_score, pep, last_checked, next_check_due, source, confidence, created_at, updated_at, deleted_at
+`
+
+type UpsertWatchlistMatchParams struct {
+	PersonID     string
+	OnList       bool
+	Lists        []string
+	Program      pgtype.Text
+	MatchScore   pgtype.Numeric
+	Pep          bool
+	LastChecked  pgtype.Timestamptz
+	NextCheckDue pgtype.Timestamptz
+	Source       string
+	Confidence   string
+}
+
+// ---- watchlist match (object watchlist_match, pii:sensitive; D-Watchlists M34) ----
+// One active screening result per person: a re-check refreshes the row in place (partial-unique person_id).
+func (q *Queries) UpsertWatchlistMatch(ctx context.Context, arg UpsertWatchlistMatchParams) (OikumeneaPersonWatchlistMatch, error) {
+	row := q.db.QueryRow(ctx, upsertWatchlistMatch,
+		arg.PersonID,
+		arg.OnList,
+		arg.Lists,
+		arg.Program,
+		arg.MatchScore,
+		arg.Pep,
+		arg.LastChecked,
+		arg.NextCheckDue,
+		arg.Source,
+		arg.Confidence,
+	)
+	var i OikumeneaPersonWatchlistMatch
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.OnList,
+		&i.Lists,
+		&i.Program,
+		&i.MatchScore,
+		&i.Pep,
+		&i.LastChecked,
+		&i.NextCheckDue,
+		&i.Source,
+		&i.Confidence,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,

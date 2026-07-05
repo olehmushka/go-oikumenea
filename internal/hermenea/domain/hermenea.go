@@ -64,6 +64,8 @@ var (
 	ErrNoConnector = errors.New("no connector for connector-type")
 	// ErrBadSchedule is returned when a schedule's cron/interval spec cannot be parsed.
 	ErrBadSchedule = errors.New("unparsable schedule spec")
+	// ErrNoWatchlist is returned by CheckWatchlist when no screening checker is configured (D-Watchlists).
+	ErrNoWatchlist = errors.New("watchlist screening not configured")
 )
 
 // Source is a registered external dataset hermenea can sync into oikumenea.
@@ -170,6 +172,32 @@ type PagedMapper interface {
 // coupling).
 type Loader interface {
 	Load(ctx context.Context, objectType, source, sourceVersion string, records []map[string]any) (ImportSummary, error)
+}
+
+// WatchlistQuery is a person-identity screening request (D-Watchlists, M34). SubjectKey (the person RID)
+// keys the ≤24h cache and is NOT sent upstream; the rest is matched against the providers.
+type WatchlistQuery struct {
+	SubjectKey  string
+	FullName    string
+	Birthdate   string
+	Nationality string
+}
+
+// WatchlistResult is the per-person match metadata a screening check returns — never the lists.
+type WatchlistResult struct {
+	OnList       bool
+	Lists        []string
+	Program      string
+	MatchScore   *float64
+	CheckedAt    time.Time
+	NextCheckDue *time.Time
+}
+
+// WatchlistChecker runs a live screening check (cache-first, provider fan-out). Implemented by the
+// hermenea watchlist package; the application service holds one. This is the first SYNCHRONOUS surface
+// hermenea exposes (the batch ingestion pipeline is one-directional; D-Watchlists extends D-Hermenea).
+type WatchlistChecker interface {
+	Check(ctx context.Context, q WatchlistQuery) (WatchlistResult, error)
 }
 
 // Store is the hermenea repository port (its OWN database). Adapters implement it.

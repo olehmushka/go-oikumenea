@@ -103,6 +103,39 @@ func (s Service) ListJobs(ctx context.Context, _ bearertoken.Token) ([]hermeneaa
 	return out, nil
 }
 
+// CheckWatchlist runs a live screening check (D-Watchlists, M34): the synchronous oikumenea→hermenea
+// surface. Auth (OIKUMENEA_HERMENEA_TOKEN) is enforced by the middleware.
+func (s Service) CheckWatchlist(ctx context.Context, _ bearertoken.Token, req hermeneaapi.WatchlistQuery) (hermeneaapi.WatchlistResult, error) {
+	res, err := s.app.CheckWatchlist(ctx, domain.WatchlistQuery{
+		SubjectKey:  req.SubjectKey,
+		FullName:    req.FullName,
+		Birthdate:   valOrEmpty(req.Birthdate),
+		Nationality: valOrEmpty(req.Nationality),
+	})
+	if err != nil {
+		return hermeneaapi.WatchlistResult{}, err
+	}
+	lists := res.Lists
+	if lists == nil {
+		lists = []string{}
+	}
+	return hermeneaapi.WatchlistResult{
+		OnList:       res.OnList,
+		Lists:        lists,
+		Program:      strPtr(res.Program),
+		MatchScore:   res.MatchScore,
+		CheckedAt:    res.CheckedAt.UTC().Format(time.RFC3339),
+		NextCheckDue: timePtr(res.NextCheckDue),
+	}, nil
+}
+
+func valOrEmpty(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
 func strPtr(s string) *string {
 	if s == "" {
 		return nil

@@ -30,6 +30,7 @@ import { IPhone } from "./phone";
 import { IPhoneType } from "./phoneType";
 import { IPhysicalDescription } from "./physicalDescription";
 import { IPlatform } from "./platform";
+import { IRegulatorySanction } from "./regulatorySanction";
 import { IRelationType } from "./relationType";
 import { IResidence } from "./residence";
 import { ISetRankRequest } from "./setRankRequest";
@@ -58,9 +59,11 @@ import { IUpsertPartyMembershipRequest } from "./upsertPartyMembershipRequest";
 import { IUpsertPersonLanguageRequest } from "./upsertPersonLanguageRequest";
 import { IUpsertPhoneRequest } from "./upsertPhoneRequest";
 import { IUpsertPhysicalDescriptionRequest } from "./upsertPhysicalDescriptionRequest";
+import { IUpsertRegulatorySanctionRequest } from "./upsertRegulatorySanctionRequest";
 import { IUpsertResidenceRequest } from "./upsertResidenceRequest";
 import { IUpsertSocialAccountRequest } from "./upsertSocialAccountRequest";
 import { IUpsertSponsorshipRequest } from "./upsertSponsorshipRequest";
+import { IWatchlistMatch } from "./watchlistMatch";
 import type { IHttpApiBridge } from "conjure-client";
 
 /** Constant reference to `undefined` that we expect to get minified and therefore reduce total code size */
@@ -161,6 +164,23 @@ export interface IPersonService {
     upsertExternalReference(personId: string, request: IUpsertExternalReferenceRequest): Promise<IExternalReference>;
     /** Remove an external reference by id. */
     deleteExternalReference(personId: string, referenceId: string): Promise<void>;
+    /**
+     * Run a live watchlist screening check for a person (D-Watchlists, M34). Routes egress OUT to the
+     * hermenea companion (which owns the OFAC/EU/UN/INTERPOL providers + a ≤24h cache), combines the
+     * returned match metadata with the locally-derived PEP flag (M33 government positions), and
+     * persists the single per-person WatchlistMatch. Audited. Only match metadata is stored — never
+     * the lists.
+     *
+     */
+    checkWatchlists(personId: string): Promise<IWatchlistMatch>;
+    /** The person's most recent watchlist screening result, or null if never screened. */
+    getWatchlistMatch(personId: string): Promise<IWatchlistMatch | null>;
+    /** List a person's regulatory-sanction overlay rows (D-Watchlists, M34; pii:sensitive). */
+    listRegulatorySanctions(personId: string): Promise<Array<IRegulatorySanction>>;
+    /** Add a regulatory sanction, or replace one when id is supplied. */
+    upsertRegulatorySanction(personId: string, request: IUpsertRegulatorySanctionRequest): Promise<IRegulatorySanction>;
+    /** Remove a regulatory sanction by id. */
+    deleteRegulatorySanction(personId: string, sanctionId: string): Promise<void>;
     /**
      * List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
      * the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
@@ -941,6 +961,104 @@ export class PersonService implements IPersonService {
             [
                 personId,
                 referenceId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Run a live watchlist screening check for a person (D-Watchlists, M34). Routes egress OUT to the
+     * hermenea companion (which owns the OFAC/EU/UN/INTERPOL providers + a ≤24h cache), combines the
+     * returned match metadata with the locally-derived PEP flag (M33 government positions), and
+     * persists the single per-person WatchlistMatch. Audited. Only match metadata is stored — never
+     * the lists.
+     *
+     */
+    public checkWatchlists(personId: string): Promise<IWatchlistMatch> {
+        return this.bridge.call<IWatchlistMatch>(
+            "PersonService",
+            "checkWatchlists",
+            "POST",
+            "/person/v1/persons/{personId}/watchlist-check",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** The person's most recent watchlist screening result, or null if never screened. */
+    public getWatchlistMatch(personId: string): Promise<IWatchlistMatch | null> {
+        return this.bridge.call<IWatchlistMatch | null>(
+            "PersonService",
+            "getWatchlistMatch",
+            "GET",
+            "/person/v1/persons/{personId}/watchlist-match",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** List a person's regulatory-sanction overlay rows (D-Watchlists, M34; pii:sensitive). */
+    public listRegulatorySanctions(personId: string): Promise<Array<IRegulatorySanction>> {
+        return this.bridge.call<Array<IRegulatorySanction>>(
+            "PersonService",
+            "listRegulatorySanctions",
+            "GET",
+            "/person/v1/persons/{personId}/regulatory-sanctions",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Add a regulatory sanction, or replace one when id is supplied. */
+    public upsertRegulatorySanction(personId: string, request: IUpsertRegulatorySanctionRequest): Promise<IRegulatorySanction> {
+        return this.bridge.call<IRegulatorySanction>(
+            "PersonService",
+            "upsertRegulatorySanction",
+            "PUT",
+            "/person/v1/persons/{personId}/regulatory-sanctions",
+            request,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Remove a regulatory sanction by id. */
+    public deleteRegulatorySanction(personId: string, sanctionId: string): Promise<void> {
+        return this.bridge.call<void>(
+            "PersonService",
+            "deleteRegulatorySanction",
+            "DELETE",
+            "/person/v1/persons/{personId}/regulatory-sanctions/{sanctionId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+                sanctionId,
             ],
             __undefined,
             __undefined

@@ -1094,3 +1094,69 @@ ORDER BY created_at DESC, id;
 
 -- name: DeleteAllExternalReferences :exec
 DELETE FROM oikumenea.person_external_references WHERE person_id = @person_id;
+
+-- ---- watchlist match (object watchlist_match, pii:sensitive; D-Watchlists M34) ----
+
+-- name: UpsertWatchlistMatch :one
+-- One active screening result per person: a re-check refreshes the row in place (partial-unique person_id).
+INSERT INTO oikumenea.person_watchlist_matches (
+  person_id, on_list, lists, program, match_score, pep, last_checked, next_check_due, source, confidence
+) VALUES (
+  @person_id, @on_list, @lists, sqlc.narg('program'), sqlc.narg('match_score'), @pep,
+  @last_checked, sqlc.narg('next_check_due'), @source, @confidence
+)
+ON CONFLICT (person_id) WHERE deleted_at IS NULL DO UPDATE SET
+  on_list = excluded.on_list, lists = excluded.lists, program = excluded.program,
+  match_score = excluded.match_score, pep = excluded.pep, last_checked = excluded.last_checked,
+  next_check_due = excluded.next_check_due, source = excluded.source, confidence = excluded.confidence
+RETURNING *;
+
+-- name: GetWatchlistMatch :one
+SELECT * FROM oikumenea.person_watchlist_matches
+WHERE person_id = @person_id AND deleted_at IS NULL;
+
+-- name: DeleteAllWatchlistMatches :exec
+-- Hard delete on purge (a transient screening result, not a record to tombstone).
+DELETE FROM oikumenea.person_watchlist_matches WHERE person_id = @person_id;
+
+-- ---- regulatory sanctions (object regulatory_sanction, pii:sensitive; a hermenea import target) ----
+
+-- name: UpsertRegulatorySanction :one
+-- Idempotent by (person, external_id): a re-imported sanction updates in place. Edits by RID use
+-- UpdateRegulatorySanction. A NULL external_id never conflicts (always inserts a fresh row).
+INSERT INTO oikumenea.person_regulatory_sanctions (
+  person_id, regulator, action_type, amount, currency, status, sanction_date,
+  source_url, external_id, legal_basis, source, confidence
+) VALUES (
+  @person_id, @regulator, @action_type, sqlc.narg('amount'), sqlc.narg('currency'), @status,
+  sqlc.narg('sanction_date')::date, sqlc.narg('source_url'), sqlc.narg('external_id'),
+  sqlc.narg('legal_basis'), @source, @confidence
+)
+ON CONFLICT (person_id, external_id) WHERE external_id IS NOT NULL AND deleted_at IS NULL DO UPDATE SET
+  regulator = excluded.regulator, action_type = excluded.action_type, amount = excluded.amount,
+  currency = excluded.currency, status = excluded.status, sanction_date = excluded.sanction_date,
+  source_url = excluded.source_url, legal_basis = excluded.legal_basis,
+  source = excluded.source, confidence = excluded.confidence
+RETURNING *;
+
+-- name: UpdateRegulatorySanction :one
+UPDATE oikumenea.person_regulatory_sanctions SET
+  regulator = @regulator, action_type = @action_type, amount = sqlc.narg('amount'),
+  currency = sqlc.narg('currency'), status = @status, sanction_date = sqlc.narg('sanction_date')::date,
+  source_url = sqlc.narg('source_url'), external_id = sqlc.narg('external_id'),
+  legal_basis = sqlc.narg('legal_basis'), source = @source, confidence = @confidence
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING *;
+
+-- name: DeleteRegulatorySanction :one
+UPDATE oikumenea.person_regulatory_sanctions SET deleted_at = now()
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING id;
+
+-- name: ListRegulatorySanctions :many
+SELECT * FROM oikumenea.person_regulatory_sanctions
+WHERE person_id = @person_id AND deleted_at IS NULL
+ORDER BY sanction_date DESC NULLS LAST, created_at DESC, id;
+
+-- name: DeleteAllRegulatorySanctions :exec
+DELETE FROM oikumenea.person_regulatory_sanctions WHERE person_id = @person_id;
