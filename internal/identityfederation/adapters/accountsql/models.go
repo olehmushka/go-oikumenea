@@ -1907,6 +1907,38 @@ type OikumeneaPersonRank struct {
 	DeletedAt pgtype.Timestamptz
 }
 
+type OikumeneaPersonRegulatorySanction struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:sensitive
+	Regulator string
+	// pii:sensitive
+	ActionType string
+	// pii:sensitive
+	Amount pgtype.Numeric
+	// pii:none
+	Currency pgtype.Text
+	// pii:sensitive
+	Status string
+	// pii:sensitive
+	SanctionDate pgtype.Date
+	// pii:basic
+	SourceUrl pgtype.Text
+	// pii:basic
+	ExternalID pgtype.Text
+	// pii:none
+	LegalBasis pgtype.Text
+	// pii:none
+	Source string
+	// pii:none
+	Confidence string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
+}
+
 type OikumeneaPersonRelationType struct {
 	// pii:none
 	Code string
@@ -2042,6 +2074,34 @@ type OikumeneaPersonSponsorship struct {
 	EnrollmentID pgtype.Text
 	// pii:none
 	EducationRole pgtype.Text
+}
+
+type OikumeneaPersonWatchlistMatch struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:sensitive
+	OnList bool
+	// pii:sensitive
+	Lists []string
+	// pii:sensitive
+	Program pgtype.Text
+	// pii:sensitive
+	MatchScore pgtype.Numeric
+	// pii:sensitive
+	Pep bool
+	// pii:none
+	LastChecked pgtype.Timestamptz
+	// pii:none
+	NextCheckDue pgtype.Timestamptz
+	// pii:none
+	Source string
+	// pii:none
+	Confidence string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
 }
 
 type OikumeneaPinaxSeedState struct {

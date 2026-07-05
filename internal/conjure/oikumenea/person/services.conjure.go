@@ -105,6 +105,22 @@ type PersonServiceClient interface {
 	// Remove an external reference by id.
 	DeleteExternalReference(ctx context.Context, authHeader bearertoken.Token, personIdArg string, referenceIdArg string) error
 	/*
+	   Run a live watchlist screening check for a person (D-Watchlists, M34). Routes egress OUT to the
+	   hermenea companion (which owns the OFAC/EU/UN/INTERPOL providers + a ≤24h cache), combines the
+	   returned match metadata with the locally-derived PEP flag (M33 government positions), and
+	   persists the single per-person WatchlistMatch. Audited. Only match metadata is stored — never
+	   the lists.
+	*/
+	CheckWatchlists(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (WatchlistMatch, error)
+	// The person's most recent watchlist screening result, or null if never screened.
+	GetWatchlistMatch(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (*WatchlistMatch, error)
+	// List a person's regulatory-sanction overlay rows (D-Watchlists, M34; pii:sensitive).
+	ListRegulatorySanctions(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]RegulatorySanction, error)
+	// Add a regulatory sanction, or replace one when id is supplied.
+	UpsertRegulatorySanction(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertRegulatorySanctionRequest) (RegulatorySanction, error)
+	// Remove a regulatory sanction by id.
+	DeleteRegulatorySanction(ctx context.Context, authHeader bearertoken.Token, personIdArg string, sanctionIdArg string) error
+	/*
 	   List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
 	   the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
 	   expansion), or a name/code substring (query). `hasChildren` is set on each entry.
@@ -806,6 +822,84 @@ func (c *personServiceClient) DeleteExternalReference(ctx context.Context, authH
 	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
 	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
 		return werror.WrapWithContextParams(ctx, err, "deleteExternalReference failed")
+	}
+	return nil
+}
+
+func (c *personServiceClient) CheckWatchlists(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (WatchlistMatch, error) {
+	var returnVal *WatchlistMatch
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("CheckWatchlists"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/watchlist-check", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(WatchlistMatch), werror.WrapWithContextParams(ctx, err, "checkWatchlists failed")
+	}
+	if returnVal == nil {
+		return *new(WatchlistMatch), werror.ErrorWithContextParams(ctx, "checkWatchlists response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) GetWatchlistMatch(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (*WatchlistMatch, error) {
+	var returnVal *WatchlistMatch
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("GetWatchlistMatch"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/watchlist-match", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "getWatchlistMatch failed")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) ListRegulatorySanctions(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]RegulatorySanction, error) {
+	var returnVal []RegulatorySanction
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListRegulatorySanctions"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/regulatory-sanctions", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listRegulatorySanctions failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listRegulatorySanctions response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) UpsertRegulatorySanction(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertRegulatorySanctionRequest) (RegulatorySanction, error) {
+	var returnVal *RegulatorySanction
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertRegulatorySanction"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/regulatory-sanctions", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(RegulatorySanction), werror.WrapWithContextParams(ctx, err, "upsertRegulatorySanction failed")
+	}
+	if returnVal == nil {
+		return *new(RegulatorySanction), werror.ErrorWithContextParams(ctx, "upsertRegulatorySanction response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) DeleteRegulatorySanction(ctx context.Context, authHeader bearertoken.Token, personIdArg string, sanctionIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeleteRegulatorySanction"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/regulatory-sanctions/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(sanctionIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deleteRegulatorySanction failed")
 	}
 	return nil
 }
@@ -1716,6 +1810,22 @@ type PersonServiceClientWithAuth interface {
 	// Remove an external reference by id.
 	DeleteExternalReference(ctx context.Context, personIdArg string, referenceIdArg string) error
 	/*
+	   Run a live watchlist screening check for a person (D-Watchlists, M34). Routes egress OUT to the
+	   hermenea companion (which owns the OFAC/EU/UN/INTERPOL providers + a ≤24h cache), combines the
+	   returned match metadata with the locally-derived PEP flag (M33 government positions), and
+	   persists the single per-person WatchlistMatch. Audited. Only match metadata is stored — never
+	   the lists.
+	*/
+	CheckWatchlists(ctx context.Context, personIdArg string) (WatchlistMatch, error)
+	// The person's most recent watchlist screening result, or null if never screened.
+	GetWatchlistMatch(ctx context.Context, personIdArg string) (*WatchlistMatch, error)
+	// List a person's regulatory-sanction overlay rows (D-Watchlists, M34; pii:sensitive).
+	ListRegulatorySanctions(ctx context.Context, personIdArg string) ([]RegulatorySanction, error)
+	// Add a regulatory sanction, or replace one when id is supplied.
+	UpsertRegulatorySanction(ctx context.Context, personIdArg string, requestArg UpsertRegulatorySanctionRequest) (RegulatorySanction, error)
+	// Remove a regulatory sanction by id.
+	DeleteRegulatorySanction(ctx context.Context, personIdArg string, sanctionIdArg string) error
+	/*
 	   List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
 	   the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
 	   expansion), or a name/code substring (query). `hasChildren` is set on each entry.
@@ -1984,6 +2094,26 @@ func (c *personServiceClientWithAuth) UpsertExternalReference(ctx context.Contex
 
 func (c *personServiceClientWithAuth) DeleteExternalReference(ctx context.Context, personIdArg string, referenceIdArg string) error {
 	return c.client.DeleteExternalReference(ctx, c.authHeader, personIdArg, referenceIdArg)
+}
+
+func (c *personServiceClientWithAuth) CheckWatchlists(ctx context.Context, personIdArg string) (WatchlistMatch, error) {
+	return c.client.CheckWatchlists(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) GetWatchlistMatch(ctx context.Context, personIdArg string) (*WatchlistMatch, error) {
+	return c.client.GetWatchlistMatch(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) ListRegulatorySanctions(ctx context.Context, personIdArg string) ([]RegulatorySanction, error) {
+	return c.client.ListRegulatorySanctions(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertRegulatorySanction(ctx context.Context, personIdArg string, requestArg UpsertRegulatorySanctionRequest) (RegulatorySanction, error) {
+	return c.client.UpsertRegulatorySanction(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) DeleteRegulatorySanction(ctx context.Context, personIdArg string, sanctionIdArg string) error {
+	return c.client.DeleteRegulatorySanction(ctx, c.authHeader, personIdArg, sanctionIdArg)
 }
 
 func (c *personServiceClientWithAuth) ListEthnicityTypes(ctx context.Context, topLevelArg *bool, parentArg *string, queryArg *string, limitArg *int) ([]EthnicityType, error) {
@@ -2469,6 +2599,46 @@ func (c *personServiceClientWithTokenProvider) DeleteExternalReference(ctx conte
 		return err
 	}
 	return c.client.DeleteExternalReference(ctx, bearertoken.Token(token), personIdArg, referenceIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) CheckWatchlists(ctx context.Context, personIdArg string) (WatchlistMatch, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(WatchlistMatch), err
+	}
+	return c.client.CheckWatchlists(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) GetWatchlistMatch(ctx context.Context, personIdArg string) (*WatchlistMatch, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.GetWatchlistMatch(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListRegulatorySanctions(ctx context.Context, personIdArg string) ([]RegulatorySanction, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListRegulatorySanctions(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertRegulatorySanction(ctx context.Context, personIdArg string, requestArg UpsertRegulatorySanctionRequest) (RegulatorySanction, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(RegulatorySanction), err
+	}
+	return c.client.UpsertRegulatorySanction(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) DeleteRegulatorySanction(ctx context.Context, personIdArg string, sanctionIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeleteRegulatorySanction(ctx, bearertoken.Token(token), personIdArg, sanctionIdArg)
 }
 
 func (c *personServiceClientWithTokenProvider) ListEthnicityTypes(ctx context.Context, topLevelArg *bool, parentArg *string, queryArg *string, limitArg *int) ([]EthnicityType, error) {

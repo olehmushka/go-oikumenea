@@ -58,6 +58,10 @@ type ColorStoreFactory func(conn db.DBTX) domain.ColorStore
 // TranslationStoreFactory binds the translations store port to the caller's tx (D-Pinax + D-i18n, M45).
 type TranslationStoreFactory func(conn db.DBTX) domain.TranslationStore
 
+// RegulatorySanctionStoreFactory binds the regulatory-sanctions store port to the caller's tx
+// (D-Watchlists, M34).
+type RegulatorySanctionStoreFactory func(conn db.DBTX) domain.RegulatorySanctionStore
+
 // Envelope is the application-level canonical envelope (the transport maps the Conjure type onto it).
 type Envelope struct {
 	ObjectType    string
@@ -789,6 +793,77 @@ func externalOrgFields(rec domain.Record) (domain.ExternalOrg, error) {
 		o.KindCode = "other"
 	}
 	return o, nil
+}
+
+// RegulatorySanctionsHandler builds the person regulatory-sanction upsert handler (D-Watchlists, M34) —
+// a person-scoped import target. For each record it resolves the person (skipping when the RID is
+// unknown), then keys idempotency on (person, externalId): insert when absent, update when a field
+// changed, skip an unchanged re-import (or any existing row under pinax CreateOnly) — never deletes.
+func RegulatorySanctionsHandler(newStore RegulatorySanctionStoreFactory) Handler {
+	return func(ctx context.Context, tx pgx.Tx, records []domain.Record, prov domain.Provenance) (domain.Summary, error) {
+		store := newStore(tx)
+		var sum domain.Summary
+		for _, rec := range records {
+			s, err := regulatorySanctionFields(rec)
+			if err != nil {
+				return domain.Summary{}, err
+			}
+			exists, err := store.PersonExists(ctx, s.PersonID)
+			if err != nil {
+				return domain.Summary{}, err
+			}
+			if !exists {
+				sum.Skipped++ // an unresolved person RID is skipped (non-destructive)
+				continue
+			}
+			existing, found, err := store.Get(ctx, s.PersonID, s.ExternalID)
+			if err != nil {
+				return domain.Summary{}, err
+			}
+			switch {
+			case !found:
+				if err := store.Insert(ctx, s, prov); err != nil {
+					return domain.Summary{}, err
+				}
+				sum.Created++
+			case prov.CreateOnly || s.SameAs(existing):
+				sum.Skipped++
+			default:
+				if err := store.UpdateImport(ctx, s, prov); err != nil {
+					return domain.Summary{}, err
+				}
+				sum.Updated++
+			}
+		}
+		return sum, nil
+	}
+}
+
+// regulatorySanctionFields decodes a regulatory-sanction record. personId + regulator + externalId are
+// required (externalId is the idempotency key); actionType/status fold to their table defaults so the
+// idempotency comparison matches the stored effective values.
+func regulatorySanctionFields(rec domain.Record) (domain.RegulatorySanction, error) {
+	s := domain.RegulatorySanction{
+		PersonID:     strings.TrimSpace(recStr(rec["personId"])),
+		Regulator:    strings.TrimSpace(recStr(rec["regulator"])),
+		ActionType:   strings.TrimSpace(recStr(rec["actionType"])),
+		Amount:       recOptFloat(rec["amount"]),
+		Currency:     strings.TrimSpace(recStr(rec["currency"])),
+		Status:       strings.TrimSpace(recStr(rec["status"])),
+		SanctionDate: strings.TrimSpace(recStr(rec["sanctionDate"])),
+		SourceURL:    strings.TrimSpace(recStr(rec["sourceUrl"])),
+		ExternalID:   strings.TrimSpace(recStr(rec["externalId"])),
+	}
+	if s.PersonID == "" || s.Regulator == "" || s.ExternalID == "" {
+		return domain.RegulatorySanction{}, domain.ErrInvalidRecord
+	}
+	if s.ActionType == "" {
+		s.ActionType = "other"
+	}
+	if s.Status == "" {
+		s.Status = "active"
+	}
+	return s, nil
 }
 
 // recOptFloat reads an optional JSON number as *float64 (nil when absent/null/non-numeric).

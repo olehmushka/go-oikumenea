@@ -21,8 +21,10 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/geocountries"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/glottolog"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/loader"
+	"github.com/olegamysk/go-oikumenea/internal/hermenea/regulatorysanctions"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/runtime"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/transport"
+	"github.com/olegamysk/go-oikumenea/internal/hermenea/watchlist"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/wikidataorgs"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/wof"
 	werror "github.com/palantir/witchcraft-go-error"
@@ -71,6 +73,22 @@ func Register(ctx context.Context, info witchcraft.InitInfo, pool *pgxpool.Pool,
 	//     across all files — a FLAT, country-linked catalog (the Factbook has no hierarchy/language). No
 	//     committed preset: the catalog is derived at import time.
 	svc.RegisterPagedMapper(factbookethnicities.ObjectType, factbookethnicities.PagedMapper{})
+	//   - person-regulatory-sanctions: the M34 regulatory-exposure overlay (D-Watchlists) — a validated
+	//     passthrough of an operator-registered source's canonical JSON array into oikumenea's
+	//     POST /import/person-regulatory-sanctions (idempotent by (person, externalId)). No committed bulk
+	//     source; the connector is http/file per the registered source.
+	svc.RegisterMapper(regulatorysanctions.ObjectType, regulatorysanctions.Mapper{})
+
+	// Live watchlist screening (D-Watchlists, M34): the one SYNCHRONOUS surface. hermenea owns egress to
+	// the providers + a ≤24h cache; only match metadata is returned. The real INTERPOL Red Notices
+	// connector ships; sanctions providers are a documented stub (SanctionsStub returns no match).
+	var providers []watchlist.Provider
+	if cfg.Watchlist.InterpolEnabledOrDefault() {
+		providers = append(providers, watchlist.NewInterpol(cfg.Watchlist.InterpolBaseURL, nil))
+	}
+	providers = append(providers, watchlist.SanctionsStub{})
+	ttl := time.Duration(cfg.Watchlist.TTLMs) * time.Millisecond
+	svc.SetWatchlistChecker(watchlist.NewService(providers, watchlist.NewDBCache(pool), ttl))
 
 	// Seed declaratively-configured sources (idempotent upsert + schedule).
 	for _, cs := range cfg.Sources {

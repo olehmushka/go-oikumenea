@@ -96,6 +96,14 @@ func NewImportService(pool *pgxpool.Pool, audit *auditapp.Service) *application.
 		func(conn db.DBTX) domain.TranslationStore { return adapters.NewTranslationRepo(conn) },
 	))
 
+	// person-regulatory-sanctions: the M34 regulatory-exposure overlay (D-Watchlists) — a person-scoped
+	// import target. Records reference a person by RID + carry a regulatory action; idempotent by
+	// (person, externalId), unresolved-person records skipped. Fed by the hermenea `regulatorysanctions`
+	// mapper (an operator-registered source; no committed bulk preset).
+	svc.Register(domain.ObjectTypeRegulatorySanctions, application.RegulatorySanctionsHandler(
+		func(conn db.DBTX) domain.RegulatorySanctionStore { return adapters.NewRegulatorySanctionRepo(conn) },
+	))
+
 	return svc
 }
 

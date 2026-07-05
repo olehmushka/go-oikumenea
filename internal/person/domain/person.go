@@ -1225,4 +1225,17 @@ type Repository interface {
 	UpsertExternalReference(ctx context.Context, r ExternalReference) (ExternalReference, error) // ErrExternalReferenceNotFound
 	DeleteExternalReference(ctx context.Context, personID, id string) error                      // ErrExternalReferenceNotFound
 	ListExternalReferences(ctx context.Context, personID string) ([]ExternalReference, error)
+
+	// watchlists & regulatory exposure (D-Watchlists, M34)
+
+	// watchlist match — object watchlist_match (one active row per person; CheckWatchlists upserts it)
+	UpsertWatchlistMatch(ctx context.Context, m WatchlistMatch) (WatchlistMatch, error)
+	GetWatchlistMatch(ctx context.Context, personID string) (WatchlistMatch, bool, error)
+	// DeleteWatchlistMatch hard-deletes a person's screening result (purge path — transient, not a record).
+	DeleteWatchlistMatch(ctx context.Context, personID string) error
+
+	// regulatory sanctions — object regulatory_sanction (s.ID == "" => upsert-by-external-id; else replace)
+	UpsertRegulatorySanction(ctx context.Context, s RegulatorySanction) (RegulatorySanction, error) // ErrRegulatorySanctionNotFound
+	DeleteRegulatorySanction(ctx context.Context, personID, id string) error                         // ErrRegulatorySanctionNotFound
+	ListRegulatorySanctions(ctx context.Context, personID string) ([]RegulatorySanction, error)
 }

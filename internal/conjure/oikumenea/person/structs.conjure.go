@@ -1364,6 +1364,48 @@ func (o *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+/*
+A structured regulatory/enforcement action against a person (D-Watchlists, M34) — an Object.
+Durable reference data (operator-curated or hermenea-imported), distinct from the volatile
+live-lookup above. Idempotent import keys on (person, externalId). pii:sensitive.
+*/
+type RegulatorySanction struct {
+	Id       string `json:"id"`
+	PersonId string `json:"personId"`
+	// The regulator/authority, e.g. "SEC", "FCA", "NBU".
+	Regulator string `json:"regulator"`
+	// One of fine | ban | license_revocation | warning | settlement | debarment | other.
+	ActionType string   `json:"actionType"`
+	Amount     *float64 `json:"amount,omitempty"`
+	// ISO-4217 code; required when amount is present.
+	Currency *string `json:"currency,omitempty"`
+	// One of active | appealed | overturned | expired | settled.
+	Status       string  `json:"status"`
+	SanctionDate *string `json:"sanctionDate,omitempty"`
+	SourceUrl    *string `json:"sourceUrl,omitempty"`
+	// The id within the source system (the import idempotency key).
+	ExternalId *string `json:"externalId,omitempty"`
+	LegalBasis *string `json:"legalBasis,omitempty"`
+	Source     *string `json:"source,omitempty"`
+	Confidence *string `json:"confidence,omitempty"`
+}
+
+func (o RegulatorySanction) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *RegulatorySanction) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // An instance-admin catalog entry for an open-ended person↔person relation label (D-PersonRelationships). Stable code + translatable name + category.
 type RelationType struct {
 	// Stable, locale-agnostic identifier (D-Code); immutable by convention.
@@ -2221,6 +2263,38 @@ func (o *UpsertPhysicalDescriptionRequest) UnmarshalYAML(unmarshal func(interfac
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// Add a regulatory sanction, or replace one when id is supplied (D-Watchlists, M34).
+type UpsertRegulatorySanctionRequest struct {
+	Id           *string  `json:"id,omitempty"`
+	Regulator    string   `json:"regulator"`
+	ActionType   *string  `json:"actionType,omitempty"`
+	Amount       *float64 `json:"amount,omitempty"`
+	Currency     *string  `json:"currency,omitempty"`
+	Status       *string  `json:"status,omitempty"`
+	SanctionDate *string  `json:"sanctionDate,omitempty"`
+	SourceUrl    *string  `json:"sourceUrl,omitempty"`
+	ExternalId   *string  `json:"externalId,omitempty"`
+	LegalBasis   *string  `json:"legalBasis,omitempty"`
+	Source       *string  `json:"source,omitempty"`
+	Confidence   *string  `json:"confidence,omitempty"`
+}
+
+func (o UpsertRegulatorySanctionRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertRegulatorySanctionRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // Add a residence row, or replace one when id is supplied.
 type UpsertResidenceRequest struct {
 	// The URN RID of an existing residence row to replace; omit to add a new row.
@@ -2310,6 +2384,67 @@ func (o UpsertSponsorshipRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *UpsertSponsorshipRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+The persisted residue of a live watchlist screening check (D-Watchlists, M34). Match METADATA
+only — never the underlying lists. One row per person; CheckWatchlists refreshes it. `pep` is a
+snapshot of the M33 government-position derivation captured at check time. pii:sensitive.
+*/
+type WatchlistMatch struct {
+	Id       string `json:"id"`
+	PersonId string `json:"personId"`
+	// Any hit across the queried providers (OFAC / EU / UN / INTERPOL).
+	OnList bool `json:"onList"`
+	// The list codes matched, e.g. INTERPOL_RED, OFAC_SDN.
+	Lists   []string `json:"lists"`
+	Program *string  `json:"program,omitempty"`
+	// 0..1 best-match score across providers.
+	MatchScore *float64 `json:"matchScore,omitempty"`
+	// Politically-exposed-person snapshot, derived from M33 government positions.
+	Pep         bool   `json:"pep"`
+	LastChecked string `json:"lastChecked"`
+	// RFC-3339 time the upstream ≤24h cache lapses.
+	NextCheckDue *string `json:"nextCheckDue,omitempty"`
+	Source       *string `json:"source,omitempty"`
+	Confidence   *string `json:"confidence,omitempty"`
+}
+
+func (o WatchlistMatch) MarshalJSON() ([]byte, error) {
+	if o.Lists == nil {
+		o.Lists = make([]string, 0)
+	}
+	type _tmpWatchlistMatch WatchlistMatch
+	return safejson.Marshal(_tmpWatchlistMatch(o))
+}
+
+func (o *WatchlistMatch) UnmarshalJSON(data []byte) error {
+	type _tmpWatchlistMatch WatchlistMatch
+	var rawWatchlistMatch _tmpWatchlistMatch
+	if err := safejson.Unmarshal(data, &rawWatchlistMatch); err != nil {
+		return err
+	}
+	if rawWatchlistMatch.Lists == nil {
+		rawWatchlistMatch.Lists = make([]string, 0)
+	}
+	*o = WatchlistMatch(rawWatchlistMatch)
+	return nil
+}
+
+func (o WatchlistMatch) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *WatchlistMatch) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

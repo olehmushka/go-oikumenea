@@ -50,6 +50,15 @@ type HermeneaImportSource struct {
 	DeletedAt      pgtype.Timestamptz
 }
 
+type HermeneaWatchlistCache struct {
+	SubjectKey string
+	Result     []byte
+	CheckedAt  pgtype.Timestamptz
+	ExpiresAt  pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+}
+
 type HermeneaWorkerJob struct {
 	ID             string
 	JobType        string

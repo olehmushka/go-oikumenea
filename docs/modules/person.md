@@ -638,10 +638,15 @@ through the holder.
   (free-text label + optional resolved RID). Inferred political leaning is a **separate** M35 overlay,
   never merged with the declared party membership. All four carry the `source`/`confidence` attribution
   and are re-pointed on merge; party is crypto-erased and the plaintext ties hard-deleted on purge.
-- **M34 · Watchlists (D-Watchlists).** Live-lookup sanctions/PEP/Interpol **via
-  [hermenea](hermenea.md)** — only `person_watchlist_matches` metadata persisted (≤24h cache, never the
-  lists); PEP derived from M33 government positions; `person_regulatory_sanctions` overlay
-  (`pii:sensitive`). Criminal/court records (6.1–6.3) deferred → **M38**.
+- **M34 · Watchlists (D-Watchlists, built).** Live-lookup sanctions/PEP/Interpol **via
+  [hermenea](hermenea.md)** — `CheckWatchlists` runs the **first synchronous `oikumenea → hermenea`** call
+  through the late-bound `WatchlistLookup` seam (wired in `main.go` like the location/color seams; the PDP
+  core makes no egress call). Only `person_watchlist_matches` (`6,1,15`) metadata persists — one active row
+  per person, refreshed in place (≤24h cache in hermenea, never the lists); PEP is derived **locally** from
+  M33 government positions (`IsPoliticallyExposed`) and snapshotted at check time. `person_regulatory_sanctions`
+  (`6,1,16`, `pii:sensitive`) is an audited overlay **and** a hermenea import target (idempotent by
+  `(person, externalId)`). Merge re-homes the durable sanctions + drops the transient match; purge
+  hard-deletes both. Criminal/court records (6.1–6.3) deferred → **M38**.
 - **M35 · Overlays (D-PersonOverlays).** `person_crypto_wallets` (`pii:sensitive`); `person_personality`
   (declared/HR-assessment only, no text-inference); **inferred** `person_political_leaning`
   (`pii:special`, **never merged** with declared M33 party membership). Compensation/payroll deferred →

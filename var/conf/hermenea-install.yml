@@ -460,6 +460,32 @@ sources:
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-ar-latest.db.bz2"
     cron: "@weekly"
     enabled: false
+  # Person regulatory-sanctions overlay (D-Watchlists, M34) — OPT-IN import target. Unlike the reference
+  # catalogs above, this is PERSON-SCOPED: the source payload is a canonical JSON array of sanction records
+  # ([{personId, regulator, actionType?, amount?, currency?, status?, sanctionDate?, sourceUrl?, externalId}])
+  # that the `regulatorysanctions` mapper validates + passes through to POST /import/person-regulatory-sanctions
+  # (idempotent by (person, externalId); unresolved-person rows skipped). There is no single well-known free
+  # bulk source, so operators register their own (http/file). Example (disabled):
+  # - code: reg-sanctions-example
+  #   name: "Regulatory sanctions (operator source)"
+  #   connector-type: file
+  #   object-type: person-regulatory-sanctions
+  #   locator: "deploy/watchlist-presets/reg-sanctions.json"
+  #   cron: "@daily"
+  #   enabled: false
+
+# Live watchlist screening (D-Watchlists, M34): the SYNCHRONOUS POST /watchlist/check surface oikumenea
+# calls. hermenea owns egress to the providers + a ≤24h cache. The real INTERPOL Red Notices connector
+# ships (interpol-enabled default true in code); OFAC/EU/UN sanctions are a documented stub (no match).
+#
+# LOCAL DEV: interpol-enabled is FALSE here because the INTERPOL public endpoint 403s datacenter/sandbox
+# IPs (like Wikidata/Factbook). With it off, a screening check runs only the sanctions stub and returns a
+# clean "no match" — the button works end-to-end locally. Set it TRUE in a real deployment whose egress
+# IP INTERPOL accepts.
+watchlist:
+  ttl-ms: 86400000          # screening-cache lifetime (24h — the D-Watchlists ≤24h bound)
+  interpol-enabled: false   # local dev: INTERPOL 403s this IP; set true in prod
+  # interpol-base-url: ""   # override the INTERPOL endpoint (default the public endpoint; tests point it at a fake)
 
 # Background-runtime tunables (milliseconds; zero => documented default).
 worker:

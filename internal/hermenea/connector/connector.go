@@ -212,10 +212,31 @@ func (h HTTPFiles) Stage(ctx context.Context, src domain.Source) (domain.StagedS
 	return domain.StagedSource{Path: dir, SourceVersion: sum[:16], Checksum: sum, Cleanup: cleanup}, nil
 }
 
-// userAgent identifies the importer to upstreams. Some hosts (e.g. SIL/iso639-3.sil.org) 403 the Go
-// default "Go-http-client" UA, so send a descriptive one. The Wikimedia UA policy (used by the Wikidata
-// SPARQL endpoint, D-ExternalOrgs / M30) additionally expects a contact (URL + e-mail), so carry both.
-const userAgent = "go-oikumenea-hermenea/1.0 (https://github.com/olegamysk/go-oikumenea; olegamysk@gmail.com)"
+// userAgentEnv lets an operator override the outbound User-Agent (e.g. to supply their OWN contact for
+// upstreams that require one). Nothing personal is baked into the binary.
+const userAgentEnv = "OIKUMENEA_HTTP_USER_AGENT"
+
+// defaultUserAgent is a NEUTRAL default that identifies the importer without leaking any personal
+// contact. Some hosts (e.g. SIL/iso639-3.sil.org) 403 the bare Go default "Go-http-client" UA, so a
+// descriptive product token is still sent. Sources with a stricter policy — notably the Wikidata SPARQL
+// endpoint (Wikimedia UA policy, D-ExternalOrgs / M30) — expect a CONTACT (URL + e-mail); operators that
+// use those sources should set OIKUMENEA_HTTP_USER_AGENT to a string carrying their own contact.
+const defaultUserAgent = "go-oikumenea/1.0"
+
+// userAgent is the effective outbound User-Agent, resolved once from the env override or the neutral
+// default.
+var userAgent = resolveUserAgent()
+
+// UserAgent returns the effective outbound User-Agent (env override or the neutral default). Exported so
+// other hermenea HTTP callers (e.g. the watchlist connectors) share the same value.
+func UserAgent() string { return userAgent }
+
+func resolveUserAgent() string {
+	if v := strings.TrimSpace(os.Getenv(userAgentEnv)); v != "" {
+		return v
+	}
+	return defaultUserAgent
+}
 
 // download streams url to dest and returns the sha256 of its content (no full in-memory copy).
 func (h HTTPFiles) download(ctx context.Context, url, dest string) (string, error) {

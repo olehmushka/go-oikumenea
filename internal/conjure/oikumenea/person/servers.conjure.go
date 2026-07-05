@@ -108,6 +108,22 @@ type PersonService interface {
 	// Remove an external reference by id.
 	DeleteExternalReference(ctx context.Context, authHeader bearertoken.Token, personIdArg string, referenceIdArg string) error
 	/*
+	   Run a live watchlist screening check for a person (D-Watchlists, M34). Routes egress OUT to the
+	   hermenea companion (which owns the OFAC/EU/UN/INTERPOL providers + a ≤24h cache), combines the
+	   returned match metadata with the locally-derived PEP flag (M33 government positions), and
+	   persists the single per-person WatchlistMatch. Audited. Only match metadata is stored — never
+	   the lists.
+	*/
+	CheckWatchlists(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (WatchlistMatch, error)
+	// The person's most recent watchlist screening result, or null if never screened.
+	GetWatchlistMatch(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (*WatchlistMatch, error)
+	// List a person's regulatory-sanction overlay rows (D-Watchlists, M34; pii:sensitive).
+	ListRegulatorySanctions(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]RegulatorySanction, error)
+	// Add a regulatory sanction, or replace one when id is supplied.
+	UpsertRegulatorySanction(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertRegulatorySanctionRequest) (RegulatorySanction, error)
+	// Remove a regulatory sanction by id.
+	DeleteRegulatorySanction(ctx context.Context, authHeader bearertoken.Token, personIdArg string, sanctionIdArg string) error
+	/*
 	   List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
 	   the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
 	   expansion), or a name/code substring (query). `hasChildren` is set on each entry.
@@ -340,6 +356,21 @@ func RegisterRoutesPersonService(router wrouter.Router, impl PersonService, rout
 	}
 	if err := resource.Delete("DeleteExternalReference", "/person/v1/persons/{personId}/external-references/{referenceId}", httpserver.NewJSONHandler(handler.HandleDeleteExternalReference, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteExternalReference route")
+	}
+	if err := resource.Post("CheckWatchlists", "/person/v1/persons/{personId}/watchlist-check", httpserver.NewJSONHandler(handler.HandleCheckWatchlists, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add checkWatchlists route")
+	}
+	if err := resource.Get("GetWatchlistMatch", "/person/v1/persons/{personId}/watchlist-match", httpserver.NewJSONHandler(handler.HandleGetWatchlistMatch, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getWatchlistMatch route")
+	}
+	if err := resource.Get("ListRegulatorySanctions", "/person/v1/persons/{personId}/regulatory-sanctions", httpserver.NewJSONHandler(handler.HandleListRegulatorySanctions, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listRegulatorySanctions route")
+	}
+	if err := resource.Put("UpsertRegulatorySanction", "/person/v1/persons/{personId}/regulatory-sanctions", httpserver.NewJSONHandler(handler.HandleUpsertRegulatorySanction, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertRegulatorySanction route")
+	}
+	if err := resource.Delete("DeleteRegulatorySanction", "/person/v1/persons/{personId}/regulatory-sanctions/{sanctionId}", httpserver.NewJSONHandler(handler.HandleDeleteRegulatorySanction, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteRegulatorySanction route")
 	}
 	if err := resource.Get("ListEthnicityTypes", "/person/v1/ethnicity-types", httpserver.NewJSONHandler(handler.HandleListEthnicityTypes, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listEthnicityTypes route")
@@ -1305,6 +1336,122 @@ func (p *personServiceHandler) HandleDeleteExternalReference(rw http.ResponseWri
 		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"referenceId\" not present")
 	}
 	if err := p.impl.DeleteExternalReference(req.Context(), bearertoken.Token(authHeader), personIdArg, referenceIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (p *personServiceHandler) HandleCheckWatchlists(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.CheckWatchlists(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleGetWatchlistMatch(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.GetWatchlistMatch(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	if respArg == nil {
+		rw.WriteHeader(http.StatusNoContent)
+		return nil
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleListRegulatorySanctions(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.ListRegulatorySanctions(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpsertRegulatorySanction(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg UpsertRegulatorySanctionRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertRegulatorySanction(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleDeleteRegulatorySanction(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	sanctionIdArg, ok := pathParams["sanctionId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"sanctionId\" not present")
+	}
+	if err := p.impl.DeleteRegulatorySanction(req.Context(), bearertoken.Token(authHeader), personIdArg, sanctionIdArg); err != nil {
 		return err
 	}
 	rw.WriteHeader(http.StatusNoContent)

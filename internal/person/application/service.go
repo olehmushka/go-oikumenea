@@ -76,6 +76,7 @@ type Service struct {
 	cipher     *crypto.Cipher     // envelope cipher for the pii:special declared ethnicity (D-PhysicalIdentity)
 	colors     domain.ColorLookup // late-bound color catalog (D-Color): eye/hair hard-FK palette check
 	locations  domain.LocationLookup // late-bound location catalog (D-PersonAddresses, M32): address FK check
+	watchlist  domain.WatchlistLookup // late-bound hermenea screening seam (D-Watchlists, M34)
 }
 
 // NewService wires the service with the pool, the repository factory, the audit service, the
@@ -98,6 +99,12 @@ func (s *Service) SetColorLookup(c domain.ColorLookup) { s.colors = c }
 // an address's location_id exists before writing. Late-bound at composition time (geo is built after
 // person); when unset (e.g. tests that don't exercise addresses), the DB FK is the only backstop.
 func (s *Service) SetLocationLookup(l domain.LocationLookup) { s.locations = l }
+
+// SetWatchlistLookup binds the cross-module watchlist screening seam (D-Watchlists, M34) used by
+// CheckWatchlists to run a live check out to the hermenea companion. Late-bound at composition time
+// (hermenea client is built in main.go); when unset (e.g. tests without the seam), CheckWatchlists
+// returns domain.ErrWatchlistUnavailable.
+func (s *Service) SetWatchlistLookup(w domain.WatchlistLookup) { s.watchlist = w }
 
 // checkColor enforces the hard FK's palette: a non-empty color id must resolve to a color in the wanted
 // palette (D-Color). Returns domain.ErrColorMismatch otherwise (unknown id maps there too).

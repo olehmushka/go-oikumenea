@@ -258,3 +258,4 @@ func countAudit(t *testing.T, pool *pgxpool.Pool, action string) int {
 	}
 	return n
 }
+

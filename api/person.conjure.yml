@@ -460,6 +460,77 @@ types:
           disputed: optional<boolean>
           source: optional<string>
           confidence: optional<string>
+      WatchlistMatch:
+        docs: |
+          The persisted residue of a live watchlist screening check (D-Watchlists, M34). Match METADATA
+          only — never the underlying lists. One row per person; CheckWatchlists refreshes it. `pep` is a
+          snapshot of the M33 government-position derivation captured at check time. pii:sensitive.
+        fields:
+          id: string
+          personId: string
+          onList:
+            type: boolean
+            docs: Any hit across the queried providers (OFAC / EU / UN / INTERPOL).
+          lists:
+            type: list<string>
+            docs: The list codes matched, e.g. INTERPOL_RED, OFAC_SDN.
+          program: optional<string>
+          matchScore:
+            type: optional<double>
+            docs: 0..1 best-match score across providers.
+          pep:
+            type: boolean
+            docs: Politically-exposed-person snapshot, derived from M33 government positions.
+          lastChecked: string
+          nextCheckDue:
+            type: optional<string>
+            docs: RFC-3339 time the upstream ≤24h cache lapses.
+          source: optional<string>
+          confidence: optional<string>
+      RegulatorySanction:
+        docs: |
+          A structured regulatory/enforcement action against a person (D-Watchlists, M34) — an Object.
+          Durable reference data (operator-curated or hermenea-imported), distinct from the volatile
+          live-lookup above. Idempotent import keys on (person, externalId). pii:sensitive.
+        fields:
+          id: string
+          personId: string
+          regulator:
+            type: string
+            docs: The regulator/authority, e.g. "SEC", "FCA", "NBU".
+          actionType:
+            type: string
+            docs: One of fine | ban | license_revocation | warning | settlement | debarment | other.
+          amount: optional<double>
+          currency:
+            type: optional<string>
+            docs: ISO-4217 code; required when amount is present.
+          status:
+            type: string
+            docs: One of active | appealed | overturned | expired | settled.
+          sanctionDate: optional<string>
+          sourceUrl: optional<string>
+          externalId:
+            type: optional<string>
+            docs: The id within the source system (the import idempotency key).
+          legalBasis: optional<string>
+          source: optional<string>
+          confidence: optional<string>
+      UpsertRegulatorySanctionRequest:
+        docs: Add a regulatory sanction, or replace one when id is supplied (D-Watchlists, M34).
+        fields:
+          id: optional<string>
+          regulator: string
+          actionType: optional<string>
+          amount: optional<double>
+          currency: optional<string>
+          status: optional<string>
+          sanctionDate: optional<string>
+          sourceUrl: optional<string>
+          externalId: optional<string>
+          legalBasis: optional<string>
+          source: optional<string>
+          confidence: optional<string>
       Email:
         docs: A person's contact email (D-PersonContactChannels). pii:contact; distinct from the login email.
         fields:
@@ -1529,6 +1600,54 @@ services:
             type: string
             param-type: path
           referenceId:
+            type: string
+            param-type: path
+      checkWatchlists:
+        http: POST /persons/{personId}/watchlist-check
+        docs: |
+          Run a live watchlist screening check for a person (D-Watchlists, M34). Routes egress OUT to the
+          hermenea companion (which owns the OFAC/EU/UN/INTERPOL providers + a ≤24h cache), combines the
+          returned match metadata with the locally-derived PEP flag (M33 government positions), and
+          persists the single per-person WatchlistMatch. Audited. Only match metadata is stored — never
+          the lists.
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: WatchlistMatch
+      getWatchlistMatch:
+        http: GET /persons/{personId}/watchlist-match
+        docs: The person's most recent watchlist screening result, or null if never screened.
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: optional<WatchlistMatch>
+      listRegulatorySanctions:
+        http: GET /persons/{personId}/regulatory-sanctions
+        docs: List a person's regulatory-sanction overlay rows (D-Watchlists, M34; pii:sensitive).
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<RegulatorySanction>
+      upsertRegulatorySanction:
+        http: PUT /persons/{personId}/regulatory-sanctions
+        docs: Add a regulatory sanction, or replace one when id is supplied.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertRegulatorySanctionRequest
+        returns: RegulatorySanction
+      deleteRegulatorySanction:
+        http: DELETE /persons/{personId}/regulatory-sanctions/{sanctionId}
+        docs: Remove a regulatory sanction by id.
+        args:
+          personId:
+            type: string
+            param-type: path
+          sanctionId:
             type: string
             param-type: path
       listEthnicityTypes:
