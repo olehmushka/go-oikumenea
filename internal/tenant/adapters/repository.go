@@ -297,8 +297,62 @@ func (r *Repository) ClosureHasPath(ctx context.Context, graphID, ancestorID, de
 	})
 }
 
+// LockGraphForClosure serializes closure maintenance on one graph for the rest of the caller's
+// transaction (attach / detach / rebuild all take it first — concurrent maintenance could miss
+// compound paths through each other's edges, and the guard-then-insert cycle check needs it).
+func (r *Repository) LockGraphForClosure(ctx context.Context, graphID string) error {
+	_, err := r.q.LockGraphForClosure(ctx, graphID)
+	return err
+}
+
+// ExtendClosureForEdge incrementally maintains the closure after inserting edge parent->child
+// (M48): seed both endpoints' reflexive rows, then merge anc*(parent) × desc*(child) with
+// shortest-depth semantics.
+func (r *Repository) ExtendClosureForEdge(ctx context.Context, graphID, parentID, childID string) error {
+	if err := r.q.SeedClosureSelfRows(ctx, tenantsql.SeedClosureSelfRowsParams{
+		GraphID:  graphID,
+		ParentID: parentID,
+		ChildID:  childID,
+	}); err != nil {
+		return err
+	}
+	return r.q.ExtendClosureForEdge(ctx, tenantsql.ExtendClosureForEdgeParams{
+		GraphID:  graphID,
+		ChildID:  childID,
+		ParentID: parentID,
+	})
+}
+
+// ShrinkClosureForEdge incrementally maintains the closure after deleting edge parent->child
+// (M48). Must only run when the edge actually existed (a phantom detach breaks the acyclicity
+// facts the slice algebra relies on). The three steps are order-critical: delete the affected
+// anc*(parent) × desc*(child) slice, re-derive it from surviving edges + trusted rows outside the
+// slice (which may ride on reflexive rows), and only then prune orphaned reflexive rows.
+func (r *Repository) ShrinkClosureForEdge(ctx context.Context, graphID, parentID, childID string) error {
+	if err := r.q.DeleteClosureSlice(ctx, tenantsql.DeleteClosureSliceParams{
+		GraphID:  graphID,
+		ParentID: parentID,
+		ChildID:  childID,
+	}); err != nil {
+		return err
+	}
+	if err := r.q.RederiveClosureSlice(ctx, tenantsql.RederiveClosureSliceParams{
+		GraphID:  graphID,
+		ParentID: parentID,
+		ChildID:  childID,
+	}); err != nil {
+		return err
+	}
+	return r.q.PruneClosureSelfRows(ctx, tenantsql.PruneClosureSelfRowsParams{
+		GraphID:  graphID,
+		ParentID: parentID,
+		ChildID:  childID,
+	})
+}
+
 // RecomputeClosure rebuilds one graph's full closure from its edges in the caller's transaction:
-// truncate the graph's rows, then re-derive them via the recursive query.
+// truncate the graph's rows, then re-derive them via the recursive query. Since M48 this is the
+// D-ClosureIntegrity repair path only — per-edit maintenance is incremental (Extend/Shrink).
 func (r *Repository) RecomputeClosure(ctx context.Context, graphID string) error {
 	if err := r.q.DeleteClosureForGraph(ctx, graphID); err != nil {
 		return err

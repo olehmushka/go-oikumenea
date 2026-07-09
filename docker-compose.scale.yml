@@ -1,0 +1,15 @@
+# Multi-replica override (R-13 / M49 verification): the base compose file publishes fixed host ports,
+# which caps a service at one replica. This override un-publishes them so the R-13 acceptance run
+#
+#   docker compose -f docker-compose.yml -f docker-compose.scale.yml up -d --scale app=2
+#
+# boots two oikumenea replicas against the same fresh DB and proves exactly ONE boot-seed pass (the
+# advisory lock serializes pinax autoseed + first-admin bootstrap; the loser waits, then no-ops).
+# Reach the replicas from inside the compose network (e.g. `docker compose exec hermenea curl
+# https://app:8443/...`) or add your own proxy — this file is for the scale verification, not serving.
+# `!reset` needs docker compose v2.24+.
+services:
+  app:
+    ports: !reset []
+  hermenea:
+    ports: !reset []

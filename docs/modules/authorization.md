@@ -280,18 +280,37 @@ person/document via the read-scope projection (D-PersonReadScope) — so broad `
 unit-read affordance only and does not yet extend to rosters/people. See
 [patterns.md](../architecture/patterns.md).
 
+### Request authority path (snapshot + cache — M47)
+
+Authority state — the instance-admin flag + active grants — is resolved **once per authenticated
+request**: the identity-federation authenticator calls `ContextWithAuthority`, which serves the
+state through an **epoch-validated per-process cache** (D-AuthzGrantCache: fresh-within-2 s entries
+cost zero reads; staler entries revalidate with one single-row `authz_epoch` read; every
+authority-mutating transaction bumps that counter in-tx and resets the local cache post-commit) and
+stashes it on the context as a snapshot (D-AuthzRequestContext). Every `Decide` / `Require*` /
+`HoldsPermissionAnywhere` in the request consumes the snapshot — a guarded request issues at most
+**one** grants fetch regardless of gate count, zero within the TTL window. A revoke is effective
+immediately in the mutating process and within ≤2 s everywhere else.
+
+**Reach never leaves the database** (review-2026-07 R-02): person/document read scope runs as SQL
+semi-joins in membership (`VisiblePersonIDsForSubject` — adaptive sparse/dense plan shapes behind a
+capped reach-cardinality probe — and `SubjectCanReadPerson`); the shadow gate is one batch probe
+(`ReadableUnitsForSubjectAmong`). `domain.ReachSet` remains the pure, property-tested reference
+semantic and the oracle of the randomized reach differential test.
+
 ### RLS backstop (defense-in-depth)
 
 The PDP + shadow gate remain the **authoritative** enforcement; on top of them, Postgres RLS is
-enabled as a **DB-level backstop** that mirrors the PDP-computed reach (D-RLSDefenseInDepth). To
-feed it, the PDP exposes an **effective read/write unit-set** for the subject: expand each
-`subtree` read/write-bearing assignment over its graph's closure, union the `unit`-scope targets —
-the **same reach** the shadow gate uses. The composition root pushes that set into per-transaction
-session GUCs (`app.person_id`, `app.is_instance_admin`, `app.readable_units`, `app.writable_units`);
-RLS policies on unit-scoped tables enforce membership so a query that forgets the PDP/gate cannot
-leak rows outside the computed set. RLS **trusts the app-supplied set** — it is a backstop against
-forgotten filters, not against PDP-logic errors. The per-txn GUC seam lives in
-[platform](platform.md); see [conventions.md](../architecture/conventions.md) and
+enabled as a **DB-level backstop** (D-RLSDefenseInDepth as reshaped by D-RLSLiveReach). The
+policies compute reach **live** via `oikumenea.authz_unit_in_reach(unit, wr)` — a planner-inlined
+semi-join over the subject's active assignments + the tenant closure, the exact SQL mirror of
+`ReachSet` — keyed on two O(1) GUCs (`app.person_id`, `app.is_instance_admin`) set in one round
+trip on a **lazily pinned** connection (acquired only when a handler first touches an RLS-guarded
+table — R-03). A query that forgets the PDP/gate cannot leak rows outside the live reach, and the
+backstop is **exact under revocation** (stronger than the app-side decision cache above). It is a
+backstop against forgotten filters, not against PDP-logic errors, and is deliberately
+never-narrower than PDP reach (soft-deleted-descendant refinement stays app-side). The GUC/pinning
+seam lives in [platform](platform.md); see [conventions.md](../architecture/conventions.md) and
 [upgrade-safety.md](../architecture/upgrade-safety.md) (staged enablement).
 
 ## Conjure API surface

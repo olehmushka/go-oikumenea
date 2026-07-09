@@ -91,6 +91,12 @@ type Job struct {
 	MaxAttempts    int
 	RunAfter       time.Time
 	LastError      string
+	// ResumeSeq / ResumeChecksum form the chunked-run resume cursor (R-05): the last chunk seq
+	// oikumenea acknowledged and the staged-source checksum it belongs to. On a retried attempt the
+	// pipeline skips re-sending chunks with seq <= ResumeSeq iff the re-staged checksum still equals
+	// ResumeChecksum (a changed source invalidates the cursor — full re-run, still idempotent).
+	ResumeSeq      int
+	ResumeChecksum string
 }
 
 // Schedule is a cron registration the scheduler enqueues from.
@@ -168,10 +174,29 @@ type PagedMapper interface {
 	MapPaged(ctx context.Context, staged StagedSource, emit PageFunc) error
 }
 
-// Loader pushes a canonical envelope to oikumenea's import endpoint over HTTP (the only oikumenea
-// coupling).
+// AckFunc is called after oikumenea acknowledges (commits) a chunk, with the chunk's seq — the
+// pipeline persists it as the job's resume cursor (R-05). An error aborts the run.
+type AckFunc func(ctx context.Context, seq int) error
+
+// LoadRun is one open chunked import run against oikumenea (R-05): every Push re-slices its records
+// into bounded chunks and sends each as its own envelope (its own oikumenea transaction, acked via
+// the run's AckFunc); Finalize sends the trailing empty isLast chunk (triggering the object-type's
+// batch finalizers server-side) and returns the run's aggregate summary. Chunks with
+// seq <= startSeq are skipped without sending (the resume path).
+type LoadRun interface {
+	Push(ctx context.Context, records []map[string]any) error
+	Finalize(ctx context.Context) (ImportSummary, error)
+}
+
+// Loader pushes canonical envelopes to oikumenea's import endpoint over HTTP (the only oikumenea
+// coupling). Load takes a full in-memory record set: it sends one single-shot envelope when the set
+// fits a single chunk (preserving the pre-chunking semantics for small catalogs), otherwise a
+// chunked run. StartRun opens a chunked run for streaming emitters (the paged pipeline), where the
+// total record count is unknown up front. runID is the hermenea import-run id (lineage only);
+// startSeq is the resume cursor (0 = fresh run); ack persists it.
 type Loader interface {
-	Load(ctx context.Context, objectType, source, sourceVersion string, records []map[string]any) (ImportSummary, error)
+	Load(ctx context.Context, objectType, source, sourceVersion, runID string, startSeq int, records []map[string]any, ack AckFunc) (ImportSummary, error)
+	StartRun(objectType, source, sourceVersion, runID string, startSeq int, ack AckFunc) LoadRun
 }
 
 // WatchlistQuery is a person-identity screening request (D-Watchlists, M34). SubjectKey (the person RID)
@@ -216,6 +241,8 @@ type Store interface {
 	ListJobs(ctx context.Context, limit int) ([]Job, error)
 	UnhealthyJobs(ctx context.Context) (int, error)
 	RequeueStaleRunning(ctx context.Context, lockedBefore time.Time) error
+	// SetJobCursor persists the chunked-run resume cursor after every acked chunk (R-05).
+	SetJobCursor(ctx context.Context, id string, seq int, checksum string) error
 	InsertRawBatch(ctx context.Context, sourceID, sourceVersion, checksum string, payload []byte) (string, error)
 	// InsertRawBatchRef stages a large fetched source by file reference (staged_path) instead of inline
 	// bytes — the streaming/paged path (D-GeoPlaces). The file itself is transient (removed after the run).

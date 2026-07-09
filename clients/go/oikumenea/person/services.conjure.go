@@ -120,6 +120,27 @@ type PersonServiceClient interface {
 	UpsertRegulatorySanction(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertRegulatorySanctionRequest) (RegulatorySanction, error)
 	// Remove a regulatory sanction by id.
 	DeleteRegulatorySanction(ctx context.Context, authHeader bearertoken.Token, personIdArg string, sanctionIdArg string) error
+	// List a person's crypto-wallet attributions (D-PersonOverlays, M35; pii:sensitive).
+	ListCryptoWallets(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]CryptoWallet, error)
+	// Add a crypto wallet, or replace one when id is supplied.
+	UpsertCryptoWallet(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertCryptoWalletRequest) (CryptoWallet, error)
+	// Remove a crypto wallet by id.
+	DeleteCryptoWallet(ctx context.Context, authHeader bearertoken.Token, personIdArg string, walletIdArg string) error
+	// List a person's declared/assessed personality profiles (D-PersonOverlays, M35; pii:sensitive).
+	ListPersonalities(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Personality, error)
+	// Add a personality profile, or replace one when id is supplied.
+	UpsertPersonality(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertPersonalityRequest) (Personality, error)
+	// Remove a personality profile by id.
+	DeletePersonality(ctx context.Context, authHeader bearertoken.Token, personIdArg string, personalityIdArg string) error
+	/*
+	   The person's inferred political leaning, or null if none (D-PersonOverlays, M35; pii:special,
+	   decrypted). Never a declared party affiliation.
+	*/
+	GetPoliticalLeaning(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (*PoliticalLeaning, error)
+	// Set the person's inferred political leaning (replaces the single active row). Requires legalBasis.
+	SetPoliticalLeaning(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertPoliticalLeaningRequest) (PoliticalLeaning, error)
+	// Remove the person's inferred political leaning.
+	DeletePoliticalLeaning(ctx context.Context, authHeader bearertoken.Token, personIdArg string) error
 	/*
 	   List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
 	   the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
@@ -900,6 +921,144 @@ func (c *personServiceClient) DeleteRegulatorySanction(ctx context.Context, auth
 	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
 	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
 		return werror.WrapWithContextParams(ctx, err, "deleteRegulatorySanction failed")
+	}
+	return nil
+}
+
+func (c *personServiceClient) ListCryptoWallets(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]CryptoWallet, error) {
+	var returnVal []CryptoWallet
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListCryptoWallets"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/crypto-wallets", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listCryptoWallets failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listCryptoWallets response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) UpsertCryptoWallet(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertCryptoWalletRequest) (CryptoWallet, error) {
+	var returnVal *CryptoWallet
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertCryptoWallet"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/crypto-wallets", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(CryptoWallet), werror.WrapWithContextParams(ctx, err, "upsertCryptoWallet failed")
+	}
+	if returnVal == nil {
+		return *new(CryptoWallet), werror.ErrorWithContextParams(ctx, "upsertCryptoWallet response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) DeleteCryptoWallet(ctx context.Context, authHeader bearertoken.Token, personIdArg string, walletIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeleteCryptoWallet"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/crypto-wallets/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(walletIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deleteCryptoWallet failed")
+	}
+	return nil
+}
+
+func (c *personServiceClient) ListPersonalities(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Personality, error) {
+	var returnVal []Personality
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListPersonalities"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/personalities", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listPersonalities failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listPersonalities response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) UpsertPersonality(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertPersonalityRequest) (Personality, error) {
+	var returnVal *Personality
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertPersonality"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/personalities", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(Personality), werror.WrapWithContextParams(ctx, err, "upsertPersonality failed")
+	}
+	if returnVal == nil {
+		return *new(Personality), werror.ErrorWithContextParams(ctx, "upsertPersonality response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) DeletePersonality(ctx context.Context, authHeader bearertoken.Token, personIdArg string, personalityIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeletePersonality"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/personalities/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(personalityIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deletePersonality failed")
+	}
+	return nil
+}
+
+func (c *personServiceClient) GetPoliticalLeaning(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (*PoliticalLeaning, error) {
+	var returnVal *PoliticalLeaning
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("GetPoliticalLeaning"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/political-leaning", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "getPoliticalLeaning failed")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) SetPoliticalLeaning(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertPoliticalLeaningRequest) (PoliticalLeaning, error) {
+	var returnVal *PoliticalLeaning
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("SetPoliticalLeaning"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/political-leaning", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(PoliticalLeaning), werror.WrapWithContextParams(ctx, err, "setPoliticalLeaning failed")
+	}
+	if returnVal == nil {
+		return *new(PoliticalLeaning), werror.ErrorWithContextParams(ctx, "setPoliticalLeaning response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) DeletePoliticalLeaning(ctx context.Context, authHeader bearertoken.Token, personIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeletePoliticalLeaning"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/political-leaning", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deletePoliticalLeaning failed")
 	}
 	return nil
 }
@@ -1825,6 +1984,27 @@ type PersonServiceClientWithAuth interface {
 	UpsertRegulatorySanction(ctx context.Context, personIdArg string, requestArg UpsertRegulatorySanctionRequest) (RegulatorySanction, error)
 	// Remove a regulatory sanction by id.
 	DeleteRegulatorySanction(ctx context.Context, personIdArg string, sanctionIdArg string) error
+	// List a person's crypto-wallet attributions (D-PersonOverlays, M35; pii:sensitive).
+	ListCryptoWallets(ctx context.Context, personIdArg string) ([]CryptoWallet, error)
+	// Add a crypto wallet, or replace one when id is supplied.
+	UpsertCryptoWallet(ctx context.Context, personIdArg string, requestArg UpsertCryptoWalletRequest) (CryptoWallet, error)
+	// Remove a crypto wallet by id.
+	DeleteCryptoWallet(ctx context.Context, personIdArg string, walletIdArg string) error
+	// List a person's declared/assessed personality profiles (D-PersonOverlays, M35; pii:sensitive).
+	ListPersonalities(ctx context.Context, personIdArg string) ([]Personality, error)
+	// Add a personality profile, or replace one when id is supplied.
+	UpsertPersonality(ctx context.Context, personIdArg string, requestArg UpsertPersonalityRequest) (Personality, error)
+	// Remove a personality profile by id.
+	DeletePersonality(ctx context.Context, personIdArg string, personalityIdArg string) error
+	/*
+	   The person's inferred political leaning, or null if none (D-PersonOverlays, M35; pii:special,
+	   decrypted). Never a declared party affiliation.
+	*/
+	GetPoliticalLeaning(ctx context.Context, personIdArg string) (*PoliticalLeaning, error)
+	// Set the person's inferred political leaning (replaces the single active row). Requires legalBasis.
+	SetPoliticalLeaning(ctx context.Context, personIdArg string, requestArg UpsertPoliticalLeaningRequest) (PoliticalLeaning, error)
+	// Remove the person's inferred political leaning.
+	DeletePoliticalLeaning(ctx context.Context, personIdArg string) error
 	/*
 	   List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
 	   the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
@@ -2114,6 +2294,42 @@ func (c *personServiceClientWithAuth) UpsertRegulatorySanction(ctx context.Conte
 
 func (c *personServiceClientWithAuth) DeleteRegulatorySanction(ctx context.Context, personIdArg string, sanctionIdArg string) error {
 	return c.client.DeleteRegulatorySanction(ctx, c.authHeader, personIdArg, sanctionIdArg)
+}
+
+func (c *personServiceClientWithAuth) ListCryptoWallets(ctx context.Context, personIdArg string) ([]CryptoWallet, error) {
+	return c.client.ListCryptoWallets(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertCryptoWallet(ctx context.Context, personIdArg string, requestArg UpsertCryptoWalletRequest) (CryptoWallet, error) {
+	return c.client.UpsertCryptoWallet(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) DeleteCryptoWallet(ctx context.Context, personIdArg string, walletIdArg string) error {
+	return c.client.DeleteCryptoWallet(ctx, c.authHeader, personIdArg, walletIdArg)
+}
+
+func (c *personServiceClientWithAuth) ListPersonalities(ctx context.Context, personIdArg string) ([]Personality, error) {
+	return c.client.ListPersonalities(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertPersonality(ctx context.Context, personIdArg string, requestArg UpsertPersonalityRequest) (Personality, error) {
+	return c.client.UpsertPersonality(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) DeletePersonality(ctx context.Context, personIdArg string, personalityIdArg string) error {
+	return c.client.DeletePersonality(ctx, c.authHeader, personIdArg, personalityIdArg)
+}
+
+func (c *personServiceClientWithAuth) GetPoliticalLeaning(ctx context.Context, personIdArg string) (*PoliticalLeaning, error) {
+	return c.client.GetPoliticalLeaning(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) SetPoliticalLeaning(ctx context.Context, personIdArg string, requestArg UpsertPoliticalLeaningRequest) (PoliticalLeaning, error) {
+	return c.client.SetPoliticalLeaning(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) DeletePoliticalLeaning(ctx context.Context, personIdArg string) error {
+	return c.client.DeletePoliticalLeaning(ctx, c.authHeader, personIdArg)
 }
 
 func (c *personServiceClientWithAuth) ListEthnicityTypes(ctx context.Context, topLevelArg *bool, parentArg *string, queryArg *string, limitArg *int) ([]EthnicityType, error) {
@@ -2639,6 +2855,78 @@ func (c *personServiceClientWithTokenProvider) DeleteRegulatorySanction(ctx cont
 		return err
 	}
 	return c.client.DeleteRegulatorySanction(ctx, bearertoken.Token(token), personIdArg, sanctionIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListCryptoWallets(ctx context.Context, personIdArg string) ([]CryptoWallet, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListCryptoWallets(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertCryptoWallet(ctx context.Context, personIdArg string, requestArg UpsertCryptoWalletRequest) (CryptoWallet, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(CryptoWallet), err
+	}
+	return c.client.UpsertCryptoWallet(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) DeleteCryptoWallet(ctx context.Context, personIdArg string, walletIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeleteCryptoWallet(ctx, bearertoken.Token(token), personIdArg, walletIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListPersonalities(ctx context.Context, personIdArg string) ([]Personality, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListPersonalities(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertPersonality(ctx context.Context, personIdArg string, requestArg UpsertPersonalityRequest) (Personality, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Personality), err
+	}
+	return c.client.UpsertPersonality(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) DeletePersonality(ctx context.Context, personIdArg string, personalityIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeletePersonality(ctx, bearertoken.Token(token), personIdArg, personalityIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) GetPoliticalLeaning(ctx context.Context, personIdArg string) (*PoliticalLeaning, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.GetPoliticalLeaning(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) SetPoliticalLeaning(ctx context.Context, personIdArg string, requestArg UpsertPoliticalLeaningRequest) (PoliticalLeaning, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(PoliticalLeaning), err
+	}
+	return c.client.SetPoliticalLeaning(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) DeletePoliticalLeaning(ctx context.Context, personIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeletePoliticalLeaning(ctx, bearertoken.Token(token), personIdArg)
 }
 
 func (c *personServiceClientWithTokenProvider) ListEthnicityTypes(ctx context.Context, topLevelArg *bool, parentArg *string, queryArg *string, limitArg *int) ([]EthnicityType, error) {

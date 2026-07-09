@@ -124,19 +124,31 @@ func (s *Service) DeleteAffiliation(ctx context.Context, id string) error {
 
 // ErasePersonAffiliations crypto-erases all of a person's affiliations (drop the wrapped DEK +
 // ciphertext), keeping rows as tombstones. This is the person-purge erasure path (D-ReligiousAffiliation);
-// the PersonPurged event subscriber that triggers it is deferred (shared open seam with the document
-// module's ErasePersonRecords), so it is exercised directly today.
+// triggered by the PersonPurged event (SubscribePersonPurge) and also exercised directly.
 func (s *Service) ErasePersonAffiliations(ctx context.Context, personID string) (int64, error) {
 	var n int64
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		c, err := s.newRepo(tx).CryptoEraseAffiliations(ctx, personID)
-		if err != nil {
-			return err
-		}
+		c, err := s.erasePersonAffiliationsTx(ctx, tx, personID)
 		n = c
-		return s.record(ctx, tx, "religion.affiliation.erase", personID, "", map[string]any{"personId": personID, "erased": c})
+		return err
 	})
 	return n, err
+}
+
+// erasePersonAffiliationsTx is the body of the person-purge erasure, run in a caller-supplied transaction
+// so it executes either standalone (ErasePersonAffiliations) or inside the person-purge tx as the
+// PersonPurged subscriber (SubscribePersonPurge). The audit row is written only when something was erased.
+func (s *Service) erasePersonAffiliationsTx(ctx context.Context, tx pgx.Tx, personID string) (int64, error) {
+	c, err := s.newRepo(tx).CryptoEraseAffiliations(ctx, personID)
+	if err != nil {
+		return 0, err
+	}
+	if c > 0 {
+		if err := s.record(ctx, tx, "religion.affiliation.erase", personID, "", map[string]any{"personId": personID, "erased": c}); err != nil {
+			return 0, err
+		}
+	}
+	return c, nil
 }
 
 // ---- crypto helpers ----

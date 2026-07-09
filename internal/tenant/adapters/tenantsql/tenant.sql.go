@@ -139,6 +139,42 @@ func (q *Queries) DeleteClosureForGraph(ctx context.Context, graphID string) err
 	return err
 }
 
+const deleteClosureSlice = `-- name: DeleteClosureSlice :exec
+WITH anc AS (
+  SELECT tc.ancestor_id AS u FROM oikumenea.tenant_unit_closure tc
+  WHERE tc.graph_id = $1 AND tc.descendant_id = $2
+  UNION
+  SELECT $2::uuid
+),
+dsc AS (
+  SELECT tc.descendant_id AS u FROM oikumenea.tenant_unit_closure tc
+  WHERE tc.graph_id = $1 AND tc.ancestor_id = $3
+  UNION
+  SELECT $3::uuid
+)
+DELETE FROM oikumenea.tenant_unit_closure tc
+WHERE tc.graph_id = $1
+  AND tc.ancestor_id   IN (SELECT u FROM anc)
+  AND tc.descendant_id IN (SELECT u FROM dsc)
+`
+
+type DeleteClosureSliceParams struct {
+	GraphID  string
+	ParentID string
+	ChildID  string
+}
+
+// Incremental detach, step 1 of 3 (M48): removing edge parent->child can only affect pairs in
+// A × D with A = anc*(parent), D = desc*(child) — any path through the edge has its endpoints
+// there. Runs AFTER DeleteEdge on the still-stale closure; A and D are identical before/after the
+// edge removal (a path to parent or from child through the edge would be a cycle), and the rows
+// defining A and D are outside the slice (parent ∉ D, child ∉ A), so no temp storage is needed.
+// A ∩ D = ∅ in a DAG, so reflexive rows are never inside the slice.
+func (q *Queries) DeleteClosureSlice(ctx context.Context, arg DeleteClosureSliceParams) error {
+	_, err := q.db.Exec(ctx, deleteClosureSlice, arg.GraphID, arg.ParentID, arg.ChildID)
+	return err
+}
+
 const deleteEdge = `-- name: DeleteEdge :execrows
 DELETE FROM oikumenea.tenant_unit_edges
 WHERE graph_id = $1 AND parent_id = $2 AND child_id = $3
@@ -174,6 +210,33 @@ func (q *Queries) DeleteUnitLanguage(ctx context.Context, arg DeleteUnitLanguage
 	var id string
 	err := row.Scan(&id)
 	return id, err
+}
+
+const extendClosureForEdge = `-- name: ExtendClosureForEdge :exec
+INSERT INTO oikumenea.tenant_unit_closure (graph_id, ancestor_id, descendant_id, depth)
+SELECT $1::uuid, anc.ancestor_id, dsc.descendant_id, anc.depth + dsc.depth + 1
+FROM oikumenea.tenant_unit_closure anc
+JOIN oikumenea.tenant_unit_closure dsc
+  ON dsc.graph_id = $1 AND dsc.ancestor_id = $2
+WHERE anc.graph_id = $1 AND anc.descendant_id = $3
+ON CONFLICT (graph_id, ancestor_id, descendant_id)
+DO UPDATE SET depth = LEAST(tenant_unit_closure.depth, EXCLUDED.depth)
+`
+
+type ExtendClosureForEdgeParams struct {
+	GraphID  string
+	ChildID  string
+	ParentID string
+}
+
+// Incremental attach (M48): every path created by a new parent->child edge is a path a->parent,
+// the edge, then child->d — so the affected pairs are exactly anc*(parent) × desc*(child)
+// (reflexive rows included via SeedClosureSelfRows). Each output pair occurs exactly once (one
+// anc row per ancestor, one dsc row per descendant, by the PK), so the multi-row ON CONFLICT is
+// safe; LEAST keeps depth = shortest path. Runs after the cycle guard, so acyclicity holds.
+func (q *Queries) ExtendClosureForEdge(ctx context.Context, arg ExtendClosureForEdgeParams) error {
+	_, err := q.db.Exec(ctx, extendClosureForEdge, arg.GraphID, arg.ChildID, arg.ParentID)
+	return err
 }
 
 const getDomain = `-- name: GetDomain :one
@@ -404,9 +467,10 @@ type InsertDomainParams struct {
 
 // Tenant module queries (docs/modules/tenant.md). Two-tier model (D-TenantOrganizations, M40):
 // domains (org-kind catalog) -> organizations (the realm) -> units as a DAG per graph + a maintained
-// transitive closure recomputed in the write transaction on every edge change. Graphs are per-org
-// (org_id), with org_id NULL = an instance-global/cross-org graph (religion taxonomy). Units/graphs/
-// orgs soft-delete; edges hard-delete on detach; the closure is derived (no RID).
+// transitive closure incrementally adjusted in the write transaction on each edge change (M48; the
+// full rebuild is kept as the D-ClosureIntegrity repair path). Graphs are per-org (org_id), with
+// org_id NULL = an instance-global/cross-org graph (religion taxonomy). Units/graphs/orgs
+// soft-delete; edges hard-delete on detach; the closure is derived (no RID).
 // ============================ domains (org-kind catalog) ============================
 func (q *Queries) InsertDomain(ctx context.Context, arg InsertDomainParams) (OikumeneaTenantDomain, error) {
 	row := q.db.QueryRow(ctx, insertDomain, arg.Code, arg.Name, arg.SortOrder)
@@ -1288,6 +1352,46 @@ func (q *Queries) ListUnits(ctx context.Context, arg ListUnitsParams) ([]Oikumen
 	return items, nil
 }
 
+const lockGraphForClosure = `-- name: LockGraphForClosure :one
+SELECT id FROM oikumenea.tenant_graphs WHERE id = $1 FOR NO KEY UPDATE
+`
+
+// Serialize closure maintenance per graph (attach / detach / rebuild all take this before touching
+// edges or closure rows). FOR NO KEY UPDATE conflicts with itself but not with the FK KEY SHARE
+// locks other inserts referencing the graph row take, so it only serializes closure writers.
+func (q *Queries) LockGraphForClosure(ctx context.Context, graphID string) (string, error) {
+	row := q.db.QueryRow(ctx, lockGraphForClosure, graphID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
+const pruneClosureSelfRows = `-- name: PruneClosureSelfRows :exec
+DELETE FROM oikumenea.tenant_unit_closure tc
+WHERE tc.graph_id = $1
+  AND tc.ancestor_id = tc.descendant_id
+  AND tc.ancestor_id IN ($2::uuid, $3::uuid)
+  AND NOT EXISTS (
+    SELECT 1 FROM oikumenea.tenant_unit_edges e
+    WHERE e.graph_id = $1
+      AND (e.parent_id = tc.ancestor_id OR e.child_id = tc.ancestor_id)
+  )
+`
+
+type PruneClosureSelfRowsParams struct {
+	GraphID  string
+	ParentID string
+	ChildID  string
+}
+
+// Incremental detach, step 3 of 3 (M48): the rebuild emits reflexive rows only for units that
+// appear in an edge, so after a detach drop the endpoints' reflexive rows when they no longer
+// appear in any edge of the graph — keeping incremental output ≡ RebuildClosureForGraph output.
+func (q *Queries) PruneClosureSelfRows(ctx context.Context, arg PruneClosureSelfRowsParams) error {
+	_, err := q.db.Exec(ctx, pruneClosureSelfRows, arg.GraphID, arg.ParentID, arg.ChildID)
+	return err
+}
+
 const rebuildClosureForGraph = `-- name: RebuildClosureForGraph :exec
 WITH RECURSIVE
   nodes AS (
@@ -1314,6 +1418,82 @@ GROUP BY ancestor_id, descendant_id
 // multi-path DAG depths to the shortest with MIN(depth). Cycle-free by construction (guarded).
 func (q *Queries) RebuildClosureForGraph(ctx context.Context, graphID string) error {
 	_, err := q.db.Exec(ctx, rebuildClosureForGraph, graphID)
+	return err
+}
+
+const rederiveClosureSlice = `-- name: RederiveClosureSlice :exec
+WITH RECURSIVE
+anc AS (
+  SELECT tc.ancestor_id AS u FROM oikumenea.tenant_unit_closure tc
+  WHERE tc.graph_id = $1 AND tc.descendant_id = $2
+  UNION
+  SELECT $2::uuid
+),
+dsc AS (
+  SELECT tc.descendant_id AS u FROM oikumenea.tenant_unit_closure tc
+  WHERE tc.graph_id = $1 AND tc.ancestor_id = $3
+  UNION
+  SELECT $3::uuid
+),
+walk AS (
+  SELECT a.u AS ancestor_id, a.u AS node, 0 AS depth FROM anc a
+  UNION ALL
+  SELECT w.ancestor_id, e.child_id, w.depth + 1
+  FROM walk w
+  JOIN oikumenea.tenant_unit_edges e
+    ON e.graph_id = $1 AND e.parent_id = w.node
+  WHERE w.node IN (SELECT u FROM anc)  -- extend only while inside A; frontier rows stop here
+),
+pairs AS (
+  SELECT w.ancestor_id, tc.descendant_id, w.depth + tc.depth AS depth
+  FROM walk w
+  JOIN oikumenea.tenant_unit_closure tc
+    ON tc.graph_id = $1 AND tc.ancestor_id = w.node
+  WHERE w.node NOT IN (SELECT u FROM anc)  -- the trusted jump: z ∉ A ⇒ (z, d) survived step 1
+    AND tc.descendant_id IN (SELECT u FROM dsc)
+)
+INSERT INTO oikumenea.tenant_unit_closure (graph_id, ancestor_id, descendant_id, depth)
+SELECT $1::uuid, ancestor_id, descendant_id, min(depth)::int
+FROM pairs
+GROUP BY ancestor_id, descendant_id
+`
+
+type RederiveClosureSliceParams struct {
+	GraphID  string
+	ParentID string
+	ChildID  string
+}
+
+// Incremental detach, step 2 of 3 (M48): re-derive the deleted A × D slice from surviving edges
+// plus closure rows outside the slice. Any new-graph path a->d (a ∈ A, d ∈ D) has a unique
+// maximal prefix inside A and never re-enters A after leaving (a path back into A would make its
+// node an ancestor of parent, i.e. inside A); so it is an edge-walk inside A followed by one
+// "trusted jump" over a closure row (z, d) with z ∉ A — outside the slice, hence already minimal
+// for the new graph. min over all (prefix + jump) combinations = the true shortest depth. The
+// z = d case rides on d's reflexive row, which survived step 1 — step 3 must run after this.
+// Plain INSERT: the slice was just emptied, so a conflict here is a bug and should fail loudly.
+func (q *Queries) RederiveClosureSlice(ctx context.Context, arg RederiveClosureSliceParams) error {
+	_, err := q.db.Exec(ctx, rederiveClosureSlice, arg.GraphID, arg.ParentID, arg.ChildID)
+	return err
+}
+
+const seedClosureSelfRows = `-- name: SeedClosureSelfRows :exec
+INSERT INTO oikumenea.tenant_unit_closure (graph_id, ancestor_id, descendant_id, depth)
+VALUES ($1, $2, $2, 0),
+       ($1, $3,  $3,  0)
+ON CONFLICT DO NOTHING
+`
+
+type SeedClosureSelfRowsParams struct {
+	GraphID  string
+	ParentID string
+	ChildID  string
+}
+
+// A unit that never appeared in an edge has no closure rows; seed the reflexive rows for both
+// endpoints before extending, so the closure∘closure join in ExtendClosureForEdge sees them.
+func (q *Queries) SeedClosureSelfRows(ctx context.Context, arg SeedClosureSelfRowsParams) error {
+	_, err := q.db.Exec(ctx, seedClosureSelfRows, arg.GraphID, arg.ParentID, arg.ChildID)
 	return err
 }
 
@@ -1717,13 +1897,13 @@ WITH RECURSIVE
       ON e.graph_id = $1 AND e.parent_id = r.descendant_id
   ),
   expected AS (
-    SELECT DISTINCT ancestor_id, descendant_id FROM reach
+    SELECT ancestor_id, descendant_id, min(depth)::int AS depth FROM reach GROUP BY ancestor_id, descendant_id
   ),
   stored AS (
-    SELECT tc.ancestor_id, tc.descendant_id FROM oikumenea.tenant_unit_closure tc WHERE tc.graph_id = $1
+    SELECT tc.ancestor_id, tc.descendant_id, tc.depth FROM oikumenea.tenant_unit_closure tc WHERE tc.graph_id = $1
   ),
-  missing AS (SELECT ancestor_id, descendant_id FROM expected EXCEPT SELECT ancestor_id, descendant_id FROM stored),
-  extra   AS (SELECT ancestor_id, descendant_id FROM stored   EXCEPT SELECT ancestor_id, descendant_id FROM expected)
+  missing AS (SELECT ancestor_id, descendant_id, depth FROM expected EXCEPT SELECT ancestor_id, descendant_id, depth FROM stored),
+  extra   AS (SELECT ancestor_id, descendant_id, depth FROM stored   EXCEPT SELECT ancestor_id, descendant_id, depth FROM expected)
 SELECT
   (SELECT count(*) FROM missing)::int AS missing_count,
   (SELECT count(*) FROM extra)::int   AS extra_count,
@@ -1740,8 +1920,9 @@ type VerifyClosureForGraphRow struct {
 	Sample       interface{}
 }
 
-// Diff the stored closure against a freshly computed one (pair membership), returning the counts
-// and a small sample for the drift report. Does not modify the stored closure.
+// Diff the stored closure against a freshly computed one (pair membership AND shortest-path
+// depth — M48 made depth drift reportable too), returning the counts and a small sample for the
+// drift report. Does not modify the stored closure.
 func (q *Queries) VerifyClosureForGraph(ctx context.Context, graphID string) (VerifyClosureForGraphRow, error) {
 	row := q.db.QueryRow(ctx, verifyClosureForGraph, graphID)
 	var i VerifyClosureForGraphRow

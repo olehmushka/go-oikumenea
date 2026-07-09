@@ -393,14 +393,19 @@ func (s *Service) ActiveUnitIDsForPerson(ctx context.Context, personID string) (
 	return s.newRepo(s.querier(ctx)).ActiveUnitIDsByPerson(ctx, personID)
 }
 
-// PersonIDsWithActiveMembershipInUnits returns the distinct persons with an active membership in any
-// of unitIDs, keyset-paginated by person RID — the cross-module query powering the directory-list
-// union (GET /persons) under D-PersonReadScope. An empty unitIDs yields no rows.
-func (s *Service) PersonIDsWithActiveMembershipInUnits(ctx context.Context, unitIDs []string, after string, limit int) ([]string, error) {
-	if len(unitIDs) == 0 {
-		return nil, nil
-	}
-	return s.newRepo(s.querier(ctx)).ActivePersonIDsInUnits(ctx, unitIDs, after, limit)
+// VisiblePersonIDsForSubject returns the distinct persons the subject may read under
+// D-PersonReadScope, computed as one SQL semi-join over memberships × the subject's authz reach
+// (review-2026-07 R-02.1 — replaces the app-side reach flatten + PersonIDsWithActiveMembershipInUnits
+// array union). Keyset-paginated by person RID; powers the directory list (GET /persons).
+func (s *Service) VisiblePersonIDsForSubject(ctx context.Context, subjectPersonID, after, query string, limit int) ([]string, error) {
+	return s.newRepo(s.querier(ctx)).VisiblePersonIDsForSubject(ctx, subjectPersonID, after, query, limit)
+}
+
+// SubjectCanReadPerson is the point probe of the same reach predicate: whether any of the person's
+// active-membership units falls in the subject's readable reach (GET /persons/{id} and the document
+// holder gate).
+func (s *Service) SubjectCanReadPerson(ctx context.Context, subjectPersonID, personID string) (bool, error) {
+	return s.newRepo(s.querier(ctx)).SubjectCanReadPerson(ctx, subjectPersonID, personID)
 }
 
 // ---------------------------------------------------------------- helpers
@@ -446,10 +451,7 @@ func (s *Service) listMemberships(ctx context.Context, pageSize int, pageToken s
 // else the bare pool. Reads/writes on the unit-scoped membership tables MUST go through it so the
 // app.* RLS GUCs apply (D-RLSDefenseInDepth).
 func (s *Service) querier(ctx context.Context) db.Querier {
-	if c, ok := db.ConnFromContext(ctx); ok {
-		return c
-	}
-	return s.pool
+	return db.RequestQuerier(ctx, s.pool)
 }
 
 // inTx runs fn in a transaction, committing on success and rolling back on error.

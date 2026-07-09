@@ -15,6 +15,31 @@ type testEvent struct {
 
 func (e testEvent) Type() string { return e.typ }
 
+func TestSubscribeAfterSealPanics(t *testing.T) {
+	bus := NewBus()
+	bus.Subscribe("a", func(_ context.Context, _ pgx.Tx, _ Event) error { return nil }) // boot-time: fine
+	bus.Seal()
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("Subscribe after Seal must panic (review-2026-07 R-10): a late atomic subscriber widens every publisher's tx")
+		}
+	}()
+	bus.Subscribe("b", func(_ context.Context, _ pgx.Tx, _ Event) error { return nil })
+}
+
+func TestPublishAfterSealStillDispatches(t *testing.T) {
+	bus := NewBus()
+	var seen bool
+	bus.Subscribe("a", func(_ context.Context, _ pgx.Tx, _ Event) error { seen = true; return nil })
+	bus.Seal() // sealing freezes subscriptions but must not affect Publish
+	if err := bus.Publish(context.Background(), nil, testEvent{typ: "a"}); err != nil {
+		t.Fatalf("publish after seal: %v", err)
+	}
+	if !seen {
+		t.Fatal("sealed bus must still dispatch to its subscribers")
+	}
+}
+
 func TestPublishDispatchesInOrder(t *testing.T) {
 	bus := NewBus()
 	var order []string

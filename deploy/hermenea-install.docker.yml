@@ -22,6 +22,10 @@ postgres:
 oikumenea:
   base-url: "https://app:8443"
   insecure-skip-verify: true
+  # R-05 chunked runs: records per import envelope/transaction (default 5000) and the loader's
+  # per-request deadline (default 120000 ms — finite; a request carries at most one chunk).
+  # chunk-size: 5000
+  # http-timeout-ms: 120000
 
 # Declarative import sources seeded at boot (idempotent). The bundled ISO-3166 file source proves the
 # pipeline network-free; the WOF Ukraine source is present but disabled (a large download — enable it
@@ -62,6 +66,16 @@ sources:
     locator: "https://data.geocode.earth/wof/dist/sqlite/whosonfirst-data-admin-ua-latest.db.bz2"
     cron: "@weekly"
     enabled: false
+  # R-05 / M49 acceptance: the 1M-record synthetic WOF gazetteer (scripts/gen-wof-synthetic). Generate
+  # + bzip2 the dist, serve its directory from the host (`python3 -m http.server 8777`), flip enabled,
+  # and trigger `POST /sync/wof-geo-synth` — the chunked pipeline loads it in ~5k-record transactions
+  # with a resumable per-job cursor (kill -9 either side mid-run and it resumes on retry).
+  - code: wof-geo-synth
+    name: "Synthetic WOF gazetteer (1M places, R-05 proof)"
+    connector-type: wof-sqlite
+    object-type: geo-places
+    locator: "http://host.docker.internal:8777/wof-synthetic.db.bz2"
+    enabled: false
   # External organizations (D-ExternalOrgs, M30) — live from the Wikidata SPARQL endpoint via the `http`
   # connector (?format=json&query=…), transformed in Go (wikidataorgs.Mapper). A LIMIT-bounded query of
   # Ukrainian political parties + government bodies so the live run is fast; broaden the query/LIMIT for a
@@ -75,6 +89,7 @@ sources:
     enabled: true
 
 worker:
+  # concurrency: 4         # parallel worker goroutines over the SKIP LOCKED queue (R-13; default 1)
   poll-interval-ms: 2000
   schedule-tick-ms: 30000
   backoff-base-ms: 5000

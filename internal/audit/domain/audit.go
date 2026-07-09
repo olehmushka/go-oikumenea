@@ -136,4 +136,8 @@ type Repository interface {
 	Insert(ctx context.Context, e Entry) error
 	Get(ctx context.Context, id string) (Entry, error)
 	Query(ctx context.Context, f Filter) ([]Entry, error)
+	// EnsureCurrentPartitions rolls the monthly range-partition window forward (review-2026-07 R-07):
+	// idempotently create the current + next month's partition so live inserts never fall to the
+	// DEFAULT catch-all. Called at boot; safe to repeat.
+	EnsureCurrentPartitions(ctx context.Context) error
 }

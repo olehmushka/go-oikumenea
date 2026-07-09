@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -17,15 +16,15 @@ type Querier interface {
 	Begin(context.Context) (pgx.Tx, error)
 }
 
-// RLSState is the per-request authorization context the Postgres RLS backstop mirrors
-// (D-RLSDefenseInDepth): the subject plus the PDP-computed read/write unit reach. It is applied to a
-// pinned connection as the app.* session GUCs the migration-0012 policies read. The PDP + shadow gate
-// remain authoritative; RLS only guards the forgotten-filter bug class.
+// RLSState is the per-request authorization context the Postgres RLS backstop reads
+// (D-RLSDefenseInDepth as reshaped by D-RLSLiveReach): just the subject identity — the policies
+// compute reach LIVE via oikumenea.authz_unit_in_reach(unit, wr), so no unit list ever crosses the
+// wire (the old ReadableUnits/WritableUnits GUC payload was O(org) — multi-MB for a staff-level
+// subject). Applied to a pinned connection as two app.* session GUCs in ONE round trip. The PDP +
+// shadow gate remain authoritative; RLS only guards the forgotten-filter bug class.
 type RLSState struct {
 	PersonID        string
 	IsInstanceAdmin bool
-	ReadableUnits   []string // unit RIDs in the subject's read reach
-	WritableUnits   []string // unit RIDs in the subject's write reach
 }
 
 type connKey struct{}
@@ -43,11 +42,11 @@ func ConnFromContext(ctx context.Context) (*pgxpool.Conn, bool) {
 	return c, ok && c != nil
 }
 
-// AcquireScoped pins a pooled connection and sets the four app.* RLS GUCs on it from state (session
-// scope, is_local=false). Statements on the returned connection are filtered by the RLS policies
-// (migration 0012). The returned release func resets the GUCs and returns the connection to the pool;
-// callers MUST defer it. Reset runs on a background context so it still fires when the request context
-// has been cancelled.
+// AcquireScoped pins a pooled connection and sets the two app.* RLS GUCs on it from state (session
+// scope, is_local=false; one set_config round trip). Statements on the returned connection are
+// filtered by the RLS policies (migration 0011). The returned release func resets the GUCs and
+// returns the connection to the pool; callers MUST defer it. Reset runs on a background context so
+// it still fires when the request context has been cancelled.
 func AcquireScoped(ctx context.Context, pool *pgxpool.Pool, state RLSState) (*pgxpool.Conn, func(), error) {
 	conn, err := pool.Acquire(ctx)
 	if err != nil {
@@ -78,34 +77,24 @@ func RunAsSystem(ctx context.Context, pool *pgxpool.Pool, fn func(ctx context.Co
 	return fn(WithConn(ctx, conn))
 }
 
-// rlsGUCNames is the canonical order/list of the four backstop GUCs.
-var rlsGUCNames = [...]string{"app.person_id", "app.is_instance_admin", "app.readable_units", "app.writable_units"}
-
-// setRLSGUCs sets the four app.* GUCs. Unit sets are comma-joined RID lists (RIDs contain no commas);
-// the policies read them with string_to_array(current_setting(name, true), ','), so an unset GUC reads
-// as NULL (no rows) rather than erroring.
+// setRLSGUCs sets the two app.* GUCs in ONE round trip (review-2026-07 R-03: the old four-GUC loop
+// cost 4 round trips per acquire). The policies read them with current_setting(name, true), so an
+// unset GUC reads as NULL (no rows) rather than erroring; nullif('') maps the reset value to NULL.
 func setRLSGUCs(ctx context.Context, conn *pgxpool.Conn, state RLSState) error {
-	vals := [...]string{
-		state.PersonID,
-		boolGUC(state.IsInstanceAdmin),
-		strings.Join(state.ReadableUnits, ","),
-		strings.Join(state.WritableUnits, ","),
-	}
-	for i, name := range rlsGUCNames {
-		if _, err := conn.Exec(ctx, "SELECT set_config($1, $2, false)", name, vals[i]); err != nil {
-			return werror.WrapWithContextParams(ctx, err, "set rls guc", werror.SafeParam("guc", name))
-		}
+	if _, err := conn.Exec(ctx,
+		"SELECT set_config('app.person_id', $1, false), set_config('app.is_instance_admin', $2, false)",
+		state.PersonID, boolGUC(state.IsInstanceAdmin)); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "set rls gucs")
 	}
 	return nil
 }
 
-// resetRLSGUCs clears the four GUCs before the connection returns to the pool, so no later borrower
-// inherits a prior subject's reach.
+// resetRLSGUCs clears the two GUCs (one round trip) before the connection returns to the pool, so no
+// later borrower inherits a prior subject's identity.
 func resetRLSGUCs(ctx context.Context, conn *pgxpool.Conn) error {
-	for _, name := range rlsGUCNames {
-		if _, err := conn.Exec(ctx, "SELECT set_config($1, '', false)", name); err != nil {
-			return werror.WrapWithContextParams(ctx, err, "reset rls guc", werror.SafeParam("guc", name))
-		}
+	if _, err := conn.Exec(ctx,
+		"SELECT set_config('app.person_id', '', false), set_config('app.is_instance_admin', '', false)"); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "reset rls gucs")
 	}
 	return nil
 }

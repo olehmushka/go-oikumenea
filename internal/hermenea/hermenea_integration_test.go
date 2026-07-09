@@ -22,9 +22,12 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -34,6 +37,7 @@ import (
 	hdb "github.com/olegamysk/go-oikumenea/internal/hermenea/db"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/geocountries"
+	"github.com/olegamysk/go-oikumenea/internal/hermenea/runtime"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/wikidataorgs"
 )
 
@@ -48,13 +52,36 @@ type stubLoader struct {
 	gotRecords int
 }
 
-func (l *stubLoader) Load(_ context.Context, objectType, _, _ string, records []map[string]any) (domain.ImportSummary, error) {
+func (l *stubLoader) Load(_ context.Context, objectType, _, _, _ string, _ int, records []map[string]any, _ domain.AckFunc) (domain.ImportSummary, error) {
 	l.gotType = objectType
 	l.gotRecords = len(records)
 	if l.err != nil {
 		return domain.ImportSummary{}, l.err
 	}
 	return l.summary, nil
+}
+
+func (l *stubLoader) StartRun(objectType, _, _, _ string, _ int, _ domain.AckFunc) domain.LoadRun {
+	return &stubRun{l: l, objectType: objectType}
+}
+
+// stubRun mirrors stubLoader for the chunked-run (streaming) path.
+type stubRun struct {
+	l          *stubLoader
+	objectType string
+}
+
+func (r *stubRun) Push(_ context.Context, records []map[string]any) error {
+	r.l.gotType = r.objectType
+	r.l.gotRecords += len(records)
+	return r.l.err
+}
+
+func (r *stubRun) Finalize(context.Context) (domain.ImportSummary, error) {
+	if r.l.err != nil {
+		return domain.ImportSummary{}, r.l.err
+	}
+	return r.l.summary, nil
 }
 
 func newStore(t *testing.T) (*adapters.Repository, *pgxpool.Pool) {
@@ -268,4 +295,166 @@ func latestRun(t *testing.T, store *adapters.Repository, sourceCode string) doma
 	}
 	t.Fatalf("no import_runs row for source %s (id %s)", sourceCode, id)
 	return domain.Run{}
+}
+
+// TestJobResumeCursorRoundTrip proves the chunked-run resume cursor (R-05) survives the
+// fail→reschedule→re-claim cycle: SetJobCursor persists (seq, checksum) on the job row and the next
+// ClaimJob hands them back, so a retried attempt can skip already-acked chunks.
+func TestJobResumeCursorRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	store, _ := newStore(t)
+
+	key := "cursor-test-" + uuid.NewString()
+	jobID, _, err := store.EnqueueJob(ctx, domain.JobSync, key, "", []byte(`{"source":"cursor-src"}`), 5)
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+
+	// Claim until we get OUR job (parking any unrelated leftovers far in the future).
+	claim := func() domain.Job {
+		t.Helper()
+		for i := 0; i < 25; i++ {
+			job, ok, err := store.ClaimJob(ctx, "cursor-worker")
+			if err != nil {
+				t.Fatalf("claim: %v", err)
+			}
+			if !ok {
+				t.Fatalf("queue empty before finding job %s", jobID)
+			}
+			if job.ID == jobID {
+				return job
+			}
+			_ = store.RescheduleJob(ctx, job.ID, time.Now().Add(time.Hour), "parked by cursor test")
+		}
+		t.Fatalf("did not claim job %s in 25 attempts", jobID)
+		return domain.Job{}
+	}
+
+	job := claim()
+	if job.ResumeSeq != 0 || job.ResumeChecksum != "" {
+		t.Fatalf("fresh job carries a cursor: %+v", job)
+	}
+	if err := store.SetJobCursor(ctx, jobID, 7, "sum-abc"); err != nil {
+		t.Fatalf("set cursor: %v", err)
+	}
+	// The attempt "fails" → reschedule now → the retry must see the cursor.
+	if err := store.RescheduleJob(ctx, jobID, time.Now().Add(-time.Second), "simulated chunk failure"); err != nil {
+		t.Fatalf("reschedule: %v", err)
+	}
+	job = claim()
+	if job.ResumeSeq != 7 || job.ResumeChecksum != "sum-abc" {
+		t.Fatalf("retried job cursor = (%d, %q), want (7, sum-abc)", job.ResumeSeq, job.ResumeChecksum)
+	}
+	_ = store.MarkJobSucceeded(ctx, jobID)
+}
+
+// barrierMapper blocks every Map call until `need` calls have arrived (or times out) — the test
+// only passes when that many jobs are being processed AT THE SAME TIME.
+type barrierMapper struct {
+	need    int32
+	arrived atomic.Int32
+}
+
+func (m *barrierMapper) Map(domain.RawBatch) ([]map[string]any, error) {
+	m.arrived.Add(1)
+	deadline := time.Now().Add(10 * time.Second)
+	for m.arrived.Load() < m.need {
+		if time.Now().After(deadline) {
+			return nil, errors.New("barrier timeout: not enough concurrent workers")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return []map[string]any{{"ok": true}}, nil
+}
+
+// TestWorkerConcurrency proves the R-13 fan-out: with Concurrency=4 the runtime processes 4 jobs in
+// parallel (each job's mapper blocks until all 4 are in flight — a single-worker runtime would
+// deadlock the barrier and fail). Claim safety across the 4 workers is the SKIP LOCKED guarantee.
+func TestWorkerConcurrency(t *testing.T) {
+	ctx := context.Background()
+	store, _ := newStore(t)
+	loader := &stubLoader{summary: domain.ImportSummary{Created: 1}}
+	svc := newService(store, loader)
+	const objectType = "conc-test-type"
+	barrier := &barrierMapper{need: 4}
+	svc.RegisterMapper(objectType, barrier)
+
+	// Park any queued leftovers so all 4 workers are free for OUR jobs.
+	for {
+		job, ok, err := store.ClaimJob(ctx, "conc-drain")
+		if err != nil {
+			t.Fatalf("drain claim: %v", err)
+		}
+		if !ok {
+			break
+		}
+		_ = store.RescheduleJob(ctx, job.ID, time.Now().Add(time.Hour), "parked by concurrency test")
+	}
+
+	codes := make([]string, 4)
+	for i := range codes {
+		src := domain.Source{
+			Code:          fmt.Sprintf("conc-%d-%s", i, uuid.NewString()[:8]),
+			Name:          "concurrency probe",
+			ConnectorType: domain.ConnectorFile,
+			ObjectType:    objectType,
+			Locator:       presetFile(t),
+			Enabled:       true,
+		}
+		if err := svc.SeedSource(ctx, src); err != nil {
+			t.Fatalf("seed source %d: %v", i, err)
+		}
+		if _, _, err := svc.TriggerSync(ctx, src.Code); err != nil {
+			t.Fatalf("trigger %d: %v", i, err)
+		}
+		codes[i] = src.Code
+	}
+
+	rt := runtime.New(svc, store, runtime.Config{
+		WorkerID:     "conc-test",
+		Concurrency:  4,
+		PollInterval: 20 * time.Millisecond,
+		ScheduleTick: time.Hour, // keep the scheduler quiet
+		BackoffBase:  50 * time.Millisecond,
+		BackoffMax:   time.Second,
+		JobTimeout:   15 * time.Second,
+	})
+	stop := rt.Start(ctx)
+	defer stop()
+
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		if barrier.arrived.Load() >= 4 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("only %d jobs in flight after 20s, want 4 concurrent", barrier.arrived.Load())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	// All 4 entered the barrier simultaneously — the fan-out works. Wait for clean completion.
+	for _, code := range codes {
+		waitRunSucceeded(t, store, code, 10*time.Second)
+	}
+}
+
+// waitRunSucceeded polls the run ledger until the source's latest run succeeds. (Run.SourceCode
+// carries the source ID — mirror latestRun's resolution.)
+func waitRunSucceeded(t *testing.T, store *adapters.Repository, sourceCode string, timeout time.Duration) {
+	t.Helper()
+	id := sourceID(t, store, sourceCode)
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		runs, err := store.ListRuns(context.Background(), 200)
+		if err != nil {
+			t.Fatalf("list runs: %v", err)
+		}
+		for _, r := range runs {
+			if r.SourceCode == id && r.Status == domain.RunSucceeded {
+				return
+			}
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf("source %s: no succeeded run within %s", sourceCode, timeout)
 }

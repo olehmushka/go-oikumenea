@@ -17,20 +17,24 @@ import (
 
 // CheckWatchlists runs a live watchlist screening check for a person: it screens the person's identity
 // via the hermenea seam, snapshots the PEP flag from the M33 government positions, and upserts the single
-// per-person WatchlistMatch. Only match metadata is stored. Returns ErrWatchlistUnavailable when the seam
-// is not wired.
+// per-person WatchlistMatch. Only match metadata is stored. Returns ErrWatchlistUnavailable when no
+// companion is configured (the seam is watchlistclient.Disabled{}).
 func (s *Service) CheckWatchlists(ctx context.Context, personID string) (domain.WatchlistMatch, error) {
-	if s.watchlist == nil {
-		return domain.WatchlistMatch{}, domain.ErrWatchlistUnavailable
-	}
+	// The watchlist seam is always wired at boot (MustBeBound, review-2026-07 R-11): the real hermenea
+	// client when a companion is configured, else watchlistclient.Disabled{} whose Screen returns
+	// ErrWatchlistUnavailable — so no nil check is needed here.
 	repo := s.newRepo(s.pool)
 	person, err := repo.GetPerson(ctx, personID)
 	if err != nil {
 		return domain.WatchlistMatch{}, err
 	}
-	pep, err := repo.IsPoliticallyExposed(ctx, personID)
-	if err != nil {
-		return domain.WatchlistMatch{}, err
+	// PEP snapshot from personprofile's government-position ties, read through the late-bound seam
+	// (D-PersonModuleSplit, R-09); defaults to false when the seam is unwired (e.g. tests not exercising it).
+	pep := false
+	if s.pep != nil {
+		if pep, err = s.pep.IsPoliticallyExposed(ctx, personID); err != nil {
+			return domain.WatchlistMatch{}, err
+		}
 	}
 
 	res, err := s.watchlist.Screen(ctx, domain.WatchlistQuery{
@@ -76,7 +80,7 @@ func (s *Service) CheckWatchlists(ctx context.Context, personID string) (domain.
 // GetWatchlistMatch returns the person's most recent screening result, or (zero,false) if never screened.
 func (s *Service) GetWatchlistMatch(ctx context.Context, personID string) (domain.WatchlistMatch, bool, error) {
 	repo := s.newRepo(s.pool)
-	if _, err := repo.GetPerson(ctx, personID); err != nil {
+	if err := repo.PersonExists(ctx, personID); err != nil {
 		return domain.WatchlistMatch{}, false, err
 	}
 	return repo.GetWatchlistMatch(ctx, personID)
@@ -99,7 +103,7 @@ func screeningConfidence(res domain.WatchlistScreenResult) string {
 // ListRegulatorySanctions lists a person's regulatory sanctions (the person must exist).
 func (s *Service) ListRegulatorySanctions(ctx context.Context, personID string) ([]domain.RegulatorySanction, error) {
 	repo := s.newRepo(s.pool)
-	if _, err := repo.GetPerson(ctx, personID); err != nil {
+	if err := repo.PersonExists(ctx, personID); err != nil {
 		return nil, err
 	}
 	return repo.ListRegulatorySanctions(ctx, personID)
@@ -126,7 +130,7 @@ func (s *Service) UpsertRegulatorySanction(ctx context.Context, x domain.Regulat
 	var out domain.RegulatorySanction
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
 		repo := s.newRepo(tx)
-		if _, err := repo.GetPerson(ctx, x.PersonID); err != nil {
+		if err := repo.PersonExists(ctx, x.PersonID); err != nil {
 			return err
 		}
 		created, err := repo.UpsertRegulatorySanction(ctx, x)

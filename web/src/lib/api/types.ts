@@ -74,6 +74,9 @@ export type LobbyingRelationship = person.ILobbyingRelationship;
 export type ExternalReference = person.IExternalReference;
 export type WatchlistMatch = person.IWatchlistMatch;
 export type RegulatorySanction = person.IRegulatorySanction;
+export type CryptoWallet = person.ICryptoWallet;
+export type Personality = person.IPersonality;
+export type PoliticalLeaning = person.IPoliticalLeaning;
 
 // ── localization / language ──────────────────────────────────────────────────
 export type LocaleLanguage = localization.ILocaleLanguage;

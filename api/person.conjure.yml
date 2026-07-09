@@ -531,6 +531,107 @@ types:
           legalBasis: optional<string>
           source: optional<string>
           confidence: optional<string>
+      CryptoWallet:
+        docs: |
+          A crypto-wallet attribution for a person (D-PersonOverlays, M35) — an Object. The address is
+          public on-chain data, but attributing it to a person is pii:sensitive; synergy with the M34
+          sanctioned-wallet cross-check. Hard-erased on purge.
+        fields:
+          id: string
+          personId: string
+          address:
+            type: string
+            docs: The on-chain wallet address.
+          chain:
+            type: string
+            docs: One of bitcoin | ethereum | solana | tron | bnb | polygon | monero | other.
+          attributionMethod:
+            type: string
+            docs: One of exchange_kyc | blockchain_analysis | self_declared | leak | public_post | other.
+          balanceUsdApprox:
+            type: optional<double>
+            docs: Last-known approximate USD balance.
+          firstSeen: optional<string>
+          lastSeen: optional<string>
+          source: optional<string>
+          confidence: optional<string>
+      UpsertCryptoWalletRequest:
+        docs: Add a crypto wallet, or replace one when id is supplied (D-PersonOverlays, M35).
+        fields:
+          id: optional<string>
+          address: string
+          chain: optional<string>
+          attributionMethod: optional<string>
+          balanceUsdApprox: optional<double>
+          firstSeen: optional<string>
+          lastSeen: optional<string>
+          source: optional<string>
+          confidence: optional<string>
+      Personality:
+        docs: |
+          A declared or formally-assessed personality profile (D-PersonOverlays, M35) — an Object.
+          DECLARED SURVEY OR FORMAL HR ASSESSMENT ONLY — never inferred from text. pii:sensitive.
+        fields:
+          id: string
+          personId: string
+          framework:
+            type: string
+            docs: One of mbti | big_five | disc | enneagram | other.
+          result:
+            type: string
+            docs: The typed output, e.g. "INTJ", a Big-Five summary, an Enneagram type.
+          instrument:
+            type: optional<string>
+            docs: The specific test/assessment used.
+          method:
+            type: string
+            docs: One of self_declared_survey | hr_assessment (inference is forbidden).
+          assessedAt: optional<string>
+          source: optional<string>
+          confidence: optional<string>
+      UpsertPersonalityRequest:
+        docs: Add a personality profile, or replace one when id is supplied (D-PersonOverlays, M35).
+        fields:
+          id: optional<string>
+          framework: optional<string>
+          result: string
+          instrument: optional<string>
+          method: optional<string>
+          assessedAt: optional<string>
+          source: optional<string>
+          confidence: optional<string>
+      PoliticalLeaning:
+        docs: |
+          An INFERRED political leaning (D-PersonOverlays, M35) — an Object. Political opinion is a GDPR
+          Art. 9 special category, so `spectrum` is envelope-encrypted at rest; the value here is decrypted
+          (0 for a crypto-erased tombstone). legalBasis is required. This is a SEPARATE overlay and is NEVER
+          merged with the declared M33 party membership. pii:special.
+        fields:
+          id: string
+          personId: string
+          spectrum:
+            type: double
+            docs: The inferred left/right position in [-1,1]. Decrypted; 0 when crypto-erased.
+          inferenceSources:
+            type: list<string>
+            docs: The inference methodology tags, e.g. social_media | voting_record | donation_records.
+          assessedAt: optional<string>
+          legalBasis:
+            type: string
+            docs: The platform_legal_basis_kinds code authorizing this Art. 9 inference.
+          confidence: optional<string>
+      UpsertPoliticalLeaningRequest:
+        docs: |
+          Set the person's inferred political leaning (replaces the single active row). Requires legalBasis
+          (Art. 9). Inferred-only — never a declared party affiliation (D-PersonOverlays, M35).
+        fields:
+          spectrum:
+            type: double
+            docs: The inferred position in [-1,1].
+          inferenceSources: optional<list<string>>
+          assessedAt: optional<string>
+          legalBasis: string
+          confidence: optional<string>
       Email:
         docs: A person's contact email (D-PersonContactChannels). pii:contact; distinct from the login email.
         fields:
@@ -1336,7 +1437,7 @@ services:
           query:
             type: optional<string>
             param-type: query
-            docs: Optional case-insensitive substring match on display name, code, given name, or surname.
+            docs: Optional case-insensitive substring match on the person's name/code haystack (display name, code, given, surname) or any of their name variants (transliterations / aliases). Trigram-indexed; a query of 3+ characters is served by an index (D-PersonSearch).
         returns: PersonPage
       setRank:
         http: PUT /persons/{personId}/rank
@@ -1648,6 +1749,86 @@ services:
             type: string
             param-type: path
           sanctionId:
+            type: string
+            param-type: path
+      listCryptoWallets:
+        http: GET /persons/{personId}/crypto-wallets
+        docs: List a person's crypto-wallet attributions (D-PersonOverlays, M35; pii:sensitive).
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<CryptoWallet>
+      upsertCryptoWallet:
+        http: PUT /persons/{personId}/crypto-wallets
+        docs: Add a crypto wallet, or replace one when id is supplied.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertCryptoWalletRequest
+        returns: CryptoWallet
+      deleteCryptoWallet:
+        http: DELETE /persons/{personId}/crypto-wallets/{walletId}
+        docs: Remove a crypto wallet by id.
+        args:
+          personId:
+            type: string
+            param-type: path
+          walletId:
+            type: string
+            param-type: path
+      listPersonalities:
+        http: GET /persons/{personId}/personalities
+        docs: List a person's declared/assessed personality profiles (D-PersonOverlays, M35; pii:sensitive).
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<Personality>
+      upsertPersonality:
+        http: PUT /persons/{personId}/personalities
+        docs: Add a personality profile, or replace one when id is supplied.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertPersonalityRequest
+        returns: Personality
+      deletePersonality:
+        http: DELETE /persons/{personId}/personalities/{personalityId}
+        docs: Remove a personality profile by id.
+        args:
+          personId:
+            type: string
+            param-type: path
+          personalityId:
+            type: string
+            param-type: path
+      getPoliticalLeaning:
+        http: GET /persons/{personId}/political-leaning
+        docs: |
+          The person's inferred political leaning, or null if none (D-PersonOverlays, M35; pii:special,
+          decrypted). Never a declared party affiliation.
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: optional<PoliticalLeaning>
+      setPoliticalLeaning:
+        http: PUT /persons/{personId}/political-leaning
+        docs: Set the person's inferred political leaning (replaces the single active row). Requires legalBasis.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertPoliticalLeaningRequest
+        returns: PoliticalLeaning
+      deletePoliticalLeaning:
+        http: DELETE /persons/{personId}/political-leaning
+        docs: Remove the person's inferred political leaning.
+        args:
+          personId:
             type: string
             param-type: path
       listEthnicityTypes:

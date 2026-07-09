@@ -20,9 +20,12 @@ import (
 // ObjectTypeGeoPlaces is the oikumenea import object-type this mapper feeds (the source's object_type).
 const ObjectTypeGeoPlaces = "geo-places"
 
-// pageSize bounds one canonical envelope (one POST). Small enough that geometry-heavy pages stay well
-// under any HTTP body limit, large enough to amortize round-trips over a planet-scale backfill.
-const pageSize = 1000
+// pageSize bounds one emitted page. Aligned with the loader's default chunk size (R-05) so one page =
+// one canonical envelope (one POST / one oikumenea transaction): small enough that geometry-heavy
+// pages stay under any HTTP body limit, large enough to amortize round-trips over a planet-scale
+// backfill. Page boundaries are deterministic (fixed placetype walk + ORDER BY s.id), which the
+// resume cursor relies on when a retried attempt skips already-acked chunks.
+const pageSize = 5000
 
 // placetypes are walked in this order so a child's parent (always a lower placetype) is loaded — and
 // committed — before the child (the geo_places.parent_id FK is RESTRICT).

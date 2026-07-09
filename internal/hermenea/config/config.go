@@ -59,6 +59,11 @@ type Oikumenea struct {
 	BaseURL string `yaml:"base-url"`
 	// InsecureSkipVerify disables TLS verification (for the self-signed local-dev cert). Never in prod.
 	InsecureSkipVerify bool `yaml:"insecure-skip-verify"`
+	// ChunkSize caps the records per import envelope/transaction (R-05 chunked runs; default 5000).
+	ChunkSize int `yaml:"chunk-size"`
+	// HTTPTimeoutMs is the loader's per-request deadline (default 120000). Finite since R-05 — a
+	// request carries at most one chunk, never a whole dataset.
+	HTTPTimeoutMs int `yaml:"http-timeout-ms"`
 }
 
 // Source is a declaratively-seeded import source.
@@ -80,12 +85,16 @@ func (s Source) EnabledOrDefault() bool {
 	return *s.Enabled
 }
 
-// Worker tunables (all milliseconds; zero => default).
+// Worker tunables (durations in milliseconds; zero => default).
 type Worker struct {
+	// Concurrency is the number of parallel worker goroutines over the SKIP LOCKED queue (R-13;
+	// default 1). N workers run N jobs in parallel; the claim is replica-safe, so this composes with
+	// multiple hermenea processes too.
+	Concurrency    int `yaml:"concurrency"`
 	PollIntervalMs int `yaml:"poll-interval-ms"` // queue poll cadence (default 2000)
 	ScheduleTickMs int `yaml:"schedule-tick-ms"` // cron evaluation cadence (default 30000)
 	BackoffBaseMs  int `yaml:"backoff-base-ms"`  // first retry delay (default 5000)
 	BackoffMaxMs   int `yaml:"backoff-max-ms"`   // backoff cap (default 300000)
-	JobTimeoutMs   int `yaml:"job-timeout-ms"`   // per-job hard timeout (default 120000)
+	JobTimeoutMs   int `yaml:"job-timeout-ms"`   // per-job hard timeout (default 120000; raise for planet-scale backfills — resume makes overruns survivable, not free)
 	StaleAfterMs   int `yaml:"stale-after-ms"`   // requeue stale 'running' jobs after (default 600000)
 }

@@ -24,6 +24,9 @@ func NewPool(ctx context.Context, dsn, environment string) (*pgxpool.Pool, error
 	if err != nil {
 		return nil, werror.WrapWithContextParams(ctx, err, "parse postgres dsn")
 	}
+	// Statement tracing for the Phase-0 measurement harness (tracer.go): a no-op context lookup
+	// unless the caller attached a QueryCounter via WithQueryCounter.
+	cfg.ConnConfig.Tracer = queryTracer{}
 	cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		// SET cannot bind parameters; set_config does. Session-scoped (is_local = false).
 		if _, err := conn.Exec(ctx, "SELECT set_config('app.environment', $1, false)", environment); err != nil {

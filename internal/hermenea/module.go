@@ -7,6 +7,7 @@ package hermenea
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -37,7 +38,10 @@ import (
 func Register(ctx context.Context, info witchcraft.InitInfo, pool *pgxpool.Pool, cfg config.Install, importToken string) (func(), error) {
 	store := adapters.NewRepository(pool)
 
-	ld, err := loader.New(cfg.Oikumenea.BaseURL, importToken, cfg.Oikumenea.InsecureSkipVerify)
+	ld, err := loader.New(cfg.Oikumenea.BaseURL, importToken, cfg.Oikumenea.InsecureSkipVerify, loader.Options{
+		ChunkSize:   cfg.Oikumenea.ChunkSize, // 0 → loader.DefaultChunkSize
+		HTTPTimeout: time.Duration(cfg.Oikumenea.HTTPTimeoutMs) * time.Millisecond,
+	})
 	if err != nil {
 		return nil, werror.WrapWithContextParams(ctx, err, "build oikumenea loader")
 	}
@@ -119,6 +123,17 @@ func Register(ctx context.Context, info witchcraft.InitInfo, pool *pgxpool.Pool,
 	}, nil
 }
 
+// workerID labels this process in worker_jobs.locked_by (the runtime suffixes -w<i> per worker
+// goroutine). Hostname-based so replicas are distinguishable (R-13); informational only — claim
+// safety comes from SKIP LOCKED, not the label.
+func workerID() string {
+	host, err := os.Hostname()
+	if err != nil || host == "" {
+		return "hermenea"
+	}
+	return "hermenea-" + host
+}
+
 // runtimeConfig maps the install worker tunables to the runtime config, applying defaults for zero
 // fields.
 func runtimeConfig(w config.Worker) runtime.Config {
@@ -129,7 +144,8 @@ func runtimeConfig(w config.Worker) runtime.Config {
 		return time.Duration(v) * time.Millisecond
 	}
 	return runtime.Config{
-		WorkerID:     "hermenea-1",
+		WorkerID:     workerID(),
+		Concurrency:  w.Concurrency, // <=0 → 1 worker (runtime default)
 		PollInterval: ms(w.PollIntervalMs, 2000),
 		ScheduleTick: ms(w.ScheduleTickMs, 30000),
 		BackoffBase:  ms(w.BackoffBaseMs, 5000),

@@ -125,7 +125,11 @@ stamped from the envelope on each upsert (D-DataIngestion lineage, retained unde
 ```jsonc
 { "objectType": "geo-countries", "source": "iso-3166", "sourceVersion": "2024", "license": "…",
   "generatedAt": "2026-06-13T00:00:00Z",
-  "records": [ { "code": "UA", "name": "Ukraine", "alpha3": "UKR", "numeric": "804" } ] }
+  "records": [ { "code": "UA", "name": "Ukraine", "alpha3": "UKR", "numeric": "804" } ],
+  // Chunked runs (R-05 / M49): a large dataset arrives as sequential ~5k-record chunks, each its own
+  // envelope + oikumenea transaction, ended by a trailing (possibly empty) isLast finalize chunk that
+  // runs the object-type's batch finalizers. All three absent = single-shot (pre-M49 semantics).
+  "runId": "…", "seq": 3, "isLast": false }
 ```
 
 ## Dependencies
@@ -148,7 +152,13 @@ stamped from the envelope on each upsert (D-DataIngestion lineage, retained unde
   credential is stored; the operator supplies the secret at deploy time, validated by comparison
   (bootstrap-admin pattern).
 - **Two trust directions, two secrets** — `HERMENEA_OIKUMENEA_TOKEN` (import) and
-  `OIKUMENEA_HERMENEA_TOKEN` (trigger), each scoped to one direction to bound blast radius.
+  `OIKUMENEA_HERMENEA_TOKEN` (trigger), each scoped to one direction to bound blast radius. On the
+  oikumenea side both flow through install config with directional names —
+  `hermenea.inbound-token` (hermenea→oikumenea import) and `hermenea.outbound-token`
+  (oikumenea→hermenea trigger), ECV-encryptable — resolved in one place each
+  (`config.Hermenea.ResolveInboundToken` / `ResolveOutboundToken`), which still honour the two env
+  vars above as overrides for the cross-service compose contract (review R-16). The `cmd/hermenea`
+  companion reads the same two env vars directly.
 
 ## Patterns
 
@@ -167,14 +177,25 @@ stamped from the envelope on each upsert (D-DataIngestion lineage, retained unde
   `PagedMapper.MapPaged(staged, emit)` walks it **parent-first** emitting bounded pages, each loaded as
   its own canonical envelope (one `import_runs` row aggregates the page counts). The 16 MiB cap and the
   in-memory `Fetch`/`Map` path are untouched for small http/file sources.
+- **Chunked runs + resume cursor** (R-05 / M49) — the loader sends any dataset larger than one chunk
+  (`oikumenea.chunk-size`, default 5000) as a **chunked run**: sequential `(runId, seq, isLast)`
+  envelopes, one oikumenea transaction each, a trailing empty finalize chunk, and a **finite**
+  per-request deadline (`oikumenea.http-timeout-ms`, default 120 s — the old
+  `WithHTTPTimeout(0)`/whole-dataset POST is retired). After every acknowledged chunk the worker
+  persists `worker_jobs.resume_seq` + `resume_checksum`; a retried attempt (crash of either side,
+  job-timeout overrun) re-stages the source and **skips already-acked chunks** while the staged
+  checksum still matches — a changed source resets the cursor (full, still-idempotent re-run).
+  oikumenea stays stateless per chunk; chunk replay is safe by natural-key idempotency.
 - **Mapper registry** — per `object_type`, mirrors the oikumenea upsert registry (which mirrors
   `pkg/events.Bus`): raw records → canonical envelope (or paged via `RegisterPagedMapper`). Adding an
   import target = registering a mapper (hermenea) + an upsert handler (oikumenea); no framework change.
 - **Idempotent re-sync** — code-keyed upsert; re-running a sync over unchanged data is a no-op
   (created/updated/skipped reported). Ingest ≠ audited edit: a bulk import is one `system` Action, not
   N user edits.
-- **Queue claim** — `FOR UPDATE SKIP LOCKED` for at-least-once, single-process concurrency without a
-  broker; exponential backoff with **per-job-type** config; dead-letter after `max_attempts`.
+- **Queue claim** — `FOR UPDATE SKIP LOCKED` for at-least-once concurrency without a broker;
+  `worker.concurrency` fans out N claim loops in one process (R-13 / M49; default 1), and the same
+  claim is replica-safe across processes; exponential backoff with **per-job-type** config;
+  dead-letter after `max_attempts`.
 
 ## Invariants & safety
 

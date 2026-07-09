@@ -20,6 +20,13 @@ postgres:
 oikumenea:
   base-url: "https://localhost:8443"
   insecure-skip-verify: true
+  # R-05 chunked runs: records per import envelope/transaction (default 5000) and the loader's
+  # per-request deadline (default 120000 ms — finite; a request carries at most one chunk).
+  # chunk-size: 5000
+  # Raised from the 120000 default: high-res WOF region/country geometries (e.g. US states) are heavy
+  # to parse (ST_GeomFromGeoJSON) + derive (ST_PointOnSurface/ST_Envelope) per chunk. Kept well under
+  # worker.job-timeout-ms (1800000) so a single chunk that overruns still fails within the job budget.
+  http-timeout-ms: 600000
 
 # Declarative import sources seeded at boot (idempotent). The first real connector is the Who's-On-First
 # geo gazetteer (D-GeoPlaces): connector-type `wof-sqlite` stages the per-country `.db.bz2` admin
@@ -489,6 +496,7 @@ watchlist:
 
 # Background-runtime tunables (milliseconds; zero => documented default).
 worker:
+  # concurrency: 4         # parallel worker goroutines over the SKIP LOCKED queue (R-13; default 1)
   poll-interval-ms: 2000
   schedule-tick-ms: 30000
   backoff-base-ms: 5000

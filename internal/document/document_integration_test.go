@@ -34,8 +34,10 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/document/adapters"
 	"github.com/olegamysk/go-oikumenea/internal/document/application"
 	"github.com/olegamysk/go-oikumenea/internal/document/domain"
+	personevents "github.com/olegamysk/go-oikumenea/internal/person/events"
 	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/pkg/crypto"
+	"github.com/olegamysk/go-oikumenea/pkg/events"
 	"github.com/olegamysk/go-oikumenea/pkg/personalcode"
 )
 
@@ -291,6 +293,47 @@ func TestPersonalCodeValidationAndUniqueness(t *testing.T) {
 	// Same (scheme, value) for another person is rejected cross-person (over the blind index).
 	if _, err := svc.AttachPersonalCode(ctx, p2, "ua-rnokpp", dup); !errors.Is(err, domain.ErrPersonalCodeDuplicate) {
 		t.Fatalf("cross-person duplicate should be rejected, got %v", err)
+	}
+}
+
+// TestPersonPurgeEventErases proves the D-PersonModuleSplit (review-2026-07 R-09) wiring end to end: the
+// document module's SubscribePersonPurge handler erases a person's records when a PersonPurged event is
+// published on the bus — the event path that now triggers ErasePersonRecords inside the person-purge
+// transaction (rather than the direct call TestPurgeCryptoErase exercises).
+func TestPersonPurgeEventErases(t *testing.T) {
+	ctx := context.Background()
+	svc, pool := newService(t)
+	person := seedPerson(t, pool)
+
+	typ, err := svc.CreateDocumentType(ctx, domain.DocumentType{Code: code(t, "id2"), Name: "ID2"})
+	if err != nil {
+		t.Fatalf("create type: %v", err)
+	}
+	if _, err := svc.AttachDocument(ctx, domain.Document{PersonID: person, TypeID: typ.ID, Number: "N-9", Issuer: "Authority"}); err != nil {
+		t.Fatalf("attach document: %v", err)
+	}
+
+	bus := events.NewBus()
+	svc.SubscribePersonPurge(bus)
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer tx.Rollback(ctx)
+	if err := bus.Publish(ctx, tx, personevents.PersonPurged{ID: person}); err != nil {
+		t.Fatalf("publish PersonPurged: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	var number *string
+	if err := pool.QueryRow(ctx,
+		`SELECT number FROM oikumenea.document_documents WHERE person_id = $1`, person).Scan(&number); err != nil {
+		t.Fatalf("read document: %v", err)
+	}
+	if number != nil {
+		t.Fatalf("PersonPurged subscriber did not NULL the document number, got %q", *number)
 	}
 }
 

@@ -55,7 +55,7 @@ WHERE id = (
   FOR UPDATE SKIP LOCKED
   LIMIT 1
 )
-RETURNING id, job_type, idempotency_key, source_id, payload, status, attempts, max_attempts, run_after, locked_by, locked_at, last_error, created_at, updated_at;
+RETURNING id, job_type, idempotency_key, source_id, payload, status, attempts, max_attempts, run_after, locked_by, locked_at, last_error, created_at, updated_at, resume_seq, resume_checksum;
 
 -- name: MarkJobSucceeded :exec
 UPDATE hermenea.worker_jobs
@@ -72,13 +72,20 @@ UPDATE hermenea.worker_jobs
 SET status = 'dead', last_error = $2, locked_by = NULL, locked_at = NULL
 WHERE id = $1;
 
+-- name: SetJobCursor :exec
+-- Persist the chunked-run resume cursor (R-05): the last chunk seq oikumenea acknowledged and the
+-- staged-source checksum it belongs to. Written after every acked chunk; read back on re-claim.
+UPDATE hermenea.worker_jobs
+SET resume_seq = $2, resume_checksum = $3
+WHERE id = $1;
+
 -- name: RequeueStaleRunning :exec
 UPDATE hermenea.worker_jobs
 SET status = 'queued', locked_by = NULL, locked_at = NULL
 WHERE status = 'running' AND locked_at < $1;
 
 -- name: ListJobs :many
-SELECT id, job_type, idempotency_key, source_id, payload, status, attempts, max_attempts, run_after, locked_by, locked_at, last_error, created_at, updated_at
+SELECT id, job_type, idempotency_key, source_id, payload, status, attempts, max_attempts, run_after, locked_by, locked_at, last_error, created_at, updated_at, resume_seq, resume_checksum
 FROM hermenea.worker_jobs
 ORDER BY created_at DESC
 LIMIT $1;

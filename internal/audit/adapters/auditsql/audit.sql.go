@@ -11,6 +11,19 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const ensureAuditPartitions = `-- name: EnsureAuditPartitions :exec
+SELECT oikumenea.ensure_audit_partition(CURRENT_DATE),
+       oikumenea.ensure_audit_partition((date_trunc('month', CURRENT_DATE) + interval '1 month')::date)
+`
+
+// Roll the monthly partition window forward (review-2026-07 R-07): idempotently create the current
+// and next month's partition so live inserts always land in a real partition, never the DEFAULT
+// catch-all. Called at every boot under the boot-seed advisory lock (replica-safe, no-op once made).
+func (q *Queries) EnsureAuditPartitions(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, ensureAuditPartitions)
+	return err
+}
+
 const getAuditEntry = `-- name: GetAuditEntry :one
 SELECT id, created_at, actor_type, actor_person_id, subsystem, action, target_type, target_id, unit_id, request_id, before, after, outcome FROM oikumenea.audit_log WHERE id = $1
 `

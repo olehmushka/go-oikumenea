@@ -189,3 +189,50 @@ func TestRecordRejectsInvalidEntry(t *testing.T) {
 		t.Fatal("expected validation error for person actor with subsystem")
 	}
 }
+
+// TestEnsureCurrentPartitions exercises the boot-time roll-forward Go path (review-2026-07 R-07):
+// it is idempotent, creates the current + next month partitions, and a freshly recorded entry
+// (created_at = now()) routes to a real monthly partition, not the DEFAULT catch-all.
+func TestEnsureCurrentPartitions(t *testing.T) {
+	ctx := context.Background()
+	svc, pool := newService(t)
+
+	// Idempotent: two calls, no error, no duplicate-partition failure.
+	for i := 0; i < 2; i++ {
+		if err := svc.EnsureCurrentPartitions(ctx); err != nil {
+			t.Fatalf("EnsureCurrentPartitions call %d: %v", i, err)
+		}
+	}
+
+	// The current and next month partitions exist under the partitioned parent.
+	for _, month := range []string{"CURRENT_DATE", "(date_trunc('month', CURRENT_DATE) + interval '1 month')::date"} {
+		var exists bool
+		if err := pool.QueryRow(ctx,
+			`SELECT EXISTS (
+			   SELECT 1 FROM pg_inherits i
+			   JOIN pg_class c ON c.oid = i.inhrelid
+			   JOIN pg_class p ON p.oid = i.inhparent
+			   WHERE p.relname = 'audit_log'
+			     AND c.relname = 'audit_log_y' || to_char(date_trunc('month', `+month+`), 'YYYY') ||
+			                     'm' || to_char(date_trunc('month', `+month+`), 'MM'))`).Scan(&exists); err != nil {
+			t.Fatalf("check partition for %s: %v", month, err)
+		}
+		if !exists {
+			t.Fatalf("expected a monthly partition to exist for %s", month)
+		}
+	}
+
+	// A recorded entry (created_at defaults to now()) lands in a monthly partition, not DEFAULT.
+	id := mintActionRID(t, ctx, pool)
+	if err := svc.Record(ctx, pool, personEntry(id, uuid.NewString())); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+	var partition string
+	if err := pool.QueryRow(ctx,
+		`SELECT tableoid::regclass::text FROM oikumenea.audit_log WHERE id = $1`, id).Scan(&partition); err != nil {
+		t.Fatalf("locate partition: %v", err)
+	}
+	if partition == "oikumenea.audit_log_default" {
+		t.Fatalf("current-time entry fell to the DEFAULT partition; roll-forward did not take")
+	}
+}

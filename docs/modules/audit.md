@@ -66,8 +66,35 @@ originating action; instead it is correlated to that action — which carries it
 auto-apply the same transaction). This is the general rule for any write performed by
 an event subscriber rather than by a direct authenticated request.
 
-No `updated_at`/`deleted_at` (immutable). Indexes: `(actor_person_id)`, `(actor_type)`,
-`(target_type, target_id)`, `(unit_id)`, `(created_at)`, `(request_id)`.
+No `updated_at`/`deleted_at` (immutable). The PK is `(id, created_at)` — the partition key
+(`created_at`) must be in it (see partitioning below), and `id`-leading keeps a by-RID `GetAuditEntry`
+a PK lookup. Indexes (trimmed to what the read API serves — review-2026-07 R-07):
+`(created_at DESC, id DESC)` keyset, `(target_type, target_id)`, `(actor_person_id)`, `(unit_id)`
+(the RLS read policy's key). The former `(actor_type)` (2 distinct values) and `(request_id)` singles
+were dropped; a request-id correlation rides the time-range + created_at index.
+
+### Partitioning & retention (D-AuditRetention)
+
+`audit_log` is **declaratively RANGE-partitioned by month on `created_at`** — the ledger is the
+largest, hottest, ever-growing table, so this bounds index/vacuum/backup cost to the live months and
+makes retention a metadata `DETACH`, not a mass `DELETE`. D-Audit's semantics are unchanged: the
+`reject_mutation()` trigger and RLS policies are defined on the partitioned parent and cascade to
+every current and future partition.
+
+- **Roll-forward.** `oikumenea.ensure_audit_partition(month_start date)` idempotently creates a
+  month's partition (UTC-aligned bounds). oikumenea calls it for the current + next month at boot
+  under the boot-seed advisory lock (replica-safe). A `DEFAULT` partition backstops any gap so an
+  insert never fails.
+- **Retention is an operator act — never automatic deletion.** `audit.retention-months` (install
+  config; default **0 = retain forever**, legal-hold-safe) records intent. To enforce it, the
+  operator runs:
+  ```sql
+  -- detach every fully-past monthly partition older than the cutoff
+  SELECT oikumenea.detach_audit_partitions_before('2025-01-01');
+  ```
+  then `pg_dump`s the detached tables to cold storage and `DROP`s them — a deliberate, auditable
+  operator action under their own legal-hold policy. An automated scheduled enforcer that consumes
+  `audit.retention-months` is an open seam (below).
 
 ## How modules record audit
 
@@ -124,9 +151,10 @@ of an already-authorized — or explicitly denied — action); reading the log i
 
 ## Open seams / future
 
-- **Retention via partitioning:** `audit_log` is a natural range-partition-by-`created_at`
-  target; a partition + cold-archive policy is an additive seam (carried concept from drafts,
-  not built yet).
+- **Retention via partitioning:** **delivered** (D-AuditRetention / review-2026-07 R-07) — monthly
+  range partitions + `ensure_audit_partition` roll-forward + `detach_audit_partitions_before`
+  operator helper (see *Data model* above). The remaining seam is an **automated scheduled enforcer**
+  that reads `audit.retention-months` and detaches/archives without an operator command.
 - **PII envelope** (encrypt attributed free-text with per-row keys, erase by key deletion) is a
   reserved enhancement if richer PII ever lands in audit payloads.
 - A streaming/export sink (SIEM) sits naturally behind `audit2log`.

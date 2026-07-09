@@ -24,6 +24,25 @@ type CanonicalEnvelope struct {
 	GeneratedAt *string `json:"generatedAt,omitempty"`
 	// The object-type-specific records to upsert; each is a JSON object.
 	Records []interface{} `json:"records"`
+	/*
+	   Hermenea's import-run identifier when the dataset arrives as a chunked sequence of
+	   envelopes (R-05). Lineage/audit correlation only — oikumenea keeps no per-run state;
+	   resumability is owned by the sender (last-acked seq on the hermenea job).
+	*/
+	RunId *string `json:"runId,omitempty"`
+	/*
+	   1-based chunk index within a chunked run. Chunks are sent sequentially and each is
+	   applied in its own transaction; replaying a chunk is safe (every record apply is a
+	   natural-key idempotent upsert). Absent (with runId/isLast absent) = a single-shot
+	   envelope, the pre-chunking semantics.
+	*/
+	Seq *int `json:"seq,omitempty"`
+	/*
+	   True on the final chunk of a chunked run; triggers the object-type's batch
+	   finalizers (e.g. the languoid closure + family_code rebuild). The final chunk may
+	   carry zero records (a pure finalize marker).
+	*/
+	IsLast *bool `json:"isLast,omitempty"`
 }
 
 func (o CanonicalEnvelope) MarshalJSON() ([]byte, error) {

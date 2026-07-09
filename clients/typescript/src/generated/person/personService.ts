@@ -6,6 +6,7 @@ import { ICallSign } from "./callSign";
 import { ICitizenship } from "./citizenship";
 import { ICreatePersonRequest } from "./createPersonRequest";
 import { ICreateProvisionalPersonRequest } from "./createProvisionalPersonRequest";
+import { ICryptoWallet } from "./cryptoWallet";
 import { IDeactivateRequest } from "./deactivateRequest";
 import { IDistinguishingMark } from "./distinguishingMark";
 import { IEmail } from "./email";
@@ -26,10 +27,12 @@ import { IPartyMembership } from "./partyMembership";
 import { IPerson } from "./person";
 import { IPersonLanguage } from "./personLanguage";
 import { IPersonPage } from "./personPage";
+import { IPersonality } from "./personality";
 import { IPhone } from "./phone";
 import { IPhoneType } from "./phoneType";
 import { IPhysicalDescription } from "./physicalDescription";
 import { IPlatform } from "./platform";
+import { IPoliticalLeaning } from "./politicalLeaning";
 import { IRegulatorySanction } from "./regulatorySanction";
 import { IRelationType } from "./relationType";
 import { IResidence } from "./residence";
@@ -43,6 +46,7 @@ import { IUpsertAddressRequest } from "./upsertAddressRequest";
 import { IUpsertAssociationRequest } from "./upsertAssociationRequest";
 import { IUpsertCallSignRequest } from "./upsertCallSignRequest";
 import { IUpsertCitizenshipRequest } from "./upsertCitizenshipRequest";
+import { IUpsertCryptoWalletRequest } from "./upsertCryptoWalletRequest";
 import { IUpsertDistinguishingMarkRequest } from "./upsertDistinguishingMarkRequest";
 import { IUpsertEmailRequest } from "./upsertEmailRequest";
 import { IUpsertEthnicityTypeRequest } from "./upsertEthnicityTypeRequest";
@@ -57,8 +61,10 @@ import { IUpsertNextOfKinRequest } from "./upsertNextOfKinRequest";
 import { IUpsertPartnershipRequest } from "./upsertPartnershipRequest";
 import { IUpsertPartyMembershipRequest } from "./upsertPartyMembershipRequest";
 import { IUpsertPersonLanguageRequest } from "./upsertPersonLanguageRequest";
+import { IUpsertPersonalityRequest } from "./upsertPersonalityRequest";
 import { IUpsertPhoneRequest } from "./upsertPhoneRequest";
 import { IUpsertPhysicalDescriptionRequest } from "./upsertPhysicalDescriptionRequest";
+import { IUpsertPoliticalLeaningRequest } from "./upsertPoliticalLeaningRequest";
 import { IUpsertRegulatorySanctionRequest } from "./upsertRegulatorySanctionRequest";
 import { IUpsertResidenceRequest } from "./upsertResidenceRequest";
 import { IUpsertSocialAccountRequest } from "./upsertSocialAccountRequest";
@@ -181,6 +187,28 @@ export interface IPersonService {
     upsertRegulatorySanction(personId: string, request: IUpsertRegulatorySanctionRequest): Promise<IRegulatorySanction>;
     /** Remove a regulatory sanction by id. */
     deleteRegulatorySanction(personId: string, sanctionId: string): Promise<void>;
+    /** List a person's crypto-wallet attributions (D-PersonOverlays, M35; pii:sensitive). */
+    listCryptoWallets(personId: string): Promise<Array<ICryptoWallet>>;
+    /** Add a crypto wallet, or replace one when id is supplied. */
+    upsertCryptoWallet(personId: string, request: IUpsertCryptoWalletRequest): Promise<ICryptoWallet>;
+    /** Remove a crypto wallet by id. */
+    deleteCryptoWallet(personId: string, walletId: string): Promise<void>;
+    /** List a person's declared/assessed personality profiles (D-PersonOverlays, M35; pii:sensitive). */
+    listPersonalities(personId: string): Promise<Array<IPersonality>>;
+    /** Add a personality profile, or replace one when id is supplied. */
+    upsertPersonality(personId: string, request: IUpsertPersonalityRequest): Promise<IPersonality>;
+    /** Remove a personality profile by id. */
+    deletePersonality(personId: string, personalityId: string): Promise<void>;
+    /**
+     * The person's inferred political leaning, or null if none (D-PersonOverlays, M35; pii:special,
+     * decrypted). Never a declared party affiliation.
+     *
+     */
+    getPoliticalLeaning(personId: string): Promise<IPoliticalLeaning | null>;
+    /** Set the person's inferred political leaning (replaces the single active row). Requires legalBasis. */
+    setPoliticalLeaning(personId: string, request: IUpsertPoliticalLeaningRequest): Promise<IPoliticalLeaning>;
+    /** Remove the person's inferred political leaning. */
+    deletePoliticalLeaning(personId: string): Promise<void>;
     /**
      * List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
      * the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
@@ -1059,6 +1087,174 @@ export class PersonService implements IPersonService {
             [
                 personId,
                 sanctionId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** List a person's crypto-wallet attributions (D-PersonOverlays, M35; pii:sensitive). */
+    public listCryptoWallets(personId: string): Promise<Array<ICryptoWallet>> {
+        return this.bridge.call<Array<ICryptoWallet>>(
+            "PersonService",
+            "listCryptoWallets",
+            "GET",
+            "/person/v1/persons/{personId}/crypto-wallets",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Add a crypto wallet, or replace one when id is supplied. */
+    public upsertCryptoWallet(personId: string, request: IUpsertCryptoWalletRequest): Promise<ICryptoWallet> {
+        return this.bridge.call<ICryptoWallet>(
+            "PersonService",
+            "upsertCryptoWallet",
+            "PUT",
+            "/person/v1/persons/{personId}/crypto-wallets",
+            request,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Remove a crypto wallet by id. */
+    public deleteCryptoWallet(personId: string, walletId: string): Promise<void> {
+        return this.bridge.call<void>(
+            "PersonService",
+            "deleteCryptoWallet",
+            "DELETE",
+            "/person/v1/persons/{personId}/crypto-wallets/{walletId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+                walletId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** List a person's declared/assessed personality profiles (D-PersonOverlays, M35; pii:sensitive). */
+    public listPersonalities(personId: string): Promise<Array<IPersonality>> {
+        return this.bridge.call<Array<IPersonality>>(
+            "PersonService",
+            "listPersonalities",
+            "GET",
+            "/person/v1/persons/{personId}/personalities",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Add a personality profile, or replace one when id is supplied. */
+    public upsertPersonality(personId: string, request: IUpsertPersonalityRequest): Promise<IPersonality> {
+        return this.bridge.call<IPersonality>(
+            "PersonService",
+            "upsertPersonality",
+            "PUT",
+            "/person/v1/persons/{personId}/personalities",
+            request,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Remove a personality profile by id. */
+    public deletePersonality(personId: string, personalityId: string): Promise<void> {
+        return this.bridge.call<void>(
+            "PersonService",
+            "deletePersonality",
+            "DELETE",
+            "/person/v1/persons/{personId}/personalities/{personalityId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+                personalityId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * The person's inferred political leaning, or null if none (D-PersonOverlays, M35; pii:special,
+     * decrypted). Never a declared party affiliation.
+     *
+     */
+    public getPoliticalLeaning(personId: string): Promise<IPoliticalLeaning | null> {
+        return this.bridge.call<IPoliticalLeaning | null>(
+            "PersonService",
+            "getPoliticalLeaning",
+            "GET",
+            "/person/v1/persons/{personId}/political-leaning",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Set the person's inferred political leaning (replaces the single active row). Requires legalBasis. */
+    public setPoliticalLeaning(personId: string, request: IUpsertPoliticalLeaningRequest): Promise<IPoliticalLeaning> {
+        return this.bridge.call<IPoliticalLeaning>(
+            "PersonService",
+            "setPoliticalLeaning",
+            "PUT",
+            "/person/v1/persons/{personId}/political-leaning",
+            request,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Remove the person's inferred political leaning. */
+    public deletePoliticalLeaning(personId: string): Promise<void> {
+        return this.bridge.call<void>(
+            "PersonService",
+            "deletePoliticalLeaning",
+            "DELETE",
+            "/person/v1/persons/{personId}/political-leaning",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
             ],
             __undefined,
             __undefined

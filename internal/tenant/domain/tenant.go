@@ -404,6 +404,9 @@ type Repository interface {
 
 	// closure
 	ClosureHasPath(ctx context.Context, graphID, ancestorID, descendantID string) (bool, error)
+	LockGraphForClosure(ctx context.Context, graphID string) error
+	ExtendClosureForEdge(ctx context.Context, graphID, parentID, childID string) error
+	ShrinkClosureForEdge(ctx context.Context, graphID, parentID, childID string) error
 	RecomputeClosure(ctx context.Context, graphID string) error
 	VerifyClosure(ctx context.Context, graphID string) (missing, extra int, sample json.RawMessage, err error)
 	UpsertClosureStatus(ctx context.Context, graphID string, missing, extra int, inDrift bool, sample json.RawMessage) error

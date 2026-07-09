@@ -149,6 +149,7 @@ func TestEducationReferenceVertical(t *testing.T) {
 	if _, err := personadapters.NewRepository(pool).Purge(ctx, person); err != nil {
 		t.Fatalf("purge person: %v", err)
 	}
+	firePersonPurge(t, ctx, pool, svc, person) // education erases its own rows via PersonPurged (D-PersonModuleSplit)
 	if rows, _ := svc.ListPublicationAuthorships(ctx, person); len(rows) != 0 {
 		t.Fatalf("expected authorships erased, got %d", len(rows))
 	}

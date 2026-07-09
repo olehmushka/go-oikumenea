@@ -130,7 +130,7 @@ func TestNameAliases(t *testing.T) {
 // pipeline is covered in the dataimport suite).
 func TestEthnicityTypeHierarchy(t *testing.T) {
 	ctx := context.Background()
-	svc, pool := newService(t, 720)
+	_, _, sens, pool := newServices(t, 720)
 
 	// Seed a synthetic languoid + resolve a seeded country to link the child group to.
 	var langID, uaID string
@@ -158,7 +158,7 @@ func TestEthnicityTypeHierarchy(t *testing.T) {
 	})
 
 	// Roots filter: the root appears with HasChildren; the child does not.
-	roots, err := svc.ListEthnicityTypes(ctx, domain.EthnicityTypeFilter{TopLevel: true})
+	roots, err := sens.ListEthnicityTypes(ctx, domain.EthnicityTypeFilter{TopLevel: true})
 	if err != nil {
 		t.Fatalf("list roots: %v", err)
 	}
@@ -179,13 +179,13 @@ func TestEthnicityTypeHierarchy(t *testing.T) {
 	}
 
 	// Children filter: only the child.
-	kids, err := svc.ListEthnicityTypes(ctx, domain.EthnicityTypeFilter{Parent: rootID})
+	kids, err := sens.ListEthnicityTypes(ctx, domain.EthnicityTypeFilter{Parent: rootID})
 	if err != nil || len(kids) != 1 || kids[0].ID != childID {
 		t.Fatalf("children filter mismatch: %+v err=%v", kids, err)
 	}
 
 	// getEthnicityType: parent + the group-level language + country RIDs.
-	et, langs, countries, err := svc.GetEthnicityType(ctx, childID)
+	et, langs, countries, err := sens.GetEthnicityType(ctx, childID)
 	if err != nil {
 		t.Fatalf("get ethnicity type: %v", err)
 	}
@@ -202,13 +202,13 @@ func TestEthnicityTypeHierarchy(t *testing.T) {
 
 func TestPhysicalDescriptionAndMarks(t *testing.T) {
 	ctx := context.Background()
-	svc, pool := newService(t, 720)
+	svc, _, sens, pool := newServices(t, 720)
 	p := newPerson(t, svc, "Olena Koval")
 
 	h, w := 172, 64
 	eyeBrown := colorID(t, pool, "eye", "brown")
 	hairBlack := colorID(t, pool, "hair", "black")
-	desc, err := svc.UpsertPhysicalDescription(ctx, domain.PhysicalDescription{
+	desc, err := sens.UpsertPhysicalDescription(ctx, domain.PhysicalDescription{
 		PersonID: p.ID, HeightCm: &h, WeightKg: &w, EyeColorID: eyeBrown, HairColorID: hairBlack,
 		Build: "athletic", BloodType: "O+", EffectiveFrom: "2026-01-01",
 	})
@@ -225,31 +225,31 @@ func TestPhysicalDescriptionAndMarks(t *testing.T) {
 	// A color from the wrong palette is rejected by the hard-FK domain check (D-Color): a vehicle
 	// color is not a valid eye color.
 	vehBlue := colorID(t, pool, "vehicle", "blue")
-	if _, err := svc.UpsertPhysicalDescription(ctx, domain.PhysicalDescription{PersonID: p.ID, EyeColorID: vehBlue}); !errors.Is(err, domain.ErrColorMismatch) {
+	if _, err := sens.UpsertPhysicalDescription(ctx, domain.PhysicalDescription{PersonID: p.ID, EyeColorID: vehBlue}); !errors.Is(err, domain.ErrColorMismatch) {
 		t.Fatalf("expected ErrColorMismatch for a vehicle-palette eye color, got %v", err)
 	}
 
 	// An out-of-range height is rejected by the domain validator.
 	bad := 999
-	if _, err := svc.UpsertPhysicalDescription(ctx, domain.PhysicalDescription{PersonID: p.ID, HeightCm: &bad}); err == nil {
+	if _, err := sens.UpsertPhysicalDescription(ctx, domain.PhysicalDescription{PersonID: p.ID, HeightCm: &bad}); err == nil {
 		t.Fatal("expected invalid-height error")
 	}
 
-	mark, err := svc.UpsertDistinguishingMark(ctx, domain.DistinguishingMark{
+	mark, err := sens.UpsertDistinguishingMark(ctx, domain.DistinguishingMark{
 		PersonID: p.ID, Kind: "tattoo", BodyLocation: "left forearm", Description: "anchor",
 	})
 	if err != nil {
 		t.Fatalf("upsert mark: %v", err)
 	}
-	if _, err := svc.UpsertDistinguishingMark(ctx, domain.DistinguishingMark{PersonID: p.ID, Kind: "bogus"}); err == nil {
+	if _, err := sens.UpsertDistinguishingMark(ctx, domain.DistinguishingMark{PersonID: p.ID, Kind: "bogus"}); err == nil {
 		t.Fatal("expected invalid-kind error")
 	}
 
-	marks, err := svc.ListDistinguishingMarks(ctx, p.ID)
+	marks, err := sens.ListDistinguishingMarks(ctx, p.ID)
 	if err != nil || len(marks) != 1 || marks[0].ID != mark.ID {
 		t.Fatalf("list marks mismatch: %+v err=%v", marks, err)
 	}
-	descs, err := svc.ListPhysicalDescriptions(ctx, p.ID)
+	descs, err := sens.ListPhysicalDescriptions(ctx, p.ID)
 	if err != nil || len(descs) != 1 {
 		t.Fatalf("list descriptions mismatch: %+v err=%v", descs, err)
 	}
@@ -257,21 +257,21 @@ func TestPhysicalDescriptionAndMarks(t *testing.T) {
 
 func TestDeclaredEthnicityEncrypted(t *testing.T) {
 	ctx := context.Background()
-	svc, pool := newService(t, 720)
+	svc, _, sens, pool := newServices(t, 720)
 	p := newPerson(t, svc, "Bohdan Tkachenko")
 
 	code := seedEthnicityType(t, pool, "Ukrainian")
 
 	// An unknown code is rejected (catalog-typed).
-	if _, err := svc.AddEthnicity(ctx, p.ID, "no-such-code", "explicit_consent", "", ""); err == nil {
+	if _, err := sens.AddEthnicity(ctx, p.ID, "no-such-code", "explicit_consent", "", ""); err == nil {
 		t.Fatal("expected unknown-ethnicity-type error")
 	}
 	// An unknown legal basis is rejected by the FK.
-	if _, err := svc.AddEthnicity(ctx, p.ID, code, "no-such-basis", "", ""); err == nil {
+	if _, err := sens.AddEthnicity(ctx, p.ID, code, "no-such-basis", "", ""); err == nil {
 		t.Fatal("expected unknown-legal-basis error")
 	}
 
-	eth, err := svc.AddEthnicity(ctx, p.ID, code, "explicit_consent", "self_declared", "confirmed")
+	eth, err := sens.AddEthnicity(ctx, p.ID, code, "explicit_consent", "self_declared", "confirmed")
 	if err != nil {
 		t.Fatalf("add ethnicity: %v", err)
 	}
@@ -294,20 +294,20 @@ func TestDeclaredEthnicityEncrypted(t *testing.T) {
 	}
 
 	// Decrypt round-trips through the list path.
-	list, err := svc.ListEthnicities(ctx, p.ID)
+	list, err := sens.ListEthnicities(ctx, p.ID)
 	if err != nil || len(list) != 1 || list[0].Code != code {
 		t.Fatalf("list ethnicities mismatch: %+v err=%v", list, err)
 	}
 
 	// Purge crypto-erases the ethnicity (row survives, envelope dropped) and removes description/mark.
-	if _, err := svc.UpsertPhysicalDescription(ctx, domain.PhysicalDescription{PersonID: p.ID, BloodType: "A+"}); err != nil {
+	if _, err := sens.UpsertPhysicalDescription(ctx, domain.PhysicalDescription{PersonID: p.ID, BloodType: "A+"}); err != nil {
 		t.Fatalf("seed description: %v", err)
 	}
-	if _, err := svc.UpsertDistinguishingMark(ctx, domain.DistinguishingMark{PersonID: p.ID, Kind: "scar"}); err != nil {
+	if _, err := sens.UpsertDistinguishingMark(ctx, domain.DistinguishingMark{PersonID: p.ID, Kind: "scar"}); err != nil {
 		t.Fatalf("seed mark: %v", err)
 	}
 	// A zero-grace service deactivates+purges immediately; it shares the same pool/DB.
-	svcNow, _ := newService(t, 0)
+	svcNow, _, _, _ := newServices(t, 0) // zero-grace purge; auto-wires the PersonPurged bus (R-09)
 	if _, err := svcNow.DeactivatePerson(ctx, p.ID, "x"); err != nil {
 		t.Fatalf("deactivate: %v", err)
 	}

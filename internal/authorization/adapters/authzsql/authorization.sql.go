@@ -67,6 +67,17 @@ func (q *Queries) ActiveGrantsForSubject(ctx context.Context, subjectPersonID st
 	return items, nil
 }
 
+const bumpAuthzEpoch = `-- name: BumpAuthzEpoch :exec
+UPDATE oikumenea.authz_epoch SET epoch = epoch + 1 WHERE singleton
+`
+
+// Called INSIDE every authority-mutating transaction so a grant/revoke/role edit invalidates every
+// process's cache exactly (the bump commits atomically with the mutation).
+func (q *Queries) BumpAuthzEpoch(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, bumpAuthzEpoch)
+	return err
+}
+
 const deleteRolePermissions = `-- name: DeleteRolePermissions :exec
 DELETE FROM oikumenea.authz_role_permissions WHERE role_id = $1
 `
@@ -533,6 +544,80 @@ func (q *Queries) ListRoles(ctx context.Context, arg ListRolesParams) ([]ListRol
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const readAuthzEpoch = `-- name: ReadAuthzEpoch :one
+
+SELECT epoch FROM oikumenea.authz_epoch WHERE singleton
+`
+
+// ============================ revocation epoch (D-AuthzGrantCache) ============================
+// One single-row read: the grant cache validates a stale entry against this counter instead of
+// re-running the grants join (review-2026-07 R-01.2).
+func (q *Queries) ReadAuthzEpoch(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, readAuthzEpoch)
+	var epoch int64
+	err := row.Scan(&epoch)
+	return epoch, err
+}
+
+const readableUnitsForSubjectAmong = `-- name: ReadableUnitsForSubjectAmong :many
+
+SELECT cand.unit_id::uuid AS unit_id
+FROM unnest($1::uuid[]) AS cand(unit_id)
+WHERE EXISTS (
+  SELECT 1
+  FROM oikumenea.authz_role_assignments a
+  JOIN oikumenea.authz_roles r ON r.id = a.role_id AND r.deleted_at IS NULL
+  WHERE a.subject_person_id = $2
+    AND a.revoked_at IS NULL
+    AND (a.expires_at IS NULL OR a.expires_at > now())
+    AND EXISTS (SELECT 1 FROM oikumenea.authz_role_permissions rp
+                WHERE rp.role_id = a.role_id AND rp.permission_code LIKE '%.read')
+    AND ((a.scope = 'unit' AND a.target_unit_id = cand.unit_id)
+      OR (a.scope = 'subtree'
+          AND EXISTS (SELECT 1 FROM oikumenea.tenant_graphs g
+                      WHERE g.id = a.graph_id AND g.is_authority_bearing AND g.deleted_at IS NULL)
+          AND (a.target_unit_id = cand.unit_id
+            OR EXISTS (SELECT 1
+                       FROM oikumenea.tenant_unit_closure c
+                       JOIN oikumenea.tenant_units u ON u.id = c.descendant_id AND u.deleted_at IS NULL
+                       WHERE c.graph_id = a.graph_id
+                         AND c.ancestor_id = a.target_unit_id
+                         AND c.descendant_id = cand.unit_id))))
+)
+`
+
+type ReadableUnitsForSubjectAmongParams struct {
+	UnitIds         []string
+	SubjectPersonID string
+}
+
+// ============================ reach probe (shadow gate, review-2026-07 R-02.1) ============================
+// Batch reach probe for the shadow-visibility gate (FilterVisibleUnits): which of the candidate
+// units does the subject's '*.read' reach? Same PARITY CONTRACT as membership's
+// VisiblePersonIDsForSubject (mirrors domain ReachSet — active unexpired assignment, live role, any
+// '*.read' permission; unit scope → target only; subtree scope → target + non-deleted descendants
+// over an authority-bearing, non-deleted graph). Cross-module closure/graph join precedent:
+// ActiveGrantsForSubject above.
+func (q *Queries) ReadableUnitsForSubjectAmong(ctx context.Context, arg ReadableUnitsForSubjectAmongParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, readableUnitsForSubjectAmong, arg.UnitIds, arg.SubjectPersonID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var unit_id string
+		if err := rows.Scan(&unit_id); err != nil {
+			return nil, err
+		}
+		items = append(items, unit_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

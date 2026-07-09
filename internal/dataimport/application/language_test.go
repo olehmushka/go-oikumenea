@@ -10,35 +10,41 @@ import (
 )
 
 // fakeLanguoidStore is an in-memory domain.LanguoidStore for testing the language-scheme handler's
-// create/update/skip + country-replace + closure-rebuild control flow without a database.
+// create/update/skip + country-replace + closure-rebuild control flow without a database. BulkUpsert
+// mimics the merge's version-keyed semantics (insert absent, update on a different edition, skip the
+// rest; CreateOnly never touches an existing row).
 type fakeLanguoidStore struct {
 	versions   map[string]string
-	inserts    int
-	updates    int
 	countries  map[string][]string
 	rebuilds   int
 	reconciles int
 }
 
-func (f *fakeLanguoidStore) GetVersion(_ context.Context, code string) (string, bool, error) {
-	v, ok := f.versions[code]
-	return v, ok, nil
+func (f *fakeLanguoidStore) BulkUpsert(_ context.Context, ls []domain.Languoid, prov domain.Provenance) (created, updated []string, _ error) {
+	for _, l := range ls {
+		v, ok := f.versions[l.Code]
+		switch {
+		case !ok:
+			f.versions[l.Code] = prov.SourceVersion
+			created = append(created, l.Code)
+		case prov.CreateOnly:
+		case v != prov.SourceVersion:
+			f.versions[l.Code] = prov.SourceVersion
+			updated = append(updated, l.Code)
+		}
+	}
+	return created, updated, nil
 }
-func (f *fakeLanguoidStore) Insert(_ context.Context, l domain.Languoid, prov domain.Provenance) error {
-	f.versions[l.Code] = prov.SourceVersion
-	f.inserts++
-	return nil
-}
-func (f *fakeLanguoidStore) UpdateImport(_ context.Context, l domain.Languoid, prov domain.Provenance) error {
-	f.versions[l.Code] = prov.SourceVersion
-	f.updates++
-	return nil
-}
-func (f *fakeLanguoidStore) ReplaceCountries(_ context.Context, code string, cc []string) error {
+func (f *fakeLanguoidStore) BulkReplaceCountries(_ context.Context, codes []string, pairCodes, pairCountries []string) error {
 	if f.countries == nil {
 		f.countries = map[string][]string{}
 	}
-	f.countries[code] = cc
+	for _, c := range codes {
+		f.countries[c] = nil
+	}
+	for i, c := range pairCodes {
+		f.countries[c] = append(f.countries[c], pairCountries[i])
+	}
 	return nil
 }
 func (f *fakeLanguoidStore) RebuildClosure(_ context.Context) error { f.rebuilds++; return nil }
@@ -62,7 +68,7 @@ func TestLanguageSchemeHandler(t *testing.T) {
 		}
 	}
 
-	sum, err := h(context.Background(), pgx.Tx(nil), batch(), domain.Provenance{Source: "glottolog", SourceVersion: "5.3"})
+	sum, err := h(context.Background(), pgx.Tx(nil), batch(), domain.Provenance{Source: "glottolog", SourceVersion: "5.3"}, oneChunk)
 	if err != nil {
 		t.Fatalf("handler: %v", err)
 	}
@@ -82,7 +88,7 @@ func TestLanguageSchemeHandler(t *testing.T) {
 	// Same edition: pure no-op (idempotent); no closure rebuild / locale reconcile (tree unchanged).
 	store.rebuilds = 0
 	store.reconciles = 0
-	sum, err = h(context.Background(), pgx.Tx(nil), batch(), domain.Provenance{Source: "glottolog", SourceVersion: "5.3"})
+	sum, err = h(context.Background(), pgx.Tx(nil), batch(), domain.Provenance{Source: "glottolog", SourceVersion: "5.3"}, oneChunk)
 	if err != nil {
 		t.Fatalf("handler re-run: %v", err)
 	}
@@ -94,7 +100,7 @@ func TestLanguageSchemeHandler(t *testing.T) {
 	}
 
 	// Newer edition: all updated, closure rebuilt once.
-	sum, err = h(context.Background(), pgx.Tx(nil), batch(), domain.Provenance{Source: "glottolog", SourceVersion: "5.4"})
+	sum, err = h(context.Background(), pgx.Tx(nil), batch(), domain.Provenance{Source: "glottolog", SourceVersion: "5.4"}, oneChunk)
 	if err != nil {
 		t.Fatalf("handler new edition: %v", err)
 	}
@@ -118,7 +124,7 @@ func TestLanguageSchemeHandler_InvalidRecord(t *testing.T) {
 		{"code": "stan1293", "level": "language", "name": ""},
 		{"code": "stan1293", "level": "kingdom", "name": "Bad level"},
 	} {
-		if _, err := h(context.Background(), pgx.Tx(nil), []domain.Record{rec}, domain.Provenance{}); err == nil {
+		if _, err := h(context.Background(), pgx.Tx(nil), []domain.Record{rec}, domain.Provenance{}, oneChunk); err == nil {
 			t.Fatalf("expected ErrInvalidRecord for %v", rec)
 		}
 	}
@@ -172,7 +178,7 @@ func TestLanguageScriptsHandler(t *testing.T) {
 		{"iso639_3": "rus", "writingSystem": "Cyrl", "isPrimary": true},  // languoid unresolved -> skip
 		{"iso639_3": "deu", "writingSystem": "Runr", "isPrimary": false}, // script unseeded -> skip
 	}
-	sum, err := h(context.Background(), pgx.Tx(nil), recs, prov)
+	sum, err := h(context.Background(), pgx.Tx(nil), recs, prov, oneChunk)
 	if err != nil {
 		t.Fatalf("handler: %v", err)
 	}
@@ -181,11 +187,11 @@ func TestLanguageScriptsHandler(t *testing.T) {
 	}
 
 	// Re-run the resolvable link unchanged -> skip; then flip is_primary -> update.
-	sum, _ = h(context.Background(), pgx.Tx(nil), []domain.Record{{"iso639_3": "eng", "writingSystem": "Latn", "isPrimary": true}}, prov)
+	sum, _ = h(context.Background(), pgx.Tx(nil), []domain.Record{{"iso639_3": "eng", "writingSystem": "Latn", "isPrimary": true}}, prov, oneChunk)
 	if sum.Skipped != 1 || sum.Updated != 0 {
 		t.Fatalf("idempotent re-run = %+v, want skipped=1", sum)
 	}
-	sum, _ = h(context.Background(), pgx.Tx(nil), []domain.Record{{"iso639_3": "eng", "writingSystem": "Latn", "isPrimary": false}}, prov)
+	sum, _ = h(context.Background(), pgx.Tx(nil), []domain.Record{{"iso639_3": "eng", "writingSystem": "Latn", "isPrimary": false}}, prov, oneChunk)
 	if sum.Updated != 1 {
 		t.Fatalf("is_primary change = %+v, want updated=1", sum)
 	}

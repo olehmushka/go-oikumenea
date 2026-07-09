@@ -3,63 +3,122 @@
 -- code-keyed, idempotently, and non-destructively. Languoids are keyed on source_version (a re-import
 -- with the same Glottolog edition skips); parent + country natural keys resolve to RIDs in SQL.
 
--- name: GetLanguoidVersion :one
-SELECT source_version FROM oikumenea.language_languoids WHERE code = $1;
-
--- name: InsertLanguoidImport :exec
--- Resolve the parent glottocode to its RID; a non-empty parent that does not resolve falls back to a
--- sentinel uuid so the parent_id FK fails loudly (RESTRICT) rather than silently NULLing a real but
--- not-yet-loaded parent (records must arrive parent-first).
+-- name: BulkUpsertLanguoids :many
+-- Set-based chunk merge (R-05): one INSERT … SELECT over the chunk's parallel arrays replaces the
+-- per-record loop. Insert absent glottocodes, update rows whose stored source_version differs from
+-- the incoming edition, and leave the rest untouched — never deletes. parent_id is deliberately NOT
+-- written here (Glottolog families nest arbitrarily deep, so a parent may sit in the same chunk):
+-- BulkSetLanguoidParents resolves it in a second pass over the rows this merge reports as
+-- created/updated. Latitude/longitude cross as text ('' = NULL) so one array can carry absent values.
+WITH r AS (
+  SELECT unnest(@codes::text[])      AS code,
+         unnest(@levels::text[])     AS level,
+         unnest(@names::text[])      AS name,
+         unnest(@iso639_3s::text[])  AS iso639_3,
+         unnest(@macroareas::text[]) AS macroarea,
+         unnest(@latitudes::text[])  AS latitude,
+         unnest(@longitudes::text[]) AS longitude,
+         unnest(@statuses::text[])   AS status
+)
 INSERT INTO oikumenea.language_languoids (
-  code, level, name, parent_id, iso639_3, macroarea, latitude, longitude, status,
+  code, level, name, iso639_3, macroarea, latitude, longitude, status,
   glottolog_version, source, source_version, imported_at, origin)
-SELECT sqlc.arg(code)::text,
-       sqlc.arg(level)::text,
-       sqlc.arg(name)::text,
-       CASE WHEN NULLIF(sqlc.arg(parent_code)::text, '') IS NULL THEN NULL
-            ELSE COALESCE((SELECT p.id FROM oikumenea.language_languoids p WHERE p.code = sqlc.arg(parent_code)::text),
-                          '00000000-0000-0000-0000-000000000000'::uuid) END,
-       NULLIF(sqlc.arg(iso639_3)::text, ''),
-       NULLIF(sqlc.arg(macroarea)::text, ''),
-       sqlc.narg(latitude)::double precision,
-       sqlc.narg(longitude)::double precision,
-       sqlc.arg(status)::text,
-       NULLIF(sqlc.arg(source_version)::text, ''),
-       sqlc.arg(source)::text,
-       sqlc.arg(source_version)::text,
-       sqlc.arg(imported_at)::timestamptz,
-       'seeded'::text;  -- import-path rows are pinax seeded-owned (D-Pinax, M45)
+SELECT r.code,
+       r.level,
+       r.name,
+       NULLIF(r.iso639_3, ''),
+       NULLIF(r.macroarea, ''),
+       NULLIF(r.latitude, '')::double precision,
+       NULLIF(r.longitude, '')::double precision,
+       r.status,
+       NULLIF(@source_version::text, ''),
+       @source::text,
+       @source_version::text,
+       @imported_at::timestamptz,
+       'seeded'::text  -- import-path rows are pinax seeded-owned (D-Pinax, M45)
+FROM r
+ON CONFLICT (code) DO UPDATE SET
+  level             = EXCLUDED.level,
+  name              = EXCLUDED.name,
+  iso639_3          = EXCLUDED.iso639_3,
+  macroarea         = EXCLUDED.macroarea,
+  latitude          = EXCLUDED.latitude,
+  longitude         = EXCLUDED.longitude,
+  status            = EXCLUDED.status,
+  glottolog_version = EXCLUDED.glottolog_version,
+  source            = EXCLUDED.source,
+  source_version    = EXCLUDED.source_version,
+  imported_at       = EXCLUDED.imported_at
+WHERE oikumenea.language_languoids.source_version IS DISTINCT FROM EXCLUDED.source_version
+RETURNING code, (xmax = 0) AS inserted;
 
--- name: UpdateLanguoidImport :exec
-UPDATE oikumenea.language_languoids SET
-  level             = sqlc.arg(level)::text,
-  name              = sqlc.arg(name)::text,
-  parent_id         = CASE WHEN NULLIF(sqlc.arg(parent_code)::text, '') IS NULL THEN NULL
-                           ELSE COALESCE((SELECT p.id FROM oikumenea.language_languoids p WHERE p.code = sqlc.arg(parent_code)::text),
-                                         '00000000-0000-0000-0000-000000000000'::uuid) END,
-  iso639_3          = NULLIF(sqlc.arg(iso639_3)::text, ''),
-  macroarea         = NULLIF(sqlc.arg(macroarea)::text, ''),
-  latitude          = sqlc.narg(latitude)::double precision,
-  longitude         = sqlc.narg(longitude)::double precision,
-  status            = sqlc.arg(status)::text,
-  glottolog_version = NULLIF(sqlc.arg(source_version)::text, ''),
-  source            = sqlc.arg(source)::text,
-  source_version    = sqlc.arg(source_version)::text,
-  imported_at       = sqlc.arg(imported_at)::timestamptz
-WHERE code = sqlc.arg(code)::text;
+-- name: BulkInsertLanguoidsAbsent :many
+-- The CreateOnly (pinax boot-autoseed, D-Pinax) variant of BulkUpsertLanguoids: insert absent rows,
+-- NEVER touch an existing one (no conflict update at all). Returns the created codes.
+WITH r AS (
+  SELECT unnest(@codes::text[])      AS code,
+         unnest(@levels::text[])     AS level,
+         unnest(@names::text[])      AS name,
+         unnest(@iso639_3s::text[])  AS iso639_3,
+         unnest(@macroareas::text[]) AS macroarea,
+         unnest(@latitudes::text[])  AS latitude,
+         unnest(@longitudes::text[]) AS longitude,
+         unnest(@statuses::text[])   AS status
+)
+INSERT INTO oikumenea.language_languoids (
+  code, level, name, iso639_3, macroarea, latitude, longitude, status,
+  glottolog_version, source, source_version, imported_at, origin)
+SELECT r.code,
+       r.level,
+       r.name,
+       NULLIF(r.iso639_3, ''),
+       NULLIF(r.macroarea, ''),
+       NULLIF(r.latitude, '')::double precision,
+       NULLIF(r.longitude, '')::double precision,
+       r.status,
+       NULLIF(@source_version::text, ''),
+       @source::text,
+       @source_version::text,
+       @imported_at::timestamptz,
+       'seeded'::text
+FROM r
+ON CONFLICT (code) DO NOTHING
+RETURNING code;
 
--- name: DeleteLanguoidCountries :exec
+-- name: BulkSetLanguoidParents :exec
+-- Second pass of the chunk merge: resolve each touched languoid's parent glottocode to its RID. Runs
+-- after the bulk upsert in the same transaction, so a parent inserted by this very chunk resolves. A
+-- non-empty parent that does not resolve falls back to the sentinel uuid so the parent_id FK fails
+-- loudly (RESTRICT) rather than silently NULLing a real, but not-yet-loaded, parent reference.
+UPDATE oikumenea.language_languoids l SET
+  parent_id = CASE WHEN r.parent_code = '' THEN NULL
+                   ELSE COALESCE((SELECT p.id FROM oikumenea.language_languoids p WHERE p.code = r.parent_code),
+                                 '00000000-0000-0000-0000-000000000000'::uuid) END
+FROM (SELECT unnest(@codes::text[])        AS code,
+             unnest(@parent_codes::text[]) AS parent_code) r
+WHERE l.code = r.code;
+
+-- name: BulkDeleteLanguoidCountries :exec
+-- Clear the country ties of every touched languoid ahead of the bulk re-insert (the set-based
+-- ReplaceCountries half; both run in the chunk transaction).
 DELETE FROM oikumenea.language_languoid_countries
-WHERE languoid_id = (SELECT id FROM oikumenea.language_languoids WHERE code = $1);
+WHERE languoid_id IN (SELECT id FROM oikumenea.language_languoids WHERE code = ANY(@codes::text[]));
 
--- name: InsertLanguoidCountry :exec
--- Insert one languoid↔country tie, resolving both natural keys to RIDs. A country code that does not
--- resolve yields no row (the SELECT is empty) — the tie is silently dropped rather than failing.
+-- name: BulkInsertLanguoidCountries :exec
+-- Re-insert the touched languoids' country ties from flattened (code, country) pairs, resolving both
+-- natural keys to RIDs. A country code that does not resolve yields no row (the join drops it) — the
+-- tie is silently dropped rather than failing, matching InsertLanguoidCountry.
 INSERT INTO oikumenea.language_languoid_countries (languoid_id, country_id)
 SELECT l.id, c.id
-FROM oikumenea.language_languoids l, oikumenea.geo_countries c
-WHERE l.code = sqlc.arg(code)::text AND c.code = sqlc.arg(country_code)::text
+FROM (SELECT unnest(@codes::text[])         AS code,
+             unnest(@country_codes::text[]) AS country_code) r
+JOIN oikumenea.language_languoids l ON l.code = r.code
+JOIN oikumenea.geo_countries c ON c.code = r.country_code
 ON CONFLICT (languoid_id, country_id) DO NOTHING;
+
+
+
+
 
 -- name: ClearLanguoidClosure :exec
 -- Truncate the closure ahead of a rebuild. Kept SEPARATE from the INSERT (not a single DELETE+INSERT

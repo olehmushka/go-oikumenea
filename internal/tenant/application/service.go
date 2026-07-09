@@ -340,8 +340,10 @@ func (s *Service) ListUnitCodeEvents(ctx context.Context, unitID string) ([]doma
 // ---------------------------------------------------------------- edges
 
 // AddEdge attaches childID as a child of parentID within a graph (default command), guarding
-// against cycles, then recomputes the graph's closure and records the action — all in one
-// transaction. graphCode "" resolves to the command graph.
+// against cycles, then incrementally extends the graph's closure (M48) and records the action —
+// all in one transaction. graphCode "" resolves to the command graph. The per-graph closure lock
+// is taken before the cycle guard: two concurrent guard-then-insert attaches could otherwise each
+// pass the guard and jointly close a cycle.
 func (s *Service) AddEdge(ctx context.Context, childID, parentID, graphCode string) (domain.Edge, error) {
 	graphCode = defaultGraph(graphCode)
 	if parentID == childID {
@@ -363,6 +365,9 @@ func (s *Service) AddEdge(ctx context.Context, childID, parentID, graphCode stri
 		if err != nil {
 			return err
 		}
+		if err := repo.LockGraphForClosure(ctx, g.ID); err != nil {
+			return err
+		}
 		// A new parent->child edge closes a cycle iff the child already reaches the parent in g.
 		cyclic, err := repo.ClosureHasPath(ctx, g.ID, childID, parentID)
 		if err != nil {
@@ -375,7 +380,7 @@ func (s *Service) AddEdge(ctx context.Context, childID, parentID, graphCode stri
 		if err != nil {
 			return err
 		}
-		if err := repo.RecomputeClosure(ctx, g.ID); err != nil {
+		if err := repo.ExtendClosureForEdge(ctx, g.ID, parentID, childID); err != nil {
 			return err
 		}
 		edge.Graph = g.Code
@@ -387,8 +392,10 @@ func (s *Service) AddEdge(ctx context.Context, childID, parentID, graphCode stri
 	return out, err
 }
 
-// RemoveEdge detaches childID from parentID within a graph (default command), recomputes the
-// graph's closure, and records the action. Detaching an absent edge is a no-op (idempotent).
+// RemoveEdge detaches childID from parentID within a graph (default command), incrementally
+// shrinks the graph's closure (M48), and records the action. Detaching an absent edge is a no-op
+// (idempotent) — and skipping the shrink then is load-bearing: without the edge, acyclicity does
+// not rule out a child->parent path, which would break the slice algebra's assumptions.
 func (s *Service) RemoveEdge(ctx context.Context, childID, parentID, graphCode string) error {
 	graphCode = defaultGraph(graphCode)
 	return s.inTx(ctx, func(tx pgx.Tx) error {
@@ -401,11 +408,17 @@ func (s *Service) RemoveEdge(ctx context.Context, childID, parentID, graphCode s
 		if err != nil {
 			return err
 		}
-		if _, err := repo.DeleteEdge(ctx, g.ID, parentID, childID); err != nil {
+		if err := repo.LockGraphForClosure(ctx, g.ID); err != nil {
 			return err
 		}
-		if err := repo.RecomputeClosure(ctx, g.ID); err != nil {
+		deleted, err := repo.DeleteEdge(ctx, g.ID, parentID, childID)
+		if err != nil {
 			return err
+		}
+		if deleted > 0 {
+			if err := repo.ShrinkClosureForEdge(ctx, g.ID, parentID, childID); err != nil {
+				return err
+			}
 		}
 		return s.record(ctx, tx, "unit.edge.remove", "unit", childID, childID, map[string]string{
 			"graph": g.Code, "parentId": parentID, "childId": childID,
@@ -459,6 +472,8 @@ func (s *Service) Descendants(ctx context.Context, unitID, graphCode string, pag
 
 // VerifyClosure diffs the stored closure vs. the edges per graph and upserts the per-graph drift
 // status the closure-drift health reporter reads (default: all graphs). One transaction.
+// Deliberately does not take the per-graph closure lock: it is read-only, and a transient false
+// drift while an edit commits concurrently was always possible and is acceptable for a health probe.
 func (s *Service) VerifyClosure(ctx context.Context, graphCode *string) ([]domain.ClosureReport, error) {
 	graphs, err := s.resolveGraphs(ctx, graphCode)
 	if err != nil {
@@ -498,6 +513,9 @@ func (s *Service) RebuildClosure(ctx context.Context, graphCode *string) ([]doma
 	for _, g := range graphs {
 		if err := s.inTx(ctx, func(tx pgx.Tx) error {
 			repo := s.newRepo(tx)
+			if err := repo.LockGraphForClosure(ctx, g.ID); err != nil {
+				return err
+			}
 			if err := repo.RecomputeClosure(ctx, g.ID); err != nil {
 				return err
 			}
@@ -694,10 +712,7 @@ func decodeCursor(token string) (string, error) {
 // through it so the app.* RLS GUCs apply (D-RLSDefenseInDepth); a write begun on a non-pinned pool
 // connection would have empty writable_units and fail the policy's WITH CHECK.
 func (s *Service) querier(ctx context.Context) db.Querier {
-	if c, ok := db.ConnFromContext(ctx); ok {
-		return c
-	}
-	return s.pool
+	return db.RequestQuerier(ctx, s.pool)
 }
 
 // inTx runs fn in a transaction, committing on success and rolling back on error (the deferred

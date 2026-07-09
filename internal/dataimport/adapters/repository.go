@@ -6,6 +6,7 @@ package adapters
 import (
 	"context"
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -106,66 +107,91 @@ func NewGeoPlaceRepo(conn db.DBTX) *GeoPlaceRepo {
 // compile-time assertion that the adapter satisfies the domain port.
 var _ domain.GeoPlaceStore = (*GeoPlaceRepo)(nil)
 
-// GetVersion returns the place's stored source_version (the idempotency key) and whether the row
-// exists. A NULL stored version reads back as "" (always treated as stale, so it re-imports).
-func (r *GeoPlaceRepo) GetVersion(ctx context.Context, wofID int64) (string, bool, error) {
-	v, err := r.q.GetGeoPlaceVersion(ctx, wofID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", false, nil
+// BulkUpsert merges one chunk set-based (R-05): the parallel-array merge statement, then the
+// second-pass parent resolution over the touched rows only (a skipped row keeps its stored parent).
+func (r *GeoPlaceRepo) BulkUpsert(ctx context.Context, places []domain.GeoPlace, prov domain.Provenance) (created, updated []int64, err error) {
+	if len(places) == 0 {
+		return nil, nil, nil
 	}
+	p := dataimportsql.BulkUpsertGeoPlacesParams{
+		Source:        prov.Source,
+		SourceVersion: prov.SourceVersion,
+		ImportedAt:    ts(prov.ImportedAt),
+		WofIds:        make([]int64, 0, len(places)),
+		Placetypes:    make([]string, 0, len(places)),
+		CountryCodes:  make([]string, 0, len(places)),
+		Names:         make([]string, 0, len(places)),
+		Populations:   make([]int64, 0, len(places)),
+		Hierarchies:   make([]string, 0, len(places)),
+		Concordances:  make([]string, 0, len(places)),
+		Statuses:      make([]string, 0, len(places)),
+		Geometries:    make([]string, 0, len(places)),
+	}
+	for _, pl := range places {
+		p.WofIds = append(p.WofIds, pl.WofID)
+		p.Placetypes = append(p.Placetypes, pl.Placetype)
+		p.CountryCodes = append(p.CountryCodes, pl.CountryCode)
+		p.Names = append(p.Names, pl.Name)
+		p.Populations = append(p.Populations, deref(pl.Population))
+		p.Hierarchies = append(p.Hierarchies, string(pl.Hierarchy))
+		p.Concordances = append(p.Concordances, string(pl.Concordances))
+		p.Statuses = append(p.Statuses, pl.Status)
+		p.Geometries = append(p.Geometries, pl.GeometryJSON)
+	}
+	rows, err := r.q.BulkUpsertGeoPlaces(ctx, p)
 	if err != nil {
-		return "", false, err
+		return nil, nil, err
 	}
-	return v.String, true, nil
+	touched := make(map[int64]bool, len(rows))
+	for _, row := range rows {
+		touched[row.WofID] = true
+		if row.Inserted {
+			created = append(created, row.WofID)
+		} else {
+			updated = append(updated, row.WofID)
+		}
+	}
+	if len(touched) == 0 {
+		return created, updated, nil
+	}
+	sp := dataimportsql.BulkSetGeoPlaceParentsParams{
+		WofIds:       make([]int64, 0, len(touched)),
+		ParentWofIds: make([]int64, 0, len(touched)),
+	}
+	for _, pl := range places {
+		if !touched[pl.WofID] {
+			continue
+		}
+		sp.WofIds = append(sp.WofIds, pl.WofID)
+		sp.ParentWofIds = append(sp.ParentWofIds, deref(pl.ParentID))
+	}
+	if err := r.q.BulkSetGeoPlaceParents(ctx, sp); err != nil {
+		return nil, nil, err
+	}
+	return created, updated, nil
 }
 
-// Insert adds a gazetteer row; geometry is materialized from GeoJSON, provenance stamped.
-func (r *GeoPlaceRepo) Insert(ctx context.Context, p domain.GeoPlace, prov domain.Provenance) error {
-	return r.q.InsertGeoPlaceImport(ctx, dataimportsql.InsertGeoPlaceImportParams{
-		WofID:         p.WofID,
-		Placetype:     p.Placetype,
-		ParentID:      deref(p.ParentID),
-		CountryCode:   p.CountryCode,
-		Name:          p.Name,
-		Population:    deref(p.Population),
-		Hierarchy:     p.Hierarchy,
-		Concordances:  p.Concordances,
-		Status:        p.Status,
-		Geometry:      p.GeometryJSON,
-		Source:        prov.Source,
-		SourceVersion: prov.SourceVersion,
-		ImportedAt:    ts(prov.ImportedAt),
-	})
-}
-
-// UpdateImport rewrites a gazetteer row (called when the source edition changed).
-func (r *GeoPlaceRepo) UpdateImport(ctx context.Context, p domain.GeoPlace, prov domain.Provenance) error {
-	return r.q.UpdateGeoPlaceImport(ctx, dataimportsql.UpdateGeoPlaceImportParams{
-		WofID:         p.WofID,
-		Placetype:     p.Placetype,
-		ParentID:      deref(p.ParentID),
-		CountryCode:   p.CountryCode,
-		Name:          p.Name,
-		Population:    deref(p.Population),
-		Hierarchy:     p.Hierarchy,
-		Concordances:  p.Concordances,
-		Status:        p.Status,
-		Geometry:      p.GeometryJSON,
-		Source:        prov.Source,
-		SourceVersion: prov.SourceVersion,
-		ImportedAt:    ts(prov.ImportedAt),
-	})
-}
-
-// EnrichCountry mirrors a country place's wof_id + geometry onto its geo_countries row (D-GeoPlaces).
-func (r *GeoPlaceRepo) EnrichCountry(ctx context.Context, p domain.GeoPlace, _ domain.Provenance) error {
-	return r.q.EnrichGeoCountryFromWOF(ctx, dataimportsql.EnrichGeoCountryFromWOFParams{
-		Code:        p.CountryCode,
-		WofID:       p.WofID,
-		Geometry:    p.GeometryJSON,
-		IsoA3:       p.ISOA3,
-		NumericCode: p.NumericCode,
-	})
+// BulkEnrichCountries mirrors the touched country places' wof_id/geometry/ISO concordances onto their
+// geo_countries rows (upgrade-or-keep; D-GeoPlaces).
+func (r *GeoPlaceRepo) BulkEnrichCountries(ctx context.Context, places []domain.GeoPlace) error {
+	if len(places) == 0 {
+		return nil
+	}
+	p := dataimportsql.BulkEnrichGeoCountriesFromWOFParams{
+		WofIds:       make([]int64, 0, len(places)),
+		Codes:        make([]string, 0, len(places)),
+		IsoA3s:       make([]string, 0, len(places)),
+		NumericCodes: make([]string, 0, len(places)),
+		Geometries:   make([]string, 0, len(places)),
+	}
+	for _, pl := range places {
+		p.WofIds = append(p.WofIds, pl.WofID)
+		p.Codes = append(p.Codes, pl.CountryCode)
+		p.IsoA3s = append(p.IsoA3s, pl.ISOA3)
+		p.NumericCodes = append(p.NumericCodes, pl.NumericCode)
+		p.Geometries = append(p.Geometries, pl.GeometryJSON)
+	}
+	return r.q.BulkEnrichGeoCountriesFromWOF(ctx, p)
 }
 
 // deref returns the pointed-to int64 or 0 (the absent sentinel the queries fold to NULL via NULLIF).
@@ -184,6 +210,15 @@ func f8(p *float64) pgtype.Float8 {
 	return pgtype.Float8{Float64: *p, Valid: true}
 }
 
+// floatText renders an optional float for a bulk text[] parameter (nil → "" → NULL via NULLIF; the
+// parallel-array merges carry optionals as text so one array can hold absent values).
+func floatText(p *float64) string {
+	if p == nil {
+		return ""
+	}
+	return strconv.FormatFloat(*p, 'f', -1, 64)
+}
+
 // LanguoidRepo is the pgx/sqlc-backed implementation of domain.LanguoidStore (D-Languages, M18), bound
 // to a single db.DBTX (the caller's transaction so the upsert + audit row commit together — D-Audit).
 type LanguoidRepo struct {
@@ -197,69 +232,117 @@ func NewLanguoidRepo(conn db.DBTX) *LanguoidRepo {
 
 var _ domain.LanguoidStore = (*LanguoidRepo)(nil)
 
-// GetVersion returns the languoid's stored source_version (the idempotency key) and whether it exists.
-func (r *LanguoidRepo) GetVersion(ctx context.Context, code string) (string, bool, error) {
-	v, err := r.q.GetLanguoidVersion(ctx, code)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", false, nil
+// BulkUpsert merges one chunk set-based (R-05): the parallel-array merge (or, under
+// prov.CreateOnly, the insert-absent-only variant that never touches an existing row), then the
+// second-pass parent resolution over the touched rows only. Latitude/longitude cross as text
+// ('' = NULL) so one array can carry absent values.
+func (r *LanguoidRepo) BulkUpsert(ctx context.Context, ls []domain.Languoid, prov domain.Provenance) (created, updated []string, err error) {
+	if len(ls) == 0 {
+		return nil, nil, nil
 	}
-	if err != nil {
-		return "", false, err
+	n := len(ls)
+	codes := make([]string, 0, n)
+	levels := make([]string, 0, n)
+	names := make([]string, 0, n)
+	isos := make([]string, 0, n)
+	macros := make([]string, 0, n)
+	lats := make([]string, 0, n)
+	lngs := make([]string, 0, n)
+	statuses := make([]string, 0, n)
+	for _, l := range ls {
+		codes = append(codes, l.Code)
+		levels = append(levels, l.Level)
+		names = append(names, l.Name)
+		isos = append(isos, l.ISO639_3)
+		macros = append(macros, l.Macroarea)
+		lats = append(lats, floatText(l.Latitude))
+		lngs = append(lngs, floatText(l.Longitude))
+		statuses = append(statuses, l.Status)
 	}
-	return v.String, true, nil
-}
-
-// Insert adds a languoid; parent glottocode is resolved to its RID in SQL, provenance stamped.
-func (r *LanguoidRepo) Insert(ctx context.Context, l domain.Languoid, prov domain.Provenance) error {
-	return r.q.InsertLanguoidImport(ctx, dataimportsql.InsertLanguoidImportParams{
-		Code:          l.Code,
-		Level:         l.Level,
-		Name:          l.Name,
-		ParentCode:    l.Parent,
-		Iso6393:       l.ISO639_3,
-		Macroarea:     l.Macroarea,
-		Latitude:      f8(l.Latitude),
-		Longitude:     f8(l.Longitude),
-		Status:        l.Status,
-		Source:        prov.Source,
-		SourceVersion: prov.SourceVersion,
-		ImportedAt:    ts(prov.ImportedAt),
-	})
-}
-
-// UpdateImport rewrites a languoid (called when the source edition changed).
-func (r *LanguoidRepo) UpdateImport(ctx context.Context, l domain.Languoid, prov domain.Provenance) error {
-	return r.q.UpdateLanguoidImport(ctx, dataimportsql.UpdateLanguoidImportParams{
-		Code:          l.Code,
-		Level:         l.Level,
-		Name:          l.Name,
-		ParentCode:    l.Parent,
-		Iso6393:       l.ISO639_3,
-		Macroarea:     l.Macroarea,
-		Latitude:      f8(l.Latitude),
-		Longitude:     f8(l.Longitude),
-		Status:        l.Status,
-		Source:        prov.Source,
-		SourceVersion: prov.SourceVersion,
-		ImportedAt:    ts(prov.ImportedAt),
-	})
-}
-
-// ReplaceCountries resets a languoid's country ties to the given ISO alpha-2 codes (unresolved codes
-// are silently dropped by the insert).
-func (r *LanguoidRepo) ReplaceCountries(ctx context.Context, code string, countryCodes []string) error {
-	if err := r.q.DeleteLanguoidCountries(ctx, code); err != nil {
-		return err
+	touched := make(map[string]bool, n)
+	if prov.CreateOnly {
+		created, err = r.q.BulkInsertLanguoidsAbsent(ctx, dataimportsql.BulkInsertLanguoidsAbsentParams{
+			SourceVersion: prov.SourceVersion,
+			Source:        prov.Source,
+			ImportedAt:    ts(prov.ImportedAt),
+			Codes:         codes,
+			Levels:        levels,
+			Names:         names,
+			Iso6393s:      isos,
+			Macroareas:    macros,
+			Latitudes:     lats,
+			Longitudes:    lngs,
+			Statuses:      statuses,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, c := range created {
+			touched[c] = true
+		}
+	} else {
+		rows, err := r.q.BulkUpsertLanguoids(ctx, dataimportsql.BulkUpsertLanguoidsParams{
+			SourceVersion: prov.SourceVersion,
+			Source:        prov.Source,
+			ImportedAt:    ts(prov.ImportedAt),
+			Codes:         codes,
+			Levels:        levels,
+			Names:         names,
+			Iso6393s:      isos,
+			Macroareas:    macros,
+			Latitudes:     lats,
+			Longitudes:    lngs,
+			Statuses:      statuses,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, row := range rows {
+			touched[row.Code] = true
+			if row.Inserted {
+				created = append(created, row.Code)
+			} else {
+				updated = append(updated, row.Code)
+			}
+		}
 	}
-	for _, cc := range countryCodes {
-		if cc == "" {
+	if len(touched) == 0 {
+		return created, updated, nil
+	}
+	sp := dataimportsql.BulkSetLanguoidParentsParams{
+		Codes:       make([]string, 0, len(touched)),
+		ParentCodes: make([]string, 0, len(touched)),
+	}
+	for _, l := range ls {
+		if !touched[l.Code] {
 			continue
 		}
-		if err := r.q.InsertLanguoidCountry(ctx, dataimportsql.InsertLanguoidCountryParams{Code: code, CountryCode: cc}); err != nil {
-			return err
-		}
+		sp.Codes = append(sp.Codes, l.Code)
+		sp.ParentCodes = append(sp.ParentCodes, l.Parent)
 	}
-	return nil
+	if err := r.q.BulkSetLanguoidParents(ctx, sp); err != nil {
+		return nil, nil, err
+	}
+	return created, updated, nil
+}
+
+// BulkReplaceCountries resets the touched languoids' country ties set-based: clear all ties for
+// codes, then insert the flattened (pairCodes[i], pairCountries[i]) ties (an unresolved country code
+// is silently dropped by the join).
+func (r *LanguoidRepo) BulkReplaceCountries(ctx context.Context, codes []string, pairCodes, pairCountries []string) error {
+	if len(codes) == 0 {
+		return nil
+	}
+	if err := r.q.BulkDeleteLanguoidCountries(ctx, codes); err != nil {
+		return err
+	}
+	if len(pairCodes) == 0 {
+		return nil
+	}
+	return r.q.BulkInsertLanguoidCountries(ctx, dataimportsql.BulkInsertLanguoidCountriesParams{
+		Codes:        pairCodes,
+		CountryCodes: pairCountries,
+	})
 }
 
 // RebuildClosure recomputes the transitive closure and the denormalized family_code (run once at the

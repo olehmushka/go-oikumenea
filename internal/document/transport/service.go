@@ -38,9 +38,10 @@ const (
 
 // PersonReader is the cross-module query seam the holder read-scope projection (D-PersonReadScope)
 // uses to decide whether the subject may read a document's holder person. The person application
-// service satisfies it.
+// service satisfies it (a SQL reach point probe since R-02.1 — no materialized reach crosses the
+// seam).
 type PersonReader interface {
-	ReadablePerson(ctx context.Context, reach authzdomain.Reach, personID string) (bool, error)
+	ReadablePerson(ctx context.Context, subjectPersonID, personID string) (bool, error)
 }
 
 // Service adapts *application.Service to the generated documentapi.DocumentService interface, holding
@@ -392,14 +393,18 @@ func toAPIPersonalCode(c domain.PersonalCode) documentapi.PersonalCode {
 }
 
 // holderReadable reports whether the request subject may read the given holder person under the
-// read-scope projection (D-PersonReadScope): it resolves the subject's effective reach via the PEP and
-// asks the person reader. Used by the holder-scoped document/personal-code read endpoints.
+// read-scope projection (D-PersonReadScope): instance admins pass; anyone else is answered by the
+// person reader's SQL reach point probe (R-02.1). Used by the holder-scoped document/personal-code
+// read endpoints.
 func (s Service) holderReadable(ctx context.Context, personID string) (bool, error) {
-	reach, err := s.pep.EffectiveReach(ctx)
+	subject, isAdmin, err := s.pep.SubjectAuthority(ctx)
 	if err != nil {
 		return false, err
 	}
-	return s.person.ReadablePerson(ctx, reach, personID)
+	if isAdmin {
+		return true, nil
+	}
+	return s.person.ReadablePerson(ctx, subject, personID)
 }
 
 // ---------------------------------------------------------------- error mapping

@@ -210,6 +210,10 @@ type Repository interface {
 	// ActiveGrantsForSubject returns the subject's active (not revoked) assignments joined with each
 	// role's permission codes, grouped into ActiveGrants. Decision-time expiry is applied by the PDP.
 	ActiveGrantsForSubject(ctx context.Context, subjectPersonID string) ([]ActiveGrant, error)
+	// ReadableUnitsForSubjectAmong returns which of the candidate units the subject's '*.read'
+	// reach covers, as one batch SQL probe mirroring ReachSet's semantics (shadow gate;
+	// review-2026-07 R-02.1). Order is not preserved.
+	ReadableUnitsForSubjectAmong(ctx context.Context, subjectPersonID string, unitIDs []string) ([]string, error)
 
 	// instance admins
 	InsertInstanceAdmin(ctx context.Context, personID, grantedBy string) (InstanceAdmin, error)
@@ -219,6 +223,12 @@ type Repository interface {
 	// HasActiveInstanceAdmin reports whether ANY active instance admin exists (bootstrap idempotency
 	// gate — D-Bootstrap).
 	HasActiveInstanceAdmin(ctx context.Context) (bool, error)
+
+	// revocation epoch (D-AuthzGrantCache): ReadAuthzEpoch is the cache's one-read validation probe;
+	// BumpAuthzEpoch runs inside every authority-mutating transaction so the bump commits atomically
+	// with the mutation.
+	ReadAuthzEpoch(ctx context.Context) (int64, error)
+	BumpAuthzEpoch(ctx context.Context) error
 }
 
 func wrapInvalid(base error, msg string) error { return errors.Join(base, errors.New(msg)) }

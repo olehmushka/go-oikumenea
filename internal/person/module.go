@@ -20,11 +20,12 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/person/application"
 	"github.com/olegamysk/go-oikumenea/internal/person/domain"
 	"github.com/olegamysk/go-oikumenea/internal/person/transport"
+	profileapp "github.com/olegamysk/go-oikumenea/internal/personprofile/application"
+	sensitiveapp "github.com/olegamysk/go-oikumenea/internal/personsensitive/application"
 	pconfig "github.com/olegamysk/go-oikumenea/internal/platform/config"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	rankapp "github.com/olegamysk/go-oikumenea/internal/rank/application"
 	pkgconfig "github.com/olegamysk/go-oikumenea/pkg/config"
-	"github.com/olegamysk/go-oikumenea/pkg/crypto"
 	werror "github.com/palantir/witchcraft-go-error"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
 )
@@ -33,12 +34,13 @@ import (
 // person-purge-grace-hours (720h = 30 days; D-PersonReadScope).
 const defaultPurgeGraceHours = 720
 
-// Register builds the person module over the platform pool, the audit service (writes record
-// in-transaction — D-Audit), the localization service, and the rank service, and registers its
-// routes onto the witchcraft router. The purge-grace window is read from the (refreshable) runtime
-// config. It owns no resources of its own (the pool is owned by platform), so there is no
-// module-level cleanup.
-func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, loc *locapp.Service, _ *rankapp.Service, enforcer *pep.Enforcer, cipher *crypto.Cipher, colors domain.ColorLookup) (*application.Service, error) {
+// Register builds the person core module over the platform pool, the audit service (writes record
+// in-transaction — D-Audit), the localization service, and the rank service, and registers the one
+// PersonService Conjure surface onto the witchcraft router — composing the person core application
+// service with the personsensitive service (R-09: the sensitive/encrypted endpoints delegate to it).
+// The purge-grace window is read from the (refreshable) runtime config. It owns no resources of its
+// own (the pool is owned by platform), so there is no module-level cleanup.
+func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, loc *locapp.Service, _ *rankapp.Service, enforcer *pep.Enforcer, profile *profileapp.Service, sensitive *sensitiveapp.Service) (*application.Service, error) {
 	repoFor := func(conn db.DBTX) domain.Repository { return adapters.NewRepository(conn) }
 
 	graceRef := pkgconfig.IntOrDefault(info.RuntimeConfig, defaultPurgeGraceHours, func(v any) int {
@@ -54,10 +56,9 @@ func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Serv
 		return defaultPurgeGraceHours
 	}
 
-	svc := application.NewService(pool, repoFor, audit, graceHours, cipher)
-	svc.SetColorLookup(colors)
+	svc := application.NewService(pool, repoFor, audit, graceHours)
 
-	if err := personapi.RegisterRoutesPersonService(info.Router, transport.NewService(svc, loc, enforcer)); err != nil {
+	if err := personapi.RegisterRoutesPersonService(info.Router, transport.NewService(svc, profile, sensitive, loc, enforcer)); err != nil {
 		return nil, werror.Wrap(err, "register person service routes")
 	}
 	return svc, nil

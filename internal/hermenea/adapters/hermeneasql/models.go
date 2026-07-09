@@ -74,6 +74,10 @@ type HermeneaWorkerJob struct {
 	LastError      pgtype.Text
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+	// last oikumenea-acked chunk seq of the current chunked run (0 = none)
+	ResumeSeq int64
+	// staged-source checksum the cursor belongs to (mismatch on retry resets the cursor)
+	ResumeChecksum pgtype.Text
 }
 
 type HermeneaWorkerSchedule struct {

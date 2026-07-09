@@ -40,6 +40,16 @@ export function EmptyState({ children }: { children: React.ReactNode }) {
 /** Renders an API failure (incl. the Conjure SerializableError envelope) readably. */
 export function ErrorNotice({ error }: { error: unknown }) {
   const info = errorInfo(error);
+  // A 401 means the session is dead; the browser SDK already kicked off an instant sign-out (see
+  // lib/api/unauthorized). Show a neutral "signing out" state rather than a scary error the user
+  // can't act on — the redirect to /login is already in flight.
+  if (info.status === 401) {
+    return (
+      <div className="card border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
+        Your session has expired — signing you out…
+      </div>
+    );
+  }
   const name = info.errorName ?? (info.status ? `${info.status}` : info.message);
   const detail = info.errorCode ?? (info.errorName ? "" : info.message === name ? "" : info.message);
   const params = info.parameters;
@@ -52,9 +62,6 @@ export function ErrorNotice({ error }: { error: unknown }) {
           {JSON.stringify(params, null, 2)}
         </pre>
       )}
-      <p className="mt-3 text-xs text-red-700">
-        If this is a 401, your session may have expired — try signing out and back in.
-      </p>
     </div>
   );
 }

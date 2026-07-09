@@ -21,7 +21,7 @@ WHERE id = (
   FOR UPDATE SKIP LOCKED
   LIMIT 1
 )
-RETURNING id, job_type, idempotency_key, source_id, payload, status, attempts, max_attempts, run_after, locked_by, locked_at, last_error, created_at, updated_at
+RETURNING id, job_type, idempotency_key, source_id, payload, status, attempts, max_attempts, run_after, locked_by, locked_at, last_error, created_at, updated_at, resume_seq, resume_checksum
 `
 
 func (q *Queries) ClaimJob(ctx context.Context, lockedBy pgtype.Text) (HermeneaWorkerJob, error) {
@@ -42,6 +42,8 @@ func (q *Queries) ClaimJob(ctx context.Context, lockedBy pgtype.Text) (HermeneaW
 		&i.LastError,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ResumeSeq,
+		&i.ResumeChecksum,
 	)
 	return i, err
 }
@@ -256,7 +258,7 @@ func (q *Queries) ListEnabledSchedules(ctx context.Context) ([]ListEnabledSchedu
 }
 
 const listJobs = `-- name: ListJobs :many
-SELECT id, job_type, idempotency_key, source_id, payload, status, attempts, max_attempts, run_after, locked_by, locked_at, last_error, created_at, updated_at
+SELECT id, job_type, idempotency_key, source_id, payload, status, attempts, max_attempts, run_after, locked_by, locked_at, last_error, created_at, updated_at, resume_seq, resume_checksum
 FROM hermenea.worker_jobs
 ORDER BY created_at DESC
 LIMIT $1
@@ -286,6 +288,8 @@ func (q *Queries) ListJobs(ctx context.Context, limit int32) ([]HermeneaWorkerJo
 			&i.LastError,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ResumeSeq,
+			&i.ResumeChecksum,
 		); err != nil {
 			return nil, err
 		}
@@ -414,6 +418,25 @@ type RescheduleJobParams struct {
 
 func (q *Queries) RescheduleJob(ctx context.Context, arg RescheduleJobParams) error {
 	_, err := q.db.Exec(ctx, rescheduleJob, arg.ID, arg.RunAfter, arg.LastError)
+	return err
+}
+
+const setJobCursor = `-- name: SetJobCursor :exec
+UPDATE hermenea.worker_jobs
+SET resume_seq = $2, resume_checksum = $3
+WHERE id = $1
+`
+
+type SetJobCursorParams struct {
+	ID             string
+	ResumeSeq      int64
+	ResumeChecksum pgtype.Text
+}
+
+// Persist the chunked-run resume cursor (R-05): the last chunk seq oikumenea acknowledged and the
+// staged-source checksum it belongs to. Written after every acked chunk; read back on re-claim.
+func (q *Queries) SetJobCursor(ctx context.Context, arg SetJobCursorParams) error {
+	_, err := q.db.Exec(ctx, setJobCursor, arg.ID, arg.ResumeSeq, arg.ResumeChecksum)
 	return err
 }
 

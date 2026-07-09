@@ -7,8 +7,9 @@
 // Authority comes ONLY from assignments here; the PDP reads no rank/position. The decision path is
 // the product's centerpiece: Decide answers authorize(person, action, unit) by unioning the
 // subject's active grants over the tenant closure (per-assignment scope × graph), plus the
-// instance-admin plane. EffectiveReach exports the read/write unit-set the shadow gate and the
-// (M11) RLS backstop consume.
+// instance-admin plane. Since M47 (review-2026-07 R-01/R-02) authority state is snapshotted per
+// request + cached per process (authority.go / grantcache.go), and reach is never materialized
+// app-side — the shadow gate and the RLS backstop consume SQL reach predicates instead.
 package application
 
 import (
@@ -65,12 +66,13 @@ type Service struct {
 	audit   *auditapp.Service
 	pdp     domain.PDP
 	graphs  GraphPort
+	grants  *grantCache // epoch-validated per-process authority cache (D-AuthzGrantCache)
 }
 
 // NewService wires the service with the pool, the repository factory, the audit service, the PDP
 // engine (built over the tenant closure port), and the graph-resolution port.
 func NewService(pool *pgxpool.Pool, newRepo RepositoryFactory, audit *auditapp.Service, pdp domain.PDP, graphs GraphPort) *Service {
-	return &Service{pool: pool, newRepo: newRepo, audit: audit, pdp: pdp, graphs: graphs}
+	return &Service{pool: pool, newRepo: newRepo, audit: audit, pdp: pdp, graphs: graphs, grants: newGrantCache()}
 }
 
 // RolePage / AssignmentPage are keyset-paginated slices plus the opaque next-page token.
@@ -85,16 +87,12 @@ type AssignmentPage struct {
 
 // ============================ the PDP (decisions + reach) ============================
 
-// Decide answers authorize(subject, action, unit). It fetches the subject's instance-admin status and
-// active grants once, then runs the pure engine. Decisions are not cached across requests (a revoke
-// or role edit takes effect on the next call).
+// Decide answers authorize(subject, action, unit). Authority state (instance-admin flag + active
+// grants) comes from the request snapshot when one is attached (authority.go, R-01.1), else from a
+// fresh fetch; either way the pure engine runs on a consistent snapshot. A revoke or role edit
+// takes effect on the next authenticated request (see D-AuthzGrantCache for the exact bound).
 func (s *Service) Decide(ctx context.Context, subjectPersonID, action, unitID string, explain bool) (domain.Decision, error) {
-	repo := s.newRepo(s.pool)
-	isAdmin, err := repo.IsActiveInstanceAdmin(ctx, subjectPersonID)
-	if err != nil {
-		return domain.Decision{}, err
-	}
-	grants, err := repo.ActiveGrantsForSubject(ctx, subjectPersonID)
+	isAdmin, grants, err := s.authorityFor(ctx, subjectPersonID)
 	if err != nil {
 		return domain.Decision{}, err
 	}
@@ -109,14 +107,9 @@ type BatchQuery struct {
 	UnitID string
 }
 
-// DecideBatch answers several questions for one subject, fetching the subject's authority state once.
+// DecideBatch answers several questions for one subject, resolving the subject's authority state once.
 func (s *Service) DecideBatch(ctx context.Context, subjectPersonID string, queries []BatchQuery, explain bool) ([]domain.Decision, error) {
-	repo := s.newRepo(s.pool)
-	isAdmin, err := repo.IsActiveInstanceAdmin(ctx, subjectPersonID)
-	if err != nil {
-		return nil, err
-	}
-	grants, err := repo.ActiveGrantsForSubject(ctx, subjectPersonID)
+	isAdmin, grants, err := s.authorityFor(ctx, subjectPersonID)
 	if err != nil {
 		return nil, err
 	}
@@ -153,8 +146,7 @@ func (s *Service) Enforce(ctx context.Context, subjectPersonID, action, unitID s
 // unit-keyed, so "holds it somewhere" is the right question. Instance-scope actions are satisfied
 // only by an instance admin.
 func (s *Service) HoldsPermissionAnywhere(ctx context.Context, subjectPersonID, action string) (bool, error) {
-	repo := s.newRepo(s.pool)
-	isAdmin, err := repo.IsActiveInstanceAdmin(ctx, subjectPersonID)
+	isAdmin, grants, err := s.authorityFor(ctx, subjectPersonID)
 	if err != nil {
 		return false, err
 	}
@@ -164,10 +156,6 @@ func (s *Service) HoldsPermissionAnywhere(ctx context.Context, subjectPersonID, 
 	if domain.IsInstanceScope(action) {
 		return false, nil // instance-scope perms live only on the instance plane
 	}
-	grants, err := repo.ActiveGrantsForSubject(ctx, subjectPersonID)
-	if err != nil {
-		return false, err
-	}
 	for _, g := range grants {
 		if g.Has(domain.Permission(action)) {
 			return true, nil
@@ -176,63 +164,55 @@ func (s *Service) HoldsPermissionAnywhere(ctx context.Context, subjectPersonID, 
 	return false, nil
 }
 
-// EffectiveReach exports the subject's read/write unit-set (D-RLSDefenseInDepth / D-PersonReadScope):
-// what the shadow gate filters against and the (M11) RLS GUCs are seeded from.
-func (s *Service) EffectiveReach(ctx context.Context, subjectPersonID string) (domain.Reach, error) {
-	repo := s.newRepo(s.pool)
-	isAdmin, err := repo.IsActiveInstanceAdmin(ctx, subjectPersonID)
-	if err != nil {
-		return domain.Reach{}, err
-	}
-	grants, err := repo.ActiveGrantsForSubject(ctx, subjectPersonID)
-	if err != nil {
-		return domain.Reach{}, err
-	}
-	return s.pdp.ReachSet(ctx, grants, isAdmin)
-}
-
-// RLSStateFor builds the per-request RLS backstop GUC state (D-RLSDefenseInDepth) for a subject from
-// its effective reach: the identity-federation authenticator calls this once per request and pins the
-// resulting unit reach onto the connection that serves the request (db.AcquireScoped). The flattened
-// readable/writable RID lists become the app.readable_units / app.writable_units GUCs the RLS policies
-// read; an instance admin is expressed as the GUC flag (never a DB superuser).
-func (s *Service) RLSStateFor(ctx context.Context, subjectPersonID string) (db.RLSState, error) {
-	reach, err := s.EffectiveReach(ctx, subjectPersonID)
-	if err != nil {
-		return db.RLSState{}, err
-	}
-	return db.RLSState{
-		PersonID:        subjectPersonID,
-		IsInstanceAdmin: reach.InstanceAdmin,
-		ReadableUnits:   unitKeys(reach.Readable),
-		WritableUnits:   unitKeys(reach.Writable),
-	}, nil
-}
-
-// unitKeys flattens a reach unit-set into a slice (order is irrelevant — the GUC is a membership test).
-func unitKeys(m map[string]struct{}) []string {
-	out := make([]string, 0, len(m))
-	for u := range m {
-		out = append(out, u)
-	}
-	return out
-}
+// NOTE (review-2026-07 R-02): EffectiveReach and RLSStateFor are GONE. Nothing on the request path
+// materializes the subject's reach app-side anymore: person/document read scope is a SQL semi-join
+// (membership's VisiblePersonIDsForSubject / SubjectCanReadPerson), the shadow gate is a batch SQL
+// probe (ReadableUnitsForSubjectAmong below), and the RLS backstop computes reach live in the
+// policies (oikumenea.authz_unit_in_reach — D-RLSLiveReach). domain.ReachSet remains as the pure,
+// property-tested reference semantic (the oracle for the reach differential test).
 
 // FilterVisibleUnits applies the shadow-visibility gate (owned here, called via pep.FilterVisibleUnits
 // by tenant's list/ancestors/descendants reads — F-002 A-lite): from candidates, drop shadow units
 // the subject's *.read does not reach. `shadow` reports per unit id whether it is shadow. Returns the
-// visible subset preserving input order.
+// visible subset preserving input order. Since review-2026-07 R-02.1 the reach test is ONE batch SQL
+// probe over only the shadow candidates (ReadableUnitsForSubjectAmong) instead of materializing the
+// whole reach set app-side; public units never touch the database. domain.ShadowGate remains the pure
+// reference semantic (property-tested; oracle for the reach differential test).
 func (s *Service) FilterVisibleUnits(ctx context.Context, subjectPersonID string, candidates []string, shadow map[string]bool) ([]string, error) {
-	reach, err := s.EffectiveReach(ctx, subjectPersonID)
-	if err != nil {
-		return nil, err
-	}
-	allowed := domain.ShadowGate(reach, candidates, shadow)
-	out := make([]string, 0, len(allowed))
+	shadowCandidates := make([]string, 0, len(candidates))
 	for _, u := range candidates {
-		if _, ok := allowed[u]; ok {
-			out = append(out, u)
+		if shadow[u] {
+			shadowCandidates = append(shadowCandidates, u)
 		}
+	}
+	reachable := map[string]struct{}{}
+	if len(shadowCandidates) > 0 {
+		isAdmin, _, err := s.authorityFor(ctx, subjectPersonID)
+		if err != nil {
+			return nil, err
+		}
+		if isAdmin {
+			for _, u := range shadowCandidates {
+				reachable[u] = struct{}{}
+			}
+		} else {
+			ids, err := s.newRepo(s.pool).ReadableUnitsForSubjectAmong(ctx, subjectPersonID, shadowCandidates)
+			if err != nil {
+				return nil, err
+			}
+			for _, u := range ids {
+				reachable[u] = struct{}{}
+			}
+		}
+	}
+	out := make([]string, 0, len(candidates))
+	for _, u := range candidates {
+		if shadow[u] {
+			if _, ok := reachable[u]; !ok {
+				continue
+			}
+		}
+		out = append(out, u)
 	}
 	return out, nil
 }
@@ -312,10 +292,18 @@ func (s *Service) UpdateRole(ctx context.Context, id string, patch domain.RolePa
 				return err
 			}
 			updated.Permissions = *patch.Permissions
+			// Permission-set change mutates every holder's authority — bump the revocation epoch
+			// in the same tx (D-AuthzGrantCache). Name/description edits don't.
+			if err := repo.BumpAuthzEpoch(ctx); err != nil {
+				return err
+			}
 		}
 		out = updated
 		return s.record(ctx, tx, "role.update", targetRole, id, map[string]any{"id": id})
 	})
+	if err == nil && patch.Permissions != nil {
+		s.grants.reset() // local cache sees the edit immediately; other replicas within the TTL
+	}
 	return out, err
 }
 
@@ -323,7 +311,7 @@ func (s *Service) UpdateRole(ctx context.Context, id string, patch domain.RolePa
 // active assignment is blocked (ErrRoleInUse). Orphan-translation purge is deferred (needs the event
 // bus + a localization subscriber — see the module note).
 func (s *Service) DeleteRole(ctx context.Context, id string) error {
-	return s.inTx(ctx, func(tx pgx.Tx) error {
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
 		repo := s.newRepo(tx)
 		existing, err := repo.GetRole(ctx, id)
 		if err != nil {
@@ -342,8 +330,15 @@ func (s *Service) DeleteRole(ctx context.Context, id string) error {
 		if err := repo.SoftDeleteRole(ctx, id); err != nil {
 			return err
 		}
+		if err := repo.BumpAuthzEpoch(ctx); err != nil {
+			return err
+		}
 		return s.record(ctx, tx, "role.delete", targetRole, id, map[string]any{"id": id, "code": existing.Code})
 	})
+	if err == nil {
+		s.grants.reset() // after commit: the local cache sees the delete immediately
+	}
+	return err
 }
 
 // ============================ assignments ============================
@@ -380,8 +375,12 @@ func (s *Service) GrantAssignment(ctx context.Context, g domain.GrantInput) (dom
 
 	var out domain.Assignment
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		created, err := s.newRepo(tx).InsertAssignment(ctx, g, graphID)
+		repo := s.newRepo(tx)
+		created, err := repo.InsertAssignment(ctx, g, graphID)
 		if err != nil {
+			return err
+		}
+		if err := repo.BumpAuthzEpoch(ctx); err != nil {
 			return err
 		}
 		out = created
@@ -390,6 +389,9 @@ func (s *Service) GrantAssignment(ctx context.Context, g domain.GrantInput) (dom
 			"targetUnitId": created.TargetUnitID, "scope": string(created.Scope), "graphId": created.GraphID,
 		})
 	})
+	if err == nil {
+		s.grants.reset()
+	}
 	return out, err
 }
 
@@ -418,9 +420,15 @@ func (s *Service) RevokeAssignment(ctx context.Context, id, revokedBy string) (d
 		if err != nil {
 			return err
 		}
+		if err := repo.BumpAuthzEpoch(ctx); err != nil {
+			return err
+		}
 		out = revoked
 		return s.record(ctx, tx, "assignment.revoke", targetAssignment, id, map[string]any{"id": id})
 	})
+	if err == nil {
+		s.grants.reset()
+	}
 	return out, err
 }
 
@@ -445,13 +453,20 @@ func (s *Service) ListAssignmentsByUnit(ctx context.Context, targetUnitID string
 func (s *Service) GrantInstanceAdmin(ctx context.Context, personID, grantedBy string) (domain.InstanceAdmin, error) {
 	var out domain.InstanceAdmin
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		created, err := s.newRepo(tx).InsertInstanceAdmin(ctx, personID, grantedBy)
+		repo := s.newRepo(tx)
+		created, err := repo.InsertInstanceAdmin(ctx, personID, grantedBy)
 		if err != nil {
+			return err
+		}
+		if err := repo.BumpAuthzEpoch(ctx); err != nil {
 			return err
 		}
 		out = created
 		return s.record(ctx, tx, "instance.admin.grant", targetInstanceAdmin, created.ID, map[string]any{"id": created.ID, "personId": personID})
 	})
+	if err == nil {
+		s.grants.reset()
+	}
 	return out, err
 }
 
@@ -459,13 +474,20 @@ func (s *Service) GrantInstanceAdmin(ctx context.Context, personID, grantedBy st
 func (s *Service) RevokeInstanceAdmin(ctx context.Context, id, revokedBy string) (domain.InstanceAdmin, error) {
 	var out domain.InstanceAdmin
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		revoked, err := s.newRepo(tx).RevokeInstanceAdmin(ctx, id, revokedBy)
+		repo := s.newRepo(tx)
+		revoked, err := repo.RevokeInstanceAdmin(ctx, id, revokedBy)
 		if err != nil {
+			return err
+		}
+		if err := repo.BumpAuthzEpoch(ctx); err != nil {
 			return err
 		}
 		out = revoked
 		return s.record(ctx, tx, "instance.admin.revoke", targetInstanceAdmin, id, map[string]any{"id": id})
 	})
+	if err == nil {
+		s.grants.reset()
+	}
 	return out, err
 }
 
@@ -491,7 +513,12 @@ func (s *Service) SeedBaseRoles(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			return repo.ReplaceRolePermissions(ctx, role.ID, br.Permissions)
+			if err := repo.ReplaceRolePermissions(ctx, role.ID, br.Permissions); err != nil {
+				return err
+			}
+			// The permission re-sync can change a base role's set across versions — bump the
+			// revocation epoch so caches on other replicas converge within the TTL.
+			return repo.BumpAuthzEpoch(ctx)
 		})
 		if err != nil {
 			return err

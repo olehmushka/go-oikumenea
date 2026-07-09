@@ -27,10 +27,12 @@ type PersonDirectory interface {
 	PersonIDByCode(ctx context.Context, code string) (string, bool, error)
 }
 
-// RLSResolver computes the per-request RLS backstop GUC state for a resolved subject
-// (D-RLSDefenseInDepth). The authorization application service satisfies it (RLSStateFor).
-type RLSResolver interface {
-	RLSStateFor(ctx context.Context, personID string) (db.RLSState, error)
+// AuthorityResolver fetches the resolved subject's authority state ONCE per request (review-2026-07
+// R-01.1): it returns a derived context carrying the authorization module's request-scoped authority
+// snapshot (opaque to this module) plus the RLS backstop GUC state (D-RLSDefenseInDepth) computed
+// from the same fetch. The authorization application service satisfies it (ContextWithAuthority).
+type AuthorityResolver interface {
+	ContextWithAuthority(ctx context.Context, personID string) (context.Context, db.RLSState, error)
 }
 
 // Authenticator is the inbound-token validation middleware (installed via server.WithMiddleware). It
@@ -53,7 +55,7 @@ type bound struct {
 	resolver   Resolver
 	persons    PersonDirectory
 	jitEnabled bool
-	rls        RLSResolver
+	authority  AuthorityResolver
 	pool       *pgxpool.Pool
 }
 
@@ -76,18 +78,27 @@ func (a *Authenticator) importServiceToken() string {
 }
 
 // Bind wires the validator, the (issuer, subject) resolver, the person directory (for JIT), the
-// JIT-enabled flag, the RLS-state resolver, and the pool used to pin a per-request RLS-scoped
-// connection (D-RLSDefenseInDepth). Called once at boot.
-func (a *Authenticator) Bind(validator *Validator, resolver Resolver, persons PersonDirectory, jitEnabled bool, rls RLSResolver, pool *pgxpool.Pool) {
+// JIT-enabled flag, the authority resolver (request-scoped authority snapshot + RLS GUC state), and
+// the pool used to pin a per-request RLS-scoped connection (D-RLSDefenseInDepth). Called once at boot.
+func (a *Authenticator) Bind(validator *Validator, resolver Resolver, persons PersonDirectory, jitEnabled bool, authority AuthorityResolver, pool *pgxpool.Pool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.bound = &bound{validator: validator, resolver: resolver, persons: persons, jitEnabled: jitEnabled, rls: rls, pool: pool}
+	a.bound = &bound{validator: validator, resolver: resolver, persons: persons, jitEnabled: jitEnabled, authority: authority, pool: pool}
 }
 
 func (a *Authenticator) snapshot() *bound {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.bound
+}
+
+// MustBeBound reports whether Bind has wired the validator/resolver. The composition root calls it at
+// boot (review-2026-07 R-11) so a forgotten Bind fails startup instead of 401-ing every request.
+func (a *Authenticator) MustBeBound() error {
+	if a.snapshot() == nil {
+		return errors.New("identity-federation authenticator not bound: call Bind before serving")
+	}
+	return nil
 }
 
 // Handle is the wrouter.RequestHandlerMiddleware. It validates the bearer token, resolves the PDP
@@ -132,23 +143,22 @@ func (a *Authenticator) Handle(rw http.ResponseWriter, r *http.Request, next htt
 	}
 	ctx := authn.NewContext(r.Context(), authn.Subject{PersonID: res.PersonID, AccountID: res.AccountID, Email: res.Email})
 
-	// RLS backstop (D-RLSDefenseInDepth): compute the subject's read/write unit reach and pin a
-	// connection with the app.* GUCs set, so unit-scoped reads/writes are filtered at the DB even if a
-	// handler forgets the PDP/shadow-gate filter. Reach is computed on the bare pool (its reads hit
-	// only non-RLS tables + the exempt closure), then the request runs on the pinned connection.
-	if b.rls != nil && b.pool != nil {
-		state, err := b.rls.RLSStateFor(ctx, res.PersonID)
+	// Authority snapshot + RLS backstop (R-01.1 / R-03 / D-RLSDefenseInDepth): resolve the subject's
+	// authority state once — the returned context carries the snapshot every later PDP call reuses —
+	// and install a LAZY RLS-scoped connection holder: the connection is pinned (one GUC round trip)
+	// only when a handler first touches an RLS-consuming module, and released after the response iff
+	// it was acquired. Unit-scoped reads/writes stay DB-filtered even if a handler forgets the
+	// PDP/shadow-gate filter; requests that never touch guarded tables no longer occupy the pool.
+	// An acquire failure surfaces as the first scoped statement's error (fails closed at that query).
+	if b.authority != nil && b.pool != nil {
+		actx, state, err := b.authority.ContextWithAuthority(ctx, res.PersonID)
 		if err != nil {
 			serverError(rw)
 			return
 		}
-		conn, release, err := db.AcquireScoped(ctx, b.pool, state)
-		if err != nil {
-			serverError(rw)
-			return
-		}
+		lctx, release := db.WithLazyConn(actx, b.pool, state)
 		defer release()
-		ctx = db.WithConn(ctx, conn)
+		ctx = lctx
 	}
 
 	next.ServeHTTP(rw, r.WithContext(ctx))

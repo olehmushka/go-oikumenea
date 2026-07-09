@@ -265,10 +265,8 @@ ON CONFLICT (entity_type, entity_id, field, locale) DO NOTHING;
 ALTER TABLE oikumenea.religion_clergy_credentials ENABLE ROW LEVEL SECURITY;
 ALTER TABLE oikumenea.religion_clergy_credentials FORCE ROW LEVEL SECURITY;
 CREATE POLICY religion_clergy_credentials_reach ON oikumenea.religion_clergy_credentials
-  USING (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR org_unit_id = ANY (string_to_array(nullif(current_setting('app.readable_units', true), ''), ',')::uuid[]))
-  WITH CHECK (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR org_unit_id = ANY (string_to_array(nullif(current_setting('app.writable_units', true), ''), ',')::uuid[]));
+  USING (oikumenea.authz_unit_in_reach(org_unit_id, false))
+  WITH CHECK (oikumenea.authz_unit_in_reach(org_unit_id, true));
 
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
 UPDATE oikumenea.schema_version SET revision = '0024_religion_clergy', applied_at = now() WHERE singleton;

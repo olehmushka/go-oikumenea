@@ -174,9 +174,12 @@ func (n Name) validate() error {
 	return nil
 }
 
-// Person is the directory aggregate root. Attributes is the long-tail JSONB directory grab-bag
-// (pii:special ceiling); "" / nil means the default empty object. NameVariants/Citizenships/
-// Residences are populated only when a single person is read, and are empty in list responses.
+// Person is the directory aggregate root — the person CORE (D-PersonModuleSplit, review-2026-07 R-09).
+// Attributes is the long-tail JSONB directory grab-bag (pii:special ceiling); "" / nil means the default
+// empty object. Ranks and NameVariants (the core-owned child slices) are populated only when a single
+// person is read, and are empty in list responses. The non-encrypted directory child data (citizenships,
+// residences, contact channels, …) is owned by personprofile and composed onto the API response at the
+// transport layer, NOT carried on this core aggregate.
 type Person struct {
 	ID             string
 	Code           string // "" when unset; unique among active persons
@@ -192,15 +195,8 @@ type Person struct {
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 
-	Ranks          []PersonRank
-	NameVariants   []NameVariant
-	Citizenships   []Citizenship
-	Residences     []Residence
-	Emails         []Email
-	Phones         []Phone
-	CallSigns      []CallSign
-	MessengerLinks []MessengerLink
-	SocialAccounts []SocialAccount
+	Ranks        []PersonRank
+	NameVariants []NameVariant
 }
 
 // Validate enforces the create-time invariants: a valid optional code, a non-empty display name, a
@@ -1015,6 +1011,12 @@ func validDate(s string) bool {
 // Repository is the persistence port the application service depends on; the pgx/sqlc adapter
 // implements it. Each method runs on whatever DBTX the adapter was constructed with, so a write and
 // its audit row share one transaction (D-Audit). Reads exclude soft-deleted rows.
+// Repository is the person CORE persistence port (D-PersonModuleSplit, review-2026-07 R-09): the person
+// aggregate root — identity/bio/status, the HOLDS_RANK link, the person_name_variants (names incl.
+// aliases), the reversible deactivate → purge lifecycle, and the merge re-point of person-owned rows. The
+// non-encrypted directory data and the sensitive/encrypted surface are separate ports (ProfileRepository,
+// SensitiveRepository) implemented by the personprofile / personsensitive adapters over their own query
+// packages; all three share this one domain kernel.
 type Repository interface {
 	// persons
 	InsertPerson(ctx context.Context, p Person) (Person, error)
@@ -1053,6 +1055,26 @@ type Repository interface {
 	ClearPrimaryNameVariants(ctx context.Context, personID string) error
 	DeleteNameVariant(ctx context.Context, personID, locale string) error
 	ListNameVariants(ctx context.Context, personID string) ([]NameVariant, error)
+
+	// ---- physical identity (D-PhysicalIdentity, M31) ----
+
+	// name aliases — fold into person_name_variants (variant_kind != transliteration), addressed by RID
+	InsertNameAlias(ctx context.Context, v NameVariant) (NameVariant, error)
+	DeleteNameAlias(ctx context.Context, personID, id string) error // ErrNameAliasNotFound when missing
+}
+
+// ProfileRepository is the personprofile persistence port (D-PersonModuleSplit, R-09): the person
+// directory's non-encrypted, person-owned data — citizenships, residences, addresses, the contact
+// channels (email/phone/call-sign/messenger/social), SPEAKS languages, person↔person relationships, and
+// the non-encrypted institutional ties (government positions, lobbying, external references). Implemented
+// by internal/personprofile/adapters over personprofilesql.
+type ProfileRepository interface {
+	// PersonExists is the parent-existence guard (ErrNotFound when the person is absent/soft-deleted): a
+	// reviewed cross-module read of the person core aggregate before touching a person's directory rows.
+	PersonExists(ctx context.Context, personID string) error
+	// ErasePerson hard-deletes all of a person's personprofile-owned rows in FK-safe order (the purge
+	// erasure path, D-PersonModuleSplit R-09); invoked by SubscribePersonPurge in the purge transaction.
+	ErasePerson(ctx context.Context, personID string) error
 
 	// citizenships
 	UpsertCitizenship(ctx context.Context, c Citizenship) (Citizenship, error)
@@ -1167,11 +1189,38 @@ type Repository interface {
 	DeleteAllNextOfKin(ctx context.Context, personID string) error
 	DeleteAllAssociations(ctx context.Context, personID string) error
 
-	// ---- physical identity (D-PhysicalIdentity, M31) ----
+	// government positions — link__government_position (g.ID == "" => insert; else replace that row)
+	UpsertGovernmentPosition(ctx context.Context, g GovernmentPosition) (GovernmentPosition, error) // ErrGovernmentPositionNotFound
+	DeleteGovernmentPosition(ctx context.Context, personID, id string) error                        // ErrGovernmentPositionNotFound
+	ListGovernmentPositions(ctx context.Context, personID string) ([]GovernmentPosition, error)
+	// IsPoliticallyExposed reports whether the person has any active pep_trigger position (M34 seam).
+	IsPoliticallyExposed(ctx context.Context, personID string) (bool, error)
 
-	// name aliases — fold into person_name_variants (variant_kind != transliteration), addressed by RID
-	InsertNameAlias(ctx context.Context, v NameVariant) (NameVariant, error)
-	DeleteNameAlias(ctx context.Context, personID, id string) error // ErrNameAliasNotFound when missing
+	// lobbying relationships — link__lobbying_rel (l.ID == "" => insert; else replace that row)
+	UpsertLobbyingRelationship(ctx context.Context, l LobbyingRelationship) (LobbyingRelationship, error) // ErrLobbyingNotFound
+	DeleteLobbyingRelationship(ctx context.Context, personID, id string) error                            // ErrLobbyingNotFound
+	ListLobbyingRelationships(ctx context.Context, personID string) ([]LobbyingRelationship, error)
+
+	// external references — object external_reference (r.ID == "" => upsert-by-url; else replace that row)
+	UpsertExternalReference(ctx context.Context, r ExternalReference) (ExternalReference, error) // ErrExternalReferenceNotFound
+	DeleteExternalReference(ctx context.Context, personID, id string) error                      // ErrExternalReferenceNotFound
+	ListExternalReferences(ctx context.Context, personID string) ([]ExternalReference, error)
+}
+
+// SensitiveRepository is the personsensitive persistence port (D-PersonModuleSplit, R-09): the person
+// directory's sensitive / envelope-encrypted surface — physical descriptions & distinguishing marks,
+// ethnicity (crypto-erasable), encrypted declared party memberships, watchlist matches & regulatory
+// sanctions, and the M35 overlays (crypto wallets, personality, political leaning). Implemented by
+// internal/personsensitive/adapters over personsensitivesql.
+type SensitiveRepository interface {
+	// PersonExists is the parent-existence guard (ErrNotFound when absent/soft-deleted); GetPerson reads the
+	// person core aggregate for watchlist screening (name/birthdate/nationality). Both are reviewed
+	// cross-module reads of the person core aggregate (D-PersonModuleSplit, R-09).
+	PersonExists(ctx context.Context, personID string) error
+	GetPerson(ctx context.Context, id string) (Person, error)
+	// ErasePerson erases all of a person's personsensitive-owned rows (hard-delete or crypto-erase) — the
+	// purge erasure path (D-PersonModuleSplit R-09); invoked by SubscribePersonPurge in the purge tx.
+	ErasePerson(ctx context.Context, personID string) error
 
 	// physical descriptions (d.ID == "" => insert; otherwise replace that row)
 	UpsertPhysicalDescription(ctx context.Context, d PhysicalDescription) (PhysicalDescription, error)
@@ -1209,23 +1258,6 @@ type Repository interface {
 	// CryptoErasePartyMemberships drops the envelope on all of a person's party memberships (purge path).
 	CryptoErasePartyMemberships(ctx context.Context, personID string) (int64, error)
 
-	// government positions — link__government_position (g.ID == "" => insert; else replace that row)
-	UpsertGovernmentPosition(ctx context.Context, g GovernmentPosition) (GovernmentPosition, error) // ErrGovernmentPositionNotFound
-	DeleteGovernmentPosition(ctx context.Context, personID, id string) error                        // ErrGovernmentPositionNotFound
-	ListGovernmentPositions(ctx context.Context, personID string) ([]GovernmentPosition, error)
-	// IsPoliticallyExposed reports whether the person has any active pep_trigger position (M34 seam).
-	IsPoliticallyExposed(ctx context.Context, personID string) (bool, error)
-
-	// lobbying relationships — link__lobbying_rel (l.ID == "" => insert; else replace that row)
-	UpsertLobbyingRelationship(ctx context.Context, l LobbyingRelationship) (LobbyingRelationship, error) // ErrLobbyingNotFound
-	DeleteLobbyingRelationship(ctx context.Context, personID, id string) error                            // ErrLobbyingNotFound
-	ListLobbyingRelationships(ctx context.Context, personID string) ([]LobbyingRelationship, error)
-
-	// external references — object external_reference (r.ID == "" => upsert-by-url; else replace that row)
-	UpsertExternalReference(ctx context.Context, r ExternalReference) (ExternalReference, error) // ErrExternalReferenceNotFound
-	DeleteExternalReference(ctx context.Context, personID, id string) error                      // ErrExternalReferenceNotFound
-	ListExternalReferences(ctx context.Context, personID string) ([]ExternalReference, error)
-
 	// watchlists & regulatory exposure (D-Watchlists, M34)
 
 	// watchlist match — object watchlist_match (one active row per person; CheckWatchlists upserts it)
@@ -1236,6 +1268,24 @@ type Repository interface {
 
 	// regulatory sanctions — object regulatory_sanction (s.ID == "" => upsert-by-external-id; else replace)
 	UpsertRegulatorySanction(ctx context.Context, s RegulatorySanction) (RegulatorySanction, error) // ErrRegulatorySanctionNotFound
-	DeleteRegulatorySanction(ctx context.Context, personID, id string) error                         // ErrRegulatorySanctionNotFound
+	DeleteRegulatorySanction(ctx context.Context, personID, id string) error                        // ErrRegulatorySanctionNotFound
 	ListRegulatorySanctions(ctx context.Context, personID string) ([]RegulatorySanction, error)
+
+	// financial / behavioural / psychological overlays (D-PersonOverlays, M35)
+
+	// crypto wallets — object crypto_wallet, pii:sensitive (w.ID == "" => insert; else replace that row)
+	UpsertCryptoWallet(ctx context.Context, w CryptoWallet) (CryptoWallet, error) // ErrCryptoWalletNotFound
+	DeleteCryptoWallet(ctx context.Context, personID, id string) error            // ErrCryptoWalletNotFound
+	ListCryptoWallets(ctx context.Context, personID string) ([]CryptoWallet, error)
+
+	// personality — object personality, pii:sensitive (p.ID == "" => insert; else replace that row)
+	UpsertPersonality(ctx context.Context, p Personality) (Personality, error) // ErrPersonalityNotFound
+	DeletePersonality(ctx context.Context, personID, id string) error          // ErrPersonalityNotFound
+	ListPersonalities(ctx context.Context, personID string) ([]Personality, error)
+
+	// political leaning — the encrypted object political_leaning (one active row per person)
+	InsertPoliticalLeaning(ctx context.Context, l StoredPoliticalLeaning) (StoredPoliticalLeaning, error)
+	UpdatePoliticalLeaning(ctx context.Context, l StoredPoliticalLeaning) (StoredPoliticalLeaning, error) // ErrPoliticalLeaningNotFound
+	GetPoliticalLeaning(ctx context.Context, personID string) (StoredPoliticalLeaning, error)             // ErrPoliticalLeaningNotFound
+	DeletePoliticalLeaning(ctx context.Context, personID string) error                                    // ErrPoliticalLeaningNotFound
 }

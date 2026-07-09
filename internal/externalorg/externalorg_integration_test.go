@@ -242,7 +242,7 @@ func runImport(t *testing.T, pool *pgxpool.Pool, ctx context.Context, h dataimpo
 		t.Fatalf("begin: %v", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	sum, err := h(ctx, tx, recs, prov)
+	sum, err := h(ctx, tx, recs, prov, dataimportdomain.ChunkInfo{Seq: 1, IsLast: true})
 	if err != nil {
 		t.Fatalf("handler: %v", err)
 	}

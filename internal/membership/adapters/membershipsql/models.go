@@ -68,6 +68,41 @@ type OikumeneaAuditLog struct {
 	Outcome string
 }
 
+type OikumeneaAuditLogDefault struct {
+	// pii:none
+	ID string
+	// pii:none
+	CreatedAt pgtype.Timestamptz
+	// pii:none
+	ActorType string
+	// pii:basic
+	ActorPersonID pgtype.Text
+	// pii:none
+	Subsystem pgtype.Text
+	// pii:none
+	Action string
+	// pii:none
+	TargetType string
+	// pii:none
+	TargetID pgtype.Text
+	// pii:none
+	UnitID pgtype.Text
+	// pii:none
+	RequestID string
+	// pii:special
+	Before []byte
+	// pii:special
+	After []byte
+	// pii:none
+	Outcome string
+}
+
+type OikumeneaAuthzEpoch struct {
+	Singleton bool
+	// pii:none
+	Epoch int64
+}
+
 type OikumeneaAuthzInstanceAdmin struct {
 	// pii:none
 	ID string
@@ -865,6 +900,103 @@ type OikumeneaExternalOrganization struct {
 	DeletedAt  pgtype.Timestamptz
 }
 
+type OikumeneaFinanceAccount struct {
+	// pii:none
+	ID string
+	// pii:none
+	InstitutionID string
+	// pii:sensitive
+	IbanCiphertext []byte
+	// pii:sensitive
+	IbanWrappedDek []byte
+	// pii:none
+	KeyRef string
+	// pii:none
+	IbanBlindIndex []byte
+	// pii:none
+	Currency      pgtype.Text
+	AccountTypeID pgtype.Text
+	Status        string
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	DeletedAt     pgtype.Timestamptz
+}
+
+type OikumeneaFinanceAccountHolder struct {
+	// pii:none
+	ID string
+	// pii:none
+	AccountID string
+	// pii:none
+	HolderKind string
+	// pii:basic
+	HolderID string
+	// pii:none
+	Role          string
+	EffectiveFrom pgtype.Timestamptz
+	EffectiveTo   pgtype.Timestamptz
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	DeletedAt     pgtype.Timestamptz
+}
+
+type OikumeneaFinanceAccountType struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name      string
+	Status    string
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaFinanceCard struct {
+	// pii:none
+	ID string
+	// pii:none
+	AccountID string
+	// pii:sensitive
+	PanCiphertext []byte
+	// pii:sensitive
+	PanWrappedDek []byte
+	// pii:none
+	KeyRef string
+	// pii:none
+	PanBlindIndex []byte
+	// pii:none
+	Bin pgtype.Text
+	// pii:none
+	LastFour    pgtype.Text
+	NetworkID   pgtype.Text
+	CardType    string
+	ExpiryMonth pgtype.Int4
+	ExpiryYear  pgtype.Int4
+	// pii:none
+	CardholderPersonID pgtype.Text
+	Status             string
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+	DeletedAt          pgtype.Timestamptz
+}
+
+type OikumeneaFinanceCardNetwork struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name      string
+	Status    string
+	SortOrder pgtype.Int4
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
 type OikumeneaGeoCountry struct {
 	// pii:none
 	ID string
@@ -1267,6 +1399,32 @@ type OikumeneaPersonCitizenship struct {
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaPersonCryptoWallet struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:sensitive
+	Address string
+	// pii:none
+	Chain string
+	// pii:basic
+	AttributionMethod string
+	// pii:sensitive
+	BalanceUsdApprox pgtype.Float8
+	// pii:basic
+	FirstSeen pgtype.Date
+	// pii:basic
+	LastSeen pgtype.Date
+	// pii:none
+	Source string
+	// pii:none
+	Confidence string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
 }
 
 type OikumeneaPersonDistinguishingMark struct {
@@ -1679,6 +1837,8 @@ type OikumeneaPersonNameVariant struct {
 	IsPrimary bool
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
+	// pii:basic
+	SearchText pgtype.Text
 	// pii:none
 	VariantKind string
 	// pii:none
@@ -1798,7 +1958,33 @@ type OikumeneaPersonPerson struct {
 	UpdatedAt  pgtype.Timestamptz
 	DeletedAt  pgtype.Timestamptz
 	// pii:basic
+	SearchText pgtype.Text
+	// pii:basic
 	DateOfDeath pgtype.Date
+}
+
+type OikumeneaPersonPersonality struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:none
+	Framework string
+	// pii:sensitive
+	Result string
+	// pii:basic
+	Instrument pgtype.Text
+	// pii:none
+	Method string
+	// pii:basic
+	AssessedAt pgtype.Date
+	// pii:none
+	Source string
+	// pii:none
+	Confidence string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
 }
 
 type OikumeneaPersonPhone struct {
@@ -1875,6 +2061,32 @@ type OikumeneaPersonPlatform struct {
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaPersonPoliticalLeaning struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:special
+	LeaningCiphertext []byte
+	// pii:special
+	LeaningWrappedDek []byte
+	// pii:none
+	LeaningKeyRef pgtype.Text
+	// pii:special
+	LeaningBlindIndex []byte
+	// pii:basic
+	InferenceSources []string
+	// pii:basic
+	AssessedAt pgtype.Date
+	// pii:none
+	LegalBasis string
+	// pii:none
+	Confidence string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
 }
 
 type OikumeneaPersonPublicationAuthorship struct {

@@ -205,6 +205,44 @@ func (r *Repository) ActivePersonIDsInUnits(ctx context.Context, unitIDs []strin
 	return r.q.ActivePersonIDsInUnits(ctx, membershipsql.ActivePersonIDsInUnitsParams{UnitIds: unitIDs, After: after, Lim: int32(limit)})
 }
 
+// denseReachThreshold splits the two visible-persons plan shapes (review-2026-07 R-02.1, measured
+// on the M46 scale world): at/below it the SPARSE shape wins (materialize the small readable unit
+// set, semi-join memberships — 27 ms at reach 658); above it the DENSE shape wins (person-ordered
+// membership walk with a correlated reach probe — 39 ms at reach 100k, where the sparse shape
+// materializes the whole reach before the LIMIT and takes ~2 s; conversely dense at reach 1 walks
+// every membership row and takes ~500 ms). The capped count probe costs O(threshold) at most.
+const denseReachThreshold = 1000
+
+func (r *Repository) VisiblePersonIDsForSubject(ctx context.Context, subjectPersonID, after, query string, limit int) ([]string, error) {
+	// A text query takes the dedicated trigram-led search shape (review R-06): the selective GIN
+	// match caps the candidate set, so it needs no sparse/dense reach-cardinality split.
+	if query != "" {
+		return r.q.VisiblePersonIDsForSubjectSearch(ctx, membershipsql.VisiblePersonIDsForSubjectSearchParams{
+			SubjectPersonID: subjectPersonID, After: after, Query: pgtype.Text{String: query, Valid: true}, Lim: int32(limit),
+		})
+	}
+	n, err := r.q.CountReadableUnitsCapped(ctx, membershipsql.CountReadableUnitsCappedParams{
+		SubjectPersonID: subjectPersonID, Cap: denseReachThreshold + 1,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if n > denseReachThreshold {
+		return r.q.VisiblePersonIDsForSubjectDense(ctx, membershipsql.VisiblePersonIDsForSubjectDenseParams{
+			SubjectPersonID: subjectPersonID, After: after, Lim: int32(limit),
+		})
+	}
+	return r.q.VisiblePersonIDsForSubjectSparse(ctx, membershipsql.VisiblePersonIDsForSubjectSparseParams{
+		SubjectPersonID: subjectPersonID, After: after, Lim: int32(limit),
+	})
+}
+
+func (r *Repository) SubjectCanReadPerson(ctx context.Context, subjectPersonID, personID string) (bool, error) {
+	return r.q.SubjectCanReadPerson(ctx, membershipsql.SubjectCanReadPersonParams{
+		SubjectPersonID: subjectPersonID, PersonID: personID,
+	})
+}
+
 // ---------------------------------------------------------------- mapping helpers
 
 func toPosition(r membershipsql.OikumeneaMembershipPosition) domain.Position {

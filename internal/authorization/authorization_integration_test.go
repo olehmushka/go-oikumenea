@@ -305,8 +305,10 @@ func TestNoSelfEscalation(t *testing.T) {
 	}
 }
 
-// TestEffectiveReach expands a subtree grant over the closure into the readable set.
-func TestEffectiveReach(t *testing.T) {
+// TestSubtreeReachProbe expands a subtree grant over the closure into the readable set — asserted
+// through the SQL batch reach probe (R-02.1; replaces the deleted app-side EffectiveReach: reach is
+// no longer materialized in Go, the database answers membership questions directly).
+func TestSubtreeReachProbe(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 	root, child := h.seedUnit(t), h.seedUnit(t)
@@ -316,17 +318,38 @@ func TestEffectiveReach(t *testing.T) {
 	subj := h.seedPerson(t)
 	h.grant(t, subj, h.roleID(t, authzdomain.BaseRoleUnitReader), root, authzdomain.ScopeSubtree, "command")
 
-	reach, err := h.authz.EffectiveReach(ctx, subj)
+	repo := authzadapters.NewRepository(h.pool)
+	readable, err := repo.ReadableUnitsForSubjectAmong(ctx, subj, []string{root, child})
 	if err != nil {
-		t.Fatalf("reach: %v", err)
+		t.Fatalf("reach probe: %v", err)
+	}
+	got := map[string]bool{}
+	for _, u := range readable {
+		got[u] = true
 	}
 	for _, u := range []string{root, child} {
-		if _, ok := reach.Readable[u]; !ok {
-			t.Fatalf("readable reach should include %s", u)
+		if !got[u] {
+			t.Fatalf("readable reach should include %s (got %v)", u, readable)
 		}
 	}
-	if len(reach.Writable) != 0 {
-		t.Fatalf("a reader's writable reach should be empty, got %d", len(reach.Writable))
+
+	// The shadow gate consumes the same probe: the subtree reader sees both units even as shadow;
+	// a grant-less subject sees neither.
+	shadow := map[string]bool{root: true, child: true}
+	visible, err := h.authz.FilterVisibleUnits(ctx, subj, []string{root, child}, shadow)
+	if err != nil {
+		t.Fatalf("FilterVisibleUnits: %v", err)
+	}
+	if len(visible) != 2 {
+		t.Fatalf("subtree reader should see both shadow units, got %v", visible)
+	}
+	stranger := h.seedPerson(t)
+	invisible, err := h.authz.FilterVisibleUnits(ctx, stranger, []string{root, child}, shadow)
+	if err != nil {
+		t.Fatalf("FilterVisibleUnits(stranger): %v", err)
+	}
+	if len(invisible) != 0 {
+		t.Fatalf("grant-less subject should see no shadow units, got %v", invisible)
 	}
 }
 

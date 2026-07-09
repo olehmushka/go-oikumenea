@@ -20,6 +20,10 @@ services:
     # for the WOF gazetteer + the location point model. The stock postgis image suffices — MGRS is
     # derived in the application (pure Go) and radius/bbox use PostGIS ST_DWithin, so no h3-pg is needed.
     image: postgis/postgis:16-3.4
+    # pg_stat_statements (review-2026-07 Phase 0): per-statement execution counts for the
+    # authorization-path measurements. Preloading needs a server restart, hence process args here;
+    # an existing oik-pgdata volume picks it up on the next `docker compose down && up`.
+    command: postgres -c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=all
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres
@@ -133,6 +137,10 @@ services:
       # inbound push triggers to hermenea's /sync. INSECURE local defaults — replace for any real use.
       HERMENEA_OIKUMENEA_TOKEN: "dev-hermenea-importer-token-change-me"
       OIKUMENEA_HERMENEA_TOKEN: "dev-oikumenea-trigger-token-change-me"
+    # Reach a host-served source dist (the R-05 synthetic gazetteer; see hermenea-install.docker.yml)
+    # from inside the container. Inert unless such a source is enabled.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "9443:9443"
       - "9444:9444"

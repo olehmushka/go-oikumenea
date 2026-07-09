@@ -23,3 +23,23 @@ func (s *Service) SubscribePersonEvents(bus *events.Bus) {
 		`UPDATE oikumenea.person_scholarship_awards SET person_id = $2 WHERE person_id = $1`,
 	)
 }
+
+// SubscribePersonPurge hard-erases this module's person-owned rows on a PersonPurged (D-PersonModuleSplit,
+// review-2026-07 R-09): the education person bindings (enrollments, dorm stays) and the M20 reference-layer
+// person links (authorships, research/governance memberships, grant holdings, qualifications, scholarship
+// awards) are erased when the person is purged. Runs in the purge transaction. These deletes previously
+// lived inline in person's repo.Purge — moving them here removes person's cross-module writes (R-08).
+// (education_appointments is intentionally NOT erased here — it matches the prior purge behavior, which
+// re-homed appointments on merge but did not delete them on purge.)
+func (s *Service) SubscribePersonPurge(bus *events.Bus) {
+	personevents.SubscribeErase(bus,
+		`DELETE FROM oikumenea.person_education_enrollments WHERE person_id = $1`,
+		`DELETE FROM oikumenea.person_dormitory_stays WHERE person_id = $1`,
+		`DELETE FROM oikumenea.person_publication_authorships WHERE person_id = $1`,
+		`DELETE FROM oikumenea.person_research_memberships WHERE person_id = $1`,
+		`DELETE FROM oikumenea.person_grant_holdings WHERE person_id = $1`,
+		`DELETE FROM oikumenea.person_governance_memberships WHERE person_id = $1`,
+		`DELETE FROM oikumenea.person_education_qualifications WHERE person_id = $1`,
+		`DELETE FROM oikumenea.person_scholarship_awards WHERE person_id = $1`,
+	)
+}

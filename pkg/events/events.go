@@ -39,6 +39,7 @@ type Handler func(ctx context.Context, tx pgx.Tx, evt Event) error
 type Bus struct {
 	mu       sync.RWMutex
 	handlers map[string][]Handler
+	sealed   bool
 }
 
 // NewBus returns an empty bus.
@@ -47,11 +48,26 @@ func NewBus() *Bus {
 }
 
 // Subscribe registers a handler for an event type. Multiple handlers for one type run in registration
-// order; a handler should be registered exactly once per (type, module) at composition time.
+// order; a handler should be registered exactly once per (type, module) at composition time. Subscribing
+// after Seal panics (review-2026-07 R-10): every atomic subscriber runs inside the publisher's
+// transaction, so a late Subscribe both races Publish and silently widens a publisher's transaction — a
+// mis-wire, or a decision-level change (see docs/architecture/patterns.md), not a runtime operation.
 func (b *Bus) Subscribe(eventType string, h Handler) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.sealed {
+		panic("events: Subscribe(" + eventType + ") after the bus was sealed — atomic subscribers must be" +
+			" wired at boot; adding one widens every publisher's transaction (see patterns.md)")
+	}
 	b.handlers[eventType] = append(b.handlers[eventType], h)
+}
+
+// Seal freezes the subscription set. The composition root calls it once, after all modules have wired
+// their atomic subscribers and before serving; any later Subscribe panics (R-10). Publish is unaffected.
+func (b *Bus) Seal() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.sealed = true
 }
 
 // Publish dispatches evt to every handler registered for evt.Type(), synchronously and in order,

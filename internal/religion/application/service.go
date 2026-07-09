@@ -586,10 +586,7 @@ func clampPageSize(n int) int {
 // else the bare pool. Reads/writes on the unit-scoped religion tables (org profiles/classifications/
 // policies + clergy credentials) MUST go through it so the app.* RLS GUCs apply (D-RLSDefenseInDepth).
 func (s *Service) querier(ctx context.Context) db.Querier {
-	if c, ok := db.ConnFromContext(ctx); ok {
-		return c
-	}
-	return s.pool
+	return db.RequestQuerier(ctx, s.pool)
 }
 
 func (s *Service) inTx(ctx context.Context, fn func(pgx.Tx) error) error {

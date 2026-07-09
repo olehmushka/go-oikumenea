@@ -387,19 +387,31 @@ func (s *Service) ListPersonAccounts(ctx context.Context, personID string) ([]do
 
 // ErasePersonAccounts is the person-purge erasure path (D-Finance): it crypto-erases the accounts (+
 // cards) the person SOLELY holds and soft-deletes their holder edges. Company-held (and joint) accounts
-// survive. The PersonPurged event subscriber that triggers it is deferred (a shared open seam with the
-// document/vehicle/religion modules), so it is exercised directly today.
+// survive. Triggered by the PersonPurged event (SubscribePersonPurge); also exercised directly.
 func (s *Service) ErasePersonAccounts(ctx context.Context, personID string) (int64, error) {
 	var n int64
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		v, err := s.newRepo(tx).ErasePersonHoldings(ctx, personID)
-		if err != nil {
-			return err
-		}
+		v, err := s.erasePersonAccountsTx(ctx, tx, personID)
 		n = v
-		return s.record(ctx, tx, "finance.holdings.erase", personID, map[string]int64{"accountsErased": n})
+		return err
 	})
 	return n, err
+}
+
+// erasePersonAccountsTx is the body of the person-purge erasure, run in a caller-supplied transaction so
+// it executes either standalone (ErasePersonAccounts) or inside the person-purge tx as the PersonPurged
+// subscriber (SubscribePersonPurge). The audit row is written only when something was erased.
+func (s *Service) erasePersonAccountsTx(ctx context.Context, tx pgx.Tx, personID string) (int64, error) {
+	n, err := s.newRepo(tx).ErasePersonHoldings(ctx, personID)
+	if err != nil {
+		return 0, err
+	}
+	if n > 0 {
+		if err := s.record(ctx, tx, "finance.holdings.erase", personID, map[string]int64{"accountsErased": n}); err != nil {
+			return 0, err
+		}
+	}
+	return n, nil
 }
 
 // ============================ label helpers (transport) ============================
@@ -489,10 +501,7 @@ func clampPageSize(n int) int {
 }
 
 func (s *Service) querier(ctx context.Context) db.Querier {
-	if c, ok := db.ConnFromContext(ctx); ok {
-		return c
-	}
-	return s.pool
+	return db.RequestQuerier(ctx, s.pool)
 }
 
 func (s *Service) inTx(ctx context.Context, fn func(pgx.Tx) error) error {

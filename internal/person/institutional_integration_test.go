@@ -5,15 +5,20 @@
 //
 //   - a party membership is envelope-encrypted at rest (ciphertext holds NO plaintext + blind index present)
 //     and decrypts on read; legalBasis is required (Art. 9);
+//
 //   - a government position with pep_trigger drives IsPoliticallyExposed (the M34 PEP seam); delete clears it;
+//
 //   - a lobbying relationship round-trips its issues[] array;
+//
 //   - an external reference is idempotent by URL (a re-upsert updates in place, not duplicates);
+//
 //   - the 'emergency' relation type is seeded (M14 catalog, no new entity);
+//
 //   - purge CRYPTO-ERASES the party membership (envelope dropped, row tombstone) and HARD-DELETES the
 //     plaintext ties (government/lobbying/external).
 //
-//	OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable" \
-//	go test -tags integration ./internal/person/...
+//     OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable" \
+//     go test -tags integration ./internal/person/...
 package person_test
 
 import (
@@ -26,16 +31,16 @@ import (
 
 func TestInstitutionalTies(t *testing.T) {
 	ctx := context.Background()
-	svc, pool := newService(t, 720)
+	svc, prof, sens, pool := newServices(t, 720)
 	p := newPerson(t, svc, "Olena Politychna")
 
 	// ---- party membership: encrypted, legal_basis required ----
-	if _, err := svc.UpsertPartyMembership(ctx, domain.PartyMembership{
+	if _, err := sens.UpsertPartyMembership(ctx, domain.PartyMembership{
 		PersonID: p.ID, Party: "Servant of the People", Role: "member", // no legalBasis
 	}); err == nil {
 		t.Fatal("expected party membership without legalBasis to be rejected")
 	}
-	party, err := svc.UpsertPartyMembership(ctx, domain.PartyMembership{
+	party, err := sens.UpsertPartyMembership(ctx, domain.PartyMembership{
 		PersonID: p.ID, Party: "Servant of the People", Role: "official",
 		LegalBasis: "explicit_consent", ValidFrom: "2019-05-20", Source: "self_declared", Confidence: "confirmed",
 	})
@@ -60,17 +65,17 @@ func TestInstitutionalTies(t *testing.T) {
 		t.Fatal("party blind index not populated")
 	}
 
-	parties, err := svc.ListPartyMemberships(ctx, p.ID)
+	parties, err := sens.ListPartyMemberships(ctx, p.ID)
 	if err != nil || len(parties) != 1 || parties[0].Party != "Servant of the People" {
 		t.Fatalf("list party decrypt mismatch: %+v err=%v", parties, err)
 	}
 
 	// ---- government position: PEP derivation ----
-	if exposed, _ := svc.IsPoliticallyExposed(ctx, p.ID); exposed {
+	if exposed, _ := prof.IsPoliticallyExposed(ctx, p.ID); exposed {
 		t.Fatal("not politically exposed before any government position")
 	}
 	uaID := countryRID(t, pool, "UA")
-	gov, err := svc.UpsertGovernmentPosition(ctx, domain.GovernmentPosition{
+	gov, err := prof.UpsertGovernmentPosition(ctx, domain.GovernmentPosition{
 		PersonID: p.ID, Title: "Minister of Defence", Body: "Ministry of Defence",
 		CountryID: uaID, Level: "national", RoleType: "appointed", ValidFrom: "2020-03-04",
 	})
@@ -80,12 +85,12 @@ func TestInstitutionalTies(t *testing.T) {
 	if !gov.PEPTrigger {
 		t.Fatal("government position should default pep_trigger true")
 	}
-	if exposed, _ := svc.IsPoliticallyExposed(ctx, p.ID); !exposed {
+	if exposed, _ := prof.IsPoliticallyExposed(ctx, p.ID); !exposed {
 		t.Fatal("expected politically exposed after a pep_trigger position")
 	}
 
 	// ---- lobbying relationship: issues[] round-trip ----
-	lob, err := svc.UpsertLobbyingRelationship(ctx, domain.LobbyingRelationship{
+	lob, err := prof.UpsertLobbyingRelationship(ctx, domain.LobbyingRelationship{
 		PersonID: p.ID, Registrant: "Acme Advocacy LLC", Client: "Defense Systems Inc",
 		LegislativeBody: "Verkhovna Rada", Issues: []string{"defense", "procurement"}, FilingID: "F-2020-123",
 	})
@@ -97,14 +102,14 @@ func TestInstitutionalTies(t *testing.T) {
 	}
 
 	// ---- external reference: idempotent by URL ----
-	ref1, err := svc.UpsertExternalReference(ctx, domain.ExternalReference{
+	ref1, err := prof.UpsertExternalReference(ctx, domain.ExternalReference{
 		PersonID: p.ID, Kind: "wikipedia", URL: "https://en.wikipedia.org/wiki/Olena",
 		Categories: []string{"politician"},
 	})
 	if err != nil {
 		t.Fatalf("add external reference: %v", err)
 	}
-	ref2, err := svc.UpsertExternalReference(ctx, domain.ExternalReference{
+	ref2, err := prof.UpsertExternalReference(ctx, domain.ExternalReference{
 		PersonID: p.ID, Kind: "wikipedia", URL: "https://en.wikipedia.org/wiki/Olena",
 		Categories: []string{"politician", "minister"}, Disputed: true,
 	})
@@ -114,7 +119,7 @@ func TestInstitutionalTies(t *testing.T) {
 	if ref1.ID != ref2.ID {
 		t.Fatalf("external reference not idempotent by url: %s != %s", ref1.ID, ref2.ID)
 	}
-	refs, err := svc.ListExternalReferences(ctx, p.ID)
+	refs, err := prof.ListExternalReferences(ctx, p.ID)
 	if err != nil || len(refs) != 1 || !refs[0].Disputed {
 		t.Fatalf("external reference list/upsert mismatch: %+v err=%v", refs, err)
 	}
@@ -127,7 +132,7 @@ func TestInstitutionalTies(t *testing.T) {
 	}
 
 	// ---- purge: crypto-erase party, hard-delete the plaintext ties ----
-	svcNow, _ := newService(t, 0)
+	svcNow, _, _, _ := newServices(t, 0) // zero-grace purge; auto-wires the PersonPurged bus (R-09)
 	if _, err := svcNow.DeactivatePerson(ctx, p.ID, "test"); err != nil {
 		t.Fatalf("deactivate: %v", err)
 	}

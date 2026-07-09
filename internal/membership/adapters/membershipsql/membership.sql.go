@@ -103,6 +103,64 @@ func (q *Queries) ActiveUnitIDsByPerson(ctx context.Context, personID string) ([
 	return items, nil
 }
 
+const countReadableUnitsCapped = `-- name: CountReadableUnitsCapped :one
+
+SELECT count(*) FROM (
+  SELECT a.target_unit_id AS unit_id
+  FROM oikumenea.authz_role_assignments a
+  JOIN oikumenea.authz_roles r ON r.id = a.role_id AND r.deleted_at IS NULL
+  WHERE a.subject_person_id = $2
+    AND a.revoked_at IS NULL
+    AND (a.expires_at IS NULL OR a.expires_at > now())
+    AND EXISTS (SELECT 1 FROM oikumenea.authz_role_permissions rp
+                WHERE rp.role_id = a.role_id AND rp.permission_code LIKE '%.read')
+    AND (a.scope = 'unit'
+         OR EXISTS (SELECT 1 FROM oikumenea.tenant_graphs g
+                    WHERE g.id = a.graph_id AND g.is_authority_bearing AND g.deleted_at IS NULL))
+  UNION
+  SELECT c.descendant_id
+  FROM oikumenea.authz_role_assignments a
+  JOIN oikumenea.authz_roles r  ON r.id = a.role_id AND r.deleted_at IS NULL
+  JOIN oikumenea.tenant_graphs g ON g.id = a.graph_id AND g.is_authority_bearing AND g.deleted_at IS NULL
+  JOIN oikumenea.tenant_unit_closure c
+       ON c.graph_id = a.graph_id AND c.ancestor_id = a.target_unit_id
+  JOIN oikumenea.tenant_units u ON u.id = c.descendant_id AND u.deleted_at IS NULL
+  WHERE a.subject_person_id = $2
+    AND a.scope = 'subtree'
+    AND a.revoked_at IS NULL
+    AND (a.expires_at IS NULL OR a.expires_at > now())
+    AND EXISTS (SELECT 1 FROM oikumenea.authz_role_permissions rp
+                WHERE rp.role_id = a.role_id AND rp.permission_code LIKE '%.read')
+  LIMIT $1
+) capped
+`
+
+type CountReadableUnitsCappedParams struct {
+	Cap             int32
+	SubjectPersonID string
+}
+
+// ============================ reach semi-join (D-PersonReadScope, review-2026-07 R-02.1) ============================
+// The subject's effective readable reach computed IN the database — the reach set never leaves
+// Postgres (replaces the app-side ReachSet flatten + ANY(array) union). PARITY CONTRACT with
+// authorization/domain ReachSet + classify (pdp.go): an assignment contributes iff it is active
+// (revoked_at IS NULL, unexpired), its role is not deleted, and the role carries any '*.read'
+// permission; a 'unit' grant reaches its target only; a 'subtree' grant reaches target +
+// non-deleted closure descendants ONLY over an authority-bearing, non-deleted graph (a
+// directory-only subtree grant contributes NOTHING, not even its target — D-DirectoryGraphs).
+// Cross-module join precedent: ActiveGrantsForSubject ⋈ tenant_graphs (authorization.sql).
+// Verified against the Go oracle by the randomized differential test
+// (reach_differential_integration_test.go).
+// Capped cardinality probe of the subject's readable reach (same parity contract): the adapter uses
+// it to pick the visible-persons plan shape — sparse reach drives from the unit set (semi-join),
+// dense reach drives a person-ordered scan with a correlated reach probe. Counting stops at @cap.
+func (q *Queries) CountReadableUnitsCapped(ctx context.Context, arg CountReadableUnitsCappedParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countReadableUnitsCapped, arg.Cap, arg.SubjectPersonID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const endMembership = `-- name: EndMembership :one
 UPDATE oikumenea.membership_memberships SET
   status        = 'ended',
@@ -583,6 +641,49 @@ func (q *Queries) ListVacantPositionsByUnit(ctx context.Context, arg ListVacantP
 	return items, nil
 }
 
+const subjectCanReadPerson = `-- name: SubjectCanReadPerson :one
+SELECT EXISTS (
+  SELECT 1
+  FROM oikumenea.membership_memberships m
+  WHERE m.person_id = $1 AND m.status = 'active' AND m.deleted_at IS NULL
+    AND EXISTS (
+      SELECT 1
+      FROM oikumenea.authz_role_assignments a
+      JOIN oikumenea.authz_roles r ON r.id = a.role_id AND r.deleted_at IS NULL
+      WHERE a.subject_person_id = $2
+        AND a.revoked_at IS NULL
+        AND (a.expires_at IS NULL OR a.expires_at > now())
+        AND EXISTS (SELECT 1 FROM oikumenea.authz_role_permissions rp
+                    WHERE rp.role_id = a.role_id AND rp.permission_code LIKE '%.read')
+        AND ((a.scope = 'unit' AND a.target_unit_id = m.unit_id)
+          OR (a.scope = 'subtree'
+              AND EXISTS (SELECT 1 FROM oikumenea.tenant_graphs g
+                          WHERE g.id = a.graph_id AND g.is_authority_bearing AND g.deleted_at IS NULL)
+              AND (a.target_unit_id = m.unit_id
+                OR EXISTS (SELECT 1
+                           FROM oikumenea.tenant_unit_closure c
+                           JOIN oikumenea.tenant_units u ON u.id = c.descendant_id AND u.deleted_at IS NULL
+                           WHERE c.graph_id = a.graph_id
+                             AND c.ancestor_id = a.target_unit_id
+                             AND c.descendant_id = m.unit_id))))
+    )
+) AS can_read
+`
+
+type SubjectCanReadPersonParams struct {
+	PersonID        string
+	SubjectPersonID string
+}
+
+// Point probe of the same reach predicate: does any of the person's active-membership units fall in
+// the subject's readable reach? (Same parity contract as VisiblePersonIDsForSubject.)
+func (q *Queries) SubjectCanReadPerson(ctx context.Context, arg SubjectCanReadPersonParams) (bool, error) {
+	row := q.db.QueryRow(ctx, subjectCanReadPerson, arg.PersonID, arg.SubjectPersonID)
+	var can_read bool
+	err := row.Scan(&can_read)
+	return can_read, err
+}
+
 const updatePosition = `-- name: UpdatePosition :one
 UPDATE oikumenea.membership_positions SET
   title            = COALESCE($1, title),
@@ -622,4 +723,209 @@ func (q *Queries) UpdatePosition(ctx context.Context, arg UpdatePositionParams) 
 		&i.DeletedAt,
 	)
 	return i, err
+}
+
+const visiblePersonIDsForSubjectDense = `-- name: VisiblePersonIDsForSubjectDense :many
+SELECT DISTINCT m.person_id
+FROM oikumenea.membership_memberships m
+WHERE m.status = 'active' AND m.deleted_at IS NULL
+  AND ($1 = '' OR m.person_id::text > $1)
+  AND EXISTS (
+    SELECT 1
+    FROM oikumenea.authz_role_assignments a
+    JOIN oikumenea.authz_roles r ON r.id = a.role_id AND r.deleted_at IS NULL
+    WHERE a.subject_person_id = $2
+      AND a.revoked_at IS NULL
+      AND (a.expires_at IS NULL OR a.expires_at > now())
+      AND EXISTS (SELECT 1 FROM oikumenea.authz_role_permissions rp
+                  WHERE rp.role_id = a.role_id AND rp.permission_code LIKE '%.read')
+      AND ((a.scope = 'unit' AND a.target_unit_id = m.unit_id)
+        OR (a.scope = 'subtree'
+            AND EXISTS (SELECT 1 FROM oikumenea.tenant_graphs g
+                        WHERE g.id = a.graph_id AND g.is_authority_bearing AND g.deleted_at IS NULL)
+            AND (a.target_unit_id = m.unit_id
+              OR EXISTS (SELECT 1
+                         FROM oikumenea.tenant_unit_closure c
+                         JOIN oikumenea.tenant_units u ON u.id = c.descendant_id AND u.deleted_at IS NULL
+                         WHERE c.graph_id = a.graph_id
+                           AND c.ancestor_id = a.target_unit_id
+                           AND c.descendant_id = m.unit_id))))
+  )
+ORDER BY m.person_id
+LIMIT $3
+`
+
+type VisiblePersonIDsForSubjectDenseParams struct {
+	After           interface{}
+	SubjectPersonID string
+	Lim             int32
+}
+
+// DENSE-reach plan shape: walk memberships in person-RID order (the pagination order) probing the
+// reach predicate per row — O(page) when most memberships are in reach (near-root subtree
+// subjects), pathological for tiny reach (every non-matching row still probes), hence the
+// adapter's cardinality dispatch. Same parity contract as the sparse shape.
+func (q *Queries) VisiblePersonIDsForSubjectDense(ctx context.Context, arg VisiblePersonIDsForSubjectDenseParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, visiblePersonIDsForSubjectDense, arg.After, arg.SubjectPersonID, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var person_id string
+		if err := rows.Scan(&person_id); err != nil {
+			return nil, err
+		}
+		items = append(items, person_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const visiblePersonIDsForSubjectSearch = `-- name: VisiblePersonIDsForSubjectSearch :many
+SELECT p.id
+FROM oikumenea.person_persons p
+WHERE p.deleted_at IS NULL
+  AND ($1 = '' OR p.id::text > $1)
+  AND p.id IN (
+    SELECT ps.id FROM oikumenea.person_persons ps
+      WHERE ps.deleted_at IS NULL AND ps.search_text ILIKE '%' || $2 || '%'
+    UNION
+    SELECT v.person_id FROM oikumenea.person_name_variants v
+      WHERE v.search_text ILIKE '%' || $2 || '%')
+  AND EXISTS (
+    SELECT 1
+    FROM oikumenea.membership_memberships m
+    WHERE m.person_id = p.id AND m.status = 'active' AND m.deleted_at IS NULL
+      AND EXISTS (
+        SELECT 1
+        FROM oikumenea.authz_role_assignments a
+        JOIN oikumenea.authz_roles r ON r.id = a.role_id AND r.deleted_at IS NULL
+        WHERE a.subject_person_id = $3
+          AND a.revoked_at IS NULL
+          AND (a.expires_at IS NULL OR a.expires_at > now())
+          AND EXISTS (SELECT 1 FROM oikumenea.authz_role_permissions rp
+                      WHERE rp.role_id = a.role_id AND rp.permission_code LIKE '%.read')
+          AND ((a.scope = 'unit' AND a.target_unit_id = m.unit_id)
+            OR (a.scope = 'subtree'
+                AND EXISTS (SELECT 1 FROM oikumenea.tenant_graphs g
+                            WHERE g.id = a.graph_id AND g.is_authority_bearing AND g.deleted_at IS NULL)
+                AND (a.target_unit_id = m.unit_id
+                  OR EXISTS (SELECT 1
+                             FROM oikumenea.tenant_unit_closure c
+                             JOIN oikumenea.tenant_units u ON u.id = c.descendant_id AND u.deleted_at IS NULL
+                             WHERE c.graph_id = a.graph_id
+                               AND c.ancestor_id = a.target_unit_id
+                               AND c.descendant_id = m.unit_id))))
+      )
+  )
+ORDER BY p.id
+LIMIT $4
+`
+
+type VisiblePersonIDsForSubjectSearchParams struct {
+	After           interface{}
+	Query           pgtype.Text
+	SubjectPersonID string
+	Lim             int32
+}
+
+// Scoped directory SEARCH (review R-06): the visible-set union narrowed by a non-empty trigram
+// @query. Lead with the (highly selective) trigram match so it stays a GIN bitmap scan — the UNION
+// of person + name-variant id sets keeps BOTH branches indexable (an `OR EXISTS(...)` predicate is
+// not) — then probe the subject's readable reach per candidate (the same predicate as
+// SubjectCanReadPerson). Because search is selective this needs no sparse/dense split. Keyset by
+// person RID so the page fills correctly and the cursor is stable.
+func (q *Queries) VisiblePersonIDsForSubjectSearch(ctx context.Context, arg VisiblePersonIDsForSubjectSearchParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, visiblePersonIDsForSubjectSearch,
+		arg.After,
+		arg.Query,
+		arg.SubjectPersonID,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const visiblePersonIDsForSubjectSparse = `-- name: VisiblePersonIDsForSubjectSparse :many
+WITH readable AS (
+  SELECT a.target_unit_id AS unit_id
+  FROM oikumenea.authz_role_assignments a
+  JOIN oikumenea.authz_roles r ON r.id = a.role_id AND r.deleted_at IS NULL
+  WHERE a.subject_person_id = $3
+    AND a.revoked_at IS NULL
+    AND (a.expires_at IS NULL OR a.expires_at > now())
+    AND EXISTS (SELECT 1 FROM oikumenea.authz_role_permissions rp
+                WHERE rp.role_id = a.role_id AND rp.permission_code LIKE '%.read')
+    AND (a.scope = 'unit'
+         OR EXISTS (SELECT 1 FROM oikumenea.tenant_graphs g
+                    WHERE g.id = a.graph_id AND g.is_authority_bearing AND g.deleted_at IS NULL))
+  UNION
+  SELECT c.descendant_id
+  FROM oikumenea.authz_role_assignments a
+  JOIN oikumenea.authz_roles r  ON r.id = a.role_id AND r.deleted_at IS NULL
+  JOIN oikumenea.tenant_graphs g ON g.id = a.graph_id AND g.is_authority_bearing AND g.deleted_at IS NULL
+  JOIN oikumenea.tenant_unit_closure c
+       ON c.graph_id = a.graph_id AND c.ancestor_id = a.target_unit_id
+  JOIN oikumenea.tenant_units u ON u.id = c.descendant_id AND u.deleted_at IS NULL
+  WHERE a.subject_person_id = $3
+    AND a.scope = 'subtree'
+    AND a.revoked_at IS NULL
+    AND (a.expires_at IS NULL OR a.expires_at > now())
+    AND EXISTS (SELECT 1 FROM oikumenea.authz_role_permissions rp
+                WHERE rp.role_id = a.role_id AND rp.permission_code LIKE '%.read')
+)
+SELECT DISTINCT m.person_id
+FROM oikumenea.membership_memberships m
+JOIN readable rd ON rd.unit_id = m.unit_id
+WHERE m.status = 'active' AND m.deleted_at IS NULL
+  AND ($1 = '' OR m.person_id::text > $1)
+ORDER BY m.person_id
+LIMIT $2
+`
+
+type VisiblePersonIDsForSubjectSparseParams struct {
+	After           interface{}
+	Lim             int32
+	SubjectPersonID string
+}
+
+// SPARSE-reach plan shape: materialize the (small) readable unit set, semi-join memberships via the
+// unit index. O(|reach| + page) — wrong shape for a near-root subtree subject (the whole reach
+// materializes before the LIMIT), hence the adapter's cardinality dispatch.
+func (q *Queries) VisiblePersonIDsForSubjectSparse(ctx context.Context, arg VisiblePersonIDsForSubjectSparseParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, visiblePersonIDsForSubjectSparse, arg.After, arg.Lim, arg.SubjectPersonID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var person_id string
+		if err := rows.Scan(&person_id); err != nil {
+			return nil, err
+		}
+		items = append(items, person_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

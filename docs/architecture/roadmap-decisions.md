@@ -129,6 +129,43 @@ runtime shared secret; the env-secret path is simpler and audited as `system`.
 superseded/folded; **M16 absorbs M17** ([milestones](../milestones.md)). DS-25 stays promoted; **DS-44**
 (more connector types) stays parked. Additive / expand-only on oikumenea; hermenea is greenfield.
 
+**Amended by M49 — chunked import runs, set-based apply, resumability, N workers**
+([review-2026-07](review-2026-07.md) Phase 3: R-05 + the Phase-3 parts of R-13). The one-envelope /
+one-transaction / row-at-a-time import path was a proven wall at 10⁶-record scale; the contract and
+both sides of the pipeline are industrialized, preserving every D-Hermenea invariant (HTTP-only
+coupling, idempotent non-destructive upserts, provenance, ingest ≠ edit):
+
+- **Chunked envelopes.** `CanonicalEnvelope` gains optional `runId`/`seq`/`isLast`; hermenea's loader
+  sends a large dataset as sequential ~5k-record chunks — each chunk one envelope = **one oikumenea
+  transaction** — ended by a trailing (possibly empty) `isLast` finalize chunk that runs the
+  object-type's batch finalizers (e.g. the languoid closure rebuild). All fields absent = the
+  pre-M49 single-shot semantics, so small catalogs, the pinax seeder, and the `oikumenea seed` CLI
+  are untouched. oikumenea keeps **no per-run state**: chunk replay is safe because every record
+  apply is a natural-key idempotent upsert.
+- **Set-based apply.** The four high-volume object-types (geo-places, language-scheme,
+  external-organizations, person-regulatory-sanctions) replace their per-record loops with one
+  parallel-array **UNNEST merge** per chunk (`INSERT … SELECT … FROM unnest(...) ON CONFLICT … DO
+  UPDATE … WHERE source_version IS DISTINCT FROM EXCLUDED…` + `RETURNING (xmax = 0)` for exact
+  created/updated/skipped counts); self-referential parents (geo place parent, languoid parent)
+  resolve in a second pass over the touched rows, so a parent may arrive in the same chunk. The
+  seven low-volume handlers keep their loops.
+- **Resumability.** hermenea persists a per-job cursor (`worker_jobs.resume_seq` +
+  `resume_checksum`, migration `migrations/hermenea/0005`) after every acknowledged chunk; a retried
+  attempt re-stages the source and skips chunks `seq <= resume_seq` **iff** the staged checksum still
+  matches (a changed source resets the cursor — full, still-idempotent re-run). Chunk boundaries are
+  deterministic (fixed placetype walk + `ORDER BY` in the WOF mapper; per-push re-slicing without
+  cross-push buffering).
+- **Finite loader deadline.** With no request carrying a whole dataset, the loader's
+  `WithHTTPTimeout(0)` escape hatch is retired: default 120 s per chunk request (install-tunable
+  `oikumenea.http-timeout-ms`, plus `oikumenea.chunk-size`).
+- **Worker concurrency (R-13 part).** `worker.concurrency` fans out N claim loops over the same
+  `FOR UPDATE SKIP LOCKED` queue (default 1); the store was already multi-claimer-safe, and the
+  scheduler's interval-bucketed idempotency keys make extra replicas' ticks fold into the same jobs.
+- **Advisory-locked boot seeding (R-13 part, oikumenea side).** Pinax autoseed + the first-admin
+  bootstrap run under a session-level `pg_advisory_lock` on a well-known key
+  (`internal/platform/db.LockBootSeed`): a second replica booting the same fresh database **waits**,
+  then re-runs the now-no-op idempotent checks — exactly one seed pass per fresh DB.
+
 ---
 
 ### D-DataIngestion — A generic reference-data ingestion & connector framework (extends D-Ontology)

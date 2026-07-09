@@ -15,6 +15,13 @@ import (
 	"github.com/palantir/pkg/bearertoken"
 )
 
+// HTTPTimeout is the hard deadline main.go puts on the hermenea watchlist HTTP client
+// (httpclient.WithHTTPTimeout — review-2026-07 R-12): hermenea serves cached answers in
+// milliseconds, and a cache miss that needs longer than this must fail into the person module's
+// "screening unavailable" error path rather than couple oikumenea's request latency (and, before
+// R-03, a pooled DB connection) to a third-party sanctions API's tail latency.
+const HTTPTimeout = 10 * time.Second
+
 // Client screens person identities against hermenea's watchlist endpoint. It holds the OIKUMENEA_HERMENEA
 // trigger secret (the same trust direction as the import-control proxy) so the web tier never reaches the
 // companion directly.
@@ -55,6 +62,16 @@ func (c Client) Screen(ctx context.Context, q persondomain.WatchlistQuery) (pers
 		}
 	}
 	return out, nil
+}
+
+// Disabled is the explicit no-op WatchlistLookup bound when no hermenea companion is configured
+// (review-2026-07 R-11). It makes the person service's seam always non-nil, so screening returns the
+// clear "not configured" error via this implementation rather than a nil check in the service.
+type Disabled struct{}
+
+// Screen always reports the screening seam is unavailable.
+func (Disabled) Screen(context.Context, persondomain.WatchlistQuery) (persondomain.WatchlistScreenResult, error) {
+	return persondomain.WatchlistScreenResult{}, persondomain.ErrWatchlistUnavailable
 }
 
 func optStr(s string) *string {

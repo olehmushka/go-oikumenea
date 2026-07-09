@@ -595,34 +595,26 @@ ON CONFLICT (code) WHERE deleted_at IS NULL AND org_id IS NULL DO NOTHING;
 ALTER TABLE oikumenea.religion_org_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE oikumenea.religion_org_profiles FORCE ROW LEVEL SECURITY;
 CREATE POLICY religion_org_profiles_reach ON oikumenea.religion_org_profiles
-  USING (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR unit_id = ANY (string_to_array(nullif(current_setting('app.readable_units', true), ''), ',')::uuid[]))
-  WITH CHECK (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR unit_id = ANY (string_to_array(nullif(current_setting('app.writable_units', true), ''), ',')::uuid[]));
+  USING (oikumenea.authz_unit_in_reach(unit_id, false))
+  WITH CHECK (oikumenea.authz_unit_in_reach(unit_id, true));
 
 ALTER TABLE oikumenea.religion_org_classifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE oikumenea.religion_org_classifications FORCE ROW LEVEL SECURITY;
 CREATE POLICY religion_org_classifications_reach ON oikumenea.religion_org_classifications
-  USING (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR unit_id = ANY (string_to_array(nullif(current_setting('app.readable_units', true), ''), ',')::uuid[]))
-  WITH CHECK (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR unit_id = ANY (string_to_array(nullif(current_setting('app.writable_units', true), ''), ',')::uuid[]));
+  USING (oikumenea.authz_unit_in_reach(unit_id, false))
+  WITH CHECK (oikumenea.authz_unit_in_reach(unit_id, true));
 
 ALTER TABLE oikumenea.religion_unit_classifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE oikumenea.religion_unit_classifications FORCE ROW LEVEL SECURITY;
 CREATE POLICY religion_unit_classifications_reach ON oikumenea.religion_unit_classifications
-  USING (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR unit_id = ANY (string_to_array(nullif(current_setting('app.readable_units', true), ''), ',')::uuid[]))
-  WITH CHECK (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR unit_id = ANY (string_to_array(nullif(current_setting('app.writable_units', true), ''), ',')::uuid[]));
+  USING (oikumenea.authz_unit_in_reach(unit_id, false))
+  WITH CHECK (oikumenea.authz_unit_in_reach(unit_id, true));
 
 ALTER TABLE oikumenea.religion_org_policies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE oikumenea.religion_org_policies FORCE ROW LEVEL SECURITY;
 CREATE POLICY religion_org_policies_reach ON oikumenea.religion_org_policies
-  USING (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR unit_id = ANY (string_to_array(nullif(current_setting('app.readable_units', true), ''), ',')::uuid[]))
-  WITH CHECK (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR unit_id = ANY (string_to_array(nullif(current_setting('app.writable_units', true), ''), ',')::uuid[]));
+  USING (oikumenea.authz_unit_in_reach(unit_id, false))
+  WITH CHECK (oikumenea.authz_unit_in_reach(unit_id, true));
 
 -- ── Localized names (D-i18n: all locales in every response) ─────────────────────────────────────────
 -- For every religion catalog + the taxonomy tree, seed eng (the English `name` made explicit, since

@@ -158,6 +158,35 @@ Owners: [audit](../modules/audit.md) + **every** mutating module.
 
 ---
 
+## Domain events: atomic vs. notify
+
+Cross-module mutations flow through domain events (`pkg/events`), never a direct cross-module write.
+There are **two classes**, and choosing the wrong one is a correctness/scale bug:
+
+- **`atomic`** — the default. Subscribers run **inside the publisher's transaction** (`events.Bus`,
+  synchronous, handed the publisher's `pgx.Tx`): the originating write and every effect share one fate.
+  Use when the effect *must* be all-or-nothing with the write (order-apply re-homing, merge re-point,
+  purge fan-out). **Every event today is `atomic`.** Adding an `atomic` subscriber **widens every
+  publisher's transaction** (longer lock lists, more fate-sharing), so it is a **decision-level change**,
+  not a routine wiring edit. The bus is **sealed** after boot (`Bus.Seal` in the composition root); a
+  `Subscribe` afterwards **panics** (review-2026-07 R-10) — subscribers are wired once, before serving.
+- **`notify`** — after-commit, at-least-once, out of process, via the **transactional outbox**
+  (`oikumenea.platform_outbox`, migration 0036; D-EventOutbox). The producer enqueues on its own write
+  tx (`events.OutboxWriter.PublishNotify`) so the event commits atomically with the write; the dispatcher
+  (`internal/platform/outbox`) drains the queue after commit — claiming rows `FOR UPDATE SKIP LOCKED`
+  (replica-safe, like the hermenea worker), retrying with backoff, dead-lettering past max attempts.
+  Handlers must be **idempotent** (a crash between commit and dispatch re-delivers). Use for effects that
+  must **not** widen the write transaction: webhooks, projections, cache/epoch invalidation, external
+  calls. **No `notify` producers exist yet** — the outbox is a live-but-empty proven seam.
+
+The rule of thumb: *"must this effect roll back with the write?"* → `atomic`; *"is this an out-of-band
+side effect that should not hold the write's locks?"* → `notify`.
+
+Owners: [platform](../modules/platform.md) (the bus, the outbox dispatcher) + every publishing module;
+see [decisions.md](decisions.md) D-EventOutbox and [overview.md](overview.md).
+
+---
+
 ## Reversibility everywhere
 
 Destructive operations are soft and reversible within a grace window, never immediate hard

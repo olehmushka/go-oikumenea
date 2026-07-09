@@ -1,15 +1,22 @@
 //go:build integration
 
-// Integration test for the RLS backstop (D-RLSDefenseInDepth, migration 0012). It connects as the
-// NON-superuser application role `oikumenea` (the only way RLS is in force — a superuser bypasses it)
-// and proves, against a real migrated Postgres, that:
-//   - with no app.* GUCs a unit-scoped read returns nothing (a forgotten-filter read leaks nothing);
-//   - app.readable_units filters reads to exactly the reachable units;
+// Integration test for the live-reach RLS backstop (D-RLSDefenseInDepth as reshaped by
+// D-RLSLiveReach, migration 0011). It connects as the NON-superuser application role `oikumenea`
+// (the only way RLS is in force — a superuser bypasses it) and proves, against a real migrated
+// Postgres, that with the two O(1) GUCs (app.person_id + app.is_instance_admin):
+//   - with no GUCs a unit-scoped read returns nothing (a forgotten-filter read leaks nothing);
+//   - reads are filtered to the subject's LIVE reach computed by oikumenea.authz_unit_in_reach
+//     from their real role assignments (no unit-list GUC exists anymore);
+//   - public units stay selectable regardless of reach (F-002 public-read policy);
 //   - the app.is_instance_admin GUC flag bypasses the predicate (the instance plane);
-//   - a write to a unit outside app.writable_units is rejected by the policy's WITH CHECK.
+//   - a write against a unit outside the subject's WRITE reach (read-only role) is rejected by the
+//     policy's WITH CHECK, while a read+write grant passes;
+//   - REVOCATION IS LIVE: revoking the assignment hides the rows on the very same pinned
+//     connection — stronger than the old snapshot-at-request-start GUCs (D-RLSLiveReach).
 //
-// It also exercises db.AcquireScoped, which sets/resets those GUCs on a pinned connection. The test
-// needs the restricted login role provisioned (see .env.example / migration 0012):
+// It also exercises db.AcquireScoped, which sets/resets those GUCs on a pinned connection in one
+// round trip each way. The test needs the restricted login role provisioned (see .env.example /
+// migration 0011):
 //
 //	CREATE ROLE oikumenea LOGIN PASSWORD 'dev' IN ROLE oikumenea_app;
 //
@@ -27,6 +34,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
 )
 
@@ -54,19 +62,17 @@ func restrictedDSN(t *testing.T) string {
 	return u.String()
 }
 
-func TestRLSBackstop(t *testing.T) {
+// rlsFixture is the seeded world: three shadow units, one public unit, and three subjects with real
+// authority rows (the live policies read authz_role_assignments directly).
+type rlsFixture struct {
+	uReadable, uHidden, uPublic, uWritable string
+	reader, writer, stranger               string // person RIDs
+	readerAssignment                       string // assignment RID (revoked by the live-revocation case)
+}
+
+func seedRLSFixture(t *testing.T, super *pgxpool.Pool) rlsFixture {
+	t.Helper()
 	ctx := context.Background()
-
-	// Superuser pool seeds two units (bypassing RLS) and cleans up at the end. NewPool sets the
-	// app.environment GUC every connection needs for new_id (D-ResourceIdentifiers).
-	super, err := pdb.NewPool(ctx, superuserDSN(), "local")
-	if err != nil {
-		t.Skipf("no test database (set OIKUMENEA_TEST_DSN): %v", err)
-	}
-	defer super.Close()
-
-	// Units now belong to an organization (D-TenantOrganizations, M40); seed a test domain + org so the
-	// RLS-fixture unit inserts have a valid org_id/domain_id (referenced by subquery below).
 	if _, err := super.Exec(ctx, `
 INSERT INTO oikumenea.tenant_domains (code, name) VALUES ('rls-test-domain','RLS Test Domain')
   ON CONFLICT (code) WHERE deleted_at IS NULL DO NOTHING;
@@ -76,37 +82,78 @@ INSERT INTO oikumenea.tenant_organizations (code, name, domain_id)
 		t.Fatalf("seed rls org: %v", err)
 	}
 
-	// Distinct ids so the test is independent of any pre-existing rows; minted via new_id so the
-	// id RID-shape CHECK holds. idReadable/idHidden are seeded now (both shadow); idWrite* are reserved
-	// for the write-policy test; idPublic is a public unit for the public-read policy test (F-002).
-	var idReadable, idHidden, idWriteOK, idWriteDenied, idPublic string
-	for _, p := range []*string{&idReadable, &idHidden, &idWriteOK, &idWriteDenied, &idPublic} {
-		if err := super.QueryRow(ctx, "SELECT oikumenea.new_id(4, 1, 1)").Scan(p); err != nil {
-			t.Fatalf("mint rid: %v", err)
+	var f rlsFixture
+	unit := func(name, visibility string) string {
+		var id string
+		if err := super.QueryRow(ctx, `
+			INSERT INTO oikumenea.tenant_units (name, visibility, org_id, domain_id)
+			SELECT $1, $2, o.id, o.domain_id FROM oikumenea.tenant_organizations o WHERE o.code='rls-test-org'
+			RETURNING id`, name, visibility).Scan(&id); err != nil {
+			t.Fatalf("seed unit %s: %v", name, err)
 		}
+		return id
 	}
-	mkCode := func(s string) string { return "rls-test-" + s[len(s)-12:] }
-	// idReadable/idHidden are shadow so they are governed solely by the reach predicate (not the
-	// public-read exception); idPublic is public so it should be selectable regardless of reach.
-	for _, id := range []string{idReadable, idHidden} {
-		if _, err := super.Exec(ctx,
-			`INSERT INTO oikumenea.tenant_units (id, code, name, visibility, org_id, domain_id)
-			 SELECT $1, $2, $3, 'shadow', o.id, o.domain_id FROM oikumenea.tenant_organizations o WHERE o.code='rls-test-org'`,
-			id, mkCode(id), "RLS test unit"); err != nil {
-			t.Fatalf("seed unit: %v", err)
+	// Shadow units are governed solely by the reach predicate (not the public-read exception).
+	f.uReadable = unit("RLS readable", "shadow")
+	f.uHidden = unit("RLS hidden", "shadow")
+	f.uWritable = unit("RLS writable", "shadow")
+	f.uPublic = unit("RLS public", "public")
+
+	person := func(name string) string {
+		var id string
+		if err := super.QueryRow(ctx,
+			`INSERT INTO oikumenea.person_persons (display_name) VALUES ($1) RETURNING id`, name).Scan(&id); err != nil {
+			t.Fatalf("seed person %s: %v", name, err)
 		}
+		return id
 	}
-	if _, err := super.Exec(ctx,
-		`INSERT INTO oikumenea.tenant_units (id, code, name, visibility, org_id, domain_id)
-		 SELECT $1, $2, $3, 'public', o.id, o.domain_id FROM oikumenea.tenant_organizations o WHERE o.code='rls-test-org'`,
-		idPublic, mkCode(idPublic), "RLS test public unit"); err != nil {
-		t.Fatalf("seed public unit: %v", err)
+	f.reader = person("RLS reader")
+	f.writer = person("RLS writer")
+	f.stranger = person("RLS stranger")
+
+	role := func(code string, perms ...string) string {
+		var id string
+		if err := super.QueryRow(ctx,
+			`INSERT INTO oikumenea.authz_roles (code, name) VALUES ($1, 'RLS test role') RETURNING id`, code).Scan(&id); err != nil {
+			t.Fatalf("seed role %s: %v", code, err)
+		}
+		for _, p := range perms {
+			if _, err := super.Exec(ctx,
+				`INSERT INTO oikumenea.authz_role_permissions (role_id, permission_code) VALUES ($1, $2)`, id, p); err != nil {
+				t.Fatalf("seed perm %s: %v", p, err)
+			}
+		}
+		return id
 	}
-	defer func() {
-		_, _ = super.Exec(context.Background(),
-			"DELETE FROM oikumenea.tenant_units WHERE id = ANY($1)",
-			[]string{idReadable, idHidden, idWriteOK, idWriteDenied, idPublic})
-	}()
+	// Unique-per-run role codes: tenant_units RIDs make good suffixes.
+	readRole := role("rls-read-"+f.uReadable[24:], "unit.read")
+	rwRole := role("rls-rw-"+f.uReadable[24:], "unit.read", "unit.update")
+
+	grant := func(subject, roleID, target string) string {
+		var id string
+		if err := super.QueryRow(ctx, `
+			INSERT INTO oikumenea.authz_role_assignments (subject_person_id, role_id, target_unit_id, scope)
+			VALUES ($1, $2, $3, 'unit') RETURNING id`, subject, roleID, target).Scan(&id); err != nil {
+			t.Fatalf("seed assignment: %v", err)
+		}
+		return id
+	}
+	f.readerAssignment = grant(f.reader, readRole, f.uReadable)
+	grant(f.writer, rwRole, f.uWritable)
+	return f
+}
+
+func TestRLSBackstop(t *testing.T) {
+	ctx := context.Background()
+
+	// Superuser pool seeds the fixture (bypassing RLS). NewPool sets the app.environment GUC every
+	// connection carries (vestigial, D-ResourceIdentifiers).
+	super, err := pdb.NewPool(ctx, superuserDSN(), "local")
+	if err != nil {
+		t.Skipf("no test database (set OIKUMENEA_TEST_DSN): %v", err)
+	}
+	defer super.Close()
+	f := seedRLSFixture(t, super)
 
 	// Restricted pool: the non-superuser role, so the policies apply.
 	app, err := pdb.NewPool(ctx, restrictedDSN(t), "local")
@@ -115,40 +162,47 @@ INSERT INTO oikumenea.tenant_organizations (code, name, domain_id)
 	}
 	defer app.Close()
 
-	// Confirm RLS is actually in force: a superuser MUST bypass it (sees seeded rows without GUCs);
-	// the app role must NOT. A raw pooled connection (no app.* GUCs) must hide the seeded unit.
-	if visible(ctx, t, app, idReadable) {
-		t.Fatal("RLS not enforced: app role sees a unit with no app.readable_units GUC")
+	// Confirm RLS is actually in force: a raw pooled connection (no app.* GUCs) must hide the
+	// seeded shadow unit even though the reader has a grant — no subject GUC, no reach.
+	if visible(ctx, t, app, f.uReadable) {
+		t.Fatal("RLS not enforced: app role sees a shadow unit with no app.person_id GUC")
 	}
 
-	t.Run("readable_units filters reads", func(t *testing.T) {
-		conn, release, err := pdb.AcquireScoped(ctx, app, pdb.RLSState{ReadableUnits: []string{idReadable}})
+	t.Run("live reach filters reads by the subject's real assignments", func(t *testing.T) {
+		conn, release, err := pdb.AcquireScoped(ctx, app, pdb.RLSState{PersonID: f.reader})
 		if err != nil {
 			t.Fatalf("acquire scoped: %v", err)
 		}
 		defer release()
-		if !visible(ctx, t, conn, idReadable) {
-			t.Error("a unit in readable_units should be visible")
+		if !visible(ctx, t, conn, f.uReadable) {
+			t.Error("a unit in the subject's read reach should be visible")
 		}
-		if visible(ctx, t, conn, idHidden) {
-			t.Error("a unit NOT in readable_units must be hidden")
+		if visible(ctx, t, conn, f.uHidden) {
+			t.Error("a unit outside the subject's reach must be hidden")
+		}
+	})
+
+	t.Run("a grant-less subject sees no shadow units", func(t *testing.T) {
+		conn, release, err := pdb.AcquireScoped(ctx, app, pdb.RLSState{PersonID: f.stranger})
+		if err != nil {
+			t.Fatalf("acquire scoped: %v", err)
+		}
+		defer release()
+		if visible(ctx, t, conn, f.uReadable) {
+			t.Error("a grant-less subject must not see a shadow unit")
 		}
 	})
 
 	t.Run("public units are selectable regardless of reach (F-002)", func(t *testing.T) {
-		// Empty reach, not an instance admin: the reach predicate hides everything, so only the
-		// public-read policy can admit a row. The public unit must be visible; a shadow unit out of
-		// reach must stay hidden — proving the new policy is SELECT-scoped to public rows, not a
-		// blanket read.
 		conn, release, err := pdb.AcquireScoped(ctx, app, pdb.RLSState{})
 		if err != nil {
 			t.Fatalf("acquire scoped: %v", err)
 		}
 		defer release()
-		if !visible(ctx, t, conn, idPublic) {
-			t.Error("a public unit must be selectable even with empty reach")
+		if !visible(ctx, t, conn, f.uPublic) {
+			t.Error("a public unit must be selectable even with no subject")
 		}
-		if visible(ctx, t, conn, idHidden) {
+		if visible(ctx, t, conn, f.uHidden) {
 			t.Error("a shadow unit out of reach must stay hidden")
 		}
 	})
@@ -159,37 +213,51 @@ INSERT INTO oikumenea.tenant_organizations (code, name, domain_id)
 			t.Fatalf("acquire scoped: %v", err)
 		}
 		defer release()
-		if !visible(ctx, t, conn, idHidden) {
+		if !visible(ctx, t, conn, f.uHidden) {
 			t.Error("an instance admin should see every unit")
 		}
 	})
 
-	t.Run("write outside writable_units is rejected", func(t *testing.T) {
-		// In writable reach -> the WITH CHECK passes.
-		okConn, releaseOK, err := pdb.AcquireScoped(ctx, app, pdb.RLSState{WritableUnits: []string{idWriteOK}})
+	t.Run("write outside write reach is rejected by WITH CHECK", func(t *testing.T) {
+		// The writer's role carries unit.update (write-bearing) on uWritable -> UPDATE passes.
+		okConn, releaseOK, err := pdb.AcquireScoped(ctx, app, pdb.RLSState{PersonID: f.writer})
 		if err != nil {
 			t.Fatalf("acquire scoped: %v", err)
 		}
 		defer releaseOK()
 		if _, err := okConn.Exec(ctx,
-			`INSERT INTO oikumenea.tenant_units (id, code, name, org_id, domain_id)
-			 SELECT $1, $2, $3, o.id, o.domain_id FROM oikumenea.tenant_organizations o WHERE o.code='rls-test-org'`,
-			idWriteOK, mkCode(idWriteOK), "RLS write ok"); err != nil {
-			t.Errorf("insert into a writable unit id should succeed, got: %v", err)
+			`UPDATE oikumenea.tenant_units SET name = 'RLS writable (updated)' WHERE id = $1`, f.uWritable); err != nil {
+			t.Errorf("update within write reach should succeed, got: %v", err)
 		}
 
-		// Not in writable reach -> the WITH CHECK rejects it.
-		denyConn, releaseDeny, err := pdb.AcquireScoped(ctx, app, pdb.RLSState{})
+		// The reader's role is read-only: uReadable is VISIBLE (USING passes) but the WITH CHECK
+		// requires write reach -> the update must be rejected.
+		roConn, releaseRO, err := pdb.AcquireScoped(ctx, app, pdb.RLSState{PersonID: f.reader})
 		if err != nil {
 			t.Fatalf("acquire scoped: %v", err)
 		}
-		defer releaseDeny()
-		_, err = denyConn.Exec(ctx,
-			`INSERT INTO oikumenea.tenant_units (id, code, name, org_id, domain_id)
-			 SELECT $1, $2, $3, o.id, o.domain_id FROM oikumenea.tenant_organizations o WHERE o.code='rls-test-org'`,
-			idWriteDenied, mkCode(idWriteDenied), "RLS write denied")
-		if err == nil {
-			t.Error("insert with empty writable_units must be rejected by RLS WITH CHECK")
+		defer releaseRO()
+		if _, err := roConn.Exec(ctx,
+			`UPDATE oikumenea.tenant_units SET name = 'RLS readable (updated)' WHERE id = $1`, f.uReadable); err == nil {
+			t.Error("update with a read-only grant must be rejected by RLS WITH CHECK")
+		}
+	})
+
+	t.Run("revocation is live on an already-pinned connection", func(t *testing.T) {
+		conn, release, err := pdb.AcquireScoped(ctx, app, pdb.RLSState{PersonID: f.reader})
+		if err != nil {
+			t.Fatalf("acquire scoped: %v", err)
+		}
+		defer release()
+		if !visible(ctx, t, conn, f.uReadable) {
+			t.Fatal("precondition: reader must see uReadable before the revoke")
+		}
+		if _, err := super.Exec(ctx,
+			`UPDATE oikumenea.authz_role_assignments SET revoked_at = now() WHERE id = $1`, f.readerAssignment); err != nil {
+			t.Fatalf("revoke assignment: %v", err)
+		}
+		if visible(ctx, t, conn, f.uReadable) {
+			t.Error("D-RLSLiveReach: a revoked assignment must hide rows on the SAME pinned connection")
 		}
 	})
 }

@@ -26,11 +26,33 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/education/application"
 	"github.com/olegamysk/go-oikumenea/internal/education/domain"
 	personadapters "github.com/olegamysk/go-oikumenea/internal/person/adapters"
+	personevents "github.com/olegamysk/go-oikumenea/internal/person/events"
 	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
 	tenantadapters "github.com/olegamysk/go-oikumenea/internal/tenant/adapters"
 	tenantapp "github.com/olegamysk/go-oikumenea/internal/tenant/application"
 	tenantdomain "github.com/olegamysk/go-oikumenea/internal/tenant/domain"
+	"github.com/olegamysk/go-oikumenea/pkg/events"
 )
+
+// firePersonPurge drives this module's PersonPurged erase subscription — the event path that replaced
+// person's inline cross-module purge deletes (D-PersonModuleSplit, review-2026-07 R-09) — in one
+// committed tx, so the purge-erasure tests exercise the real flow rather than the removed inline deletes.
+func firePersonPurge(t *testing.T, ctx context.Context, pool *pgxpool.Pool, svc *application.Service, personID string) {
+	t.Helper()
+	bus := events.NewBus()
+	svc.SubscribePersonPurge(bus)
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin purge tx: %v", err)
+	}
+	defer tx.Rollback(ctx)
+	if err := bus.Publish(ctx, tx, personevents.PersonPurged{ID: personID}); err != nil {
+		t.Fatalf("publish PersonPurged: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit purge tx: %v", err)
+	}
+}
 
 const defaultTestDSN = "postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable"
 
@@ -269,6 +291,7 @@ func TestEducationVertical(t *testing.T) {
 	if _, err := personadapters.NewRepository(pool).Purge(ctx, student); err != nil {
 		t.Fatalf("purge student: %v", err)
 	}
+	firePersonPurge(t, ctx, pool, svc, student) // education erases its own rows via PersonPurged (D-PersonModuleSplit)
 	if rows, _ := svc.ListEnrollments(ctx, student); len(rows) != 0 {
 		t.Fatalf("expected enrollments erased on purge, got %d", len(rows))
 	}

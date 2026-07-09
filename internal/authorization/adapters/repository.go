@@ -263,10 +263,31 @@ func (r *Repository) IsActiveInstanceAdmin(ctx context.Context, personID string)
 	return r.q.IsActiveInstanceAdmin(ctx, personID)
 }
 
+// ReadableUnitsForSubjectAmong is the batch reach probe behind the shadow gate (R-02.1).
+func (r *Repository) ReadableUnitsForSubjectAmong(ctx context.Context, subjectPersonID string, unitIDs []string) ([]string, error) {
+	if len(unitIDs) == 0 {
+		return nil, nil
+	}
+	return r.q.ReadableUnitsForSubjectAmong(ctx, authzsql.ReadableUnitsForSubjectAmongParams{
+		UnitIds: unitIDs, SubjectPersonID: subjectPersonID,
+	})
+}
+
 // HasActiveInstanceAdmin reports whether ANY active instance admin exists — the idempotency gate for
 // the first-admin bootstrap (D-Bootstrap).
 func (r *Repository) HasActiveInstanceAdmin(ctx context.Context) (bool, error) {
 	return r.q.HasActiveInstanceAdmin(ctx)
+}
+
+// ReadAuthzEpoch / BumpAuthzEpoch: the revocation-epoch counter behind the grant cache
+// (D-AuthzGrantCache) — one single-row read to validate a cache hit, one in-tx bump per
+// authority-mutating write.
+func (r *Repository) ReadAuthzEpoch(ctx context.Context) (int64, error) {
+	return r.q.ReadAuthzEpoch(ctx)
+}
+
+func (r *Repository) BumpAuthzEpoch(ctx context.Context) error {
+	return r.q.BumpAuthzEpoch(ctx)
 }
 
 // ---------------------------------------------------------------- conversions

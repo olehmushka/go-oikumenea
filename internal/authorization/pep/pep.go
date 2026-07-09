@@ -42,6 +42,15 @@ func NewUnbound() *Enforcer { return &Enforcer{} }
 // Bind wires the authorization service into a previously-unbound Enforcer. Called once at boot.
 func (e *Enforcer) Bind(svc *application.Service) { e.svc = svc }
 
+// MustBeBound reports whether the enforcer was wired via Bind. The composition root calls it at boot
+// (review-2026-07 R-11) so a forgotten Bind fails startup instead of surfacing as a request-time nil.
+func (e *Enforcer) MustBeBound() error {
+	if e.svc == nil {
+		return errors.New("authorization enforcer (pep) not bound: authorization.Register must Bind it before serving")
+	}
+	return nil
+}
+
 // Subject resolves the acting person RID from the request context (the subject the
 // identity-federation middleware attached via pkg/authn). Returns "" when the request carries no
 // authenticated subject. The authorization transport reads this for grant/revoke provenance
@@ -92,18 +101,19 @@ func firstOr(actions []string) string {
 	return actions[0]
 }
 
-// EffectiveReach returns the request subject's effective read/write unit reach (D-PersonReadScope /
-// D-RLSDefenseInDepth): the units the acting person may read/write plus the instance-admin flag. Read
-// surfaces that project an instance-global resource through the unit graph (person/document
-// read-scope) call it to intersect a candidate's active-membership units with the subject's readable
-// set. An absent subject yields an empty reach (reads nothing), never an error — the permission
-// precondition is enforced separately by RequireAnywhere.
-func (e *Enforcer) EffectiveReach(ctx context.Context) (domain.Reach, error) {
+// SubjectAuthority returns the request subject's person RID and instance-admin flag, resolved
+// through the request authority snapshot / grant cache — ZERO queries on the request path
+// (review-2026-07 R-02.1; replaces the deleted EffectiveReach: read surfaces no longer materialize
+// a reach set, they pass the subject to SQL semi-join queries and short-circuit on the admin flag).
+// An absent subject yields ("", false), never an error — the permission precondition is enforced
+// separately by RequireAnywhere.
+func (e *Enforcer) SubjectAuthority(ctx context.Context) (string, bool, error) {
 	subject := Subject(ctx)
 	if subject == "" {
-		return domain.Reach{}, nil
+		return "", false, nil
 	}
-	return e.svc.EffectiveReach(ctx, subject)
+	isAdmin, err := e.svc.IsInstanceAdminFor(ctx, subject)
+	return subject, isAdmin, err
 }
 
 // FilterVisibleUnits applies the shadow-visibility gate (owned by authorization, patterns.md): from

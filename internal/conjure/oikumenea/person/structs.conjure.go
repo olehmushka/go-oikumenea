@@ -264,6 +264,44 @@ func (o *CreateProvisionalPersonRequest) UnmarshalYAML(unmarshal func(interface{
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+/*
+A crypto-wallet attribution for a person (D-PersonOverlays, M35) — an Object. The address is
+public on-chain data, but attributing it to a person is pii:sensitive; synergy with the M34
+sanctioned-wallet cross-check. Hard-erased on purge.
+*/
+type CryptoWallet struct {
+	Id       string `json:"id"`
+	PersonId string `json:"personId"`
+	// The on-chain wallet address.
+	Address string `json:"address"`
+	// One of bitcoin | ethereum | solana | tron | bnb | polygon | monero | other.
+	Chain string `json:"chain"`
+	// One of exchange_kyc | blockchain_analysis | self_declared | leak | public_post | other.
+	AttributionMethod string `json:"attributionMethod"`
+	// Last-known approximate USD balance.
+	BalanceUsdApprox *float64 `json:"balanceUsdApprox,omitempty"`
+	FirstSeen        *string  `json:"firstSeen,omitempty"`
+	LastSeen         *string  `json:"lastSeen,omitempty"`
+	Source           *string  `json:"source,omitempty"`
+	Confidence       *string  `json:"confidence,omitempty"`
+}
+
+func (o CryptoWallet) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *CryptoWallet) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // Begin reversible deactivation; opens a grace window (purgeAfter = now + the configured grace).
 type DeactivateRequest struct {
 	// Optional free-text reason recorded in the audit entry.
@@ -1196,6 +1234,42 @@ func (o *PersonRank) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+/*
+A declared or formally-assessed personality profile (D-PersonOverlays, M35) — an Object.
+DECLARED SURVEY OR FORMAL HR ASSESSMENT ONLY — never inferred from text. pii:sensitive.
+*/
+type Personality struct {
+	Id       string `json:"id"`
+	PersonId string `json:"personId"`
+	// One of mbti | big_five | disc | enneagram | other.
+	Framework string `json:"framework"`
+	// The typed output, e.g. "INTJ", a Big-Five summary, an Enneagram type.
+	Result string `json:"result"`
+	// The specific test/assessment used.
+	Instrument *string `json:"instrument,omitempty"`
+	// One of self_declared_survey | hr_assessment (inference is forbidden).
+	Method     string  `json:"method"`
+	AssessedAt *string `json:"assessedAt,omitempty"`
+	Source     *string `json:"source,omitempty"`
+	Confidence *string `json:"confidence,omitempty"`
+}
+
+func (o Personality) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *Personality) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // A person's contact phone (D-PersonContactChannels). number is E.164-normalized; country is derived. pii:contact.
 type Phone struct {
 	Id       string `json:"id"`
@@ -1357,6 +1431,62 @@ func (o Platform) MarshalYAML() (interface{}, error) {
 }
 
 func (o *Platform) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+An INFERRED political leaning (D-PersonOverlays, M35) — an Object. Political opinion is a GDPR
+Art. 9 special category, so `spectrum` is envelope-encrypted at rest; the value here is decrypted
+(0 for a crypto-erased tombstone). legalBasis is required. This is a SEPARATE overlay and is NEVER
+merged with the declared M33 party membership. pii:special.
+*/
+type PoliticalLeaning struct {
+	Id       string `json:"id"`
+	PersonId string `json:"personId"`
+	// The inferred left/right position in [-1,1]. Decrypted; 0 when crypto-erased.
+	Spectrum float64 `json:"spectrum"`
+	// The inference methodology tags, e.g. social_media | voting_record | donation_records.
+	InferenceSources []string `json:"inferenceSources"`
+	AssessedAt       *string  `json:"assessedAt,omitempty"`
+	// The platform_legal_basis_kinds code authorizing this Art. 9 inference.
+	LegalBasis string  `json:"legalBasis"`
+	Confidence *string `json:"confidence,omitempty"`
+}
+
+func (o PoliticalLeaning) MarshalJSON() ([]byte, error) {
+	if o.InferenceSources == nil {
+		o.InferenceSources = make([]string, 0)
+	}
+	type _tmpPoliticalLeaning PoliticalLeaning
+	return safejson.Marshal(_tmpPoliticalLeaning(o))
+}
+
+func (o *PoliticalLeaning) UnmarshalJSON(data []byte) error {
+	type _tmpPoliticalLeaning PoliticalLeaning
+	var rawPoliticalLeaning _tmpPoliticalLeaning
+	if err := safejson.Unmarshal(data, &rawPoliticalLeaning); err != nil {
+		return err
+	}
+	if rawPoliticalLeaning.InferenceSources == nil {
+		rawPoliticalLeaning.InferenceSources = make([]string, 0)
+	}
+	*o = PoliticalLeaning(rawPoliticalLeaning)
+	return nil
+}
+
+func (o PoliticalLeaning) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *PoliticalLeaning) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -1796,6 +1926,35 @@ func (o *UpsertCitizenshipRequest) UnmarshalYAML(unmarshal func(interface{}) err
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// Add a crypto wallet, or replace one when id is supplied (D-PersonOverlays, M35).
+type UpsertCryptoWalletRequest struct {
+	Id                *string  `json:"id,omitempty"`
+	Address           string   `json:"address"`
+	Chain             *string  `json:"chain,omitempty"`
+	AttributionMethod *string  `json:"attributionMethod,omitempty"`
+	BalanceUsdApprox  *float64 `json:"balanceUsdApprox,omitempty"`
+	FirstSeen         *string  `json:"firstSeen,omitempty"`
+	LastSeen          *string  `json:"lastSeen,omitempty"`
+	Source            *string  `json:"source,omitempty"`
+	Confidence        *string  `json:"confidence,omitempty"`
+}
+
+func (o UpsertCryptoWalletRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertCryptoWalletRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // Add a distinguishing mark, or replace one when id is supplied.
 type UpsertDistinguishingMarkRequest struct {
 	// The RID of an existing mark row to replace; omit to add a new row.
@@ -2203,6 +2362,34 @@ func (o *UpsertPersonLanguageRequest) UnmarshalYAML(unmarshal func(interface{}) 
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+// Add a personality profile, or replace one when id is supplied (D-PersonOverlays, M35).
+type UpsertPersonalityRequest struct {
+	Id         *string `json:"id,omitempty"`
+	Framework  *string `json:"framework,omitempty"`
+	Result     string  `json:"result"`
+	Instrument *string `json:"instrument,omitempty"`
+	Method     *string `json:"method,omitempty"`
+	AssessedAt *string `json:"assessedAt,omitempty"`
+	Source     *string `json:"source,omitempty"`
+	Confidence *string `json:"confidence,omitempty"`
+}
+
+func (o UpsertPersonalityRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertPersonalityRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // Add a contact phone, or replace one when id is supplied. number is E.164-normalized and country derived.
 type UpsertPhoneRequest struct {
 	// The URN RID of an existing phone row to replace; omit to add a new row.
@@ -2256,6 +2443,35 @@ func (o UpsertPhysicalDescriptionRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *UpsertPhysicalDescriptionRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+Set the person's inferred political leaning (replaces the single active row). Requires legalBasis
+(Art. 9). Inferred-only — never a declared party affiliation (D-PersonOverlays, M35).
+*/
+type UpsertPoliticalLeaningRequest struct {
+	// The inferred position in [-1,1].
+	Spectrum         float64   `json:"spectrum"`
+	InferenceSources *[]string `json:"inferenceSources,omitempty"`
+	AssessedAt       *string   `json:"assessedAt,omitempty"`
+	LegalBasis       string    `json:"legalBasis"`
+	Confidence       *string   `json:"confidence,omitempty"`
+}
+
+func (o UpsertPoliticalLeaningRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertPoliticalLeaningRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

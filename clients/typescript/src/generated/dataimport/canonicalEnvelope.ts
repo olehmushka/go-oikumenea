@@ -16,4 +16,26 @@ export interface ICanonicalEnvelope {
     'generatedAt'?: string | null;
     /** The object-type-specific records to upsert; each is a JSON object. */
     'records': Array<any>;
+    /**
+     * Hermenea's import-run identifier when the dataset arrives as a chunked sequence of
+     * envelopes (R-05). Lineage/audit correlation only — oikumenea keeps no per-run state;
+     * resumability is owned by the sender (last-acked seq on the hermenea job).
+     *
+     */
+    'runId'?: string | null;
+    /**
+     * 1-based chunk index within a chunked run. Chunks are sent sequentially and each is
+     * applied in its own transaction; replaying a chunk is safe (every record apply is a
+     * natural-key idempotent upsert). Absent (with runId/isLast absent) = a single-shot
+     * envelope, the pre-chunking semantics.
+     *
+     */
+    'seq'?: number | null;
+    /**
+     * True on the final chunk of a chunked run; triggers the object-type's batch
+     * finalizers (e.g. the languoid closure + family_code rebuild). The final chunk may
+     * carry zero records (a pure finalize marker).
+     *
+     */
+    'isLast'?: boolean | null;
 }

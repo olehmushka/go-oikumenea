@@ -15,6 +15,31 @@ system-wide scheme (D-Rank, extended by D-RankSystems) — a **directory attribu
 a single-system deployment still holds at most one rank, a multi-track one (university/church) may
 carry concurrent standings.
 
+## Module structure (D-PersonModuleSplit)
+
+Internally the person module is **three Go modules behind one Conjure `PersonService`**, split by
+**data sensitivity + change cadence** (review-2026-07 R-09): `internal/person` (**core** — identity,
+CLDR names, bio, ranks, read-scope, merge/purge orchestration), [personprofile](personprofile.md)
+(citizenships, residences, addresses, contact/social channels, `SPEAKS` languages, person↔person
+relationships, non-encrypted institutional ties), and [personsensitive](personsensitive.md)
+(physical identity/ethnicity, overlays, watchlists + sanctions, encrypted party membership — the whole
+envelope-crypto surface). One `internal/person/transport` `Service` composes the three and delegates
+each handler to its owner. The split is **code-only**: the `oikumenea.person_*` schema and the
+`PersonService` contract are unchanged. **Data-model ownership follows the concern:** this doc owns the
+**core** entities — `person_persons`, the `HOLDS_RANK` link (`person_ranks`), and `person_name_variants`
+(incl. the alias `variant_kind` — aliases are still names) — plus the read-scope rule, the lifecycle,
+the PII-governance purge summary, and the **single `PersonService` API surface**;
+[personprofile.md](personprofile.md) owns the data model for citizenships / residences / addresses /
+contact & social channels / `SPEAKS` languages / person↔person relationships / non-encrypted
+institutional ties, and [personsensitive.md](personsensitive.md) owns the sensitive/encrypted overlays.
+The **data layer is fully split**: each concern owns its own `adapters`/`queries` + generated sqlc
+package over its own repository port (`Repository` / `ProfileRepository` / `SensitiveRepository`),
+`domain.Person` is lean (the transport composes profile child-slices), and purge fans out via
+`PersonPurged` — core `repo.Purge` scrubs only core tables, while `personprofile`/`personsensitive` (and
+`education`/`company`/`document`/…) erase their own rows via `SubscribePersonPurge`; the R-08 lint
+enforces per-`person_*`-table ownership. D-PersonModuleSplit is **fully delivered** (the entity
+data-model move landed 2026-07-09).
+
 ## Entities & aggregates
 
 **Ontology kinds** (D-Ontology; [registry](../ontology-mapping.md)) — **Objects:** `Person` (the core
@@ -120,8 +145,18 @@ Conventions per [conventions.md](../architecture/conventions.md).
 - `deactivated_at TIMESTAMPTZ`, `purge_after TIMESTAMPTZ` — reversibility window
 - `created_at`, `updated_at`, `deleted_at`
 
-Indexes: a trigram/`citext` index on `display_name` for directory search (added when
-search is built); partial unique on any natural key the operator configures (none mandated).
+Indexes: a **pg_trgm GIN index** over a `STORED` generated `search_text` column
+(`display_name`+`code`+`given`+`surname`, lowercased), partial `WHERE deleted_at IS NULL`, backing
+the directory typeahead (D-PersonSearch / review-2026-07 R-06); partial unique on any natural key the
+operator configures (none mandated). `person_name_variants` carries the same generated `search_text`
++ GIN index, so search also matches transliterations and aliases (see below).
+
+**Directory search (D-PersonSearch).** `GET /persons?query=` matches a case-insensitive substring
+against the person haystack **and** any name variant, filtered **in SQL** (never a Go post-filter):
+the admin path is a dedicated `SearchPersons`, the scoped path folds the trigram predicate into the
+read-scope semi-join (`VisiblePersonIDsForSubjectSearch`) so pages stay O(page) and never come back
+empty while `hasMore`. Match branches are a UNION of id-sets to keep each an index bitmap scan;
+sub-3-char queries fall back to a scan (pg_trgm needs a full trigram).
 
 **`person_ranks`** (the reified `HOLDS_RANK` link — one rank per rank system; D-Rank / D-RankSystems)
 - `id` PK (RID entity-type token `link__holds_rank`)
@@ -153,210 +188,16 @@ All other columns across both tables (`id`, `status`, `locale`, `is_primary`,
 lifecycle timestamps) are `pii:none` (D-PIITiers); the name parts, `birthdate`, `date_of_death`,
 `sex`, and `country_of_birth` are `pii:basic` as tiered above.
 
-**`person_citizenships`** (effective-dated; a person may hold several — D-Geo)
-- `id` PK
-- `person_id TEXT NOT NULL REFERENCES person_persons(id) ON DELETE CASCADE`
-- `country_id uuid NOT NULL REFERENCES geo_countries(id) ON DELETE RESTRICT` — the country RID (F-014); `pii:basic`
-- `basis TEXT NOT NULL DEFAULT 'other' CHECK (basis IN ('birth','descent','naturalization','other'))`
-  — how the citizenship was acquired
-- `acquired_on DATE`, `lost_on DATE` — effective window (nullable) — `pii:basic`
-- `is_primary BOOLEAN NOT NULL DEFAULT FALSE` — the person's primary nationality (at most one active)
-- `created_at`, `updated_at`, `deleted_at`
-- **Uniqueness:** one **active** citizenship per `(person_id, country)`:
-  `UNIQUE (person_id, country) WHERE lost_on IS NULL AND deleted_at IS NULL`.
-- Index `(person_id) WHERE deleted_at IS NULL`.
-
-**`person_residences`** (effective-dated residence history — D-Geo)
-- `id` PK
-- `person_id TEXT NOT NULL REFERENCES person_persons(id) ON DELETE CASCADE`
-- `country_id uuid NOT NULL REFERENCES geo_countries(id) ON DELETE RESTRICT` — the country RID (F-014); `pii:contact`
-- `region TEXT` — optional sub-national region / locality — `pii:contact`
-- `valid_from DATE NOT NULL`, `valid_to DATE` — effective window (`valid_to` NULL = current) —
-  `pii:contact`
-- `created_at`, `updated_at`, `deleted_at`
-- Index `(person_id) WHERE deleted_at IS NULL`.
-
-All `id`/`person_id`/lifecycle columns on both tables are `pii:none`; `country`/dates on citizenship
-are `pii:basic`, residence columns are `pii:contact` (locator data) — D-PIITiers.
-
-**`person_addresses`** (precise, effective-dated address history over M19 Location — D-PersonAddresses,
-M32; the reified link `link__lives_at`, RID `6,2,10`). Distinct from `person_residences` (country-grade
-legal residence, kept): an address is the geocoded overlay that dedups against shared
-`location_locations` rows and enables spatial queries.
-- `id` PK (RID `6,2,10`)
-- `person_id uuid NOT NULL REFERENCES person_persons(id) ON DELETE CASCADE`
-- `location_id uuid NOT NULL REFERENCES location_locations(id) ON DELETE RESTRICT` — the M19 place; `pii:contact`
-- `role TEXT NOT NULL CHECK (role IN ('home','work','mailing','other'))`
-- `valid_from DATE NOT NULL` (defaults to today), `valid_to DATE` (NULL = current) — `pii:contact`
-- `is_primary BOOLEAN` — at most one **active** primary per person
-  (`UNIQUE (person_id) WHERE is_primary AND deleted_at IS NULL`; the app demotes the prior primary in-tx)
-- `privacy_seeking BOOLEAN` — a mailing address that deliberately differs from home (itself a signal)
-- `source`/`confidence` — the attribution column-set (D-OverlayFoundation)
-- `created_at`, `updated_at`, `deleted_at`; index `(person_id) WHERE deleted_at IS NULL`
-- The location's existence is verified before write via the cross-module `LocationLookup` seam (the
-  geo/location service). `pii:contact` → **hard-deleted** on person purge.
-
-**`person_email_types`** / **`person_phone_types`** (instance-admin catalogs — D-Code/D-i18n)
-- `code TEXT PRIMARY KEY` — natural key (e.g. `personal`, `work`, `other`; phone `mobile`, `home`,
-  `work`, `other`); locale-agnostic, immutable by convention. Not an RID (catalog carve-out, like
-  `document_personal_code_schemes`).
-- `name TEXT NOT NULL` — default-locale label; other locales in the [localization](localization.md)
-  store (`entity_type='email_type'` / `'phone_type'`).
-- `status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','retired'))`, `sort_order INTEGER`
-- `created_at`, `updated_at`, `deleted_at`. All `pii:none`.
-
-**`person_emails`** (multi-valued contact email — D-PersonContactChannels)
-- `id` PK (`new_id(6,1,5)`)
-- `person_id TEXT NOT NULL REFERENCES person_persons(id) ON DELETE CASCADE`
-- `type_code TEXT NOT NULL REFERENCES person_email_types(code) ON DELETE RESTRICT`
-- `address CITEXT NOT NULL` — the email address, stored lowercased — `pii:contact`
-- `provider TEXT` — derived on write from the address domain (`gmail.com → google`); nullable when no
-  mapping — `pii:contact`
-- `is_primary BOOLEAN NOT NULL DEFAULT FALSE` — at most one active primary
-- `created_at`, `updated_at`, `deleted_at`
-- **Uniqueness:** one **active** row per `(person_id, address)`:
-  `UNIQUE (person_id, address) WHERE deleted_at IS NULL`. Index `(person_id) WHERE deleted_at IS NULL`.
-- **Distinct from the login email** (`account_accounts.email`) — no FK; independent concerns.
-
-**`person_phones`** (multi-valued contact phone — D-PersonContactChannels)
-- `id` PK (`new_id(6,1,6)`)
-- `person_id TEXT NOT NULL REFERENCES person_persons(id) ON DELETE CASCADE`
-- `type_code TEXT NOT NULL REFERENCES person_phone_types(code) ON DELETE RESTRICT`
-- `number TEXT NOT NULL` — **E.164-normalized** via `github.com/nyaruka/phonenumbers` — `pii:contact`
-- `country_id uuid REFERENCES geo_countries(id) ON DELETE RESTRICT` — the country RID (F-014), **derived** from the number (the ISO code is resolved to its RID in SQL);
-  nullable when underivable — `pii:contact`
-- `is_primary BOOLEAN NOT NULL DEFAULT FALSE`
-- `created_at`, `updated_at`, `deleted_at`
-- **Uniqueness:** one **active** row per `(person_id, number)`:
-  `UNIQUE (person_id, number) WHERE deleted_at IS NULL`. Index `(person_id) WHERE deleted_at IS NULL`.
-- Carrier/provider is **not** stored (not statically derivable; parked DS-40).
-
-**`person_call_signs`** (multi-valued informal identifier / позивний — D-PersonContactChannels)
-- `id` PK (`new_id(6,1,7)`)
-- `person_id TEXT NOT NULL REFERENCES person_persons(id) ON DELETE CASCADE`
-- `call_sign TEXT NOT NULL` — the call sign label — `pii:basic`
-- `is_primary BOOLEAN NOT NULL DEFAULT FALSE`
-- `created_at`, `updated_at`, `deleted_at`
-- **Uniqueness:** one **active** call sign per `(person_id, call_sign)`:
-  `UNIQUE (person_id, call_sign) WHERE deleted_at IS NULL` (the leading `person_id` also serves the
-  list lookup).
-
-On all three channel tables `id`/`person_id`/`type_code`/`is_primary`/lifecycle are `pii:none`; email
-`address`/`provider` and phone `number`/`country` are `pii:contact`; `call_sign` is `pii:basic`
-(D-PIITiers). All three are **erased on person purge**.
-
-### Social & messenger channels (D-PersonSocialChannels)
-
-**`person_platforms`** (instance-admin catalog of social networks / messengers — D-Code/D-i18n)
-- `code TEXT PRIMARY KEY` — natural key (e.g. `telegram`, `signal`, `instagram`, `linkedin`); not an RID
-  (catalog carve-out, like `person_email_types`).
-- `name TEXT NOT NULL` — default-locale label; other locales in [localization](localization.md)
-  (`entity_type='platform'`).
-- `category TEXT NOT NULL CHECK (category IN ('messenger','social'))`
-- `status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','retired'))`, `sort_order INTEGER`
-- `created_at`, `updated_at`, `deleted_at`. All `pii:none`. Seeded `telegram`/`whatsapp`/`signal`/
-  `viber` (messenger) + `instagram`/`linkedin`/`x`/`facebook` (social).
-
-**`person_messenger_links`** (reachability over an existing email/phone — Link `link__reachable_on`)
-- `id` PK (`new_id(6,1,8)`)
-- `phone_id TEXT REFERENCES person_phones(id) ON DELETE CASCADE` — nullable
-- `email_id TEXT REFERENCES person_emails(id) ON DELETE CASCADE` — nullable
-- **XOR CHECK:** `CHECK ((phone_id IS NOT NULL) <> (email_id IS NOT NULL))` — exactly one channel.
-- `platform_code TEXT NOT NULL REFERENCES person_platforms(code) ON DELETE RESTRICT` — write-time
-  restricted to a `category='messenger'` platform.
-- `is_primary BOOLEAN NOT NULL DEFAULT FALSE`, `verified_at TIMESTAMPTZ` — both `pii:none`
-- `created_at`, `updated_at`, `deleted_at`
-- **Uniqueness:** one active link per `(phone_id, platform_code)` / `(email_id, platform_code)`
-  (partial-unique, `WHERE deleted_at IS NULL`). All columns `pii:contact` by association with the
-  channel, lifecycle `pii:none`.
-
-**`person_social_accounts`** (standalone handle — Object `PersonSocialAccount`, Link `link__holds_account`)
-- `id` PK (`new_id(6,1,9)`)
-- `person_id TEXT NOT NULL REFERENCES person_persons(id) ON DELETE CASCADE`
-- `platform_code TEXT NOT NULL REFERENCES person_platforms(code) ON DELETE RESTRICT`
-- `platform_user_id TEXT` — the platform's **immutable internal id**, the durable key; nullable when
-  unknown — `pii:contact`
-- `handle TEXT NOT NULL` — current @handle (mutable; history in `person_social_account_handles`) —
-  `pii:contact`
-- `display_name TEXT`, `profile_url TEXT` (derived), `language TEXT` — `pii:contact`
-- `platform_verified BOOLEAN NOT NULL DEFAULT FALSE` — platform "blue-check"; `pii:none`
-- `verified_by_operator_at TIMESTAMPTZ` — operator confirmation, distinct from platform verification;
-  `pii:none`
-- **Attribution (on the `HOLDS_ACCOUNT` link):** `source TEXT NOT NULL CHECK (source IN
-  ('self_declared','operator_verified','imported'))`, `confidence TEXT NOT NULL DEFAULT 'possible'
-  CHECK (confidence IN ('confirmed','probable','possible'))` — both `pii:none`
-- `is_primary BOOLEAN NOT NULL DEFAULT FALSE`
-- `created_at`, `updated_at`, `deleted_at`
-- **Uniqueness:** one active row per `(person_id, platform_code, platform_user_id)` when the id is
-  known, else per `(person_id, platform_code, lower(handle))` (two partial-unique indexes,
-  `WHERE deleted_at IS NULL`). Index `(person_id) WHERE deleted_at IS NULL`.
-- **DS-29-gated (NOT in this schema):** free-text `bio` + `self_declared_location` are `pii:sensitive`
-  and wait on the envelope seam (DS-29).
-
-**`person_social_account_handles`** (handle-rename history — temporal)
-- `id` PK (`new_id(6,1,10)`)
-- `account_id TEXT NOT NULL REFERENCES person_social_accounts(id) ON DELETE CASCADE`
-- `handle TEXT NOT NULL` — `pii:contact`
-- `valid_from TIMESTAMPTZ NOT NULL`, `valid_to TIMESTAMPTZ` — NULL = current
-- `created_at`, `updated_at`, `deleted_at`. Index `(account_id) WHERE deleted_at IS NULL`.
-
-All four tables follow the holder **read-scope rule** (D-PersonReadScope); writes audited; **erased on
-person purge** (the `pii:contact` columns NULLed + `DeleteAll*` of the child rows). **No** time-series
-social-graph metrics are stored (excluded outright; D-PersonSocialChannels).
-
-### Person↔person relationships (D-PersonRelationships)
-
-All are **reified self-links** (`Person → Person`, both endpoints `person_persons`), mirroring
-`membership_memberships`: RID PK, soft-delete, `created_at`/`updated_at`, and an effective interval +
-`status` where a lifecycle applies. All are instance-global, holder-scoped on read (D-PersonReadScope),
-audited on write, and **erased when either endpoint person purges**.
-
-**`person_relation_types`** (instance-admin catalog for open-ended relation labels — D-Code/D-i18n)
-- `code TEXT PRIMARY KEY`; `name TEXT NOT NULL` (localization `entity_type='relation_type'`);
-  `category TEXT NOT NULL CHECK (category IN ('sponsorship','association','next_of_kin'))`;
-  `status`/`sort_order`; lifecycle. All `pii:none`.
-
-**`person_partnerships`** (marriage + engagement — Link `link__partnered_with`)
-- `id` PK; `person_id_a TEXT NOT NULL REFERENCES person_persons(id) ON DELETE CASCADE`,
-  `person_id_b TEXT NOT NULL REFERENCES person_persons(id) ON DELETE CASCADE`
-- `CHECK (person_id_a < person_id_b)` — canonical ordering, no self-pair
-- `status TEXT NOT NULL CHECK (status IN ('engaged','married','divorced','widowed','annulled','dissolved'))`
-- `effective_from DATE`, `effective_to DATE` — NULL `effective_to` = ongoing — `pii:basic`
-- lifecycle. **At most one active `engaged`-or-`married` row per person** (enforced in domain +
-  partial-unique helper). `person_id_*`/`status` `pii:none`; the relationship's existence is `pii:basic`.
-
-**`person_kinships`** (directional blood/legal parentage — Link `link__kin_parent_of`)
-- `id` PK; `parent_id TEXT NOT NULL REFERENCES person_persons(id) ON DELETE CASCADE`,
-  `child_id TEXT NOT NULL REFERENCES person_persons(id) ON DELETE CASCADE`
-- `CHECK (parent_id <> child_id)`; `status TEXT NOT NULL DEFAULT 'active' CHECK (status IN
-  ('active','disestablished'))`; lifecycle. Siblings are **derived, not stored**. Unique active
-  `(parent_id, child_id)`. `pii:basic` (the kin fact).
-
-**`person_guardianships`** (legal guardian → ward — Link `link__guardian_of`)
-- `id` PK; `guardian_id`, `ward_id` (FK CASCADE, `CHECK (guardian_id <> ward_id)`);
-  `relation_code TEXT REFERENCES person_relation_types(code)` (nullable); `effective_from`/
-  `effective_to`; `status`; lifecycle. `pii:basic`.
-
-**`person_sponsorships`** (godparent / advisor / mentor — Link `link__sponsor_of`)
-- `id` PK; `sponsor_id`, `sponsored_id` (FK CASCADE, no self-edge);
-  `relation_code TEXT NOT NULL REFERENCES person_relation_types(code)` (`category='sponsorship'`);
-  `effective_from`/`effective_to`; lifecycle. `pii:basic`.
-
-**`person_next_of_kin`** (in-directory nomination — Link `link__next_of_kin`)
-- `id` PK; `subject_id`, `contact_id` (**both** FK to `person_persons` CASCADE, no self-edge);
-  `relation_code TEXT REFERENCES person_relation_types(code)` (`category='next_of_kin'`);
-  `priority INTEGER NOT NULL DEFAULT 1`; lifecycle. A **nomination**, not a blood fact; external
-  free-text contacts are out of scope. `pii:basic`.
-
-**`person_associations`** (COI / no-contact / associate — Link `link__associated_with`)
-- `id` PK; symmetric `person_id_a < person_id_b` (canonical pair, CASCADE);
-  `relation_code TEXT REFERENCES person_relation_types(code)` (`category='association'`);
-  `kind TEXT NOT NULL CHECK (kind IN ('associate','coi','no_contact'))`; lifecycle. `pii:basic`.
-
-**`person_social_links`** (friend/follower — Link `link__social_tie`) — **deferred, not built.** Cut from
-the M14 delivery: no consumer, no authoritative source, a hollow "proof of friendship" gate, and
-redundant with `person_associations` for the actionable COI/no-contact case. Returns only with a real
-account-level model. See [decisions.md](../architecture/decisions.md) D-PersonRelationships.
+**Profile entities moved to [personprofile.md](personprofile.md).** The full data model for citizenships,
+residences, addresses, contact channels (email/phone/call-sign + type catalogs), social & messenger
+presence (platforms, accounts, handle history, messenger links), languages spoken (the `SPEAKS` link),
+the seven person↔person relationships (+ the relation-type catalog), and the **non-encrypted** M33
+institutional ties (government positions, lobbying, external references) now lives in
+[personprofile.md § Data model](personprofile.md#data-model) — its authoritative owner (D-PersonModuleSplit).
+The **sensitive/encrypted** overlays (physical identity, ethnicity, party membership, watchlists &
+sanctions, and the M35 wallets/personality/political-leaning overlays) are owned by
+[personsensitive.md § Data model](personsensitive.md#data-model). These tables share the one
+`oikumenea.person_*` schema and the one `PersonService` (see § Conjure API surface below).
 
 Person names are **per-record data managed by the person's admins** — *not* the instance-admin
 [localization](localization.md) translation store (D-i18n). A person has one canonical
@@ -587,73 +428,42 @@ through the holder.
 - **External (non-directory) next-of-kin** (above) is **resolved by M29** — provisional person stubs
   (not free-text) become the node every relationship/overlay edge points at (D-OverlayFoundation).
 
-## Planned: OSINT-enrichment cluster (M29, M31–M36)
+## OSINT-enrichment cluster (M29, M31–M36)
 
-> **Status: planned (designed).** The [draft_superbrain_schema.md](../draft_superbrain_schema.md)
-> per-field verdicts are the binding source; the cluster decisions live in
-> [roadmap-decisions.md](../architecture/roadmap-decisions.md). Three rules hold: **declared ≠
-> inferred** (never merged), **every overlay carries `source`+`confidence`**, **special-category data
-> is gated** (envelope [D-SpecialPII] + structured `legal_basis` + audit). Final RID type codes are
-> allocated on build (person service object 11+, link 9+).
+> The [draft_superbrain_schema.md](../draft_superbrain_schema.md) per-field verdicts are the binding
+> source; the cluster decisions live in [roadmap-decisions.md](../architecture/roadmap-decisions.md).
+> Three rules hold: **declared ≠ inferred** (never merged), **every overlay carries
+> `source`+`confidence`+`as_of`**, **special-category data is gated** (envelope [D-SpecialPII] +
+> structured `legal_basis` + audit). **M29 foundation is core (this module); M31–M36 are owned by the
+> concern docs** — full data model in [personsensitive.md § Data model](personsensitive.md#data-model)
+> (sensitive/encrypted) and [personprofile.md § Data model](personprofile.md#data-model) (M32 addresses,
+> M33 non-encrypted ties).
 
-- **M29 · Foundation (D-OverlayFoundation).** `person_persons.status` gains **`provisional`** (minimal-PII
-  stubs so every relationship/overlay edge points at a node) + a manual **`MergePerson`** action
-  (re-homes edges, `confidence`, `PersonMerged` event); the reusable `source`/`confidence`/`as_of`
-  **attribution convention**; the structured **`legal_basis`** catalog
-  ([platform](platform.md) `platform_legal_basis_kinds`, GDPR Art. 6/9), NOT NULL on every
-  `pii:special` store. No automatic candidate matching (parked).
-- **M31 · Physical identity (D-PhysicalIdentity) — DELIVERED (migration `0030`).**
-  `person_name_variants.variant_kind` (`transliteration|aka|former_legal|maiden|pseudonym|cover` —
-  aliases fold in, no new table; the one-per-locale rule is partial to `transliteration`, aliases are
-  free-form by RID + `source`/`confidence`); `person_physical_descriptions` (+ `blood_type`,
-  `pii:basic`) + `person_distinguishing_marks` (`pii:special` ceiling); declared-only open
-  `person_ethnicity_types` + the encrypted `person_ethnicities` link (`link__has_ethnicity`, RID
-  `6,2,9`, `pii:special`). The declared ethnicity **code itself is envelope-encrypted** (reuses
-  `pkg/crypto`, blind-indexed, NO plaintext catalog FK — the Art. 9 datum never sits in plaintext) with
-  a NOT-NULL `legal_basis`; crypto-erased on purge. Biometrics **excluded**. *(M42 · D-Color: the
-  description's `eye_color`/`hair_color` later became hard FKs `eye_color_id`/`hair_color_id` →
-  `platform_colors` (domains `eye`/`hair`), validated app-side; see [platform](platform.md).)*
-  *(M43 · D-PhysicalIdentity amendment: `person_ethnicity_types` became a **hierarchical** catalog —
-  `parent_id` + `person_ethnicity_type_closure` + `wikidata_id` + group-level M:N to Glottolog
-  `language_languoids` (ethnolinguistic) and `geo_countries` (homelands); fed by the opt-in **CIA World
-  Factbook** `ethnicity-scheme` import — fetched + parsed live at runtime by a `factbook` hermenea
-  connector + mapper (public domain; no committed preset; default catalog empty) — which populates a flat
-  catalog + homeland-country ties (the Factbook carries no hierarchy/language, so those columns stay
-  unpopulated by this source). The **encrypted** `person_ethnicities` link is unchanged; the
-  group↔language tie is **never** inferred onto a person — declared ≠ inferred.)*
-- **M32 · Addresses (D-PersonAddresses).** ***Built*** — `person_addresses` → `location_locations`
-  ([location](location.md), M19): `role ∈ {home,work,mailing,other}`, effective-dated, `is_primary`,
-  `privacy_seeking`, `pii:contact`, purge-erased; `person_residences` retained for legal-residence.
-  See the `person_addresses` data-model entry + endpoints above.
-- **M33 · Institutional ties (D-InstitutionalTies) — DELIVERED (migration `0032`).** Per-type person↔org
-  links — `person_party_memberships` (link `6,2,11`, `pii:special`: the party identity is
-  **envelope-encrypted + blind-indexed**, NOT-NULL `legal_basis` Art. 9, crypto-erased on purge),
-  `person_government_positions` (link `6,2,12`, `pep_trigger` auto-true + persists post-office, feeds the
-  M34 PEP seam `IsPoliticallyExposed`; optional polymorphic `org_id` + `country_id`),
-  `person_lobbying_relationships` (link `6,2,13`, `issues[]`/`filing_id`/`source_url`), foreign-military
-  service (reuse [membership](membership.md) against M30
-  [external-organizations](external-organizations.md) + rank — no table), `person_external_references`
-  (object `6,1,14`, idempotent by `(person,url)`, a hermenea import target); an `emergency`
-  `person_relation_type` (M14 catalog seed, no new entity). Org side = external-org / company / unit
-  (free-text label + optional resolved RID). Inferred political leaning is a **separate** M35 overlay,
-  never merged with the declared party membership. All four carry the `source`/`confidence` attribution
-  and are re-pointed on merge; party is crypto-erased and the plaintext ties hard-deleted on purge.
-- **M34 · Watchlists (D-Watchlists, built).** Live-lookup sanctions/PEP/Interpol **via
-  [hermenea](hermenea.md)** — `CheckWatchlists` runs the **first synchronous `oikumenea → hermenea`** call
-  through the late-bound `WatchlistLookup` seam (wired in `main.go` like the location/color seams; the PDP
-  core makes no egress call). Only `person_watchlist_matches` (`6,1,15`) metadata persists — one active row
-  per person, refreshed in place (≤24h cache in hermenea, never the lists); PEP is derived **locally** from
-  M33 government positions (`IsPoliticallyExposed`) and snapshotted at check time. `person_regulatory_sanctions`
-  (`6,1,16`, `pii:sensitive`) is an audited overlay **and** a hermenea import target (idempotent by
-  `(person, externalId)`). Merge re-homes the durable sanctions + drops the transient match; purge
-  hard-deletes both. Criminal/court records (6.1–6.3) deferred → **M38**.
-- **M35 · Overlays (D-PersonOverlays).** `person_crypto_wallets` (`pii:sensitive`); `person_personality`
-  (declared/HR-assessment only, no text-inference); **inferred** `person_political_leaning`
-  (`pii:special`, **never merged** with declared M33 party membership). Compensation/payroll deferred →
-  **M39**.
-- **M36 · Health & vulnerability (D-HealthVulnerability).** `person_health_records`
-  (hospitalization/mental-health/disability, **category-level only, no diagnosis, never inferred**,
-  `pii:special` + envelope + need-to-know + full audit) + `person_insurance` (`pii:sensitive`).
+- **M29 · Foundation (D-OverlayFoundation) — core.** `person_persons.status` gains **`provisional`**
+  (minimal-PII stubs so every relationship/overlay edge points at a node) + a manual **`MergePerson`**
+  action (re-homes edges, `confidence`, `PersonMerged` event); the reusable `source`/`confidence`/`as_of`
+  **attribution convention**; the structured **`legal_basis`** catalog ([platform](platform.md)
+  `platform_legal_basis_kinds`, GDPR Art. 6/9), NOT NULL on every `pii:special` store. No automatic
+  candidate matching (parked).
+- **M31 · Physical identity (D-PhysicalIdentity) — DELIVERED (migration `0030`).** Physical descriptions,
+  distinguishing marks, and the encrypted declared ethnicity (+ hierarchical `person_ethnicity_types`
+  catalog fed by the Factbook import). The alias `person_name_variants.variant_kind` stays **core** (aliases
+  are still names; see [§ Data model](#data-model) above). Full model:
+  [personsensitive.md](personsensitive.md#data-model).
+- **M32 · Addresses (D-PersonAddresses) — DELIVERED.** `person_addresses` → M19 location; owned by
+  [personprofile.md](personprofile.md#data-model). `person_residences` retained for legal residence.
+- **M33 · Institutional ties (D-InstitutionalTies) — DELIVERED (migration `0032`).** Encrypted party
+  membership → [personsensitive.md](personsensitive.md#data-model); government positions / lobbying /
+  external references → [personprofile.md](personprofile.md#data-model). Inferred political leaning is a
+  **separate** M35 overlay, never merged with the declared party membership.
+- **M34 · Watchlists (D-Watchlists) — DELIVERED.** Synchronous `CheckWatchlists` → [hermenea](hermenea.md);
+  transient `person_watchlist_matches` + durable `person_regulatory_sanctions`. Owned by
+  [personsensitive.md](personsensitive.md#data-model).
+- **M35 · Overlays (D-PersonOverlays) — DELIVERED (migration `0035`).** Crypto wallets, personality, and
+  the inferred (encrypted) political leaning. Owned by [personsensitive.md](personsensitive.md#data-model).
+- **M36 · Health & vulnerability (D-HealthVulnerability) — designed.** `person_health_records`
+  (category-level only, never inferred, `pii:special` + envelope + need-to-know) + `person_insurance`;
+  will land in [personsensitive.md](personsensitive.md).
 
 All cluster tables extend the person **purge** erasure list (`pii:contact`/`pii:basic` NULLed;
 `pii:sensitive`/`pii:special` crypto-erased), per [D-PIITiers](../architecture/decisions.md). Reads on

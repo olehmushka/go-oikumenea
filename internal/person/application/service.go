@@ -21,12 +21,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
 	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
-	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
 	orderevents "github.com/olegamysk/go-oikumenea/internal/order/events"
 	"github.com/olegamysk/go-oikumenea/internal/person/domain"
 	personevents "github.com/olegamysk/go-oikumenea/internal/person/events"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
-	"github.com/olegamysk/go-oikumenea/pkg/crypto"
 	"github.com/olegamysk/go-oikumenea/pkg/events"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
@@ -55,12 +53,14 @@ const targetPerson = "person"
 type RepositoryFactory func(conn db.DBTX) domain.Repository
 
 // MembershipReader is the cross-module query seam the read-scope projection (D-PersonReadScope) uses
-// to resolve which units a person belongs to / which people are reachable through a unit-set. The
-// membership application service satisfies it; it is late-bound (SetMembershipReader) because
-// membership is composed after person (overview.md composition ordering).
+// to resolve who the subject may read. Since review-2026-07 R-02.1 the reach set never leaves the
+// database: membership computes visibility as a SQL semi-join over memberships × the subject's authz
+// reach. The membership application service satisfies it; it is late-bound (SetMembershipReader)
+// because membership is composed after person (overview.md composition ordering).
 type MembershipReader interface {
 	ActiveUnitIDsForPerson(ctx context.Context, personID string) ([]string, error)
-	PersonIDsWithActiveMembershipInUnits(ctx context.Context, unitIDs []string, after string, limit int) ([]string, error)
+	VisiblePersonIDsForSubject(ctx context.Context, subjectPersonID, after, query string, limit int) ([]string, error)
+	SubjectCanReadPerson(ctx context.Context, subjectPersonID, personID string) (bool, error)
 }
 
 // Service is the person application service. It owns its writes, so it holds the pool to open
@@ -72,49 +72,28 @@ type Service struct {
 	graceHours func() int
 	now        func() time.Time
 	membership MembershipReader
-	bus        *events.Bus        // set when SubscribeOrderEvents wires the bus; used to publish PersonMerged
-	cipher     *crypto.Cipher     // envelope cipher for the pii:special declared ethnicity (D-PhysicalIdentity)
-	colors     domain.ColorLookup // late-bound color catalog (D-Color): eye/hair hard-FK palette check
-	locations  domain.LocationLookup // late-bound location catalog (D-PersonAddresses, M32): address FK check
-	watchlist  domain.WatchlistLookup // late-bound hermenea screening seam (D-Watchlists, M34)
+	bus        *events.Bus // set when SubscribeOrderEvents wires the bus; used to publish PersonMerged
 }
 
-// NewService wires the service with the pool, the repository factory, the audit service, the
-// (refreshable) purge-grace window in hours, and the envelope cipher (D-SpecialPII — seals the declared
-// ethnicity). The membership reader is late-bound (SetMembershipReader).
-func NewService(pool *pgxpool.Pool, newRepo RepositoryFactory, audit *auditapp.Service, graceHours func() int, cipher *crypto.Cipher) *Service {
-	return &Service{pool: pool, newRepo: newRepo, audit: audit, graceHours: graceHours, cipher: cipher, now: func() time.Time { return time.Now().UTC() }}
+// NewService wires the service with the pool, the repository factory, the audit service, and the
+// (refreshable) purge-grace window in hours. The membership reader is late-bound (SetMembershipReader).
+// (The envelope cipher + the physical/ethnicity/overlay/watchlist crypto surface moved to the
+// personsensitive module under R-09.)
+func NewService(pool *pgxpool.Pool, newRepo RepositoryFactory, audit *auditapp.Service, graceHours func() int) *Service {
+	return &Service{pool: pool, newRepo: newRepo, audit: audit, graceHours: graceHours, now: func() time.Time { return time.Now().UTC() }}
 }
 
 // SetMembershipReader binds the cross-module membership query seam used by the read-scope projection
 // (D-PersonReadScope). Called once at composition time, after membership is built, before serving.
 func (s *Service) SetMembershipReader(r MembershipReader) { s.membership = r }
 
-// SetColorLookup binds the cross-module color catalog query seam (D-Color) used to enforce the
-// eye/hair physical-description hard FKs against their palettes. Late-bound at composition time; when
-// unset (e.g. in tests that don't exercise color), the palette check is skipped.
-func (s *Service) SetColorLookup(c domain.ColorLookup) { s.colors = c }
-
-// SetLocationLookup binds the cross-module location query seam (D-PersonAddresses, M32) used to verify
-// an address's location_id exists before writing. Late-bound at composition time (geo is built after
-// person); when unset (e.g. tests that don't exercise addresses), the DB FK is the only backstop.
-func (s *Service) SetLocationLookup(l domain.LocationLookup) { s.locations = l }
-
-// SetWatchlistLookup binds the cross-module watchlist screening seam (D-Watchlists, M34) used by
-// CheckWatchlists to run a live check out to the hermenea companion. Late-bound at composition time
-// (hermenea client is built in main.go); when unset (e.g. tests without the seam), CheckWatchlists
-// returns domain.ErrWatchlistUnavailable.
-func (s *Service) SetWatchlistLookup(w domain.WatchlistLookup) { s.watchlist = w }
-
-// checkColor enforces the hard FK's palette: a non-empty color id must resolve to a color in the wanted
-// palette (D-Color). Returns domain.ErrColorMismatch otherwise (unknown id maps there too).
-func (s *Service) checkColor(ctx context.Context, colorID, wantDomain string) error {
-	if colorID == "" || s.colors == nil {
-		return nil
-	}
-	d, err := s.colors.ColorDomain(ctx, colorID)
-	if err != nil || d != wantDomain {
-		return domain.ErrColorMismatch
+// MustBeBound reports whether the mandatory cross-module seams are wired. The composition root calls
+// it at boot (review-2026-07 R-11) so a forgotten setter fails startup instead of surfacing as a
+// request-time nil deref or a silently-empty read-scope page (which reads as "no access"). (The location
+// lookup seam moved to personprofile and the watchlist seam to personsensitive under R-09.)
+func (s *Service) MustBeBound() error {
+	if s.membership == nil {
+		return errors.New("person service: membership reader seam not bound (SetMembershipReader)")
 	}
 	return nil
 }
@@ -212,10 +191,20 @@ func (s *Service) MergePerson(ctx context.Context, fromID, intoID, confidence st
 				return err
 			}
 		}
-		// Tombstone the stub: its child rows are already re-homed, so Purge nulls the stub's residual PII
-		// and flips status → purged (the merged-away marker), deleting nothing.
+		// Tombstone the stub: Purge hard-deletes its core name variants and nulls its residual PII, flipping
+		// status → purged (the merged-away marker).
 		if _, err := repo.Purge(ctx, fromID); err != nil {
 			return err
+		}
+		// Erase the stub's residual profile/sensitive rows via PersonPurged (D-PersonModuleSplit, R-09): most
+		// person-owned rows were re-homed by RepointPersonOwned above, but the single-per-person rows that
+		// cannot be re-homed (watchlist match, inferred political leaning) and the stub-only physical /
+		// ethnicity / address data are dropped here — the profile/sensitive erasers are no-ops for the rows
+		// already re-pointed to intoID. Fired AFTER PersonMerged so the re-point wins.
+		if s.bus != nil {
+			if err := s.bus.Publish(ctx, tx, personevents.PersonPurged{ID: fromID}); err != nil {
+				return err
+			}
 		}
 		if out, err = repo.GetPerson(ctx, intoID); err != nil {
 			return err
@@ -243,7 +232,9 @@ func (s *Service) PersonIDByCode(ctx context.Context, code string) (string, bool
 	return p.ID, true, nil
 }
 
-// GetPerson reads one person with its ranks, name variants, citizenships, and residences attached.
+// GetPerson reads one person with its CORE child slices — ranks and name variants — attached. The
+// non-encrypted directory child data (citizenships, residences, contact channels, …) is owned by
+// personprofile and composed onto the API response by the transport layer (D-PersonModuleSplit, R-09).
 func (s *Service) GetPerson(ctx context.Context, id string) (domain.Person, error) {
 	repo := s.newRepo(s.pool)
 	p, err := repo.GetPerson(ctx, id)
@@ -254,27 +245,6 @@ func (s *Service) GetPerson(ctx context.Context, id string) (domain.Person, erro
 		return domain.Person{}, err
 	}
 	if p.NameVariants, err = repo.ListNameVariants(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if p.Citizenships, err = repo.ListCitizenships(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if p.Residences, err = repo.ListResidences(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if p.Emails, err = repo.ListEmails(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if p.Phones, err = repo.ListPhones(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if p.CallSigns, err = repo.ListCallSigns(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if p.MessengerLinks, err = repo.ListMessengerLinks(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if p.SocialAccounts, err = repo.ListSocialAccounts(ctx, id); err != nil {
 		return domain.Person{}, err
 	}
 	return p, nil
@@ -315,50 +285,40 @@ func (s *Service) ListPersons(ctx context.Context, pageSize int, pageToken, quer
 	return Page{Persons: persons}, nil
 }
 
-// ReadablePerson decides whether the request subject (carrying the precomputed effective reach) may
-// read person id under D-PersonReadScope: true iff the subject is on the instance plane (an instance
-// admin — person.read is never instance-scoped) OR the person's active-membership units intersect the
-// subject's effective readable units. A membership-less person has no units, so only an instance admin
-// sees them. Intersecting with the readable set subsumes the shadow gate (unreachable shadow units are
-// already absent from reach.Readable).
-func (s *Service) ReadablePerson(ctx context.Context, reach authzdomain.Reach, personID string) (bool, error) {
-	if reach.InstanceAdmin {
-		return true, nil
-	}
-	if s.membership == nil || len(reach.Readable) == 0 {
+// ReadablePerson decides whether subjectPersonID may read personID under D-PersonReadScope: true iff
+// the person's active-membership units intersect the subject's effective readable reach, computed as
+// one SQL point probe (review-2026-07 R-02.1). A membership-less person has no units, so nobody but
+// an instance admin sees them — the INSTANCE-ADMIN SHORT-CIRCUIT IS THE CALLER'S (transport checks
+// pep.SubjectAuthority first; person.read is never instance-scoped). The reach predicate subsumes the
+// shadow gate (an unreachable shadow unit is simply not in reach).
+func (s *Service) ReadablePerson(ctx context.Context, subjectPersonID, personID string) (bool, error) {
+	// The membership seam is guaranteed wired at boot (MustBeBound, review-2026-07 R-11); only the
+	// input guard remains — an unauthenticated (empty) subject reads nobody.
+	if subjectPersonID == "" {
 		return false, nil
 	}
-	units, err := s.membership.ActiveUnitIDsForPerson(ctx, personID)
-	if err != nil {
-		return false, err
-	}
-	for _, u := range units {
-		if _, ok := reach.Readable[u]; ok {
-			return true, nil
-		}
-	}
-	return false, nil
+	return s.membership.SubjectCanReadPerson(ctx, subjectPersonID, personID)
 }
 
 // ListVisiblePersons returns the keyset-paginated union of people a non-instance-admin subject may
 // read (D-PersonReadScope): the directory rows whose active memberships fall in the subject's
-// effective readable units. The instance-admin case is the unrestricted ListPersons and is handled by
-// the caller. An empty readable set yields an empty page. Pagination keys on the person RID, matching
-// the membership union's ordering, so the returned rows are already in token order.
-func (s *Service) ListVisiblePersons(ctx context.Context, reach authzdomain.Reach, pageSize int, pageToken, query string) (Page, error) {
+// effective readable reach — one SQL semi-join, O(page) regardless of reach size (review-2026-07
+// R-02.1; the reach set never leaves the database). The instance-admin case is the unrestricted
+// ListPersons and is handled by the caller. Pagination keys on the person RID, matching the
+// membership union's ordering, so the returned rows are already in token order.
+func (s *Service) ListVisiblePersons(ctx context.Context, subjectPersonID string, pageSize int, pageToken, query string) (Page, error) {
 	size := resolvePageSize(pageSize)
 	after, err := decodeCursor(pageToken)
 	if err != nil {
 		return Page{}, err
 	}
-	if s.membership == nil || len(reach.Readable) == 0 {
+	if subjectPersonID == "" { // membership seam guaranteed wired at boot (MustBeBound, R-11)
 		return Page{}, nil
 	}
-	units := make([]string, 0, len(reach.Readable))
-	for u := range reach.Readable {
-		units = append(units, u)
-	}
-	ids, err := s.membership.PersonIDsWithActiveMembershipInUnits(ctx, units, after, size+1)
+	// The optional @query is folded into the membership semi-join SQL (review-2026-07 R-06): the
+	// trigram/name-variant predicate runs before the LIMIT, so the page is already filtered and the
+	// keyset on person RID stays correct — no Go-side re-filter, no empty-page-while-hasMore.
+	ids, err := s.membership.VisiblePersonIDsForSubject(ctx, subjectPersonID, after, strings.TrimSpace(query), size+1)
 	if err != nil {
 		return Page{}, err
 	}
@@ -372,33 +332,10 @@ func (s *Service) ListVisiblePersons(ctx context.Context, reach authzdomain.Reac
 	if err != nil {
 		return Page{}, err
 	}
-	// The visible-set page is keyed on the membership union (its cursor is unaffected by the text
-	// filter), so the optional @query is applied in Go to the hydrated rows: a typeahead narrows the
-	// returned page without disturbing pagination.
-	if q := strings.TrimSpace(strings.ToLower(query)); q != "" {
-		filtered := persons[:0]
-		for _, p := range persons {
-			if matchesPersonQuery(p, q) {
-				filtered = append(filtered, p)
-			}
-		}
-		persons = filtered
-	}
 	if hasMore && len(ids) > 0 {
 		return Page{Persons: persons, NextPageToken: encodeCursor(ids[len(ids)-1])}, nil
 	}
 	return Page{Persons: persons}, nil
-}
-
-// matchesPersonQuery reports whether a person matches a lowercased name/code substring (the Go-side
-// equivalent of the ListPersons SQL ILIKE, used by the read-scope visible path).
-func matchesPersonQuery(p domain.Person, q string) bool {
-	for _, f := range []string{p.DisplayName, p.Code, p.Given, p.Surname} {
-		if strings.Contains(strings.ToLower(f), q) {
-			return true
-		}
-	}
-	return false
 }
 
 // SetPersonRank sets the person's rank in one rank system, or clears it (a directory attribute;
@@ -536,6 +473,14 @@ func (s *Service) PurgePerson(ctx context.Context, id string) (domain.Person, er
 		if err != nil {
 			return err
 		}
+		// Every OTHER module that holds this person's rows erases its own rows on this same transaction
+		// (D-PersonModuleSplit) — the counterpart to MergePerson's PersonMerged re-point. person no longer
+		// deletes education_*/company_* tables inline; those owners subscribe via SubscribeErase.
+		if s.bus != nil {
+			if err := s.bus.Publish(ctx, tx, personevents.PersonPurged{ID: id}); err != nil {
+				return err
+			}
+		}
 		out = purged
 		return s.record(ctx, tx, "person.purge", id, map[string]any{"id": id, "status": string(purged.Status)})
 	})
@@ -589,848 +534,6 @@ func (s *Service) ListNameVariants(ctx context.Context, personID string) ([]doma
 		return nil, err
 	}
 	return repo.ListNameVariants(ctx, personID)
-}
-
-// ---------------------------------------------------------------- citizenships
-
-// UpsertCitizenship adds or replaces the active citizenship for (person, country). When marked
-// primary, the person's other active citizenships are demoted in the same transaction.
-func (s *Service) UpsertCitizenship(ctx context.Context, c domain.Citizenship) (domain.Citizenship, error) {
-	if c.Basis == "" {
-		c.Basis = domain.DefaultBasis
-	}
-	if err := c.Validate(); err != nil {
-		return domain.Citizenship{}, err
-	}
-	var out domain.Citizenship
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if _, err := repo.GetPerson(ctx, c.PersonID); err != nil {
-			return err
-		}
-		if c.IsPrimary {
-			if err := repo.ClearPrimaryCitizenships(ctx, c.PersonID); err != nil {
-				return err
-			}
-		}
-		created, err := repo.UpsertCitizenship(ctx, c)
-		if err != nil {
-			return err
-		}
-		out = created
-		return s.record(ctx, tx, "person.citizenship.upsert", c.PersonID, map[string]any{"id": c.PersonID, "country": c.Country})
-	})
-	return out, err
-}
-
-// DeleteCitizenship removes the active citizenship for a country.
-func (s *Service) DeleteCitizenship(ctx context.Context, personID, country string) error {
-	return s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if err := repo.DeleteCitizenship(ctx, personID, country); err != nil {
-			return err
-		}
-		return s.record(ctx, tx, "person.citizenship.delete", personID, map[string]any{"id": personID, "country": country})
-	})
-}
-
-// ListCitizenships lists a person's citizenships (the person must exist).
-func (s *Service) ListCitizenships(ctx context.Context, personID string) ([]domain.Citizenship, error) {
-	repo := s.newRepo(s.pool)
-	if _, err := repo.GetPerson(ctx, personID); err != nil {
-		return nil, err
-	}
-	return repo.ListCitizenships(ctx, personID)
-}
-
-// ---------------------------------------------------------------- residences
-
-// UpsertResidence adds a residence row (or replaces one when r.ID is set) and records the action.
-func (s *Service) UpsertResidence(ctx context.Context, r domain.Residence) (domain.Residence, error) {
-	if err := r.Validate(); err != nil {
-		return domain.Residence{}, err
-	}
-	var out domain.Residence
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if _, err := repo.GetPerson(ctx, r.PersonID); err != nil {
-			return err
-		}
-		created, err := repo.UpsertResidence(ctx, r)
-		if err != nil {
-			return err
-		}
-		out = created
-		return s.record(ctx, tx, "person.residence.upsert", r.PersonID, map[string]any{"id": r.PersonID, "residenceId": created.ID})
-	})
-	return out, err
-}
-
-// DeleteResidence removes a person's residence row by id.
-func (s *Service) DeleteResidence(ctx context.Context, personID, residenceID string) error {
-	return s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if err := repo.DeleteResidence(ctx, personID, residenceID); err != nil {
-			return err
-		}
-		return s.record(ctx, tx, "person.residence.delete", personID, map[string]any{"id": personID, "residenceId": residenceID})
-	})
-}
-
-// ListResidences lists a person's residence history (the person must exist).
-func (s *Service) ListResidences(ctx context.Context, personID string) ([]domain.Residence, error) {
-	repo := s.newRepo(s.pool)
-	if _, err := repo.GetPerson(ctx, personID); err != nil {
-		return nil, err
-	}
-	return repo.ListResidences(ctx, personID)
-}
-
-// ---------------------------------------------------------------- emails
-
-// UpsertEmail validates and adds/replaces a contact email, deriving the provider from the address
-// domain on write (D-PersonContactChannels). When marked primary, the person's other active emails
-// are demoted in the same transaction.
-func (s *Service) UpsertEmail(ctx context.Context, e domain.Email) (domain.Email, error) {
-	e.Address = normalizeEmail(e.Address)
-	if err := e.Validate(); err != nil {
-		return domain.Email{}, err
-	}
-	e.Provider = emailProvider(e.Address)
-	var out domain.Email
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if _, err := repo.GetPerson(ctx, e.PersonID); err != nil {
-			return err
-		}
-		if e.IsPrimary {
-			if err := repo.ClearPrimaryEmails(ctx, e.PersonID); err != nil {
-				return err
-			}
-		}
-		created, err := repo.UpsertEmail(ctx, e)
-		if err != nil {
-			return err
-		}
-		out = created
-		return s.record(ctx, tx, "person.email.upsert", e.PersonID, map[string]any{"id": e.PersonID, "emailId": created.ID})
-	})
-	return out, err
-}
-
-// DeleteEmail removes a person's contact email by id.
-func (s *Service) DeleteEmail(ctx context.Context, personID, emailID string) error {
-	return s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if err := repo.DeleteEmail(ctx, personID, emailID); err != nil {
-			return err
-		}
-		return s.record(ctx, tx, "person.email.delete", personID, map[string]any{"id": personID, "emailId": emailID})
-	})
-}
-
-// ListEmails lists a person's contact emails (the person must exist).
-func (s *Service) ListEmails(ctx context.Context, personID string) ([]domain.Email, error) {
-	repo := s.newRepo(s.pool)
-	if _, err := repo.GetPerson(ctx, personID); err != nil {
-		return nil, err
-	}
-	return repo.ListEmails(ctx, personID)
-}
-
-// ---------------------------------------------------------------- phones
-
-// UpsertPhone validates and adds/replaces a contact phone, normalizing the number to E.164 and
-// deriving its country on write (D-PersonContactChannels). When marked primary, the person's other
-// active phones are demoted in the same transaction.
-func (s *Service) UpsertPhone(ctx context.Context, p domain.Phone) (domain.Phone, error) {
-	if err := p.Validate(); err != nil {
-		return domain.Phone{}, err
-	}
-	number, country, err := normalizePhone(p.Number)
-	if err != nil {
-		return domain.Phone{}, err
-	}
-	p.Number, p.Country = number, country
-	var out domain.Phone
-	err = s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if _, err := repo.GetPerson(ctx, p.PersonID); err != nil {
-			return err
-		}
-		if p.IsPrimary {
-			if err := repo.ClearPrimaryPhones(ctx, p.PersonID); err != nil {
-				return err
-			}
-		}
-		created, err := repo.UpsertPhone(ctx, p)
-		if err != nil {
-			return err
-		}
-		out = created
-		return s.record(ctx, tx, "person.phone.upsert", p.PersonID, map[string]any{"id": p.PersonID, "phoneId": created.ID})
-	})
-	return out, err
-}
-
-// DeletePhone removes a person's contact phone by id.
-func (s *Service) DeletePhone(ctx context.Context, personID, phoneID string) error {
-	return s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if err := repo.DeletePhone(ctx, personID, phoneID); err != nil {
-			return err
-		}
-		return s.record(ctx, tx, "person.phone.delete", personID, map[string]any{"id": personID, "phoneId": phoneID})
-	})
-}
-
-// ListPhones lists a person's contact phones (the person must exist).
-func (s *Service) ListPhones(ctx context.Context, personID string) ([]domain.Phone, error) {
-	repo := s.newRepo(s.pool)
-	if _, err := repo.GetPerson(ctx, personID); err != nil {
-		return nil, err
-	}
-	return repo.ListPhones(ctx, personID)
-}
-
-// ---------------------------------------------------------------- call signs
-
-// UpsertCallSign adds/replaces a call sign (D-PersonContactChannels). When marked primary, the
-// person's other active call signs are demoted in the same transaction.
-func (s *Service) UpsertCallSign(ctx context.Context, c domain.CallSign) (domain.CallSign, error) {
-	if err := c.Validate(); err != nil {
-		return domain.CallSign{}, err
-	}
-	var out domain.CallSign
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if _, err := repo.GetPerson(ctx, c.PersonID); err != nil {
-			return err
-		}
-		if c.IsPrimary {
-			if err := repo.ClearPrimaryCallSigns(ctx, c.PersonID); err != nil {
-				return err
-			}
-		}
-		created, err := repo.UpsertCallSign(ctx, c)
-		if err != nil {
-			return err
-		}
-		out = created
-		return s.record(ctx, tx, "person.call-sign.upsert", c.PersonID, map[string]any{"id": c.PersonID, "callSignId": created.ID})
-	})
-	return out, err
-}
-
-// DeleteCallSign removes a person's call sign by id.
-func (s *Service) DeleteCallSign(ctx context.Context, personID, callSignID string) error {
-	return s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if err := repo.DeleteCallSign(ctx, personID, callSignID); err != nil {
-			return err
-		}
-		return s.record(ctx, tx, "person.call-sign.delete", personID, map[string]any{"id": personID, "callSignId": callSignID})
-	})
-}
-
-// ListCallSigns lists a person's call signs (the person must exist).
-func (s *Service) ListCallSigns(ctx context.Context, personID string) ([]domain.CallSign, error) {
-	repo := s.newRepo(s.pool)
-	if _, err := repo.GetPerson(ctx, personID); err != nil {
-		return nil, err
-	}
-	return repo.ListCallSigns(ctx, personID)
-}
-
-// ---------------------------------------------------------------- messenger links (D-PersonSocialChannels)
-
-// UpsertMessengerLink adds/replaces a messenger reachability link over one of the person's phones or
-// emails. It verifies the channel is held by the person and that the platform is a `messenger`-category
-// platform, demoting other primaries when marked primary — all in the same transaction.
-func (s *Service) UpsertMessengerLink(ctx context.Context, personID string, m domain.MessengerLink) (domain.MessengerLink, error) {
-	if err := m.Validate(); err != nil {
-		return domain.MessengerLink{}, err
-	}
-	var out domain.MessengerLink
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if _, err := repo.GetPerson(ctx, personID); err != nil {
-			return err
-		}
-		// Holder scope: the annotated phone/email must belong to this person.
-		var owner string
-		var err error
-		if m.PhoneID != "" {
-			owner, err = repo.PhonePersonID(ctx, m.PhoneID)
-		} else {
-			owner, err = repo.EmailPersonID(ctx, m.EmailID)
-		}
-		if err != nil {
-			return err
-		}
-		if owner != personID {
-			return domain.ErrChannelNotOwned
-		}
-		// The platform must exist and be a messenger platform (D-PersonSocialChannels).
-		plat, err := repo.GetPlatform(ctx, m.PlatformCode)
-		if err != nil {
-			return err
-		}
-		if !plat.IsMessenger() {
-			return domain.ErrPlatformNotMessenger
-		}
-		if m.IsPrimary {
-			if err := repo.ClearPrimaryMessengerLinks(ctx, personID); err != nil {
-				return err
-			}
-		}
-		created, err := repo.UpsertMessengerLink(ctx, m)
-		if err != nil {
-			return err
-		}
-		out = created
-		return s.record(ctx, tx, "person.messenger-link.upsert", personID, map[string]any{"id": personID, "messengerLinkId": created.ID})
-	})
-	return out, err
-}
-
-// DeleteMessengerLink removes a person's messenger link by id (holder-scoped).
-func (s *Service) DeleteMessengerLink(ctx context.Context, personID, linkID string) error {
-	return s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if err := repo.DeleteMessengerLink(ctx, personID, linkID); err != nil {
-			return err
-		}
-		return s.record(ctx, tx, "person.messenger-link.delete", personID, map[string]any{"id": personID, "messengerLinkId": linkID})
-	})
-}
-
-// ListMessengerLinks lists a person's messenger links (the person must exist).
-func (s *Service) ListMessengerLinks(ctx context.Context, personID string) ([]domain.MessengerLink, error) {
-	repo := s.newRepo(s.pool)
-	if _, err := repo.GetPerson(ctx, personID); err != nil {
-		return nil, err
-	}
-	return repo.ListMessengerLinks(ctx, personID)
-}
-
-// ---------------------------------------------------------------- social accounts (D-PersonSocialChannels)
-
-// UpsertSocialAccount adds/replaces a standalone social account. The platform must exist; the @handle is
-// normalized and a profile URL derived when absent; when marked primary the person's other social
-// accounts are demoted; and the account's handle-rename history is maintained (a new period opens on
-// create and on every handle change) — all in the same transaction.
-func (s *Service) UpsertSocialAccount(ctx context.Context, a domain.SocialAccount) (domain.SocialAccount, error) {
-	a.Handle = normalizeHandle(a.Handle)
-	if a.Confidence == "" {
-		a.Confidence = domain.DefaultConfidence
-	}
-	if err := a.Validate(); err != nil {
-		return domain.SocialAccount{}, err
-	}
-	if a.ProfileURL == "" {
-		a.ProfileURL = deriveProfileURL(a.PlatformCode, a.Handle)
-	}
-	var out domain.SocialAccount
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if _, err := repo.GetPerson(ctx, a.PersonID); err != nil {
-			return err
-		}
-		if _, err := repo.GetPlatform(ctx, a.PlatformCode); err != nil {
-			return err
-		}
-		if a.IsPrimary {
-			if err := repo.ClearPrimarySocialAccounts(ctx, a.PersonID); err != nil {
-				return err
-			}
-		}
-		var prevHandle string
-		if a.ID != "" {
-			existing, err := repo.GetSocialAccount(ctx, a.PersonID, a.ID)
-			if err != nil {
-				return err
-			}
-			prevHandle = existing.Handle
-		}
-		var saved domain.SocialAccount
-		var err error
-		if a.ID == "" {
-			saved, err = repo.InsertSocialAccount(ctx, a)
-		} else {
-			saved, err = repo.UpdateSocialAccount(ctx, a)
-		}
-		if err != nil {
-			return err
-		}
-		// Open a new handle-history period on create, or on a handle rename: close the current period
-		// and record the new handle (D-PersonSocialChannels), so a rename never breaks the link.
-		if a.ID == "" || saved.Handle != prevHandle {
-			if a.ID != "" {
-				if err := repo.CloseCurrentSocialAccountHandle(ctx, saved.ID); err != nil {
-					return err
-				}
-			}
-			if _, err := repo.InsertSocialAccountHandle(ctx, domain.SocialAccountHandle{
-				AccountID: saved.ID,
-				Handle:    saved.Handle,
-				ValidFrom: s.now(),
-			}); err != nil {
-				return err
-			}
-		}
-		out = saved
-		return s.record(ctx, tx, "person.social-account.upsert", a.PersonID, map[string]any{"id": a.PersonID, "socialAccountId": saved.ID})
-	})
-	return out, err
-}
-
-// DeleteSocialAccount removes a person's social account by id (its handle history cascades).
-func (s *Service) DeleteSocialAccount(ctx context.Context, personID, accountID string) error {
-	return s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if err := repo.DeleteSocialAccount(ctx, personID, accountID); err != nil {
-			return err
-		}
-		return s.record(ctx, tx, "person.social-account.delete", personID, map[string]any{"id": personID, "socialAccountId": accountID})
-	})
-}
-
-// UpsertPersonLanguage adds (or updates the proficiency of) a language the person speaks (D-Languages,
-// M18; keyed on person+language). The person must exist; the languoid existence + level='language'
-// constraint is enforced by the composite FK (a violation surfaces as ErrUnknownLanguage). Returns the
-// stored row joined to the languoid name.
-func (s *Service) UpsertPersonLanguage(ctx context.Context, l domain.PersonLanguage) (domain.PersonLanguage, error) {
-	if err := l.Validate(); err != nil {
-		return domain.PersonLanguage{}, err
-	}
-	var out domain.PersonLanguage
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if _, err := repo.GetPerson(ctx, l.PersonID); err != nil {
-			return err
-		}
-		_, err := repo.GetPersonLanguage(ctx, l.PersonID, l.LanguageID)
-		switch {
-		case err == nil:
-			if err := repo.UpdatePersonLanguage(ctx, l); err != nil {
-				return err
-			}
-		case errors.Is(err, domain.ErrLanguageNotFound):
-			if err := repo.InsertPersonLanguage(ctx, l); err != nil {
-				return err
-			}
-		default:
-			return err
-		}
-		saved, err := repo.GetPersonLanguage(ctx, l.PersonID, l.LanguageID)
-		if err != nil {
-			return err
-		}
-		out = saved
-		return s.record(ctx, tx, "person.language.upsert", l.PersonID, map[string]any{"id": l.PersonID, "languageId": l.LanguageID})
-	})
-	return out, err
-}
-
-// DeletePersonLanguage removes a language the person speaks, by languoid id.
-func (s *Service) DeletePersonLanguage(ctx context.Context, personID, languageID string) error {
-	return s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if err := repo.DeletePersonLanguage(ctx, personID, languageID); err != nil {
-			return err
-		}
-		return s.record(ctx, tx, "person.language.delete", personID, map[string]any{"id": personID, "languageId": languageID})
-	})
-}
-
-// ListPersonLanguages lists the languages a person speaks (the person must exist).
-func (s *Service) ListPersonLanguages(ctx context.Context, personID string) ([]domain.PersonLanguage, error) {
-	repo := s.newRepo(s.pool)
-	if _, err := repo.GetPerson(ctx, personID); err != nil {
-		return nil, err
-	}
-	return repo.ListPersonLanguages(ctx, personID)
-}
-
-// ListSocialAccounts lists a person's social accounts (the person must exist).
-func (s *Service) ListSocialAccounts(ctx context.Context, personID string) ([]domain.SocialAccount, error) {
-	repo := s.newRepo(s.pool)
-	if _, err := repo.GetPerson(ctx, personID); err != nil {
-		return nil, err
-	}
-	return repo.ListSocialAccounts(ctx, personID)
-}
-
-// ListSocialAccountHandles lists one social account's handle-rename history (holder-scoped: the account
-// must belong to the person).
-func (s *Service) ListSocialAccountHandles(ctx context.Context, personID, accountID string) ([]domain.SocialAccountHandle, error) {
-	repo := s.newRepo(s.pool)
-	if _, err := repo.GetSocialAccount(ctx, personID, accountID); err != nil {
-		return nil, err
-	}
-	return repo.ListSocialAccountHandles(ctx, accountID)
-}
-
-// ListPlatforms returns the instance-admin social/messenger platform catalog (read; no person scope).
-func (s *Service) ListPlatforms(ctx context.Context) ([]domain.Platform, error) {
-	return s.newRepo(s.pool).ListPlatforms(ctx)
-}
-
-// ListEmailTypes / ListPhoneTypes return the instance-admin contact-kind catalogs (reads; no person
-// scope). The transport assembles the translatable name maps.
-func (s *Service) ListEmailTypes(ctx context.Context) ([]domain.ContactType, error) {
-	return s.newRepo(s.pool).ListEmailTypes(ctx)
-}
-
-func (s *Service) ListPhoneTypes(ctx context.Context) ([]domain.ContactType, error) {
-	return s.newRepo(s.pool).ListPhoneTypes(ctx)
-}
-
-// ---------------------------------------------------------------- person↔person relationships (D-PersonRelationships)
-
-// ListRelationTypes returns the instance-admin relation-label catalog (read; no person scope).
-func (s *Service) ListRelationTypes(ctx context.Context) ([]domain.RelationType, error) {
-	return s.newRepo(s.pool).ListRelationTypes(ctx)
-}
-
-// canonicalPair orders two person ids ascending (the canonical-pair invariant person_id_a < person_id_b).
-func canonicalPair(x, y string) (string, string) {
-	if x <= y {
-		return x, y
-	}
-	return y, x
-}
-
-// requireCounterpart confirms the other endpoint is a real directory person, mapping a missing person to
-// ErrUnknownCounterpart (the path person's own existence is checked separately and stays ErrNotFound).
-func (s *Service) requireCounterpart(ctx context.Context, repo domain.Repository, id string) error {
-	if _, err := repo.GetPerson(ctx, id); err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			return domain.ErrUnknownCounterpart
-		}
-		return err
-	}
-	return nil
-}
-
-// checkRelationCode validates an optional relation-type code: "" is allowed; otherwise the code must
-// exist and (when wantCategory != "") sit in that category.
-func checkRelationCode(ctx context.Context, repo domain.Repository, code, wantCategory string) error {
-	if code == "" {
-		return nil
-	}
-	rt, err := repo.GetRelationType(ctx, code)
-	if err != nil {
-		return err // ErrUnknownRelationType
-	}
-	if wantCategory != "" && rt.Category != wantCategory {
-		return domain.ErrRelationCategory
-	}
-	return nil
-}
-
-// UpsertPartnership records/replaces a partnership between personID and the partner (a symmetric,
-// canonically ordered pair), enforcing the single-active-engaged/married-per-person rule for both ends.
-func (s *Service) UpsertPartnership(ctx context.Context, personID string, p domain.Partnership) (domain.Partnership, error) {
-	if err := p.Validate(); err != nil {
-		return domain.Partnership{}, err
-	}
-	counterpart := otherEndpoint(personID, p.PersonIDA, p.PersonIDB)
-	if counterpart == personID {
-		return domain.Partnership{}, domain.ErrSelfRelationship
-	}
-	p.PersonIDA, p.PersonIDB = canonicalPair(personID, counterpart)
-	var out domain.Partnership
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if _, err := repo.GetPerson(ctx, personID); err != nil {
-			return err
-		}
-		if err := s.requireCounterpart(ctx, repo, counterpart); err != nil {
-			return err
-		}
-		if p.IsActivePartnership() {
-			for _, who := range []string{personID, counterpart} {
-				has, err := repo.HasActivePartnershipExcept(ctx, who, p.ID)
-				if err != nil {
-					return err
-				}
-				if has {
-					return domain.ErrPartnershipConflict
-				}
-			}
-		}
-		saved, err := repo.UpsertPartnership(ctx, p)
-		if err != nil {
-			return err
-		}
-		out = saved
-		return s.record(ctx, tx, "person.partnership.upsert", personID, map[string]any{"id": personID, "relationshipId": saved.ID})
-	})
-	return out, err
-}
-
-// UpsertKinship records/replaces a directional parent→child kinship (endpoints set by the transport per role).
-func (s *Service) UpsertKinship(ctx context.Context, personID string, k domain.Kinship) (domain.Kinship, error) {
-	if k.Status == "" {
-		k.Status = "active"
-	}
-	if err := k.Validate(); err != nil {
-		return domain.Kinship{}, err
-	}
-	if k.ParentID == k.ChildID {
-		return domain.Kinship{}, domain.ErrSelfRelationship
-	}
-	counterpart := otherEndpoint(personID, k.ParentID, k.ChildID)
-	var out domain.Kinship
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if _, err := repo.GetPerson(ctx, personID); err != nil {
-			return err
-		}
-		if err := s.requireCounterpart(ctx, repo, counterpart); err != nil {
-			return err
-		}
-		saved, err := repo.UpsertKinship(ctx, k)
-		if err != nil {
-			return err
-		}
-		out = saved
-		return s.record(ctx, tx, "person.kinship.upsert", personID, map[string]any{"id": personID, "relationshipId": saved.ID})
-	})
-	return out, err
-}
-
-// UpsertGuardianship records/replaces a guardian→ward link (relation_code optional, any category).
-func (s *Service) UpsertGuardianship(ctx context.Context, personID string, g domain.Guardianship) (domain.Guardianship, error) {
-	if g.Status == "" {
-		g.Status = "active"
-	}
-	if err := g.Validate(); err != nil {
-		return domain.Guardianship{}, err
-	}
-	if g.GuardianID == g.WardID {
-		return domain.Guardianship{}, domain.ErrSelfRelationship
-	}
-	counterpart := otherEndpoint(personID, g.GuardianID, g.WardID)
-	var out domain.Guardianship
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if _, err := repo.GetPerson(ctx, personID); err != nil {
-			return err
-		}
-		if err := s.requireCounterpart(ctx, repo, counterpart); err != nil {
-			return err
-		}
-		if err := checkRelationCode(ctx, repo, g.RelationCode, ""); err != nil {
-			return err
-		}
-		saved, err := repo.UpsertGuardianship(ctx, g)
-		if err != nil {
-			return err
-		}
-		out = saved
-		return s.record(ctx, tx, "person.guardianship.upsert", personID, map[string]any{"id": personID, "relationshipId": saved.ID})
-	})
-	return out, err
-}
-
-// UpsertSponsorship records/replaces a sponsor→sponsored link (relation_code required, category=sponsorship).
-func (s *Service) UpsertSponsorship(ctx context.Context, personID string, sp domain.Sponsorship) (domain.Sponsorship, error) {
-	if sp.Status == "" {
-		sp.Status = "active"
-	}
-	if err := sp.Validate(); err != nil {
-		return domain.Sponsorship{}, err
-	}
-	if sp.SponsorID == sp.SponsoredID {
-		return domain.Sponsorship{}, domain.ErrSelfRelationship
-	}
-	counterpart := otherEndpoint(personID, sp.SponsorID, sp.SponsoredID)
-	var out domain.Sponsorship
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if _, err := repo.GetPerson(ctx, personID); err != nil {
-			return err
-		}
-		if err := s.requireCounterpart(ctx, repo, counterpart); err != nil {
-			return err
-		}
-		if err := checkRelationCode(ctx, repo, sp.RelationCode, domain.RelCategorySponsorship); err != nil {
-			return err
-		}
-		saved, err := repo.UpsertSponsorship(ctx, sp)
-		if err != nil {
-			return err
-		}
-		out = saved
-		return s.record(ctx, tx, "person.sponsorship.upsert", personID, map[string]any{"id": personID, "relationshipId": saved.ID})
-	})
-	return out, err
-}
-
-// UpsertNextOfKin nominates/replaces a next-of-kin contact for the subject (personID).
-func (s *Service) UpsertNextOfKin(ctx context.Context, personID string, n domain.NextOfKin) (domain.NextOfKin, error) {
-	if n.Status == "" {
-		n.Status = "active"
-	}
-	if n.Priority == 0 {
-		n.Priority = 1
-	}
-	if err := n.Validate(); err != nil {
-		return domain.NextOfKin{}, err
-	}
-	n.SubjectID = personID
-	if n.SubjectID == n.ContactID {
-		return domain.NextOfKin{}, domain.ErrSelfRelationship
-	}
-	var out domain.NextOfKin
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if _, err := repo.GetPerson(ctx, personID); err != nil {
-			return err
-		}
-		if err := s.requireCounterpart(ctx, repo, n.ContactID); err != nil {
-			return err
-		}
-		if err := checkRelationCode(ctx, repo, n.RelationCode, domain.RelCategoryNextOfKin); err != nil {
-			return err
-		}
-		saved, err := repo.UpsertNextOfKin(ctx, n)
-		if err != nil {
-			return err
-		}
-		out = saved
-		return s.record(ctx, tx, "person.next-of-kin.upsert", personID, map[string]any{"id": personID, "relationshipId": saved.ID})
-	})
-	return out, err
-}
-
-// UpsertAssociation records/replaces a symmetric association (relation_code optional, category=association).
-func (s *Service) UpsertAssociation(ctx context.Context, personID string, a domain.Association) (domain.Association, error) {
-	if a.Status == "" {
-		a.Status = "active"
-	}
-	if err := a.Validate(); err != nil {
-		return domain.Association{}, err
-	}
-	counterpart := otherEndpoint(personID, a.PersonIDA, a.PersonIDB)
-	if counterpart == personID {
-		return domain.Association{}, domain.ErrSelfRelationship
-	}
-	a.PersonIDA, a.PersonIDB = canonicalPair(personID, counterpart)
-	var out domain.Association
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		if _, err := repo.GetPerson(ctx, personID); err != nil {
-			return err
-		}
-		if err := s.requireCounterpart(ctx, repo, counterpart); err != nil {
-			return err
-		}
-		if err := checkRelationCode(ctx, repo, a.RelationCode, domain.RelCategoryAssociation); err != nil {
-			return err
-		}
-		saved, err := repo.UpsertAssociation(ctx, a)
-		if err != nil {
-			return err
-		}
-		out = saved
-		return s.record(ctx, tx, "person.association.upsert", personID, map[string]any{"id": personID, "relationshipId": saved.ID})
-	})
-	return out, err
-}
-
-// DeleteRelationship removes any person↔person link by id; the link table is decoded from the RID and
-// the delete is holder-scoped (the person must be an endpoint). Idempotent at the transport layer.
-func (s *Service) DeleteRelationship(ctx context.Context, personID, relationshipID string) error {
-	return s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		var err error
-		switch domain.RelationLinkType(relationshipID) {
-		case domain.LinkPartnership:
-			err = repo.DeletePartnership(ctx, personID, relationshipID)
-		case domain.LinkKinship:
-			err = repo.DeleteKinship(ctx, personID, relationshipID)
-		case domain.LinkGuardianship:
-			err = repo.DeleteGuardianship(ctx, personID, relationshipID)
-		case domain.LinkSponsorship:
-			err = repo.DeleteSponsorship(ctx, personID, relationshipID)
-		case domain.LinkNextOfKin:
-			err = repo.DeleteNextOfKin(ctx, personID, relationshipID)
-		case domain.LinkAssociation:
-			err = repo.DeleteAssociation(ctx, personID, relationshipID)
-		default:
-			return domain.ErrUnknownRelationshipKind
-		}
-		if err != nil {
-			return err
-		}
-		return s.record(ctx, tx, "person.relationship.delete", personID, map[string]any{"id": personID, "relationshipId": relationshipID})
-	})
-}
-
-// relationship list reads (holder-scoped: the person must exist; rows touch either endpoint)
-
-func (s *Service) ListPartnerships(ctx context.Context, personID string) ([]domain.Partnership, error) {
-	repo := s.newRepo(s.pool)
-	if _, err := repo.GetPerson(ctx, personID); err != nil {
-		return nil, err
-	}
-	return repo.ListPartnerships(ctx, personID)
-}
-
-func (s *Service) ListKinships(ctx context.Context, personID string) ([]domain.Kinship, error) {
-	repo := s.newRepo(s.pool)
-	if _, err := repo.GetPerson(ctx, personID); err != nil {
-		return nil, err
-	}
-	return repo.ListKinships(ctx, personID)
-}
-
-func (s *Service) ListGuardianships(ctx context.Context, personID string) ([]domain.Guardianship, error) {
-	repo := s.newRepo(s.pool)
-	if _, err := repo.GetPerson(ctx, personID); err != nil {
-		return nil, err
-	}
-	return repo.ListGuardianships(ctx, personID)
-}
-
-func (s *Service) ListSponsorships(ctx context.Context, personID string) ([]domain.Sponsorship, error) {
-	repo := s.newRepo(s.pool)
-	if _, err := repo.GetPerson(ctx, personID); err != nil {
-		return nil, err
-	}
-	return repo.ListSponsorships(ctx, personID)
-}
-
-func (s *Service) ListNextOfKin(ctx context.Context, personID string) ([]domain.NextOfKin, error) {
-	repo := s.newRepo(s.pool)
-	if _, err := repo.GetPerson(ctx, personID); err != nil {
-		return nil, err
-	}
-	return repo.ListNextOfKin(ctx, personID)
-}
-
-func (s *Service) ListAssociations(ctx context.Context, personID string) ([]domain.Association, error) {
-	repo := s.newRepo(s.pool)
-	if _, err := repo.GetPerson(ctx, personID); err != nil {
-		return nil, err
-	}
-	return repo.ListAssociations(ctx, personID)
-}
-
-// otherEndpoint returns whichever of a/b is not personID (b when neither matches — a transport invariant
-// guarantees one endpoint is the path person).
-func otherEndpoint(personID, a, b string) string {
-	if a == personID {
-		return b
-	}
-	if b == personID {
-		return a
-	}
-	return b
 }
 
 // ---------------------------------------------------------------- helpers

@@ -108,6 +108,23 @@ type Summary struct {
 	Skipped int
 }
 
+// ChunkInfo places one envelope within a chunked import run (R-05 amendment to D-Hermenea): hermenea
+// streams a large dataset as sequential ~5k-record chunks, each applied in its own transaction, and
+// ends the run with an isLast (possibly empty) finalize chunk. The server keeps NO per-run state —
+// replaying a chunk is safe because every record apply is a natural-key idempotent upsert; resume
+// bookkeeping (last-acked seq) lives on the hermenea job. A single-shot envelope (no chunk fields on
+// the wire) normalizes to {Chunked: false, Seq: 1, IsLast: true}, so a handler reads IsLast as "the
+// batch is complete" in both modes. Batch finalizers (closure rebuilds) gate on
+// `IsLast && (touched || Chunked)`: single-shot keeps the touched-gated no-op skip, while a chunked
+// run finalizes unconditionally on its last chunk (a stateless server cannot know whether an earlier
+// chunk touched).
+type ChunkInfo struct {
+	Chunked bool   // the envelope carried chunk fields (runId/seq/isLast)
+	RunID   string // hermenea import-run id, lineage/audit correlation only ("" single-shot)
+	Seq     int    // 1-based chunk index within the run
+	IsLast  bool   // final chunk: run the object-type's batch finalizers
+}
+
 // GeoCountryEnrichment is the pinax country enrichment payload (D-Pinax, M45): the extra reference
 // columns the bundled `countries` preset carries beyond code+name. Applied fill-if-empty — a column
 // already set (migration skeleton or the WOF geo-places connector) is never overwritten. All fields are
@@ -162,16 +179,20 @@ type GeoPlace struct {
 	NumericCode  string // country only, from concordances ("" if absent)
 }
 
-// GeoPlaceStore is the port the geo-places upsert handler drives (D-GeoPlaces). Idempotency is keyed on
-// source_version: GetVersion returns the row's stored source edition so the handler skips when it
-// matches the incoming one, updates when it differs, and inserts when absent — never deletes. A
-// placetype=country place additionally enriches the matching geo_countries row (wof_id + geometry) via
-// EnrichCountry. Adapters implement it over the caller's transaction.
+// GeoPlaceStore is the port the geo-places upsert handler drives (D-GeoPlaces; set-based per chunk
+// since R-05). Idempotency is keyed on source_version: BulkUpsert merges the whole chunk in one
+// statement — insert absent wof_ids, update rows whose stored edition differs, skip the rest — never
+// deletes. Parent references resolve in a second pass over the touched rows, so a parent may arrive
+// in the same chunk (records still arrive parent-first ACROSS chunks; an unresolvable parent fails
+// the transaction loudly). The handler enriches geo_countries for the touched placetype=country rows
+// via BulkEnrichCountries. Adapters implement it over the caller's transaction.
 type GeoPlaceStore interface {
-	GetVersion(ctx context.Context, wofID int64) (sourceVersion string, found bool, err error)
-	Insert(ctx context.Context, p GeoPlace, prov Provenance) error
-	UpdateImport(ctx context.Context, p GeoPlace, prov Provenance) error
-	EnrichCountry(ctx context.Context, p GeoPlace, prov Provenance) error
+	// BulkUpsert returns the created and updated wof_ids; a row of the chunk in neither slice was
+	// skipped (already at the incoming source_version).
+	BulkUpsert(ctx context.Context, places []GeoPlace, prov Provenance) (created, updated []int64, err error)
+	// BulkEnrichCountries mirrors wof_id/geometry/ISO concordances onto the matching geo_countries
+	// rows (upgrade-or-keep; the caller passes only the chunk's touched country places).
+	BulkEnrichCountries(ctx context.Context, places []GeoPlace) error
 }
 
 // Languoid is one Glottolog node decoded from a canonical-envelope record (D-Languages, M18). Parent is
@@ -191,16 +212,21 @@ type Languoid struct {
 	Countries []string // ISO-3166 alpha-2 country codes
 }
 
-// LanguoidStore is the port the language-scheme upsert handler drives (D-Languages). Idempotency is
-// keyed on source_version (like geo-places). The languoid's country ties are replaced on every
-// insert/update (ReplaceCountries). After the whole batch, RebuildClosure recomputes the transitive
+// LanguoidStore is the port the language-scheme upsert handler drives (D-Languages; set-based per
+// chunk since R-05). Idempotency is keyed on source_version (like geo-places): BulkUpsert merges the
+// whole chunk in one statement, and under prov.CreateOnly (pinax boot autoseed) never touches an
+// existing row. Parent references resolve in a second pass over the touched rows, so a parent may
+// sit in the same chunk. The touched languoids' country ties are then replaced set-based
+// (BulkReplaceCountries). Once the batch is complete, RebuildClosure recomputes the transitive
 // closure and the denormalized family_code in SQL, and ReconcileLocaleLanguages links each supported
 // UI locale to the languoid carrying its ISO-639-3 code (D-i18n). Never deletes a languoid.
 type LanguoidStore interface {
-	GetVersion(ctx context.Context, code string) (sourceVersion string, found bool, err error)
-	Insert(ctx context.Context, l Languoid, prov Provenance) error
-	UpdateImport(ctx context.Context, l Languoid, prov Provenance) error
-	ReplaceCountries(ctx context.Context, code string, countryCodes []string) error
+	// BulkUpsert returns the created and updated glottocodes; a chunk row in neither slice was
+	// skipped (already at the incoming edition, or existing under CreateOnly).
+	BulkUpsert(ctx context.Context, ls []Languoid, prov Provenance) (created, updated []string, err error)
+	// BulkReplaceCountries clears the country ties of every code in codes, then inserts the flattened
+	// (pairCodes[i], pairCountries[i]) ties (a country that does not resolve is silently dropped).
+	BulkReplaceCountries(ctx context.Context, codes []string, pairCodes, pairCountries []string) error
 	RebuildClosure(ctx context.Context) error
 	ReconcileLocaleLanguages(ctx context.Context) error
 }
@@ -240,15 +266,15 @@ type ExternalOrg struct {
 	CountryCode string // ISO alpha-2; "" = none
 }
 
-// ExternalOrgStore is the port the external-organizations upsert handler drives (D-ExternalOrgs). The
-// handler resolves the kind (skipping records whose kind is unknown), then keys idempotency on the
-// Wikidata id: insert when absent, update when the name changed, skip otherwise — never deletes.
-// Imported rows are stamped source=imported + as_of=ImportedAt in the attribution columns.
+// ExternalOrgStore is the port the external-organizations upsert handler drives (D-ExternalOrgs;
+// set-based per chunk since R-05). BulkUpsert merges the whole chunk in one statement: kinds resolve
+// inline and a record whose kind is unknown is not merged (skipped — the import is resilient to
+// mapping gaps); idempotency keys on the Wikidata id; an existing row updates only when the name
+// changed — never deletes. Imported rows are stamped source=imported + as_of=ImportedAt in the
+// attribution columns.
 type ExternalOrgStore interface {
-	ResolveKind(ctx context.Context, code string) (id string, found bool, err error)
-	GetByWikidata(ctx context.Context, wikidataID string) (name string, found bool, err error)
-	Insert(ctx context.Context, kindID string, o ExternalOrg, prov Provenance) error
-	UpdateImport(ctx context.Context, kindID string, o ExternalOrg, prov Provenance) error
+	// BulkUpsert returns the created/updated counts; the caller derives skips from the chunk size.
+	BulkUpsert(ctx context.Context, orgs []ExternalOrg, prov Provenance) (created, updated int, err error)
 }
 
 // RegulatorySanction is one person regulatory-sanction record decoded from a canonical-envelope record
@@ -266,17 +292,15 @@ type RegulatorySanction struct {
 	ExternalID   string
 }
 
-// RegulatorySanctionStore is the port the regulatory-sanctions upsert handler drives (D-Watchlists). The
-// handler skips a record whose person RID does not resolve, then keys idempotency on (person, externalId):
-// insert when absent, update when it changed, skip otherwise — never deletes. Rows are stamped
-// source=imported in the attribution columns.
+// RegulatorySanctionStore is the port the regulatory-sanctions upsert handler drives (D-Watchlists;
+// set-based per chunk since R-05). BulkUpsert merges the whole chunk in one statement: persons
+// resolve inline and a record whose person RID does not resolve is not merged (skipped —
+// non-destructive; the handler pre-drops RIDs that are not even canonical uuids); idempotency keys
+// on (person, externalId); an existing row updates only when a comparable field changed, and never
+// under prov.CreateOnly — never deletes. Rows are stamped source=imported in the attribution columns.
 type RegulatorySanctionStore interface {
-	PersonExists(ctx context.Context, personID string) (bool, error)
-	// Get returns the existing (person, externalId) sanction's comparable fields (found=false when absent),
-	// so the handler can skip an unchanged re-import.
-	Get(ctx context.Context, personID, externalID string) (existing RegulatorySanction, found bool, err error)
-	Insert(ctx context.Context, s RegulatorySanction, prov Provenance) error
-	UpdateImport(ctx context.Context, s RegulatorySanction, prov Provenance) error
+	// BulkUpsert returns the created/updated counts; the caller derives skips from the chunk size.
+	BulkUpsert(ctx context.Context, ss []RegulatorySanction, prov Provenance) (created, updated int, err error)
 }
 
 // SameAs reports whether two sanction records carry identical comparable fields (idempotency check).

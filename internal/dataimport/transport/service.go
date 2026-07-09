@@ -54,6 +54,18 @@ func (s Service) ImportObjects(ctx context.Context, token bearertoken.Token, obj
 		SourceVersion: deref(env.SourceVersion),
 		Records:       records,
 	}
+	// Any chunk field marks the envelope as one chunk of a chunked run (R-05); all absent keeps the
+	// single-shot semantics (Import normalizes the zero Chunk to {Seq: 1, IsLast: true}).
+	if env.RunId != nil || env.Seq != nil || env.IsLast != nil {
+		appEnv.Chunk = domain.ChunkInfo{
+			Chunked: true,
+			RunID:   deref(env.RunId),
+			IsLast:  env.IsLast != nil && *env.IsLast,
+		}
+		if env.Seq != nil {
+			appEnv.Chunk.Seq = *env.Seq
+		}
+	}
 	sum, err := s.app.Import(ctx, objectType, appEnv)
 	switch {
 	case errors.Is(err, domain.ErrUnknownObjectType):

@@ -1,12 +1,12 @@
-// Package adapters — the external-organizations import store (D-ExternalOrgs, M30). Raw pgx (no sqlc):
-// the upsert resolves the kind catalog + the country registry inline and keys idempotency on the
-// Wikidata id, mirroring the geo-countries store but writing the M30 external_organizations table.
+// Package adapters — the external-organizations import store (D-ExternalOrgs, M30; set-based per
+// chunk since R-05). Raw pgx (no sqlc): one parallel-array merge statement resolves the kind catalog
+// + the country registry inline and keys idempotency on the Wikidata id, mirroring the geo-places
+// merge but writing the M30 external_organizations table.
 package adapters
 
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/olegamysk/go-oikumenea/internal/dataimport/domain"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
@@ -21,61 +21,68 @@ func NewExternalOrgRepo(conn db.DBTX) *ExternalOrgRepo { return &ExternalOrgRepo
 
 var _ domain.ExternalOrgStore = (*ExternalOrgRepo)(nil)
 
-// ResolveKind returns the external_org_kinds id for a code (found=false when the code is unknown).
-func (r *ExternalOrgRepo) ResolveKind(ctx context.Context, code string) (string, bool, error) {
-	var id string
-	err := r.c.QueryRow(ctx, `SELECT id FROM oikumenea.external_org_kinds WHERE code = $1 AND deleted_at IS NULL`, code).Scan(&id)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return "", false, nil
-		}
-		return "", false, err
+// BulkUpsert merges one chunk set-based (R-05): kinds resolve inline (a record whose kind is unknown
+// drops out of the join — skipped), the country (ISO alpha-2) resolves to geo_countries (NULL when
+// unknown), idempotency keys on the Wikidata id, and an existing row updates only when the name
+// changed (the conflict-update WHERE gate) — never deletes. Provenance lands in the attribution
+// columns (source=imported + as_of=ImportedAt). RETURNING (xmax = 0) splits creates from updates;
+// unmerged rows (unknown kind / unchanged name) are the caller's skips.
+func (r *ExternalOrgRepo) BulkUpsert(ctx context.Context, orgs []domain.ExternalOrg, prov domain.Provenance) (created, updated int, err error) {
+	if len(orgs) == 0 {
+		return 0, 0, nil
 	}
-	return id, true, nil
-}
-
-// GetByWikidata returns the current name of the live org with this Wikidata id (found=false if absent).
-func (r *ExternalOrgRepo) GetByWikidata(ctx context.Context, wikidataID string) (string, bool, error) {
-	var name string
-	err := r.c.QueryRow(ctx, `
-		SELECT name FROM oikumenea.external_organizations
-		WHERE wikidata_id = $1 AND deleted_at IS NULL`, wikidataID).Scan(&name)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return "", false, nil
-		}
-		return "", false, err
+	n := len(orgs)
+	wikidataIDs := make([]string, 0, n)
+	names := make([]string, 0, n)
+	kindCodes := make([]string, 0, n)
+	countryCodes := make([]string, 0, n)
+	for _, o := range orgs {
+		wikidataIDs = append(wikidataIDs, o.WikidataID)
+		names = append(names, o.Name)
+		kindCodes = append(kindCodes, o.KindCode)
+		countryCodes = append(countryCodes, o.CountryCode)
 	}
-	return name, true, nil
-}
-
-// Insert creates a resolved, imported external org keyed by Wikidata id; the country (ISO alpha-2)
-// resolves to geo_countries in SQL (NULL when unknown). Provenance lands in the attribution columns
-// (source=imported + as_of=ImportedAt).
-func (r *ExternalOrgRepo) Insert(ctx context.Context, kindID string, o domain.ExternalOrg, prov domain.Provenance) error {
-	_, err := r.c.Exec(ctx, `
+	rows, err := r.c.Query(ctx, `
+		WITH r AS (
+		  SELECT unnest($1::text[]) AS wikidata_id,
+		         unnest($2::text[]) AS name,
+		         unnest($3::text[]) AS kind_code,
+		         unnest($4::text[]) AS country_code
+		)
 		INSERT INTO oikumenea.external_organizations
 			(kind_id, name, country_id, wikidata_id, status, source, confidence, as_of)
-		VALUES ($1, $2,
-		        (SELECT id FROM oikumenea.geo_countries WHERE code = NULLIF($3,'')),
-		        $4, 'resolved', 'imported', 'probable', $5)`,
-		kindID, o.Name, o.CountryCode, o.WikidataID, importedAt(prov))
-	return err
-}
-
-// UpdateImport refreshes name/kind/country + re-stamps the import attribution on an existing row.
-func (r *ExternalOrgRepo) UpdateImport(ctx context.Context, kindID string, o domain.ExternalOrg, prov domain.Provenance) error {
-	_, err := r.c.Exec(ctx, `
-		UPDATE oikumenea.external_organizations SET
-			kind_id    = $1,
-			name       = $2,
-			country_id = (SELECT id FROM oikumenea.geo_countries WHERE code = NULLIF($3,'')),
+		SELECT k.id, r.name,
+		       (SELECT c.id FROM oikumenea.geo_countries c WHERE c.code = NULLIF(r.country_code, '')),
+		       r.wikidata_id, 'resolved', 'imported', 'probable', $5
+		FROM r
+		JOIN oikumenea.external_org_kinds k ON k.code = r.kind_code AND k.deleted_at IS NULL
+		ON CONFLICT (wikidata_id) WHERE deleted_at IS NULL AND wikidata_id IS NOT NULL
+		DO UPDATE SET
+			kind_id    = EXCLUDED.kind_id,
+			name       = EXCLUDED.name,
+			country_id = EXCLUDED.country_id,
 			source     = 'imported',
-			as_of      = $5,
+			as_of      = EXCLUDED.as_of,
 			updated_at = now()
-		WHERE wikidata_id = $4 AND deleted_at IS NULL`,
-		kindID, o.Name, o.CountryCode, o.WikidataID, importedAt(prov))
-	return err
+		WHERE oikumenea.external_organizations.name IS DISTINCT FROM EXCLUDED.name
+		RETURNING (xmax = 0) AS inserted`,
+		wikidataIDs, names, kindCodes, countryCodes, importedAt(prov))
+	if err != nil {
+		return 0, 0, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var inserted bool
+		if err := rows.Scan(&inserted); err != nil {
+			return 0, 0, err
+		}
+		if inserted {
+			created++
+		} else {
+			updated++
+		}
+	}
+	return created, updated, rows.Err()
 }
 
 func importedAt(prov domain.Provenance) pgtype.Timestamptz {

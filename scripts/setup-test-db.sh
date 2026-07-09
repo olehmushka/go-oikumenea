@@ -75,6 +75,14 @@ END \$\$;"
 echo "==> applying migrations to $TEST_DB"
 DATABASE_URL="$TEST_DSN" atlas migrate apply --env local
 
+# pg_stat_statements (review-2026-07 Phase 0 measurement harness): best-effort — the extension only
+# works when the server preloads the library (compose files set shared_preload_libraries; a plain
+# local Postgres may not). NOT a migration: atlas's ephemeral lint/dev database has no preload, so a
+# migration would fail the lint gate.
+if ! psql "$TEST_DSN" -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;" >/dev/null 2>&1; then
+  echo "==> note: pg_stat_statements unavailable (server not started with shared_preload_libraries=pg_stat_statements); measurement queries will be skipped"
+fi
+
 # Hermenea's own test database (separate schema set — migrations/hermenea, D-Hermenea). No app/RLS
 # roles: hermenea's DB has none of oikumenea's RID/RLS machinery.
 if [[ "$(admin -c "SELECT 1 FROM pg_database WHERE datname = '$HERMENEA_TEST_DB';")" != "1" ]]; then

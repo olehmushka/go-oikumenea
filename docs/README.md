@@ -60,6 +60,13 @@ across graphs. That — *hierarchy + inheritance + visibility, decided by a PDP*
 | [platform](modules/platform.md) | witchcraft bootstrap, config, observability, schema bootstrap, country registry + the WOF `geo_places` gazetteer (D-GeoPlaces, M16), crypto/KMS seam, boot-time schema-version check. Hosts the generic **`POST /import/{objectType}`** upsert endpoint + the `import.manage` **service principal** the hermenea companion calls (M16). |
 | [audit](modules/audit.md) | Append-only audit trail of permission-sensitive actions. |
 
+> **person is internally three Go modules** behind the one Conjure `PersonService`
+> (**D-PersonModuleSplit**, review-2026-07 R-09): [person](modules/person.md) core (identity, names,
+> bio, ranks, read-scope, merge/purge) + [personprofile](modules/personprofile.md) (contacts, social,
+> relationships, addresses, non-encrypted institutional ties) + [personsensitive](modules/personsensitive.md)
+> (physical identity/ethnicity, overlays, watchlists, encrypted party — the whole crypto surface). A
+> code split only: one schema, one API contract; [person.md](modules/person.md) stays the entity owner.
+
 **Companion service** (a **second binary**, not an oikumenea `internal/` module):
 
 | Service | Responsibility |

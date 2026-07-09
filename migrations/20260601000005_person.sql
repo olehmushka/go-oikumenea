@@ -20,6 +20,10 @@
 -- (rank_ranks). This migration is PURE DDL: it seeds NO rows (so no app.environment GUC is needed at
 -- migration time — D-RIDSeeding). Persons are created through PersonService.
 
+-- Trigram matching for the directory typeahead (review R-06): pg_trgm makes an unanchored
+-- ILIKE '%q%' index-servable via GIN. Idempotent — the extension may already exist.
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 -- person_persons: the aggregate root — one record per individual, account-optional, instance-global.
 CREATE TABLE oikumenea.person_persons (
   id               uuid PRIMARY KEY DEFAULT oikumenea.new_id(6,1,1),  -- person / object / person
@@ -57,6 +61,13 @@ CREATE TABLE oikumenea.person_persons (
   updated_at       timestamptz NOT NULL DEFAULT now(),
   deleted_at       timestamptz,
 
+  -- Denormalized lowercased search haystack over the same fields the directory search matched
+  -- historically (display_name / code / given / surname). STORED + trigram-indexed so the
+  -- typeahead ILIKE '%q%' is a bitmap index scan, not a seq scan, at directory scale (review R-06).
+  search_text      text GENERATED ALWAYS AS (
+                     lower(coalesce(display_name,'') || ' ' || coalesce(code,'') || ' ' ||
+                           coalesce(given,'') || ' ' || coalesce(surname,''))) STORED,
+
   CONSTRAINT person_persons_rid_shape
     CHECK (oikumenea.rid_service(id)=6 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=1)
 );
@@ -67,6 +78,10 @@ CREATE TRIGGER person_persons_set_updated_at
 
 CREATE UNIQUE INDEX person_persons_code_active_idx
   ON oikumenea.person_persons (code) WHERE code IS NOT NULL AND deleted_at IS NULL;
+
+-- Directory search (review R-06): GIN trigram over the generated haystack, partial on active rows.
+CREATE INDEX person_persons_search_trgm_idx
+  ON oikumenea.person_persons USING gin (search_text gin_trgm_ops) WHERE deleted_at IS NULL;
 
 COMMENT ON COLUMN oikumenea.person_persons.id IS 'pii:none';
 COMMENT ON COLUMN oikumenea.person_persons.code IS 'pii:basic';
@@ -87,6 +102,7 @@ COMMENT ON COLUMN oikumenea.person_persons.attributes IS 'pii:special';
 COMMENT ON COLUMN oikumenea.person_persons.status IS 'pii:none';
 COMMENT ON COLUMN oikumenea.person_persons.deactivated_at IS 'pii:none';
 COMMENT ON COLUMN oikumenea.person_persons.purge_after IS 'pii:none';
+COMMENT ON COLUMN oikumenea.person_persons.search_text IS 'pii:basic';
 
 -- person_ranks: the reified HOLDS_RANK link — a person holds one rank PER RANK SYSTEM (D-Rank,
 -- extended by D-RankSystems). Rank is a DIRECTORY attribute that grants no authority; the PDP never
@@ -145,6 +161,12 @@ CREATE TABLE oikumenea.person_name_variants (
   created_at     timestamptz NOT NULL DEFAULT now(),
   updated_at     timestamptz NOT NULL DEFAULT now(),
 
+  -- Search haystack for this name form (review R-06): lets the directory typeahead find a person by
+  -- a native-script transliteration or an alias/aka, not just the canonical Latin display name.
+  search_text    text GENERATED ALWAYS AS (
+                   lower(coalesce(display_name,'') || ' ' || coalesce(given,'') || ' ' ||
+                         coalesce(surname,'') || ' ' || coalesce(preferred,''))) STORED,
+
   CONSTRAINT person_name_variants_rid_shape
     CHECK (oikumenea.rid_service(id)=6 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=2),
   CONSTRAINT person_name_variants_person_locale_uniq UNIQUE (person_id, locale)
@@ -155,6 +177,9 @@ CREATE TRIGGER person_name_variants_set_updated_at
   FOR EACH ROW EXECUTE FUNCTION oikumenea.set_updated_at();
 
 CREATE INDEX person_name_variants_person_idx ON oikumenea.person_name_variants (person_id);
+-- Alias / transliteration search (review R-06): GIN trigram over the variant haystack.
+CREATE INDEX person_name_variants_search_trgm_idx
+  ON oikumenea.person_name_variants USING gin (search_text gin_trgm_ops);
 
 COMMENT ON COLUMN oikumenea.person_name_variants.id IS 'pii:none';
 COMMENT ON COLUMN oikumenea.person_name_variants.person_id IS 'pii:none';
@@ -170,6 +195,7 @@ COMMENT ON COLUMN oikumenea.person_name_variants.generation IS 'pii:basic';
 COMMENT ON COLUMN oikumenea.person_name_variants.credentials IS 'pii:basic';
 COMMENT ON COLUMN oikumenea.person_name_variants.preferred IS 'pii:basic';
 COMMENT ON COLUMN oikumenea.person_name_variants.is_primary IS 'pii:none';
+COMMENT ON COLUMN oikumenea.person_name_variants.search_text IS 'pii:basic';
 
 -- person_citizenships: effective-dated nationality; a person may hold several (D-Geo). One ACTIVE
 -- citizenship per (person, country). is_primary marks at most one. CASCADE on person delete.

@@ -88,6 +88,15 @@ bio fields (`birthdate`, `date_of_death`, `sex`, `country_of_birth`), citizenshi
 A `date_of_death` is a **bio attribute, not a lifecycle state** — a deceased person stays an active
 directory record (D-PersonBio). Owned by the [person](modules/person.md) module.
 
+**person core / personprofile / personsensitive.** The **three Go modules** the person god-module split
+into behind the **one** Conjure `PersonService` (**D-PersonModuleSplit**, review-2026-07 R-09), by data
+sensitivity + change cadence: **core** ([person](modules/person.md)) — identity, CLDR names, bio, ranks,
+read-scope, merge/purge orchestration; **[personprofile](modules/personprofile.md)** — contacts, social
+channels, relationships, addresses, non-encrypted institutional ties; **[personsensitive](modules/personsensitive.md)**
+— physical identity/ethnicity, overlays, watchlists + sanctions, encrypted party membership (the whole
+`crypto.Cipher` / `pii:special` surface). A **code split only** — one `oikumenea.person_*` schema, one
+API contract, and [person.md](modules/person.md) stays the single entity-model owner.
+
 **Name (CLDR).** Person names follow the **Unicode CLDR Person Names** fixed field set; `display_name`
 is authoritative and the structured parts are advisory (D-PersonNamesCLDR). There is **no dedicated
 patronymic field** — the Slavic по-батькові / отчество lives in `given2`, and formal address ("Тарас
@@ -694,7 +703,7 @@ Call sign · Canonical envelope · Canonical graph · Citizenship · Clergy cred
 Education reference layer · Educational institution · Effective permissions · Email (contact) · Email type · Envelope encryption · Environment slot · Expand/contract · External identity · Finance module ·
 Gate · Graph (named hierarchy) · Hermenea · Instance admin · Languoid · Level · Link (type) · Link RID · Locale · Location · Membership · Name (CLDR) ·
 Object (type) · Object-set · Ontology · Order ·
-Order category · Order item · Order type · Org kind · Payment card · PDP · PDP context · Person · Personal code ·
+Order category · Order item · Order type · Org kind · Payment card · PDP · PDP context · Person · person core / personprofile / personsensitive · Personal code ·
 Personal-code scheme · Phone (contact) · Phone type · PII tier · Pinax (reference plane) · Position · `origin` (seeded/operator) · Public precision · Public/shadow · Rank · Rank category · Rank preset ·
 Rank scheme · Rank system · Rank type · Religion (faith) · Religious affiliation · Religious organization · Religious site · Residence · Reversibility · RID (Resource Identifier) · RLS backstop · Role · Role assignment · Scope ·
 Service principal (hermenea-importer) · Service schedule · Service type · Site type · Stage board · Standardized grade (NATO STANAG 2116) · Sub-tradition · Subdivision · Supported language · TODO-N · Tradition family · Translation · Transliteration · Unit · Unit graph (DAG) · Unit kind ·

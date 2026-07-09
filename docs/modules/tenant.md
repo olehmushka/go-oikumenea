@@ -170,7 +170,11 @@ per [conventions.md](../architecture/conventions.md).
 - `PRIMARY KEY (graph_id, ancestor_id, descendant_id)`; indexed both directions
 - Includes a reflexive `(g, u, u, 0)` row for **every unit that participates in graph g's edges**
   (an edge-less unit has no closure row in `g`) so "is U in the subtree of T in graph g" is one
-  lookup. An edge change in graph K recomputes only K's rows in the same transaction.
+  lookup. An edge change in graph K **incrementally adjusts only the affected rows of K** in the
+  same transaction (M48, review R‑04): attach merges `anc*(parent) × desc*(child)` with a
+  shortest-depth `LEAST` update; detach deletes and re-derives exactly that slice, then prunes
+  orphaned reflexive rows. Per-graph closure maintenance is serialized by a row lock on the
+  graph; the full recompute remains only as the D-ClosureIntegrity repair path.
 
 **`tenant_closure_status`** (derived **diagnostic overlay**, one row per graph; not append-only,
 not audited — D-ClosureDriftHealth)
@@ -257,9 +261,12 @@ any authorization check** — authority flows only through role assignments over
   `parent_id` **in that edge's graph** (closure lookup) → `Tenant:UnitCycleDetected`. Each graph
   stays a DAG; a cross-graph cycle is legal (A commands B in `command` while B is over A in
   `operational`).
-- **Closure is always consistent with edges, per graph.** Edge insert/delete recomputes the
-  affected graph's closure rows in the same transaction (incremental maintenance). Invariant:
-  each graph's closure equals the transitive closure of that graph's edges — asserted in tests,
+- **Closure is always consistent with edges, per graph.** Edge insert/delete incrementally
+  adjusts the affected graph's closure rows in the same transaction (M48; only the
+  `anc*(parent) × desc*(child)` slice is touched, under a per-graph lock). Invariant:
+  each graph's closure — rows **and shortest-path depths** — equals the transitive closure of
+  that graph's edges — asserted in tests (incl. the M48 random attach/detach differential
+  against a BFS oracle),
   enforceable at runtime by the on-demand verify/rebuild operation (D-ClosureIntegrity), and
   **surfaced as a diagnostic** by the `closure-drift` health reporter (fed by `verify`'s persisted
   `tenant_closure_status`; diagnostic-only, does not gate readiness — D-ClosureDriftHealth). The

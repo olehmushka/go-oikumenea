@@ -62,6 +62,13 @@ func (r *Repository) Get(ctx context.Context, id string) (domain.Entry, error) {
 	return toEntry(row), nil
 }
 
+// EnsureCurrentPartitions rolls the monthly partition window forward (review-2026-07 R-07):
+// idempotently create the current + next month's partition. Runs DDL, so bind this repository to the
+// pool (not an RLS-scoped request connection).
+func (r *Repository) EnsureCurrentPartitions(ctx context.Context) error {
+	return r.q.EnsureAuditPartitions(ctx)
+}
+
 // Query runs the filtered, keyset-paginated read.
 func (r *Repository) Query(ctx context.Context, f domain.Filter) ([]domain.Entry, error) {
 	params := auditsql.QueryAuditLogParams{

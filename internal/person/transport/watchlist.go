@@ -19,7 +19,7 @@ func (s Service) CheckWatchlists(ctx context.Context, token bearertoken.Token, p
 	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
 		return personapi.WatchlistMatch{}, err
 	}
-	m, err := s.app.CheckWatchlists(ctx, personID)
+	m, err := s.sensitive.CheckWatchlists(ctx, personID)
 	if err != nil {
 		return personapi.WatchlistMatch{}, s.mapError(ctx, err, personID)
 	}
@@ -30,7 +30,7 @@ func (s Service) GetWatchlistMatch(ctx context.Context, token bearertoken.Token,
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
 		return nil, err
 	}
-	m, ok, err := s.app.GetWatchlistMatch(ctx, personID)
+	m, ok, err := s.sensitive.GetWatchlistMatch(ctx, personID)
 	if err != nil {
 		return nil, s.mapError(ctx, err, personID)
 	}
@@ -47,7 +47,7 @@ func (s Service) ListRegulatorySanctions(ctx context.Context, token bearertoken.
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
 		return nil, err
 	}
-	xs, err := s.app.ListRegulatorySanctions(ctx, personID)
+	xs, err := s.sensitive.ListRegulatorySanctions(ctx, personID)
 	if err != nil {
 		return nil, s.mapError(ctx, err, personID)
 	}
@@ -62,7 +62,7 @@ func (s Service) UpsertRegulatorySanction(ctx context.Context, token bearertoken
 	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
 		return personapi.RegulatorySanction{}, err
 	}
-	created, err := s.app.UpsertRegulatorySanction(ctx, domain.RegulatorySanction{
+	created, err := s.sensitive.UpsertRegulatorySanction(ctx, domain.RegulatorySanction{
 		ID:           derefOr(req.Id, ""),
 		PersonID:     personID,
 		Regulator:    req.Regulator,
@@ -87,7 +87,7 @@ func (s Service) DeleteRegulatorySanction(ctx context.Context, token bearertoken
 	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
 		return err
 	}
-	if err := s.app.DeleteRegulatorySanction(ctx, personID, sanctionID); err != nil {
+	if err := s.sensitive.DeleteRegulatorySanction(ctx, personID, sanctionID); err != nil {
 		return s.mapError(ctx, err, personID)
 	}
 	return nil

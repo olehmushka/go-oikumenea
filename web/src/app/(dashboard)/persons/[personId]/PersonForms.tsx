@@ -25,12 +25,15 @@ import type {
   Citizenship,
   ClergyCredential,
   ClergyGrade,
+  CryptoWallet,
   DistinguishingMark,
   DocumentDoc,
   Email,
   Ethnicity,
   ExternalReference,
   GovernmentPosition,
+  Personality,
+  PoliticalLeaning,
   LobbyingRelationship,
   PartyMembership,
   Guardianship,
@@ -1318,6 +1321,210 @@ export function WatchlistManager({ personId }: { personId: string }) {
             {bases.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
           </select>
           <button className="btn-ghost" disabled={busy}><T>Add</T></button>
+        </form>
+      </ChannelBlock>
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ overlays (M35) */
+
+const WALLET_CHAINS = ["bitcoin", "ethereum", "solana", "tron", "bnb", "polygon", "monero", "other"] as const;
+const WALLET_METHODS = ["exchange_kyc", "blockchain_analysis", "self_declared", "leak", "public_post", "other"] as const;
+const PERSONALITY_FRAMEWORKS = ["mbti", "big_five", "disc", "enneagram", "other"] as const;
+const PERSONALITY_METHODS = ["self_declared_survey", "hr_assessment"] as const;
+
+// OverlaysManager owns the M35 panels (D-PersonOverlays): crypto wallets + personality profiles
+// (pii:sensitive) and the inferred political leaning (pii:special, encrypted, single-active-per-person —
+// legalBasis required, NEVER merged with the declared M33 party membership). Each panel self-fetches.
+export function OverlaysManager({ personId }: { personId: string }) {
+  const [wallets, setWallets] = useState<CryptoWallet[] | null>(null);
+  const [profiles, setProfiles] = useState<Personality[] | null>(null);
+  const [leaning, setLeaning] = useState<PoliticalLeaning | null>(null);
+  const [bases, setBases] = useState<{ code: string; name: string }[]>([]);
+  const [err, setErr] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = () => {
+    api.person.listCryptoWallets(personId).then(setWallets).catch(setErr);
+    api.person.listPersonalities(personId).then(setProfiles).catch(setErr);
+    api.person.getPoliticalLeaning(personId).then((l) => setLeaning(l ?? null)).catch(setErr);
+  };
+  useEffect(() => {
+    load();
+    // Inferred political opinion is GDPR Art. 9 — offer the Art. 9 lawful bases.
+    api.platformCatalog.listLegalBasisKinds()
+      .then((r) => setBases((r?.kinds ?? []).filter((k) => k.article === "art9").map((k) => ({ code: k.code, name: k.name }))))
+      .catch(setErr);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personId]);
+
+  const run = async (fn: () => Promise<unknown>, after?: () => void) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await fn();
+      after?.();
+      load();
+    } catch (e) {
+      setErr(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <ChannelBlock title="Crypto wallets" err={err}>
+        <p className="mt-1 text-xs text-amber-600"><T>Sensitive-tier wallet attribution.</T></p>
+        <ItemList
+          items={wallets ?? undefined}
+          render={(w) => {
+            const b = Number(w.balanceUsdApprox);
+            const bal = Number.isFinite(b) ? `~$${b.toLocaleString()}` : "";
+            return (
+              <span className="inline-flex flex-wrap items-center gap-x-1">
+                <span className="text-xs font-medium text-slate-500">{w.chain}</span>
+                <span className="mx-1 text-slate-300">·</span>
+                <span className="font-mono text-xs">{w.address}</span>
+                <span className="ml-1 text-xs text-slate-400">· {w.attributionMethod}</span>
+                {bal ? <span className="ml-1 text-xs text-slate-400">· {bal}</span> : null}
+              </span>
+            );
+          }}
+          del={(w) => `/person/v1/persons/${personId}/crypto-wallets/${w.id}`}
+          delConfirm="Remove this crypto wallet?"
+        />
+        <form
+          className="mt-2 grid grid-cols-[7rem_1fr_9rem_6rem_auto] gap-2"
+          onSubmit={(ev) => {
+            ev.preventDefault();
+            const f = new FormData(ev.currentTarget);
+            const address = s(f, "address");
+            if (!address) return;
+            const form = ev.currentTarget;
+            const balStr = s(f, "balance");
+            const balance = balStr ? Number(balStr) : undefined;
+            run(
+              () => api.person.upsertCryptoWallet(personId, {
+                address,
+                chain: s(f, "chain") ?? "ethereum",
+                attributionMethod: s(f, "method") ?? "other",
+                balanceUsdApprox: Number.isFinite(balance) ? balance : undefined,
+              }),
+              () => form.reset(),
+            );
+          }}
+        >
+          <select name="chain" className="input" defaultValue="ethereum">
+            {WALLET_CHAINS.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <input name="address" className="input" placeholder="wallet address…" required />
+          <select name="method" className="input" defaultValue="blockchain_analysis">
+            {WALLET_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+          <input name="balance" className="input" type="number" step="any" placeholder="USD ≈" />
+          <button className="btn-ghost" disabled={busy}><T>Add</T></button>
+        </form>
+      </ChannelBlock>
+
+      <ChannelBlock title="Personality profiles" err={null}>
+        <p className="mt-1 text-xs text-amber-600"><T>Declared survey or formal HR assessment only — never inferred.</T></p>
+        <ItemList
+          items={profiles ?? undefined}
+          render={(p) => (
+            <span className="inline-flex flex-wrap items-center gap-x-1">
+              <span className="text-xs font-medium text-slate-500">{p.framework}</span>
+              <span className="mx-1 text-slate-300">·</span>
+              <span className="font-medium">{p.result}</span>
+              <span className="ml-1 text-xs text-slate-400">· {p.method}</span>
+              {p.instrument ? <span className="ml-1 text-xs text-slate-400">({p.instrument})</span> : null}
+            </span>
+          )}
+          del={(p) => `/person/v1/persons/${personId}/personalities/${p.id}`}
+          delConfirm="Remove this personality profile?"
+        />
+        <form
+          className="mt-2 grid grid-cols-[7rem_1fr_9rem_auto] gap-2"
+          onSubmit={(ev) => {
+            ev.preventDefault();
+            const f = new FormData(ev.currentTarget);
+            const result = s(f, "result");
+            if (!result) return;
+            const form = ev.currentTarget;
+            run(
+              () => api.person.upsertPersonality(personId, {
+                framework: s(f, "framework") ?? "mbti",
+                result,
+                method: s(f, "method") ?? "self_declared_survey",
+                instrument: s(f, "instrument"),
+              }),
+              () => form.reset(),
+            );
+          }}
+        >
+          <select name="framework" className="input" defaultValue="mbti">
+            {PERSONALITY_FRAMEWORKS.map((fw) => <option key={fw} value={fw}>{fw}</option>)}
+          </select>
+          <input name="result" className="input" placeholder="result (INTJ…)…" required />
+          <select name="method" className="input" defaultValue="self_declared_survey">
+            {PERSONALITY_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+          <button className="btn-ghost" disabled={busy}><T>Add</T></button>
+        </form>
+      </ChannelBlock>
+
+      <ChannelBlock title="Inferred political leaning" err={null}>
+        <p className="mt-1 text-xs text-amber-600"><T>Inferred special-category data (GDPR Art. 9) — encrypted at rest; never a declared affiliation.</T></p>
+        {leaning ? (
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+            {(() => {
+              const spec = Number(leaning.spectrum);
+              return (
+                <>
+                  <span className="font-medium">{spec > 0 ? "→ right" : spec < 0 ? "← left" : "center"}</span>
+                  <span className="text-xs text-slate-400">({spec.toFixed(2)})</span>
+                </>
+              );
+            })()}
+            {leaning.inferenceSources.length ? <span className="text-xs text-slate-500">· {leaning.inferenceSources.join(", ")}</span> : null}
+            <span className="text-xs text-slate-400">· {leaning.legalBasis}</span>
+            <button
+              className="btn-ghost ml-2"
+              disabled={busy}
+              onClick={() => run(() => api.person.deletePoliticalLeaning(personId))}
+            >
+              <T>Clear</T>
+            </button>
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-slate-400"><T>No inferred leaning recorded.</T></p>
+        )}
+        <form
+          className="mt-2 grid grid-cols-[8rem_1fr_1fr_auto] gap-2"
+          onSubmit={(ev) => {
+            ev.preventDefault();
+            const f = new FormData(ev.currentTarget);
+            const legalBasis = s(f, "legalBasis");
+            const spectrumStr = s(f, "spectrum");
+            if (!legalBasis || !spectrumStr) return;
+            const spectrum = Number(spectrumStr);
+            if (!Number.isFinite(spectrum)) return;
+            const form = ev.currentTarget;
+            const sources = (s(f, "sources") ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+            run(
+              () => api.person.setPoliticalLeaning(personId, { spectrum, inferenceSources: sources, legalBasis }),
+              () => form.reset(),
+            );
+          }}
+        >
+          <input name="spectrum" className="input" type="number" step="0.01" min="-1" max="1" placeholder="spectrum −1…1" required />
+          <input name="sources" className="input" placeholder="sources (comma-separated)…" />
+          <select name="legalBasis" className="input" defaultValue="" required>
+            <option value="">legal basis…</option>
+            {bases.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
+          </select>
+          <button className="btn-ghost" disabled={busy}><T>Set</T></button>
         </form>
       </ChannelBlock>
     </>

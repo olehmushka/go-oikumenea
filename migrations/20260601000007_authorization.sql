@@ -5,12 +5,14 @@
 -- authz_role_permissions with a code outside that catalog is rejected in the application; the
 -- closed permission vocabulary is always visible in a diff (D-Ontology ratified divergence).
 --
--- Four tables, all expand-only (L-UpgradeSafe / D-Migrations):
+-- Five tables, all expand-only (L-UpgradeSafe / D-Migrations):
 --   * authz_roles                — Object Role (code + translatable name; is_base seeded roles).
 --   * authz_role_permissions     — Role -> permission-code membership (plain FK rows, no RID).
 --   * authz_role_assignments     — the reified Link link__has_role: (subject, role, target_unit,
 --                                  scope, graph) + provenance + optional expiry. THE centerpiece.
 --   * authz_instance_admins      — the reified Link link__instance_admin: the instance-wide plane.
+--   * authz_epoch                — single-row revocation-epoch counter for the per-process grant
+--                                  cache (D-AuthzGrantCache, M47) — derived, no RID.
 --
 -- This migration is PURE DDL: it seeds NO rows. The four base roles (D-BaseRoles) are RID-keyed, so
 -- they are seeded at BOOT by authz.Register on the GUC-bearing pool (D-RIDSeeding) — not here, where
@@ -152,6 +154,18 @@ COMMENT ON COLUMN oikumenea.authz_instance_admins.granted_by IS 'pii:none';
 COMMENT ON COLUMN oikumenea.authz_instance_admins.granted_at IS 'pii:none';
 COMMENT ON COLUMN oikumenea.authz_instance_admins.revoked_at IS 'pii:none';
 COMMENT ON COLUMN oikumenea.authz_instance_admins.revoked_by IS 'pii:none';
+
+-- authz_epoch: single-row revocation-epoch counter (D-AuthzGrantCache, M47 / review-2026-07 R-01.2).
+-- Every authority-mutating transaction (grant/revoke assignment, role permission edit/delete,
+-- instance-admin grant/revoke, base-role re-sync, person-merge repoint) bumps it; the per-process
+-- grant cache validates a stale entry with ONE single-row read instead of re-running the grants
+-- join. A derived counter, not an entity — composite-free single row, no RID (ontology-mapping 4.3).
+CREATE TABLE oikumenea.authz_epoch (
+  singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+  epoch     bigint  NOT NULL DEFAULT 0
+);
+INSERT INTO oikumenea.authz_epoch (singleton, epoch) VALUES (true, 0);
+COMMENT ON COLUMN oikumenea.authz_epoch.epoch IS 'pii:none';
 
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
 UPDATE oikumenea.schema_version SET revision = '0007_authorization', applied_at = now() WHERE singleton;

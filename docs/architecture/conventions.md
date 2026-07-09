@@ -218,18 +218,19 @@ RLS **is** enabled as a DB-level **defense-in-depth backstop** that mirrors the 
 (D-RLSDefenseInDepth). It guards the *forgotten-filter* bug class (a query that skips the PDP/gate),
 not PDP-logic errors. The contract:
 
-- The application sets per-**transaction** session GUCs at txn begin (via `SET LOCAL`, auto-reset):
-  `app.person_id`, `app.is_instance_admin` (bool), `app.readable_units` (text[] of unit RIDs — PDP
-  read reach), `app.writable_units` (text[] — write reach). The values come from the request's PDP
-  context; the per-txn GUC seam lives in [platform](../modules/platform.md).
-- RLS policies on unit-scoped tables use those GUCs:
-  `USING (current_setting('app.is_instance_admin')::bool
-          OR id|unit_id = ANY(current_setting('app.readable_units')::text[]))`; write policies use
-  `app.writable_units`.
+- The application sets two O(1) session GUCs on a **lazily pinned** per-request connection
+  (`db.WithLazyConn` → one `set_config` round trip on first RLS-scoped statement — D-RLSLiveReach /
+  R-03): `app.person_id` and `app.is_instance_admin` (bool). No unit-list GUC exists; the seam
+  lives in [platform](../modules/platform.md).
+- RLS policies on unit-scoped tables compute reach **live**:
+  `USING (oikumenea.authz_unit_in_reach(id|unit_id, false))` /
+  `WITH CHECK (oikumenea.authz_unit_in_reach(…, true))` — a planner-inlined semi-join over the
+  subject's active role assignments + the tenant closure (the SQL mirror of the PDP's `ReachSet`;
+  the admin-flag short-circuit is inside the function). The backstop is exact under revocation.
 - The **application DB role must not hold `BYPASSRLS`**; instance-admin is expressed via the GUC
   flag, never a DB superuser. Schema migrations run as the owner/migration role.
 
-See [decisions.md](decisions.md) D-NoRLS + D-RLSDefenseInDepth.
+See [decisions.md](decisions.md) D-NoRLS + D-RLSDefenseInDepth + D-RLSLiveReach.
 
 ---
 

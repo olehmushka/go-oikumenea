@@ -391,23 +391,35 @@ func (s *Service) DeletePersonalCode(ctx context.Context, id string) error {
 // ErasePersonRecords is the person-purge erasure path (D-Documents): it NULLs a person's document
 // number/issuer/attributes and CRYPTO-ERASES their personal codes (drop the wrapped DEK + ciphertext),
 // keeping row ids as tombstones, all in one transaction with a `system` audit row correlated to the
-// originating person.purge by request_id. The PersonPurged event subscriber that triggers this is
-// deferred until the event bus lands (open seam); the mechanism is exercised directly today.
+// originating person.purge by request_id. Triggered by the PersonPurged event (SubscribePersonPurge);
+// also exercised directly.
 func (s *Service) ErasePersonRecords(ctx context.Context, personID string) (docs, codes int64, err error) {
 	err = s.inTx(ctx, func(tx pgx.Tx) error {
-		repo := s.newRepo(tx)
-		d, err := repo.ErasePersonDocuments(ctx, personID)
-		if err != nil {
-			return err
-		}
-		c, err := repo.CryptoErasePersonCodes(ctx, personID)
-		if err != nil {
-			return err
-		}
-		docs, codes = d, c
-		return s.recordErase(ctx, tx, personID, d, c)
+		docs, codes, err = s.erasePersonRecordsTx(ctx, tx, personID)
+		return err
 	})
 	return docs, codes, err
+}
+
+// erasePersonRecordsTx is the body of the person-purge erasure, run in a caller-supplied transaction so it
+// executes either standalone (ErasePersonRecords) or inside the person-purge tx as the PersonPurged
+// subscriber (SubscribePersonPurge). The audit row is written only when something was erased.
+func (s *Service) erasePersonRecordsTx(ctx context.Context, tx pgx.Tx, personID string) (docs, codes int64, err error) {
+	repo := s.newRepo(tx)
+	d, err := repo.ErasePersonDocuments(ctx, personID)
+	if err != nil {
+		return 0, 0, err
+	}
+	c, err := repo.CryptoErasePersonCodes(ctx, personID)
+	if err != nil {
+		return 0, 0, err
+	}
+	if d > 0 || c > 0 {
+		if err := s.recordErase(ctx, tx, personID, d, c); err != nil {
+			return 0, 0, err
+		}
+	}
+	return d, c, nil
 }
 
 // ---------------------------------------------------------------- crypto + validation helpers

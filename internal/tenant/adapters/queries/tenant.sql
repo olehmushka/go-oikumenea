@@ -1,8 +1,9 @@
 -- Tenant module queries (docs/modules/tenant.md). Two-tier model (D-TenantOrganizations, M40):
 -- domains (org-kind catalog) -> organizations (the realm) -> units as a DAG per graph + a maintained
--- transitive closure recomputed in the write transaction on every edge change. Graphs are per-org
--- (org_id), with org_id NULL = an instance-global/cross-org graph (religion taxonomy). Units/graphs/
--- orgs soft-delete; edges hard-delete on detach; the closure is derived (no RID).
+-- transitive closure incrementally adjusted in the write transaction on each edge change (M48; the
+-- full rebuild is kept as the D-ClosureIntegrity repair path). Graphs are per-org (org_id), with
+-- org_id NULL = an instance-global/cross-org graph (religion taxonomy). Units/graphs/orgs
+-- soft-delete; edges hard-delete on detach; the closure is derived (no RID).
 
 -- ============================ domains (org-kind catalog) ============================
 
@@ -268,6 +269,117 @@ SELECT EXISTS(
 -- name: DeleteClosureForGraph :exec
 DELETE FROM oikumenea.tenant_unit_closure WHERE graph_id = @graph_id;
 
+-- name: LockGraphForClosure :one
+-- Serialize closure maintenance per graph (attach / detach / rebuild all take this before touching
+-- edges or closure rows). FOR NO KEY UPDATE conflicts with itself but not with the FK KEY SHARE
+-- locks other inserts referencing the graph row take, so it only serializes closure writers.
+SELECT id FROM oikumenea.tenant_graphs WHERE id = @graph_id FOR NO KEY UPDATE;
+
+-- name: SeedClosureSelfRows :exec
+-- A unit that never appeared in an edge has no closure rows; seed the reflexive rows for both
+-- endpoints before extending, so the closure∘closure join in ExtendClosureForEdge sees them.
+INSERT INTO oikumenea.tenant_unit_closure (graph_id, ancestor_id, descendant_id, depth)
+VALUES (@graph_id, @parent_id, @parent_id, 0),
+       (@graph_id, @child_id,  @child_id,  0)
+ON CONFLICT DO NOTHING;
+
+-- name: ExtendClosureForEdge :exec
+-- Incremental attach (M48): every path created by a new parent->child edge is a path a->parent,
+-- the edge, then child->d — so the affected pairs are exactly anc*(parent) × desc*(child)
+-- (reflexive rows included via SeedClosureSelfRows). Each output pair occurs exactly once (one
+-- anc row per ancestor, one dsc row per descendant, by the PK), so the multi-row ON CONFLICT is
+-- safe; LEAST keeps depth = shortest path. Runs after the cycle guard, so acyclicity holds.
+INSERT INTO oikumenea.tenant_unit_closure (graph_id, ancestor_id, descendant_id, depth)
+SELECT @graph_id::uuid, anc.ancestor_id, dsc.descendant_id, anc.depth + dsc.depth + 1
+FROM oikumenea.tenant_unit_closure anc
+JOIN oikumenea.tenant_unit_closure dsc
+  ON dsc.graph_id = @graph_id AND dsc.ancestor_id = @child_id
+WHERE anc.graph_id = @graph_id AND anc.descendant_id = @parent_id
+ON CONFLICT (graph_id, ancestor_id, descendant_id)
+DO UPDATE SET depth = LEAST(tenant_unit_closure.depth, EXCLUDED.depth);
+
+-- name: DeleteClosureSlice :exec
+-- Incremental detach, step 1 of 3 (M48): removing edge parent->child can only affect pairs in
+-- A × D with A = anc*(parent), D = desc*(child) — any path through the edge has its endpoints
+-- there. Runs AFTER DeleteEdge on the still-stale closure; A and D are identical before/after the
+-- edge removal (a path to parent or from child through the edge would be a cycle), and the rows
+-- defining A and D are outside the slice (parent ∉ D, child ∉ A), so no temp storage is needed.
+-- A ∩ D = ∅ in a DAG, so reflexive rows are never inside the slice.
+WITH anc AS (
+  SELECT tc.ancestor_id AS u FROM oikumenea.tenant_unit_closure tc
+  WHERE tc.graph_id = @graph_id AND tc.descendant_id = @parent_id
+  UNION
+  SELECT @parent_id::uuid
+),
+dsc AS (
+  SELECT tc.descendant_id AS u FROM oikumenea.tenant_unit_closure tc
+  WHERE tc.graph_id = @graph_id AND tc.ancestor_id = @child_id
+  UNION
+  SELECT @child_id::uuid
+)
+DELETE FROM oikumenea.tenant_unit_closure tc
+WHERE tc.graph_id = @graph_id
+  AND tc.ancestor_id   IN (SELECT u FROM anc)
+  AND tc.descendant_id IN (SELECT u FROM dsc);
+
+-- name: RederiveClosureSlice :exec
+-- Incremental detach, step 2 of 3 (M48): re-derive the deleted A × D slice from surviving edges
+-- plus closure rows outside the slice. Any new-graph path a->d (a ∈ A, d ∈ D) has a unique
+-- maximal prefix inside A and never re-enters A after leaving (a path back into A would make its
+-- node an ancestor of parent, i.e. inside A); so it is an edge-walk inside A followed by one
+-- "trusted jump" over a closure row (z, d) with z ∉ A — outside the slice, hence already minimal
+-- for the new graph. min over all (prefix + jump) combinations = the true shortest depth. The
+-- z = d case rides on d's reflexive row, which survived step 1 — step 3 must run after this.
+-- Plain INSERT: the slice was just emptied, so a conflict here is a bug and should fail loudly.
+WITH RECURSIVE
+anc AS (
+  SELECT tc.ancestor_id AS u FROM oikumenea.tenant_unit_closure tc
+  WHERE tc.graph_id = @graph_id AND tc.descendant_id = @parent_id
+  UNION
+  SELECT @parent_id::uuid
+),
+dsc AS (
+  SELECT tc.descendant_id AS u FROM oikumenea.tenant_unit_closure tc
+  WHERE tc.graph_id = @graph_id AND tc.ancestor_id = @child_id
+  UNION
+  SELECT @child_id::uuid
+),
+walk AS (
+  SELECT a.u AS ancestor_id, a.u AS node, 0 AS depth FROM anc a
+  UNION ALL
+  SELECT w.ancestor_id, e.child_id, w.depth + 1
+  FROM walk w
+  JOIN oikumenea.tenant_unit_edges e
+    ON e.graph_id = @graph_id AND e.parent_id = w.node
+  WHERE w.node IN (SELECT u FROM anc)  -- extend only while inside A; frontier rows stop here
+),
+pairs AS (
+  SELECT w.ancestor_id, tc.descendant_id, w.depth + tc.depth AS depth
+  FROM walk w
+  JOIN oikumenea.tenant_unit_closure tc
+    ON tc.graph_id = @graph_id AND tc.ancestor_id = w.node
+  WHERE w.node NOT IN (SELECT u FROM anc)  -- the trusted jump: z ∉ A ⇒ (z, d) survived step 1
+    AND tc.descendant_id IN (SELECT u FROM dsc)
+)
+INSERT INTO oikumenea.tenant_unit_closure (graph_id, ancestor_id, descendant_id, depth)
+SELECT @graph_id::uuid, ancestor_id, descendant_id, min(depth)::int
+FROM pairs
+GROUP BY ancestor_id, descendant_id;
+
+-- name: PruneClosureSelfRows :exec
+-- Incremental detach, step 3 of 3 (M48): the rebuild emits reflexive rows only for units that
+-- appear in an edge, so after a detach drop the endpoints' reflexive rows when they no longer
+-- appear in any edge of the graph — keeping incremental output ≡ RebuildClosureForGraph output.
+DELETE FROM oikumenea.tenant_unit_closure tc
+WHERE tc.graph_id = @graph_id
+  AND tc.ancestor_id = tc.descendant_id
+  AND tc.ancestor_id IN (@parent_id::uuid, @child_id::uuid)
+  AND NOT EXISTS (
+    SELECT 1 FROM oikumenea.tenant_unit_edges e
+    WHERE e.graph_id = @graph_id
+      AND (e.parent_id = tc.ancestor_id OR e.child_id = tc.ancestor_id)
+  );
+
 -- name: RebuildClosureForGraph :exec
 -- Recompute one graph's full transitive closure from its edges, in the caller's transaction.
 -- Reflexive (g,u,u,0) rows for every unit appearing in the graph's edges, then descend; collapse
@@ -292,8 +404,9 @@ FROM reach
 GROUP BY ancestor_id, descendant_id;
 
 -- name: VerifyClosureForGraph :one
--- Diff the stored closure against a freshly computed one (pair membership), returning the counts
--- and a small sample for the drift report. Does not modify the stored closure.
+-- Diff the stored closure against a freshly computed one (pair membership AND shortest-path
+-- depth — M48 made depth drift reportable too), returning the counts and a small sample for the
+-- drift report. Does not modify the stored closure.
 WITH RECURSIVE
   nodes AS (
     SELECT te.parent_id AS u FROM oikumenea.tenant_unit_edges te WHERE te.graph_id = @graph_id
@@ -309,13 +422,13 @@ WITH RECURSIVE
       ON e.graph_id = @graph_id AND e.parent_id = r.descendant_id
   ),
   expected AS (
-    SELECT DISTINCT ancestor_id, descendant_id FROM reach
+    SELECT ancestor_id, descendant_id, min(depth)::int AS depth FROM reach GROUP BY ancestor_id, descendant_id
   ),
   stored AS (
-    SELECT tc.ancestor_id, tc.descendant_id FROM oikumenea.tenant_unit_closure tc WHERE tc.graph_id = @graph_id
+    SELECT tc.ancestor_id, tc.descendant_id, tc.depth FROM oikumenea.tenant_unit_closure tc WHERE tc.graph_id = @graph_id
   ),
-  missing AS (SELECT ancestor_id, descendant_id FROM expected EXCEPT SELECT ancestor_id, descendant_id FROM stored),
-  extra   AS (SELECT ancestor_id, descendant_id FROM stored   EXCEPT SELECT ancestor_id, descendant_id FROM expected)
+  missing AS (SELECT ancestor_id, descendant_id, depth FROM expected EXCEPT SELECT ancestor_id, descendant_id, depth FROM stored),
+  extra   AS (SELECT ancestor_id, descendant_id, depth FROM stored   EXCEPT SELECT ancestor_id, descendant_id, depth FROM expected)
 SELECT
   (SELECT count(*) FROM missing)::int AS missing_count,
   (SELECT count(*) FROM extra)::int   AS extra_count,

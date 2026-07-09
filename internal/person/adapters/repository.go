@@ -1,6 +1,8 @@
-// Package adapters implements the person domain ports against infrastructure: the pgx/sqlc
-// repository over the oikumenea.person_* tables. It depends on the database, never the reverse
-// (overview.md). Generated sqlc code lives in the personsql subpackage and is never hand-edited.
+// Package adapters is the person core module's pgx/sqlc-backed persistence adapter (D-PersonModuleSplit,
+// review-2026-07 R-09). It owns the person aggregate root's core tables only — person_persons, the
+// person_ranks link, and the person_name_variants (names incl. aliases) — plus the reversible
+// deactivate -> purge lifecycle. The non-encrypted directory data (personprofile) and the sensitive /
+// encrypted surface (personsensitive) live in their own adapters over their own generated query packages.
 package adapters
 
 import (
@@ -18,9 +20,9 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 )
 
-// Repository is the pgx/sqlc-backed implementation of domain.Repository, bound to a single db.DBTX —
-// the pool for reads, or a caller-supplied transaction so a write and its audit row commit together
-// (D-Audit).
+// Repository is the pgx/sqlc-backed implementation of the person core domain.Repository, bound to a
+// single db.DBTX — the pool for reads, or a caller-supplied transaction so a write and its audit row
+// commit together (D-Audit).
 type Repository struct {
 	q *personsql.Queries
 	c db.DBTX // raw command surface, for the handful of statements not expressed as sqlc queries
@@ -32,10 +34,8 @@ func NewRepository(conn db.DBTX) *Repository {
 	return &Repository{q: personsql.New(conn), c: conn}
 }
 
-// compile-time assertion that the adapter satisfies the domain port.
+// compile-time assertion that the adapter satisfies the person core domain port.
 var _ domain.Repository = (*Repository)(nil)
-
-// ---------------------------------------------------------------- persons
 
 func (r *Repository) InsertPerson(ctx context.Context, p domain.Person) (domain.Person, error) {
 	row, err := r.q.InsertPerson(ctx, personsql.InsertPersonParams{
@@ -65,6 +65,10 @@ func (r *Repository) InsertPerson(ctx context.Context, p domain.Person) (domain.
 // InsertProvisionalPerson inserts the person via the normal path, then flips its status to
 // 'provisional' in the same transaction (D-OverlayFoundation). The minimal-PII stub keeps the
 // display_name (required) and any seeded structured parts; everything else is left empty.
+
+// InsertProvisionalPerson inserts the person via the normal path, then flips its status to
+// 'provisional' in the same transaction (D-OverlayFoundation). The minimal-PII stub keeps the
+// display_name (required) and any seeded structured parts; everything else is left empty.
 func (r *Repository) InsertProvisionalPerson(ctx context.Context, p domain.Person) (domain.Person, error) {
 	created, err := r.InsertPerson(ctx, p)
 	if err != nil {
@@ -77,6 +81,11 @@ func (r *Repository) InsertProvisionalPerson(ctx context.Context, p domain.Perso
 	created.Status = domain.StatusProvisional
 	return created, nil
 }
+
+// repointOwnedStmts re-homes the person-OWNED rows fromID → toID. Each entry is a single-column
+// UPDATE; relationship tables carry the person on two columns, so both are listed. Cross-module rows
+// (membership, documents, vehicle/company holders, …) are re-homed by the PersonMerged subscribers,
+// not here.
 
 // repointOwnedStmts re-homes the person-OWNED rows fromID → toID. Each entry is a single-column
 // UPDATE; relationship tables carry the person on two columns, so both are listed. Cross-module rows
@@ -117,7 +126,15 @@ var repointOwnedStmts = []string{
 	// person_id would collide) — the stub's row is hard-dropped by the merge's Purge step, and a re-check
 	// regenerates the screening result on the canonical person (D-Watchlists).
 	`UPDATE oikumenea.person_regulatory_sanctions   SET person_id = $2 WHERE person_id = $1`,
+	// financial / behavioural overlays (M35): crypto wallets + personality profiles re-home onto the
+	// canonical person. The single-per-person inferred political leaning is NOT re-homed (its partial-unique
+	// person_id would collide) — the stub's row is hard-dropped by the merge's Purge step (and the inferred
+	// leaning is never merged with the declared party membership anyway, D-PersonOverlays).
+	`UPDATE oikumenea.person_crypto_wallets         SET person_id = $2 WHERE person_id = $1`,
+	`UPDATE oikumenea.person_personality            SET person_id = $2 WHERE person_id = $1`,
 }
+
+// RepointPersonOwned runs the person-owned re-point UPDATEs fromID → toID in the caller's transaction.
 
 // RepointPersonOwned runs the person-owned re-point UPDATEs fromID → toID in the caller's transaction.
 func (r *Repository) RepointPersonOwned(ctx context.Context, fromID, toID string) error {
@@ -139,6 +156,10 @@ func (r *Repository) GetPerson(ctx context.Context, id string) (domain.Person, e
 	}
 	return toPerson(row), nil
 }
+
+// GetActivePersonByCode looks up an active person by their stable `code` (used by
+// identity-federation JIT link-on-match and the first-admin bootstrap). ErrNotFound when no active
+// person carries that code.
 
 // GetActivePersonByCode looks up an active person by their stable `code` (used by
 // identity-federation JIT link-on-match and the first-admin bootstrap). ErrNotFound when no active
@@ -182,14 +203,35 @@ func (r *Repository) UpdatePerson(ctx context.Context, id string, patch domain.P
 	return toPerson(row), nil
 }
 
+// ListPersons returns a keyset page of the directory. A non-empty query routes to the dedicated
+// trigram SearchPersons (review R-06) so each match branch stays a GIN bitmap scan; the empty case
+// is the unfiltered list. Both queries key on the person RID, so the caller's cursor is identical.
+
+// ListPersons returns a keyset page of the directory. A non-empty query routes to the dedicated
+// trigram SearchPersons (review R-06) so each match branch stays a GIN bitmap scan; the empty case
+// is the unfiltered list. Both queries key on the person RID, so the caller's cursor is identical.
 func (r *Repository) ListPersons(ctx context.Context, after, query string, limit int) ([]domain.Person, error) {
-	rows, err := r.q.ListPersons(ctx, personsql.ListPersonsParams{After: after, Query: query, Lim: int32(limit)})
-	if err != nil {
-		return nil, err
+	// The two list queries share the lean R-17 projection, so they return field-identical row structs
+	// (convertible to ListPersonsRow) and map through the one leanToPerson mapper.
+	var rows []personsql.ListPersonsRow
+	if q := strings.TrimSpace(query); q != "" {
+		found, err := r.q.SearchPersons(ctx, personsql.SearchPersonsParams{After: after, Query: pgtype.Text{String: q, Valid: true}, Lim: int32(limit)})
+		if err != nil {
+			return nil, err
+		}
+		rows = make([]personsql.ListPersonsRow, len(found))
+		for i, row := range found {
+			rows[i] = personsql.ListPersonsRow(row)
+		}
+	} else {
+		var err error
+		if rows, err = r.q.ListPersons(ctx, personsql.ListPersonsParams{After: after, Lim: int32(limit)}); err != nil {
+			return nil, err
+		}
 	}
 	out := make([]domain.Person, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, toPerson(row))
+		out = append(out, leanToPerson(row))
 	}
 	return out, nil
 }
@@ -204,10 +246,13 @@ func (r *Repository) ListPersonsByIDs(ctx context.Context, ids []string) ([]doma
 	}
 	out := make([]domain.Person, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, toPerson(row))
+		out = append(out, leanToPerson(personsql.ListPersonsRow(row)))
 	}
 	return out, nil
 }
+
+// UpsertPersonRank sets the person's rank in the system DERIVED from rankID (the query SELECTs the
+// system from rank_ranks). An unknown/soft-deleted rank produces no row → ErrUnknownRank.
 
 // UpsertPersonRank sets the person's rank in the system DERIVED from rankID (the query SELECTs the
 // system from rank_ranks). An unknown/soft-deleted rank produces no row → ErrUnknownRank.
@@ -223,9 +268,13 @@ func (r *Repository) UpsertPersonRank(ctx context.Context, personID, rankID stri
 }
 
 // ClearPersonRank soft-deletes the person's active rank in systemID (no-op when none is held).
+
+// ClearPersonRank soft-deletes the person's active rank in systemID (no-op when none is held).
 func (r *Repository) ClearPersonRank(ctx context.Context, personID, systemID string) error {
 	return r.q.ClearPersonRank(ctx, personsql.ClearPersonRankParams{PersonID: personID, SystemID: systemID})
 }
+
+// ListPersonRanks returns the person's active ranks, one per system, ordered by rank-system sort order.
 
 // ListPersonRanks returns the person's active ranks, one per system, ordered by rank-system sort order.
 func (r *Repository) ListPersonRanks(ctx context.Context, personID string) ([]domain.PersonRank, error) {
@@ -269,134 +318,17 @@ func (r *Repository) Reactivate(ctx context.Context, id string) (domain.Person, 
 
 // Purge erases the person's PII and removes all child rows in the same transaction, keeping the id
 // row as a tombstone (audit history references it).
+
+// Purge erases the person's PII and removes all child rows in the same transaction, keeping the id
+// row as a tombstone (audit history references it).
 func (r *Repository) Purge(ctx context.Context, id string) (domain.Person, error) {
+	// Core-only erasure (D-PersonModuleSplit, review-2026-07 R-09): the name variants (core-owned) are
+	// hard-deleted, then person_persons has its PII scrubbed to a status=purged tombstone. Every other
+	// person_* table now belongs to personprofile or personsensitive: the application PurgePerson publishes
+	// a PersonPurged event and each owning module erases (or crypto-erases) its own rows via its
+	// SubscribePersonPurge handler in the SAME transaction. The cross-module education/company rows are
+	// likewise erased by their own PersonPurged subscribers (R-08 boundary).
 	if err := r.q.DeleteAllNameVariants(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllCitizenships(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllResidences(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	// addresses (D-PersonAddresses, M32): pii:contact — hard-deleted on purge (mirrors residences).
-	if err := r.q.DeleteAllAddresses(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllEmails(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllPhones(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllCallSigns(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllMessengerLinks(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllSocialAccountHandles(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllSocialAccounts(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	// person languages (D-Languages, M18) — pii:basic, erased on purge.
-	if err := r.q.DeleteAllPersonLanguages(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	// person education (D-Education, M20) — enrollments (pii:basic) + dorm stays (pii:contact).
-	if err := r.q.DeleteAllPersonEducationEnrollments(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllPersonDormitoryStays(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	// education reference-layer person links (D-Education, M20 extension; pii:basic) — erased on purge.
-	if err := r.q.DeleteAllPersonPublicationAuthorships(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllPersonResearchMemberships(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllPersonGrantHoldings(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllPersonGovernanceMemberships(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllPersonEducationQualifications(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllPersonScholarshipAwards(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	// company person-link rows (D-Companies, M21; pii:basic) — appointments + UBO by person_id FK, and
-	// the polymorphic person-holder founding/shareholding rows by holder_id.
-	if err := r.q.DeleteAllCompanyAppointments(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllCompanyBeneficiariesForPerson(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllCompanyFoundingsForPerson(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllCompanyShareholdingsForPerson(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	// person↔person relationships (D-PersonRelationships) — erased on EITHER endpoint's purge.
-	if err := r.q.DeleteAllPartnerships(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllKinships(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllGuardianships(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllSponsorships(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllNextOfKin(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllAssociations(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	// physical identity (D-PhysicalIdentity, M31): physical descriptions (pii:basic) + distinguishing
-	// marks (pii:special ceiling) are hard-deleted; ethnicities (encrypted pii:special) are crypto-erased
-	// — the envelope is dropped but the row is kept as a tombstone.
-	if err := r.q.DeleteAllPhysicalDescriptions(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllDistinguishingMarks(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if _, err := r.q.CryptoEraseEthnicities(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	// institutional & political ties (D-InstitutionalTies, M33): party memberships (encrypted pii:special)
-	// are crypto-erased — envelope dropped, row kept as a tombstone; the plaintext pii:basic ties
-	// (government positions / lobbying / external references) are hard-deleted.
-	if _, err := r.q.CryptoErasePartyMemberships(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllGovernmentPositions(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllLobbyingRelationships(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllExternalReferences(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	// watchlists & regulatory exposure (M34): both are pii:sensitive screening/overlay data — hard-erased
-	// on purge (a transient screening result and a durable overlay; neither is a legal-retention record).
-	if err := r.q.DeleteAllWatchlistMatches(ctx, id); err != nil {
-		return domain.Person{}, err
-	}
-	if err := r.q.DeleteAllRegulatorySanctions(ctx, id); err != nil {
 		return domain.Person{}, err
 	}
 	row, err := r.q.PurgePerson(ctx, id)
@@ -461,1114 +393,37 @@ func (r *Repository) ListNameVariants(ctx context.Context, personID string) ([]d
 
 // ---------------------------------------------------------------- citizenships
 
-func (r *Repository) UpsertCitizenship(ctx context.Context, c domain.Citizenship) (domain.Citizenship, error) {
-	row, err := r.q.UpsertCitizenship(ctx, personsql.UpsertCitizenshipParams{
-		PersonID:   c.PersonID,
-		CountryID:  c.Country,
-		Basis:      c.Basis,
-		AcquiredOn: dateText(c.AcquiredOn),
-		LostOn:     dateText(c.LostOn),
-		IsPrimary:  c.IsPrimary,
-	})
-	if err != nil {
-		return domain.Citizenship{}, mapWriteErr(err)
-	}
-	return toCitizenship(row), nil
-}
-
-func (r *Repository) ClearPrimaryCitizenships(ctx context.Context, personID string) error {
-	return r.q.ClearPrimaryCitizenships(ctx, personID)
-}
-
-func (r *Repository) DeleteCitizenship(ctx context.Context, personID, country string) error {
-	if _, err := r.q.DeleteCitizenship(ctx, personsql.DeleteCitizenshipParams{PersonID: personID, CountryID: country}); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ErrCitizenshipNotFound
-		}
-		return err
-	}
-	return nil
-}
-
-func (r *Repository) ListCitizenships(ctx context.Context, personID string) ([]domain.Citizenship, error) {
-	rows, err := r.q.ListCitizenships(ctx, personID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.Citizenship, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toCitizenship(row))
-	}
-	return out, nil
-}
-
-// ---------------------------------------------------------------- residences
-
-// UpsertResidence inserts a new row when r.ID is empty, otherwise replaces the named row.
-func (r *Repository) UpsertResidence(ctx context.Context, res domain.Residence) (domain.Residence, error) {
-	if res.ID == "" {
-		row, err := r.q.InsertResidence(ctx, personsql.InsertResidenceParams{
-			PersonID:  res.PersonID,
-			CountryID: res.Country,
-			Region:    text(res.Region),
-			ValidFrom: dateText(res.ValidFrom),
-			ValidTo:   dateText(res.ValidTo),
-		})
-		if err != nil {
-			return domain.Residence{}, mapWriteErr(err)
-		}
-		return toResidence(row), nil
-	}
-	row, err := r.q.UpdateResidence(ctx, personsql.UpdateResidenceParams{
-		CountryID: res.Country,
-		Region:    text(res.Region),
-		ValidFrom: dateText(res.ValidFrom),
-		ValidTo:   dateText(res.ValidTo),
-		ID:        res.ID,
-		PersonID:  res.PersonID,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.Residence{}, domain.ErrResidenceNotFound
-		}
-		return domain.Residence{}, mapWriteErr(err)
-	}
-	return toResidence(row), nil
-}
-
-func (r *Repository) DeleteResidence(ctx context.Context, personID, residenceID string) error {
-	if _, err := r.q.DeleteResidence(ctx, personsql.DeleteResidenceParams{ID: residenceID, PersonID: personID}); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ErrResidenceNotFound
-		}
-		return err
-	}
-	return nil
-}
-
-func (r *Repository) ListResidences(ctx context.Context, personID string) ([]domain.Residence, error) {
-	rows, err := r.q.ListResidences(ctx, personID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.Residence, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toResidence(row))
-	}
-	return out, nil
-}
-
-// ---------------------------------------------------------------- addresses (D-PersonAddresses, M32)
-
-// UpsertAddress inserts a new address when a.ID is empty, otherwise replaces the named row.
-func (r *Repository) UpsertAddress(ctx context.Context, a domain.Address) (domain.Address, error) {
-	if a.ID == "" {
-		row, err := r.q.InsertAddress(ctx, personsql.InsertAddressParams{
-			PersonID:       a.PersonID,
-			LocationID:     a.LocationID,
-			Role:           a.Role,
-			ValidFrom:      dateText(a.ValidFrom),
-			ValidTo:        dateText(a.ValidTo),
-			IsPrimary:      a.IsPrimary,
-			PrivacySeeking: a.PrivacySeeking,
-			Source:         a.Source,
-			Confidence:     a.Confidence,
-		})
-		if err != nil {
-			return domain.Address{}, mapWriteErr(err)
-		}
-		return toAddress(row), nil
-	}
-	row, err := r.q.UpdateAddress(ctx, personsql.UpdateAddressParams{
-		LocationID:     a.LocationID,
-		Role:           a.Role,
-		ValidFrom:      dateText(a.ValidFrom),
-		ValidTo:        dateText(a.ValidTo),
-		IsPrimary:      a.IsPrimary,
-		PrivacySeeking: a.PrivacySeeking,
-		Source:         a.Source,
-		Confidence:     a.Confidence,
-		ID:             a.ID,
-		PersonID:       a.PersonID,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.Address{}, domain.ErrAddressNotFound
-		}
-		return domain.Address{}, mapWriteErr(err)
-	}
-	return toAddress(row), nil
-}
-
-func (r *Repository) DeleteAddress(ctx context.Context, personID, addressID string) error {
-	if _, err := r.q.DeleteAddress(ctx, personsql.DeleteAddressParams{ID: addressID, PersonID: personID}); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ErrAddressNotFound
-		}
-		return err
-	}
-	return nil
-}
-
-func (r *Repository) ListAddresses(ctx context.Context, personID string) ([]domain.Address, error) {
-	rows, err := r.q.ListAddresses(ctx, personID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.Address, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toAddress(row))
-	}
-	return out, nil
-}
-
-func (r *Repository) DemotePrimaryAddresses(ctx context.Context, personID, exceptID string) error {
-	return r.q.DemotePrimaryAddresses(ctx, personsql.DemotePrimaryAddressesParams{PersonID: personID, ExceptID: exceptID})
-}
-
-// ---------------------------------------------------------------- emails
-
-// UpsertEmail inserts a new row when e.ID is empty, otherwise replaces the named row.
-func (r *Repository) UpsertEmail(ctx context.Context, e domain.Email) (domain.Email, error) {
-	if e.ID == "" {
-		row, err := r.q.InsertEmail(ctx, personsql.InsertEmailParams{
-			PersonID:  e.PersonID,
-			TypeCode:  e.TypeCode,
-			Address:   e.Address,
-			Provider:  text(e.Provider),
-			IsPrimary: e.IsPrimary,
-		})
-		if err != nil {
-			return domain.Email{}, mapWriteErr(err)
-		}
-		return toEmail(row), nil
-	}
-	row, err := r.q.UpdateEmail(ctx, personsql.UpdateEmailParams{
-		TypeCode:  e.TypeCode,
-		Address:   e.Address,
-		Provider:  text(e.Provider),
-		IsPrimary: e.IsPrimary,
-		ID:        e.ID,
-		PersonID:  e.PersonID,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.Email{}, domain.ErrEmailNotFound
-		}
-		return domain.Email{}, mapWriteErr(err)
-	}
-	return toEmail(row), nil
-}
-
-func (r *Repository) ClearPrimaryEmails(ctx context.Context, personID string) error {
-	return r.q.ClearPrimaryEmails(ctx, personID)
-}
-
-func (r *Repository) DeleteEmail(ctx context.Context, personID, emailID string) error {
-	if _, err := r.q.DeleteEmail(ctx, personsql.DeleteEmailParams{ID: emailID, PersonID: personID}); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ErrEmailNotFound
-		}
-		return err
-	}
-	return nil
-}
-
-func (r *Repository) ListEmails(ctx context.Context, personID string) ([]domain.Email, error) {
-	rows, err := r.q.ListEmails(ctx, personID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.Email, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toEmail(row))
-	}
-	return out, nil
-}
-
-// ---------------------------------------------------------------- phones
-
-// UpsertPhone inserts a new row when p.ID is empty, otherwise replaces the named row.
-func (r *Repository) UpsertPhone(ctx context.Context, p domain.Phone) (domain.Phone, error) {
-	if p.ID == "" {
-		row, err := r.q.InsertPhone(ctx, personsql.InsertPhoneParams{
-			PersonID:    p.PersonID,
-			TypeCode:    p.TypeCode,
-			Number:      p.Number,
-			CountryCode: text(p.Country),
-			IsPrimary:   p.IsPrimary,
-		})
-		if err != nil {
-			return domain.Phone{}, mapWriteErr(err)
-		}
-		return toPhone(row), nil
-	}
-	row, err := r.q.UpdatePhone(ctx, personsql.UpdatePhoneParams{
-		TypeCode:    p.TypeCode,
-		Number:      p.Number,
-		CountryCode: text(p.Country),
-		IsPrimary:   p.IsPrimary,
-		ID:          p.ID,
-		PersonID:    p.PersonID,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.Phone{}, domain.ErrPhoneNotFound
-		}
-		return domain.Phone{}, mapWriteErr(err)
-	}
-	return toPhone(row), nil
-}
-
-func (r *Repository) ClearPrimaryPhones(ctx context.Context, personID string) error {
-	return r.q.ClearPrimaryPhones(ctx, personID)
-}
-
-func (r *Repository) DeletePhone(ctx context.Context, personID, phoneID string) error {
-	if _, err := r.q.DeletePhone(ctx, personsql.DeletePhoneParams{ID: phoneID, PersonID: personID}); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ErrPhoneNotFound
-		}
-		return err
-	}
-	return nil
-}
-
-func (r *Repository) ListPhones(ctx context.Context, personID string) ([]domain.Phone, error) {
-	rows, err := r.q.ListPhones(ctx, personID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.Phone, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toPhone(row))
-	}
-	return out, nil
-}
-
-// ---------------------------------------------------------------- call signs
-
-// UpsertCallSign inserts a new row when c.ID is empty, otherwise replaces the named row.
-func (r *Repository) UpsertCallSign(ctx context.Context, c domain.CallSign) (domain.CallSign, error) {
-	if c.ID == "" {
-		row, err := r.q.InsertCallSign(ctx, personsql.InsertCallSignParams{
-			PersonID:  c.PersonID,
-			CallSign:  c.CallSign,
-			IsPrimary: c.IsPrimary,
-		})
-		if err != nil {
-			return domain.CallSign{}, mapWriteErr(err)
-		}
-		return toCallSign(row), nil
-	}
-	row, err := r.q.UpdateCallSign(ctx, personsql.UpdateCallSignParams{
-		CallSign:  c.CallSign,
-		IsPrimary: c.IsPrimary,
-		ID:        c.ID,
-		PersonID:  c.PersonID,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.CallSign{}, domain.ErrCallSignNotFound
-		}
-		return domain.CallSign{}, mapWriteErr(err)
-	}
-	return toCallSign(row), nil
-}
-
-func (r *Repository) ClearPrimaryCallSigns(ctx context.Context, personID string) error {
-	return r.q.ClearPrimaryCallSigns(ctx, personID)
-}
-
-func (r *Repository) DeleteCallSign(ctx context.Context, personID, callSignID string) error {
-	if _, err := r.q.DeleteCallSign(ctx, personsql.DeleteCallSignParams{ID: callSignID, PersonID: personID}); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ErrCallSignNotFound
-		}
-		return err
-	}
-	return nil
-}
-
-func (r *Repository) ListCallSigns(ctx context.Context, personID string) ([]domain.CallSign, error) {
-	rows, err := r.q.ListCallSigns(ctx, personID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.CallSign, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toCallSign(row))
-	}
-	return out, nil
-}
-
-// ---------------------------------------------------------------- contact-kind catalogs
-
-func (r *Repository) ListEmailTypes(ctx context.Context) ([]domain.ContactType, error) {
-	rows, err := r.q.ListEmailTypes(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.ContactType, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, domain.ContactType{Code: row.Code, Name: row.Name, Status: row.Status, SortOrder: int(row.SortOrder.Int32)})
-	}
-	return out, nil
-}
-
-func (r *Repository) ListPhoneTypes(ctx context.Context) ([]domain.ContactType, error) {
-	rows, err := r.q.ListPhoneTypes(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.ContactType, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, domain.ContactType{Code: row.Code, Name: row.Name, Status: row.Status, SortOrder: int(row.SortOrder.Int32)})
-	}
-	return out, nil
-}
-
-// ---------------------------------------------------------------- platform catalog
-
-func (r *Repository) ListPlatforms(ctx context.Context) ([]domain.Platform, error) {
-	rows, err := r.q.ListPlatforms(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.Platform, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toPlatform(row))
-	}
-	return out, nil
-}
-
-func (r *Repository) GetPlatform(ctx context.Context, code string) (domain.Platform, error) {
-	row, err := r.q.GetPlatform(ctx, code)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.Platform{}, domain.ErrUnknownPlatform
-		}
-		return domain.Platform{}, err
-	}
-	return toPlatform(row), nil
-}
-
-// ---------------------------------------------------------------- messenger links
-
-func (r *Repository) PhonePersonID(ctx context.Context, phoneID string) (string, error) {
-	id, err := r.q.PhonePersonID(ctx, phoneID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return "", domain.ErrPhoneNotFound
-		}
-		return "", err
-	}
-	return id, nil
-}
-
-func (r *Repository) EmailPersonID(ctx context.Context, emailID string) (string, error) {
-	id, err := r.q.EmailPersonID(ctx, emailID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return "", domain.ErrEmailNotFound
-		}
-		return "", err
-	}
-	return id, nil
-}
-
-// UpsertMessengerLink inserts a new link when m.ID is empty, otherwise replaces the named row.
-func (r *Repository) UpsertMessengerLink(ctx context.Context, m domain.MessengerLink) (domain.MessengerLink, error) {
-	if m.ID == "" {
-		row, err := r.q.InsertMessengerLink(ctx, personsql.InsertMessengerLinkParams{
-			PhoneID:      text(m.PhoneID),
-			EmailID:      text(m.EmailID),
-			PlatformCode: m.PlatformCode,
-			IsPrimary:    m.IsPrimary,
-			VerifiedAt:   ts(m.VerifiedAt),
-		})
-		if err != nil {
-			return domain.MessengerLink{}, mapWriteErr(err)
-		}
-		return toMessengerLink(row), nil
-	}
-	row, err := r.q.UpdateMessengerLink(ctx, personsql.UpdateMessengerLinkParams{
-		PhoneID:      text(m.PhoneID),
-		EmailID:      text(m.EmailID),
-		PlatformCode: m.PlatformCode,
-		IsPrimary:    m.IsPrimary,
-		VerifiedAt:   ts(m.VerifiedAt),
-		ID:           m.ID,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.MessengerLink{}, domain.ErrMessengerLinkNotFound
-		}
-		return domain.MessengerLink{}, mapWriteErr(err)
-	}
-	return toMessengerLink(row), nil
-}
-
-func (r *Repository) ClearPrimaryMessengerLinks(ctx context.Context, personID string) error {
-	return r.q.ClearPrimaryMessengerLinks(ctx, personID)
-}
-
-func (r *Repository) DeleteMessengerLink(ctx context.Context, personID, linkID string) error {
-	if _, err := r.q.DeleteMessengerLink(ctx, personsql.DeleteMessengerLinkParams{ID: linkID, PersonID: personID}); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ErrMessengerLinkNotFound
-		}
-		return err
-	}
-	return nil
-}
-
-func (r *Repository) ListMessengerLinks(ctx context.Context, personID string) ([]domain.MessengerLink, error) {
-	rows, err := r.q.ListMessengerLinks(ctx, personID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.MessengerLink, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toMessengerLink(row))
-	}
-	return out, nil
-}
-
-// ---------------------------------------------------------------- social accounts
-
-func (r *Repository) InsertSocialAccount(ctx context.Context, a domain.SocialAccount) (domain.SocialAccount, error) {
-	row, err := r.q.InsertSocialAccount(ctx, personsql.InsertSocialAccountParams{
-		PersonID:             a.PersonID,
-		PlatformCode:         a.PlatformCode,
-		PlatformUserID:       text(a.PlatformUserID),
-		Handle:               a.Handle,
-		DisplayName:          text(a.DisplayName),
-		ProfileUrl:           text(a.ProfileURL),
-		Language:             text(a.Language),
-		PlatformVerified:     a.PlatformVerified,
-		VerifiedByOperatorAt: ts(a.VerifiedByOperatorAt),
-		Source:               a.Source,
-		Confidence:           a.Confidence,
-		IsPrimary:            a.IsPrimary,
-	})
-	if err != nil {
-		return domain.SocialAccount{}, mapWriteErr(err)
-	}
-	return toSocialAccount(row), nil
-}
-
-func (r *Repository) UpdateSocialAccount(ctx context.Context, a domain.SocialAccount) (domain.SocialAccount, error) {
-	row, err := r.q.UpdateSocialAccount(ctx, personsql.UpdateSocialAccountParams{
-		PlatformCode:         a.PlatformCode,
-		PlatformUserID:       text(a.PlatformUserID),
-		Handle:               a.Handle,
-		DisplayName:          text(a.DisplayName),
-		ProfileUrl:           text(a.ProfileURL),
-		Language:             text(a.Language),
-		PlatformVerified:     a.PlatformVerified,
-		VerifiedByOperatorAt: ts(a.VerifiedByOperatorAt),
-		Source:               a.Source,
-		Confidence:           a.Confidence,
-		IsPrimary:            a.IsPrimary,
-		ID:                   a.ID,
-		PersonID:             a.PersonID,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.SocialAccount{}, domain.ErrSocialAccountNotFound
-		}
-		return domain.SocialAccount{}, mapWriteErr(err)
-	}
-	return toSocialAccount(row), nil
-}
-
-func (r *Repository) GetSocialAccount(ctx context.Context, personID, accountID string) (domain.SocialAccount, error) {
-	row, err := r.q.GetSocialAccount(ctx, personsql.GetSocialAccountParams{ID: accountID, PersonID: personID})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.SocialAccount{}, domain.ErrSocialAccountNotFound
-		}
-		return domain.SocialAccount{}, err
-	}
-	return toSocialAccount(row), nil
-}
-
-func (r *Repository) ClearPrimarySocialAccounts(ctx context.Context, personID string) error {
-	return r.q.ClearPrimarySocialAccounts(ctx, personID)
-}
-
-func (r *Repository) DeleteSocialAccount(ctx context.Context, personID, accountID string) error {
-	if _, err := r.q.DeleteSocialAccount(ctx, personsql.DeleteSocialAccountParams{ID: accountID, PersonID: personID}); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ErrSocialAccountNotFound
-		}
-		return err
-	}
-	return nil
-}
-
-func (r *Repository) ListSocialAccounts(ctx context.Context, personID string) ([]domain.SocialAccount, error) {
-	rows, err := r.q.ListSocialAccounts(ctx, personID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.SocialAccount, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toSocialAccount(row))
-	}
-	return out, nil
-}
-
-// ---------------------------------------------------------------- social account handle history
-
-func (r *Repository) InsertSocialAccountHandle(ctx context.Context, h domain.SocialAccountHandle) (domain.SocialAccountHandle, error) {
-	row, err := r.q.InsertSocialAccountHandle(ctx, personsql.InsertSocialAccountHandleParams{
-		AccountID: h.AccountID,
-		Handle:    h.Handle,
-		ValidFrom: pgtype.Timestamptz{Time: h.ValidFrom, Valid: true},
-		ValidTo:   ts(h.ValidTo),
-	})
-	if err != nil {
-		return domain.SocialAccountHandle{}, mapWriteErr(err)
-	}
-	return toSocialAccountHandle(row), nil
-}
-
-func (r *Repository) CloseCurrentSocialAccountHandle(ctx context.Context, accountID string) error {
-	return r.q.CloseCurrentSocialAccountHandle(ctx, accountID)
-}
-
-func (r *Repository) ListSocialAccountHandles(ctx context.Context, accountID string) ([]domain.SocialAccountHandle, error) {
-	rows, err := r.q.ListSocialAccountHandles(ctx, accountID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.SocialAccountHandle, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toSocialAccountHandle(row))
-	}
-	return out, nil
-}
-
-// ---------------------------------------------------------------- person languages (D-Languages, M18)
-
-func (r *Repository) InsertPersonLanguage(ctx context.Context, l domain.PersonLanguage) error {
-	if err := r.q.InsertPersonLanguage(ctx, personsql.InsertPersonLanguageParams{
-		PersonID:   l.PersonID,
-		LanguageID: l.LanguageID,
-		CefrLevel:  text(l.CEFRLevel),
-		IsNative:   l.IsNative,
-	}); err != nil {
-		return mapWriteErr(err)
-	}
-	return nil
-}
-
-func (r *Repository) UpdatePersonLanguage(ctx context.Context, l domain.PersonLanguage) error {
-	if err := r.q.UpdatePersonLanguage(ctx, personsql.UpdatePersonLanguageParams{
-		PersonID:   l.PersonID,
-		LanguageID: l.LanguageID,
-		CefrLevel:  text(l.CEFRLevel),
-		IsNative:   l.IsNative,
-	}); err != nil {
-		return mapWriteErr(err)
-	}
-	return nil
-}
-
-func (r *Repository) GetPersonLanguage(ctx context.Context, personID, languageID string) (domain.PersonLanguage, error) {
-	row, err := r.q.GetPersonLanguage(ctx, personsql.GetPersonLanguageParams{PersonID: personID, LanguageID: languageID})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.PersonLanguage{}, domain.ErrLanguageNotFound
-		}
-		return domain.PersonLanguage{}, err
-	}
-	return domain.PersonLanguage{
-		ID:           row.ID,
-		PersonID:     row.PersonID,
-		LanguageID:   row.LanguageID,
-		LanguageName: row.LanguageName,
-		CEFRLevel:    row.CefrLevel.String,
-		IsNative:     row.IsNative,
-	}, nil
-}
-
-func (r *Repository) DeletePersonLanguage(ctx context.Context, personID, languageID string) error {
-	if _, err := r.q.DeletePersonLanguage(ctx, personsql.DeletePersonLanguageParams{PersonID: personID, LanguageID: languageID}); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ErrLanguageNotFound
-		}
-		return err
-	}
-	return nil
-}
-
-func (r *Repository) ListPersonLanguages(ctx context.Context, personID string) ([]domain.PersonLanguage, error) {
-	rows, err := r.q.ListPersonLanguages(ctx, personID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.PersonLanguage, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, domain.PersonLanguage{
-			ID:           row.ID,
-			PersonID:     row.PersonID,
-			LanguageID:   row.LanguageID,
-			LanguageName: row.LanguageName,
-			CEFRLevel:    row.CefrLevel.String,
-			IsNative:     row.IsNative,
-		})
-	}
-	return out, nil
-}
-
-// ---------------------------------------------------------------- mapping helpers
-
-func toPlatform(r personsql.OikumeneaPersonPlatform) domain.Platform {
-	return domain.Platform{
-		Code:      r.Code,
-		Name:      r.Name,
-		Category:  r.Category,
-		Status:    r.Status,
-		SortOrder: int(r.SortOrder.Int32),
-	}
-}
-
-// ---------------------------------------------------------------- person↔person relationships (D-PersonRelationships)
-
-func (r *Repository) ListRelationTypes(ctx context.Context) ([]domain.RelationType, error) {
-	rows, err := r.q.ListRelationTypes(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.RelationType, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toRelationType(row))
-	}
-	return out, nil
-}
-
-func (r *Repository) GetRelationType(ctx context.Context, code string) (domain.RelationType, error) {
-	row, err := r.q.GetRelationType(ctx, code)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.RelationType{}, domain.ErrUnknownRelationType
-		}
-		return domain.RelationType{}, err
-	}
-	return toRelationType(row), nil
-}
-
-func (r *Repository) HasActivePartnershipExcept(ctx context.Context, personID, exceptID string) (bool, error) {
-	return r.q.HasActivePartnershipExcept(ctx, personsql.HasActivePartnershipExceptParams{ExceptID: exceptID, PersonID: personID})
-}
-
-// partnerships
-func (r *Repository) UpsertPartnership(ctx context.Context, p domain.Partnership) (domain.Partnership, error) {
-	if p.ID == "" {
-		row, err := r.q.InsertPartnership(ctx, personsql.InsertPartnershipParams{
-			PersonIDA: p.PersonIDA, PersonIDB: p.PersonIDB, Status: p.Status,
-			EffectiveFrom: dateText(p.EffectiveFrom), EffectiveTo: dateText(p.EffectiveTo),
-		})
-		if err != nil {
-			return domain.Partnership{}, mapWriteErr(err)
-		}
-		return toPartnership(row), nil
-	}
-	row, err := r.q.UpdatePartnership(ctx, personsql.UpdatePartnershipParams{
-		ID: p.ID, PersonIDA: p.PersonIDA, PersonIDB: p.PersonIDB, Status: p.Status,
-		EffectiveFrom: dateText(p.EffectiveFrom), EffectiveTo: dateText(p.EffectiveTo),
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.Partnership{}, domain.ErrRelationshipNotFound
-		}
-		return domain.Partnership{}, mapWriteErr(err)
-	}
-	return toPartnership(row), nil
-}
-
-func (r *Repository) ListPartnerships(ctx context.Context, personID string) ([]domain.Partnership, error) {
-	rows, err := r.q.ListPartnerships(ctx, personID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.Partnership, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toPartnership(row))
-	}
-	return out, nil
-}
-
-func (r *Repository) DeletePartnership(ctx context.Context, personID, id string) error {
-	return relDelete(func() (string, error) {
-		return r.q.DeletePartnership(ctx, personsql.DeletePartnershipParams{ID: id, PersonID: personID})
-	})
-}
-
-func (r *Repository) DeleteAllPartnerships(ctx context.Context, personID string) error {
-	return r.q.DeleteAllPartnerships(ctx, personID)
-}
-
-// kinships
-func (r *Repository) UpsertKinship(ctx context.Context, k domain.Kinship) (domain.Kinship, error) {
-	if k.ID == "" {
-		row, err := r.q.InsertKinship(ctx, personsql.InsertKinshipParams{ParentID: k.ParentID, ChildID: k.ChildID, Status: k.Status})
-		if err != nil {
-			return domain.Kinship{}, mapWriteErr(err)
-		}
-		return toKinship(row), nil
-	}
-	row, err := r.q.UpdateKinship(ctx, personsql.UpdateKinshipParams{ID: k.ID, ParentID: k.ParentID, ChildID: k.ChildID, Status: k.Status})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.Kinship{}, domain.ErrRelationshipNotFound
-		}
-		return domain.Kinship{}, mapWriteErr(err)
-	}
-	return toKinship(row), nil
-}
-
-func (r *Repository) ListKinships(ctx context.Context, personID string) ([]domain.Kinship, error) {
-	rows, err := r.q.ListKinships(ctx, personID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.Kinship, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toKinship(row))
-	}
-	return out, nil
-}
-
-func (r *Repository) DeleteKinship(ctx context.Context, personID, id string) error {
-	return relDelete(func() (string, error) {
-		return r.q.DeleteKinship(ctx, personsql.DeleteKinshipParams{ID: id, PersonID: personID})
-	})
-}
-
-func (r *Repository) DeleteAllKinships(ctx context.Context, personID string) error {
-	return r.q.DeleteAllKinships(ctx, personID)
-}
-
-// guardianships
-func (r *Repository) UpsertGuardianship(ctx context.Context, g domain.Guardianship) (domain.Guardianship, error) {
-	if g.ID == "" {
-		row, err := r.q.InsertGuardianship(ctx, personsql.InsertGuardianshipParams{
-			GuardianID: g.GuardianID, WardID: g.WardID, RelationCode: text(g.RelationCode), Status: g.Status,
-			EffectiveFrom: dateText(g.EffectiveFrom), EffectiveTo: dateText(g.EffectiveTo),
-		})
-		if err != nil {
-			return domain.Guardianship{}, mapWriteErr(err)
-		}
-		return toGuardianship(row), nil
-	}
-	row, err := r.q.UpdateGuardianship(ctx, personsql.UpdateGuardianshipParams{
-		ID: g.ID, GuardianID: g.GuardianID, WardID: g.WardID, RelationCode: text(g.RelationCode), Status: g.Status,
-		EffectiveFrom: dateText(g.EffectiveFrom), EffectiveTo: dateText(g.EffectiveTo),
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.Guardianship{}, domain.ErrRelationshipNotFound
-		}
-		return domain.Guardianship{}, mapWriteErr(err)
-	}
-	return toGuardianship(row), nil
-}
-
-func (r *Repository) ListGuardianships(ctx context.Context, personID string) ([]domain.Guardianship, error) {
-	rows, err := r.q.ListGuardianships(ctx, personID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.Guardianship, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toGuardianship(row))
-	}
-	return out, nil
-}
-
-func (r *Repository) DeleteGuardianship(ctx context.Context, personID, id string) error {
-	return relDelete(func() (string, error) {
-		return r.q.DeleteGuardianship(ctx, personsql.DeleteGuardianshipParams{ID: id, PersonID: personID})
-	})
-}
-
-func (r *Repository) DeleteAllGuardianships(ctx context.Context, personID string) error {
-	return r.q.DeleteAllGuardianships(ctx, personID)
-}
-
-// sponsorships
-func (r *Repository) UpsertSponsorship(ctx context.Context, s domain.Sponsorship) (domain.Sponsorship, error) {
-	if s.ID == "" {
-		row, err := r.q.InsertSponsorship(ctx, personsql.InsertSponsorshipParams{
-			SponsorID: s.SponsorID, SponsoredID: s.SponsoredID, RelationCode: s.RelationCode, Status: s.Status,
-			EffectiveFrom: dateText(s.EffectiveFrom), EffectiveTo: dateText(s.EffectiveTo),
-			EnrollmentID: text(s.EnrollmentID), EducationRole: text(s.EducationRole),
-		})
-		if err != nil {
-			return domain.Sponsorship{}, mapWriteErr(err)
-		}
-		return toSponsorship(row), nil
-	}
-	row, err := r.q.UpdateSponsorship(ctx, personsql.UpdateSponsorshipParams{
-		ID: s.ID, SponsorID: s.SponsorID, SponsoredID: s.SponsoredID, RelationCode: s.RelationCode, Status: s.Status,
-		EffectiveFrom: dateText(s.EffectiveFrom), EffectiveTo: dateText(s.EffectiveTo),
-		EnrollmentID: text(s.EnrollmentID), EducationRole: text(s.EducationRole),
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.Sponsorship{}, domain.ErrRelationshipNotFound
-		}
-		return domain.Sponsorship{}, mapWriteErr(err)
-	}
-	return toSponsorship(row), nil
-}
-
-func (r *Repository) ListSponsorships(ctx context.Context, personID string) ([]domain.Sponsorship, error) {
-	rows, err := r.q.ListSponsorships(ctx, personID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.Sponsorship, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toSponsorship(row))
-	}
-	return out, nil
-}
-
-func (r *Repository) DeleteSponsorship(ctx context.Context, personID, id string) error {
-	return relDelete(func() (string, error) {
-		return r.q.DeleteSponsorship(ctx, personsql.DeleteSponsorshipParams{ID: id, PersonID: personID})
-	})
-}
-
-func (r *Repository) DeleteAllSponsorships(ctx context.Context, personID string) error {
-	return r.q.DeleteAllSponsorships(ctx, personID)
-}
-
-// next of kin
-func (r *Repository) UpsertNextOfKin(ctx context.Context, n domain.NextOfKin) (domain.NextOfKin, error) {
-	if n.ID == "" {
-		row, err := r.q.InsertNextOfKin(ctx, personsql.InsertNextOfKinParams{
-			SubjectID: n.SubjectID, ContactID: n.ContactID, RelationCode: text(n.RelationCode),
-			Priority: int32(n.Priority), Status: n.Status,
-		})
-		if err != nil {
-			return domain.NextOfKin{}, mapWriteErr(err)
-		}
-		return toNextOfKin(row), nil
-	}
-	row, err := r.q.UpdateNextOfKin(ctx, personsql.UpdateNextOfKinParams{
-		ID: n.ID, SubjectID: n.SubjectID, ContactID: n.ContactID, RelationCode: text(n.RelationCode),
-		Priority: int32(n.Priority), Status: n.Status,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.NextOfKin{}, domain.ErrRelationshipNotFound
-		}
-		return domain.NextOfKin{}, mapWriteErr(err)
-	}
-	return toNextOfKin(row), nil
-}
-
-func (r *Repository) ListNextOfKin(ctx context.Context, personID string) ([]domain.NextOfKin, error) {
-	rows, err := r.q.ListNextOfKin(ctx, personID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.NextOfKin, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toNextOfKin(row))
-	}
-	return out, nil
-}
-
-func (r *Repository) DeleteNextOfKin(ctx context.Context, personID, id string) error {
-	return relDelete(func() (string, error) {
-		return r.q.DeleteNextOfKin(ctx, personsql.DeleteNextOfKinParams{ID: id, PersonID: personID})
-	})
-}
-
-func (r *Repository) DeleteAllNextOfKin(ctx context.Context, personID string) error {
-	return r.q.DeleteAllNextOfKin(ctx, personID)
-}
-
-// associations
-func (r *Repository) UpsertAssociation(ctx context.Context, a domain.Association) (domain.Association, error) {
-	if a.ID == "" {
-		row, err := r.q.InsertAssociation(ctx, personsql.InsertAssociationParams{
-			PersonIDA: a.PersonIDA, PersonIDB: a.PersonIDB, RelationCode: text(a.RelationCode), Kind: a.Kind, Status: a.Status,
-		})
-		if err != nil {
-			return domain.Association{}, mapWriteErr(err)
-		}
-		return toAssociation(row), nil
-	}
-	row, err := r.q.UpdateAssociation(ctx, personsql.UpdateAssociationParams{
-		ID: a.ID, PersonIDA: a.PersonIDA, PersonIDB: a.PersonIDB, RelationCode: text(a.RelationCode), Kind: a.Kind, Status: a.Status,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.Association{}, domain.ErrRelationshipNotFound
-		}
-		return domain.Association{}, mapWriteErr(err)
-	}
-	return toAssociation(row), nil
-}
-
-func (r *Repository) ListAssociations(ctx context.Context, personID string) ([]domain.Association, error) {
-	rows, err := r.q.ListAssociations(ctx, personID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.Association, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toAssociation(row))
-	}
-	return out, nil
-}
-
-func (r *Repository) DeleteAssociation(ctx context.Context, personID, id string) error {
-	return relDelete(func() (string, error) {
-		return r.q.DeleteAssociation(ctx, personsql.DeleteAssociationParams{ID: id, PersonID: personID})
-	})
-}
-
-func (r *Repository) DeleteAllAssociations(ctx context.Context, personID string) error {
-	return r.q.DeleteAllAssociations(ctx, personID)
-}
-
-// relDelete maps a person-scoped soft-delete-by-id (RETURNING id) to ErrRelationshipNotFound when no
-// row matched (wrong id, already deleted, or the person is not an endpoint).
-func relDelete(del func() (string, error)) error {
-	if _, err := del(); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ErrRelationshipNotFound
-		}
-		return err
-	}
-	return nil
-}
-
-func toRelationType(r personsql.OikumeneaPersonRelationType) domain.RelationType {
-	return domain.RelationType{
-		Code:      r.Code,
-		Name:      r.Name,
-		Category:  r.Category,
-		Status:    r.Status,
-		SortOrder: int(r.SortOrder.Int32),
-	}
-}
-
-func toPartnership(r personsql.OikumeneaPersonPartnership) domain.Partnership {
-	return domain.Partnership{
-		ID: r.ID, PersonIDA: r.PersonIDA, PersonIDB: r.PersonIDB, Status: r.Status,
-		EffectiveFrom: dateStr(r.EffectiveFrom), EffectiveTo: dateStr(r.EffectiveTo),
-	}
-}
-
-func toKinship(r personsql.OikumeneaPersonKinship) domain.Kinship {
-	return domain.Kinship{ID: r.ID, ParentID: r.ParentID, ChildID: r.ChildID, Status: r.Status}
-}
-
-func toGuardianship(r personsql.OikumeneaPersonGuardianship) domain.Guardianship {
-	return domain.Guardianship{
-		ID: r.ID, GuardianID: r.GuardianID, WardID: r.WardID, RelationCode: r.RelationCode.String, Status: r.Status,
-		EffectiveFrom: dateStr(r.EffectiveFrom), EffectiveTo: dateStr(r.EffectiveTo),
-	}
-}
-
-func toSponsorship(r personsql.OikumeneaPersonSponsorship) domain.Sponsorship {
-	return domain.Sponsorship{
-		ID: r.ID, SponsorID: r.SponsorID, SponsoredID: r.SponsoredID, RelationCode: r.RelationCode, Status: r.Status,
-		EffectiveFrom: dateStr(r.EffectiveFrom), EffectiveTo: dateStr(r.EffectiveTo),
-		EnrollmentID: strText(r.EnrollmentID), EducationRole: strText(r.EducationRole),
-	}
-}
-
-func toNextOfKin(r personsql.OikumeneaPersonNextOfKin) domain.NextOfKin {
-	return domain.NextOfKin{
-		ID: r.ID, SubjectID: r.SubjectID, ContactID: r.ContactID, RelationCode: r.RelationCode.String,
-		Priority: int(r.Priority), Status: r.Status,
-	}
-}
-
-func toAssociation(r personsql.OikumeneaPersonAssociation) domain.Association {
-	return domain.Association{
-		ID: r.ID, PersonIDA: r.PersonIDA, PersonIDB: r.PersonIDB, RelationCode: r.RelationCode.String, Kind: r.Kind, Status: r.Status,
-	}
-}
-
-func toMessengerLink(r personsql.OikumeneaPersonMessengerLink) domain.MessengerLink {
-	return domain.MessengerLink{
-		ID:           r.ID,
-		PhoneID:      r.PhoneID.String,
-		EmailID:      r.EmailID.String,
-		PlatformCode: r.PlatformCode,
-		IsPrimary:    r.IsPrimary,
-		VerifiedAt:   tsPtr(r.VerifiedAt),
-	}
-}
-
-func toSocialAccount(r personsql.OikumeneaPersonSocialAccount) domain.SocialAccount {
-	return domain.SocialAccount{
-		ID:                   r.ID,
-		PersonID:             r.PersonID,
-		PlatformCode:         r.PlatformCode,
-		PlatformUserID:       r.PlatformUserID.String,
-		Handle:               r.Handle,
-		DisplayName:          r.DisplayName.String,
-		ProfileURL:           r.ProfileUrl.String,
-		Language:             r.Language.String,
-		PlatformVerified:     r.PlatformVerified,
-		VerifiedByOperatorAt: tsPtr(r.VerifiedByOperatorAt),
-		Source:               r.Source,
-		Confidence:           r.Confidence,
-		IsPrimary:            r.IsPrimary,
-	}
-}
-
-func toSocialAccountHandle(r personsql.OikumeneaPersonSocialAccountHandle) domain.SocialAccountHandle {
-	return domain.SocialAccountHandle{
-		ID:        r.ID,
-		AccountID: r.AccountID,
-		Handle:    r.Handle,
-		ValidFrom: r.ValidFrom.Time,
-		ValidTo:   tsPtr(r.ValidTo),
-	}
-}
-
-func toEmail(r personsql.OikumeneaPersonEmail) domain.Email {
-	return domain.Email{
-		ID:        r.ID,
-		PersonID:  r.PersonID,
-		TypeCode:  r.TypeCode,
-		Address:   r.Address,
-		Provider:  r.Provider.String,
-		IsPrimary: r.IsPrimary,
-	}
-}
-
-func toPhone(r personsql.OikumeneaPersonPhone) domain.Phone {
-	return domain.Phone{
-		ID:        r.ID,
-		PersonID:  r.PersonID,
-		TypeCode:  r.TypeCode,
-		Number:    r.Number,
-		Country:   r.CountryID.String,
-		IsPrimary: r.IsPrimary,
-	}
-}
-
-func toCallSign(r personsql.OikumeneaPersonCallSign) domain.CallSign {
-	return domain.CallSign{
-		ID:        r.ID,
-		PersonID:  r.PersonID,
-		CallSign:  r.CallSign,
-		IsPrimary: r.IsPrimary,
+// leanToPerson maps the R-17 lean list projection (ListPersonsRow — every column except the wide
+// generated search_text and the always-NULL deleted_at) to the domain aggregate. The three list
+// queries share this projection (SearchPersonsRow / ListPersonsByIDsRow are field-identical and
+// convert to ListPersonsRow), so all directory-list rows map through this one function. Single-row
+// gets keep SELECT * and toPerson.
+func leanToPerson(r personsql.ListPersonsRow) domain.Person {
+	return domain.Person{
+		ID:   r.ID,
+		Code: r.Code.String,
+		Name: domain.Name{
+			DisplayName:   r.DisplayName,
+			Title:         r.Title.String,
+			Given:         r.Given.String,
+			Given2:        r.Given2.String,
+			Surname:       r.Surname.String,
+			SurnamePrefix: r.SurnamePrefix.String,
+			Surname2:      r.Surname2.String,
+			Generation:    r.Generation.String,
+			Credentials:   r.Credentials.String,
+			Preferred:     r.Preferred.String,
+		},
+		Birthdate:      dateStr(r.Birthdate),
+		DateOfDeath:    dateStr(r.DateOfDeath),
+		Sex:            r.Sex,
+		CountryOfBirth: r.CountryOfBirthID.String,
+		Attributes:     r.Attributes,
+		Status:         domain.Status(r.Status),
+		DeactivatedAt:  tsPtr(r.DeactivatedAt),
+		PurgeAfter:     tsPtr(r.PurgeAfter),
+		CreatedAt:      r.CreatedAt.Time,
+		UpdatedAt:      r.UpdatedAt.Time,
 	}
 }
 
@@ -1641,330 +496,6 @@ func (r *Repository) DeleteNameAlias(ctx context.Context, personID, id string) e
 
 // physical descriptions.
 
-func (r *Repository) UpsertPhysicalDescription(ctx context.Context, d domain.PhysicalDescription) (domain.PhysicalDescription, error) {
-	if d.ID == "" {
-		row, err := r.q.InsertPhysicalDescription(ctx, personsql.InsertPhysicalDescriptionParams{
-			PersonID:      d.PersonID,
-			HeightCm:      int4(d.HeightCm),
-			WeightKg:      int4(d.WeightKg),
-			EyeColorID:    text(d.EyeColorID),
-			HairColorID:   text(d.HairColorID),
-			Build:         text(d.Build),
-			BloodType:     text(d.BloodType),
-			EffectiveFrom: dateText(d.EffectiveFrom),
-			EffectiveTo:   dateText(d.EffectiveTo),
-			Source:        text(d.Source),
-			Confidence:    text(d.Confidence),
-		})
-		if err != nil {
-			return domain.PhysicalDescription{}, mapWriteErr(err)
-		}
-		return toPhysicalDescription(row), nil
-	}
-	row, err := r.q.UpdatePhysicalDescription(ctx, personsql.UpdatePhysicalDescriptionParams{
-		HeightCm:      int4(d.HeightCm),
-		WeightKg:      int4(d.WeightKg),
-		EyeColorID:    text(d.EyeColorID),
-		HairColorID:   text(d.HairColorID),
-		Build:         text(d.Build),
-		BloodType:     text(d.BloodType),
-		EffectiveFrom: dateText(d.EffectiveFrom),
-		EffectiveTo:   dateText(d.EffectiveTo),
-		Source:        text(d.Source),
-		Confidence:    text(d.Confidence),
-		ID:            d.ID,
-		PersonID:      d.PersonID,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.PhysicalDescription{}, domain.ErrPhysicalDescriptionNotFound
-		}
-		return domain.PhysicalDescription{}, mapWriteErr(err)
-	}
-	return toPhysicalDescription(row), nil
-}
-
-func (r *Repository) DeletePhysicalDescription(ctx context.Context, personID, id string) error {
-	if _, err := r.q.DeletePhysicalDescription(ctx, personsql.DeletePhysicalDescriptionParams{ID: id, PersonID: personID}); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ErrPhysicalDescriptionNotFound
-		}
-		return err
-	}
-	return nil
-}
-
-func (r *Repository) ListPhysicalDescriptions(ctx context.Context, personID string) ([]domain.PhysicalDescription, error) {
-	rows, err := r.q.ListPhysicalDescriptions(ctx, personID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.PhysicalDescription, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toPhysicalDescription(row))
-	}
-	return out, nil
-}
-
-// distinguishing marks.
-
-func (r *Repository) UpsertDistinguishingMark(ctx context.Context, m domain.DistinguishingMark) (domain.DistinguishingMark, error) {
-	if m.ID == "" {
-		row, err := r.q.InsertDistinguishingMark(ctx, personsql.InsertDistinguishingMarkParams{
-			PersonID:     m.PersonID,
-			Kind:         m.Kind,
-			BodyLocation: text(m.BodyLocation),
-			Description:  text(m.Description),
-			Source:       text(m.Source),
-			Confidence:   text(m.Confidence),
-		})
-		if err != nil {
-			return domain.DistinguishingMark{}, mapWriteErr(err)
-		}
-		return toDistinguishingMark(row), nil
-	}
-	row, err := r.q.UpdateDistinguishingMark(ctx, personsql.UpdateDistinguishingMarkParams{
-		Kind:         m.Kind,
-		BodyLocation: text(m.BodyLocation),
-		Description:  text(m.Description),
-		Source:       text(m.Source),
-		Confidence:   text(m.Confidence),
-		ID:           m.ID,
-		PersonID:     m.PersonID,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.DistinguishingMark{}, domain.ErrDistinguishingMarkNotFound
-		}
-		return domain.DistinguishingMark{}, mapWriteErr(err)
-	}
-	return toDistinguishingMark(row), nil
-}
-
-func (r *Repository) DeleteDistinguishingMark(ctx context.Context, personID, id string) error {
-	if _, err := r.q.DeleteDistinguishingMark(ctx, personsql.DeleteDistinguishingMarkParams{ID: id, PersonID: personID}); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ErrDistinguishingMarkNotFound
-		}
-		return err
-	}
-	return nil
-}
-
-func (r *Repository) ListDistinguishingMarks(ctx context.Context, personID string) ([]domain.DistinguishingMark, error) {
-	rows, err := r.q.ListDistinguishingMarks(ctx, personID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.DistinguishingMark, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toDistinguishingMark(row))
-	}
-	return out, nil
-}
-
-// ethnicity-type catalog.
-
-func (r *Repository) ListEthnicityTypes(ctx context.Context, f domain.EthnicityTypeFilter) ([]domain.EthnicityType, error) {
-	lim := int32(f.Limit)
-	if lim <= 0 {
-		lim = 2000
-	}
-	rows, err := r.q.ListEthnicityTypes(ctx, personsql.ListEthnicityTypesParams{
-		TopLevel: f.TopLevel,
-		Parent:   text(f.Parent),
-		Query:    f.Query,
-		Lim:      lim,
-	})
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.EthnicityType, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, domain.EthnicityType{
-			ID: row.ID, Code: row.Code, Name: row.Name,
-			ParentID: row.ParentID.String, WikidataID: row.WikidataID.String,
-			HasChildren: row.HasChildren, Status: row.Status, SortOrder: int4Ptr(row.SortOrder),
-		})
-	}
-	return out, nil
-}
-
-func (r *Repository) GetEthnicityTypeByCode(ctx context.Context, code string) (domain.EthnicityType, error) {
-	row, err := r.q.GetEthnicityTypeByCode(ctx, code)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.EthnicityType{}, domain.ErrUnknownEthnicityType
-		}
-		return domain.EthnicityType{}, err
-	}
-	return toEthnicityType(row), nil
-}
-
-func (r *Repository) GetEthnicityTypeByID(ctx context.Context, id string) (domain.EthnicityType, error) {
-	row, err := r.q.GetEthnicityTypeByID(ctx, id)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.EthnicityType{}, domain.ErrUnknownEthnicityType
-		}
-		return domain.EthnicityType{}, err
-	}
-	return domain.EthnicityType{
-		ID: row.ID, Code: row.Code, Name: row.Name,
-		ParentID: row.ParentID.String, WikidataID: row.WikidataID.String,
-		HasChildren: row.HasChildren, Status: row.Status, SortOrder: int4Ptr(row.SortOrder),
-	}, nil
-}
-
-func (r *Repository) ListEthnicityTypeLanguages(ctx context.Context, ethnicityTypeID string) ([]string, error) {
-	return r.q.ListEthnicityTypeLanguages(ctx, ethnicityTypeID)
-}
-
-func (r *Repository) ListEthnicityTypeCountries(ctx context.Context, ethnicityTypeID string) ([]string, error) {
-	return r.q.ListEthnicityTypeCountries(ctx, ethnicityTypeID)
-}
-
-func (r *Repository) UpsertEthnicityType(ctx context.Context, t domain.EthnicityType) (domain.EthnicityType, error) {
-	row, err := r.q.UpsertEthnicityType(ctx, personsql.UpsertEthnicityTypeParams{
-		Code:       t.Code,
-		Name:       t.Name,
-		ParentID:   text(t.ParentID),
-		WikidataID: text(t.WikidataID),
-		SortOrder:  int4(t.SortOrder),
-	})
-	if err != nil {
-		return domain.EthnicityType{}, mapWriteErr(err)
-	}
-	return toEthnicityType(row), nil
-}
-
-// ethnicities — the encrypted link__has_ethnicity.
-
-func (r *Repository) InsertEthnicity(ctx context.Context, e domain.StoredEthnicity) (domain.StoredEthnicity, error) {
-	row, err := r.q.InsertEthnicity(ctx, personsql.InsertEthnicityParams{
-		PersonID:        e.PersonID,
-		ValueCiphertext: e.ValueCiphertext,
-		WrappedDek:      e.WrappedDEK,
-		KeyRef:          text(e.KeyRef),
-		ValueBlindIndex: e.ValueBlindIndex,
-		LegalBasis:      e.LegalBasis,
-		Source:          text(e.Source),
-		Confidence:      text(e.Confidence),
-	})
-	if err != nil {
-		return domain.StoredEthnicity{}, mapWriteErr(err)
-	}
-	return toStoredEthnicity(row), nil
-}
-
-func (r *Repository) UpdateEthnicity(ctx context.Context, e domain.StoredEthnicity) (domain.StoredEthnicity, error) {
-	row, err := r.q.UpdateEthnicity(ctx, personsql.UpdateEthnicityParams{
-		ValueCiphertext: e.ValueCiphertext,
-		WrappedDek:      e.WrappedDEK,
-		KeyRef:          text(e.KeyRef),
-		ValueBlindIndex: e.ValueBlindIndex,
-		LegalBasis:      e.LegalBasis,
-		Status:          e.Status,
-		Source:          text(e.Source),
-		Confidence:      text(e.Confidence),
-		ID:              e.ID,
-		PersonID:        e.PersonID,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.StoredEthnicity{}, domain.ErrEthnicityNotFound
-		}
-		return domain.StoredEthnicity{}, mapWriteErr(err)
-	}
-	return toStoredEthnicity(row), nil
-}
-
-func (r *Repository) DeleteEthnicity(ctx context.Context, personID, id string) error {
-	if _, err := r.q.DeleteEthnicity(ctx, personsql.DeleteEthnicityParams{ID: id, PersonID: personID}); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ErrEthnicityNotFound
-		}
-		return err
-	}
-	return nil
-}
-
-func (r *Repository) ListEthnicities(ctx context.Context, personID string) ([]domain.StoredEthnicity, error) {
-	rows, err := r.q.ListEthnicities(ctx, personID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.StoredEthnicity, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toStoredEthnicity(row))
-	}
-	return out, nil
-}
-
-func (r *Repository) CryptoEraseEthnicities(ctx context.Context, personID string) (int64, error) {
-	return r.q.CryptoEraseEthnicities(ctx, personID)
-}
-
-// M31 row mappers.
-
-func toPhysicalDescription(r personsql.OikumeneaPersonPhysicalDescription) domain.PhysicalDescription {
-	return domain.PhysicalDescription{
-		ID:            r.ID,
-		PersonID:      r.PersonID,
-		HeightCm:      int4Ptr(r.HeightCm),
-		WeightKg:      int4Ptr(r.WeightKg),
-		EyeColorID:    strText(r.EyeColorID),
-		HairColorID:   strText(r.HairColorID),
-		Build:         strText(r.Build),
-		BloodType:     strText(r.BloodType),
-		EffectiveFrom: dateStr(r.EffectiveFrom),
-		EffectiveTo:   dateStr(r.EffectiveTo),
-		Source:        strText(r.Source),
-		Confidence:    strText(r.Confidence),
-	}
-}
-
-func toDistinguishingMark(r personsql.OikumeneaPersonDistinguishingMark) domain.DistinguishingMark {
-	return domain.DistinguishingMark{
-		ID:           r.ID,
-		PersonID:     r.PersonID,
-		Kind:         r.Kind,
-		BodyLocation: strText(r.BodyLocation),
-		Description:  strText(r.Description),
-		Source:       strText(r.Source),
-		Confidence:   strText(r.Confidence),
-	}
-}
-
-func toEthnicityType(r personsql.OikumeneaPersonEthnicityType) domain.EthnicityType {
-	return domain.EthnicityType{
-		ID:         r.ID,
-		Code:       r.Code,
-		Name:       r.Name,
-		ParentID:   r.ParentID.String,
-		WikidataID: r.WikidataID.String,
-		Status:     r.Status,
-		SortOrder:  int4Ptr(r.SortOrder),
-	}
-}
-
-func toStoredEthnicity(r personsql.OikumeneaPersonEthnicity) domain.StoredEthnicity {
-	return domain.StoredEthnicity{
-		ID:              r.ID,
-		PersonID:        r.PersonID,
-		ValueCiphertext: r.ValueCiphertext,
-		WrappedDEK:      r.WrappedDek,
-		KeyRef:          strText(r.KeyRef),
-		ValueBlindIndex: r.ValueBlindIndex,
-		LegalBasis:      r.LegalBasis,
-		Status:          r.Status,
-		Source:          strText(r.Source),
-		Confidence:      strText(r.Confidence),
-		CreatedAt:       r.CreatedAt.Time,
-		UpdatedAt:       r.UpdatedAt.Time,
-	}
-}
-
 func toNameVariant(r personsql.OikumeneaPersonNameVariant) domain.NameVariant {
 	return domain.NameVariant{
 		ID:       r.ID,
@@ -1989,42 +520,16 @@ func toNameVariant(r personsql.OikumeneaPersonNameVariant) domain.NameVariant {
 	}
 }
 
-func toCitizenship(r personsql.OikumeneaPersonCitizenship) domain.Citizenship {
-	return domain.Citizenship{
-		ID:         r.ID,
-		PersonID:   r.PersonID,
-		Country:    r.CountryID,
-		Basis:      r.Basis,
-		AcquiredOn: dateStr(r.AcquiredOn),
-		LostOn:     dateStr(r.LostOn),
-		IsPrimary:  r.IsPrimary,
+// relDelete maps a person-scoped soft-delete-by-id (RETURNING id) to ErrRelationshipNotFound when no
+// row matched (wrong id, already deleted, or the person is not an endpoint).
+func relDelete(del func() (string, error)) error {
+	if _, err := del(); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrRelationshipNotFound
+		}
+		return err
 	}
-}
-
-func toResidence(r personsql.OikumeneaPersonResidence) domain.Residence {
-	return domain.Residence{
-		ID:        r.ID,
-		PersonID:  r.PersonID,
-		Country:   r.CountryID,
-		Region:    r.Region.String,
-		ValidFrom: dateStr(r.ValidFrom),
-		ValidTo:   dateStr(r.ValidTo),
-	}
-}
-
-func toAddress(r personsql.OikumeneaPersonAddress) domain.Address {
-	return domain.Address{
-		ID:             r.ID,
-		PersonID:       r.PersonID,
-		LocationID:     r.LocationID,
-		Role:           r.Role,
-		ValidFrom:      dateStr(r.ValidFrom),
-		ValidTo:        dateStr(r.ValidTo),
-		IsPrimary:      r.IsPrimary,
-		PrivacySeeking: r.PrivacySeeking,
-		Source:         r.Source,
-		Confidence:     r.Confidence,
-	}
+	return nil
 }
 
 // mapWriteErr translates Postgres constraint violations into the module's domain sentinels. Unique
@@ -2093,12 +598,17 @@ func text(s string) pgtype.Text {
 }
 
 // strText reads a nullable text column into a plain string ("" when NULL).
+
+// strText reads a nullable text column into a plain string ("" when NULL).
 func strText(t pgtype.Text) string {
 	if !t.Valid {
 		return ""
 	}
 	return t.String
 }
+
+// textPtr maps a patch pointer: nil leaves the column unchanged (NULL narg → COALESCE keeps it); a
+// non-nil pointer (including "") sets the column, so an empty string clears an optional name part.
 
 // textPtr maps a patch pointer: nil leaves the column unchanged (NULL narg → COALESCE keeps it); a
 // non-nil pointer (including "") sets the column, so an empty string clears an optional name part.
@@ -2110,12 +620,16 @@ func textPtr(p *string) pgtype.Text {
 }
 
 // int4 maps an optional int to a nullable integer column (nil => NULL).
+
+// int4 maps an optional int to a nullable integer column (nil => NULL).
 func int4(p *int) pgtype.Int4 {
 	if p == nil {
 		return pgtype.Int4{}
 	}
 	return pgtype.Int4{Int32: int32(*p), Valid: true}
 }
+
+// int4Ptr reads a nullable integer column into an *int (nil when NULL).
 
 // int4Ptr reads a nullable integer column into an *int (nil when NULL).
 func int4Ptr(v pgtype.Int4) *int {
@@ -2160,12 +674,16 @@ func tsPtr(t pgtype.Timestamptz) *time.Time {
 }
 
 // ts maps an optional instant to a nullable timestamptz column (nil => NULL).
+
+// ts maps an optional instant to a nullable timestamptz column (nil => NULL).
 func ts(t *time.Time) pgtype.Timestamptz {
 	if t == nil {
 		return pgtype.Timestamptz{}
 	}
 	return pgtype.Timestamptz{Time: *t, Valid: true}
 }
+
+// numArg maps an optional float to a nullable numeric column (via its decimal string form; nil => NULL).
 
 // numArg maps an optional float to a nullable numeric column (via its decimal string form; nil => NULL).
 func numArg(p *float64) pgtype.Numeric {
@@ -2178,6 +696,8 @@ func numArg(p *float64) pgtype.Numeric {
 	}
 	return n
 }
+
+// numPtr maps a stored numeric back into an optional float64 (via its string Value()).
 
 // numPtr maps a stored numeric back into an optional float64 (via its string Value()).
 func numPtr(n pgtype.Numeric) *float64 {
@@ -2199,517 +719,35 @@ func numPtr(n pgtype.Numeric) *float64 {
 	return &f
 }
 
+// float8Arg maps an optional float to a nullable double-precision column (nil => NULL).
+
+// float8Arg maps an optional float to a nullable double-precision column (nil => NULL).
+func float8Arg(p *float64) pgtype.Float8 {
+	if p == nil {
+		return pgtype.Float8{}
+	}
+	return pgtype.Float8{Float64: *p, Valid: true}
+}
+
+// float8Ptr reads a nullable double-precision column into an *float64 (nil when NULL).
+
+// float8Ptr reads a nullable double-precision column into an *float64 (nil when NULL).
+func float8Ptr(v pgtype.Float8) *float64 {
+	if !v.Valid {
+		return nil
+	}
+	out := v.Float64
+	return &out
+}
+
 // ---------------------------------------------------------------- institutional & political ties (M33)
 
 // InsertPartyMembership stores a new encrypted party membership (the party envelope is sealed upstream).
-func (r *Repository) InsertPartyMembership(ctx context.Context, p domain.StoredPartyMembership) (domain.StoredPartyMembership, error) {
-	row, err := r.q.InsertPartyMembership(ctx, personsql.InsertPartyMembershipParams{
-		PersonID:        p.PersonID,
-		PartyCiphertext: p.PartyCiphertext,
-		PartyWrappedDek: p.PartyWrappedDEK,
-		PartyKeyRef:     text(p.PartyKeyRef),
-		PartyBlindIndex: p.PartyBlindIndex,
-		Role:            p.Role,
-		ValidFrom:       dateText(p.ValidFrom),
-		ValidTo:         dateText(p.ValidTo),
-		LegalBasis:      p.LegalBasis,
-		Source:          p.Source,
-		Confidence:      p.Confidence,
-	})
-	if err != nil {
-		return domain.StoredPartyMembership{}, mapWriteErr(err)
-	}
-	return toStoredParty(row), nil
-}
 
-// UpdatePartyMembership re-seals the party and/or flips role/dates/status on an existing row.
-func (r *Repository) UpdatePartyMembership(ctx context.Context, p domain.StoredPartyMembership) (domain.StoredPartyMembership, error) {
-	if p.Status == "" {
-		p.Status = "active"
+// nonNilStrs returns s, or an empty (non-nil) slice so a NULL never reaches a NOT NULL text[] column.
+func nonNilStrs(s []string) []string {
+	if s == nil {
+		return []string{}
 	}
-	row, err := r.q.UpdatePartyMembership(ctx, personsql.UpdatePartyMembershipParams{
-		PartyCiphertext: p.PartyCiphertext,
-		PartyWrappedDek: p.PartyWrappedDEK,
-		PartyKeyRef:     text(p.PartyKeyRef),
-		PartyBlindIndex: p.PartyBlindIndex,
-		Role:            p.Role,
-		ValidFrom:       dateText(p.ValidFrom),
-		ValidTo:         dateText(p.ValidTo),
-		LegalBasis:      p.LegalBasis,
-		Status:          p.Status,
-		Source:          p.Source,
-		Confidence:      p.Confidence,
-		ID:              p.ID,
-		PersonID:        p.PersonID,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.StoredPartyMembership{}, domain.ErrPartyMembershipNotFound
-		}
-		return domain.StoredPartyMembership{}, mapWriteErr(err)
-	}
-	return toStoredParty(row), nil
-}
-
-func (r *Repository) DeletePartyMembership(ctx context.Context, personID, id string) error {
-	if _, err := r.q.DeletePartyMembership(ctx, personsql.DeletePartyMembershipParams{ID: id, PersonID: personID}); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ErrPartyMembershipNotFound
-		}
-		return err
-	}
-	return nil
-}
-
-func (r *Repository) ListPartyMemberships(ctx context.Context, personID string) ([]domain.StoredPartyMembership, error) {
-	rows, err := r.q.ListPartyMemberships(ctx, personID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.StoredPartyMembership, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toStoredParty(row))
-	}
-	return out, nil
-}
-
-func (r *Repository) CryptoErasePartyMemberships(ctx context.Context, personID string) (int64, error) {
-	return r.q.CryptoErasePartyMemberships(ctx, personID)
-}
-
-// UpsertGovernmentPosition inserts a new row when g.ID is empty, otherwise replaces the named row.
-func (r *Repository) UpsertGovernmentPosition(ctx context.Context, g domain.GovernmentPosition) (domain.GovernmentPosition, error) {
-	if g.ID == "" {
-		row, err := r.q.InsertGovernmentPosition(ctx, personsql.InsertGovernmentPositionParams{
-			PersonID:   g.PersonID,
-			Title:      g.Title,
-			Body:       g.Body,
-			OrgID:      text(g.OrgID),
-			CountryID:  text(g.CountryID),
-			Level:      g.Level,
-			RoleType:   text(g.RoleType),
-			ValidFrom:  dateText(g.ValidFrom),
-			ValidTo:    dateText(g.ValidTo),
-			PepTrigger: g.PEPTrigger,
-			Source:     g.Source,
-			Confidence: g.Confidence,
-		})
-		if err != nil {
-			return domain.GovernmentPosition{}, mapWriteErr(err)
-		}
-		return toGovernmentPosition(row), nil
-	}
-	row, err := r.q.UpdateGovernmentPosition(ctx, personsql.UpdateGovernmentPositionParams{
-		Title:      g.Title,
-		Body:       g.Body,
-		OrgID:      text(g.OrgID),
-		CountryID:  text(g.CountryID),
-		Level:      g.Level,
-		RoleType:   text(g.RoleType),
-		ValidFrom:  dateText(g.ValidFrom),
-		ValidTo:    dateText(g.ValidTo),
-		PepTrigger: g.PEPTrigger,
-		Source:     g.Source,
-		Confidence: g.Confidence,
-		ID:         g.ID,
-		PersonID:   g.PersonID,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.GovernmentPosition{}, domain.ErrGovernmentPositionNotFound
-		}
-		return domain.GovernmentPosition{}, mapWriteErr(err)
-	}
-	return toGovernmentPosition(row), nil
-}
-
-func (r *Repository) DeleteGovernmentPosition(ctx context.Context, personID, id string) error {
-	if _, err := r.q.DeleteGovernmentPosition(ctx, personsql.DeleteGovernmentPositionParams{ID: id, PersonID: personID}); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ErrGovernmentPositionNotFound
-		}
-		return err
-	}
-	return nil
-}
-
-func (r *Repository) ListGovernmentPositions(ctx context.Context, personID string) ([]domain.GovernmentPosition, error) {
-	rows, err := r.q.ListGovernmentPositions(ctx, personID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.GovernmentPosition, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toGovernmentPosition(row))
-	}
-	return out, nil
-}
-
-func (r *Repository) IsPoliticallyExposed(ctx context.Context, personID string) (bool, error) {
-	n, err := r.q.CountActivePEPPositions(ctx, personID)
-	if err != nil {
-		return false, err
-	}
-	return n > 0, nil
-}
-
-// UpsertLobbyingRelationship inserts a new row when l.ID is empty, otherwise replaces the named row.
-func (r *Repository) UpsertLobbyingRelationship(ctx context.Context, l domain.LobbyingRelationship) (domain.LobbyingRelationship, error) {
-	if l.Issues == nil {
-		l.Issues = []string{}
-	}
-	if l.ID == "" {
-		row, err := r.q.InsertLobbyingRelationship(ctx, personsql.InsertLobbyingRelationshipParams{
-			PersonID:        l.PersonID,
-			Registrant:      l.Registrant,
-			Client:          text(l.Client),
-			LegislativeBody: text(l.LegislativeBody),
-			Issues:          l.Issues,
-			FilingID:        text(l.FilingID),
-			SourceUrl:       text(l.SourceURL),
-			ValidFrom:       dateText(l.ValidFrom),
-			ValidTo:         dateText(l.ValidTo),
-			Source:          l.Source,
-			Confidence:      l.Confidence,
-		})
-		if err != nil {
-			return domain.LobbyingRelationship{}, mapWriteErr(err)
-		}
-		return toLobbying(row), nil
-	}
-	row, err := r.q.UpdateLobbyingRelationship(ctx, personsql.UpdateLobbyingRelationshipParams{
-		Registrant:      l.Registrant,
-		Client:          text(l.Client),
-		LegislativeBody: text(l.LegislativeBody),
-		Issues:          l.Issues,
-		FilingID:        text(l.FilingID),
-		SourceUrl:       text(l.SourceURL),
-		ValidFrom:       dateText(l.ValidFrom),
-		ValidTo:         dateText(l.ValidTo),
-		Source:          l.Source,
-		Confidence:      l.Confidence,
-		ID:              l.ID,
-		PersonID:        l.PersonID,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.LobbyingRelationship{}, domain.ErrLobbyingNotFound
-		}
-		return domain.LobbyingRelationship{}, mapWriteErr(err)
-	}
-	return toLobbying(row), nil
-}
-
-func (r *Repository) DeleteLobbyingRelationship(ctx context.Context, personID, id string) error {
-	if _, err := r.q.DeleteLobbyingRelationship(ctx, personsql.DeleteLobbyingRelationshipParams{ID: id, PersonID: personID}); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ErrLobbyingNotFound
-		}
-		return err
-	}
-	return nil
-}
-
-func (r *Repository) ListLobbyingRelationships(ctx context.Context, personID string) ([]domain.LobbyingRelationship, error) {
-	rows, err := r.q.ListLobbyingRelationships(ctx, personID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.LobbyingRelationship, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toLobbying(row))
-	}
-	return out, nil
-}
-
-// UpsertExternalReference inserts idempotently by (person, url) when r.ID is empty; otherwise replaces
-// the named row by RID.
-func (r *Repository) UpsertExternalReference(ctx context.Context, e domain.ExternalReference) (domain.ExternalReference, error) {
-	if e.Categories == nil {
-		e.Categories = []string{}
-	}
-	if e.ID == "" {
-		row, err := r.q.UpsertExternalReference(ctx, personsql.UpsertExternalReferenceParams{
-			PersonID:    e.PersonID,
-			Kind:        e.Kind,
-			Url:         e.URL,
-			ExternalID:  text(e.ExternalID),
-			Categories:  e.Categories,
-			LastChecked: ts(e.LastChecked),
-			Disputed:    e.Disputed,
-			Source:      e.Source,
-			Confidence:  e.Confidence,
-		})
-		if err != nil {
-			return domain.ExternalReference{}, mapWriteErr(err)
-		}
-		return toExternalReference(row), nil
-	}
-	row, err := r.q.UpdateExternalReference(ctx, personsql.UpdateExternalReferenceParams{
-		Kind:        e.Kind,
-		Url:         e.URL,
-		ExternalID:  text(e.ExternalID),
-		Categories:  e.Categories,
-		LastChecked: ts(e.LastChecked),
-		Disputed:    e.Disputed,
-		Source:      e.Source,
-		Confidence:  e.Confidence,
-		ID:          e.ID,
-		PersonID:    e.PersonID,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ExternalReference{}, domain.ErrExternalReferenceNotFound
-		}
-		return domain.ExternalReference{}, mapWriteErr(err)
-	}
-	return toExternalReference(row), nil
-}
-
-func (r *Repository) DeleteExternalReference(ctx context.Context, personID, id string) error {
-	if _, err := r.q.DeleteExternalReference(ctx, personsql.DeleteExternalReferenceParams{ID: id, PersonID: personID}); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ErrExternalReferenceNotFound
-		}
-		return err
-	}
-	return nil
-}
-
-func (r *Repository) ListExternalReferences(ctx context.Context, personID string) ([]domain.ExternalReference, error) {
-	rows, err := r.q.ListExternalReferences(ctx, personID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.ExternalReference, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toExternalReference(row))
-	}
-	return out, nil
-}
-
-// M33 row mappers.
-
-func toStoredParty(r personsql.OikumeneaPersonPartyMembership) domain.StoredPartyMembership {
-	return domain.StoredPartyMembership{
-		ID:              r.ID,
-		PersonID:        r.PersonID,
-		PartyCiphertext: r.PartyCiphertext,
-		PartyWrappedDEK: r.PartyWrappedDek,
-		PartyKeyRef:     strText(r.PartyKeyRef),
-		PartyBlindIndex: r.PartyBlindIndex,
-		Role:            r.Role,
-		ValidFrom:       dateStr(r.ValidFrom),
-		ValidTo:         dateStr(r.ValidTo),
-		LegalBasis:      r.LegalBasis,
-		Status:          r.Status,
-		Source:          r.Source,
-		Confidence:      r.Confidence,
-		CreatedAt:       r.CreatedAt.Time,
-		UpdatedAt:       r.UpdatedAt.Time,
-	}
-}
-
-func toGovernmentPosition(r personsql.OikumeneaPersonGovernmentPosition) domain.GovernmentPosition {
-	return domain.GovernmentPosition{
-		ID:         r.ID,
-		PersonID:   r.PersonID,
-		Title:      r.Title,
-		Body:       r.Body,
-		OrgID:      strText(r.OrgID),
-		CountryID:  strText(r.CountryID),
-		Level:      r.Level,
-		RoleType:   strText(r.RoleType),
-		ValidFrom:  dateStr(r.ValidFrom),
-		ValidTo:    dateStr(r.ValidTo),
-		PEPTrigger: r.PepTrigger,
-		Source:     r.Source,
-		Confidence: r.Confidence,
-		CreatedAt:  r.CreatedAt.Time,
-		UpdatedAt:  r.UpdatedAt.Time,
-	}
-}
-
-func toLobbying(r personsql.OikumeneaPersonLobbyingRelationship) domain.LobbyingRelationship {
-	return domain.LobbyingRelationship{
-		ID:              r.ID,
-		PersonID:        r.PersonID,
-		Registrant:      r.Registrant,
-		Client:          strText(r.Client),
-		LegislativeBody: strText(r.LegislativeBody),
-		Issues:          r.Issues,
-		FilingID:        strText(r.FilingID),
-		SourceURL:       strText(r.SourceUrl),
-		ValidFrom:       dateStr(r.ValidFrom),
-		ValidTo:         dateStr(r.ValidTo),
-		Source:          r.Source,
-		Confidence:      r.Confidence,
-		CreatedAt:       r.CreatedAt.Time,
-		UpdatedAt:       r.UpdatedAt.Time,
-	}
-}
-
-func toExternalReference(r personsql.OikumeneaPersonExternalReference) domain.ExternalReference {
-	return domain.ExternalReference{
-		ID:          r.ID,
-		PersonID:    r.PersonID,
-		Kind:        r.Kind,
-		URL:         r.Url,
-		ExternalID:  strText(r.ExternalID),
-		Categories:  r.Categories,
-		LastChecked: tsPtr(r.LastChecked),
-		Disputed:    r.Disputed,
-		Source:      r.Source,
-		Confidence:  r.Confidence,
-		CreatedAt:   r.CreatedAt.Time,
-		UpdatedAt:   r.UpdatedAt.Time,
-	}
-}
-
-// ---------------------------------------------------------------- watchlists & regulatory exposure (M34)
-
-// UpsertWatchlistMatch inserts or (on the partial-unique person_id) refreshes the single screening result.
-func (r *Repository) UpsertWatchlistMatch(ctx context.Context, m domain.WatchlistMatch) (domain.WatchlistMatch, error) {
-	if m.Lists == nil {
-		m.Lists = []string{}
-	}
-	row, err := r.q.UpsertWatchlistMatch(ctx, personsql.UpsertWatchlistMatchParams{
-		PersonID:     m.PersonID,
-		OnList:       m.OnList,
-		Lists:        m.Lists,
-		Program:      text(m.Program),
-		MatchScore:   numArg(m.MatchScore),
-		Pep:          m.PEP,
-		LastChecked:  pgtype.Timestamptz{Time: m.LastChecked, Valid: true},
-		NextCheckDue: ts(m.NextCheckDue),
-		Source:       m.Source,
-		Confidence:   m.Confidence,
-	})
-	if err != nil {
-		return domain.WatchlistMatch{}, mapWriteErr(err)
-	}
-	return toWatchlistMatch(row), nil
-}
-
-func (r *Repository) GetWatchlistMatch(ctx context.Context, personID string) (domain.WatchlistMatch, bool, error) {
-	row, err := r.q.GetWatchlistMatch(ctx, personID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.WatchlistMatch{}, false, nil
-		}
-		return domain.WatchlistMatch{}, false, err
-	}
-	return toWatchlistMatch(row), true, nil
-}
-
-// DeleteWatchlistMatch hard-deletes a person's screening result (purge path).
-func (r *Repository) DeleteWatchlistMatch(ctx context.Context, personID string) error {
-	return r.q.DeleteAllWatchlistMatches(ctx, personID)
-}
-
-// UpsertRegulatorySanction inserts idempotently by (person, external_id) when x.ID is empty; otherwise
-// replaces the named row by RID.
-func (r *Repository) UpsertRegulatorySanction(ctx context.Context, x domain.RegulatorySanction) (domain.RegulatorySanction, error) {
-	if x.ID == "" {
-		row, err := r.q.UpsertRegulatorySanction(ctx, personsql.UpsertRegulatorySanctionParams{
-			PersonID:     x.PersonID,
-			Regulator:    x.Regulator,
-			ActionType:   x.ActionType,
-			Amount:       numArg(x.Amount),
-			Currency:     text(x.Currency),
-			Status:       x.Status,
-			SanctionDate: dateText(x.SanctionDate),
-			SourceUrl:    text(x.SourceURL),
-			ExternalID:   text(x.ExternalID),
-			LegalBasis:   text(x.LegalBasis),
-			Source:       x.Source,
-			Confidence:   x.Confidence,
-		})
-		if err != nil {
-			return domain.RegulatorySanction{}, mapWriteErr(err)
-		}
-		return toRegulatorySanction(row), nil
-	}
-	row, err := r.q.UpdateRegulatorySanction(ctx, personsql.UpdateRegulatorySanctionParams{
-		Regulator:    x.Regulator,
-		ActionType:   x.ActionType,
-		Amount:       numArg(x.Amount),
-		Currency:     text(x.Currency),
-		Status:       x.Status,
-		SanctionDate: dateText(x.SanctionDate),
-		SourceUrl:    text(x.SourceURL),
-		ExternalID:   text(x.ExternalID),
-		LegalBasis:   text(x.LegalBasis),
-		Source:       x.Source,
-		Confidence:   x.Confidence,
-		ID:           x.ID,
-		PersonID:     x.PersonID,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.RegulatorySanction{}, domain.ErrRegulatorySanctionNotFound
-		}
-		return domain.RegulatorySanction{}, mapWriteErr(err)
-	}
-	return toRegulatorySanction(row), nil
-}
-
-func (r *Repository) DeleteRegulatorySanction(ctx context.Context, personID, id string) error {
-	if _, err := r.q.DeleteRegulatorySanction(ctx, personsql.DeleteRegulatorySanctionParams{ID: id, PersonID: personID}); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ErrRegulatorySanctionNotFound
-		}
-		return err
-	}
-	return nil
-}
-
-func (r *Repository) ListRegulatorySanctions(ctx context.Context, personID string) ([]domain.RegulatorySanction, error) {
-	rows, err := r.q.ListRegulatorySanctions(ctx, personID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]domain.RegulatorySanction, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toRegulatorySanction(row))
-	}
-	return out, nil
-}
-
-func toWatchlistMatch(r personsql.OikumeneaPersonWatchlistMatch) domain.WatchlistMatch {
-	return domain.WatchlistMatch{
-		ID:           r.ID,
-		PersonID:     r.PersonID,
-		OnList:       r.OnList,
-		Lists:        r.Lists,
-		Program:      strText(r.Program),
-		MatchScore:   numPtr(r.MatchScore),
-		PEP:          r.Pep,
-		LastChecked:  r.LastChecked.Time,
-		NextCheckDue: tsPtr(r.NextCheckDue),
-		Source:       r.Source,
-		Confidence:   r.Confidence,
-		CreatedAt:    r.CreatedAt.Time,
-		UpdatedAt:    r.UpdatedAt.Time,
-	}
-}
-
-func toRegulatorySanction(r personsql.OikumeneaPersonRegulatorySanction) domain.RegulatorySanction {
-	return domain.RegulatorySanction{
-		ID:           r.ID,
-		PersonID:     r.PersonID,
-		Regulator:    r.Regulator,
-		ActionType:   r.ActionType,
-		Amount:       numPtr(r.Amount),
-		Currency:     strText(r.Currency),
-		Status:       r.Status,
-		SanctionDate: dateStr(r.SanctionDate),
-		SourceURL:    strText(r.SourceUrl),
-		ExternalID:   strText(r.ExternalID),
-		LegalBasis:   strText(r.LegalBasis),
-		Source:       r.Source,
-		Confidence:   r.Confidence,
-		CreatedAt:    r.CreatedAt.Time,
-		UpdatedAt:    r.UpdatedAt.Time,
-	}
+	return s
 }

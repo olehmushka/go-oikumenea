@@ -6,7 +6,7 @@
 // routes.
 //
 // Authority comes ONLY from assignments here; the PDP reads no rank/position. The returned service is
-// the in-process decision seam (Enforce/Decide/EffectiveReach) other modules call before guarded
+// the in-process decision seam (Enforce/Decide/ContextWithAuthority) other modules call before guarded
 // ops; the bound enforcer is the transport-layer PEP. Ordering note: the PDP needs tenant's closure,
 // so tenant builds first — hence the enforcer is created UNBOUND in the composition root and bound
 // here once the service exists (see internal/authorization/pep).

@@ -60,3 +60,44 @@ func SubscribeRepoint(bus *events.Bus, stmts ...string) {
 		return nil
 	})
 }
+
+// TypePersonPurged is the events.Event.Type() dispatch key for a person hard-erase.
+const TypePersonPurged = "person.purged"
+
+// PersonPurged is emitted in the PurgePerson transaction (D-PersonModuleSplit, review-2026-07 R-09):
+// the person ID has been hard-erased (PII NULLed, id kept as a tombstone), so every module that holds
+// the person's rows erases its OWN rows in the SAME transaction — the counterpart to PersonMerged's
+// re-point. This removes person's cross-module purge writes: instead of person deleting other modules'
+// tables inline, each owning module subscribes and erases what it owns (satisfies the R-08 module-table
+// boundary). It is published only on a real purge, NOT on the merge-tombstone Purge of a stub (whose
+// rows were already re-pointed away by PersonMerged).
+type PersonPurged struct {
+	ID string // the person being hard-erased
+}
+
+// Type implements events.Event.
+func (PersonPurged) Type() string { return TypePersonPurged }
+
+// compile-time assertion that PersonPurged satisfies the bus event contract.
+var _ events.Event = PersonPurged{}
+
+// SubscribeErase registers a PersonPurged handler that hard-erases a module's person-owned rows in the
+// publisher's transaction: it runs every stmt with ($1 = ID). Each stmt is a plain
+// `DELETE FROM … WHERE person_id = $1` (for a polymorphic holder, `WHERE holder_kind = 'person' AND
+// holder_id = $1`). The counterpart to SubscribeRepoint: each module owns its own erase statements while
+// sharing the dispatch + transaction plumbing. Modules whose erase is more than a raw DELETE (crypto-erase,
+// audit) subscribe to TypePersonPurged directly instead.
+func SubscribeErase(bus *events.Bus, stmts ...string) {
+	bus.Subscribe(TypePersonPurged, func(ctx context.Context, tx pgx.Tx, evt events.Event) error {
+		e, ok := evt.(PersonPurged)
+		if !ok {
+			return nil
+		}
+		for _, q := range stmts {
+			if _, err := tx.Exec(ctx, q, e.ID); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}

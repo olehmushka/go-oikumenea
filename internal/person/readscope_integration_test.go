@@ -1,10 +1,11 @@
 //go:build integration
 
 // Integration tests for the person read-scope projection (D-PersonReadScope / F-001) against a real
-// Postgres: they seed units, people, and active memberships, then assert that ReadablePerson and the
-// ListVisiblePersons directory-union honour the reader's effective readable reach — a reader sees a
-// person only when that person's active-membership units intersect the reader's reach (or the reader
-// is an instance admin). This exercises the new membership union/intersection SQL end-to-end.
+// Postgres. Since review-2026-07 R-02.1 the reach is computed IN SQL from the subject's actual role
+// assignments (membership's SubjectCanReadPerson / VisiblePersonIDsForSubject semi-joins), so these
+// tests seed a real reader with a real `person.read` grant and assert the projection end-to-end: a
+// reader sees a person only when that person's active-membership units fall in the reader's reach.
+// (The instance-admin bypass now lives in the transport via pep.SubjectAuthority — not tested here.)
 //
 //	OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable" \
 //	  go test -tags integration ./internal/person/...
@@ -18,7 +19,6 @@ import (
 	auditadapters "github.com/olegamysk/go-oikumenea/internal/audit/adapters"
 	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
 	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
-	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
 	membershipadapters "github.com/olegamysk/go-oikumenea/internal/membership/adapters"
 	membershipapp "github.com/olegamysk/go-oikumenea/internal/membership/application"
 	membershipdomain "github.com/olegamysk/go-oikumenea/internal/membership/domain"
@@ -83,12 +83,28 @@ func seedMembership(t *testing.T, pool *pgxpool.Pool, personID, unitID string) {
 	}
 }
 
-func readableReach(units ...string) authzdomain.Reach {
-	r := authzdomain.Reach{Readable: map[string]struct{}{}}
-	for _, u := range units {
-		r.Readable[u] = struct{}{}
+// seedReadGrant gives the reader a fresh role carrying person.read with a unit-scope assignment on
+// unitID — the real authority rows the R-02.1 semi-join reads.
+func seedReadGrant(t *testing.T, pool *pgxpool.Pool, readerID, unitID string) {
+	t.Helper()
+	ctx := context.Background()
+	var roleID string
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO oikumenea.authz_roles (code, name) VALUES ($1, 'Read-scope test role') RETURNING id`,
+		code(t, "readscope-role")).Scan(&roleID); err != nil {
+		t.Fatalf("seed role: %v", err)
 	}
-	return r
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO oikumenea.authz_role_permissions (role_id, permission_code) VALUES ($1, 'person.read')`,
+		roleID); err != nil {
+		t.Fatalf("seed role permission: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO oikumenea.authz_role_assignments (subject_person_id, role_id, target_unit_id, scope)
+		 VALUES ($1, $2, $3, 'unit')`,
+		readerID, roleID, unitID); err != nil {
+		t.Fatalf("seed assignment: %v", err)
+	}
 }
 
 func TestReadScopeProjection_Integration(t *testing.T) {
@@ -104,29 +120,32 @@ func TestReadScopeProjection_Integration(t *testing.T) {
 	seedMembership(t, pool, pInA, unitA)
 	seedMembership(t, pool, pInB, unitB)
 
-	reachA := readableReach(unitA)
+	reader := seedPerson(t, svc)
+	seedReadGrant(t, pool, reader, unitA) // reach = {unitA}
 
-	// ReadablePerson: a unit-A reader sees the unit-A person, not the unit-B nor the membership-less one.
+	// ReadablePerson: the unit-A reader sees the unit-A person, not the unit-B nor the
+	// membership-less one; a grant-less subject sees nobody.
 	for _, tc := range []struct {
-		person string
-		want   bool
-	}{{pInA, true}, {pInB, false}, {pNone, false}} {
-		got, err := svc.ReadablePerson(ctx, reachA, tc.person)
+		subject string
+		person  string
+		want    bool
+	}{
+		{reader, pInA, true},
+		{reader, pInB, false},
+		{reader, pNone, false},
+		{pInB, pInA, false}, // no grant at all
+	} {
+		got, err := svc.ReadablePerson(ctx, tc.subject, tc.person)
 		if err != nil {
-			t.Fatalf("ReadablePerson(%s): %v", tc.person, err)
+			t.Fatalf("ReadablePerson(%s, %s): %v", tc.subject, tc.person, err)
 		}
 		if got != tc.want {
-			t.Fatalf("ReadablePerson(%s) = %v, want %v", tc.person, got, tc.want)
+			t.Fatalf("ReadablePerson(%s, %s) = %v, want %v", tc.subject, tc.person, got, tc.want)
 		}
-	}
-
-	// Instance admin sees the membership-less person.
-	if ok, err := svc.ReadablePerson(ctx, authzdomain.Reach{InstanceAdmin: true}, pNone); err != nil || !ok {
-		t.Fatalf("instance admin must read a membership-less person (ok=%v err=%v)", ok, err)
 	}
 
 	// ListVisiblePersons: the unit-A reader's directory union contains pInA and excludes pInB / pNone.
-	page, err := svc.ListVisiblePersons(ctx, reachA, 0, "", "")
+	page, err := svc.ListVisiblePersons(ctx, reader, 0, "", "")
 	if err != nil {
 		t.Fatalf("ListVisiblePersons: %v", err)
 	}
@@ -139,5 +158,14 @@ func TestReadScopeProjection_Integration(t *testing.T) {
 	}
 	if got[pInB] || got[pNone] {
 		t.Fatalf("ListVisiblePersons leaked an out-of-reach person: %v", got)
+	}
+
+	// A grant-less subject's directory union is empty.
+	emptyPage, err := svc.ListVisiblePersons(ctx, pInB, 0, "", "")
+	if err != nil {
+		t.Fatalf("ListVisiblePersons(grantless): %v", err)
+	}
+	if len(emptyPage.Persons) != 0 {
+		t.Fatalf("grant-less subject must see an empty directory, got %d persons", len(emptyPage.Persons))
 	}
 }

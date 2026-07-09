@@ -9,6 +9,10 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 )
 
+// oneChunk is the normalized single-shot chunk every direct handler invocation uses (Import maps an
+// unchunked envelope to {Seq: 1, IsLast: true}; see domain.ChunkInfo).
+var oneChunk = domain.ChunkInfo{Seq: 1, IsLast: true}
+
 // fakeGeoStore is an in-memory domain.GeoCountryStore for testing the handler's create/update/skip
 // logic without a database.
 type fakeGeoStore struct {
@@ -54,7 +58,7 @@ func TestGeoCountriesHandler(t *testing.T) {
 		{"code": "PL", "name": "Poland"},            // new -> create
 		{"code": "UA", "name": "Ukraine (updated)"}, // changed -> update
 	}
-	sum, err := h(context.Background(), pgx.Tx(nil), recs, prov)
+	sum, err := h(context.Background(), pgx.Tx(nil), recs, prov, oneChunk)
 	if err != nil {
 		t.Fatalf("handler: %v", err)
 	}
@@ -68,7 +72,7 @@ func TestGeoCountriesHandler(t *testing.T) {
 	// Re-running the same (now-current) records is a pure no-op (idempotent).
 	store.inserts, store.updates = 0, 0
 	again := []domain.Record{{"code": "PL", "name": "Poland"}, {"code": "UA", "name": "Ukraine (updated)"}}
-	sum2, err := h(context.Background(), pgx.Tx(nil), again, prov)
+	sum2, err := h(context.Background(), pgx.Tx(nil), again, prov, oneChunk)
 	if err != nil {
 		t.Fatalf("handler re-run: %v", err)
 	}
@@ -86,7 +90,7 @@ func TestGeoCountriesHandler_InvalidRecord(t *testing.T) {
 		{"code": "DE", "name": ""},               // empty name
 		{"name": "No Code"},                      // missing code
 	} {
-		if _, err := h(context.Background(), pgx.Tx(nil), []domain.Record{rec}, domain.Provenance{}); err == nil {
+		if _, err := h(context.Background(), pgx.Tx(nil), []domain.Record{rec}, domain.Provenance{}, oneChunk); err == nil {
 			t.Fatalf("expected ErrInvalidRecord for %v", rec)
 		}
 	}
@@ -131,7 +135,7 @@ func TestReligionSchemeHandler(t *testing.T) {
 		{"code": "christianity", "name": "Christianity", "rank": "religion"},           // exists, same version -> skip
 		{"code": "calvinism", "name": "Calvinism", "rank": "tradition", "parent": "p"}, // new -> create
 	}
-	sum, err := h(context.Background(), pgx.Tx(nil), recs, domain.Provenance{Source: "religion-presets", SourceVersion: "2026.06"})
+	sum, err := h(context.Background(), pgx.Tx(nil), recs, domain.Provenance{Source: "religion-presets", SourceVersion: "2026.06"}, oneChunk)
 	if err != nil {
 		t.Fatalf("handler: %v", err)
 	}
@@ -144,7 +148,7 @@ func TestReligionSchemeHandler(t *testing.T) {
 
 	// Boot autoseed (CreateOnly) over the now-current tree: everything skipped, no rebuild.
 	store.inserts, store.updates, store.rebuilds = 0, 0, 0
-	sum, err = h(context.Background(), pgx.Tx(nil), recs, domain.Provenance{Source: "religion-presets", SourceVersion: "2027.01", CreateOnly: true})
+	sum, err = h(context.Background(), pgx.Tx(nil), recs, domain.Provenance{Source: "religion-presets", SourceVersion: "2027.01", CreateOnly: true}, oneChunk)
 	if err != nil {
 		t.Fatalf("handler create-only: %v", err)
 	}
@@ -156,7 +160,7 @@ func TestReligionSchemeHandler(t *testing.T) {
 	}
 
 	// A record missing its required rank is rejected.
-	if _, err := h(context.Background(), pgx.Tx(nil), []domain.Record{{"code": "x", "name": "X"}}, domain.Provenance{}); err == nil {
+	if _, err := h(context.Background(), pgx.Tx(nil), []domain.Record{{"code": "x", "name": "X"}}, domain.Provenance{}, oneChunk); err == nil {
 		t.Fatalf("expected ErrInvalidRecord for a record with no rank")
 	}
 }
@@ -193,7 +197,7 @@ func TestColorsHandler(t *testing.T) {
 		{"domain": "country", "code": "red", "name": "Red", "hex": "#B22234"},    // new -> create
 		{"domain": "country", "code": "blue", "name": "Azure", "hex": "#0057B7"}, // name changed -> update
 	}
-	sum, err := h(context.Background(), pgx.Tx(nil), recs, domain.Provenance{})
+	sum, err := h(context.Background(), pgx.Tx(nil), recs, domain.Provenance{}, oneChunk)
 	if err != nil {
 		t.Fatalf("handler: %v", err)
 	}
@@ -204,7 +208,7 @@ func TestColorsHandler(t *testing.T) {
 	// CreateOnly (boot autoseed): an existing color is never overwritten even when it differs.
 	store.inserts, store.updates = 0, 0
 	sum, err = h(context.Background(), pgx.Tx(nil), []domain.Record{{"domain": "country", "code": "red", "name": "Crimson", "hex": "#FF0000"}},
-		domain.Provenance{CreateOnly: true})
+		domain.Provenance{CreateOnly: true}, oneChunk)
 	if err != nil {
 		t.Fatalf("handler create-only: %v", err)
 	}
@@ -213,36 +217,35 @@ func TestColorsHandler(t *testing.T) {
 	}
 
 	// A record missing domain/code/name is rejected.
-	if _, err := h(context.Background(), pgx.Tx(nil), []domain.Record{{"code": "x", "name": "X"}}, domain.Provenance{}); err == nil {
+	if _, err := h(context.Background(), pgx.Tx(nil), []domain.Record{{"code": "x", "name": "X"}}, domain.Provenance{}, oneChunk); err == nil {
 		t.Fatalf("expected ErrInvalidRecord for a color with no domain")
 	}
 }
 
 // fakeGeoPlaceStore is an in-memory domain.GeoPlaceStore that records source_version per wof_id and
-// counts the create/update/enrich paths (no DB needed for the handler's control flow).
+// counts the enrich path (no DB needed for the handler's control flow). BulkUpsert mimics the
+// merge's version-keyed semantics (insert absent, update on a different edition, skip the rest).
 type fakeGeoPlaceStore struct {
 	versions map[int64]string
-	inserts  int
-	updates  int
 	enrich   int
 }
 
-func (f *fakeGeoPlaceStore) GetVersion(_ context.Context, wofID int64) (string, bool, error) {
-	v, ok := f.versions[wofID]
-	return v, ok, nil
+func (f *fakeGeoPlaceStore) BulkUpsert(_ context.Context, places []domain.GeoPlace, prov domain.Provenance) (created, updated []int64, _ error) {
+	for _, p := range places {
+		v, ok := f.versions[p.WofID]
+		switch {
+		case !ok:
+			f.versions[p.WofID] = prov.SourceVersion
+			created = append(created, p.WofID)
+		case v != prov.SourceVersion:
+			f.versions[p.WofID] = prov.SourceVersion
+			updated = append(updated, p.WofID)
+		}
+	}
+	return created, updated, nil
 }
-func (f *fakeGeoPlaceStore) Insert(_ context.Context, p domain.GeoPlace, prov domain.Provenance) error {
-	f.versions[p.WofID] = prov.SourceVersion
-	f.inserts++
-	return nil
-}
-func (f *fakeGeoPlaceStore) UpdateImport(_ context.Context, p domain.GeoPlace, prov domain.Provenance) error {
-	f.versions[p.WofID] = prov.SourceVersion
-	f.updates++
-	return nil
-}
-func (f *fakeGeoPlaceStore) EnrichCountry(_ context.Context, _ domain.GeoPlace, _ domain.Provenance) error {
-	f.enrich++
+func (f *fakeGeoPlaceStore) BulkEnrichCountries(_ context.Context, places []domain.GeoPlace) error {
+	f.enrich += len(places)
 	return nil
 }
 
@@ -264,7 +267,7 @@ func TestGeoPlacesHandler(t *testing.T) {
 	}
 
 	// First edition: all three inserted, the country row enriched once.
-	sum, err := h(context.Background(), pgx.Tx(nil), batch(), domain.Provenance{Source: "whosonfirst", SourceVersion: "2026.01"})
+	sum, err := h(context.Background(), pgx.Tx(nil), batch(), domain.Provenance{Source: "whosonfirst", SourceVersion: "2026.01"}, oneChunk)
 	if err != nil {
 		t.Fatalf("handler: %v", err)
 	}
@@ -276,7 +279,7 @@ func TestGeoPlacesHandler(t *testing.T) {
 	}
 
 	// Same edition: pure no-op (idempotent); no re-enrich.
-	sum, err = h(context.Background(), pgx.Tx(nil), batch(), domain.Provenance{Source: "whosonfirst", SourceVersion: "2026.01"})
+	sum, err = h(context.Background(), pgx.Tx(nil), batch(), domain.Provenance{Source: "whosonfirst", SourceVersion: "2026.01"}, oneChunk)
 	if err != nil {
 		t.Fatalf("handler re-run: %v", err)
 	}
@@ -288,7 +291,7 @@ func TestGeoPlacesHandler(t *testing.T) {
 	}
 
 	// Newer edition: all updated, the country re-enriched.
-	sum, err = h(context.Background(), pgx.Tx(nil), batch(), domain.Provenance{Source: "whosonfirst", SourceVersion: "2026.06"})
+	sum, err = h(context.Background(), pgx.Tx(nil), batch(), domain.Provenance{Source: "whosonfirst", SourceVersion: "2026.06"}, oneChunk)
 	if err != nil {
 		t.Fatalf("handler new edition: %v", err)
 	}
@@ -309,7 +312,7 @@ func TestGeoPlacesHandler_InvalidRecord(t *testing.T) {
 		{"wofId": float64(1), "placetype": "region"},                      // missing name
 		{"wofId": float64(1), "placetype": "neighbourhood", "name": "Nb"}, // unsupported placetype
 	} {
-		if _, err := h(context.Background(), pgx.Tx(nil), []domain.Record{rec}, domain.Provenance{}); err == nil {
+		if _, err := h(context.Background(), pgx.Tx(nil), []domain.Record{rec}, domain.Provenance{}, oneChunk); err == nil {
 			t.Fatalf("expected ErrInvalidRecord for %v", rec)
 		}
 	}
@@ -317,59 +320,63 @@ func TestGeoPlacesHandler_InvalidRecord(t *testing.T) {
 
 // fakeRegulatorySanctionStore is an in-memory domain.RegulatorySanctionStore for testing the M34
 // person-regulatory-sanctions handler's resolve/create/update/skip logic without a database.
+// BulkUpsert mimics the merge: an unresolved person drops out, an unchanged row skips, CreateOnly
+// never updates.
 type fakeRegulatorySanctionStore struct {
-	people   map[string]bool                       // person RIDs that resolve
-	rows     map[string]domain.RegulatorySanction  // keyed by person|externalId
-	inserts  int
-	updates  int
+	people map[string]bool                      // person RIDs that resolve
+	rows   map[string]domain.RegulatorySanction // keyed by person|externalId
 }
 
 func rsKey(personID, externalID string) string { return personID + "|" + externalID }
 
-func (f *fakeRegulatorySanctionStore) PersonExists(_ context.Context, personID string) (bool, error) {
-	return f.people[personID], nil
-}
-func (f *fakeRegulatorySanctionStore) Get(_ context.Context, personID, externalID string) (domain.RegulatorySanction, bool, error) {
-	s, ok := f.rows[rsKey(personID, externalID)]
-	return s, ok, nil
-}
-func (f *fakeRegulatorySanctionStore) Insert(_ context.Context, s domain.RegulatorySanction, _ domain.Provenance) error {
-	f.rows[rsKey(s.PersonID, s.ExternalID)] = s
-	f.inserts++
-	return nil
-}
-func (f *fakeRegulatorySanctionStore) UpdateImport(_ context.Context, s domain.RegulatorySanction, _ domain.Provenance) error {
-	f.rows[rsKey(s.PersonID, s.ExternalID)] = s
-	f.updates++
-	return nil
+func (f *fakeRegulatorySanctionStore) BulkUpsert(_ context.Context, ss []domain.RegulatorySanction, prov domain.Provenance) (created, updated int, _ error) {
+	for _, s := range ss {
+		if !f.people[s.PersonID] {
+			continue
+		}
+		existing, ok := f.rows[rsKey(s.PersonID, s.ExternalID)]
+		switch {
+		case !ok:
+			f.rows[rsKey(s.PersonID, s.ExternalID)] = s
+			created++
+		case prov.CreateOnly || s.SameAs(existing):
+		default:
+			f.rows[rsKey(s.PersonID, s.ExternalID)] = s
+			updated++
+		}
+	}
+	return created, updated, nil
 }
 
-// TestRegulatorySanctionsHandler exercises the person-resolve skip, create, idempotent no-op re-run, and
-// update-on-change paths (D-Watchlists, M34).
+// TestRegulatorySanctionsHandler exercises the person-resolve skip (both the unknown-RID and the
+// not-even-a-uuid form), create, idempotent no-op re-run, and update-on-change paths (D-Watchlists, M34).
 func TestRegulatorySanctionsHandler(t *testing.T) {
-	store := &fakeRegulatorySanctionStore{people: map[string]bool{"P1": true}, rows: map[string]domain.RegulatorySanction{}}
+	// Person RIDs are canonical uuids; the handler pre-drops anything else as unresolvable.
+	const p1 = "11111111-1111-1111-1111-111111111111"
+	const absent = "22222222-2222-2222-2222-222222222222"
+	store := &fakeRegulatorySanctionStore{people: map[string]bool{p1: true}, rows: map[string]domain.RegulatorySanction{}}
 	h := RegulatorySanctionsHandler(func(db.DBTX) domain.RegulatorySanctionStore { return store })
 	prov := domain.Provenance{Source: "reg-source", SourceVersion: "v1"}
 
 	recs := []domain.Record{
-		{"personId": "P1", "regulator": "SEC", "actionType": "fine", "amount": 5000.0, "currency": "USD", "externalId": "A"}, // new -> create
-		{"personId": "MISSING", "regulator": "SEC", "externalId": "B"},                                                       // unresolved person -> skip
-		{"regulator": "SEC", "externalId": "C"},                                                                             // missing personId -> invalid
+		{"personId": p1, "regulator": "SEC", "actionType": "fine", "amount": 5000.0, "currency": "USD", "externalId": "A"}, // new -> create
+		{"personId": absent, "regulator": "SEC", "externalId": "B"},                                                        // unresolved person -> skip
+		{"personId": "NOT-A-UUID", "regulator": "SEC", "externalId": "D"},                                                  // malformed RID -> skip
+		{"regulator": "SEC", "externalId": "C"},                                                                            // missing personId -> invalid
 	}
-	if _, err := h(context.Background(), pgx.Tx(nil), []domain.Record{recs[2]}, prov); err == nil {
+	if _, err := h(context.Background(), pgx.Tx(nil), []domain.Record{recs[3]}, prov, oneChunk); err == nil {
 		t.Fatal("expected ErrInvalidRecord for a record missing personId")
 	}
-	sum, err := h(context.Background(), pgx.Tx(nil), recs[:2], prov)
+	sum, err := h(context.Background(), pgx.Tx(nil), recs[:3], prov, oneChunk)
 	if err != nil {
 		t.Fatalf("handler: %v", err)
 	}
-	if sum.Created != 1 || sum.Skipped != 1 || sum.Updated != 0 {
-		t.Fatalf("summary = %+v, want created=1 skipped=1 (unresolved person)", sum)
+	if sum.Created != 1 || sum.Skipped != 2 || sum.Updated != 0 {
+		t.Fatalf("summary = %+v, want created=1 skipped=2 (unresolved + malformed person)", sum)
 	}
 
 	// Re-running the identical record is an idempotent no-op (skip).
-	store.inserts, store.updates = 0, 0
-	sum2, err := h(context.Background(), pgx.Tx(nil), recs[:1], prov)
+	sum2, err := h(context.Background(), pgx.Tx(nil), recs[:1], prov, oneChunk)
 	if err != nil {
 		t.Fatalf("handler re-run: %v", err)
 	}
@@ -378,8 +385,8 @@ func TestRegulatorySanctionsHandler(t *testing.T) {
 	}
 
 	// A changed field on the same (person, externalId) updates in place.
-	changed := []domain.Record{{"personId": "P1", "regulator": "SEC", "actionType": "ban", "externalId": "A"}}
-	sum3, err := h(context.Background(), pgx.Tx(nil), changed, prov)
+	changed := []domain.Record{{"personId": p1, "regulator": "SEC", "actionType": "ban", "externalId": "A"}}
+	sum3, err := h(context.Background(), pgx.Tx(nil), changed, prov, oneChunk)
 	if err != nil {
 		t.Fatalf("handler update: %v", err)
 	}

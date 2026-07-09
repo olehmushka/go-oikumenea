@@ -11,6 +11,251 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const bulkDeleteLanguoidCountries = `-- name: BulkDeleteLanguoidCountries :exec
+DELETE FROM oikumenea.language_languoid_countries
+WHERE languoid_id IN (SELECT id FROM oikumenea.language_languoids WHERE code = ANY($1::text[]))
+`
+
+// Clear the country ties of every touched languoid ahead of the bulk re-insert (the set-based
+// ReplaceCountries half; both run in the chunk transaction).
+func (q *Queries) BulkDeleteLanguoidCountries(ctx context.Context, codes []string) error {
+	_, err := q.db.Exec(ctx, bulkDeleteLanguoidCountries, codes)
+	return err
+}
+
+const bulkInsertLanguoidCountries = `-- name: BulkInsertLanguoidCountries :exec
+INSERT INTO oikumenea.language_languoid_countries (languoid_id, country_id)
+SELECT l.id, c.id
+FROM (SELECT unnest($1::text[])         AS code,
+             unnest($2::text[]) AS country_code) r
+JOIN oikumenea.language_languoids l ON l.code = r.code
+JOIN oikumenea.geo_countries c ON c.code = r.country_code
+ON CONFLICT (languoid_id, country_id) DO NOTHING
+`
+
+type BulkInsertLanguoidCountriesParams struct {
+	Codes        []string
+	CountryCodes []string
+}
+
+// Re-insert the touched languoids' country ties from flattened (code, country) pairs, resolving both
+// natural keys to RIDs. A country code that does not resolve yields no row (the join drops it) — the
+// tie is silently dropped rather than failing, matching InsertLanguoidCountry.
+func (q *Queries) BulkInsertLanguoidCountries(ctx context.Context, arg BulkInsertLanguoidCountriesParams) error {
+	_, err := q.db.Exec(ctx, bulkInsertLanguoidCountries, arg.Codes, arg.CountryCodes)
+	return err
+}
+
+const bulkInsertLanguoidsAbsent = `-- name: BulkInsertLanguoidsAbsent :many
+WITH r AS (
+  SELECT unnest($4::text[])      AS code,
+         unnest($5::text[])     AS level,
+         unnest($6::text[])      AS name,
+         unnest($7::text[])  AS iso639_3,
+         unnest($8::text[]) AS macroarea,
+         unnest($9::text[])  AS latitude,
+         unnest($10::text[]) AS longitude,
+         unnest($11::text[])   AS status
+)
+INSERT INTO oikumenea.language_languoids (
+  code, level, name, iso639_3, macroarea, latitude, longitude, status,
+  glottolog_version, source, source_version, imported_at, origin)
+SELECT r.code,
+       r.level,
+       r.name,
+       NULLIF(r.iso639_3, ''),
+       NULLIF(r.macroarea, ''),
+       NULLIF(r.latitude, '')::double precision,
+       NULLIF(r.longitude, '')::double precision,
+       r.status,
+       NULLIF($1::text, ''),
+       $2::text,
+       $1::text,
+       $3::timestamptz,
+       'seeded'::text
+FROM r
+ON CONFLICT (code) DO NOTHING
+RETURNING code
+`
+
+type BulkInsertLanguoidsAbsentParams struct {
+	SourceVersion string
+	Source        string
+	ImportedAt    pgtype.Timestamptz
+	Codes         []string
+	Levels        []string
+	Names         []string
+	Iso6393s      []string
+	Macroareas    []string
+	Latitudes     []string
+	Longitudes    []string
+	Statuses      []string
+}
+
+// The CreateOnly (pinax boot-autoseed, D-Pinax) variant of BulkUpsertLanguoids: insert absent rows,
+// NEVER touch an existing one (no conflict update at all). Returns the created codes.
+func (q *Queries) BulkInsertLanguoidsAbsent(ctx context.Context, arg BulkInsertLanguoidsAbsentParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, bulkInsertLanguoidsAbsent,
+		arg.SourceVersion,
+		arg.Source,
+		arg.ImportedAt,
+		arg.Codes,
+		arg.Levels,
+		arg.Names,
+		arg.Iso6393s,
+		arg.Macroareas,
+		arg.Latitudes,
+		arg.Longitudes,
+		arg.Statuses,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return nil, err
+		}
+		items = append(items, code)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const bulkSetLanguoidParents = `-- name: BulkSetLanguoidParents :exec
+UPDATE oikumenea.language_languoids l SET
+  parent_id = CASE WHEN r.parent_code = '' THEN NULL
+                   ELSE COALESCE((SELECT p.id FROM oikumenea.language_languoids p WHERE p.code = r.parent_code),
+                                 '00000000-0000-0000-0000-000000000000'::uuid) END
+FROM (SELECT unnest($1::text[])        AS code,
+             unnest($2::text[]) AS parent_code) r
+WHERE l.code = r.code
+`
+
+type BulkSetLanguoidParentsParams struct {
+	Codes       []string
+	ParentCodes []string
+}
+
+// Second pass of the chunk merge: resolve each touched languoid's parent glottocode to its RID. Runs
+// after the bulk upsert in the same transaction, so a parent inserted by this very chunk resolves. A
+// non-empty parent that does not resolve falls back to the sentinel uuid so the parent_id FK fails
+// loudly (RESTRICT) rather than silently NULLing a real, but not-yet-loaded, parent reference.
+func (q *Queries) BulkSetLanguoidParents(ctx context.Context, arg BulkSetLanguoidParentsParams) error {
+	_, err := q.db.Exec(ctx, bulkSetLanguoidParents, arg.Codes, arg.ParentCodes)
+	return err
+}
+
+const bulkUpsertLanguoids = `-- name: BulkUpsertLanguoids :many
+
+WITH r AS (
+  SELECT unnest($4::text[])      AS code,
+         unnest($5::text[])     AS level,
+         unnest($6::text[])      AS name,
+         unnest($7::text[])  AS iso639_3,
+         unnest($8::text[]) AS macroarea,
+         unnest($9::text[])  AS latitude,
+         unnest($10::text[]) AS longitude,
+         unnest($11::text[])   AS status
+)
+INSERT INTO oikumenea.language_languoids (
+  code, level, name, iso639_3, macroarea, latitude, longitude, status,
+  glottolog_version, source, source_version, imported_at, origin)
+SELECT r.code,
+       r.level,
+       r.name,
+       NULLIF(r.iso639_3, ''),
+       NULLIF(r.macroarea, ''),
+       NULLIF(r.latitude, '')::double precision,
+       NULLIF(r.longitude, '')::double precision,
+       r.status,
+       NULLIF($1::text, ''),
+       $2::text,
+       $1::text,
+       $3::timestamptz,
+       'seeded'::text  -- import-path rows are pinax seeded-owned (D-Pinax, M45)
+FROM r
+ON CONFLICT (code) DO UPDATE SET
+  level             = EXCLUDED.level,
+  name              = EXCLUDED.name,
+  iso639_3          = EXCLUDED.iso639_3,
+  macroarea         = EXCLUDED.macroarea,
+  latitude          = EXCLUDED.latitude,
+  longitude         = EXCLUDED.longitude,
+  status            = EXCLUDED.status,
+  glottolog_version = EXCLUDED.glottolog_version,
+  source            = EXCLUDED.source,
+  source_version    = EXCLUDED.source_version,
+  imported_at       = EXCLUDED.imported_at
+WHERE oikumenea.language_languoids.source_version IS DISTINCT FROM EXCLUDED.source_version
+RETURNING code, (xmax = 0) AS inserted
+`
+
+type BulkUpsertLanguoidsParams struct {
+	SourceVersion string
+	Source        string
+	ImportedAt    pgtype.Timestamptz
+	Codes         []string
+	Levels        []string
+	Names         []string
+	Iso6393s      []string
+	Macroareas    []string
+	Latitudes     []string
+	Longitudes    []string
+	Statuses      []string
+}
+
+type BulkUpsertLanguoidsRow struct {
+	Code     string
+	Inserted bool
+}
+
+// language-scheme + language-scripts import upserts (D-Languages, M18). The Glottolog languoid forest
+// and the CLDR language→writing-system links arrive over POST /import/{objectType} and are upserted
+// code-keyed, idempotently, and non-destructively. Languoids are keyed on source_version (a re-import
+// with the same Glottolog edition skips); parent + country natural keys resolve to RIDs in SQL.
+// Set-based chunk merge (R-05): one INSERT … SELECT over the chunk's parallel arrays replaces the
+// per-record loop. Insert absent glottocodes, update rows whose stored source_version differs from
+// the incoming edition, and leave the rest untouched — never deletes. parent_id is deliberately NOT
+// written here (Glottolog families nest arbitrarily deep, so a parent may sit in the same chunk):
+// BulkSetLanguoidParents resolves it in a second pass over the rows this merge reports as
+// created/updated. Latitude/longitude cross as text (” = NULL) so one array can carry absent values.
+func (q *Queries) BulkUpsertLanguoids(ctx context.Context, arg BulkUpsertLanguoidsParams) ([]BulkUpsertLanguoidsRow, error) {
+	rows, err := q.db.Query(ctx, bulkUpsertLanguoids,
+		arg.SourceVersion,
+		arg.Source,
+		arg.ImportedAt,
+		arg.Codes,
+		arg.Levels,
+		arg.Names,
+		arg.Iso6393s,
+		arg.Macroareas,
+		arg.Latitudes,
+		arg.Longitudes,
+		arg.Statuses,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BulkUpsertLanguoidsRow
+	for rows.Next() {
+		var i BulkUpsertLanguoidsRow
+		if err := rows.Scan(&i.Code, &i.Inserted); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const clearLanguoidClosure = `-- name: ClearLanguoidClosure :exec
 DELETE FROM oikumenea.language_languoid_closure
 `
@@ -21,16 +266,6 @@ DELETE FROM oikumenea.language_languoid_closure
 // import transaction, so the clear+rebuild stays atomic.
 func (q *Queries) ClearLanguoidClosure(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, clearLanguoidClosure)
-	return err
-}
-
-const deleteLanguoidCountries = `-- name: DeleteLanguoidCountries :exec
-DELETE FROM oikumenea.language_languoid_countries
-WHERE languoid_id = (SELECT id FROM oikumenea.language_languoids WHERE code = $1)
-`
-
-func (q *Queries) DeleteLanguoidCountries(ctx context.Context, code string) error {
-	_, err := q.db.Exec(ctx, deleteLanguoidCountries, code)
 	return err
 }
 
@@ -49,22 +284,6 @@ func (q *Queries) GetLanguageWritingSystemPrimary(ctx context.Context, arg GetLa
 	var is_primary bool
 	err := row.Scan(&is_primary)
 	return is_primary, err
-}
-
-const getLanguoidVersion = `-- name: GetLanguoidVersion :one
-
-SELECT source_version FROM oikumenea.language_languoids WHERE code = $1
-`
-
-// language-scheme + language-scripts import upserts (D-Languages, M18). The Glottolog languoid forest
-// and the CLDR language→writing-system links arrive over POST /import/{objectType} and are upserted
-// code-keyed, idempotently, and non-destructively. Languoids are keyed on source_version (a re-import
-// with the same Glottolog edition skips); parent + country natural keys resolve to RIDs in SQL.
-func (q *Queries) GetLanguoidVersion(ctx context.Context, code string) (pgtype.Text, error) {
-	row := q.db.QueryRow(ctx, getLanguoidVersion, code)
-	var source_version pgtype.Text
-	err := row.Scan(&source_version)
-	return source_version, err
 }
 
 const insertLanguageWritingSystem = `-- name: InsertLanguageWritingSystem :exec
@@ -89,84 +308,6 @@ func (q *Queries) InsertLanguageWritingSystem(ctx context.Context, arg InsertLan
 		arg.IsPrimary,
 		arg.Source,
 		arg.SourceVersion,
-		arg.ImportedAt,
-	)
-	return err
-}
-
-const insertLanguoidCountry = `-- name: InsertLanguoidCountry :exec
-INSERT INTO oikumenea.language_languoid_countries (languoid_id, country_id)
-SELECT l.id, c.id
-FROM oikumenea.language_languoids l, oikumenea.geo_countries c
-WHERE l.code = $1::text AND c.code = $2::text
-ON CONFLICT (languoid_id, country_id) DO NOTHING
-`
-
-type InsertLanguoidCountryParams struct {
-	Code        string
-	CountryCode string
-}
-
-// Insert one languoid↔country tie, resolving both natural keys to RIDs. A country code that does not
-// resolve yields no row (the SELECT is empty) — the tie is silently dropped rather than failing.
-func (q *Queries) InsertLanguoidCountry(ctx context.Context, arg InsertLanguoidCountryParams) error {
-	_, err := q.db.Exec(ctx, insertLanguoidCountry, arg.Code, arg.CountryCode)
-	return err
-}
-
-const insertLanguoidImport = `-- name: InsertLanguoidImport :exec
-INSERT INTO oikumenea.language_languoids (
-  code, level, name, parent_id, iso639_3, macroarea, latitude, longitude, status,
-  glottolog_version, source, source_version, imported_at, origin)
-SELECT $1::text,
-       $2::text,
-       $3::text,
-       CASE WHEN NULLIF($4::text, '') IS NULL THEN NULL
-            ELSE COALESCE((SELECT p.id FROM oikumenea.language_languoids p WHERE p.code = $4::text),
-                          '00000000-0000-0000-0000-000000000000'::uuid) END,
-       NULLIF($5::text, ''),
-       NULLIF($6::text, ''),
-       $7::double precision,
-       $8::double precision,
-       $9::text,
-       NULLIF($10::text, ''),
-       $11::text,
-       $10::text,
-       $12::timestamptz,
-       'seeded'::text
-`
-
-type InsertLanguoidImportParams struct {
-	Code          string
-	Level         string
-	Name          string
-	ParentCode    string
-	Iso6393       string
-	Macroarea     string
-	Latitude      pgtype.Float8
-	Longitude     pgtype.Float8
-	Status        string
-	SourceVersion string
-	Source        string
-	ImportedAt    pgtype.Timestamptz
-}
-
-// Resolve the parent glottocode to its RID; a non-empty parent that does not resolve falls back to a
-// sentinel uuid so the parent_id FK fails loudly (RESTRICT) rather than silently NULLing a real but
-// not-yet-loaded parent (records must arrive parent-first).
-func (q *Queries) InsertLanguoidImport(ctx context.Context, arg InsertLanguoidImportParams) error {
-	_, err := q.db.Exec(ctx, insertLanguoidImport,
-		arg.Code,
-		arg.Level,
-		arg.Name,
-		arg.ParentCode,
-		arg.Iso6393,
-		arg.Macroarea,
-		arg.Latitude,
-		arg.Longitude,
-		arg.Status,
-		arg.SourceVersion,
-		arg.Source,
 		arg.ImportedAt,
 	)
 	return err
@@ -274,60 +415,6 @@ func (q *Queries) UpdateLanguageWritingSystem(ctx context.Context, arg UpdateLan
 		arg.ImportedAt,
 		arg.LanguoidID,
 		arg.WritingSystemID,
-	)
-	return err
-}
-
-const updateLanguoidImport = `-- name: UpdateLanguoidImport :exec
-
-UPDATE oikumenea.language_languoids SET
-  level             = $1::text,
-  name              = $2::text,
-  parent_id         = CASE WHEN NULLIF($3::text, '') IS NULL THEN NULL
-                           ELSE COALESCE((SELECT p.id FROM oikumenea.language_languoids p WHERE p.code = $3::text),
-                                         '00000000-0000-0000-0000-000000000000'::uuid) END,
-  iso639_3          = NULLIF($4::text, ''),
-  macroarea         = NULLIF($5::text, ''),
-  latitude          = $6::double precision,
-  longitude         = $7::double precision,
-  status            = $8::text,
-  glottolog_version = NULLIF($9::text, ''),
-  source            = $10::text,
-  source_version    = $9::text,
-  imported_at       = $11::timestamptz
-WHERE code = $12::text
-`
-
-type UpdateLanguoidImportParams struct {
-	Level         string
-	Name          string
-	ParentCode    string
-	Iso6393       string
-	Macroarea     string
-	Latitude      pgtype.Float8
-	Longitude     pgtype.Float8
-	Status        string
-	SourceVersion string
-	Source        string
-	ImportedAt    pgtype.Timestamptz
-	Code          string
-}
-
-// import-path rows are pinax seeded-owned (D-Pinax, M45)
-func (q *Queries) UpdateLanguoidImport(ctx context.Context, arg UpdateLanguoidImportParams) error {
-	_, err := q.db.Exec(ctx, updateLanguoidImport,
-		arg.Level,
-		arg.Name,
-		arg.ParentCode,
-		arg.Iso6393,
-		arg.Macroarea,
-		arg.Latitude,
-		arg.Longitude,
-		arg.Status,
-		arg.SourceVersion,
-		arg.Source,
-		arg.ImportedAt,
-		arg.Code,
 	)
 	return err
 }

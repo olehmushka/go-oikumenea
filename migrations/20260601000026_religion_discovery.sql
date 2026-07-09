@@ -278,18 +278,14 @@ COMMENT ON COLUMN oikumenea.religion_aliases.alias_text IS 'pii:none';
 ALTER TABLE oikumenea.religion_sites ENABLE ROW LEVEL SECURITY;
 ALTER TABLE oikumenea.religion_sites FORCE ROW LEVEL SECURITY;
 CREATE POLICY religion_sites_reach ON oikumenea.religion_sites
-  USING (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR org_unit_id = ANY (string_to_array(nullif(current_setting('app.readable_units', true), ''), ',')::uuid[]))
-  WITH CHECK (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR org_unit_id = ANY (string_to_array(nullif(current_setting('app.writable_units', true), ''), ',')::uuid[]));
+  USING (oikumenea.authz_unit_in_reach(org_unit_id, false))
+  WITH CHECK (oikumenea.authz_unit_in_reach(org_unit_id, true));
 
 ALTER TABLE oikumenea.religion_aliases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE oikumenea.religion_aliases FORCE ROW LEVEL SECURITY;
 CREATE POLICY religion_aliases_reach ON oikumenea.religion_aliases
-  USING (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR unit_id = ANY (string_to_array(nullif(current_setting('app.readable_units', true), ''), ',')::uuid[]))
-  WITH CHECK (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
-         OR unit_id = ANY (string_to_array(nullif(current_setting('app.writable_units', true), ''), ',')::uuid[]));
+  USING (oikumenea.authz_unit_in_reach(unit_id, false))
+  WITH CHECK (oikumenea.authz_unit_in_reach(unit_id, true));
 
 ALTER TABLE oikumenea.religion_service_schedules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE oikumenea.religion_service_schedules FORCE ROW LEVEL SECURITY;
@@ -297,11 +293,11 @@ CREATE POLICY religion_service_schedules_reach ON oikumenea.religion_service_sch
   USING (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
          OR EXISTS (SELECT 1 FROM oikumenea.religion_sites s
                     WHERE s.id = site_id
-                      AND s.org_unit_id = ANY (string_to_array(nullif(current_setting('app.readable_units', true), ''), ',')::uuid[])))
+                      AND oikumenea.authz_unit_in_reach(s.org_unit_id, false)))
   WITH CHECK (coalesce(current_setting('app.is_instance_admin', true), '') = 'true'
          OR EXISTS (SELECT 1 FROM oikumenea.religion_sites s
                     WHERE s.id = site_id
-                      AND s.org_unit_id = ANY (string_to_array(nullif(current_setting('app.writable_units', true), ''), ',')::uuid[])));
+                      AND oikumenea.authz_unit_in_reach(s.org_unit_id, true)));
 
 -- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
 UPDATE oikumenea.schema_version SET revision = '0026_religion_discovery', applied_at = now() WHERE singleton;

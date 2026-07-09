@@ -26,11 +26,33 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/company/application"
 	"github.com/olegamysk/go-oikumenea/internal/company/domain"
 	personadapters "github.com/olegamysk/go-oikumenea/internal/person/adapters"
+	personevents "github.com/olegamysk/go-oikumenea/internal/person/events"
 	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
 	tenantadapters "github.com/olegamysk/go-oikumenea/internal/tenant/adapters"
 	tenantapp "github.com/olegamysk/go-oikumenea/internal/tenant/application"
 	tenantdomain "github.com/olegamysk/go-oikumenea/internal/tenant/domain"
+	"github.com/olegamysk/go-oikumenea/pkg/events"
 )
+
+// firePersonPurge drives this module's PersonPurged erase subscription — the event path that replaced
+// person's inline cross-module purge deletes (D-PersonModuleSplit, review-2026-07 R-09) — in one
+// committed tx, so the purge-erasure tests exercise the real flow rather than the removed inline deletes.
+func firePersonPurge(t *testing.T, ctx context.Context, pool *pgxpool.Pool, svc *application.Service, personID string) {
+	t.Helper()
+	bus := events.NewBus()
+	svc.SubscribePersonPurge(bus)
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin purge tx: %v", err)
+	}
+	defer tx.Rollback(ctx)
+	if err := bus.Publish(ctx, tx, personevents.PersonPurged{ID: personID}); err != nil {
+		t.Fatalf("publish PersonPurged: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit purge tx: %v", err)
+	}
+}
 
 const defaultTestDSN = "postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable"
 
@@ -298,6 +320,10 @@ func TestCompanyVertical(t *testing.T) {
 	if _, err := personadapters.NewRepository(pool).Purge(ctx, ubo); err != nil {
 		t.Fatalf("purge ubo: %v", err)
 	}
+	// company erases its own person-link rows via PersonPurged (D-PersonModuleSplit)
+	firePersonPurge(t, ctx, pool, svc, ceo)
+	firePersonPurge(t, ctx, pool, svc, founder)
+	firePersonPurge(t, ctx, pool, svc, ubo)
 	if n := countRows(t, pool, "SELECT count(*) FROM oikumenea.company_appointments WHERE person_id = $1", ceo); n != 0 {
 		t.Fatalf("expected ceo appointment erased on purge, got %d", n)
 	}

@@ -47,11 +47,17 @@ layers.
   application services control transaction boundaries.
 - sqlc-generated query code lives per-module under `adapters/`; platform provides the pool and
   the `pgx.Tx` plumbing, not the queries.
-- **RLS GUC seam (D-RLSDefenseInDepth):** the transaction helper sets the per-transaction session
-  GUCs from the request's PDP context at txn begin — `SET LOCAL app.person_id`,
-  `app.is_instance_admin`, `app.readable_units`, `app.writable_units` (the PDP read/write reach
-  from [authorization](authorization.md)). This feeds the RLS backstop; the application DB role is
-  provisioned **without `BYPASSRLS`**.
+- **RLS GUC seam (D-RLSDefenseInDepth / D-RLSLiveReach):** per authenticated request the
+  authenticator installs a **lazy** RLS-scoped connection holder (`db.WithLazyConn`, R-03): the
+  connection is pinned and the two O(1) GUCs — `app.person_id` + `app.is_instance_admin` — are set
+  in **one** `set_config` round trip only when a handler first touches an RLS-consuming module
+  (`db.RequestQuerier`/`db.RequestDBTX`), and released after the response iff acquired. The RLS
+  policies compute reach live from those GUCs (`oikumenea.authz_unit_in_reach`); no unit-list GUC
+  exists. System paths (`db.RunAsSystem`) still pin eagerly with the admin flag. The application
+  DB role is provisioned **without `BYPASSRLS`**.
+- **Query-count tracer (M46 measurement harness):** every pool built by `db.NewPool` carries a
+  `pgx.QueryTracer` that is a no-op unless a test attaches a counter via `db.WithQueryCounter` —
+  integration tests assert per-request statement budgets with it (`db.AssertQueryCount`).
 
 ### Schema bootstrap (first Atlas migration)
 
@@ -174,9 +180,17 @@ Cross-cutting primitives with **no domain logic**:
 - `pkg/id` — UUIDv7 helpers (mirrors the SQL `uuid_v7()`),
 - `pkg/errors` — werror conventions + Conjure error mapping helpers,
 - `pkg/pagination` — opaque page-token encode/decode,
-- `pkg/events` — the in-process event bus + outbox seam; for a mutation, subscribers run
-  **synchronously within the originating transaction** (so e.g. order auto-apply effects share the
-  issue txn — D-OrderApply),
+- `pkg/events` — the domain-event seam, **two classes** (D-EventOutbox; patterns.md *Domain events:
+  atomic vs. notify*): **`atomic`** (`Bus`) subscribers run **synchronously within the originating
+  transaction** (so e.g. order auto-apply effects share the issue txn — D-OrderApply), the default and
+  the only class in use today; **`notify`** (`OutboxWriter` → the `oikumenea.platform_outbox` table,
+  migration `0036`) enqueues on the write txn and is delivered **after commit, at least once** by the
+  `internal/platform/outbox` dispatcher (below). The `Bus` is **sealed** after boot — a later `Subscribe`
+  panics (R-10),
+- `internal/platform/outbox` — the outbox **dispatcher**: polls `platform_outbox`, claims rows
+  `FOR UPDATE SKIP LOCKED` (replica-safe, mirrors the hermenea worker), delivers to registered `notify`
+  handlers, retries with backoff, dead-letters past `max_attempts`; started in `main.go`. No `notify`
+  producers exist yet — a live-but-empty proven seam (R-10 / D-EventOutbox),
 - `pkg/locale` — ISO 639-3 validation + default-locale fallback helpers (used by
   [localization](localization.md) and label-bearing modules),
 - `pkg/crypto` — envelope wrap/unwrap behind the `KeyProvider` seam, blind-index HMAC, DEK cache
@@ -199,7 +213,7 @@ Platform also hosts the **reference-data import endpoint** the [hermenea](hermen
 
 | Op | Intent | Perm |
 |---|---|---|
-| `POST /import/{objectType}` | Idempotent, **non-destructive, code-keyed** upsert of a **canonical envelope** into the target catalog, in one transaction, audited as a `system` actor; stamps `(source, source_version, imported_at)` provenance on each row | `import.manage` (instance) |
+| `POST /import/{objectType}` | Idempotent, **non-destructive, code-keyed** upsert of a **canonical envelope** into the target catalog, in one transaction, audited as a `system` actor; stamps `(source, source_version, imported_at)` provenance on each row. A large dataset arrives as a **chunked run** (optional `runId`/`seq`/`isLast` envelope fields, R‑05/M49): one transaction per ~5k-record chunk, batch finalizers on the `isLast` chunk, the high-volume object-types applying each chunk as one set-based UNNEST merge; the server stays stateless per chunk (replay-safe) | `import.manage` (instance) |
 
 It runs over an **upsert registry** (mirrors `pkg/events.Bus`): each importable object-type registers a
 handler at composition time — `geo-countries` is the first (M16). Authorization uses the
@@ -264,9 +278,11 @@ palette). The same `PlatformCatalogService` exposes it:
 
 ## Open seams / future
 
-- The `pkg/events` bus is in-process (subscribers run in the originating transaction) with an outbox
-  seam; extracting a module later turns it into a real broker without domain changes
-  ([overview.md](../architecture/overview.md), DS-26).
+- The `pkg/events` bus is in-process (`atomic` subscribers run in the originating transaction); the
+  **`notify` transactional outbox** now exists (D-EventOutbox / R-10 — `platform_outbox` + dispatcher)
+  but has **no producers yet** (every event is `atomic` today). Extracting a module later turns the seam
+  into a real broker without domain changes ([overview.md](../architecture/overview.md), DS-26). Outbox
+  **retention** (pruning dispatched/dead rows) is an operator concern, still an open seam.
 - The background **job/worker** runtime moved **out of process** into the [hermenea](hermenea.md)
   companion service (**D-Hermenea supersedes D-Worker**): scheduled syncs, the job queue, and the
   `worker_jobs` ledger live in hermenea's own DB, not in oikumenea. Other DS-25 beneficiaries

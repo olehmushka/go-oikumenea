@@ -60,11 +60,15 @@ crypto:
     kek: "bG9jYWwtZGV2LWluc2VjdXJlLWtlay1jaGFuZ2UtbWU="
 
 # Import-control proxy to the hermenea companion (D-Hermenea): oikumenea forwards UI-triggered
-# /hermenea/v1/* calls to BaseURL with the OIKUMENEA_HERMENEA_TOKEN env secret, gated on import.manage.
-# insecure-skip-verify accepts hermenea's self-signed local-dev cert; empty base-url disables the proxy.
+# /hermenea/v1/* calls to base-url, gated on import.manage. insecure-skip-verify accepts hermenea's
+# self-signed local-dev cert; empty base-url disables the proxy. The two directional shared secrets are
+# ECV-encryptable here (review R-16); each still honours its env override for the cross-service compose
+# contract — outbound-token <- OIKUMENEA_HERMENEA_TOKEN, inbound-token <- HERMENEA_OIKUMENEA_TOKEN.
 hermenea:
   base-url: "https://localhost:9443"
   insecure-skip-verify: true
+  # outbound-token: "..."   # oikumenea -> hermenea; overridden by OIKUMENEA_HERMENEA_TOKEN when set
+  # inbound-token: "..."    # hermenea -> oikumenea; overridden by HERMENEA_OIKUMENEA_TOKEN when set
 
 # First instance admin seeded at first boot (D-Bootstrap), bound to the LOCAL KEYCLOAK identity so the
 # imported realm user (admin/admin) is the instance admin from first boot. `subject` is that user's

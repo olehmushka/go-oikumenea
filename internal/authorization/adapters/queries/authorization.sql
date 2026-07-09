@@ -158,3 +158,48 @@ SELECT EXISTS(
 SELECT EXISTS(
   SELECT 1 FROM oikumenea.authz_instance_admins WHERE revoked_at IS NULL
 ) AS has_admin;
+
+-- ============================ revocation epoch (D-AuthzGrantCache) ============================
+
+-- name: ReadAuthzEpoch :one
+-- One single-row read: the grant cache validates a stale entry against this counter instead of
+-- re-running the grants join (review-2026-07 R-01.2).
+SELECT epoch FROM oikumenea.authz_epoch WHERE singleton;
+
+-- name: BumpAuthzEpoch :exec
+-- Called INSIDE every authority-mutating transaction so a grant/revoke/role edit invalidates every
+-- process's cache exactly (the bump commits atomically with the mutation).
+UPDATE oikumenea.authz_epoch SET epoch = epoch + 1 WHERE singleton;
+
+-- ============================ reach probe (shadow gate, review-2026-07 R-02.1) ============================
+
+-- name: ReadableUnitsForSubjectAmong :many
+-- Batch reach probe for the shadow-visibility gate (FilterVisibleUnits): which of the candidate
+-- units does the subject's '*.read' reach? Same PARITY CONTRACT as membership's
+-- VisiblePersonIDsForSubject (mirrors domain ReachSet — active unexpired assignment, live role, any
+-- '*.read' permission; unit scope → target only; subtree scope → target + non-deleted descendants
+-- over an authority-bearing, non-deleted graph). Cross-module closure/graph join precedent:
+-- ActiveGrantsForSubject above.
+SELECT cand.unit_id::uuid AS unit_id
+FROM unnest(@unit_ids::uuid[]) AS cand(unit_id)
+WHERE EXISTS (
+  SELECT 1
+  FROM oikumenea.authz_role_assignments a
+  JOIN oikumenea.authz_roles r ON r.id = a.role_id AND r.deleted_at IS NULL
+  WHERE a.subject_person_id = @subject_person_id
+    AND a.revoked_at IS NULL
+    AND (a.expires_at IS NULL OR a.expires_at > now())
+    AND EXISTS (SELECT 1 FROM oikumenea.authz_role_permissions rp
+                WHERE rp.role_id = a.role_id AND rp.permission_code LIKE '%.read')
+    AND ((a.scope = 'unit' AND a.target_unit_id = cand.unit_id)
+      OR (a.scope = 'subtree'
+          AND EXISTS (SELECT 1 FROM oikumenea.tenant_graphs g
+                      WHERE g.id = a.graph_id AND g.is_authority_bearing AND g.deleted_at IS NULL)
+          AND (a.target_unit_id = cand.unit_id
+            OR EXISTS (SELECT 1
+                       FROM oikumenea.tenant_unit_closure c
+                       JOIN oikumenea.tenant_units u ON u.id = c.descendant_id AND u.deleted_at IS NULL
+                       WHERE c.graph_id = a.graph_id
+                         AND c.ancestor_id = a.target_unit_id
+                         AND c.descendant_id = cand.unit_id))))
+);

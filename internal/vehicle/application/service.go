@@ -269,22 +269,31 @@ func (s *Service) ListPersonVehicles(ctx context.Context, personID string) ([]do
 }
 
 // ErasePersonRegistrations is the person-purge erasure path (D-Vehicles): it soft-deletes a person's
-// owned registrations. The PersonPurged event subscriber that triggers it is deferred (a shared open
-// seam with the document/religion modules), so it is exercised directly today.
+// owned registrations. Triggered by the PersonPurged event (SubscribePersonPurge); also exercised directly.
 func (s *Service) ErasePersonRegistrations(ctx context.Context, personID string) (int64, error) {
 	var n int64
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		v, err := s.newRepo(tx).ErasePersonRegistrations(ctx, personID)
-		if err != nil {
-			return err
-		}
+		v, err := s.erasePersonRegistrationsTx(ctx, tx, personID)
 		n = v
-		if n > 0 {
-			return s.record(ctx, tx, "vehicle.registrations.erase", personID, map[string]int64{"erased": n})
-		}
-		return nil
+		return err
 	})
 	return n, err
+}
+
+// erasePersonRegistrationsTx is the body of the person-purge erasure, run in a caller-supplied transaction
+// so it executes either standalone (ErasePersonRegistrations) or inside the person-purge tx as the
+// PersonPurged subscriber (SubscribePersonPurge). The audit row is written only when something was erased.
+func (s *Service) erasePersonRegistrationsTx(ctx context.Context, tx pgx.Tx, personID string) (int64, error) {
+	n, err := s.newRepo(tx).ErasePersonRegistrations(ctx, personID)
+	if err != nil {
+		return 0, err
+	}
+	if n > 0 {
+		if err := s.record(ctx, tx, "vehicle.registrations.erase", personID, map[string]int64{"erased": n}); err != nil {
+			return 0, err
+		}
+	}
+	return n, nil
 }
 
 // ============================ brand manufacturers ============================
@@ -361,10 +370,7 @@ func clampPageSize(n int) int {
 }
 
 func (s *Service) querier(ctx context.Context) db.Querier {
-	if c, ok := db.ConnFromContext(ctx); ok {
-		return c
-	}
-	return s.pool
+	return db.RequestQuerier(ctx, s.pool)
 }
 
 func (s *Service) inTx(ctx context.Context, fn func(pgx.Tx) error) error {

@@ -33,15 +33,13 @@ func NewService(pool db.DBTX, newRepo RepositoryFactory, defaultSize func() int)
 	return &Service{pool: pool, newRepo: newRepo, defaultSize: defaultSize}
 }
 
-// reader returns the request-pinned RLS connection if one is in context (db.AcquireScoped/WithConn),
-// else the bare pool. audit_log carries a SELECT-only RLS policy keyed on unit_id (the read backstop —
+// reader returns the request's RLS-scoped command surface: an explicitly pinned connection, else
+// the request's lazily-pinned connection (db.WithLazyConn — acquired on first use, R-03), else the
+// bare pool. audit_log carries a SELECT-only RLS policy keyed on unit_id (the read backstop —
 // D-RLSDefenseInDepth), so reads must run on the GUC-bearing connection; inserts are unrestricted
 // (Record uses the caller's transaction, which for request-driven writes is already the pinned conn).
 func (s *Service) reader(ctx context.Context) db.DBTX {
-	if c, ok := db.ConnFromContext(ctx); ok {
-		return c
-	}
-	return s.pool
+	return db.RequestDBTX(ctx, s.pool)
 }
 
 // Record persists one audit entry on the caller-supplied command surface — typically the open
@@ -58,6 +56,13 @@ func (s *Service) Record(ctx context.Context, conn db.DBTX, e domain.Entry) erro
 // Get reads one entry by its Action RID, returning domain.ErrNotFound when absent.
 func (s *Service) Get(ctx context.Context, id string) (domain.Entry, error) {
 	return s.newRepo(s.reader(ctx)).Get(ctx, id)
+}
+
+// EnsureCurrentPartitions rolls the monthly range-partition window forward (review-2026-07 R-07):
+// idempotently create the current + next month's partition. Called at boot (advisory-locked in the
+// composition root) so live inserts always land in a real monthly partition. Runs on the pool.
+func (s *Service) EnsureCurrentPartitions(ctx context.Context) error {
+	return s.newRepo(s.pool).EnsureCurrentPartitions(ctx)
 }
 
 // QueryParams are the read filters plus pagination request. Pointer fields are optional (nil

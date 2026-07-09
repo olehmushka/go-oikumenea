@@ -32,6 +32,10 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/person/application"
 	"github.com/olegamysk/go-oikumenea/internal/person/domain"
 	personevents "github.com/olegamysk/go-oikumenea/internal/person/events"
+	profileadapters "github.com/olegamysk/go-oikumenea/internal/personprofile/adapters"
+	profileapp "github.com/olegamysk/go-oikumenea/internal/personprofile/application"
+	sensitiveadapters "github.com/olegamysk/go-oikumenea/internal/personsensitive/adapters"
+	sensitiveapp "github.com/olegamysk/go-oikumenea/internal/personsensitive/application"
 	platformcatalog "github.com/olegamysk/go-oikumenea/internal/platform/catalog"
 	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/pkg/crypto"
@@ -54,8 +58,9 @@ func newPool(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-// newService builds the person application service directly (bypassing Register) with a fixed purge
-// grace window in hours.
+// newService builds the person CORE application service directly (bypassing Register) with a fixed purge
+// grace window in hours. (The envelope-encrypted / crypto surface moved to personsensitive under R-09 —
+// use newSensitive for tests that exercise physical identity, ethnicity, overlays, watchlist or party.)
 func newService(t *testing.T, graceHours int) (*application.Service, *pgxpool.Pool) {
 	t.Helper()
 	pool := newPool(t)
@@ -63,10 +68,38 @@ func newService(t *testing.T, graceHours int) (*application.Service, *pgxpool.Po
 		return auditadapters.NewRepository(conn)
 	}, func() int { return 50 })
 	repoFor := func(conn pdb.DBTX) domain.Repository { return adapters.NewRepository(conn) }
-	svc := application.NewService(pool, repoFor, audit, func() int { return graceHours }, testCipher(t))
-	// D-Color: wire the platform color catalog so eye/hair hard-FK palette checks run in tests.
-	svc.SetColorLookup(platformcatalog.NewColorService(pool, audit))
+	svc := application.NewService(pool, repoFor, audit, func() int { return graceHours })
 	return svc, pool
+}
+
+// newServices builds the person core service, the personprofile service, AND the personsensitive service
+// over one shared pool/audit, for R-09 split integration tests: create a person via the core svc, then
+// exercise person-owned directory data via the profile svc and physical identity / ethnicity / overlays /
+// watchlist / party membership via the sensitive svc. Unused services are blanked at the call site.
+func newServices(t *testing.T, graceHours int) (*application.Service, *profileapp.Service, *sensitiveapp.Service, *pgxpool.Pool) {
+	t.Helper()
+	pool := newPool(t)
+	audit := auditapp.NewService(pool, func(conn pdb.DBTX) auditdomain.Repository {
+		return auditadapters.NewRepository(conn)
+	}, func() int { return 50 })
+	repoFor := func(conn pdb.DBTX) domain.Repository { return adapters.NewRepository(conn) }
+	profRepoFor := func(conn pdb.DBTX) domain.ProfileRepository { return profileadapters.NewRepository(conn) }
+	sensRepoFor := func(conn pdb.DBTX) domain.SensitiveRepository { return sensitiveadapters.NewRepository(conn) }
+	svc := application.NewService(pool, repoFor, audit, func() int { return graceHours })
+	prof := profileapp.NewService(pool, profRepoFor, audit)
+	sens := sensitiveapp.NewService(pool, sensRepoFor, audit, testCipher(t))
+	// D-Color: wire the platform color catalog so eye/hair hard-FK palette checks run in tests.
+	sens.SetColorLookup(platformcatalog.NewColorService(pool, audit))
+	// PEP snapshot seam (R-09 split): watchlist screening reads the flag from the profile service.
+	sens.SetPEPStatusReader(prof)
+	// R-09 split: PurgePerson publishes PersonPurged and the profile/sensitive modules erase their own
+	// rows in the purge transaction. Auto-wire that bus here so purge tests exercise real erasure without
+	// per-test boilerplate (a test that needs its own bus just calls SubscribeOrderEvents again).
+	purgeBus := events.NewBus()
+	svc.SubscribeOrderEvents(purgeBus)
+	prof.SubscribePersonPurge(purgeBus)
+	sens.SubscribePersonPurge(purgeBus)
+	return svc, prof, sens, pool
 }
 
 // testCipher builds a local-dev envelope cipher for the pii:special declared ethnicity (D-PhysicalIdentity).
@@ -275,17 +308,17 @@ func TestRankAssignment(t *testing.T) {
 // TestCitizenships holds several citizenships with one active per country and a single primary.
 func TestCitizenships(t *testing.T) {
 	ctx := context.Background()
-	svc, pool := newService(t, 720)
+	svc, prof, _, pool := newServices(t, 720)
 	ua, pl := countryRID(t, pool, "UA"), countryRID(t, pool, "PL")
 	p := newPerson(t, svc, "Multi National")
 
-	if _, err := svc.UpsertCitizenship(ctx, domain.Citizenship{PersonID: p.ID, Country: ua, Basis: "birth", IsPrimary: true}); err != nil {
+	if _, err := prof.UpsertCitizenship(ctx, domain.Citizenship{PersonID: p.ID, Country: ua, Basis: "birth", IsPrimary: true}); err != nil {
 		t.Fatalf("add UA: %v", err)
 	}
-	if _, err := svc.UpsertCitizenship(ctx, domain.Citizenship{PersonID: p.ID, Country: pl, Basis: "naturalization", IsPrimary: true}); err != nil {
+	if _, err := prof.UpsertCitizenship(ctx, domain.Citizenship{PersonID: p.ID, Country: pl, Basis: "naturalization", IsPrimary: true}); err != nil {
 		t.Fatalf("add PL: %v", err)
 	}
-	cs, err := svc.ListCitizenships(ctx, p.ID)
+	cs, err := prof.ListCitizenships(ctx, p.ID)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -302,21 +335,21 @@ func TestCitizenships(t *testing.T) {
 		t.Fatalf("primary citizenships = %d, want exactly 1", primaries)
 	}
 	// re-upsert UA: still one active UA row (no duplicate).
-	if _, err := svc.UpsertCitizenship(ctx, domain.Citizenship{PersonID: p.ID, Country: ua, Basis: "birth"}); err != nil {
+	if _, err := prof.UpsertCitizenship(ctx, domain.Citizenship{PersonID: p.ID, Country: ua, Basis: "birth"}); err != nil {
 		t.Fatalf("re-upsert UA: %v", err)
 	}
-	if cs, _ := svc.ListCitizenships(ctx, p.ID); len(cs) != 2 {
+	if cs, _ := prof.ListCitizenships(ctx, p.ID); len(cs) != 2 {
 		t.Fatalf("after re-upsert, citizenships = %d, want 2", len(cs))
 	}
 	// unknown country.
-	if _, err := svc.UpsertCitizenship(ctx, domain.Citizenship{PersonID: p.ID, Country: unknownCountryRID(t, pool), Basis: "other"}); !errors.Is(err, domain.ErrUnknownCountry) {
+	if _, err := prof.UpsertCitizenship(ctx, domain.Citizenship{PersonID: p.ID, Country: unknownCountryRID(t, pool), Basis: "other"}); !errors.Is(err, domain.ErrUnknownCountry) {
 		t.Fatalf("unknown country: want ErrUnknownCountry, got %v", err)
 	}
 	// remove PL.
-	if err := svc.DeleteCitizenship(ctx, p.ID, pl); err != nil {
+	if err := prof.DeleteCitizenship(ctx, p.ID, pl); err != nil {
 		t.Fatalf("delete PL: %v", err)
 	}
-	if cs, _ := svc.ListCitizenships(ctx, p.ID); len(cs) != 1 {
+	if cs, _ := prof.ListCitizenships(ctx, p.ID); len(cs) != 1 {
 		t.Fatalf("after delete, citizenships = %d, want 1", len(cs))
 	}
 }
@@ -350,23 +383,23 @@ func TestNameVariants(t *testing.T) {
 // TestResidences adds and replaces a residence row, rejecting an unknown country.
 func TestResidences(t *testing.T) {
 	ctx := context.Background()
-	svc, pool := newService(t, 720)
+	svc, prof, _, pool := newServices(t, 720)
 	pl := countryRID(t, pool, "PL")
 	p := newPerson(t, svc, "Resident")
 
-	created, err := svc.UpsertResidence(ctx, domain.Residence{PersonID: p.ID, Country: pl, Region: "Mazowieckie", ValidFrom: "2021-09-01"})
+	created, err := prof.UpsertResidence(ctx, domain.Residence{PersonID: p.ID, Country: pl, Region: "Mazowieckie", ValidFrom: "2021-09-01"})
 	if err != nil {
 		t.Fatalf("add residence: %v", err)
 	}
 	// replace by id.
-	if _, err := svc.UpsertResidence(ctx, domain.Residence{ID: created.ID, PersonID: p.ID, Country: pl, Region: "Krakow", ValidFrom: "2021-09-01", ValidTo: "2023-01-01"}); err != nil {
+	if _, err := prof.UpsertResidence(ctx, domain.Residence{ID: created.ID, PersonID: p.ID, Country: pl, Region: "Krakow", ValidFrom: "2021-09-01", ValidTo: "2023-01-01"}); err != nil {
 		t.Fatalf("replace residence: %v", err)
 	}
-	rs, _ := svc.ListResidences(ctx, p.ID)
+	rs, _ := prof.ListResidences(ctx, p.ID)
 	if len(rs) != 1 || rs[0].Region != "Krakow" || rs[0].ValidTo != "2023-01-01" {
 		t.Fatalf("residences = %+v, want one replaced row", rs)
 	}
-	if _, err := svc.UpsertResidence(ctx, domain.Residence{PersonID: p.ID, Country: unknownCountryRID(t, pool), ValidFrom: "2020-01-01"}); !errors.Is(err, domain.ErrUnknownCountry) {
+	if _, err := prof.UpsertResidence(ctx, domain.Residence{PersonID: p.ID, Country: unknownCountryRID(t, pool), ValidFrom: "2020-01-01"}); !errors.Is(err, domain.ErrUnknownCountry) {
 		t.Fatalf("unknown country: want ErrUnknownCountry, got %v", err)
 	}
 }
@@ -412,7 +445,7 @@ func TestPurgeGate(t *testing.T) {
 	}
 
 	// Zero grace: purge is allowed and erases PII.
-	svcNow, poolNow := newService(t, 0)
+	svcNow, profNow, _, poolNow := newServices(t, 0)
 	created, err := svcNow.CreatePerson(ctx, domain.Person{
 		Code:        code(t, "purge"),
 		Name:        domain.Name{DisplayName: "Erase Me", Given: "Erase", Surname: "Me"},
@@ -423,7 +456,7 @@ func TestPurgeGate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if _, err := svcNow.UpsertCitizenship(ctx, domain.Citizenship{PersonID: created.ID, Country: countryRID(t, poolNow, "UA"), Basis: "birth"}); err != nil {
+	if _, err := profNow.UpsertCitizenship(ctx, domain.Citizenship{PersonID: created.ID, Country: countryRID(t, poolNow, "UA"), Basis: "birth"}); err != nil {
 		t.Fatalf("add citizenship: %v", err)
 	}
 	if _, err := svcNow.DeactivatePerson(ctx, created.ID, "x"); err != nil {
@@ -444,8 +477,8 @@ func TestPurgeGate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tombstone get: %v", err)
 	}
-	if got.Status != domain.StatusPurged || len(got.Citizenships) != 0 {
-		t.Fatalf("tombstone = %+v, want purged with no citizenships", got)
+	if got.Status != domain.StatusPurged {
+		t.Fatalf("tombstone = %+v, want purged", got)
 	}
 	// purge is idempotent.
 	if _, err := svcNow.PurgePerson(ctx, created.ID); err != nil {
@@ -464,12 +497,12 @@ func TestPurgeGate(t *testing.T) {
 // are derived on write, validation rejects bad input, and a purge erases every channel row.
 func TestContactChannels(t *testing.T) {
 	ctx := context.Background()
-	svc, pool := newService(t, 0)
+	svc, prof, _, pool := newServices(t, 0)
 
 	p := newPerson(t, svc, "Contactable Person")
 
 	// Email: provider derived from the domain; primary flag honored.
-	email, err := svc.UpsertEmail(ctx, domain.Email{PersonID: p.ID, TypeCode: "personal", Address: "Person@Gmail.com", IsPrimary: true})
+	email, err := prof.UpsertEmail(ctx, domain.Email{PersonID: p.ID, TypeCode: "personal", Address: "Person@Gmail.com", IsPrimary: true})
 	if err != nil {
 		t.Fatalf("upsert email: %v", err)
 	}
@@ -477,56 +510,66 @@ func TestContactChannels(t *testing.T) {
 		t.Fatalf("email not normalized/derived: %+v", email)
 	}
 	// Duplicate active address is a conflict.
-	if _, err := svc.UpsertEmail(ctx, domain.Email{PersonID: p.ID, TypeCode: "work", Address: "person@gmail.com"}); !errors.Is(err, domain.ErrEmailConflict) {
+	if _, err := prof.UpsertEmail(ctx, domain.Email{PersonID: p.ID, TypeCode: "work", Address: "person@gmail.com"}); !errors.Is(err, domain.ErrEmailConflict) {
 		t.Fatalf("duplicate email: want ErrEmailConflict, got %v", err)
 	}
 	// Unknown type code is rejected (FK).
-	if _, err := svc.UpsertEmail(ctx, domain.Email{PersonID: p.ID, TypeCode: "nope", Address: "x@y.com"}); !errors.Is(err, domain.ErrUnknownContactType) {
+	if _, err := prof.UpsertEmail(ctx, domain.Email{PersonID: p.ID, TypeCode: "nope", Address: "x@y.com"}); !errors.Is(err, domain.ErrUnknownContactType) {
 		t.Fatalf("unknown email type: want ErrUnknownContactType, got %v", err)
 	}
 	// Malformed address is rejected before the DB.
-	if _, err := svc.UpsertEmail(ctx, domain.Email{PersonID: p.ID, TypeCode: "personal", Address: "not-an-email"}); !errors.Is(err, domain.ErrInvalid) {
+	if _, err := prof.UpsertEmail(ctx, domain.Email{PersonID: p.ID, TypeCode: "personal", Address: "not-an-email"}); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("bad email: want ErrInvalid, got %v", err)
 	}
 
 	// Phone: E.164-normalized + country derived.
-	phone, err := svc.UpsertPhone(ctx, domain.Phone{PersonID: p.ID, TypeCode: "mobile", Number: "+380 (44) 123-45-67"})
+	phone, err := prof.UpsertPhone(ctx, domain.Phone{PersonID: p.ID, TypeCode: "mobile", Number: "+380 (44) 123-45-67"})
 	if err != nil {
 		t.Fatalf("upsert phone: %v", err)
 	}
 	if phone.Number != "+380441234567" || phone.Country != countryRID(t, pool, "UA") {
 		t.Fatalf("phone not normalized/derived: %+v", phone)
 	}
-	if _, err := svc.UpsertPhone(ctx, domain.Phone{PersonID: p.ID, TypeCode: "mobile", Number: "garbage"}); !errors.Is(err, domain.ErrUnparseablePhone) {
+	if _, err := prof.UpsertPhone(ctx, domain.Phone{PersonID: p.ID, TypeCode: "mobile", Number: "garbage"}); !errors.Is(err, domain.ErrUnparseablePhone) {
 		t.Fatalf("bad phone: want ErrUnparseablePhone, got %v", err)
 	}
 
 	// Call sign: required value, unique per person among active.
-	if _, err := svc.UpsertCallSign(ctx, domain.CallSign{PersonID: p.ID, CallSign: "Сокіл", IsPrimary: true}); err != nil {
+	if _, err := prof.UpsertCallSign(ctx, domain.CallSign{PersonID: p.ID, CallSign: "Сокіл", IsPrimary: true}); err != nil {
 		t.Fatalf("upsert call sign: %v", err)
 	}
-	if _, err := svc.UpsertCallSign(ctx, domain.CallSign{PersonID: p.ID, CallSign: "Беркут"}); err != nil {
+	if _, err := prof.UpsertCallSign(ctx, domain.CallSign{PersonID: p.ID, CallSign: "Беркут"}); err != nil {
 		t.Fatalf("second distinct call sign: %v", err)
 	}
 	// Duplicate value for the same person is a conflict.
-	if _, err := svc.UpsertCallSign(ctx, domain.CallSign{PersonID: p.ID, CallSign: "Сокіл"}); !errors.Is(err, domain.ErrCallSignConflict) {
+	if _, err := prof.UpsertCallSign(ctx, domain.CallSign{PersonID: p.ID, CallSign: "Сокіл"}); !errors.Is(err, domain.ErrCallSignConflict) {
 		t.Fatalf("duplicate call sign: want ErrCallSignConflict, got %v", err)
 	}
 	// An empty call sign is rejected (NOT NULL).
-	if _, err := svc.UpsertCallSign(ctx, domain.CallSign{PersonID: p.ID, CallSign: ""}); !errors.Is(err, domain.ErrInvalid) {
+	if _, err := prof.UpsertCallSign(ctx, domain.CallSign{PersonID: p.ID, CallSign: ""}); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("empty call sign: want ErrInvalid, got %v", err)
 	}
 
-	// getPerson assembles all three channels.
-	got, err := svc.GetPerson(ctx, p.ID)
+	// The contact channels are personprofile-owned now (R-09); read them via the profile service (the
+	// transport composes them onto GetPerson — exercised by the transport tests).
+	emails, err := prof.ListEmails(ctx, p.ID)
 	if err != nil {
-		t.Fatalf("get: %v", err)
+		t.Fatalf("list emails: %v", err)
 	}
-	if len(got.Emails) != 1 || len(got.Phones) != 1 || len(got.CallSigns) != 2 {
-		t.Fatalf("channels: emails=%d phones=%d callSigns=%d", len(got.Emails), len(got.Phones), len(got.CallSigns))
+	phones, err := prof.ListPhones(ctx, p.ID)
+	if err != nil {
+		t.Fatalf("list phones: %v", err)
+	}
+	callSigns, err := prof.ListCallSigns(ctx, p.ID)
+	if err != nil {
+		t.Fatalf("list call signs: %v", err)
+	}
+	if len(emails) != 1 || len(phones) != 1 || len(callSigns) != 2 {
+		t.Fatalf("channels: emails=%d phones=%d callSigns=%d", len(emails), len(phones), len(callSigns))
 	}
 
-	// Purge erases every channel row, keeping the id tombstone.
+	// Purge erases every channel row, keeping the id tombstone (personprofile erases via PersonPurged,
+	// auto-wired by newServices).
 	if _, err := svc.DeactivatePerson(ctx, p.ID, "x"); err != nil {
 		t.Fatalf("deactivate: %v", err)
 	}
@@ -547,12 +590,12 @@ func TestContactChannels(t *testing.T) {
 // TestContactTypeCatalogs reads the seeded email/phone-type catalogs.
 func TestContactTypeCatalogs(t *testing.T) {
 	ctx := context.Background()
-	svc, _ := newService(t, 720)
-	ets, err := svc.ListEmailTypes(ctx)
+	_, prof, _, _ := newServices(t, 720)
+	ets, err := prof.ListEmailTypes(ctx)
 	if err != nil || len(ets) == 0 {
 		t.Fatalf("list email types: %d err %v", len(ets), err)
 	}
-	pts, err := svc.ListPhoneTypes(ctx)
+	pts, err := prof.ListPhoneTypes(ctx)
 	if err != nil || len(pts) == 0 {
 		t.Fatalf("list phone types: %d err %v", len(pts), err)
 	}
@@ -564,13 +607,13 @@ func TestContactTypeCatalogs(t *testing.T) {
 // breaking the link, and purge erasing all four tables.
 func TestSocialChannels(t *testing.T) {
 	ctx := context.Background()
-	svc, pool := newService(t, 0)
+	svc, prof, _, pool := newServices(t, 0)
 
 	p := newPerson(t, svc, "Reachable Person")
 	other := newPerson(t, svc, "Other Person")
 
 	// The platform catalog is seeded with both categories, including the M13 + 0026 additions.
-	platforms, err := svc.ListPlatforms(ctx)
+	platforms, err := prof.ListPlatforms(ctx)
 	if err != nil || len(platforms) == 0 {
 		t.Fatalf("list platforms: %d err %v", len(platforms), err)
 	}
@@ -585,17 +628,17 @@ func TestSocialChannels(t *testing.T) {
 	}
 
 	// A phone to be reachable on.
-	phone, err := svc.UpsertPhone(ctx, domain.Phone{PersonID: p.ID, TypeCode: "mobile", Number: "+380441234567"})
+	phone, err := prof.UpsertPhone(ctx, domain.Phone{PersonID: p.ID, TypeCode: "mobile", Number: "+380441234567"})
 	if err != nil {
 		t.Fatalf("seed phone: %v", err)
 	}
-	otherPhone, err := svc.UpsertPhone(ctx, domain.Phone{PersonID: other.ID, TypeCode: "mobile", Number: "+380441111111"})
+	otherPhone, err := prof.UpsertPhone(ctx, domain.Phone{PersonID: other.ID, TypeCode: "mobile", Number: "+380441111111"})
 	if err != nil {
 		t.Fatalf("seed other phone: %v", err)
 	}
 
 	// Messenger link over the phone on a messenger platform.
-	link, err := svc.UpsertMessengerLink(ctx, p.ID, domain.MessengerLink{PhoneID: phone.ID, PlatformCode: "telegram", IsPrimary: true})
+	link, err := prof.UpsertMessengerLink(ctx, p.ID, domain.MessengerLink{PhoneID: phone.ID, PlatformCode: "telegram", IsPrimary: true})
 	if err != nil {
 		t.Fatalf("upsert messenger link: %v", err)
 	}
@@ -603,27 +646,27 @@ func TestSocialChannels(t *testing.T) {
 		t.Fatalf("messenger link not stored: %+v", link)
 	}
 	// A non-messenger (social) platform is rejected.
-	if _, err := svc.UpsertMessengerLink(ctx, p.ID, domain.MessengerLink{PhoneID: phone.ID, PlatformCode: "instagram"}); !errors.Is(err, domain.ErrPlatformNotMessenger) {
+	if _, err := prof.UpsertMessengerLink(ctx, p.ID, domain.MessengerLink{PhoneID: phone.ID, PlatformCode: "instagram"}); !errors.Is(err, domain.ErrPlatformNotMessenger) {
 		t.Fatalf("social platform on messenger link: want ErrPlatformNotMessenger, got %v", err)
 	}
 	// An unknown platform is rejected.
-	if _, err := svc.UpsertMessengerLink(ctx, p.ID, domain.MessengerLink{PhoneID: phone.ID, PlatformCode: "nope"}); !errors.Is(err, domain.ErrUnknownPlatform) {
+	if _, err := prof.UpsertMessengerLink(ctx, p.ID, domain.MessengerLink{PhoneID: phone.ID, PlatformCode: "nope"}); !errors.Is(err, domain.ErrUnknownPlatform) {
 		t.Fatalf("unknown platform: want ErrUnknownPlatform, got %v", err)
 	}
 	// A channel held by another person is rejected (holder scope).
-	if _, err := svc.UpsertMessengerLink(ctx, p.ID, domain.MessengerLink{PhoneID: otherPhone.ID, PlatformCode: "signal"}); !errors.Is(err, domain.ErrChannelNotOwned) {
+	if _, err := prof.UpsertMessengerLink(ctx, p.ID, domain.MessengerLink{PhoneID: otherPhone.ID, PlatformCode: "signal"}); !errors.Is(err, domain.ErrChannelNotOwned) {
 		t.Fatalf("not-owned channel: want ErrChannelNotOwned, got %v", err)
 	}
 	// Both / neither channel is invalid (XOR).
-	if _, err := svc.UpsertMessengerLink(ctx, p.ID, domain.MessengerLink{PhoneID: phone.ID, EmailID: "x", PlatformCode: "telegram"}); !errors.Is(err, domain.ErrInvalid) {
+	if _, err := prof.UpsertMessengerLink(ctx, p.ID, domain.MessengerLink{PhoneID: phone.ID, EmailID: "x", PlatformCode: "telegram"}); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("both channels: want ErrInvalid, got %v", err)
 	}
-	if _, err := svc.UpsertMessengerLink(ctx, p.ID, domain.MessengerLink{PlatformCode: "telegram"}); !errors.Is(err, domain.ErrInvalid) {
+	if _, err := prof.UpsertMessengerLink(ctx, p.ID, domain.MessengerLink{PlatformCode: "telegram"}); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("no channel: want ErrInvalid, got %v", err)
 	}
 
 	// Social account with a stable id + sourced/weighted attribution; profile_url derived, confidence defaulted.
-	acct, err := svc.UpsertSocialAccount(ctx, domain.SocialAccount{
+	acct, err := prof.UpsertSocialAccount(ctx, domain.SocialAccount{
 		PersonID: p.ID, PlatformCode: "instagram", PlatformUserID: "17841400000000000",
 		Handle: "@reachable", Source: "self_declared", IsPrimary: true,
 	})
@@ -634,7 +677,7 @@ func TestSocialChannels(t *testing.T) {
 		t.Fatalf("social account not normalized/derived/defaulted: %+v", acct)
 	}
 	// A bad source is rejected before the DB.
-	if _, err := svc.UpsertSocialAccount(ctx, domain.SocialAccount{PersonID: p.ID, PlatformCode: "x", Handle: "h", Source: "bogus"}); !errors.Is(err, domain.ErrInvalid) {
+	if _, err := prof.UpsertSocialAccount(ctx, domain.SocialAccount{PersonID: p.ID, PlatformCode: "x", Handle: "h", Source: "bogus"}); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("bad source: want ErrInvalid, got %v", err)
 	}
 
@@ -644,7 +687,7 @@ func TestSocialChannels(t *testing.T) {
 	}
 
 	// Rename the handle: the old period closes and a new current one opens — the link (id) is unchanged.
-	renamed, err := svc.UpsertSocialAccount(ctx, domain.SocialAccount{
+	renamed, err := prof.UpsertSocialAccount(ctx, domain.SocialAccount{
 		ID: acct.ID, PersonID: p.ID, PlatformCode: "instagram", PlatformUserID: "17841400000000000",
 		Handle: "renamed", Source: "self_declared",
 	})
@@ -660,21 +703,26 @@ func TestSocialChannels(t *testing.T) {
 	if cur := countHandles(t, pool, ctx, acct.ID, true); cur != 1 {
 		t.Fatalf("handle history after rename: current=%d, want 1", cur)
 	}
-	handles, err := svc.ListSocialAccountHandles(ctx, p.ID, acct.ID)
+	handles, err := prof.ListSocialAccountHandles(ctx, p.ID, acct.ID)
 	if err != nil || len(handles) != 2 {
 		t.Fatalf("list handle history: %d err %v", len(handles), err)
 	}
 
-	// getPerson assembles the new channels.
-	got, err := svc.GetPerson(ctx, p.ID)
+	// The social channels are personprofile-owned now (R-09); read them via the profile service.
+	msgLinks, err := prof.ListMessengerLinks(ctx, p.ID)
 	if err != nil {
-		t.Fatalf("get: %v", err)
+		t.Fatalf("list messenger links: %v", err)
 	}
-	if len(got.MessengerLinks) != 1 || len(got.SocialAccounts) != 1 {
-		t.Fatalf("social channels: links=%d accounts=%d", len(got.MessengerLinks), len(got.SocialAccounts))
+	socials, err := prof.ListSocialAccounts(ctx, p.ID)
+	if err != nil {
+		t.Fatalf("list social accounts: %v", err)
+	}
+	if len(msgLinks) != 1 || len(socials) != 1 {
+		t.Fatalf("social channels: links=%d accounts=%d", len(msgLinks), len(socials))
 	}
 
-	// Purge erases all four tables (the phone cascade also removes the link; social account cascades its handles).
+	// Purge erases all four tables (the phone cascade also removes the link; social account cascades its
+	// handles); personprofile erases via PersonPurged (R-09, auto-wired by newServices).
 	if _, err := svc.DeactivatePerson(ctx, p.ID, "x"); err != nil {
 		t.Fatalf("deactivate: %v", err)
 	}
@@ -752,18 +800,18 @@ func contains(s, sub string) bool {
 // delete-by-id, and purge erasure on either endpoint.
 func TestPersonRelationships(t *testing.T) {
 	ctx := context.Background()
-	svc, _ := newService(t, 0)
+	svc, prof, _, _ := newServices(t, 0)
 
 	a := newPerson(t, svc, "Alice")
 	b := newPerson(t, svc, "Bob")
 	c := newPerson(t, svc, "Carol")
 
-	if rts, err := svc.ListRelationTypes(ctx); err != nil || len(rts) == 0 {
+	if rts, err := prof.ListRelationTypes(ctx); err != nil || len(rts) == 0 {
 		t.Fatalf("list relation types: %d err %v", len(rts), err)
 	}
 
 	// Partnership: canonical pair (a<b), single active per person, self/unknown rejects.
-	part, err := svc.UpsertPartnership(ctx, a.ID, domain.Partnership{PersonIDA: a.ID, PersonIDB: b.ID, Status: "married"})
+	part, err := prof.UpsertPartnership(ctx, a.ID, domain.Partnership{PersonIDA: a.ID, PersonIDB: b.ID, Status: "married"})
 	if err != nil {
 		t.Fatalf("partnership: %v", err)
 	}
@@ -774,18 +822,18 @@ func TestPersonRelationships(t *testing.T) {
 	if part.PersonIDA != lo || part.PersonIDB != hi {
 		t.Fatalf("partnership not canonical: %+v", part)
 	}
-	if _, err := svc.UpsertPartnership(ctx, a.ID, domain.Partnership{PersonIDA: a.ID, PersonIDB: c.ID, Status: "engaged"}); !errors.Is(err, domain.ErrPartnershipConflict) {
+	if _, err := prof.UpsertPartnership(ctx, a.ID, domain.Partnership{PersonIDA: a.ID, PersonIDB: c.ID, Status: "engaged"}); !errors.Is(err, domain.ErrPartnershipConflict) {
 		t.Fatalf("single active partnership: want ErrPartnershipConflict, got %v", err)
 	}
-	if _, err := svc.UpsertPartnership(ctx, a.ID, domain.Partnership{PersonIDA: a.ID, PersonIDB: a.ID, Status: "married"}); !errors.Is(err, domain.ErrSelfRelationship) {
+	if _, err := prof.UpsertPartnership(ctx, a.ID, domain.Partnership{PersonIDA: a.ID, PersonIDB: a.ID, Status: "married"}); !errors.Is(err, domain.ErrSelfRelationship) {
 		t.Fatalf("self partnership: want ErrSelfRelationship, got %v", err)
 	}
-	if _, err := svc.UpsertPartnership(ctx, a.ID, domain.Partnership{PersonIDA: a.ID, PersonIDB: "00000000-0000-8101-8601-000000000000", Status: "married"}); !errors.Is(err, domain.ErrUnknownCounterpart) {
+	if _, err := prof.UpsertPartnership(ctx, a.ID, domain.Partnership{PersonIDA: a.ID, PersonIDB: "00000000-0000-8101-8601-000000000000", Status: "married"}); !errors.Is(err, domain.ErrUnknownCounterpart) {
 		t.Fatalf("unknown counterpart: want ErrUnknownCounterpart, got %v", err)
 	}
 
 	// Kinship parent_of (a is parent of c).
-	kin, err := svc.UpsertKinship(ctx, a.ID, domain.Kinship{ParentID: a.ID, ChildID: c.ID, Status: "active"})
+	kin, err := prof.UpsertKinship(ctx, a.ID, domain.Kinship{ParentID: a.ID, ChildID: c.ID, Status: "active"})
 	if err != nil {
 		t.Fatalf("kinship: %v", err)
 	}
@@ -794,20 +842,20 @@ func TestPersonRelationships(t *testing.T) {
 	}
 
 	// Sponsorship: a category-mismatched code is rejected; a sponsorship code succeeds.
-	if _, err := svc.UpsertSponsorship(ctx, a.ID, domain.Sponsorship{SponsorID: a.ID, SponsoredID: c.ID, RelationCode: "spouse"}); !errors.Is(err, domain.ErrRelationCategory) {
+	if _, err := prof.UpsertSponsorship(ctx, a.ID, domain.Sponsorship{SponsorID: a.ID, SponsoredID: c.ID, RelationCode: "spouse"}); !errors.Is(err, domain.ErrRelationCategory) {
 		t.Fatalf("sponsorship wrong category: want ErrRelationCategory, got %v", err)
 	}
-	if _, err := svc.UpsertSponsorship(ctx, a.ID, domain.Sponsorship{SponsorID: a.ID, SponsoredID: c.ID, RelationCode: "godparent"}); err != nil {
+	if _, err := prof.UpsertSponsorship(ctx, a.ID, domain.Sponsorship{SponsorID: a.ID, SponsoredID: c.ID, RelationCode: "godparent"}); err != nil {
 		t.Fatalf("sponsorship: %v", err)
 	}
 
 	// Guardianship (a guardian of c).
-	if _, err := svc.UpsertGuardianship(ctx, a.ID, domain.Guardianship{GuardianID: a.ID, WardID: c.ID}); err != nil {
+	if _, err := prof.UpsertGuardianship(ctx, a.ID, domain.Guardianship{GuardianID: a.ID, WardID: c.ID}); err != nil {
 		t.Fatalf("guardianship: %v", err)
 	}
 
 	// Next-of-kin nomination (a → b), default priority 1.
-	nk, err := svc.UpsertNextOfKin(ctx, a.ID, domain.NextOfKin{SubjectID: a.ID, ContactID: b.ID, RelationCode: "spouse"})
+	nk, err := prof.UpsertNextOfKin(ctx, a.ID, domain.NextOfKin{SubjectID: a.ID, ContactID: b.ID, RelationCode: "spouse"})
 	if err != nil {
 		t.Fatalf("next of kin: %v", err)
 	}
@@ -816,29 +864,29 @@ func TestPersonRelationships(t *testing.T) {
 	}
 
 	// Association (COI), symmetric.
-	if _, err := svc.UpsertAssociation(ctx, a.ID, domain.Association{PersonIDA: a.ID, PersonIDB: c.ID, Kind: "coi"}); err != nil {
+	if _, err := prof.UpsertAssociation(ctx, a.ID, domain.Association{PersonIDA: a.ID, PersonIDB: c.ID, Kind: "coi"}); err != nil {
 		t.Fatalf("association: %v", err)
 	}
 
 	// Lists touch either endpoint.
-	if ps, err := svc.ListPartnerships(ctx, b.ID); err != nil || len(ps) != 1 {
+	if ps, err := prof.ListPartnerships(ctx, b.ID); err != nil || len(ps) != 1 {
 		t.Fatalf("list partnerships for b: %d err %v", len(ps), err)
 	}
-	if ks, err := svc.ListKinships(ctx, c.ID); err != nil || len(ks) != 1 {
+	if ks, err := prof.ListKinships(ctx, c.ID); err != nil || len(ks) != 1 {
 		t.Fatalf("list kinships for c: %d err %v", len(ks), err)
 	}
 
 	// Polymorphic delete-by-id (holder-scoped); idempotent re-delete; bad RID rejected.
-	if err := svc.DeleteRelationship(ctx, a.ID, kin.ID); err != nil {
+	if err := prof.DeleteRelationship(ctx, a.ID, kin.ID); err != nil {
 		t.Fatalf("delete kinship: %v", err)
 	}
-	if ks, err := svc.ListKinships(ctx, a.ID); err != nil || len(ks) != 0 {
+	if ks, err := prof.ListKinships(ctx, a.ID); err != nil || len(ks) != 0 {
 		t.Fatalf("kinship after delete: %d err %v", len(ks), err)
 	}
-	if err := svc.DeleteRelationship(ctx, a.ID, kin.ID); !errors.Is(err, domain.ErrRelationshipNotFound) {
+	if err := prof.DeleteRelationship(ctx, a.ID, kin.ID); !errors.Is(err, domain.ErrRelationshipNotFound) {
 		t.Fatalf("re-delete: want ErrRelationshipNotFound, got %v", err)
 	}
-	if err := svc.DeleteRelationship(ctx, a.ID, "00000000-0000-8101-8401-000000000000"); !errors.Is(err, domain.ErrUnknownRelationshipKind) {
+	if err := prof.DeleteRelationship(ctx, a.ID, "00000000-0000-8101-8401-000000000000"); !errors.Is(err, domain.ErrUnknownRelationshipKind) {
 		t.Fatalf("bad rid: want ErrUnknownRelationshipKind, got %v", err)
 	}
 
@@ -849,13 +897,13 @@ func TestPersonRelationships(t *testing.T) {
 	if _, err := svc.PurgePerson(ctx, b.ID); err != nil {
 		t.Fatalf("purge b: %v", err)
 	}
-	if ps, err := svc.ListPartnerships(ctx, a.ID); err != nil || len(ps) != 0 {
+	if ps, err := prof.ListPartnerships(ctx, a.ID); err != nil || len(ps) != 0 {
 		t.Fatalf("partnerships for a after purging b: %d err %v", len(ps), err)
 	}
-	if nks, err := svc.ListNextOfKin(ctx, a.ID); err != nil || len(nks) != 0 {
+	if nks, err := prof.ListNextOfKin(ctx, a.ID); err != nil || len(nks) != 0 {
 		t.Fatalf("next-of-kin for a after purging b: %d err %v", len(nks), err)
 	}
-	if ss, err := svc.ListSponsorships(ctx, a.ID); err != nil || len(ss) != 1 {
+	if ss, err := prof.ListSponsorships(ctx, a.ID); err != nil || len(ss) != 1 {
 		t.Fatalf("sponsorships for a after purging b: %d err %v", len(ss), err)
 	}
 }
@@ -887,14 +935,14 @@ func seedLanguoid(t *testing.T, pool *pgxpool.Pool, code, level, name string) st
 // purge erasure.
 func TestPersonLanguages(t *testing.T) {
 	ctx := context.Background()
-	svc, pool := newService(t, 0)
+	svc, prof, _, pool := newServices(t, 0)
 
 	lang := seedLanguoid(t, pool, "test1234", "language", "Testish")
 	family := seedLanguoid(t, pool, "testfam1", "family", "Testic")
 	p := newPerson(t, svc, "Polyglot")
 
 	// add a spoken language with proficiency + native flag
-	saved, err := svc.UpsertPersonLanguage(ctx, domain.PersonLanguage{PersonID: p.ID, LanguageID: lang, CEFRLevel: "B2", IsNative: true})
+	saved, err := prof.UpsertPersonLanguage(ctx, domain.PersonLanguage{PersonID: p.ID, LanguageID: lang, CEFRLevel: "B2", IsNative: true})
 	if err != nil {
 		t.Fatalf("upsert language: %v", err)
 	}
@@ -903,10 +951,10 @@ func TestPersonLanguages(t *testing.T) {
 	}
 
 	// upsert is keyed on (person, language): a second call updates rather than duplicating
-	if _, err := svc.UpsertPersonLanguage(ctx, domain.PersonLanguage{PersonID: p.ID, LanguageID: lang, CEFRLevel: "C1"}); err != nil {
+	if _, err := prof.UpsertPersonLanguage(ctx, domain.PersonLanguage{PersonID: p.ID, LanguageID: lang, CEFRLevel: "C1"}); err != nil {
 		t.Fatalf("update language: %v", err)
 	}
-	ls, err := svc.ListPersonLanguages(ctx, p.ID)
+	ls, err := prof.ListPersonLanguages(ctx, p.ID)
 	if err != nil || len(ls) != 1 {
 		t.Fatalf("list after update: len=%d err=%v", len(ls), err)
 	}
@@ -915,20 +963,20 @@ func TestPersonLanguages(t *testing.T) {
 	}
 
 	// the composite FK rejects a family-level languoid (must be level='language')
-	if _, err := svc.UpsertPersonLanguage(ctx, domain.PersonLanguage{PersonID: p.ID, LanguageID: family}); !errors.Is(err, domain.ErrUnknownLanguage) {
+	if _, err := prof.UpsertPersonLanguage(ctx, domain.PersonLanguage{PersonID: p.ID, LanguageID: family}); !errors.Is(err, domain.ErrUnknownLanguage) {
 		t.Fatalf("family languoid should be rejected with ErrUnknownLanguage, got %v", err)
 	}
 
 	// delete, then purge erasure leaves no rows
-	if err := svc.DeletePersonLanguage(ctx, p.ID, lang); err != nil {
+	if err := prof.DeletePersonLanguage(ctx, p.ID, lang); err != nil {
 		t.Fatalf("delete language: %v", err)
 	}
-	if ls, err := svc.ListPersonLanguages(ctx, p.ID); err != nil || len(ls) != 0 {
+	if ls, err := prof.ListPersonLanguages(ctx, p.ID); err != nil || len(ls) != 0 {
 		t.Fatalf("list after delete: len=%d err=%v", len(ls), err)
 	}
 
 	// re-add, then purge the person — person_languages is pii:basic and must be erased
-	if _, err := svc.UpsertPersonLanguage(ctx, domain.PersonLanguage{PersonID: p.ID, LanguageID: lang}); err != nil {
+	if _, err := prof.UpsertPersonLanguage(ctx, domain.PersonLanguage{PersonID: p.ID, LanguageID: lang}); err != nil {
 		t.Fatalf("re-add language: %v", err)
 	}
 	if _, err := svc.DeactivatePerson(ctx, p.ID, "x"); err != nil {
@@ -946,13 +994,49 @@ func TestPersonLanguages(t *testing.T) {
 	}
 }
 
+// TestPurgePublishesPersonPurged proves the D-PersonModuleSplit (review-2026-07 R-09) purge fan-out end
+// to end: a real PurgePerson publishes PersonPurged on the wired bus, so a subscribing module erases its
+// own person-referencing rows IN THE PURGE TRANSACTION — the mechanism that replaced person's inline
+// cross-module purge deletes. A stand-in account_accounts subscriber (the same SubscribeErase helper the
+// real education/company modules use) stands in for a cross-module owner. It also guards the negative:
+// without the publish, the row would survive.
+func TestPurgePublishesPersonPurged(t *testing.T) {
+	ctx := context.Background()
+	svc, _, _, pool := newServices(t, 0)
+
+	bus := events.NewBus()
+	svc.SubscribeOrderEvents(bus) // sets the service's bus so PurgePerson publishes PersonPurged
+	personevents.SubscribeErase(bus,
+		`DELETE FROM oikumenea.account_accounts WHERE person_id = $1`)
+
+	p := newPerson(t, svc, "Purge Publisher")
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO oikumenea.account_accounts (person_id) VALUES ($1)`, p.ID); err != nil {
+		t.Fatalf("insert account: %v", err)
+	}
+	if _, err := svc.DeactivatePerson(ctx, p.ID, "x"); err != nil {
+		t.Fatalf("deactivate: %v", err)
+	}
+	if _, err := svc.PurgePerson(ctx, p.ID); err != nil {
+		t.Fatalf("purge: %v", err)
+	}
+	var n int
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM oikumenea.account_accounts WHERE person_id = $1`, p.ID).Scan(&n); err != nil {
+		t.Fatalf("count accounts: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("PurgePerson did not publish PersonPurged (subscriber left %d account rows, want 0)", n)
+	}
+}
+
 // TestMergeProvisionalPerson proves the D-OverlayFoundation (M29) merge: a provisional stub is created,
 // carries a person-owned edge (kinship) and a cross-module reference (an identity account), then is
 // merged into a canonical person — re-homing both in one transaction and tombstoning the stub. It also
 // asserts the source must be provisional.
 func TestMergeProvisionalPerson(t *testing.T) {
 	ctx := context.Background()
-	svc, pool := newService(t, 50)
+	svc, prof, _, pool := newServices(t, 50)
 
 	// Wire the event bus so MergePerson publishes PersonMerged, and register a stand-in for the
 	// identity-federation subscriber (the same SubscribeRepoint helper the real module uses) so the
@@ -974,7 +1058,7 @@ func TestMergeProvisionalPerson(t *testing.T) {
 	other := newPerson(t, svc, "Related Person")
 
 	// Person-owned edge: a kinship stub(parent) -> other(child).
-	if _, err := svc.UpsertKinship(ctx, stub.ID, domain.Kinship{ParentID: stub.ID, ChildID: other.ID}); err != nil {
+	if _, err := prof.UpsertKinship(ctx, stub.ID, domain.Kinship{ParentID: stub.ID, ChildID: other.ID}); err != nil {
 		t.Fatalf("add kinship: %v", err)
 	}
 	// Cross-module reference: an identity account on the stub.
@@ -1003,7 +1087,7 @@ func TestMergeProvisionalPerson(t *testing.T) {
 	}
 
 	// The person-owned kinship now belongs to the canonical person.
-	ks, err := svc.ListKinships(ctx, canonical.ID)
+	ks, err := prof.ListKinships(ctx, canonical.ID)
 	if err != nil {
 		t.Fatalf("list kinships: %v", err)
 	}

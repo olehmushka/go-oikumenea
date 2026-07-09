@@ -19,8 +19,8 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/authorization"
 	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
 	"github.com/olegamysk/go-oikumenea/internal/company"
-	identityapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/identityfederation"
 	hermeneaapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/hermenea"
+	identityapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/identityfederation"
 	"github.com/olegamysk/go-oikumenea/internal/dataimport"
 	importdomain "github.com/olegamysk/go-oikumenea/internal/dataimport/domain"
 	"github.com/olegamysk/go-oikumenea/internal/document"
@@ -36,10 +36,13 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/membership"
 	"github.com/olegamysk/go-oikumenea/internal/order"
 	"github.com/olegamysk/go-oikumenea/internal/person"
+	"github.com/olegamysk/go-oikumenea/internal/personprofile"
+	"github.com/olegamysk/go-oikumenea/internal/personsensitive"
 	"github.com/olegamysk/go-oikumenea/internal/pinax"
 	"github.com/olegamysk/go-oikumenea/internal/platform"
 	"github.com/olegamysk/go-oikumenea/internal/platform/config"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olegamysk/go-oikumenea/internal/platform/outbox"
 	"github.com/olegamysk/go-oikumenea/internal/rank"
 	rankadapters "github.com/olegamysk/go-oikumenea/internal/rank/adapters"
 	rankapp "github.com/olegamysk/go-oikumenea/internal/rank/application"
@@ -178,7 +181,24 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 		return nil, err
 	}
 
-	personSvc, err := person.Register(info, pool, auditSvc, locSvc, rankSvc, enforcer, cipher, colorSvc)
+	// personsensitive (R-09): the person directory's envelope-encrypted / pii:special data (physical
+	// identity, declared ethnicity, overlays, encrypted party membership, watchlist matches + sanctions).
+	// Built before person core because the one PersonService transport composes it; it reuses the envelope
+	// cipher (D-CryptoProvider) and validates eye/hair colors against the color catalog.
+	sensitiveSvc := personsensitive.Register(pool, auditSvc, cipher)
+	sensitiveSvc.SetColorLookup(colorSvc)
+
+	// personprofile (R-09): the person directory's non-encrypted, person-owned directory data
+	// (citizenships, residences, addresses, contact channels, SPEAKS languages, relationships,
+	// non-encrypted institutional ties). Composed into the one PersonService transport; its address FK
+	// check binds the location seam once geo exists (SetLocationLookup, below).
+	profileSvc := personprofile.Register(pool, auditSvc)
+
+	// personsensitive's watchlist screening snapshots the PEP flag from personprofile's government-position
+	// ties (the M33/M34 seam) — bound now that both split services exist (D-PersonModuleSplit, R-09).
+	sensitiveSvc.SetPEPStatusReader(profileSvc)
+
+	personSvc, err := person.Register(info, pool, auditSvc, locSvc, rankSvc, enforcer, profileSvc, sensitiveSvc)
 	if err != nil {
 		cleanup()
 		return nil, err
@@ -186,6 +206,10 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// Person subscribes to order's rank-change effect (D-OrderApply): RankChangeOrdered -> SetRank in
 	// the issue transaction.
 	personSvc.SubscribeOrderEvents(bus)
+	// On a person purge, the personprofile / personsensitive modules erase (hard-delete or crypto-erase)
+	// their own person_* rows in the purge transaction via PersonPurged (D-PersonModuleSplit, R-09).
+	profileSvc.SubscribePersonPurge(bus)
+	sensitiveSvc.SubscribePersonPurge(bus)
 
 	membershipSvc, err := membership.Register(info, pool, auditSvc, locSvc, enforcer)
 	if err != nil {
@@ -232,14 +256,33 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 		return nil, err
 	}
 	documentSvc.SubscribePersonEvents(bus)
+	documentSvc.SubscribePersonPurge(bus) // erase this module's rows on PersonPurged (D-PersonModuleSplit)
 
 	// Data import (M16 / D-Hermenea): the generic POST /import/{objectType} endpoint the out-of-process
 	// hermenea companion calls to load reference data (it never touches this DB). Idempotent,
 	// non-destructive, audited as a `system` actor; the enforcer it holds is bound by authorization.
-	importSvc, err := dataimport.Register(info, pool, auditSvc, enforcer, install.Hermenea.BaseURL, os.Getenv("OIKUMENEA_HERMENEA_TOKEN"), install.Hermenea.InsecureSkipVerify)
+	importSvc, err := dataimport.Register(info, pool, auditSvc, enforcer, install.Hermenea.BaseURL, install.Hermenea.ResolveOutboundToken(), install.Hermenea.InsecureSkipVerify)
 	if err != nil {
 		cleanup()
 		return nil, err
+	}
+
+	// Roll the audit_log monthly partition window forward (review-2026-07 R-07 / D-AuditRetention):
+	// ensure the current + next month's range partition exists so every audited write lands in a real
+	// partition, never the DEFAULT catch-all. Advisory-locked (R-13) so replicas booting a fresh DB
+	// don't race the CREATE; idempotent, and non-fatal (a DEFAULT partition backstops any gap).
+	if err := db.WithAdvisoryLock(ctx, pool, db.LockBootSeed, func(ctx context.Context) error {
+		return auditSvc.EnsureCurrentPartitions(ctx)
+	}); err != nil {
+		svc1log.FromContext(ctx).Error("audit partition roll-forward failed (non-fatal; DEFAULT partition backstops)",
+			svc1log.Stacktrace(err))
+	}
+	// Surface the operator's audit-retention intent (D-AuditRetention): enforcement is manual (the
+	// detach_audit_partitions_before helper + dump/drop runbook), so a configured window is a posture
+	// note, not an automated action.
+	if m := install.Audit.RetentionMonths; m > 0 {
+		svc1log.FromContext(ctx).Info("audit retention configured (operator-enforced via detach_audit_partitions_before)",
+			svc1log.SafeParam("retentionMonths", m))
 	}
 
 	// pinax reference-plane autoseed (D-Pinax, M45): self-seed the go:embed-ed bundled presets through
@@ -247,13 +290,18 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// the hermenea companion. A malformed bundle fails boot (NewSeeder); a runtime seed error is logged
 	// and NON-fatal (the seed is idempotent — it retries next boot, and `oikumenea seed` surfaces it).
 	// Gated by pinax.autoseed (default on); flip to false to seed manually via the `seed` subcommand.
+	// Serialized across replicas by the boot-seed advisory lock (R-13): a second replica booting the
+	// same fresh DB waits, then finds every preset already applied (version-gated no-op).
 	if install.Pinax.AutoseedEnabled() {
 		seeder, err := pinax.NewSeeder(pool, importSvc, pinaxNativeImporters(rankSvc))
 		if err != nil {
 			cleanup()
 			return nil, werror.Wrap(err, "load pinax presets")
 		}
-		if _, err := seeder.Seed(ctx, false); err != nil {
+		if err := db.WithAdvisoryLock(ctx, pool, db.LockBootSeed, func(ctx context.Context) error {
+			_, err := seeder.Seed(ctx, false)
+			return err
+		}); err != nil {
 			svc1log.FromContext(ctx).Error("pinax autoseed failed (non-fatal; retries next boot)",
 				svc1log.Stacktrace(err))
 		}
@@ -271,7 +319,7 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// Person addresses (M32 / D-PersonAddresses) verify their location_id against the location service
 	// before writing; bind that cross-module query seam now that geo exists (late-bound: person is built
 	// above, before geo — mirrors SetMembershipReader).
-	personSvc.SetLocationLookup(geoSvc)
+	profileSvc.SetLocationLookup(geoSvc)
 
 	// Watchlist screening seam (M34 / D-Watchlists): CheckWatchlists runs a live screening check OUT to
 	// the hermenea companion (which owns the OFAC/EU/UN/INTERPOL egress + the ≤24h cache). Wire the seam
@@ -282,6 +330,10 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 		wlParams := []httpclient.ClientParam{
 			httpclient.WithBaseURLs([]string{install.Hermenea.BaseURL}),
 			httpclient.WithMaxRetries(0),
+			// R-12 (review-2026-07): a hard deadline so a hung sanctions upstream cannot couple
+			// oikumenea's request latency to a third-party API. Hermenea answers cache hits in ms;
+			// a miss that needs longer fails into the existing "screening unavailable" error path.
+			httpclient.WithHTTPTimeout(watchlistclient.HTTPTimeout),
 		}
 		if install.Hermenea.InsecureSkipVerify {
 			wlParams = append(wlParams, httpclient.WithTLSInsecureSkipVerify())
@@ -291,8 +343,13 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 			cleanup()
 			return nil, werror.Wrap(err, "build hermenea watchlist client")
 		}
-		personSvc.SetWatchlistLookup(watchlistclient.New(
-			hermeneaapi.NewHermeneaServiceClient(wlHTTP), os.Getenv("OIKUMENEA_HERMENEA_TOKEN")))
+		sensitiveSvc.SetWatchlistLookup(watchlistclient.New(
+			hermeneaapi.NewHermeneaServiceClient(wlHTTP), install.Hermenea.ResolveOutboundToken()))
+	} else {
+		// No companion configured: bind an explicit disabled no-op so the seam is always non-nil
+		// (review-2026-07 R-11). CheckWatchlists then returns the clear "not configured" error via the
+		// Disabled implementation rather than relying on a nil check in the person service.
+		sensitiveSvc.SetWatchlistLookup(watchlistclient.Disabled{})
 	}
 
 	// Language (M18 / D-Languages): read-only lookup over the Glottolog languoid forest + ISO-15924
@@ -313,6 +370,7 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 		return nil, err
 	}
 	educationSvc.SubscribePersonEvents(bus)
+	educationSvc.SubscribePersonPurge(bus) // erase education person-owned rows on PersonPurged (D-PersonModuleSplit)
 
 	// Company (M21 / D-Companies): a legal-entity registry over person + the M19 location foundation —
 	// companies, registrations, industries, locations, positions/appointments, and the ownership/
@@ -323,6 +381,7 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 		return nil, err
 	}
 	companySvc.SubscribePersonEvents(bus)
+	companySvc.SubscribePersonPurge(bus) // erase company person-link rows on PersonPurged (D-PersonModuleSplit)
 
 	// Vehicle (M26 / D-Vehicles): a vehicle registry over person + the M21 company registry — brand/
 	// model/type catalogs, the vehicle object (VIN), the brand→manufacturer link, and the ownership+
@@ -334,6 +393,7 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 		return nil, err
 	}
 	vehicleSvc.SubscribePersonEvents(bus)
+	vehicleSvc.SubscribePersonPurge(bus) // erase this module's rows on PersonPurged (D-PersonModuleSplit)
 
 	// Finance (M44 / D-Finance): bank accounts (envelope-encrypted IBAN) + payment cards (envelope-
 	// encrypted PAN, no CVV) as authoritative first-party directory data. A bank is a `company`-domain
@@ -346,6 +406,7 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 		return nil, err
 	}
 	financeSvc.SubscribePersonEvents(bus)
+	financeSvc.SubscribePersonPurge(bus) // erase this module's rows on PersonPurged (D-PersonModuleSplit)
 
 	// External organizations (M30 / D-ExternalOrgs): the registry of external orgs a person is tied to
 	// (parties, government bodies, foreign military, NGOs, registrants) — the node-space the M33
@@ -367,6 +428,7 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 		return nil, err
 	}
 	religionSvc.SubscribePersonEvents(bus)
+	religionSvc.SubscribePersonPurge(bus) // erase this module's rows on PersonPurged (D-PersonModuleSplit)
 
 	// Identity-federation: the external-IdP seam. Its application service is the (issuer, subject)
 	// resolver the validation middleware binds to.
@@ -387,20 +449,54 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	}
 	authenticator.Bind(middleware.NewValidator(vcfg), identitySvc, personSvc, install.IDP.JIT.Enabled, authzSvc, pool)
 
-	// The hermenea import service-principal shared secret (D-Hermenea / L-AuthzOnly amendment): a
-	// RUNTIME secret from the environment (not install config). When set, a bearer matching it
-	// authenticates the `hermenea-importer` principal holding exactly import.manage.
-	authenticator.SetImportServiceToken(os.Getenv("HERMENEA_OIKUMENEA_TOKEN"))
+	// The hermenea import service-principal shared secret (D-Hermenea / L-AuthzOnly amendment): the
+	// inbound token from install config (hermenea.inbound-token), still honouring the
+	// HERMENEA_OIKUMENEA_TOKEN env override via ResolveInboundToken (architecture review R-16). When
+	// set, a bearer matching it authenticates the `hermenea-importer` principal holding import.manage.
+	authenticator.SetImportServiceToken(install.Hermenea.ResolveInboundToken())
 
-	// First-admin bootstrap (D-Bootstrap): idempotent — skips once any instance admin exists.
+	// First-admin bootstrap (D-Bootstrap): idempotent — skips once any instance admin exists. The
+	// has-admin check is read-then-write, so it is additionally serialized across replicas by the
+	// boot-seed advisory lock (R-13): the losing replica waits, re-checks, and skips.
 	if install.BootstrapAdmin != nil {
-		res, err := bootstrap.Run(ctx, pool, auditSvc, seedFrom(*install.BootstrapAdmin), bootstrap.Options{Subsystem: "bootstrap"})
+		var res bootstrap.Result
+		err := db.WithAdvisoryLock(ctx, pool, db.LockBootSeed, func(ctx context.Context) error {
+			var err error
+			res, err = bootstrap.Run(ctx, pool, auditSvc, seedFrom(*install.BootstrapAdmin), bootstrap.Options{Subsystem: "bootstrap"})
+			return err
+		})
 		if err != nil {
 			cleanup()
 			return nil, werror.Wrap(err, "first-admin bootstrap")
 		}
 		logBootstrap(ctx, res)
 	}
+
+	// Boot-time seam assertion (review-2026-07 R-11): every late-bound holder must be wired before we
+	// serve. A forgotten Set*/Bind otherwise compiles and surfaces at request time — as a nil deref or,
+	// worse, a silently-empty read-scope page that reads as "no access" rather than "mis-wired server".
+	// Fail fast here, naming the missing seam, instead.
+	for _, seam := range []interface{ MustBeBound() error }{authenticator, enforcer, personSvc, profileSvc, sensitiveSvc} {
+		if err := seam.MustBeBound(); err != nil {
+			cleanup()
+			return nil, werror.Wrap(err, "composition root: late-bound seam not wired")
+		}
+	}
+
+	// Seal the atomic event bus (review-2026-07 R-10): every module has now wired its same-transaction
+	// subscribers, so any later Subscribe is a mis-wire (it would race Publish and silently widen a
+	// publisher's transaction). A late Subscribe now panics naming the type.
+	bus.Seal()
+
+	// Start the transactional-outbox dispatcher (R-10 / D-EventOutbox): it drains the after-commit
+	// `notify` queue (oikumenea.platform_outbox) out of the write path. No notify producers/handlers
+	// exist yet — every domain event is `atomic` today — so it runs live over an empty queue as a proven
+	// seam; consumers register on it (before Seal) as `notify` needs land. Sealed with no handlers today.
+	dispatcher := outbox.New(pool, outbox.Config{})
+	dispatcher.Seal()
+	stopDispatcher := dispatcher.Start(ctx)
+	baseCleanup := cleanup
+	cleanup = func() { stopDispatcher(); baseCleanup() }
 
 	return cleanup, nil
 }

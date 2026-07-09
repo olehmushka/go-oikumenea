@@ -20,7 +20,7 @@ func (s Service) ListPartyMemberships(ctx context.Context, token bearertoken.Tok
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
 		return nil, err
 	}
-	ps, err := s.app.ListPartyMemberships(ctx, personID)
+	ps, err := s.sensitive.ListPartyMemberships(ctx, personID)
 	if err != nil {
 		return nil, s.mapError(ctx, err, personID)
 	}
@@ -35,7 +35,7 @@ func (s Service) UpsertPartyMembership(ctx context.Context, token bearertoken.To
 	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
 		return personapi.PartyMembership{}, err
 	}
-	created, err := s.app.UpsertPartyMembership(ctx, domain.PartyMembership{
+	created, err := s.sensitive.UpsertPartyMembership(ctx, domain.PartyMembership{
 		ID:         derefOr(req.Id, ""),
 		PersonID:   personID,
 		Party:      req.Party,
@@ -57,7 +57,7 @@ func (s Service) DeletePartyMembership(ctx context.Context, token bearertoken.To
 	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
 		return err
 	}
-	if err := s.app.DeletePartyMembership(ctx, personID, membershipID); err != nil {
+	if err := s.sensitive.DeletePartyMembership(ctx, personID, membershipID); err != nil {
 		return s.mapError(ctx, err, personID)
 	}
 	return nil
@@ -69,7 +69,7 @@ func (s Service) ListGovernmentPositions(ctx context.Context, token bearertoken.
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
 		return nil, err
 	}
-	gs, err := s.app.ListGovernmentPositions(ctx, personID)
+	gs, err := s.profile.ListGovernmentPositions(ctx, personID)
 	if err != nil {
 		return nil, s.mapError(ctx, err, personID)
 	}
@@ -84,7 +84,7 @@ func (s Service) UpsertGovernmentPosition(ctx context.Context, token bearertoken
 	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
 		return personapi.GovernmentPosition{}, err
 	}
-	created, err := s.app.UpsertGovernmentPosition(ctx, domain.GovernmentPosition{
+	created, err := s.profile.UpsertGovernmentPosition(ctx, domain.GovernmentPosition{
 		ID:         derefOr(req.Id, ""),
 		PersonID:   personID,
 		Title:      req.Title,
@@ -109,7 +109,7 @@ func (s Service) DeleteGovernmentPosition(ctx context.Context, token bearertoken
 	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
 		return err
 	}
-	if err := s.app.DeleteGovernmentPosition(ctx, personID, positionID); err != nil {
+	if err := s.profile.DeleteGovernmentPosition(ctx, personID, positionID); err != nil {
 		return s.mapError(ctx, err, personID)
 	}
 	return nil
@@ -121,7 +121,7 @@ func (s Service) ListLobbyingRelationships(ctx context.Context, token bearertoke
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
 		return nil, err
 	}
-	ls, err := s.app.ListLobbyingRelationships(ctx, personID)
+	ls, err := s.profile.ListLobbyingRelationships(ctx, personID)
 	if err != nil {
 		return nil, s.mapError(ctx, err, personID)
 	}
@@ -140,7 +140,7 @@ func (s Service) UpsertLobbyingRelationship(ctx context.Context, token bearertok
 	if req.Issues != nil {
 		issues = *req.Issues
 	}
-	created, err := s.app.UpsertLobbyingRelationship(ctx, domain.LobbyingRelationship{
+	created, err := s.profile.UpsertLobbyingRelationship(ctx, domain.LobbyingRelationship{
 		ID:              derefOr(req.Id, ""),
 		PersonID:        personID,
 		Registrant:      req.Registrant,
@@ -164,7 +164,7 @@ func (s Service) DeleteLobbyingRelationship(ctx context.Context, token bearertok
 	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
 		return err
 	}
-	if err := s.app.DeleteLobbyingRelationship(ctx, personID, relationshipID); err != nil {
+	if err := s.profile.DeleteLobbyingRelationship(ctx, personID, relationshipID); err != nil {
 		return s.mapError(ctx, err, personID)
 	}
 	return nil
@@ -176,7 +176,7 @@ func (s Service) ListExternalReferences(ctx context.Context, token bearertoken.T
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
 		return nil, err
 	}
-	rs, err := s.app.ListExternalReferences(ctx, personID)
+	rs, err := s.profile.ListExternalReferences(ctx, personID)
 	if err != nil {
 		return nil, s.mapError(ctx, err, personID)
 	}
@@ -199,7 +199,7 @@ func (s Service) UpsertExternalReference(ctx context.Context, token bearertoken.
 	if err != nil {
 		return personapi.ExternalReference{}, s.mapError(ctx, domain.ErrInvalid, personID)
 	}
-	created, err := s.app.UpsertExternalReference(ctx, domain.ExternalReference{
+	created, err := s.profile.UpsertExternalReference(ctx, domain.ExternalReference{
 		ID:          derefOr(req.Id, ""),
 		PersonID:    personID,
 		Kind:        derefOr(req.Kind, ""),
@@ -221,7 +221,7 @@ func (s Service) DeleteExternalReference(ctx context.Context, token bearertoken.
 	if err := s.pep.RequireAnywhere(ctx, token, permUpdate); err != nil {
 		return err
 	}
-	if err := s.app.DeleteExternalReference(ctx, personID, referenceID); err != nil {
+	if err := s.profile.DeleteExternalReference(ctx, personID, referenceID); err != nil {
 		return s.mapError(ctx, err, personID)
 	}
 	return nil

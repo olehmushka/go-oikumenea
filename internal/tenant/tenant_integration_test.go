@@ -185,6 +185,20 @@ func TestMultiParentDAGAndClosure(t *testing.T) {
 	if len(gotDesc) != 3 || gotDesc[b.ID] != 1 || gotDesc[c.ID] != 1 || gotDesc[d.ID] != 2 {
 		t.Fatalf("unexpected descendants of a: %+v", gotDesc)
 	}
+
+	// Detach one diamond arm (b->d): d keeps a as an ancestor through the surviving c arm (M48
+	// incremental shrink must keep the alternative path, same depth).
+	if err := svc.RemoveEdge(ctx, d.ID, b.ID, "command"); err != nil {
+		t.Fatalf("remove b->d: %v", err)
+	}
+	ancestors, err = svc.Ancestors(ctx, d.ID, "command")
+	if err != nil {
+		t.Fatalf("ancestors after detach: %v", err)
+	}
+	gotAnc = idDepth(ancestors)
+	if len(gotAnc) != 2 || gotAnc[a.ID] != 2 || gotAnc[c.ID] != 1 {
+		t.Fatalf("unexpected ancestors of d after detaching b->d: %+v", gotAnc)
+	}
 }
 
 // TestListRootsAndChildren proves the hierarchy-browsing modes of ListUnits: rootsOnly returns the

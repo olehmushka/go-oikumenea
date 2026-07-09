@@ -185,4 +185,14 @@ type Repository interface {
 	// ActivePersonIDsInUnits returns the distinct persons with an active membership in any of the
 	// given units, keyset-paginated by person RID (the directory-list union; D-PersonReadScope).
 	ActivePersonIDsInUnits(ctx context.Context, unitIDs []string, after string, limit int) ([]string, error)
+	// VisiblePersonIDsForSubject returns the distinct persons with an active membership in any unit
+	// of the SUBJECT's effective readable reach, computed as a SQL semi-join over the authz
+	// assignments + tenant closure (D-PersonReadScope; review-2026-07 R-02.1 — the reach set never
+	// leaves the database). An optional case-insensitive query narrows the union by the person's
+	// trigram-indexed name/code haystack or any name variant, folded into the same SQL so the page
+	// fills correctly (review-2026-07 R-06). Keyset-paginated by person RID.
+	VisiblePersonIDsForSubject(ctx context.Context, subjectPersonID, after, query string, limit int) ([]string, error)
+	// SubjectCanReadPerson is the point probe of the same reach predicate: whether any of the
+	// person's active-membership units falls in the subject's readable reach.
+	SubjectCanReadPerson(ctx context.Context, subjectPersonID, personID string) (bool, error)
 }

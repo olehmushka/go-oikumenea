@@ -166,7 +166,7 @@ func (s *Service) ProcessJob(ctx context.Context, job domain.Job) error {
 		if !ok {
 			return fmt.Errorf("%w: %s (paged)", domain.ErrNoMapper, src.ObjectType)
 		}
-		return s.processStreaming(ctx, src, sc, pm)
+		return s.processStreaming(ctx, job, src, sc, pm)
 	}
 
 	mapper, ok := s.mappers[src.ObjectType]
@@ -192,7 +192,8 @@ func (s *Service) ProcessJob(ctx context.Context, job domain.Job) error {
 		_ = s.store.FinishRun(ctx, runID, domain.RunFailed, 0, 0, 0, err.Error())
 		return fmt.Errorf("map %s: %w", src.Code, err)
 	}
-	sum, err := s.loader.Load(ctx, src.ObjectType, src.Code, raw.SourceVersion, records)
+	sum, err := s.loader.Load(ctx, src.ObjectType, src.Code, raw.SourceVersion, runID,
+		s.resumeSeq(job, raw.Checksum), records, s.cursorAck(job.ID, raw.Checksum))
 	if err != nil {
 		_ = s.store.FinishRun(ctx, runID, domain.RunFailed, 0, 0, 0, err.Error())
 		return fmt.Errorf("load %s: %w", src.Code, err)
@@ -200,11 +201,33 @@ func (s *Service) ProcessJob(ctx context.Context, job domain.Job) error {
 	return s.store.FinishRun(ctx, runID, domain.RunSucceeded, sum.Created, sum.Updated, sum.Skipped, "")
 }
 
-// processStreaming runs the paged pipeline for a StreamingConnector source (D-GeoPlaces): stage the
-// source to disk, record a file-referenced raw batch, then load each parent-first page as its own
-// canonical envelope, aggregating the upsert counts into one import_run. A page-load error fails the
-// run (the worker retries/backs off); the staged file is always removed.
-func (s *Service) processStreaming(ctx context.Context, src domain.Source, sc domain.StreamingConnector, pm domain.PagedMapper) error {
+// resumeSeq returns the chunk seq to resume a chunked run after (R-05): the job's persisted cursor,
+// valid only while the (re-)staged source still carries the checksum the cursor was written against —
+// a changed source invalidates it (full, still-idempotent re-run).
+func (s *Service) resumeSeq(job domain.Job, checksum string) int {
+	if job.ResumeChecksum != "" && job.ResumeChecksum == checksum {
+		return job.ResumeSeq
+	}
+	return 0
+}
+
+// cursorAck persists the resume cursor after every chunk oikumenea acknowledged.
+func (s *Service) cursorAck(jobID, checksum string) domain.AckFunc {
+	return func(ctx context.Context, seq int) error {
+		return s.store.SetJobCursor(ctx, jobID, seq, checksum)
+	}
+}
+
+// processStreaming runs the paged pipeline for a StreamingConnector source (D-GeoPlaces; chunked
+// since R-05): stage the source to disk, record a file-referenced raw batch, then open one chunked
+// run — each parent-first page is re-sliced into ≤chunkSize chunks, each chunk its own canonical
+// envelope / oikumenea transaction, acked into the job's resume cursor. On a retried attempt the run
+// skips the chunks already acked (checksum-guarded), so a mid-run crash of either side resumes
+// instead of restarting; the trailing finalize chunk runs the object-type's batch finalizers. A
+// chunk-load error fails the run (the worker retries/backs off); the staged file is always removed.
+// NOTE: a resumed attempt's import_run row aggregates only the chunks this attempt sent — the failed
+// attempt's row holds the earlier counts (the run ledger is per attempt, unchanged).
+func (s *Service) processStreaming(ctx context.Context, job domain.Job, src domain.Source, sc domain.StreamingConnector, pm domain.PagedMapper) error {
 	staged, err := sc.Stage(ctx, src)
 	if err != nil {
 		return fmt.Errorf("stage %s: %w", src.Code, err)
@@ -221,20 +244,18 @@ func (s *Service) processStreaming(ctx context.Context, src domain.Source, sc do
 		return err
 	}
 
-	var agg domain.ImportSummary
+	run := s.loader.StartRun(src.ObjectType, src.Code, staged.SourceVersion, runID,
+		s.resumeSeq(job, staged.Checksum), s.cursorAck(job.ID, staged.Checksum))
 	loadErr := pm.MapPaged(ctx, staged, func(records []map[string]any) error {
 		if len(records) == 0 {
 			return nil
 		}
-		sum, err := s.loader.Load(ctx, src.ObjectType, src.Code, staged.SourceVersion, records)
-		if err != nil {
-			return err
-		}
-		agg.Created += sum.Created
-		agg.Updated += sum.Updated
-		agg.Skipped += sum.Skipped
-		return nil
+		return run.Push(ctx, records)
 	})
+	var agg domain.ImportSummary
+	if loadErr == nil {
+		agg, loadErr = run.Finalize(ctx)
+	}
 	if loadErr != nil {
 		_ = s.store.FinishRun(ctx, runID, domain.RunFailed, agg.Created, agg.Updated, agg.Skipped, loadErr.Error())
 		return fmt.Errorf("stream %s: %w", src.Code, loadErr)

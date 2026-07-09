@@ -1,15 +1,14 @@
-// Package adapters — the person regulatory-sanction import store (D-Watchlists, M34). Raw pgx (no sqlc):
-// a person-scoped import target (unusual — most targets are instance-global catalogs). The upsert keys
-// idempotency on (person_id, external_id) and writes the M34 person_regulatory_sanctions table; a record
-// whose person RID does not resolve is skipped by the handler (PersonExists guards it).
+// Package adapters — the person regulatory-sanction import store (D-Watchlists, M34; set-based per
+// chunk since R-05). Raw pgx (no sqlc): a person-scoped import target (unusual — most targets are
+// instance-global catalogs). One parallel-array merge statement resolves persons inline (an
+// unresolved person drops out of the join — skipped, non-destructive) and keys idempotency on
+// (person_id, external_id), writing the M34 person_regulatory_sanctions table. Optional
+// amount/sanction_date cross as text ('' = NULL) so one array can carry absent values.
 package adapters
 
 import (
 	"context"
-	"strconv"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/olegamysk/go-oikumenea/internal/dataimport/domain"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 )
@@ -20,137 +19,115 @@ import (
 type RegulatorySanctionRepo struct{ c db.DBTX }
 
 // NewRegulatorySanctionRepo binds a store to the given command surface.
-func NewRegulatorySanctionRepo(conn db.DBTX) *RegulatorySanctionRepo { return &RegulatorySanctionRepo{c: conn} }
+func NewRegulatorySanctionRepo(conn db.DBTX) *RegulatorySanctionRepo {
+	return &RegulatorySanctionRepo{c: conn}
+}
 
 var _ domain.RegulatorySanctionStore = (*RegulatorySanctionRepo)(nil)
 
-// PersonExists reports whether an active (non-deleted) person carries this RID.
-func (r *RegulatorySanctionRepo) PersonExists(ctx context.Context, personID string) (bool, error) {
-	var one int
-	err := r.c.QueryRow(ctx, `SELECT 1 FROM oikumenea.person_persons WHERE id = $1 AND deleted_at IS NULL`, personID).Scan(&one)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
-}
-
-// Get returns the existing (person, external_id) sanction's comparable fields (found=false when absent).
-func (r *RegulatorySanctionRepo) Get(ctx context.Context, personID, externalID string) (domain.RegulatorySanction, bool, error) {
-	var (
-		s        = domain.RegulatorySanction{PersonID: personID, ExternalID: externalID}
-		amount   pgtype.Numeric
-		currency pgtype.Text
-		date     pgtype.Date
-		srcURL   pgtype.Text
+// upsertRegulatorySanctions is the shared body of the merge; the conflict clause differs between the
+// update-on-change default and the CreateOnly (pinax) skip-existing variant.
+const upsertRegulatorySanctions = `
+	WITH r AS (
+	  SELECT unnest($1::uuid[]) AS person_id,
+	         unnest($2::text[]) AS regulator,
+	         unnest($3::text[]) AS action_type,
+	         unnest($4::text[]) AS amount,
+	         unnest($5::text[]) AS currency,
+	         unnest($6::text[]) AS status,
+	         unnest($7::text[]) AS sanction_date,
+	         unnest($8::text[]) AS source_url,
+	         unnest($9::text[]) AS external_id
 	)
-	err := r.c.QueryRow(ctx, `
-		SELECT regulator, action_type, amount, currency, status, sanction_date, source_url
-		FROM oikumenea.person_regulatory_sanctions
-		WHERE person_id = $1 AND external_id = $2 AND deleted_at IS NULL`, personID, externalID).
-		Scan(&s.Regulator, &s.ActionType, &amount, &currency, &s.Status, &date, &srcURL)
+	INSERT INTO oikumenea.person_regulatory_sanctions
+		(person_id, regulator, action_type, amount, currency, status, sanction_date,
+		 source_url, external_id, source, confidence)
+	SELECT p.id, r.regulator, r.action_type,
+	       NULLIF(r.amount, '')::numeric,
+	       NULLIF(r.currency, ''),
+	       r.status,
+	       NULLIF(r.sanction_date, '')::date,
+	       NULLIF(r.source_url, ''),
+	       NULLIF(r.external_id, ''),
+	       'imported', 'probable'
+	FROM r
+	JOIN oikumenea.person_persons p ON p.id = r.person_id AND p.deleted_at IS NULL
+	ON CONFLICT (person_id, external_id) WHERE external_id IS NOT NULL AND deleted_at IS NULL
+	`
+
+// BulkUpsert merges one chunk set-based (R-05): a record whose person RID does not resolve is not
+// merged (the handler pre-drops RIDs that are not even canonical uuids so the uuid[] parameter
+// encodes); an existing (person, externalId) row updates only when a comparable field changed —
+// mirroring domain.RegulatorySanction.SameAs — and never under prov.CreateOnly. RETURNING (xmax = 0)
+// splits creates from updates; unmerged rows are the caller's skips.
+func (r *RegulatorySanctionRepo) BulkUpsert(ctx context.Context, ss []domain.RegulatorySanction, prov domain.Provenance) (created, updated int, err error) {
+	if len(ss) == 0 {
+		return 0, 0, nil
+	}
+	n := len(ss)
+	personIDs := make([]string, 0, n)
+	regulators := make([]string, 0, n)
+	actionTypes := make([]string, 0, n)
+	amounts := make([]string, 0, n)
+	currencies := make([]string, 0, n)
+	statuses := make([]string, 0, n)
+	dates := make([]string, 0, n)
+	urls := make([]string, 0, n)
+	externalIDs := make([]string, 0, n)
+	for _, s := range ss {
+		personIDs = append(personIDs, s.PersonID)
+		regulators = append(regulators, s.Regulator)
+		actionTypes = append(actionTypes, s.ActionType)
+		amounts = append(amounts, floatText(s.Amount))
+		currencies = append(currencies, s.Currency)
+		statuses = append(statuses, s.Status)
+		dates = append(dates, s.SanctionDate)
+		urls = append(urls, s.SourceURL)
+		externalIDs = append(externalIDs, s.ExternalID)
+	}
+	query := upsertRegulatorySanctions
+	if prov.CreateOnly {
+		query += `DO NOTHING
+	RETURNING (xmax = 0) AS inserted`
+	} else {
+		query += `DO UPDATE SET
+		regulator     = EXCLUDED.regulator,
+		action_type   = EXCLUDED.action_type,
+		amount        = EXCLUDED.amount,
+		currency      = EXCLUDED.currency,
+		status        = EXCLUDED.status,
+		sanction_date = EXCLUDED.sanction_date,
+		source_url    = EXCLUDED.source_url,
+		source        = 'imported',
+		updated_at    = now()
+	WHERE (oikumenea.person_regulatory_sanctions.regulator,
+	       oikumenea.person_regulatory_sanctions.action_type,
+	       oikumenea.person_regulatory_sanctions.amount,
+	       oikumenea.person_regulatory_sanctions.currency,
+	       oikumenea.person_regulatory_sanctions.status,
+	       oikumenea.person_regulatory_sanctions.sanction_date,
+	       oikumenea.person_regulatory_sanctions.source_url)
+	      IS DISTINCT FROM
+	      (EXCLUDED.regulator, EXCLUDED.action_type, EXCLUDED.amount, EXCLUDED.currency,
+	       EXCLUDED.status, EXCLUDED.sanction_date, EXCLUDED.source_url)
+	RETURNING (xmax = 0) AS inserted`
+	}
+	rows, err := r.c.Query(ctx, query,
+		personIDs, regulators, actionTypes, amounts, currencies, statuses, dates, urls, externalIDs)
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return domain.RegulatorySanction{}, false, nil
+		return 0, 0, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var inserted bool
+		if err := rows.Scan(&inserted); err != nil {
+			return 0, 0, err
 		}
-		return domain.RegulatorySanction{}, false, err
+		if inserted {
+			created++
+		} else {
+			updated++
+		}
 	}
-	s.Amount = numPtr(amount)
-	s.Currency = currency.String
-	if date.Valid {
-		s.SanctionDate = date.Time.Format("2006-01-02")
-	}
-	s.SourceURL = srcURL.String
-	return s, true, nil
-}
-
-// numPtr maps a stored numeric back into an optional float64 (via its string Value()).
-func numPtr(n pgtype.Numeric) *float64 {
-	if !n.Valid {
-		return nil
-	}
-	v, err := n.Value()
-	if err != nil || v == nil {
-		return nil
-	}
-	str, ok := v.(string)
-	if !ok {
-		return nil
-	}
-	f, err := strconv.ParseFloat(str, 64)
-	if err != nil {
-		return nil
-	}
-	return &f
-}
-
-// Insert creates an imported regulatory sanction for the person.
-func (r *RegulatorySanctionRepo) Insert(ctx context.Context, s domain.RegulatorySanction, prov domain.Provenance) error {
-	_, err := r.c.Exec(ctx, `
-		INSERT INTO oikumenea.person_regulatory_sanctions
-			(person_id, regulator, action_type, amount, currency, status, sanction_date,
-			 source_url, external_id, source, confidence)
-		VALUES ($1, $2, $3, $4, NULLIF($5,''), $6, $7, NULLIF($8,''), NULLIF($9,''), 'imported', 'probable')`,
-		s.PersonID, s.Regulator, actionOrDefault(s.ActionType), numArg(s.Amount), s.Currency,
-		statusOrDefault(s.Status), dateArg(s.SanctionDate), s.SourceURL, s.ExternalID)
-	return err
-}
-
-// UpdateImport refreshes the sanction fields on the existing (person, external_id) row.
-func (r *RegulatorySanctionRepo) UpdateImport(ctx context.Context, s domain.RegulatorySanction, prov domain.Provenance) error {
-	_, err := r.c.Exec(ctx, `
-		UPDATE oikumenea.person_regulatory_sanctions SET
-			regulator     = $3,
-			action_type   = $4,
-			amount        = $5,
-			currency      = NULLIF($6,''),
-			status        = $7,
-			sanction_date = $8,
-			source_url    = NULLIF($9,''),
-			source        = 'imported',
-			updated_at    = now()
-		WHERE person_id = $1 AND external_id = $2 AND deleted_at IS NULL`,
-		s.PersonID, s.ExternalID, s.Regulator, actionOrDefault(s.ActionType), numArg(s.Amount),
-		s.Currency, statusOrDefault(s.Status), dateArg(s.SanctionDate), s.SourceURL)
-	return err
-}
-
-func actionOrDefault(a string) string {
-	if a == "" {
-		return "other"
-	}
-	return a
-}
-
-func statusOrDefault(s string) string {
-	if s == "" {
-		return "active"
-	}
-	return s
-}
-
-// numArg maps an optional float to a nullable numeric column (nil => NULL).
-func numArg(p *float64) pgtype.Numeric {
-	var n pgtype.Numeric
-	if p == nil {
-		return n
-	}
-	if err := n.Scan(strconv.FormatFloat(*p, 'f', -1, 64)); err != nil {
-		return pgtype.Numeric{}
-	}
-	return n
-}
-
-// dateArg maps an ISO date string to a nullable date column ("" => NULL).
-func dateArg(s string) pgtype.Date {
-	var d pgtype.Date
-	if s == "" {
-		return d
-	}
-	if err := d.Scan(s); err != nil {
-		return pgtype.Date{}
-	}
-	return d
+	return created, updated, rows.Err()
 }

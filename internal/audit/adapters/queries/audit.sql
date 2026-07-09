@@ -18,6 +18,13 @@ INSERT INTO oikumenea.audit_log (
 -- Reads one entry by its Action RID.
 SELECT * FROM oikumenea.audit_log WHERE id = @id;
 
+-- name: EnsureAuditPartitions :exec
+-- Roll the monthly partition window forward (review-2026-07 R-07): idempotently create the current
+-- and next month's partition so live inserts always land in a real partition, never the DEFAULT
+-- catch-all. Called at every boot under the boot-seed advisory lock (replica-safe, no-op once made).
+SELECT oikumenea.ensure_audit_partition(CURRENT_DATE),
+       oikumenea.ensure_audit_partition((date_trunc('month', CURRENT_DATE) + interval '1 month')::date);
+
 -- name: QueryAuditLog :many
 -- Filterable, keyset-paginated read over the log (D-Audit: filterable by every audited entity
 -- type). Ordered newest-first by the (created_at, id) cursor. A NULL filter matches everything.

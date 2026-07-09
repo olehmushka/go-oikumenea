@@ -1,12 +1,15 @@
-// Package runtime is hermenea's background-job engine (M16 / D-Hermenea): a single-process worker that
-// claims jobs from the queue (FOR UPDATE SKIP LOCKED, at-least-once) and a cron scheduler that
-// enqueues due syncs. It implements retry with exponential backoff (per-job-type config),
-// dead-lettering after max attempts, and GRACEFUL DRAIN — on shutdown it stops claiming and lets the
-// in-flight job finish (bounded by jobTimeout) before returning.
+// Package runtime is hermenea's background-job engine (M16 / D-Hermenea; N-worker since R-13): a
+// configurable number of worker goroutines claim jobs from the queue (FOR UPDATE SKIP LOCKED,
+// at-least-once — the claim is already safe under any number of claimers, in-process or across
+// replicas) and one cron scheduler enqueues due syncs (idempotent per interval bucket, so extra
+// replicas' schedulers fold into the same jobs). It implements retry with exponential backoff
+// (per-job-type config), dead-lettering after max attempts, and GRACEFUL DRAIN — on shutdown it
+// stops claiming and lets the in-flight jobs finish (bounded by jobTimeout) before returning.
 package runtime
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -17,7 +20,8 @@ import (
 
 // Config tunes the runtime loops and the retry policy.
 type Config struct {
-	WorkerID     string        // identifies this process in worker_jobs.locked_by
+	WorkerID     string        // identifies this process in worker_jobs.locked_by (suffixed -w<i> per worker goroutine)
+	Concurrency  int           // parallel worker goroutines over the SKIP LOCKED queue (R-13; <=0 → 1)
 	PollInterval time.Duration // queue poll cadence when idle
 	ScheduleTick time.Duration // cron evaluation cadence
 	BackoffBase  time.Duration // first-retry delay (per-job-type base; doubled each attempt)
@@ -39,13 +43,19 @@ func New(svc *application.Service, store domain.Store, cfg Config) *Runtime {
 	return &Runtime{svc: svc, store: store, cfg: cfg}
 }
 
-// Start launches the worker + scheduler goroutines bound to ctx. Returns a Stop that cancels them and
-// waits for the in-flight job to drain. ctx is the long-lived server context; Stop is wired as the
-// witchcraft cleanup so shutdown drains cleanly.
+// Start launches Concurrency worker goroutines + the scheduler goroutine bound to ctx. Returns a Stop
+// that cancels them and waits for the in-flight jobs to drain. ctx is the long-lived server context;
+// Stop is wired as the witchcraft cleanup so shutdown drains cleanly.
 func (r *Runtime) Start(ctx context.Context) (stop func()) {
 	loopCtx, cancel := context.WithCancel(ctx)
-	r.wg.Add(2)
-	go r.worker(loopCtx)
+	n := r.cfg.Concurrency
+	if n <= 0 {
+		n = 1
+	}
+	r.wg.Add(n + 1)
+	for i := 0; i < n; i++ {
+		go r.worker(loopCtx, fmt.Sprintf("%s-w%d", r.cfg.WorkerID, i+1))
+	}
 	go r.scheduler(loopCtx)
 	return func() {
 		cancel()
@@ -53,9 +63,10 @@ func (r *Runtime) Start(ctx context.Context) (stop func()) {
 	}
 }
 
-// worker claims and runs one job at a time. On ctx cancel it stops claiming (graceful drain): a job
+// worker claims and runs one job at a time (N workers = N jobs in parallel; the SKIP LOCKED claim
+// guarantees no job is handed to two workers). On ctx cancel it stops claiming (graceful drain): a job
 // already claimed runs to completion under its own jobTimeout, not the cancelled loop context.
-func (r *Runtime) worker(ctx context.Context) {
+func (r *Runtime) worker(ctx context.Context, workerID string) {
 	defer r.wg.Done()
 	logger := svc1log.FromContext(ctx)
 	ticker := time.NewTicker(r.cfg.PollInterval)
@@ -64,7 +75,7 @@ func (r *Runtime) worker(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		job, ok, err := r.store.ClaimJob(ctx, r.cfg.WorkerID)
+		job, ok, err := r.store.ClaimJob(ctx, workerID)
 		if err != nil {
 			logger.Warn("hermenea worker: claim failed", svc1log.Stacktrace(err))
 		} else if ok {

@@ -13,13 +13,13 @@ import (
 
 var (
 	// D-Watchlists (M34)
-	ErrWatchlistUnavailable      = errors.New("watchlist screening unavailable")
+	ErrWatchlistUnavailable       = errors.New("watchlist screening unavailable")
 	ErrRegulatorySanctionNotFound = errors.New("regulatory sanction not found")
 )
 
 var (
-	validSanctionAction  = map[string]bool{"fine": true, "ban": true, "license_revocation": true, "warning": true, "settlement": true, "debarment": true, "other": true}
-	validSanctionStatus  = map[string]bool{"active": true, "appealed": true, "overturned": true, "expired": true, "settled": true}
+	validSanctionAction = map[string]bool{"fine": true, "ban": true, "license_revocation": true, "warning": true, "settlement": true, "debarment": true, "other": true}
+	validSanctionStatus = map[string]bool{"active": true, "appealed": true, "overturned": true, "expired": true, "settled": true}
 )
 
 // WatchlistMatch is the persisted result of a live screening check (object watchlist_match). One active
@@ -108,4 +108,13 @@ type WatchlistScreenResult struct {
 // hermenea client and the outbound call stays an injected dependency; the PDP core makes no egress call.
 type WatchlistLookup interface {
 	Screen(ctx context.Context, q WatchlistQuery) (WatchlistScreenResult, error)
+}
+
+// PEPStatusReader is the cross-concern seam personsensitive's watchlist screening uses to snapshot a
+// person's politically-exposed flag from the personprofile government-position ties (D-InstitutionalTies,
+// M33). After the R-09 split the government positions are owned by personprofile, so CheckWatchlists reads
+// the PEP flag through this seam (late-bound to the personprofile service in main.go) rather than its own
+// repository — keeping personsensitive off personprofile's tables.
+type PEPStatusReader interface {
+	IsPoliticallyExposed(ctx context.Context, personID string) (bool, error)
 }

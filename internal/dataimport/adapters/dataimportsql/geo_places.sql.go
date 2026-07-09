@@ -11,191 +11,193 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const enrichGeoCountryFromWOF = `-- name: EnrichGeoCountryFromWOF :exec
-WITH g AS (
-  SELECT CASE WHEN $5::text = '' THEN NULL
-              ELSE ST_SetSRID(ST_GeomFromGeoJSON($5::text), 4326) END AS geom
-)
-UPDATE oikumenea.geo_countries SET
-  wof_id       = $1::bigint,
-  iso_a3       = COALESCE(NULLIF($2::text, ''), iso_a3),
-  numeric_code = COALESCE(NULLIF($3::text, ''), numeric_code),
-  geom         = COALESCE((SELECT geom FROM g), geom),
-  centroid     = COALESCE((SELECT ST_PointOnSurface(geom) FROM g), centroid),
-  bbox         = COALESCE((SELECT ST_Envelope(geom) FROM g), bbox)
-WHERE code = $4::text
+const bulkEnrichGeoCountriesFromWOF = `-- name: BulkEnrichGeoCountriesFromWOF :exec
+UPDATE oikumenea.geo_countries gc SET
+  wof_id       = r.wof_id,
+  iso_a3       = COALESCE(NULLIF(r.iso_a3, ''), gc.iso_a3),
+  numeric_code = COALESCE(NULLIF(r.numeric_code, ''), gc.numeric_code),
+  geom         = COALESCE(g.geom, gc.geom),
+  centroid     = COALESCE(ST_PointOnSurface(g.geom), gc.centroid),
+  bbox         = COALESCE(ST_Envelope(g.geom), gc.bbox)
+FROM (SELECT unnest($1::bigint[])       AS wof_id,
+             unnest($2::text[])           AS code,
+             unnest($3::text[])         AS iso_a3,
+             unnest($4::text[])   AS numeric_code,
+             unnest($5::text[])      AS geometry) r
+CROSS JOIN LATERAL (
+  SELECT CASE WHEN r.geometry = '' THEN NULL
+              ELSE ST_SetSRID(ST_GeomFromGeoJSON(r.geometry), 4326) END AS geom) g
+WHERE gc.code = r.code
 `
 
-type EnrichGeoCountryFromWOFParams struct {
-	WofID       int64
-	IsoA3       string
-	NumericCode string
-	Code        string
-	Geometry    string
+type BulkEnrichGeoCountriesFromWOFParams struct {
+	WofIds       []int64
+	Codes        []string
+	IsoA3s       []string
+	NumericCodes []string
+	Geometries   []string
 }
 
-// Mirror a country place's wof_id + geometry onto its ISO-keyed geo_countries row (D-GeoPlaces). Only
-// the WOF-derived columns are touched; name/status/source provenance stay owned by the geo-countries
-// importer (D-Geo). WOF UPGRADES the border: when it carries geometry, its high-res shape OVERWRITES
-// whatever was there (e.g. the pinax low-res bootstrap border, D-Pinax M45) and re-derives centroid/bbox;
-// when a WOF country record lacks geometry/concordances the existing value is KEPT (COALESCE), so WOF
-// never downgrades the pinax baseline to NULL. iso_a3 / numeric_code likewise upgrade-or-keep.
-func (q *Queries) EnrichGeoCountryFromWOF(ctx context.Context, arg EnrichGeoCountryFromWOFParams) error {
-	_, err := q.db.Exec(ctx, enrichGeoCountryFromWOF,
-		arg.WofID,
-		arg.IsoA3,
-		arg.NumericCode,
-		arg.Code,
-		arg.Geometry,
+// Mirror each created/updated country place's wof_id + geometry onto its ISO-keyed geo_countries row
+// (D-GeoPlaces). Only the WOF-derived columns are touched; name/status/source provenance stay owned
+// by the geo-countries importer (D-Geo). WOF UPGRADES the border: when it carries geometry, its
+// high-res shape OVERWRITES whatever was there (e.g. the pinax low-res bootstrap border, D-Pinax M45)
+// and re-derives centroid/bbox; when a WOF country record lacks geometry the existing value is KEPT
+// (COALESCE), so WOF never downgrades the pinax baseline to NULL. iso_a3 / numeric_code likewise
+// upgrade-or-keep.
+func (q *Queries) BulkEnrichGeoCountriesFromWOF(ctx context.Context, arg BulkEnrichGeoCountriesFromWOFParams) error {
+	_, err := q.db.Exec(ctx, bulkEnrichGeoCountriesFromWOF,
+		arg.WofIds,
+		arg.Codes,
+		arg.IsoA3s,
+		arg.NumericCodes,
+		arg.Geometries,
 	)
 	return err
 }
 
-const getGeoPlaceVersion = `-- name: GetGeoPlaceVersion :one
-
-SELECT source_version FROM oikumenea.geo_places WHERE wof_id = $1
+const bulkSetGeoPlaceParents = `-- name: BulkSetGeoPlaceParents :exec
+UPDATE oikumenea.geo_places g SET
+  parent_id = CASE WHEN r.parent_wof_id = 0 THEN NULL
+                   ELSE COALESCE((SELECT p.id FROM oikumenea.geo_places p WHERE p.wof_id = r.parent_wof_id),
+                                 '00000000-0000-0000-0000-000000000000'::uuid) END
+FROM (SELECT unnest($1::bigint[])        AS wof_id,
+             unnest($2::bigint[]) AS parent_wof_id) r
+WHERE g.wof_id = r.wof_id
 `
 
-// geo-places import upsert (D-GeoPlaces, M16/hermenea). The Who's-On-First administrative gazetteer
-// (country/region/county/locality). Idempotency is keyed on source_version (GetGeoPlaceVersion): a
-// re-import with the same edition skips, a newer one updates, an absent row inserts — never deletes.
+type BulkSetGeoPlaceParentsParams struct {
+	WofIds       []int64
+	ParentWofIds []int64
+}
+
+// Second pass of the chunk merge: resolve each touched row's parent WOF id to its RID. Runs after
+// BulkUpsertGeoPlaces in the same transaction, so a parent inserted by this very chunk resolves. A
+// non-zero parent that does not resolve falls back to the sentinel uuid so the geo_places(id) FK
+// fails loudly (RESTRICT) rather than silently NULLing a real, but not-yet-loaded, parent reference.
+func (q *Queries) BulkSetGeoPlaceParents(ctx context.Context, arg BulkSetGeoPlaceParentsParams) error {
+	_, err := q.db.Exec(ctx, bulkSetGeoPlaceParents, arg.WofIds, arg.ParentWofIds)
+	return err
+}
+
+const bulkUpsertGeoPlaces = `-- name: BulkUpsertGeoPlaces :many
+
+WITH r AS (
+  SELECT unnest($4::bigint[])      AS wof_id,
+         unnest($5::text[])     AS placetype,
+         unnest($6::text[])  AS country_code,
+         unnest($7::text[])          AS name,
+         unnest($8::bigint[])  AS population,
+         unnest($9::text[])    AS hierarchy,
+         unnest($10::text[])   AS concordance,
+         unnest($11::text[])       AS status,
+         unnest($12::text[])     AS geometry
+)
+INSERT INTO oikumenea.geo_places (
+  wof_id, placetype, country_id, name, population,
+  hierarchy, concordances, status, geom, centroid, bbox,
+  source, source_version, imported_at)
+SELECT r.wof_id,
+       r.placetype,
+       CASE WHEN NULLIF(r.country_code, '') IS NULL THEN NULL
+            ELSE COALESCE((SELECT c.id FROM oikumenea.geo_countries c WHERE c.code = r.country_code),
+                          '00000000-0000-0000-0000-000000000000'::uuid) END,
+       r.name,
+       NULLIF(r.population, 0),
+       NULLIF(r.hierarchy, '')::jsonb,
+       NULLIF(r.concordance, '')::jsonb,
+       r.status,
+       g.geom, ST_PointOnSurface(g.geom), ST_Envelope(g.geom),
+       $1::text,
+       $2::text,
+       $3::timestamptz
+FROM r
+CROSS JOIN LATERAL (
+  SELECT CASE WHEN r.geometry = '' THEN NULL
+              ELSE ST_SetSRID(ST_GeomFromGeoJSON(r.geometry), 4326) END AS geom) g
+ON CONFLICT (wof_id) DO UPDATE SET
+  placetype      = EXCLUDED.placetype,
+  country_id     = EXCLUDED.country_id,
+  name           = EXCLUDED.name,
+  population     = EXCLUDED.population,
+  hierarchy      = EXCLUDED.hierarchy,
+  concordances   = EXCLUDED.concordances,
+  status         = EXCLUDED.status,
+  geom           = EXCLUDED.geom,
+  centroid       = EXCLUDED.centroid,
+  bbox           = EXCLUDED.bbox,
+  source         = EXCLUDED.source,
+  source_version = EXCLUDED.source_version,
+  imported_at    = EXCLUDED.imported_at
+WHERE oikumenea.geo_places.source_version IS DISTINCT FROM EXCLUDED.source_version
+RETURNING wof_id, (xmax = 0) AS inserted
+`
+
+type BulkUpsertGeoPlacesParams struct {
+	Source        string
+	SourceVersion string
+	ImportedAt    pgtype.Timestamptz
+	WofIds        []int64
+	Placetypes    []string
+	CountryCodes  []string
+	Names         []string
+	Populations   []int64
+	Hierarchies   []string
+	Concordances  []string
+	Statuses      []string
+	Geometries    []string
+}
+
+type BulkUpsertGeoPlacesRow struct {
+	WofID    int64
+	Inserted bool
+}
+
+// geo-places import upsert (D-GeoPlaces, M16/hermenea; set-based per chunk since R-05). The
+// Who's-On-First administrative gazetteer (country/region/county/locality). Idempotency is keyed on
+// source_version: a re-import with the same edition skips, a newer one updates, an absent row
+// inserts — never deletes.
 // Geometry crosses the wire as GeoJSON text and is materialized with ST_GeomFromGeoJSON (so sqlc never
 // sees the geometry type); centroid + bbox are DB-derived (ST_PointOnSurface / ST_Envelope). Absent
 // optional values arrive as 0 / ” and are folded to NULL via NULLIF (parent_id/population can never be
 // a real 0; country_code never a real ”). A placetype=country record additionally enriches the
 // matching geo_countries row in place.
-func (q *Queries) GetGeoPlaceVersion(ctx context.Context, wofID int64) (pgtype.Text, error) {
-	row := q.db.QueryRow(ctx, getGeoPlaceVersion, wofID)
-	var source_version pgtype.Text
-	err := row.Scan(&source_version)
-	return source_version, err
-}
-
-const insertGeoPlaceImport = `-- name: InsertGeoPlaceImport :exec
-WITH g AS (
-  SELECT CASE WHEN $13::text = '' THEN NULL
-              ELSE ST_SetSRID(ST_GeomFromGeoJSON($13::text), 4326) END AS geom
-)
-INSERT INTO oikumenea.geo_places (
-  wof_id, placetype, parent_id, country_id, name, population,
-  hierarchy, concordances, status, geom, centroid, bbox,
-  source, source_version, imported_at)
-SELECT $1::bigint,
-       $2::text,
-       -- Resolve the parent's WOF id to its RID; a non-zero parentId that does not resolve falls back
-       -- to a sentinel uuid so the geo_places(id) FK fails loudly (RESTRICT) rather than silently
-       -- NULLing a real, but not-yet-loaded, parent reference.
-       CASE WHEN NULLIF($3::bigint, 0) IS NULL THEN NULL
-            ELSE COALESCE((SELECT p.id FROM oikumenea.geo_places p WHERE p.wof_id = $3::bigint),
-                          '00000000-0000-0000-0000-000000000000'::uuid) END,
-       CASE WHEN NULLIF($4::text, '') IS NULL THEN NULL
-            ELSE COALESCE((SELECT c.id FROM oikumenea.geo_countries c WHERE c.code = $4::text),
-                          '00000000-0000-0000-0000-000000000000'::uuid) END,
-       $5::text,
-       NULLIF($6::bigint, 0),
-       $7::jsonb,
-       $8::jsonb,
-       $9::text,
-       g.geom, ST_PointOnSurface(g.geom), ST_Envelope(g.geom),
-       $10::text,
-       $11::text,
-       $12::timestamptz
-FROM g
-`
-
-type InsertGeoPlaceImportParams struct {
-	WofID         int64
-	Placetype     string
-	ParentID      int64
-	CountryCode   string
-	Name          string
-	Population    int64
-	Hierarchy     []byte
-	Concordances  []byte
-	Status        string
-	Source        string
-	SourceVersion string
-	ImportedAt    pgtype.Timestamptz
-	Geometry      string
-}
-
-func (q *Queries) InsertGeoPlaceImport(ctx context.Context, arg InsertGeoPlaceImportParams) error {
-	_, err := q.db.Exec(ctx, insertGeoPlaceImport,
-		arg.WofID,
-		arg.Placetype,
-		arg.ParentID,
-		arg.CountryCode,
-		arg.Name,
-		arg.Population,
-		arg.Hierarchy,
-		arg.Concordances,
-		arg.Status,
+// Set-based chunk merge (R-05): one INSERT … SELECT over the chunk's parallel arrays replaces the
+// per-record loop. Insert absent wof_ids, update rows whose stored source_version differs from the
+// incoming edition, and leave the rest untouched (the conflict-update WHERE gate) — never deletes.
+// parent_id is deliberately NOT written here: subqueries in one INSERT cannot see sibling rows of the
+// same statement, so parent resolution is a second pass (BulkSetGeoPlaceParents) over the rows this
+// merge reports as created/updated — which also lets a parent arrive in the same chunk. RETURNING
+// (xmax = 0) distinguishes fresh inserts from conflict-updates; skipped rows return nothing.
+func (q *Queries) BulkUpsertGeoPlaces(ctx context.Context, arg BulkUpsertGeoPlacesParams) ([]BulkUpsertGeoPlacesRow, error) {
+	rows, err := q.db.Query(ctx, bulkUpsertGeoPlaces,
 		arg.Source,
 		arg.SourceVersion,
 		arg.ImportedAt,
-		arg.Geometry,
-	)
-	return err
-}
-
-const updateGeoPlaceImport = `-- name: UpdateGeoPlaceImport :exec
-WITH g AS (
-  SELECT CASE WHEN $13::text = '' THEN NULL
-              ELSE ST_SetSRID(ST_GeomFromGeoJSON($13::text), 4326) END AS geom
-)
-UPDATE oikumenea.geo_places SET
-  placetype      = $1::text,
-  parent_id      = CASE WHEN NULLIF($2::bigint, 0) IS NULL THEN NULL
-                        ELSE COALESCE((SELECT p.id FROM oikumenea.geo_places p WHERE p.wof_id = $2::bigint),
-                                      '00000000-0000-0000-0000-000000000000'::uuid) END,
-  country_id     = CASE WHEN NULLIF($3::text, '') IS NULL THEN NULL
-                        ELSE COALESCE((SELECT c.id FROM oikumenea.geo_countries c WHERE c.code = $3::text),
-                                      '00000000-0000-0000-0000-000000000000'::uuid) END,
-  name           = $4::text,
-  population     = NULLIF($5::bigint, 0),
-  hierarchy      = $6::jsonb,
-  concordances   = $7::jsonb,
-  status         = $8::text,
-  geom           = (SELECT geom FROM g),
-  centroid       = (SELECT ST_PointOnSurface(geom) FROM g),
-  bbox           = (SELECT ST_Envelope(geom) FROM g),
-  source         = $9::text,
-  source_version = $10::text,
-  imported_at    = $11::timestamptz
-WHERE wof_id = $12::bigint
-`
-
-type UpdateGeoPlaceImportParams struct {
-	Placetype     string
-	ParentID      int64
-	CountryCode   string
-	Name          string
-	Population    int64
-	Hierarchy     []byte
-	Concordances  []byte
-	Status        string
-	Source        string
-	SourceVersion string
-	ImportedAt    pgtype.Timestamptz
-	WofID         int64
-	Geometry      string
-}
-
-func (q *Queries) UpdateGeoPlaceImport(ctx context.Context, arg UpdateGeoPlaceImportParams) error {
-	_, err := q.db.Exec(ctx, updateGeoPlaceImport,
-		arg.Placetype,
-		arg.ParentID,
-		arg.CountryCode,
-		arg.Name,
-		arg.Population,
-		arg.Hierarchy,
+		arg.WofIds,
+		arg.Placetypes,
+		arg.CountryCodes,
+		arg.Names,
+		arg.Populations,
+		arg.Hierarchies,
 		arg.Concordances,
-		arg.Status,
-		arg.Source,
-		arg.SourceVersion,
-		arg.ImportedAt,
-		arg.WofID,
-		arg.Geometry,
+		arg.Statuses,
+		arg.Geometries,
 	)
-	return err
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BulkUpsertGeoPlacesRow
+	for rows.Next() {
+		var i BulkUpsertGeoPlacesRow
+		if err := rows.Scan(&i.WofID, &i.Inserted); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

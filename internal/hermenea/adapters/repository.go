@@ -156,6 +156,14 @@ func (r *Repository) RequeueStaleRunning(ctx context.Context, lockedBefore time.
 	return r.q.RequeueStaleRunning(ctx, ts(lockedBefore))
 }
 
+func (r *Repository) SetJobCursor(ctx context.Context, id string, seq int, checksum string) error {
+	return r.q.SetJobCursor(ctx, hermeneasql.SetJobCursorParams{
+		ID:             id,
+		ResumeSeq:      int64(seq),
+		ResumeChecksum: text(checksum),
+	})
+}
+
 func (r *Repository) InsertRawBatch(ctx context.Context, sourceID, sourceVersion, checksum string, payload []byte) (string, error) {
 	return r.q.InsertRawBatch(ctx, hermeneasql.InsertRawBatchParams{
 		SourceID:      sourceID,
@@ -244,6 +252,8 @@ func jobFrom(row hermeneasql.HermeneaWorkerJob) domain.Job {
 		MaxAttempts:    int(row.MaxAttempts),
 		RunAfter:       row.RunAfter.Time,
 		LastError:      row.LastError.String,
+		ResumeSeq:      int(row.ResumeSeq),
+		ResumeChecksum: row.ResumeChecksum.String,
 	}
 }
 

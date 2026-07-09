@@ -82,7 +82,15 @@ Each graph is independently a DAG. This yields:
   child_id)`; the same parent→child pair may exist in more than one graph. Cycle prevention is
   **per graph** (a cross-graph cycle — A commands B while B is operationally over A — is legal).
 - **Per-graph closure.** `tenant_unit_closure` is keyed by `graph_id`; an edge change in graph K
-  recomputes only K's rows in the same transaction.
+  **incrementally adjusts only the affected closure rows of K** in the same transaction (M48,
+  review R‑04 — amends the original full per-graph recompute): attach merges
+  `anc*(parent) × desc*(child)` via a closure∘closure join with a `LEAST`-depth update (depth
+  stays the shortest-path length — the ancestor/descendant listings order by it); detach deletes
+  that slice and re-derives it from surviving edges plus closure rows outside the slice, then
+  prunes the endpoints' reflexive rows if they left the edge set. Closure maintenance on one
+  graph is serialized by a per-graph row lock (`tenant_graphs … FOR NO KEY UPDATE`), which also
+  closes the guard-then-insert cycle race; the full recompute survives solely as the
+  D-ClosureIntegrity repair path.
 - **Graph on the assignment.** A `subtree` assignment names the graph whose closure it cascades
   over (`authz_role_assignments.graph_id`, **NULL iff `scope='unit'`**). A `unit` grant is
   graph-independent.
@@ -313,6 +321,10 @@ is replaced by a `kind_id` FK into the domain-scoped `tenant_unit_kinds` catalog
 
 ### D-Audit — Every write is audited; audit reads are permission-scoped
 
+**Amended by D-AuditRetention** (physical layout only): the `audit_log` table is monthly
+range-partitioned with a trimmed index set and an operator retention policy. The semantics below —
+same-transaction, append-only, one row per Action — are unchanged.
+
 **Decision.** Every **write** (state mutation) in every module — create / update / state
 transition / soft-delete / purge / grant / revoke / link / unlink — records an audit entry in the
 **same DB transaction** as the change (the audit row commits iff the change commits). Denied
@@ -499,6 +511,8 @@ its incremental maintenance: two **synchronous, admin-triggered, per-graph** ope
 
 - **verify** — recomputes the transitive closure of a graph's edges and diffs it
   against the stored closure, returning a drift report (missing / extra row counts + a sample).
+  Since M48 the diff is **depth-inclusive** (a stored row with a wrong shortest-path depth counts
+  as drift, one row in each direction), so incremental-maintenance depth bugs are reportable too.
   A read → **not audited** (D-Audit); it additionally **upserts a per-graph diagnostic status
   overlay** (`tenant_closure_status`) that the `closure-drift` health reporter consumes
   (D-ClosureDriftHealth) — derived health metadata, not an audited domain mutation.
@@ -648,6 +662,11 @@ GUC-setting seam in [platform](../modules/platform.md); the PDP gains the read/w
 export ([authorization](../modules/authorization.md)); RLS policies + enablement land via
 expand/contract (permissive-first, then tighten — see
 [upgrade-safety.md](upgrade-safety.md)); the app DB role must lack `BYPASSRLS`. Resolves **DS-17**.
+
+**Amended by D-RLSLiveReach (M47)** — the GUC contract slims to `app.person_id` +
+`app.is_instance_admin` (the unit-list GUCs are gone); policies compute reach LIVE via
+`oikumenea.authz_unit_in_reach(unit, wr)`, making the backstop exact under revocation. The
+backstop/authoritative split and the BYPASSRLS rule above are unchanged.
 See [conventions.md](conventions.md).
 
 **Realized mechanism (M11, revision `0011_rls`).** The seam is implemented as a **per-request pinned
@@ -677,6 +696,10 @@ which the policy outruns the plumbing. The staged (permissive-first) rollout re-
 **post-v1** RLS change.
 
 ### D-PersonReadScope — A person's read scope projects through its memberships
+
+**Extended by D-PersonSearch**: a text `query` on the directory list folds a pg_trgm predicate
+(person names + variants) into this semi-join in SQL (`VisiblePersonIDsForSubjectSearch`), never a
+Go-side post-filter — so scoped search stays O(page) and never returns an empty page while `hasMore`.
 
 **Decision.** Read access to a **person** (and, by inheritance, to that person's
 [documents](../modules/document.md)) is resolved through the person's **active memberships**, since
@@ -1588,6 +1611,301 @@ system** via the reified `person_ranks` link (see [D-Rank](#d-rank--rank-on-pers
 which scoped "one rank" to "one rank per rank system"). Additive / expand-only. Lands as the scoped
 **M15** ([milestones](../milestones.md)); promotes
 open-question **DS-43** (non-military cross-system comparators). See [rank](../modules/rank.md).
+
+---
+
+### D-RLSLiveReach — RLS policies compute reach live in SQL; the GUC contract is O(1)
+
+**Decision.** The RLS backstop's policies no longer consume an app-materialized unit list: they call
+**`oikumenea.authz_unit_in_reach(unit uuid, wr boolean)`** — a planner-inlined `LANGUAGE sql STABLE`
+predicate that semi-joins the subject's **live** role assignments (`authz_role_assignments ⋈
+authz_roles ⋈ authz_role_permissions`, unexpired, role live, `'*.read'` for `wr=false` / any
+non-read permission for `wr=true`) over the tenant closure (`subtree` scope over authority-bearing,
+non-deleted graphs; `unit` scope = target only) — the exact SQL mirror of the domain `ReachSet`
+semantics. The per-request GUC contract shrinks to **`app.person_id` + `app.is_instance_admin`**,
+set and reset in **one round trip each** (`db.AcquireScoped`). App-side, nothing on the request path
+materializes reach anymore: person/document read scope is a SQL semi-join (membership's
+`VisiblePersonIDsForSubject` — adaptive sparse/dense plan shapes behind a capped reach-cardinality
+probe — and `SubjectCanReadPerson`), and the shadow gate is a batch probe
+(`ReadableUnitsForSubjectAmong`). `Service.EffectiveReach`/`RLSStateFor` are deleted;
+`domain.ReachSet` survives as the pure, property-tested reference semantic and the oracle of the
+randomized reach differential test (`internal/membership/reach_differential_integration_test.go`),
+which pins Go ⇄ SQL ⇄ policy-predicate parity.
+
+**Why.** Review-2026-07 **R-02**: a staff-level subject near an org root has reach ≈ the whole org.
+Materializing it app-side and shipping it as comma-joined GUCs cost, **per request**: a 2.7 s
+closure expansion, a 7.4 MB GUC payload, 4+4 `set_config` round trips, and linear `= ANY` scans in
+every policy (measured, M46 harness at 10⁵ units / 10⁶ persons). Live policies cost an index probe
+per row scanned (subject-idx + closure-PK), and every guarded read path is keyset-paged — measured
+3–6 ms per page for the same subject; GUC payload is 40 bytes.
+
+**Two deliberate semantic notes.** (1) *Stronger*: the backstop is now **exact under revocation** —
+revoking an assignment hides rows on an already-pinned connection mid-request (asserted in
+`rls_integration_test.go`), which also backstops D-AuthzGrantCache's ≤2 s decision staleness. (2)
+*Never narrower*: the predicate reads only RLS-exempt tables (a read of a guarded table would
+recurse into its own policy), so it cannot apply `ReachSet`'s soft-deleted-descendant refinement —
+the backstop may pass rows keyed on a soft-deleted descendant unit that the authoritative app layer
+excludes. The person/document hardening seam noted in D-RLSDefenseInDepth is now **one policy
+away** (the reach predicate exists in SQL); still deliberately not shipped.
+
+**Consequence.** **Amends D-RLSDefenseInDepth** (mechanism only; the backstop/authoritative split
+stands). Migrations `0011`/`0023`/`0024`/`0026` edited in place (unreleased-slice convention;
+`atlas.sum` re-hashed); `db.RLSState` is `{PersonID, IsInstanceAdmin}`; the RLS-exempt list gains
+the `authz_*` tables incl. `authz_epoch`. Landed with **M47**.
+
+---
+
+### D-AuthzRequestContext — Authority state is fetched once per request and snapshotted on the context
+
+**Decision.** The identity-federation authenticator resolves the subject's **authority state** —
+instance-admin flag + active grants — **exactly once per request** (`authorization/application`
+`ContextWithAuthority`) and attaches it to the request context as an opaque snapshot. Every
+PDP-consuming call in that request (`Decide`, `DecideBatch`, `HoldsPermissionAnywhere`,
+`EffectiveReach`, `FilterVisibleUnits`, and every `pep.Require*` gate built on them) consumes the
+snapshot instead of re-running the grants join. A call about a **different** subject than the
+request's falls through to a fresh resolve (the snapshot is keyed by person RID); out-of-request
+callers (CLI, boot seeds, tests) carry no snapshot and behave as before.
+
+**Why.** Review-2026-07 **R-01**: a typical guarded request executed the grants join
+(`authz_role_assignments ⋈ authz_roles ⋈ authz_role_permissions`) + the instance-admin probe
+**≥3–4×** (authenticator reach + every `Require*`), serialized in front of every handler — measured
+at 4 grants-joins/request on the M46 harness. Authority state was already a snapshot-at-call-time;
+making it a snapshot-at-request-start changes no semantics and deletes the multiplier.
+
+**Consequence.** `middleware.RLSResolver` is replaced by `middleware.AuthorityResolver`
+(`ContextWithAuthority(ctx, personID) (ctx, RLSState, error)`); the snapshot type never crosses the
+module boundary. A guarded request issues **exactly one** authority fetch regardless of gate count
+(asserted by `db.WithQueryCounter` in integration tests; `BenchmarkEnforceOnSnapshot` shows
+decision cost independent of gate count). Landed with **M47**; see also
+[D-AuthzGrantCache](#d-authzgrantcache--epoch-validated-per-process-grant-cache-2-s-revocation-bound)
+for what "fetch" means across requests.
+
+---
+
+### D-AuthzGrantCache — Epoch-validated per-process grant cache (2 s revocation bound)
+
+**Decision.** The per-request authority fetch (D-AuthzRequestContext) is served through a
+**per-process cache** of `(subject → isAdmin, grants)` validated against a **single-row revocation
+epoch** (`oikumenea.authz_epoch`) that **every authority-mutating transaction bumps** — grant/revoke
+assignment, role permission-set edit, role delete, instance-admin grant/revoke, base-role re-sync,
+person-merge subject repoint. Protocol: an entry validated less than **2 s** ago
+(`grantCacheTTL`) is served with **zero** database reads; a staler entry is revalidated with **one**
+single-row epoch read (unchanged epoch ⇒ keep grants; changed ⇒ full refetch); misses read the epoch
+first, then fetch (concurrent bumps can only make an entry conservatively stale). Per-subject
+singleflight collapses stampedes; the map is size-capped (drop-all at 10k entries).
+
+**Why.** Review-2026-07 **R-01.2**: even fetched once per request, the grants join is per-request
+DB load that scales with RPS; at national scale authorization dominates the query mix. The epoch
+makes invalidation **exact** at the cost of one indexed single-row read per subject per TTL window,
+instead of heuristic TTL-only staleness.
+
+**Revocation-latency contract (replaces "a revoke takes effect on the next call").** A
+grant/revoke/role-edit is visible: **immediately** in the process that performed it (the mutating
+write resets its local cache after commit), and within **≤ 2 s** on every other replica. The RLS
+backstop underneath is exact/live (D-RLSLiveReach), so a stale cached ALLOW cannot actually read
+revoked-away rows on RLS-guarded tables — the cache bounds *decision* staleness, not *data*
+exposure.
+
+**Consequence.** New single-row table `authz_epoch` (derived counter, no RID — ontology-mapping
+§4.3) in migration `0007`; `BumpAuthzEpoch` runs inside the mutating transactions
+(`authorization/application/service.go`, `person_merge.go`); `grantcache.go` owns the protocol
+(unit-tested: fresh-hit/revalidate/bump/reset/singleflight). Raising `grantCacheTTL` trades
+revocation latency for epoch-read rate — change it only by amending this block.
+
+### D-PersonSearch — Trigram-indexed directory search over names + variants, filtered in SQL
+
+**Decision.** Directory search (`GET /persons?query=`) matches a case-insensitive substring against
+a person's own name/code haystack **and** any of its per-person **name variants** (transliterations,
+aka/aliases — D-PersonNamesCLDR), so a person is findable by a native-script or alias form, not only
+the Latin `display_name`. Matching is served by a **pg_trgm GIN index** over a `STORED` generated
+`search_text` column on both `person_persons` and `person_name_variants`. The text filter is applied
+**in the database**, never in Go: the admin path is a dedicated `SearchPersons` query and the scoped
+path folds the trigram predicate into the read-scope semi-join (`VisiblePersonIDsForSubjectSearch`,
+extends **D-PersonReadScope** / D-RLSLiveReach). The two match branches (person haystack, variant
+haystack) are a **UNION of id-sets** so each stays an index bitmap scan; the keyset stays on the
+person RID.
+
+**Why.** Review-2026-07 **R-06**: the previous `ILIKE '%q%'` over four un-indexed columns was a
+sequential scan per keystroke at 1M persons, and the scoped path filtered the already-paginated page
+**in Go** — so a scoped search could return an **empty page while `hasMore`** and paged through the
+whole roster for a rare name. Folding the filter into SQL makes pages fill correctly and O(page); the
+GIN index makes a ≥3-char query a bitmap scan. Searching variants closes a correctness gap (non-Latin
+/ aliased names were unfindable). An `A OR EXISTS(subquery)` predicate is **not** index-able (it
+seq-scans), which is why the match is a UNION semi-join and the empty-query "list" is a separate
+query with no filter — keeping every plan index-served regardless of the prepared-statement plan mode.
+
+**Consequence.** `pg_trgm` + `search_text` generated columns + two GIN indexes in migration `0005`;
+`SearchPersons` (person) and `VisiblePersonIDsForSubjectSearch` (membership) queries; the Go-side
+`matchesPersonQuery` filter is deleted. Sub-3-char queries fall back to a scan (pg_trgm needs a full
+trigram) — acceptable for the rare short-prefix case. The membership→`person_persons` read in the
+scoped search is a sanctioned cross-module read (like the existing authz/tenant reads in that query).
+
+### D-AuditRetention — Monthly-partitioned audit ledger; retention is an operator act
+
+**Decision.** The append-only audit ledger (`oikumenea.audit_log`, D-Audit) is **declaratively
+RANGE-partitioned by month on `created_at`**. Its physical PK becomes `(id, created_at)` (the
+partition key must be in every unique constraint; `id`-leading keeps a by-RID `GetAuditEntry` a PK
+lookup) and its secondary index set is trimmed to what the read API serves —
+`(created_at DESC, id DESC)` keyset, `(target_type, target_id)`, `(actor_person_id)`, `(unit_id)`
+(the RLS read policy's key); the `actor_type` and `request_id` singles are dropped. Monthly
+partitions are rolled forward idempotently at boot (`ensure_audit_partition`, advisory-locked) with a
+`DEFAULT` catch-all backstop. **Retention is an operator policy, never automatic deletion**:
+`audit.retention-months` (install config, default **0 = retain forever**, legal-hold-safe) records
+intent, and the operator enforces it by running `detach_audit_partitions_before(cutoff)` then
+dumping/dropping the detached partitions. D-Audit's **semantics are unchanged** — same-transaction
+insert, append-only (`reject_mutation` still guards every partition), one row per Action.
+
+**Why.** Review-2026-07 **R-07**: one unbounded table with 6 secondary indexes on every write's
+critical path becomes the largest, hottest, ever-growing object, with no archival story. Monthly
+partitioning bounds index/vacuum/backup cost to the live months and makes retention a metadata
+`DETACH` rather than a mass `DELETE` over the biggest table; the index diet cuts per-write
+maintenance. Legal-hold requirements belong to the operator, so retention is **config, not code** —
+and defaults to keeping everything.
+
+**Consequence.** Migration `0001` defines `audit_log` partitioned from the start (edited in place —
+pre-release, the DB is rebuilt); `ensure_audit_partition` / `detach_audit_partitions_before` helpers
+ship with it; the composition root rolls the window forward under the boot-seed advisory lock.
+Automated scheduled retention enforcement is an explicit **open seam** (a future scheduler reads
+`audit.retention-months`). See [audit](../modules/audit.md) for the partition + retention runbook.
+
+---
+
+### D-PersonModuleSplit — The `person` god module splits into core / profile / sensitive behind one `PersonService`
+
+**Decision.** `internal/person` is split into **three internal Go modules behind ONE unchanged Conjure
+`PersonService`**, along a **data-sensitivity + change-cadence** axis:
+
+- **`internal/person` (core)** — identity, CLDR names + name variants, bio (`birthdate`/`date_of_death`/
+  `sex`/`country_of_birth`), ranks (`HOLDS_RANK`), the read-scope projection (owns the `MembershipReader`
+  seam), and the **merge/purge lifecycle orchestration**.
+- **`internal/personprofile`** — citizenships, residences, addresses, contact channels
+  (email/phone/call-sign + messenger links + social accounts), the `SPEAKS` languages link, the
+  person↔person relationships, and the **non-encrypted** institutional ties (government positions,
+  lobbying relationships, external references). Owns the `LocationLookup` seam (addresses).
+- **`internal/personsensitive`** — everything **envelope-encrypted or `pii:special`**: physical
+  identity / descriptions / distinguishing marks, the encrypted ethnicity link, the M35 overlays
+  (crypto wallets, personality, inferred political leaning), watchlist matches + regulatory sanctions,
+  and the **encrypted M33 party membership**. **The `crypto.Cipher` and all seal/unseal logic live
+  here** (the R-09 headline — one module, one reviewer surface), plus the `ColorLookup` and
+  `WatchlistLookup` seams.
+
+One `internal/person/transport` package holds one `Service` that **composes the three application
+services** and implements the single `PersonService`; each handler delegates to the owning service, and
+`mapError` stays a single function over the one shared `domain` package.
+
+**Delivered as PR-2a (application-layer split, move-only).** The three modules share a **single
+`internal/person/domain` kernel** (all types, the error block, validators, seam interfaces) and a
+**unified `internal/person/adapters` repository + `queries/person.sql`** — so merge/purge orchestration
+and `GetPerson` child-hydration keep working through the shared repo. **No schema change, no migration,
+no Conjure contract change**; the RID type codes and every ontology mapping are untouched (D-Ontology /
+D-ResourceIdentifiers unaffected). A shared cycle-free `internal/person/appkit` leaf carries the tx +
+audit-record plumbing all three modules reuse.
+
+**Delivered as PR-2b step 1 (the purge fan-out / R-08 cross-module fix).** A **`PersonPurged{ID}` event
++ `SubscribeErase` helper** (leaf `internal/person/events`, mirroring `PersonMerged`/`SubscribeRepoint`)
+now let each owning module erase its **own** rows on purge in the same transaction: `PurgePerson`
+publishes `PersonPurged` after the person-owned scrub, and `education`/`company` moved their
+person-referencing deletes out of `person`'s `repo.Purge` into their own `SubscribeErase` subscriptions
+(`SubscribePersonPurge`). This **removes `person`'s inline cross-module purge writes** (`person` no
+longer deletes `company_*`/`education_*` tables) — the R-08 module-table boundary, without an allowlist.
+Behavior is identical (same rows, same tx); the event is published only on a real purge, never on the
+merge-tombstone `Purge` of a stub (whose rows were already re-pointed by `PersonMerged`).
+
+**Delivered as PR-2b step 2 (the dormant erasers wired — closes the purge PII gap).** The previously
+deferred `document`/`finance`/`vehicle`/`religion` `ErasePerson*` methods are now activated as
+`PersonPurged` subscribers (`SubscribePersonPurge`): because they crypto-erase + write a correlated audit
+row they subscribe to `TypePersonPurged` **directly** (each delegates to an extracted `tx`-accepting
+helper so it runs in the purge transaction), not via the raw-SQL `SubscribeErase`. Before this, a
+`PurgePerson` left those modules' rows un-erased (the methods existed but nothing called them on purge) —
+a real erasure gap now closed: a purge crypto-erases the person's documents/personal-codes, sole-held
+finance accounts+cards, owned vehicle registrations, and encrypted religious affiliations in the same
+transaction. Each records its audit row only when it actually erased something.
+
+**Delivered as PR-2b step 3 (the data-layer split).** `queries/person.sql` (182 queries) and
+`adapters/repository.go` (~3000 lines) split three ways by owning table: **core** keeps
+`person_persons` / `person_ranks` / `person_name_variants`; **personprofile** owns citizenships,
+residences, addresses, the contact channels, SPEAKS languages, person↔person relationships and the
+non-encrypted institutional ties; **personsensitive** owns physical identity, ethnicity, party
+membership, watchlist/sanctions and the M35 overlays. Each concern now has its **own `adapters/queries`
+dir + generated sqlc package** (`personprofilesql` / `personsensitivesql`) and its **own repository
+port** in the domain kernel (`Repository` / `ProfileRepository` / `SensitiveRepository`), implemented by
+its own adapter (the shared pgtype/error plumbing is duplicated as adapter-local helpers so the concern
+adapters import neither core's `adapters` nor each other). `domain.Person` is **lean** (the seven profile
+child-slices dropped); the transport `GetPerson` handler composes them from the profile service
+(`composeProfile`). The purge fan-out completes: core `repo.Purge` is **core-only** (name variants +
+person PII scrub); `personprofile` / `personsensitive` erase (hard-delete or crypto-erase) their own rows
+via `SubscribePersonPurge` in the purge transaction, and `MergePerson` publishes `PersonPurged` for the
+tombstoned stub so its non-re-homed residuals are dropped. Two reviewed cross-module reads keep the
+concerns off each other's tables: each concern verifies the parent exists via `PersonExists` on
+`person_persons`, and `personsensitive`'s watchlist screening reads the PEP flag from `personprofile`
+through a late-bound `PEPStatusReader` seam (never touching `person_government_positions` itself). The
+**R-08 module-table lint gained per-`person_*`-table ownership** (exact table names override the shared
+`person` prefix), with reviewed allowlist entries for the `PersonExists` guard and the geo/language
+reference lookups. Every person-family hand-written file is now **< 800 lines** except the two large
+concern adapters (`personprofile/adapters/repository.go`, `personsensitive/adapters/repository.go`),
+which may sub-split further later.
+
+**Fully delivered (2026-07-09).** The final documentation follow-up landed: the entity data-model
+sections moved from [person.md](../modules/person.md) into the concern docs.
+[person.md](../modules/person.md) now owns only the **core** entities (`person_persons`, the `HOLDS_RANK`
+link, `person_name_variants`) plus the read-scope rule, the PII-governance purge summary, and the single
+`PersonService` API surface; [personprofile.md](../modules/personprofile.md) owns the data model for
+citizenships / residences / addresses / contact & social channels / `SPEAKS` languages / person↔person
+relationships / non-encrypted institutional ties; [personsensitive.md](../modules/personsensitive.md)
+owns the sensitive/encrypted overlays. Each `person_*` entity now has exactly one owning doc.
+
+**Why.** Review-2026-07 **R-09**: `person` was a god module — bio + contacts + social + relationships +
+physical identity + addresses + watchlists + overlays all piled onto the same five files (each M31–M35
+milestone grew them), and the PII tiers concentrate in the biggest, hardest-to-review files. Splitting
+by sensitivity puts the **entire envelope-crypto surface and its reviewers in one module**
+(`personsensitive`), bounds merge-conflict and review blast radius, and stops unrelated concerns sharing
+tx/repository helpers. Keeping one Conjure service means the split is invisible to every client.
+
+**Consequence.** New `internal/personprofile` + `internal/personsensitive` (+ the shared
+`internal/person/appkit`), each a full hexagonal module (`domain` kernel shared, own
+`application`/`adapters`/`queries`). `cmd/oikumenea/main.go` registers all three, wires colors/watchlist →
+sensitive and location → profile, binds the `PEPStatusReader` seam (sensitive → profile), subscribes each
+concern's `SubscribePersonPurge`, and adds `profileSvc`+`sensitiveSvc` to the boot-time `MustBeBound` seam
+slice (R-11). [personprofile.md](../modules/personprofile.md) and
+[personsensitive.md](../modules/personsensitive.md) now **own the data model** for their entities;
+[person.md](../modules/person.md) owns the **core** entities (`person_persons`, the `HOLDS_RANK` link,
+`person_name_variants`) plus the read-scope rule, the PII-governance purge summary, and the single
+`PersonService` API surface. Each `person_*` entity has exactly one owning doc.
+
+---
+
+### D-EventOutbox — Transactional outbox for the `notify` event class (extends the `pkg/events` bus)
+
+Domain events split into two classes. **`atomic`** (the existing `events.Bus`) dispatches subscribers
+**inside the publisher's transaction** — all-or-nothing with the originating write; this stays the
+default and every event today is `atomic`. **`notify`** is a new class delivered **after commit, at
+least once, out of process** via a **transactional outbox**: the producer enqueues one row on its own
+write transaction (`events.OutboxWriter.PublishNotify` → `oikumenea.platform_outbox`, migration `0036`),
+so the event commits atomically with the write, and a dispatcher (`internal/platform/outbox`) drains the
+queue after commit — claiming rows `FOR UPDATE SKIP LOCKED` (replica-safe, mirrors the hermenea worker,
+D-Hermenea/R-13), retrying with exponential backoff, dead-lettering past `max_attempts`. Handlers are
+**idempotent** (a crash between commit and dispatch re-delivers).
+
+The event bus is **sealed** after boot (`Bus.Seal` in the composition root, after all modules wire their
+subscribers): a later `Subscribe` **panics**. Adding an `atomic` subscriber widens every publisher's
+transaction, so it is a **decision-level change**, not a routine wiring edit; an out-of-band side effect
+that must not hold the write's locks is a `notify` handler on the dispatcher instead.
+
+**Why.** Review-2026-07 **R-10**: the same-transaction bus is load-bearing across ten modules, so a
+merge/purge is one giant transaction and every new `atomic` subscriber widens it; there was **no**
+at-least-once channel for effects that *should* be async (webhooks, projections, cache/grant-epoch
+invalidation), so everything defaulted into the write tx. The fix is not "make events async" —
+same-transaction is correct for order-apply and merge/purge — but to **name the two classes** and provide
+the missing `notify` channel + the boot-time guardrail, so the next async-shaped need is not jammed into
+the write transaction by default.
+
+**Consequence.** New `oikumenea.platform_outbox` table (infra, not an ontology entity; no RLS, mutable
+status), `pkg/events.OutboxWriter` + `NotifyPublisher`, the `internal/platform/outbox` dispatcher (started
+in `main.go`, wired into cleanup), and `Bus.Seal`. **No `notify` producers exist yet** — the outbox is a
+live-but-empty proven seam (integration test: enqueue-on-commit durability + delivery + at-least-once
+redelivery on handler failure). Classified in [patterns.md](patterns.md) *Domain events: atomic vs.
+notify*. The multi-replica *notify* posture (rest of R-13) rides on this. Retention of dispatched/dead
+rows is an operator concern (like audit partitions), an open seam.
 
 ---
 

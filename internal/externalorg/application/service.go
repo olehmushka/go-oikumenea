@@ -194,10 +194,7 @@ func clampPageSize(n int) int {
 }
 
 func (s *Service) querier(ctx context.Context) db.Querier {
-	if c, ok := db.ConnFromContext(ctx); ok {
-		return c
-	}
-	return s.pool
+	return db.RequestQuerier(ctx, s.pool)
 }
 
 func (s *Service) inTx(ctx context.Context, fn func(pgx.Tx) error) error {

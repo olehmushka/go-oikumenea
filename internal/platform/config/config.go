@@ -4,6 +4,8 @@
 package config
 
 import (
+	"os"
+
 	wconfig "github.com/palantir/witchcraft-go-server/v2/config"
 )
 
@@ -45,16 +47,58 @@ type Install struct {
 	// Pinax configures the reference-plane bundled-preset autoseeder (D-Pinax, M45): whether oikumenea
 	// self-seeds its `go:embed`-ed YAML presets on boot. Absent block => default (autoseed on).
 	Pinax Pinax `yaml:"pinax"`
+
+	// Audit is the audit-ledger operator policy (D-AuditRetention, review-2026-07 R-07). Absent block
+	// => retain forever.
+	Audit Audit `yaml:"audit"`
+}
+
+// Audit is the append-only audit ledger's operator policy (D-AuditRetention). The ledger is monthly
+// range-partitioned; retention is a deliberate OPERATOR act (legal-hold requirements belong to the
+// operator), never automatic deletion. RetentionMonths records the intended retention window in
+// months — 0 (the default) means retain forever, the legal-hold-safe posture. Enforcement is the
+// operator running oikumenea.detach_audit_partitions_before(cutoff) then dumping/dropping the
+// detached partitions per docs/modules/audit.md; a scheduled enforcer that consumes this value is an
+// explicit open seam (not built in this phase).
+type Audit struct {
+	RetentionMonths int `yaml:"retention-months"`
 }
 
 // Hermenea is the import-control proxy target: oikumenea forwards UI-triggered sync/list calls to the
-// hermenea companion's control API (D-Hermenea). The shared trigger secret is a RUNTIME env var
-// (OIKUMENEA_HERMENEA_TOKEN), not in this file.
+// hermenea companion's control API (D-Hermenea). The two shared secrets are ECV-encryptable install
+// fields; for backward compatibility each still honours a documented env override, read in exactly one
+// place — the Resolve* accessors below (architecture review R-16).
 type Hermenea struct {
 	// BaseURL is the hermenea companion's HTTPS base (e.g. https://hermenea:9443). Empty disables the proxy.
 	BaseURL string `yaml:"base-url"`
 	// InsecureSkipVerify disables TLS verification (for the self-signed local-dev cert). Never in prod.
 	InsecureSkipVerify bool `yaml:"insecure-skip-verify"`
+	// OutboundToken is the secret oikumenea presents when re-issuing UI-triggered import-control calls
+	// to hermenea's control API (oikumenea -> hermenea). Env override: OIKUMENEA_HERMENEA_TOKEN.
+	OutboundToken string `yaml:"outbound-token"`
+	// InboundToken is the secret oikumenea REQUIRES on inbound POST /import/* calls from hermenea, which
+	// authenticate the `hermenea-importer` principal (hermenea -> oikumenea). Env override:
+	// HERMENEA_OIKUMENEA_TOKEN.
+	InboundToken string `yaml:"inbound-token"`
+}
+
+// ResolveOutboundToken returns the oikumenea -> hermenea secret: the OIKUMENEA_HERMENEA_TOKEN env
+// override when set, otherwise the install-config OutboundToken. This is the single read site for the
+// override (architecture review R-16).
+func (h Hermenea) ResolveOutboundToken() string {
+	if v := os.Getenv("OIKUMENEA_HERMENEA_TOKEN"); v != "" {
+		return v
+	}
+	return h.OutboundToken
+}
+
+// ResolveInboundToken returns the hermenea -> oikumenea secret: the HERMENEA_OIKUMENEA_TOKEN env
+// override when set, otherwise the install-config InboundToken. Single read site for the override.
+func (h Hermenea) ResolveInboundToken() string {
+	if v := os.Getenv("HERMENEA_OIKUMENEA_TOKEN"); v != "" {
+		return v
+	}
+	return h.InboundToken
 }
 
 // Pinax is the reference-plane seed control (D-Pinax, M45). Autoseed self-seeds the go:embed-ed YAML

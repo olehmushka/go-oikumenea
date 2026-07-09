@@ -30,7 +30,7 @@ func (s *Service) UpsertAddress(ctx context.Context, a domain.Address) (domain.A
 	var out domain.Address
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
 		repo := s.newRepo(tx)
-		if _, err := repo.GetPerson(ctx, a.PersonID); err != nil {
+		if err := repo.PersonExists(ctx, a.PersonID); err != nil {
 			return err
 		}
 		if s.locations != nil {
@@ -67,7 +67,7 @@ func (s *Service) DeleteAddress(ctx context.Context, personID, id string) error 
 // ListAddresses lists a person's addresses (the person must exist).
 func (s *Service) ListAddresses(ctx context.Context, personID string) ([]domain.Address, error) {
 	repo := s.newRepo(s.pool)
-	if _, err := repo.GetPerson(ctx, personID); err != nil {
+	if err := repo.PersonExists(ctx, personID); err != nil {
 		return nil, err
 	}
 	return repo.ListAddresses(ctx, personID)

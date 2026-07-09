@@ -4,13 +4,17 @@
 // Proves the exit criteria:
 //
 //   - add a home address referencing a shared location_locations row (M19), then list it;
+//
 //   - add a second (work) primary address and confirm the prior primary is demoted (one primary/person);
+//
 //   - an unknown location_id is rejected (ErrUnknownLocation) via the LocationLookup seam;
+//
 //   - privacy_seeking round-trips;
+//
 //   - purge HARD-DELETES the address rows (pii:contact).
 //
-//	OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable" \
-//	go test -tags integration ./internal/person/...
+//     OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable" \
+//     go test -tags integration ./internal/person/...
 package person_test
 
 import (
@@ -51,15 +55,15 @@ func seedLocation(t *testing.T, pool *pgxpool.Pool, lng, lat float64) string {
 
 func TestPersonAddresses(t *testing.T) {
 	ctx := context.Background()
-	svc, pool := newService(t, 720)
-	svc.SetLocationLookup(dbLocations{pool})
+	svc, prof, _, pool := newServices(t, 720)
+	prof.SetLocationLookup(dbLocations{pool})
 	p := newPerson(t, svc, "Mykola Address")
 
 	loc1 := seedLocation(t, pool, 30.5234, 50.4501)
 	loc2 := seedLocation(t, pool, 24.0297, 49.8397)
 
 	// Add a primary home address.
-	home, err := svc.UpsertAddress(ctx, domain.Address{
+	home, err := prof.UpsertAddress(ctx, domain.Address{
 		PersonID: p.ID, LocationID: loc1, Role: "home", IsPrimary: true, PrivacySeeking: true,
 	})
 	if err != nil {
@@ -70,13 +74,13 @@ func TestPersonAddresses(t *testing.T) {
 	}
 
 	// A second primary (work) address must demote the prior primary — one active primary per person.
-	work, err := svc.UpsertAddress(ctx, domain.Address{
+	work, err := prof.UpsertAddress(ctx, domain.Address{
 		PersonID: p.ID, LocationID: loc2, Role: "work", IsPrimary: true,
 	})
 	if err != nil {
 		t.Fatalf("add work: %v", err)
 	}
-	list, err := svc.ListAddresses(ctx, p.ID)
+	list, err := prof.ListAddresses(ctx, p.ID)
 	if err != nil || len(list) != 2 {
 		t.Fatalf("list addresses mismatch: %+v err=%v", list, err)
 	}
@@ -94,27 +98,27 @@ func TestPersonAddresses(t *testing.T) {
 	}
 
 	// An invalid role is rejected by the domain validator.
-	if _, err := svc.UpsertAddress(ctx, domain.Address{PersonID: p.ID, LocationID: loc1, Role: "bogus"}); err == nil {
+	if _, err := prof.UpsertAddress(ctx, domain.Address{PersonID: p.ID, LocationID: loc1, Role: "bogus"}); err == nil {
 		t.Fatal("expected invalid-role error")
 	}
 
 	// An unknown location is rejected before write via the LocationLookup seam.
-	if _, err := svc.UpsertAddress(ctx, domain.Address{
+	if _, err := prof.UpsertAddress(ctx, domain.Address{
 		PersonID: p.ID, LocationID: countryRID(t, pool, "UA"), Role: "home", // a non-location RID
 	}); !errors.Is(err, domain.ErrUnknownLocation) {
 		t.Fatalf("expected ErrUnknownLocation for an unknown location, got %v", err)
 	}
 
 	// Delete the home address by its RID; the work address remains.
-	if err := svc.DeleteAddress(ctx, p.ID, home.ID); err != nil {
+	if err := prof.DeleteAddress(ctx, p.ID, home.ID); err != nil {
 		t.Fatalf("delete home: %v", err)
 	}
-	if list, _ = svc.ListAddresses(ctx, p.ID); len(list) != 1 || list[0].ID != work.ID {
+	if list, _ = prof.ListAddresses(ctx, p.ID); len(list) != 1 || list[0].ID != work.ID {
 		t.Fatalf("after delete expected only the work address, got %+v", list)
 	}
 
 	// Purge HARD-DELETES the address rows (pii:contact). A zero-grace service purges immediately.
-	svcNow, _ := newService(t, 0)
+	svcNow, _, _, _ := newServices(t, 0) // zero-grace purge; auto-wires the PersonPurged bus (R-09)
 	if _, err := svcNow.DeactivatePerson(ctx, p.ID, "x"); err != nil {
 		t.Fatalf("deactivate: %v", err)
 	}

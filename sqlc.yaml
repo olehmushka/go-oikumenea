@@ -109,6 +109,45 @@ sql:
             go_type:
               import: "github.com/jackc/pgx/v5/pgtype"
               type: "Text"
+  # personprofile / personsensitive own their own query surface (D-PersonModuleSplit, review-2026-07
+  # R-09): the person god-module's queries/person.sql split three ways so each concern's adapter compiles
+  # only against its own tables (the module-table boundary lint then enforces per-table ownership).
+  - engine: postgresql
+    schema: migrations
+    queries: internal/personprofile/adapters/queries
+    gen:
+      go:
+        package: personprofilesql
+        out: internal/personprofile/adapters/personprofilesql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false
+        overrides:
+          - db_type: "uuid"
+            go_type: "string"
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              import: "github.com/jackc/pgx/v5/pgtype"
+              type: "Text"
+  - engine: postgresql
+    schema: migrations
+    queries: internal/personsensitive/adapters/queries
+    gen:
+      go:
+        package: personsensitivesql
+        out: internal/personsensitive/adapters/personsensitivesql
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: false
+        emit_exact_table_names: false
+        overrides:
+          - db_type: "uuid"
+            go_type: "string"
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              import: "github.com/jackc/pgx/v5/pgtype"
+              type: "Text"
   - engine: postgresql
     schema: migrations
     queries: internal/membership/adapters/queries

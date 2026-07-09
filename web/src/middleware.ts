@@ -8,7 +8,11 @@ export default auth((req) => {
   const { pathname, origin } = req.nextUrl;
   const isPublic =
     pathname.startsWith("/login") || pathname.startsWith("/api/auth");
-  if (!req.auth && !isPublic) {
+  // No session, or a session whose bearer can no longer be refreshed (RefreshTokenError) — both are
+  // effectively unauthenticated, so bounce to /login instead of letting a server read 401-error. This
+  // mirrors the client-side instant-logout on a 401 (lib/api/unauthorized).
+  const dead = !req.auth || req.auth.error === "RefreshTokenError";
+  if (dead && !isPublic) {
     return Response.redirect(new URL("/login", origin));
   }
 });
