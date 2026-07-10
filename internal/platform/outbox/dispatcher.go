@@ -18,7 +18,20 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/palantir/pkg/metrics"
 	"github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
+)
+
+// Outbox metrics (architecture review R-20). Emitted on the witchcraft metrics registry via
+// metrics.FromContext(ctx). Alarm-worthy: outbox.dead > 0 (a notify event exhausted its retries — a
+// silent data-flow loss before this) and outbox.oldest_pending_age_seconds growing past a few poll
+// intervals (dispatcher wedged). See docs/modules/platform.md.
+const (
+	metricOutboxDispatched       = "outbox.dispatched"                 // delivered successfully
+	metricOutboxRetried          = "outbox.retried"                    // handler failed, rescheduled with backoff
+	metricOutboxDead             = "outbox.dead"                       // exhausted max_attempts, dead-lettered
+	metricOutboxPending          = "outbox.pending"                    // rows awaiting dispatch (gauge)
+	metricOutboxOldestPendingAge = "outbox.oldest_pending_age_seconds" // age of oldest due pending row (gauge)
 )
 
 // Handler processes one delivered notify event, after commit and out of band (no publisher transaction).
@@ -118,7 +131,9 @@ func (d *Dispatcher) loop(ctx context.Context) {
 		n, err := d.DispatchOnce(ctx)
 		if err != nil {
 			logger.Warn("outbox dispatcher: pass failed", svc1log.Stacktrace(err))
-		} else if n == d.cfg.BatchSize {
+		}
+		d.recordBacklog(ctx) // R-20: pending depth + oldest-pending age, visible even over an empty queue
+		if err == nil && n == d.cfg.BatchSize {
 			continue // queue may still hold work — drain without waiting
 		}
 		select {
@@ -186,7 +201,11 @@ func (d *Dispatcher) dispatchRow(ctx context.Context) (bool, error) {
 			WHERE id = $1`, id); err != nil {
 			return false, err
 		}
-		return true, tx.Commit(ctx)
+		if err = tx.Commit(ctx); err != nil {
+			return false, err
+		}
+		metrics.FromContext(ctx).Counter(metricOutboxDispatched).Inc(1)
+		return true, nil
 	}
 
 	nextAttempts := attempts + 1
@@ -197,7 +216,18 @@ func (d *Dispatcher) dispatchRow(ctx context.Context) (bool, error) {
 			WHERE id = $1`, id, nextAttempts, deliverErr.Error()); err != nil {
 			return false, err
 		}
-		return true, tx.Commit(ctx)
+		if err = tx.Commit(ctx); err != nil {
+			return false, err
+		}
+		// R-20: dead-letter is a silent data-flow loss otherwise. Distinct WARN + counter so ops can
+		// alarm on it (before this the status='dead' write emitted nothing the retry path didn't).
+		metrics.FromContext(ctx).Counter(metricOutboxDead).Inc(1)
+		svc1log.FromContext(ctx).Warn("outbox dispatcher: event dead-lettered",
+			svc1log.SafeParam("eventType", eventType),
+			svc1log.SafeParam("outboxId", id),
+			svc1log.SafeParam("attempts", nextAttempts),
+			svc1log.UnsafeParam("lastError", deliverErr.Error()))
+		return true, nil
 	}
 
 	nextAt := time.Now().Add(backoff(attempts, d.cfg.BackoffBase, d.cfg.BackoffMax))
@@ -207,7 +237,35 @@ func (d *Dispatcher) dispatchRow(ctx context.Context) (bool, error) {
 		WHERE id = $1`, id, nextAttempts, nextAt, deliverErr.Error()); err != nil {
 		return false, err
 	}
-	return true, tx.Commit(ctx)
+	if err = tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	metrics.FromContext(ctx).Counter(metricOutboxRetried).Inc(1)
+	return true, nil
+}
+
+// recordBacklog reports the pending-queue depth and the age of the oldest due pending row as gauges,
+// so a wedged dispatcher (oldest-pending age climbing) is visible even when no rows are being
+// dispatched. Run once per poll pass. A read failure is non-fatal — the gauges simply hold their
+// last value until the next pass.
+func (d *Dispatcher) recordBacklog(ctx context.Context) {
+	var (
+		pending   int64
+		oldestAge float64
+	)
+	// oldest age counts only rows that are DUE (next_attempt_at <= now): a row backed off into the
+	// future is pending-not-due and not a sign of a stuck dispatcher.
+	err := d.pool.QueryRow(ctx, `
+		SELECT count(*),
+		       COALESCE(EXTRACT(EPOCH FROM now() - min(next_attempt_at) FILTER (WHERE next_attempt_at <= now())), 0)
+		FROM oikumenea.platform_outbox
+		WHERE status = 'pending'`).Scan(&pending, &oldestAge)
+	if err != nil {
+		return
+	}
+	reg := metrics.FromContext(ctx)
+	reg.Gauge(metricOutboxPending).Update(pending)
+	reg.Gauge(metricOutboxOldestPendingAge).Update(int64(oldestAge))
 }
 
 // deliver runs every handler registered for eventType. The first handler error fails the delivery (the

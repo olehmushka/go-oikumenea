@@ -136,6 +136,16 @@ func TestFinanceVertical(t *testing.T) {
 	svc := newService(t, pool)
 	ctx := context.Background()
 
+	// The scenario reuses a fixed, checksum-valid IBAN + PANs (testIBAN/testPAN) that are globally
+	// unique among active rows by blind index — so they can't use a uniq() prefix and, being
+	// blind-indexed, can't be targeted by plaintext in SQL. Clear the account/card tables up front so
+	// the test is re-runnable against a non-reset DB (CI runs a fresh DB; local re-runs otherwise hit
+	// the IBAN/PAN blind-index unique constraints). account_holders references accounts, so truncate
+	// all three together.
+	if _, err := pool.Exec(ctx, `TRUNCATE oikumenea.finance_account_holders, oikumenea.finance_cards, oikumenea.finance_accounts`); err != nil {
+		t.Fatalf("reset finance tables: %v", err)
+	}
+
 	bank := seedBank(t, pool, "First National")
 	person := seedPerson(t, pool)
 	company := seedBank(t, pool, "Acme Holdings") // a corporate account holder

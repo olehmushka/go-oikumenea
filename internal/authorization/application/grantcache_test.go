@@ -12,6 +12,7 @@ import (
 
 	"github.com/olegamysk/go-oikumenea/internal/authorization/domain"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/palantir/pkg/metrics"
 )
 
 // epochRepo is a controllable authority store: mutable epoch + per-query counters.
@@ -88,6 +89,39 @@ func TestGrantCacheStaleRevalidatesWithOneEpochRead(t *testing.T) {
 	}
 }
 
+// TestGrantCacheMetrics drives the seam through miss → hits → reset and asserts the R-20 counters
+// and the entries gauge move, reading them off an isolated registry injected on the context (the
+// server uses metrics.FromContext(ctx), which prefers a ctx-installed registry).
+func TestGrantCacheMetrics(t *testing.T) {
+	svc, _, _ := newCacheTestService([]domain.ActiveGrant{grantOn("u1", "person.read")})
+	reg := metrics.NewRootMetricsRegistry()
+	ctx := metrics.WithRegistry(context.Background(), reg)
+
+	// First call: a miss (full fetch); next five: fresh hits.
+	for i := 0; i < 6; i++ {
+		if _, _, err := svc.cachedAuthority(ctx, "p1"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := reg.Counter(metricGrantCacheMisses).Count(); got != 1 {
+		t.Errorf("misses = %d, want 1", got)
+	}
+	if got := reg.Counter(metricGrantCacheHits).Count(); got != 5 {
+		t.Errorf("hits = %d, want 5", got)
+	}
+	if got := reg.Gauge(metricGrantCacheEntries).Value(); got != 1 {
+		t.Errorf("entries gauge = %d, want 1", got)
+	}
+
+	svc.grants.reset(ctx)
+	if got := reg.Counter(metricGrantCacheResets).Count(); got != 1 {
+		t.Errorf("resets = %d, want 1", got)
+	}
+	if got := reg.Gauge(metricGrantCacheEntries).Value(); got != 0 {
+		t.Errorf("entries gauge after reset = %d, want 0", got)
+	}
+}
+
 func TestGrantCacheEpochBumpForcesRefetch(t *testing.T) {
 	svc, repo, now := newCacheTestService([]domain.ActiveGrant{grantOn("u1", "person.read")})
 	ctx := context.Background()
@@ -113,7 +147,7 @@ func TestGrantCacheResetDropsEntries(t *testing.T) {
 	if _, _, err := svc.cachedAuthority(ctx, "p1"); err != nil {
 		t.Fatal(err)
 	}
-	svc.grants.reset() // what every local authority-mutating write does after commit
+	svc.grants.reset(ctx) // what every local authority-mutating write does after commit
 	if _, _, err := svc.cachedAuthority(ctx, "p1"); err != nil {
 		t.Fatal(err)
 	}

@@ -45,6 +45,24 @@ func serve() int {
 			if err != nil {
 				return nil, err
 			}
+			// Fail closed against a stale hermenea DB (architecture review R-25, mirroring
+			// oikumenea's R-15 gate): refuse to boot — with expected vs found — rather than crash
+			// mid-run at first job claim on a missing column/table. A DB below 0006 has no
+			// schema_version marker, so the read error is itself the stale signal.
+			found, err := hdb.ReadSchemaRevision(ctx, pool)
+			if err != nil {
+				pool.Close()
+				return nil, werror.WrapWithContextParams(ctx, err,
+					"hermenea schema-version check: run `atlas migrate apply --env hermenea`",
+					werror.SafeParam("expectedRevision", hdb.ExpectedSchemaRevision))
+			}
+			if found != hdb.ExpectedSchemaRevision {
+				pool.Close()
+				return nil, werror.ErrorWithContextParams(ctx,
+					"hermenea DB schema is stale — run `atlas migrate apply --env hermenea`",
+					werror.SafeParam("expectedRevision", hdb.ExpectedSchemaRevision),
+					werror.SafeParam("foundRevision", found))
+			}
 			cleanup, err := hermenea.Register(ctx, info, pool, install, importToken)
 			if err != nil {
 				pool.Close()

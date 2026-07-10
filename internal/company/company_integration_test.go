@@ -163,6 +163,15 @@ func TestCompanyVertical(t *testing.T) {
 	svc := newService(t, pool)
 	ctx := context.Background()
 
+	// This scenario registers checksum-valid, globally-unique fixed identifiers (LEI/EDRPOU) that must
+	// be specific to exercise scheme validation — so they cannot use the uniq() prefix the rest of the
+	// suite relies on. Clear the registration table up front so the test is re-runnable against a
+	// non-reset DB (CI runs a fresh DB; local re-runs otherwise hit the scheme+identifier unique index).
+	// Everything else the scenario writes is keyed to a uniq()-coded company, so it never collides.
+	if _, err := pool.Exec(ctx, `TRUNCATE oikumenea.company_registrations`); err != nil {
+		t.Fatalf("reset company_registrations: %v", err)
+	}
+
 	llc := catalogID(t, pool, "company_legal_forms", "llc")
 	leiScheme := catalogID(t, pool, "company_registration_schemes", "lei")
 	edrpouScheme := catalogID(t, pool, "company_registration_schemes", "ua-edrpou")

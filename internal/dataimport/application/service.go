@@ -18,12 +18,21 @@ import (
 	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
 	"github.com/olegamysk/go-oikumenea/internal/dataimport/domain"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/palantir/pkg/metrics"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 
 // auditSubsystem labels the `system` actor for import writes. An import is always recorded as a
 // system-actor Action regardless of who triggered it (D-Hermenea: ingest != edit).
 const auditSubsystem = "data-import"
+
+// Import metrics (architecture review R-20), tagged object_type. The 1M-record M49 run measured these
+// with ad-hoc test instrumentation; production runs reported nothing. See docs/modules/platform.md.
+const (
+	metricImportChunkSeconds = "dataimport.chunk_seconds" // per-chunk handler latency (timer)
+	metricImportRowsMerged   = "dataimport.rows.merged"   // rows created + updated (counter)
+	metricImportRowsSkipped  = "dataimport.rows.skipped"  // rows skipped as unchanged (counter)
+)
 
 // Handler applies an object-type's records as an idempotent, non-destructive upsert into its catalog,
 // within the caller's transaction, stamping provenance. Registered per object-type at composition time
@@ -116,10 +125,19 @@ func (s *Service) Import(ctx context.Context, objectType string, env Envelope) (
 	}
 	var sum domain.Summary
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		// R-20: per-object-type chunk-apply latency + rows merged/skipped. One wrap here covers every
+		// registered handler (batch and single-shot) uniformly; the closure-rebuild cost of a finalize
+		// chunk shows up in the same histogram tagged by object_type.
+		start := time.Now()
 		out, err := h(ctx, tx, env.Records, prov, chunk)
+		otTag := metrics.MustNewTag("object_type", objectType)
+		metrics.FromContext(ctx).Timer(metricImportChunkSeconds, otTag).UpdateSince(start)
 		if err != nil {
 			return err
 		}
+		reg := metrics.FromContext(ctx)
+		reg.Counter(metricImportRowsMerged, otTag).Inc(int64(out.Created + out.Updated))
+		reg.Counter(metricImportRowsSkipped, otTag).Inc(int64(out.Skipped))
 		sum = out
 		details := map[string]any{
 			"source":        env.Source,

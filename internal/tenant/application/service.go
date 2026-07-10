@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -18,6 +19,7 @@ import (
 	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/internal/tenant/domain"
+	"github.com/palantir/pkg/metrics"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 
@@ -26,6 +28,13 @@ const (
 	DefaultPageSize = 50
 	MaxPageSize     = 500
 )
+
+// metricClosureEditSeconds times an incremental closure edit, tagged op=add|remove (architecture
+// review R-20). The M48 property is "cost ∝ affected slice, not graph size"; this latency is the
+// live proxy for it. A slice-row-count histogram would show the slice directly but the repo's
+// Extend/ShrinkClosureForEdge return only error today, so it is deferred rather than reshape the
+// sqlc queries (docs/modules/platform.md).
+const metricClosureEditSeconds = "tenant.closure.edit_seconds"
 
 // auditSubsystem labels the interim system actor for tenant's admin writes. Until authorization
 // (M7) + identity-federation (M8) resolve the acting person, these writes are recorded as a
@@ -380,9 +389,11 @@ func (s *Service) AddEdge(ctx context.Context, childID, parentID, graphCode stri
 		if err != nil {
 			return err
 		}
+		start := time.Now()
 		if err := repo.ExtendClosureForEdge(ctx, g.ID, parentID, childID); err != nil {
 			return err
 		}
+		metrics.FromContext(ctx).Timer(metricClosureEditSeconds, metrics.MustNewTag("op", "add")).UpdateSince(start)
 		edge.Graph = g.Code
 		out = edge
 		return s.record(ctx, tx, "unit.edge.add", "unit", childID, childID, map[string]string{
@@ -416,9 +427,11 @@ func (s *Service) RemoveEdge(ctx context.Context, childID, parentID, graphCode s
 			return err
 		}
 		if deleted > 0 {
+			start := time.Now()
 			if err := repo.ShrinkClosureForEdge(ctx, g.ID, parentID, childID); err != nil {
 				return err
 			}
+			metrics.FromContext(ctx).Timer(metricClosureEditSeconds, metrics.MustNewTag("op", "remove")).UpdateSince(start)
 		}
 		return s.record(ctx, tx, "unit.edge.remove", "unit", childID, childID, map[string]string{
 			"graph": g.Code, "parentId": parentID, "childId": childID,

@@ -161,8 +161,11 @@ permission catalog. [document](document.md) calls it on personal-code create/upd
 
 - **Logging:** `svc1log`/`req2log`/`evt2log` from witchcraft-go-logging; structured params; the
   `request_id`/trace id flows on context into every log line and into [audit](audit.md).
-- **Metrics:** `pkg/metrics` tagged registry; RED discipline on every endpoint plus domain
-  counters (e.g. `pdp.decisions{result}`).
+- **Metrics:** `pkg/metrics` tagged registry (the one witchcraft emits from via `metric.1`).
+  witchcraft's built-in `metric.1` request metrics come for free; the deliberate application-metric
+  surface over the hot seams is listed under **Application metrics & alarm signals** below. Emitters
+  read the registry with `metrics.FromContext(ctx)` — no plumbing beyond the request/boot context
+  (the fallback is the same `DefaultMetricsRegistry` witchcraft emits from).
 - **Tracing:** witchcraft-go-tracing spans; `X-B3-*` propagation.
 - **Health:** witchcraft-go-health reporters split two ways — **readiness-gating** (DB reachability,
   schema-version check) and **diagnostic-only**. The **`closure-drift`** reporter (D-ClosureDriftHealth)
@@ -173,6 +176,25 @@ permission catalog. [document](document.md) calls it on personal-code create/upd
   a drifted closure must not pull the pod from rotation (the PDP keeps serving off the stored closure).
   It does **not** recompute on scrape (operator-refresh only).
 - **Errors:** `werror` safe/unsafe params; mapped to Conjure `SerializableError` at transport.
+
+### Application metrics & alarm signals (R-20)
+
+Every July scale-fix turned a visible failure (slow requests) into a fast path guarded by machinery
+with *new, invisible* failure modes. These four hot seams emit a thin metric surface on the
+witchcraft registry so those failure modes are observable; the right-hand column is the
+alarm-worthy signal an operator should page/warn on.
+
+| Metric (tags) | Seam | Alarm-worthy signal |
+|---|---|---|
+| `authz.grantcache.hits` / `.misses` / `.revalidations` / `.resets` (counters), `.entries` (gauge) | grant cache (`internal/authorization`) | steady-state **hit rate < ~90 %** ⇒ TTL misconfig or an epoch-bump storm (looks like "the DB got slow") |
+| `outbox.dispatched` / `.retried` / `.dead` (counters), `outbox.pending` / `outbox.oldest_pending_age_seconds` (gauges) | outbox dispatcher (`internal/platform/outbox`) | **`outbox.dead` > 0** (a `notify` event exhausted its retries — silent data-flow loss; also logged as a distinct WARN `outbox dispatcher: event dead-lettered`); **`oldest_pending_age_seconds` > a few × `PollInterval`** ⇒ dispatcher wedged |
+| `dataimport.chunk_seconds` (timer), `dataimport.rows.merged` / `.skipped` (counters) — all tagged `object_type` | import orchestrator (`internal/dataimport`) | per-object-type chunk latency climbing, or a long run merging **0** rows (connector/mapper broken) |
+| `tenant.closure.edit_seconds` (timer, tagged `op=add|remove`) | closure maintenance (`internal/tenant`) | edit latency scaling with **graph size** rather than the affected slice ⇒ the M48 incremental property regressed |
+
+Not a metric but the same class of "silent until it bites" signal: **audit partitions older than
+`audit.retention-months`** (`config.Audit.RetentionMonths`) accumulating. Retention is a deliberate
+operator act (D-AuditRetention) with no built-in enforcer, so the presence of over-window partitions
+is the reminder to run the prune — check it in the same ops sweep as the gauges above.
 
 ### Shared kernel (`pkg/`)
 

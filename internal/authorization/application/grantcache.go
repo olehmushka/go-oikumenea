@@ -20,7 +20,20 @@ import (
 	"time"
 
 	"github.com/olegamysk/go-oikumenea/internal/authorization/domain"
+	"github.com/palantir/pkg/metrics"
 	"golang.org/x/sync/singleflight"
+)
+
+// Grant-cache metrics (architecture review R-20). Emitted on the witchcraft metrics registry the
+// server already exposes (metrics.FromContext(ctx) → the DefaultMetricsRegistry witchcraft emits from
+// via metric.1), so no plumbing beyond the request/boot ctx. Alarm-worthy: a hit rate that falls off
+// steady-state signals a TTL misconfig or an epoch-bump storm (docs/modules/platform.md).
+const (
+	metricGrantCacheHits          = "authz.grantcache.hits"          // served with zero DB reads
+	metricGrantCacheMisses        = "authz.grantcache.misses"        // full 2-query authority fetch
+	metricGrantCacheRevalidations = "authz.grantcache.revalidations" // stale-by-clock, current-by-epoch
+	metricGrantCacheResets        = "authz.grantcache.resets"        // whole-map drop (mutation or overflow)
+	metricGrantCacheEntries       = "authz.grantcache.entries"       // current entry count (gauge)
 )
 
 // grantCacheTTL is the trust window for a validated entry — and therefore the cross-process
@@ -56,22 +69,31 @@ func (c *grantCache) lookup(subject string) (*grantEntry, bool) {
 	return e, ok
 }
 
-func (c *grantCache) store(subject string, e *grantEntry) {
+func (c *grantCache) store(ctx context.Context, subject string, e *grantEntry) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if len(c.entries) >= grantCacheMaxEntries {
+	overflow := len(c.entries) >= grantCacheMaxEntries
+	if overflow {
 		c.entries = make(map[string]*grantEntry)
 	}
 	c.entries[subject] = e
+	n := len(c.entries)
+	c.mu.Unlock()
+	if overflow {
+		metrics.FromContext(ctx).Counter(metricGrantCacheResets).Inc(1) // overflow is a reset-shaped drop
+	}
+	metrics.FromContext(ctx).Gauge(metricGrantCacheEntries).Update(int64(n))
 }
 
 // reset drops every entry — called after this process commits an authority-mutating write so the
 // mutation is visible to the next local call immediately (cross-process visibility is bounded by
 // the TTL via the epoch).
-func (c *grantCache) reset() {
+func (c *grantCache) reset(ctx context.Context) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	c.entries = make(map[string]*grantEntry)
+	c.mu.Unlock()
+	reg := metrics.FromContext(ctx)
+	reg.Counter(metricGrantCacheResets).Inc(1)
+	reg.Gauge(metricGrantCacheEntries).Update(0)
 }
 
 // cachedAuthority resolves (isAdmin, grants) through the cache, hitting the database only per the
@@ -79,11 +101,13 @@ func (c *grantCache) reset() {
 func (s *Service) cachedAuthority(ctx context.Context, subject string) (bool, []domain.ActiveGrant, error) {
 	c := s.grants
 	if e, ok := c.lookup(subject); ok && c.now().Sub(e.validatedAt) < grantCacheTTL {
+		metrics.FromContext(ctx).Counter(metricGrantCacheHits).Inc(1)
 		return e.isAdmin, e.grants, nil
 	}
 	v, err, _ := c.sf.Do(subject, func() (any, error) {
 		// Re-check under the flight: a concurrent caller may have refreshed while we queued.
 		if e, ok := c.lookup(subject); ok && c.now().Sub(e.validatedAt) < grantCacheTTL {
+			metrics.FromContext(ctx).Counter(metricGrantCacheHits).Inc(1)
 			return e, nil
 		}
 		repo := s.newRepo(s.pool)
@@ -93,16 +117,18 @@ func (s *Service) cachedAuthority(ctx context.Context, subject string) (bool, []
 		}
 		if e, ok := c.lookup(subject); ok && e.epoch == epoch {
 			// Stale by clock, current by epoch: revalidate without re-running the grants join.
+			metrics.FromContext(ctx).Counter(metricGrantCacheRevalidations).Inc(1)
 			fresh := &grantEntry{epoch: epoch, validatedAt: c.now(), isAdmin: e.isAdmin, grants: e.grants}
-			c.store(subject, fresh)
+			c.store(ctx, subject, fresh)
 			return fresh, nil
 		}
+		metrics.FromContext(ctx).Counter(metricGrantCacheMisses).Inc(1)
 		isAdmin, grants, err := s.fetchAuthority(ctx, subject)
 		if err != nil {
 			return nil, err
 		}
 		fresh := &grantEntry{epoch: epoch, validatedAt: c.now(), isAdmin: isAdmin, grants: grants}
-		c.store(subject, fresh)
+		c.store(ctx, subject, fresh)
 		return fresh, nil
 	})
 	if err != nil {

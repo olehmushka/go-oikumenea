@@ -9,17 +9,23 @@
 package outbox_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/internal/platform/outbox"
 	"github.com/olegamysk/go-oikumenea/pkg/events"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/palantir/pkg/metrics"
+	"github.com/palantir/witchcraft-go-logging/wlog"
+	_ "github.com/palantir/witchcraft-go-logging/wlog-zap" // real logging provider so the WARN is captured
+	"github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
 // testEvent is a stand-in notify event (there are no real notify producers yet — every domain event is
@@ -198,6 +204,41 @@ func TestOutboxNoHandlerDrains(t *testing.T) {
 	}
 	if status, _, dispatched := rowState(ctx, t, pool); status != "dispatched" || !dispatched {
 		t.Fatalf("unconsumed event: status=%q dispatched=%v; want dispatched/true", status, dispatched)
+	}
+}
+
+// TestOutboxDeadLetterEmitsCounterAndWarn proves the R-20 dead-letter visibility: exhausting
+// max_attempts moves the row to 'dead' AND increments the outbox.dead counter AND logs a distinct
+// WARN — before this fix the status='dead' write was completely silent (a data-flow loss with no
+// signal). max_attempts is forced to 1 so a single handler failure dead-letters deterministically.
+func TestOutboxDeadLetterEmitsCounterAndWarn(t *testing.T) {
+	pool := newPool(t)
+	defer pool.Close()
+
+	reg := metrics.NewRootMetricsRegistry()
+	var logBuf bytes.Buffer
+	ctx := svc1log.WithLogger(metrics.WithRegistry(context.Background(), reg), svc1log.New(&logBuf, wlog.InfoLevel))
+	truncateOutbox(ctx, t, pool)
+
+	enqueue(ctx, t, pool, testEvent{PersonID: "p-dead", N: 9})
+	if _, err := pool.Exec(ctx, `UPDATE oikumenea.platform_outbox SET max_attempts = 1`); err != nil {
+		t.Fatalf("force max_attempts=1: %v", err)
+	}
+
+	d := outbox.New(pool, outbox.Config{})
+	d.Register(testEvent{}.Type(), func(_ context.Context, _ []byte) error { return errFail })
+
+	if n, err := d.DispatchOnce(ctx); err != nil || n != 1 {
+		t.Fatalf("processed=%d err=%v, want 1/nil", n, err)
+	}
+	if status, attempts, _ := rowState(ctx, t, pool); status != "dead" || attempts != 1 {
+		t.Fatalf("after exhausting attempts: status=%q attempts=%d; want dead/1", status, attempts)
+	}
+	if got := reg.Counter("outbox.dead").Count(); got != 1 {
+		t.Errorf("outbox.dead counter = %d, want 1", got)
+	}
+	if !strings.Contains(logBuf.String(), "event dead-lettered") {
+		t.Errorf("expected distinct dead-letter WARN; log was: %s", logBuf.String())
 	}
 }
 

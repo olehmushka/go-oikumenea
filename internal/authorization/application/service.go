@@ -302,7 +302,7 @@ func (s *Service) UpdateRole(ctx context.Context, id string, patch domain.RolePa
 		return s.record(ctx, tx, "role.update", targetRole, id, map[string]any{"id": id})
 	})
 	if err == nil && patch.Permissions != nil {
-		s.grants.reset() // local cache sees the edit immediately; other replicas within the TTL
+		s.grants.reset(ctx) // local cache sees the edit immediately; other replicas within the TTL
 	}
 	return out, err
 }
@@ -336,7 +336,7 @@ func (s *Service) DeleteRole(ctx context.Context, id string) error {
 		return s.record(ctx, tx, "role.delete", targetRole, id, map[string]any{"id": id, "code": existing.Code})
 	})
 	if err == nil {
-		s.grants.reset() // after commit: the local cache sees the delete immediately
+		s.grants.reset(ctx) // after commit: the local cache sees the delete immediately
 	}
 	return err
 }
@@ -390,7 +390,7 @@ func (s *Service) GrantAssignment(ctx context.Context, g domain.GrantInput) (dom
 		})
 	})
 	if err == nil {
-		s.grants.reset()
+		s.grants.reset(ctx)
 	}
 	return out, err
 }
@@ -427,7 +427,7 @@ func (s *Service) RevokeAssignment(ctx context.Context, id, revokedBy string) (d
 		return s.record(ctx, tx, "assignment.revoke", targetAssignment, id, map[string]any{"id": id})
 	})
 	if err == nil {
-		s.grants.reset()
+		s.grants.reset(ctx)
 	}
 	return out, err
 }
@@ -465,7 +465,7 @@ func (s *Service) GrantInstanceAdmin(ctx context.Context, personID, grantedBy st
 		return s.record(ctx, tx, "instance.admin.grant", targetInstanceAdmin, created.ID, map[string]any{"id": created.ID, "personId": personID})
 	})
 	if err == nil {
-		s.grants.reset()
+		s.grants.reset(ctx)
 	}
 	return out, err
 }
@@ -486,7 +486,7 @@ func (s *Service) RevokeInstanceAdmin(ctx context.Context, id, revokedBy string)
 		return s.record(ctx, tx, "instance.admin.revoke", targetInstanceAdmin, id, map[string]any{"id": id})
 	})
 	if err == nil {
-		s.grants.reset()
+		s.grants.reset(ctx)
 	}
 	return out, err
 }
