@@ -26,7 +26,7 @@ type PlatformCatalogService interface {
 	// Add or update a lawful-basis catalog entry (instance-admin; `legal-basis.manage`).
 	UpsertLegalBasisKind(ctx context.Context, authHeader bearertoken.Token, codeArg string, requestArg UpsertLegalBasisKindRequest) (LegalBasisKind, error)
 	// List the color catalog (D-Color), optionally filtered to one domain (eye | hair | vehicle).
-	ListColors(ctx context.Context, authHeader bearertoken.Token, domainArg *string) (ColorList, error)
+	ListColors(ctx context.Context, authHeader bearertoken.Token, domainArg *string, localesArg []string) (ColorList, error)
 	// Add or update a color (instance-admin; `color.manage`). Upserts on (domain, code).
 	UpsertColor(ctx context.Context, authHeader bearertoken.Token, requestArg UpsertColorRequest) (Color, error)
 }
@@ -105,7 +105,8 @@ func (p *platformCatalogServiceHandler) HandleListColors(rw http.ResponseWriter,
 		domainArgInternal := domainArgStr
 		domainArg = &domainArgInternal
 	}
-	respArg, err := p.impl.ListColors(req.Context(), bearertoken.Token(authHeader), domainArg)
+	localesArg := req.URL.Query()["locales"]
+	respArg, err := p.impl.ListColors(req.Context(), bearertoken.Token(authHeader), domainArg, localesArg)
 	if err != nil {
 		return err
 	}

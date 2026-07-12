@@ -97,10 +97,25 @@ func (r *Repository) UpdateOrgProfile(ctx context.Context, id string, up domain.
 	return notFound(mapErr(err), domain.ErrInstitutionNotFound)
 }
 
+// ListInstitutions returns a keyset page of institutions. A non-empty query routes to the dedicated
+// trigram SearchInstitutions (review R-21) so the code/name match stays a GIN bitmap scan; the empty
+// case is the plain keyset list. The two queries share the projection, so their rows are convertible.
 func (r *Repository) ListInstitutions(ctx context.Context, query, after string, lim int) ([]domain.Institution, error) {
-	rows, err := r.q.ListInstitutions(ctx, educationsql.ListInstitutionsParams{Query: query, After: after, Lim: int32(lim)})
-	if err != nil {
-		return nil, err
+	var rows []educationsql.ListInstitutionsRow
+	if q := strings.TrimSpace(query); q != "" {
+		found, err := r.q.SearchInstitutions(ctx, educationsql.SearchInstitutionsParams{Query: pgtype.Text{String: q, Valid: true}, After: after, Lim: int32(lim)})
+		if err != nil {
+			return nil, err
+		}
+		rows = make([]educationsql.ListInstitutionsRow, len(found))
+		for i, row := range found {
+			rows[i] = educationsql.ListInstitutionsRow(row)
+		}
+	} else {
+		var err error
+		if rows, err = r.q.ListInstitutions(ctx, educationsql.ListInstitutionsParams{After: after, Lim: int32(lim)}); err != nil {
+			return nil, err
+		}
 	}
 	out := make([]domain.Institution, 0, len(rows))
 	for _, row := range rows {

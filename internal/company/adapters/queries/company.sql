@@ -78,13 +78,37 @@ WHERE company_id = @id AND deleted_at IS NULL
 RETURNING *;
 
 -- name: ListCompanies :many
+-- Active companies, keyset-paginated by org RID. A text query routes to SearchCompanies (review R-21):
+-- a `(@query = '' OR …)` guard would defeat the trigram GIN indexes.
 SELECT o.id, o.code, o.name AS legal_name,
   p.short_name, p.legal_form_id, p.ownership_category, p.country_id,
   p.founded_on, p.dissolved_on, p.state, p.created_at, p.updated_at
 FROM oikumenea.company_org_profiles p
 JOIN oikumenea.tenant_organizations o ON o.id = p.company_id AND o.deleted_at IS NULL
 WHERE p.deleted_at IS NULL
-  AND (@query = '' OR o.code ILIKE '%' || @query || '%' OR o.name ILIKE '%' || @query || '%' OR p.short_name ILIKE '%' || @query || '%')
+  AND (@after = '' OR o.id::text > @after)
+ORDER BY o.id
+LIMIT @lim;
+
+-- name: SearchCompanies :many
+-- The trigram-served twin of ListCompanies (review R-21). The match spans two tables — org code/name
+-- (tenant_organizations) and short_name (the joined company_org_profiles) — so it is a UNION of id-sets
+-- rather than an OR across the join: an OR spanning both tables can't BitmapOr, whereas each UNION arm
+-- stays a GIN bitmap scan (the person names+variants pattern, D-PersonSearch). Same projection and keyset
+-- as ListCompanies so the two rows are convertible in the repository.
+SELECT o.id, o.code, o.name AS legal_name,
+  p.short_name, p.legal_form_id, p.ownership_category, p.country_id,
+  p.founded_on, p.dissolved_on, p.state, p.created_at, p.updated_at
+FROM oikumenea.company_org_profiles p
+JOIN oikumenea.tenant_organizations o ON o.id = p.company_id AND o.deleted_at IS NULL
+WHERE p.deleted_at IS NULL
+  AND o.id IN (
+    SELECT org.id FROM oikumenea.tenant_organizations org
+      WHERE org.deleted_at IS NULL
+        AND org.search_text ILIKE '%' || @query || '%'
+    UNION
+    SELECT cp.company_id FROM oikumenea.company_org_profiles cp
+      WHERE cp.deleted_at IS NULL AND cp.short_name ILIKE '%' || @query || '%')
   AND (@after = '' OR o.id::text > @after)
 ORDER BY o.id
 LIMIT @lim;

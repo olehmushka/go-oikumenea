@@ -336,7 +336,7 @@ func (q *Queries) GetGraphForOrgByCode(ctx context.Context, arg GetGraphForOrgBy
 }
 
 const getOrganization = `-- name: GetOrganization :one
-SELECT id, code, name, domain_id, visibility, state, metadata, created_at, updated_at, deleted_at FROM oikumenea.tenant_organizations WHERE id = $1 AND deleted_at IS NULL
+SELECT id, code, name, domain_id, visibility, state, metadata, created_at, updated_at, deleted_at, search_text FROM oikumenea.tenant_organizations WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetOrganization(ctx context.Context, id string) (OikumeneaTenantOrganization, error) {
@@ -353,6 +353,7 @@ func (q *Queries) GetOrganization(ctx context.Context, id string) (OikumeneaTena
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.SearchText,
 	)
 	return i, err
 }
@@ -622,7 +623,7 @@ const insertOrganization = `-- name: InsertOrganization :one
 
 INSERT INTO oikumenea.tenant_organizations (code, name, domain_id, visibility, metadata)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, code, name, domain_id, visibility, state, metadata, created_at, updated_at, deleted_at
+RETURNING id, code, name, domain_id, visibility, state, metadata, created_at, updated_at, deleted_at, search_text
 `
 
 type InsertOrganizationParams struct {
@@ -654,6 +655,7 @@ func (q *Queries) InsertOrganization(ctx context.Context, arg InsertOrganization
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.SearchText,
 	)
 	return i, err
 }
@@ -1060,7 +1062,7 @@ func (q *Queries) ListGraphsForOrg(ctx context.Context, orgID pgtype.Text) ([]Oi
 }
 
 const listOrganizations = `-- name: ListOrganizations :many
-SELECT id, code, name, domain_id, visibility, state, metadata, created_at, updated_at, deleted_at FROM oikumenea.tenant_organizations
+SELECT id, code, name, domain_id, visibility, state, metadata, created_at, updated_at, deleted_at, search_text FROM oikumenea.tenant_organizations
 WHERE deleted_at IS NULL
   AND ($1::uuid IS NULL OR domain_id = $1::uuid)
   AND ($2::uuid IS NULL OR id > $2::uuid)
@@ -1095,6 +1097,7 @@ func (q *Queries) ListOrganizations(ctx context.Context, arg ListOrganizationsPa
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.SearchText,
 		); err != nil {
 			return nil, err
 		}
@@ -1500,7 +1503,7 @@ func (q *Queries) SeedClosureSelfRows(ctx context.Context, arg SeedClosureSelfRo
 const setOrgState = `-- name: SetOrgState :one
 UPDATE oikumenea.tenant_organizations SET state = $1
 WHERE id = $2 AND deleted_at IS NULL
-RETURNING id, code, name, domain_id, visibility, state, metadata, created_at, updated_at, deleted_at
+RETURNING id, code, name, domain_id, visibility, state, metadata, created_at, updated_at, deleted_at, search_text
 `
 
 type SetOrgStateParams struct {
@@ -1522,6 +1525,7 @@ func (q *Queries) SetOrgState(ctx context.Context, arg SetOrgStateParams) (Oikum
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.SearchText,
 	)
 	return i, err
 }
@@ -1700,7 +1704,7 @@ UPDATE oikumenea.tenant_organizations SET
   visibility = COALESCE($3, visibility),
   metadata   = COALESCE($4, metadata)
 WHERE id = $5 AND deleted_at IS NULL
-RETURNING id, code, name, domain_id, visibility, state, metadata, created_at, updated_at, deleted_at
+RETURNING id, code, name, domain_id, visibility, state, metadata, created_at, updated_at, deleted_at, search_text
 `
 
 type UpdateOrganizationParams struct {
@@ -1731,6 +1735,7 @@ func (q *Queries) UpdateOrganization(ctx context.Context, arg UpdateOrganization
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.SearchText,
 	)
 	return i, err
 }

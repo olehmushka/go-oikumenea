@@ -64,8 +64,8 @@ type Repository interface {
 	GetLocation(ctx context.Context, id string) (Location, error)
 	UpdateLocation(ctx context.Context, id string, w LocationWrite) (Location, error)
 	SoftDeleteLocation(ctx context.Context, id string) (int64, error)
-	ListLocationsNear(ctx context.Context, lat, lng, radiusM float64, limit, offset int) ([]Location, error)
-	ListLocationsInBbox(ctx context.Context, minLat, minLng, maxLat, maxLng float64, limit, offset int) ([]Location, error)
-	SearchLocationsByText(ctx context.Context, query string, limit, offset int) ([]Location, error)
+	ListLocationsNear(ctx context.Context, lat, lng, radiusM, afterDist float64, afterID string, limit int) ([]Location, error)
+	ListLocationsInBbox(ctx context.Context, minLat, minLng, maxLat, maxLng float64, after string, limit int) ([]Location, error)
+	SearchLocationsByText(ctx context.Context, query, after string, limit int) ([]Location, error)
 	ListLocationTypes(ctx context.Context) ([]LocationType, error)
 }

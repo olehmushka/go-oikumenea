@@ -279,7 +279,7 @@ func (q *Queries) GetProgram(ctx context.Context, id string) (OikumeneaEducation
 }
 
 const getPublication = `-- name: GetPublication :one
-SELECT id, institution_id, code, title, kind, doi, venue, published_on, open_access, created_at, updated_at, deleted_at FROM oikumenea.education_publications WHERE id = $1 AND deleted_at IS NULL
+SELECT id, institution_id, code, title, kind, doi, venue, published_on, open_access, created_at, updated_at, deleted_at, search_text FROM oikumenea.education_publications WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetPublication(ctx context.Context, id string) (OikumeneaEducationPublication, error) {
@@ -298,6 +298,7 @@ func (q *Queries) GetPublication(ctx context.Context, id string) (OikumeneaEduca
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.SearchText,
 	)
 	return i, err
 }
@@ -457,7 +458,7 @@ func (q *Queries) GetResearchMembership(ctx context.Context, arg GetResearchMemb
 }
 
 const getScholarship = `-- name: GetScholarship :one
-SELECT id, institution_id, code, name, kind, amount, currency, frequency, renewable, conditions, status, created_at, updated_at, deleted_at FROM oikumenea.education_scholarships WHERE id = $1 AND deleted_at IS NULL
+SELECT id, institution_id, code, name, kind, amount, currency, frequency, renewable, conditions, status, created_at, updated_at, deleted_at, search_text FROM oikumenea.education_scholarships WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetScholarship(ctx context.Context, id string) (OikumeneaEducationScholarship, error) {
@@ -478,6 +479,7 @@ func (q *Queries) GetScholarship(ctx context.Context, id string) (OikumeneaEduca
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.SearchText,
 	)
 	return i, err
 }
@@ -1029,7 +1031,7 @@ const insertPublication = `-- name: InsertPublication :one
 INSERT INTO oikumenea.education_publications (institution_id, code, title, kind, doi, venue, published_on, open_access)
 VALUES ($1, $2, $3, COALESCE($4, 'journal_article'),
         $5, $6, $7, COALESCE($8, false))
-RETURNING id, institution_id, code, title, kind, doi, venue, published_on, open_access, created_at, updated_at, deleted_at
+RETURNING id, institution_id, code, title, kind, doi, venue, published_on, open_access, created_at, updated_at, deleted_at, search_text
 `
 
 type InsertPublicationParams struct {
@@ -1069,6 +1071,7 @@ func (q *Queries) InsertPublication(ctx context.Context, arg InsertPublicationPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.SearchText,
 	)
 	return i, err
 }
@@ -1350,7 +1353,7 @@ const insertScholarship = `-- name: InsertScholarship :one
 INSERT INTO oikumenea.education_scholarships (institution_id, code, name, kind, amount, currency, frequency, renewable, conditions)
 VALUES ($1, $2, $3, COALESCE($4, 'merit'), $5,
         $6, COALESCE($7, 'annual'), COALESCE($8, false), $9)
-RETURNING id, institution_id, code, name, kind, amount, currency, frequency, renewable, conditions, status, created_at, updated_at, deleted_at
+RETURNING id, institution_id, code, name, kind, amount, currency, frequency, renewable, conditions, status, created_at, updated_at, deleted_at, search_text
 `
 
 type InsertScholarshipParams struct {
@@ -1394,6 +1397,7 @@ func (q *Queries) InsertScholarship(ctx context.Context, arg InsertScholarshipPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.SearchText,
 	)
 	return i, err
 }
@@ -1924,14 +1928,22 @@ func (q *Queries) ListPublicationAuthorshipsByPerson(ctx context.Context, person
 }
 
 const listPublications = `-- name: ListPublications :many
-SELECT id, institution_id, code, title, kind, doi, venue, published_on, open_access, created_at, updated_at, deleted_at FROM oikumenea.education_publications
+SELECT id, institution_id, code, title, kind, doi, venue, published_on, open_access, created_at, updated_at, deleted_at, search_text FROM oikumenea.education_publications
 WHERE deleted_at IS NULL
-  AND ($1 = '' OR code ILIKE '%' || $1 || '%' OR title ILIKE '%' || $1 || '%')
-ORDER BY code
+  AND ($1 = '' OR id::text > $1)
+ORDER BY id
+LIMIT $2
 `
 
-func (q *Queries) ListPublications(ctx context.Context, query interface{}) ([]OikumeneaEducationPublication, error) {
-	rows, err := q.db.Query(ctx, listPublications, query)
+type ListPublicationsParams struct {
+	After interface{}
+	Lim   int32
+}
+
+// Keyset-paginated by RID (review R-21: was an unbounded ORDER BY code full scan). A text query routes
+// to SearchPublications so the trigram GIN is not defeated by a `(@query = ” OR …)` guard.
+func (q *Queries) ListPublications(ctx context.Context, arg ListPublicationsParams) ([]OikumeneaEducationPublication, error) {
+	rows, err := q.db.Query(ctx, listPublications, arg.After, arg.Lim)
 	if err != nil {
 		return nil, err
 	}
@@ -1952,6 +1964,7 @@ func (q *Queries) ListPublications(ctx context.Context, query interface{}) ([]Oi
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.SearchText,
 		); err != nil {
 			return nil, err
 		}
@@ -2186,14 +2199,22 @@ func (q *Queries) ListScholarshipAwardsByPerson(ctx context.Context, personID st
 }
 
 const listScholarships = `-- name: ListScholarships :many
-SELECT id, institution_id, code, name, kind, amount, currency, frequency, renewable, conditions, status, created_at, updated_at, deleted_at FROM oikumenea.education_scholarships
+SELECT id, institution_id, code, name, kind, amount, currency, frequency, renewable, conditions, status, created_at, updated_at, deleted_at, search_text FROM oikumenea.education_scholarships
 WHERE deleted_at IS NULL
-  AND ($1 = '' OR code ILIKE '%' || $1 || '%' OR name ILIKE '%' || $1 || '%')
-ORDER BY code
+  AND ($1 = '' OR id::text > $1)
+ORDER BY id
+LIMIT $2
 `
 
-func (q *Queries) ListScholarships(ctx context.Context, query interface{}) ([]OikumeneaEducationScholarship, error) {
-	rows, err := q.db.Query(ctx, listScholarships, query)
+type ListScholarshipsParams struct {
+	After interface{}
+	Lim   int32
+}
+
+// Keyset-paginated by RID (review R-21: was an unbounded ORDER BY code full scan). A text query routes
+// to SearchScholarships so the trigram GIN is not defeated by a `(@query = ” OR …)` guard.
+func (q *Queries) ListScholarships(ctx context.Context, arg ListScholarshipsParams) ([]OikumeneaEducationScholarship, error) {
+	rows, err := q.db.Query(ctx, listScholarships, arg.After, arg.Lim)
 	if err != nil {
 		return nil, err
 	}
@@ -2216,6 +2237,111 @@ func (q *Queries) ListScholarships(ctx context.Context, query interface{}) ([]Oi
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.SearchText,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchPublications = `-- name: SearchPublications :many
+SELECT id, institution_id, code, title, kind, doi, venue, published_on, open_access, created_at, updated_at, deleted_at, search_text FROM oikumenea.education_publications
+WHERE deleted_at IS NULL
+  AND search_text ILIKE '%' || $1 || '%'
+  AND ($2 = '' OR id::text > $2)
+ORDER BY id
+LIMIT $3
+`
+
+type SearchPublicationsParams struct {
+	Query pgtype.Text
+	After interface{}
+	Lim   int32
+}
+
+// The trigram-served twin of ListPublications (review R-21): an unconditional match over the STORED
+// search_text haystack served by the education_publications_search_trgm GIN, keyset-paginated by RID.
+func (q *Queries) SearchPublications(ctx context.Context, arg SearchPublicationsParams) ([]OikumeneaEducationPublication, error) {
+	rows, err := q.db.Query(ctx, searchPublications, arg.Query, arg.After, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaEducationPublication
+	for rows.Next() {
+		var i OikumeneaEducationPublication
+		if err := rows.Scan(
+			&i.ID,
+			&i.InstitutionID,
+			&i.Code,
+			&i.Title,
+			&i.Kind,
+			&i.Doi,
+			&i.Venue,
+			&i.PublishedOn,
+			&i.OpenAccess,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.SearchText,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchScholarships = `-- name: SearchScholarships :many
+SELECT id, institution_id, code, name, kind, amount, currency, frequency, renewable, conditions, status, created_at, updated_at, deleted_at, search_text FROM oikumenea.education_scholarships
+WHERE deleted_at IS NULL
+  AND search_text ILIKE '%' || $1 || '%'
+  AND ($2 = '' OR id::text > $2)
+ORDER BY id
+LIMIT $3
+`
+
+type SearchScholarshipsParams struct {
+	Query pgtype.Text
+	After interface{}
+	Lim   int32
+}
+
+// The trigram-served twin of ListScholarships (review R-21): an unconditional match over the STORED
+// search_text haystack served by the education_scholarships_search_trgm GIN, keyset-paginated by RID.
+func (q *Queries) SearchScholarships(ctx context.Context, arg SearchScholarshipsParams) ([]OikumeneaEducationScholarship, error) {
+	rows, err := q.db.Query(ctx, searchScholarships, arg.Query, arg.After, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaEducationScholarship
+	for rows.Next() {
+		var i OikumeneaEducationScholarship
+		if err := rows.Scan(
+			&i.ID,
+			&i.InstitutionID,
+			&i.Code,
+			&i.Name,
+			&i.Kind,
+			&i.Amount,
+			&i.Currency,
+			&i.Frequency,
+			&i.Renewable,
+			&i.Conditions,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.SearchText,
 		); err != nil {
 			return nil, err
 		}
@@ -3005,7 +3131,7 @@ UPDATE oikumenea.education_publications SET
   published_on   = COALESCE($6, published_on),
   open_access    = COALESCE($7, open_access)
 WHERE id = $8 AND deleted_at IS NULL
-RETURNING id, institution_id, code, title, kind, doi, venue, published_on, open_access, created_at, updated_at, deleted_at
+RETURNING id, institution_id, code, title, kind, doi, venue, published_on, open_access, created_at, updated_at, deleted_at, search_text
 `
 
 type UpdatePublicationParams struct {
@@ -3044,6 +3170,7 @@ func (q *Queries) UpdatePublication(ctx context.Context, arg UpdatePublicationPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.SearchText,
 	)
 	return i, err
 }
@@ -3355,7 +3482,7 @@ UPDATE oikumenea.education_scholarships SET
   conditions     = COALESCE($8, conditions),
   status         = COALESCE($9, status)
 WHERE id = $10 AND deleted_at IS NULL
-RETURNING id, institution_id, code, name, kind, amount, currency, frequency, renewable, conditions, status, created_at, updated_at, deleted_at
+RETURNING id, institution_id, code, name, kind, amount, currency, frequency, renewable, conditions, status, created_at, updated_at, deleted_at, search_text
 `
 
 type UpdateScholarshipParams struct {
@@ -3400,6 +3527,7 @@ func (q *Queries) UpdateScholarship(ctx context.Context, arg UpdateScholarshipPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.SearchText,
 	)
 	return i, err
 }

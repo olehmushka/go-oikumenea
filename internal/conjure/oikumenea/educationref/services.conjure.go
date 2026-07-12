@@ -58,7 +58,7 @@ type EducationReferenceServiceClient interface {
 	UpdateGrant(ctx context.Context, authHeader bearertoken.Token, grantIdArg string, requestArg UpsertGrantRequest) (Grant, error)
 	DeleteGrant(ctx context.Context, authHeader bearertoken.Token, grantIdArg string) error
 	CreatePublication(ctx context.Context, authHeader bearertoken.Token, requestArg UpsertPublicationRequest) (Publication, error)
-	ListPublications(ctx context.Context, authHeader bearertoken.Token, queryArg *string) (PublicationList, error)
+	ListPublications(ctx context.Context, authHeader bearertoken.Token, queryArg *string, pageSizeArg *int, pageTokenArg *string) (PublicationPage, error)
 	GetPublication(ctx context.Context, authHeader bearertoken.Token, publicationIdArg string) (Publication, error)
 	UpdatePublication(ctx context.Context, authHeader bearertoken.Token, publicationIdArg string, requestArg UpsertPublicationRequest) (Publication, error)
 	DeletePublication(ctx context.Context, authHeader bearertoken.Token, publicationIdArg string) error
@@ -78,7 +78,7 @@ type EducationReferenceServiceClient interface {
 	UpdateQualification(ctx context.Context, authHeader bearertoken.Token, qualificationIdArg string, requestArg UpsertQualificationRequest) (Qualification, error)
 	DeleteQualification(ctx context.Context, authHeader bearertoken.Token, qualificationIdArg string) error
 	CreateScholarship(ctx context.Context, authHeader bearertoken.Token, requestArg UpsertScholarshipRequest) (Scholarship, error)
-	ListScholarships(ctx context.Context, authHeader bearertoken.Token, queryArg *string) (ScholarshipList, error)
+	ListScholarships(ctx context.Context, authHeader bearertoken.Token, queryArg *string, pageSizeArg *int, pageTokenArg *string) (ScholarshipPage, error)
 	GetScholarship(ctx context.Context, authHeader bearertoken.Token, scholarshipIdArg string) (Scholarship, error)
 	UpdateScholarship(ctx context.Context, authHeader bearertoken.Token, scholarshipIdArg string, requestArg UpsertScholarshipRequest) (Scholarship, error)
 	DeleteScholarship(ctx context.Context, authHeader bearertoken.Token, scholarshipIdArg string) error
@@ -743,8 +743,8 @@ func (c *educationReferenceServiceClient) CreatePublication(ctx context.Context,
 	return *returnVal, nil
 }
 
-func (c *educationReferenceServiceClient) ListPublications(ctx context.Context, authHeader bearertoken.Token, queryArg *string) (PublicationList, error) {
-	var returnVal *PublicationList
+func (c *educationReferenceServiceClient) ListPublications(ctx context.Context, authHeader bearertoken.Token, queryArg *string, pageSizeArg *int, pageTokenArg *string) (PublicationPage, error) {
+	var returnVal *PublicationPage
 	var requestParams []httpclient.RequestParam
 	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListPublications"))
 	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
@@ -753,14 +753,20 @@ func (c *educationReferenceServiceClient) ListPublications(ctx context.Context, 
 	if queryArg != nil {
 		queryParams.Set("query", fmt.Sprint(*queryArg))
 	}
+	if pageSizeArg != nil {
+		queryParams.Set("pageSize", fmt.Sprint(*pageSizeArg))
+	}
+	if pageTokenArg != nil {
+		queryParams.Set("pageToken", fmt.Sprint(*pageTokenArg))
+	}
 	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
 	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
 	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
 	if _, err := c.client.Get(ctx, requestParams...); err != nil {
-		return *new(PublicationList), werror.WrapWithContextParams(ctx, err, "listPublications failed")
+		return *new(PublicationPage), werror.WrapWithContextParams(ctx, err, "listPublications failed")
 	}
 	if returnVal == nil {
-		return *new(PublicationList), werror.ErrorWithContextParams(ctx, "listPublications response cannot be nil")
+		return *new(PublicationPage), werror.ErrorWithContextParams(ctx, "listPublications response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -1076,8 +1082,8 @@ func (c *educationReferenceServiceClient) CreateScholarship(ctx context.Context,
 	return *returnVal, nil
 }
 
-func (c *educationReferenceServiceClient) ListScholarships(ctx context.Context, authHeader bearertoken.Token, queryArg *string) (ScholarshipList, error) {
-	var returnVal *ScholarshipList
+func (c *educationReferenceServiceClient) ListScholarships(ctx context.Context, authHeader bearertoken.Token, queryArg *string, pageSizeArg *int, pageTokenArg *string) (ScholarshipPage, error) {
+	var returnVal *ScholarshipPage
 	var requestParams []httpclient.RequestParam
 	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListScholarships"))
 	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
@@ -1086,14 +1092,20 @@ func (c *educationReferenceServiceClient) ListScholarships(ctx context.Context, 
 	if queryArg != nil {
 		queryParams.Set("query", fmt.Sprint(*queryArg))
 	}
+	if pageSizeArg != nil {
+		queryParams.Set("pageSize", fmt.Sprint(*pageSizeArg))
+	}
+	if pageTokenArg != nil {
+		queryParams.Set("pageToken", fmt.Sprint(*pageTokenArg))
+	}
 	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
 	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
 	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
 	if _, err := c.client.Get(ctx, requestParams...); err != nil {
-		return *new(ScholarshipList), werror.WrapWithContextParams(ctx, err, "listScholarships failed")
+		return *new(ScholarshipPage), werror.WrapWithContextParams(ctx, err, "listScholarships failed")
 	}
 	if returnVal == nil {
-		return *new(ScholarshipList), werror.ErrorWithContextParams(ctx, "listScholarships response cannot be nil")
+		return *new(ScholarshipPage), werror.ErrorWithContextParams(ctx, "listScholarships response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -1670,7 +1682,7 @@ type EducationReferenceServiceClientWithAuth interface {
 	UpdateGrant(ctx context.Context, grantIdArg string, requestArg UpsertGrantRequest) (Grant, error)
 	DeleteGrant(ctx context.Context, grantIdArg string) error
 	CreatePublication(ctx context.Context, requestArg UpsertPublicationRequest) (Publication, error)
-	ListPublications(ctx context.Context, queryArg *string) (PublicationList, error)
+	ListPublications(ctx context.Context, queryArg *string, pageSizeArg *int, pageTokenArg *string) (PublicationPage, error)
 	GetPublication(ctx context.Context, publicationIdArg string) (Publication, error)
 	UpdatePublication(ctx context.Context, publicationIdArg string, requestArg UpsertPublicationRequest) (Publication, error)
 	DeletePublication(ctx context.Context, publicationIdArg string) error
@@ -1690,7 +1702,7 @@ type EducationReferenceServiceClientWithAuth interface {
 	UpdateQualification(ctx context.Context, qualificationIdArg string, requestArg UpsertQualificationRequest) (Qualification, error)
 	DeleteQualification(ctx context.Context, qualificationIdArg string) error
 	CreateScholarship(ctx context.Context, requestArg UpsertScholarshipRequest) (Scholarship, error)
-	ListScholarships(ctx context.Context, queryArg *string) (ScholarshipList, error)
+	ListScholarships(ctx context.Context, queryArg *string, pageSizeArg *int, pageTokenArg *string) (ScholarshipPage, error)
 	GetScholarship(ctx context.Context, scholarshipIdArg string) (Scholarship, error)
 	UpdateScholarship(ctx context.Context, scholarshipIdArg string, requestArg UpsertScholarshipRequest) (Scholarship, error)
 	DeleteScholarship(ctx context.Context, scholarshipIdArg string) error
@@ -1886,8 +1898,8 @@ func (c *educationReferenceServiceClientWithAuth) CreatePublication(ctx context.
 	return c.client.CreatePublication(ctx, c.authHeader, requestArg)
 }
 
-func (c *educationReferenceServiceClientWithAuth) ListPublications(ctx context.Context, queryArg *string) (PublicationList, error) {
-	return c.client.ListPublications(ctx, c.authHeader, queryArg)
+func (c *educationReferenceServiceClientWithAuth) ListPublications(ctx context.Context, queryArg *string, pageSizeArg *int, pageTokenArg *string) (PublicationPage, error) {
+	return c.client.ListPublications(ctx, c.authHeader, queryArg, pageSizeArg, pageTokenArg)
 }
 
 func (c *educationReferenceServiceClientWithAuth) GetPublication(ctx context.Context, publicationIdArg string) (Publication, error) {
@@ -1966,8 +1978,8 @@ func (c *educationReferenceServiceClientWithAuth) CreateScholarship(ctx context.
 	return c.client.CreateScholarship(ctx, c.authHeader, requestArg)
 }
 
-func (c *educationReferenceServiceClientWithAuth) ListScholarships(ctx context.Context, queryArg *string) (ScholarshipList, error) {
-	return c.client.ListScholarships(ctx, c.authHeader, queryArg)
+func (c *educationReferenceServiceClientWithAuth) ListScholarships(ctx context.Context, queryArg *string, pageSizeArg *int, pageTokenArg *string) (ScholarshipPage, error) {
+	return c.client.ListScholarships(ctx, c.authHeader, queryArg, pageSizeArg, pageTokenArg)
 }
 
 func (c *educationReferenceServiceClientWithAuth) GetScholarship(ctx context.Context, scholarshipIdArg string) (Scholarship, error) {
@@ -2411,12 +2423,12 @@ func (c *educationReferenceServiceClientWithTokenProvider) CreatePublication(ctx
 	return c.client.CreatePublication(ctx, bearertoken.Token(token), requestArg)
 }
 
-func (c *educationReferenceServiceClientWithTokenProvider) ListPublications(ctx context.Context, queryArg *string) (PublicationList, error) {
+func (c *educationReferenceServiceClientWithTokenProvider) ListPublications(ctx context.Context, queryArg *string, pageSizeArg *int, pageTokenArg *string) (PublicationPage, error) {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
-		return *new(PublicationList), err
+		return *new(PublicationPage), err
 	}
-	return c.client.ListPublications(ctx, bearertoken.Token(token), queryArg)
+	return c.client.ListPublications(ctx, bearertoken.Token(token), queryArg, pageSizeArg, pageTokenArg)
 }
 
 func (c *educationReferenceServiceClientWithTokenProvider) GetPublication(ctx context.Context, publicationIdArg string) (Publication, error) {
@@ -2571,12 +2583,12 @@ func (c *educationReferenceServiceClientWithTokenProvider) CreateScholarship(ctx
 	return c.client.CreateScholarship(ctx, bearertoken.Token(token), requestArg)
 }
 
-func (c *educationReferenceServiceClientWithTokenProvider) ListScholarships(ctx context.Context, queryArg *string) (ScholarshipList, error) {
+func (c *educationReferenceServiceClientWithTokenProvider) ListScholarships(ctx context.Context, queryArg *string, pageSizeArg *int, pageTokenArg *string) (ScholarshipPage, error) {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
-		return *new(ScholarshipList), err
+		return *new(ScholarshipPage), err
 	}
-	return c.client.ListScholarships(ctx, bearertoken.Token(token), queryArg)
+	return c.client.ListScholarships(ctx, bearertoken.Token(token), queryArg, pageSizeArg, pageTokenArg)
 }
 
 func (c *educationReferenceServiceClientWithTokenProvider) GetScholarship(ctx context.Context, scholarshipIdArg string) (Scholarship, error) {

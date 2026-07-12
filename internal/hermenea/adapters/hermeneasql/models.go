@@ -50,6 +50,12 @@ type HermeneaImportSource struct {
 	DeletedAt      pgtype.Timestamptz
 }
 
+type HermeneaSchemaVersion struct {
+	Singleton bool
+	Revision  string
+	AppliedAt pgtype.Timestamptz
+}
+
 type HermeneaWatchlistCache struct {
 	SubjectKey string
 	Result     []byte

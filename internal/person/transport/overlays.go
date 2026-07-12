@@ -1,6 +1,7 @@
 // Financial / behavioural / psychological overlays transport (D-PersonOverlays, M35): crypto wallets and
-// personality profiles (pii:sensitive) and the inferred political leaning (pii:special). Reads require
-// person.read; writes require person.update — the same PEP gating as the other person sub-resources.
+// personality profiles (pii:sensitive) and the inferred political leaning (pii:special). Wallet/personality
+// reads require person.read; the pii:special political-leaning read requires its own
+// person.political_leaning.read (D-DataScope, review R-14). Writes require person.update.
 package transport
 
 import (
@@ -112,7 +113,7 @@ func (s Service) DeletePersonality(ctx context.Context, token bearertoken.Token,
 // ---------------------------------------------------------------- political leaning
 
 func (s Service) GetPoliticalLeaning(ctx context.Context, token bearertoken.Token, personID string) (*personapi.PoliticalLeaning, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+	if err := s.pep.RequireAnywhere(ctx, token, permPoliticalLeaningRead); err != nil {
 		return nil, err
 	}
 	l, err := s.sensitive.GetPoliticalLeaning(ctx, personID)

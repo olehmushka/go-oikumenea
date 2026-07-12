@@ -919,14 +919,12 @@ SELECT o.id, o.code, o.name,
 FROM oikumenea.education_org_profiles p
 JOIN oikumenea.tenant_organizations o ON o.id = p.institution_id AND o.deleted_at IS NULL
 WHERE p.deleted_at IS NULL
-  AND ($1 = '' OR o.code ILIKE '%' || $1 || '%' OR o.name ILIKE '%' || $1 || '%')
-  AND ($2 = '' OR o.id::text > $2)
+  AND ($1 = '' OR o.id::text > $1)
 ORDER BY o.id
-LIMIT $3
+LIMIT $2
 `
 
 type ListInstitutionsParams struct {
-	Query interface{}
 	After interface{}
 	Lim   int32
 }
@@ -944,10 +942,10 @@ type ListInstitutionsRow struct {
 	UpdatedAt pgtype.Timestamptz
 }
 
-// Active institutions (orgs with an education profile), optional case-insensitive code/name filter,
-// keyset-paginated by org RID.
+// Active institutions (orgs with an education profile), keyset-paginated by org RID. A text query routes
+// to SearchInstitutions instead (review R-21): a `(@query = ” OR …)` guard would defeat the trigram GIN.
 func (q *Queries) ListInstitutions(ctx context.Context, arg ListInstitutionsParams) ([]ListInstitutionsRow, error) {
-	rows, err := q.db.Query(ctx, listInstitutions, arg.Query, arg.After, arg.Lim)
+	rows, err := q.db.Query(ctx, listInstitutions, arg.After, arg.Lim)
 	if err != nil {
 		return nil, err
 	}
@@ -1060,6 +1058,71 @@ func (q *Queries) ListVacantPositionsByInstitution(ctx context.Context, arg List
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchInstitutions = `-- name: SearchInstitutions :many
+SELECT o.id, o.code, o.name,
+  p.kind_id, p.country_id, p.founded_on, p.closed_on, p.state, p.created_at, p.updated_at
+FROM oikumenea.education_org_profiles p
+JOIN oikumenea.tenant_organizations o ON o.id = p.institution_id AND o.deleted_at IS NULL
+WHERE p.deleted_at IS NULL
+  AND o.search_text ILIKE '%' || $1 || '%'
+  AND ($2 = '' OR o.id::text > $2)
+ORDER BY o.id
+LIMIT $3
+`
+
+type SearchInstitutionsParams struct {
+	Query pgtype.Text
+	After interface{}
+	Lim   int32
+}
+
+type SearchInstitutionsRow struct {
+	ID        string
+	Code      string
+	Name      string
+	KindID    string
+	CountryID pgtype.Text
+	FoundedOn pgtype.Date
+	ClosedOn  pgtype.Date
+	State     string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+// The trigram-served twin of ListInstitutions (review R-21): an unconditional case-insensitive match over
+// the tenant_organizations STORED search_text haystack, served by the tenant_organizations_search_trgm
+// GIN. Same projection and keyset as ListInstitutions so the two rows are convertible in the repository.
+func (q *Queries) SearchInstitutions(ctx context.Context, arg SearchInstitutionsParams) ([]SearchInstitutionsRow, error) {
+	rows, err := q.db.Query(ctx, searchInstitutions, arg.Query, arg.After, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SearchInstitutionsRow
+	for rows.Next() {
+		var i SearchInstitutionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.KindID,
+			&i.CountryID,
+			&i.FoundedOn,
+			&i.ClosedOn,
+			&i.State,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}

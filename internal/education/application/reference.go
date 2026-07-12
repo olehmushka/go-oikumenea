@@ -410,8 +410,8 @@ func (s *Service) GetPublication(ctx context.Context, id string) (domain.Publica
 	return s.newRepo(s.pool).GetPublication(ctx, id)
 }
 
-func (s *Service) ListPublications(ctx context.Context, query string) ([]domain.Publication, error) {
-	return s.newRepo(s.pool).ListPublications(ctx, query)
+func (s *Service) ListPublications(ctx context.Context, query, after string, pageSize int) ([]domain.Publication, error) {
+	return s.newRepo(s.pool).ListPublications(ctx, query, after, clampPageSize(pageSize)+1)
 }
 
 func (s *Service) UpdatePublication(ctx context.Context, id string, in domain.PublicationInput) (domain.Publication, error) {
@@ -582,8 +582,8 @@ func (s *Service) GetScholarship(ctx context.Context, id string) (domain.Scholar
 	return s.newRepo(s.pool).GetScholarship(ctx, id)
 }
 
-func (s *Service) ListScholarships(ctx context.Context, query string) ([]domain.Scholarship, error) {
-	return s.newRepo(s.pool).ListScholarships(ctx, query)
+func (s *Service) ListScholarships(ctx context.Context, query, after string, pageSize int) ([]domain.Scholarship, error) {
+	return s.newRepo(s.pool).ListScholarships(ctx, query, after, clampPageSize(pageSize)+1)
 }
 
 func (s *Service) UpdateScholarship(ctx context.Context, id string, in domain.ScholarshipInput) (domain.Scholarship, error) {

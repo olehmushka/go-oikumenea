@@ -48,6 +48,13 @@ const (
 	PermPersonPurge      Permission = "person.purge"
 	PermPersonMerge      Permission = "person.merge" // resolve a provisional stub into a canonical person (D-OverlayFoundation, M29)
 
+	// person pii:special sub-resources — each Art.9 read has its OWN code so no single grant
+	// unlocks the aggregation of ethnicity + politics + party (D-DataScope, review R-14). These are
+	// deliberately NOT in the base unit-reader set; they compose the sensitive-reader base role.
+	PermPersonEthnicityRead        Permission = "person.ethnicity.read"
+	PermPersonPoliticalLeaningRead Permission = "person.political_leaning.read"
+	PermPersonPartyMembershipRead  Permission = "person.party_membership.read"
+
 	// membership
 	PermMembershipRead   Permission = "membership.read"
 	PermMembershipCreate Permission = "membership.create"
@@ -199,9 +206,9 @@ const (
 	PermCompanyCatalogManage     Permission = "company.catalog.manage"
 	PermVehicleCatalogManage     Permission = "vehicle.catalog.manage"
 	PermReligionCatalogManage    Permission = "religion.catalog.manage"
-	PermLegalBasisManage         Permission = "legal-basis.manage" // instance-admin manages the GDPR lawful-basis catalog (D-OverlayFoundation, M29)
-	PermColorManage              Permission = "color.manage"       // instance-admin manages the per-domain color catalog (D-Color)
-	PermExternalOrgManage        Permission = "externalorg.manage" // instance-admin manages the external-organizations registry (D-ExternalOrgs, M30)
+	PermLegalBasisManage         Permission = "legal-basis.manage"     // instance-admin manages the GDPR lawful-basis catalog (D-OverlayFoundation, M29)
+	PermColorManage              Permission = "color.manage"           // instance-admin manages the per-domain color catalog (D-Color)
+	PermExternalOrgManage        Permission = "externalorg.manage"     // instance-admin manages the external-organizations registry (D-ExternalOrgs, M30)
 	PermFinanceCatalogManage     Permission = "finance.catalog.manage" // instance-admin manages the account-type / card-network catalogs (D-Finance, M44)
 	PermInstanceConfig           Permission = "instance.config"
 	PermInstanceAdminManage      Permission = "instance.admin.manage"
@@ -252,6 +259,7 @@ var catalog = func() map[Permission]struct{} {
 		PermDomainRead, PermUnitKindRead, PermOrganizationRead, PermOrganizationCreate, PermOrganizationUpdate, PermOrganizationLifecycle,
 		PermDomainManage, PermUnitKindManage,
 		PermPersonRead, PermPersonCreate, PermPersonUpdate, PermPersonRankAssign, PermPersonLifecycle, PermPersonPurge, PermPersonMerge,
+		PermPersonEthnicityRead, PermPersonPoliticalLeaningRead, PermPersonPartyMembershipRead,
 		PermMembershipRead, PermMembershipCreate, PermMembershipUpdate,
 		PermPositionRead, PermPositionCreate, PermPositionUpdate,
 		PermDocumentRead, PermDocumentCreate, PermDocumentUpdate, PermDocumentDelete, PermDocumentTypeRead,
@@ -320,10 +328,11 @@ type BaseRole struct {
 
 // Base role codes (seeded; immutable by convention).
 const (
-	BaseRoleUnitReader  = "unit-reader"
-	BaseRoleUnitManager = "unit-manager"
-	BaseRoleUnitAdmin   = "unit-admin"
-	BaseRoleAuditor     = "auditor"
+	BaseRoleUnitReader      = "unit-reader"
+	BaseRoleUnitManager     = "unit-manager"
+	BaseRoleUnitAdmin       = "unit-admin"
+	BaseRoleAuditor         = "auditor"
+	BaseRoleSensitiveReader = "sensitive-reader"
 )
 
 // readerPerms / managerOnlyPerms / adminOnlyPerms compose the graduated base-role sets
@@ -353,6 +362,14 @@ var managerOnlyPerms = []Permission{
 	PermReligionOrgManage, PermSiteManage, PermScheduleManage,
 }
 
+// sensitiveReaderPerms is a standalone, additive base role (like auditor): the pii:special person
+// reads, deliberately NOT folded into reader/manager/admin so that no single graduated role unlocks
+// the ethnicity + politics + party aggregation — reading Art.9 person data requires this explicit
+// grant, on top of unit-reader for the surrounding directory context (D-DataScope, review R-14).
+var sensitiveReaderPerms = []Permission{
+	PermPersonEthnicityRead, PermPersonPoliticalLeaningRead, PermPersonPartyMembershipRead,
+}
+
 var adminOnlyPerms = []Permission{
 	PermUnitEdgesManage, // broad form — covers all graphs incl. custom (D-EdgePerms)
 	PermUnitLifecycle,
@@ -374,6 +391,7 @@ func BaseRoles() []BaseRole {
 		{Code: BaseRoleUnitManager, Name: "Unit Manager", Description: "Create/update people, memberships, positions, units, and orders within scope.", Permissions: manager},
 		{Code: BaseRoleUnitAdmin, Name: "Unit Admin", Description: "Full unit administration within scope: edges, lifecycle, purge, order issue/revoke, and granting assignments.", Permissions: admin},
 		{Code: BaseRoleAuditor, Name: "Auditor", Description: "Read the audit log only (separation of duties; pair with unit-reader to resolve referenced entities).", Permissions: []Permission{PermAuditRead}},
+		{Code: BaseRoleSensitiveReader, Name: "Sensitive Reader", Description: "Read a person's pii:special Art.9 data (ethnicity, inferred political leaning, party membership). Additive and explicit — pair with unit-reader; deliberately not implied by unit-admin (D-DataScope, R-14).", Permissions: sensitiveReaderPerms},
 	}
 }
 

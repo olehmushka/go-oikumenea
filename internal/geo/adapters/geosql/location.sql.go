@@ -214,8 +214,9 @@ WHERE deleted_at IS NULL
         geom,
         ST_MakeEnvelope($1::double precision, $2::double precision,
                         $3::double precision, $4::double precision, 4326)::geography)
+  AND ($5::text = '' OR id::text > $5::text)
 ORDER BY id
-LIMIT $6::int OFFSET $5::int
+LIMIT $6::int
 `
 
 type ListLocationsInBboxParams struct {
@@ -223,7 +224,7 @@ type ListLocationsInBboxParams struct {
 	MinLat float64
 	MaxLng float64
 	MaxLat float64
-	Off    int32
+	After  string
 	Lim    int32
 }
 
@@ -246,14 +247,15 @@ type ListLocationsInBboxRow struct {
 	UpdatedAt        pgtype.Timestamptz
 }
 
-// Locations whose coordinate falls inside the bounding box, ordered by id for stable pagination.
+// Locations whose coordinate falls inside the bounding box, keyset-paginated by id (review R-21:
+// replaces offset pagination). Empty after starts at the beginning.
 func (q *Queries) ListLocationsInBbox(ctx context.Context, arg ListLocationsInBboxParams) ([]ListLocationsInBboxRow, error) {
 	rows, err := q.db.Query(ctx, listLocationsInBbox,
 		arg.MinLng,
 		arg.MinLat,
 		arg.MaxLng,
 		arg.MaxLat,
-		arg.Off,
+		arg.After,
 		arg.Lim,
 	)
 	if err != nil {
@@ -297,23 +299,28 @@ SELECT id,
   ST_X(geom::geometry)::double precision AS longitude,
   mgrs, source_coordinate, country_id,
   admin_area_1, admin_area_2, locality, street, house_number, postal_code, raw_address,
-  type_id, created_at, updated_at
+  type_id, created_at, updated_at,
+  ST_Distance(geom, ST_SetSRID(ST_MakePoint($1::double precision, $2::double precision), 4326)::geography)::double precision AS distance_m
 FROM oikumenea.location_locations
 WHERE deleted_at IS NULL
   AND ST_DWithin(
         geom,
         ST_SetSRID(ST_MakePoint($1::double precision, $2::double precision), 4326)::geography,
         $3::double precision)
-ORDER BY geom <-> ST_SetSRID(ST_MakePoint($1::double precision, $2::double precision), 4326)::geography, id
-LIMIT $5::int OFFSET $4::int
+  AND ($4::text = ''
+       OR (ST_Distance(geom, ST_SetSRID(ST_MakePoint($1::double precision, $2::double precision), 4326)::geography)::double precision,
+            id::text) > ($5::double precision, $4::text))
+ORDER BY ST_Distance(geom, ST_SetSRID(ST_MakePoint($1::double precision, $2::double precision), 4326)::geography), id
+LIMIT $6::int
 `
 
 type ListLocationsNearParams struct {
-	Lng     float64
-	Lat     float64
-	RadiusM float64
-	Off     int32
-	Lim     int32
+	Lng       float64
+	Lat       float64
+	RadiusM   float64
+	AfterID   string
+	AfterDist float64
+	Lim       int32
 }
 
 type ListLocationsNearRow struct {
@@ -333,16 +340,24 @@ type ListLocationsNearRow struct {
 	TypeID           pgtype.Text
 	CreatedAt        pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
+	DistanceM        float64
 }
 
-// Locations within radiusM metres of (lat,lng), nearest first (ST_DWithin on geography). Offset/limit
-// paginated by the application's opaque page token.
+// Locations within radiusM metres of (lat,lng), nearest first (ST_DWithin on geography). Keyset-paginated
+// (review R-21: replaces the last offset-paginated query in the codebase, which re-scanned and shifted
+// rows under concurrent inserts). The sort key is the (distance, id) pair, so the cursor is that pair: the
+// distance_m column is returned for the application to carry into the next page token, and the row-value
+// predicate resumes strictly after the last row seen. Empty after_id starts at the nearest. Distance is
+// the EXACT ST_Distance (not the `<->` KNN operator) in every clause — mixing the index-approximated KNN
+// order with an exact keyset recompute would skip rows at the page boundary; the ST_DWithin radius bounds
+// the set, so ordering without the KNN index is fine.
 func (q *Queries) ListLocationsNear(ctx context.Context, arg ListLocationsNearParams) ([]ListLocationsNearRow, error) {
 	rows, err := q.db.Query(ctx, listLocationsNear,
 		arg.Lng,
 		arg.Lat,
 		arg.RadiusM,
-		arg.Off,
+		arg.AfterID,
+		arg.AfterDist,
 		arg.Lim,
 	)
 	if err != nil {
@@ -369,6 +384,7 @@ func (q *Queries) ListLocationsNear(ctx context.Context, arg ListLocationsNearPa
 			&i.TypeID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DistanceM,
 		); err != nil {
 			return nil, err
 		}
@@ -389,19 +405,15 @@ SELECT id,
   type_id, created_at, updated_at
 FROM oikumenea.location_locations
 WHERE deleted_at IS NULL
-  AND (locality ILIKE '%' || $1::text || '%'
-       OR admin_area_1 ILIKE '%' || $1::text || '%'
-       OR admin_area_2 ILIKE '%' || $1::text || '%'
-       OR street ILIKE '%' || $1::text || '%'
-       OR mgrs ILIKE '%' || $1::text || '%'
-       OR raw_address ILIKE '%' || $1::text || '%')
+  AND search_text ILIKE '%' || $1::text || '%'
+  AND ($2::text = '' OR id::text > $2::text)
 ORDER BY id
-LIMIT $3::int OFFSET $2::int
+LIMIT $3::int
 `
 
 type SearchLocationsByTextParams struct {
 	Query string
-	Off   int32
+	After string
 	Lim   int32
 }
 
@@ -424,11 +436,12 @@ type SearchLocationsByTextRow struct {
 	UpdatedAt        pgtype.Timestamptz
 }
 
-// Case-insensitive text search over the address fields (no spatial window required), ordered by id for
-// stable pagination. Backs the typeahead picker — a location has no `code`, so the match runs over
-// locality, the admin areas, street, mgrs, and the raw address.
+// Case-insensitive text search over the address fields (no spatial window required), keyset-paginated by
+// id (review R-21: replaces offset pagination). Backs the typeahead picker — a location has no `code`, so the match runs
+// over locality, the admin areas, street, mgrs, and the raw address, folded into the STORED search_text
+// haystack that the location_locations_search_trgm GIN index serves as a bitmap scan.
 func (q *Queries) SearchLocationsByText(ctx context.Context, arg SearchLocationsByTextParams) ([]SearchLocationsByTextRow, error) {
-	rows, err := q.db.Query(ctx, searchLocationsByText, arg.Query, arg.Off, arg.Lim)
+	rows, err := q.db.Query(ctx, searchLocationsByText, arg.Query, arg.After, arg.Lim)
 	if err != nil {
 		return nil, err
 	}

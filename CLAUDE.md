@@ -2,24 +2,25 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Repository status: implemented through M15, M16 in implementation, design-led
+## Repository status: verified through M50; review-hardening in progress
 
-This repo is a **modular monolith + a companion service, under active implementation**. Code exists:
+This repo is a **modular monolith + a companion service, in active build-out**. Code exists:
 a `go.mod`, the `internal/<module>/` Go modules, the `api/*.conjure.yml` contracts, the versioned
-`migrations/`, and an optional Next.js console under `web/`. The foundation milestones **M0–M11** are
-delivered and the person/rank enrichment milestones **M13–M15** are delivered; **M12** is
-scoped/in progress; **M16** is **verified** as the out-of-process **hermenea** companion
-(D-Hermenea supersedes D-Worker and absorbs M17) — the geo-countries pipeline and the full WOF Ukraine
-`geo-places` backfill (35k places + `geo_countries` enrichment + idempotent re-run) are proven
-end-to-end in a real `docker compose` cross-service run; **M18–M26** are designed (decisions landed) but
-not yet built. To answer "what stage is feature X in?" read the
-**[stage board](docs/milestones.md#stage-board)** — it is the scannable index.
+`migrations/`, and an optional Next.js console under `web/`. The **stage board is current through
+M50** — the M0–M15 core (tenant/person/authz/PDP), the M16 **hermenea** ingestion companion, and the
+M18–M50 vertical & person-enrichment tiers (languages, location, education, companies, religion,
+vehicles, external orgs, physical identity, addresses, watchlists, overlays, finance, the `pinax`
+reference plane, …) are built and largely verified. The current work is the **review-2026-08
+architecture-hardening cycle** (`docs/architecture/review-2026-08.md`), worked ticket by ticket. To
+answer "what stage is feature X in?" read the **[stage board](docs/milestones.md#stage-board)** — it
+is the scannable index; **do not trust milestone claims in this header over the board.**
 
 `docs/` remains the **source of truth**, and `docs/architecture/decisions.md` is **binding**: if
 code and a decision recorded there disagree, **the code is wrong**. Change a decision by editing
-that file (with rationale), not by diverging in code. The **planned-tier (M16–M26)** decisions —
-decided/designed but not yet built — live in `docs/architecture/roadmap-decisions.md` (binding
-against code once their milestone enters implementation).
+that file (with rationale), not by diverging in code. The **planned-tier (M16–M45)** decisions live
+in `docs/architecture/roadmap-decisions.md` (binding against code as each milestone lands — most now
+have). **Both decision files open with a decision index table** (ID → one-liner → anchor): load the
+index and fetch only the blocks you need, rather than reading the whole (large) file.
 
 **Every feature follows a fixed pipeline** — idea → decided → designed → backend → migrated → ui →
 verified. Read **`docs/development-process.md`** before starting, advancing, or reporting on any
@@ -31,11 +32,17 @@ do not go looking for a `drafts/` directory.
 
 ## What the service is
 
-**go-oikumenea** — a generic, domain-agnostic **personnel & authorization service** (Keycloak-like,
-for *hierarchical, multi-tenant* organizations: army / church / university). API-only, self-hosted,
-operator-owned PostgreSQL. It is **authorization + directory only**: authentication is delegated to
-an external IdP; the service validates inbound identities and **decides** authorization (it is a
-PDP). It never stores credentials and never issues tokens.
+**go-oikumenea** — a **personnel directory + multi-domain registry / intelligence platform** for
+*hierarchical, multi-tenant* organizations (army / church / university / government / company).
+API-only, self-hosted, operator-owned PostgreSQL. Its authorization plane is **authz + directory
+only**: authentication is delegated to an external IdP; the service validates inbound identities and
+**decides** authorization (it is a PDP), and never stores credentials or issues tokens. On top of
+that directory it is a **registry**: a deployment holds rich, enumerated subject data — financial
+instruments, inferred political leaning, ethnicity, religious affiliation, watchlist/sanctions
+matches, physical identity, addresses — each behind its own permission code. That data boundary and
+its compliance posture (incl. **PCI-DSS CDE** scope for retained PANs) are governed by **D-DataScope**
+([decisions.md](docs/architecture/decisions.md)); it is why the identity here is a *registry
+platform*, not "Keycloak."
 
 Differentiator vs. Keycloak: a real **PDP over a unit graph** (units may have multiple parents — a
 DAG) with **public/shadow visibility**. One deployment hosts **multiple domains**
@@ -50,7 +57,8 @@ not flat isolated realms*.
 
 1. `docs/glossary.md` — domain vocabulary (the module docs assume these terms).
 2. `docs/architecture/decisions.md` — the binding decisions (M0–M15) + carried-over locks;
-   `docs/architecture/roadmap-decisions.md` for the planned-tier (M16–M26) decisions.
+   `docs/architecture/roadmap-decisions.md` for the planned-tier (M16–M45) decisions. Both open
+   with a **decision index table**.
 3. `docs/architecture/conventions.md` — schema / Go-witchcraft / Conjure / API conventions.
 4. `docs/ontology-mapping.md` — the binding Object/Link/Action type registry (D-Ontology).
 5. `docs/architecture/patterns.md` — cross-cutting patterns.
@@ -77,7 +85,7 @@ companion ingestion + scheduler service with its **own Postgres** and **own Atla
 `POST /import/{objectType}` endpoint; it never touches oikumenea's DB). D-Hermenea **supersedes
 D-Worker** (in-process worker) and **folds D-DataIngestion (M17)** into M16.
 
-Eleven modules (`docs/modules/`):
+The **eleven core modules** (`docs/modules/`):
 
 - **tenant** — **domains** (org-kind catalog) → **organizations** (the realm a person joins) → units
   as a DAG (multi-parent, multi-root) + a maintained transitive-closure table; per-org `command`/
@@ -99,6 +107,15 @@ Eleven modules (`docs/modules/`):
 - **platform** — witchcraft bootstrap, config (ECV + refreshable), observability, schema bootstrap,
   boot-time schema-version check, shared kernel `pkg/`.
 - **audit** — append-only audit log of permission-sensitive actions.
+
+Plus the **vertical / person-enrichment / reference modules** added M18–M50 (each with its own
+`docs/modules/*.md` or decision block): **geo** (countries + WOF gazetteer + `location`), **language**
+(Glottolog registry), **education**, **company**, **religion**, **vehicle**, **externalorg**,
+**finance**, and the person split's **personprofile** / **personsensitive** (D-PersonModuleSplit) —
+plus the reference plane **pinax** (D-Pinax) and the enrichment seams **dataimport** (the oikumenea
+import endpoint hermenea posts to) and **watchlistclient** (the synchronous watchlist lookup).
+`internal/conjure` is generated. Read the [stage board](docs/milestones.md#stage-board) and the
+per-module docs for the current set — this list is the map, not the census.
 
 ## Load-bearing decisions (easy to get wrong)
 

@@ -86,7 +86,9 @@ const REGISTRY: Record<EntityKind, KindConfig> = {
     }),
   },
   publication: {
-    path: "/education/v1/publications",
+    // Keyset-paginated since review R-21 (was an unbounded list) — request a full page so the
+    // client-side filter still sees the whole catalog at admin/dev scale.
+    path: "/education/v1/publications?pageSize=200",
     pick: (d) => (d as { publications?: unknown[] })?.publications ?? [],
     toOption: (p) => ({
       id: str(p.id) ?? "",
@@ -95,7 +97,7 @@ const REGISTRY: Record<EntityKind, KindConfig> = {
     }),
   },
   scholarship: {
-    path: "/education/v1/scholarships",
+    path: "/education/v1/scholarships?pageSize=200",
     pick: (d) => (d as { scholarships?: unknown[] })?.scholarships ?? [],
     toOption: (s) => ({
       id: str(s.id) ?? "",

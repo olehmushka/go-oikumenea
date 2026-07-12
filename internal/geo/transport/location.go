@@ -108,7 +108,6 @@ func (s LocationService) ListLocations(ctx context.Context, token bearertoken.To
 	if err := s.pep.RequireAnywhere(ctx, token, locReadPerm); err != nil {
 		return locationapi.LocationPage{}, err
 	}
-	offset := decodeOffset(pageToken)
 	size := 0
 	if pageSize != nil {
 		size = *pageSize
@@ -117,16 +116,19 @@ func (s LocationService) ListLocations(ctx context.Context, token bearertoken.To
 	var (
 		locs    []domain.Location
 		hasMore bool
+		near    bool // the nearest-first branch keys on (distance, id), not id — chooses the token format
 		err     error
 	)
 	switch {
 	case query != nil && strings.TrimSpace(*query) != "":
 		// Text search over address fields — no spatial window required (backs the typeahead picker).
-		locs, hasMore, err = s.app.SearchLocations(ctx, strings.TrimSpace(*query), size, offset)
+		locs, hasMore, err = s.app.SearchLocations(ctx, strings.TrimSpace(*query), decodeIDCursor(pageToken), size)
 	case lat != nil && lng != nil && radiusM != nil:
-		locs, hasMore, err = s.app.ListLocationsNear(ctx, *lat, *lng, *radiusM, size, offset)
+		near = true
+		afterDist, afterID := decodeNearCursor(pageToken)
+		locs, hasMore, err = s.app.ListLocationsNear(ctx, *lat, *lng, *radiusM, afterDist, afterID, size)
 	case minLat != nil && minLng != nil && maxLat != nil && maxLng != nil:
-		locs, hasMore, err = s.app.ListLocationsInBbox(ctx, *minLat, *minLng, *maxLat, *maxLng, size, offset)
+		locs, hasMore, err = s.app.ListLocationsInBbox(ctx, *minLat, *minLng, *maxLat, *maxLng, decodeIDCursor(pageToken), size)
 	default:
 		return locationapi.LocationPage{}, locationapi.NewQueryWindowRequired()
 	}
@@ -144,7 +146,13 @@ func (s LocationService) ListLocations(ctx context.Context, token bearertoken.To
 	}
 	page := locationapi.LocationPage{Locations: out}
 	if hasMore {
-		next := encodeOffset(offset + len(out))
+		last := locs[len(locs)-1]
+		var next string
+		if near {
+			next = encodeNearCursor(last.DistanceM, last.ID)
+		} else {
+			next = encodeIDCursor(last.ID)
+		}
 		page.NextPageToken = &next
 	}
 	return page, nil
@@ -281,24 +289,49 @@ func (s LocationService) mapError(ctx context.Context, err error, locationID str
 	return werror.WrapWithContextParams(ctx, err, "location operation failed")
 }
 
-// ---------------------------------------------------------------- page token (opaque base64 offset)
+// ---------------------------------------------------------------- page token (opaque base64 keyset)
+//
+// review R-21: OFFSET pagination is gone. Search/Bbox key on the location id; Near keys on the
+// (distance, id) sort pair. Tokens are opaque base64 to the client, so the format switch is internal.
 
-func encodeOffset(off int) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(off)))
+func encodeIDCursor(id string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(id))
 }
 
-// decodeOffset is lenient: an absent or unparseable token starts from offset 0.
-func decodeOffset(token *string) int {
+// decodeIDCursor is lenient: an absent or unparseable token starts from the beginning.
+func decodeIDCursor(token *string) string {
 	if token == nil || *token == "" {
-		return 0
+		return ""
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(*token)
 	if err != nil {
-		return 0
+		return ""
 	}
-	off, err := strconv.Atoi(string(raw))
-	if err != nil || off < 0 {
-		return 0
+	return string(raw)
+}
+
+// encodeNearCursor / decodeNearCursor carry the (distance_m, id) pair — the Near sort key — as
+// "<dist>\x1f<id>". The distance is the resume point along the nearest-first order.
+func encodeNearCursor(dist float64, id string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(strconv.FormatFloat(dist, 'g', -1, 64) + "\x1f" + id))
+}
+
+// decodeNearCursor is lenient: an absent or unparseable token starts at the nearest (0, "").
+func decodeNearCursor(token *string) (float64, string) {
+	if token == nil || *token == "" {
+		return 0, ""
 	}
-	return off
+	raw, err := base64.RawURLEncoding.DecodeString(*token)
+	if err != nil {
+		return 0, ""
+	}
+	dist, id, ok := strings.Cut(string(raw), "\x1f")
+	if !ok {
+		return 0, ""
+	}
+	d, err := strconv.ParseFloat(dist, 64)
+	if err != nil {
+		return 0, ""
+	}
+	return d, id
 }

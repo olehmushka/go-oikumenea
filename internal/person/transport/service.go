@@ -40,6 +40,11 @@ const (
 	permLifecycle  = string(authzdomain.PermPersonLifecycle)
 	permPurge      = string(authzdomain.PermPersonPurge)
 	permMerge      = string(authzdomain.PermPersonMerge)
+	// pii:special Art.9 reads — each behind its own code so person.read (base unit-reader) no longer
+	// unlocks the ethnicity + politics + party aggregation (D-DataScope, review R-14).
+	permEthnicityRead        = string(authzdomain.PermPersonEthnicityRead)
+	permPoliticalLeaningRead = string(authzdomain.PermPersonPoliticalLeaningRead)
+	permPartyMembershipRead  = string(authzdomain.PermPersonPartyMembershipRead)
 )
 
 // Localization entity-type keys for the translatable contact-kind / platform catalog names (D-i18n).

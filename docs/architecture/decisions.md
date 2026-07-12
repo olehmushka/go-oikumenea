@@ -16,6 +16,67 @@ wants per-file ADRs.
 
 ---
 
+## Decision index
+
+Load this table, fetch the block you need — the file is large. IDs link to the block; the
+planned-tier (M16–M45) decisions live in [`roadmap-decisions.md`](roadmap-decisions.md) (its own index).
+
+| ID | Decision |
+| --- | --- |
+| [D-Graph](#d-graph--the-unit-hierarchy-is-a-dag) | The unit hierarchy is a DAG |
+| [D-Inherit](#d-inherit--inheritance-is-per-assignment-scope) | Inheritance is per-assignment scope |
+| [D-Graphs](#d-graphs--multiple-named-hierarchies-typed-edges-per-graph-closure) | Multiple named hierarchies (typed edges, per-graph closure) |
+| [D-Rank](#d-rank--rank-on-person-rank--permission) | Rank on person; rank ≠ permission |
+| [D-Position](#d-position--position-is-a-unit-owned-billet-that-can-be-vacant) | Position is a unit-owned billet that can be vacant |
+| [D-InstanceAdmin](#d-instanceadmin--a-separate-instance-admin-scope) | A separate instance-admin scope |
+| [D-PersonGlobal](#d-personglobal--person-is-instance-global) | Person is instance-global |
+| [D-NoRLS](#d-norls--app-layer-pdp-no-rls-for-unit-isolation) | App-layer PDP, no RLS for unit isolation |
+| [D-Migrations](#d-migrations--atlas-versioned-migrations-one-location-lint-gate) | Atlas versioned migrations, one location, lint gate |
+| [D-Conjure](#d-conjure--conjure-first-api-serializableerror-token-pagination) | Conjure-first API, SerializableError, token pagination |
+| [D-Stack](#d-stack--the-palantir-oss-stack-reverses-drafts-fx) | The Palantir OSS stack (reverses drafts' fx) |
+| [D-i18n](#d-i18n--i18n-is-required-all-translations-in-every-response) | i18n is required; all translations in every response |
+| [D-Code](#d-code--stable-locale-agnostic-codes-separate-from-translatable-names) | Stable, locale-agnostic codes separate from translatable names |
+| [D-Audit](#d-audit--every-write-is-audited-audit-reads-are-permission-scoped) | Every write is audited; audit reads are permission-scoped |
+| [D-Bootstrap](#d-bootstrap--install-time-bootstrap-of-the-first-instance-admin) | Install-time bootstrap of the first instance admin |
+| [D-BaseRoles](#d-baseroles--seeded-base-roles-reads-are-explicit-grants) | Seeded base roles; reads are explicit grants |
+| [D-JIT](#d-jit--just-in-time-provisioning-is-link-on-match-only) | Just-in-time provisioning is link-on-match only |
+| [D-DirectoryGraphs](#d-directorygraphs--graphs-may-be-directory-only-pdp-enforced-flag) | Graphs may be directory-only (PDP-enforced flag) |
+| [D-EdgePerms](#d-edgeperms--edge-management-is-per-graph-code-defined-permissions--broad-fallback) | Edge management is per-graph (code-defined permissions + broad fallback) |
+| [D-ClosureIntegrity](#d-closureintegrity--on-demand-per-graph-closure-verify--rebuild-decoupled-from-the-worker-runtime) | On-demand per-graph closure verify & rebuild |
+| [D-PIITiers](#d-piitiers--5-tier-pii-classification-via-comment-on-column) | 5-tier PII classification via COMMENT ON COLUMN |
+| [D-TimeBoundGrants](#d-timeboundgrants--role-assignments-may-be-time-bound-expiresat-active) | Role assignments may be time-bound (expires_at active) |
+| [D-RLSDefenseInDepth](#d-rlsdefenseindepth--pdp-mirror-rls-backstop-defense-in-depth) | PDP-mirror RLS backstop (defense-in-depth) |
+| [D-PersonReadScope](#d-personreadscope--a-persons-read-scope-projects-through-its-memberships) | A person's read scope projects through its memberships |
+| [D-PersonBio](#d-personbio--person-bio-fields-structured-names-birthdate-iso-5218-sex) | Person bio fields: structured names, birthdate, ISO 5218 sex |
+| [D-Documents](#d-documents--a-document-module-for-person-held-papers--personal-codes) | A document module for person-held papers & personal codes |
+| [D-Orders](#d-orders--an-order-module-administrative-acts-as-the-legal-basis-for-status-changes) | An order module: administrative acts as the legal basis for status changes |
+| [D-OrderApply](#d-orderapply--orders-auto-apply-their-effects-on-issue-synchronous-in-process-same-transaction) | Orders auto-apply their effects on issue (same transaction) |
+| [D-ClosureDriftHealth](#d-closuredrifthealth--closure-drift-is-surfaced-via-a-diagnostic-health-reporter-no-scheduled-rebuild) | Closure drift surfaced via a diagnostic health reporter |
+| [D-PersonNamesCLDR](#d-personnamescldr--names-follow-the-unicode-cldr-person-names-fixed-field-set-amends-d-personbio) | Names follow the Unicode CLDR Person Names fixed field set |
+| [D-Geo](#d-geo--seeded-iso-3166-country-registry-citizenship-birth-and-residence-as-first-class-person-data) | Seeded ISO-3166 country registry; citizenship/birth/residence |
+| [D-PersonalCodes](#d-personalcodes--national-identifiers-as-a-per-scheme-catalog-with-validation-extends-d-documents) | National identifiers as a per-scheme catalog with validation |
+| [D-CryptoProvider](#d-cryptoprovider--pluggable-envelope-encryption-for-sensitive-pii-reshapes-ds-29) | Pluggable envelope encryption for sensitive PII |
+| [D-ResourceIdentifiers](#d-resourceidentifiers--packed-uuidv8-rids-as-primary-keys-objects-links-actions) | Packed UUIDv8 RIDs as primary keys (Objects, Links, Actions) |
+| [D-RIDSeeding](#d-ridseeding--rid-keyed-seed-rows-may-seed-in-migrations-boot-seeding-retained-by-choice) | RID-keyed seed rows MAY seed in migrations |
+| [D-Ontology](#d-ontology--object--link--action-is-the-binding-domain-model) | Object / Link / Action is the binding domain model |
+| [D-PersonContactChannels](#d-personcontactchannels--emails-phones-and-call-signs-as-effective-dated-person-child-tables-extends-d-geo) | Emails, phones, call signs as effective-dated person child tables |
+| [D-DocumentAttrSchema](#d-documentattrschema--per-document-type-attribute-schema-with-write-time-validation-extends-d-documents) | Per-document-type attribute schema with write-time validation |
+| [D-WebUI](#d-webui--an-optional-standalone-nextjs-admin-ui-reverses-the-api-only-no-ui-drop) | An optional standalone Next.js admin UI |
+| [D-PersonSocialChannels](#d-personsocialchannels--social-network--messenger-presence-as-catalog-typed-person-channels-with-analytics-grade-attribution-extends-d-personcontactchannels) | Social-network & messenger presence as catalog-typed channels |
+| [D-PersonRelationships](#d-personrelationships--personperson-ties-as-per-type-reified-self-links-extends-d-ontology-mirrors-memberships-temporal-link) | Person↔person ties as per-type reified self-links |
+| [D-RankSystems](#d-ranksystems--multinational-rank-systems-standardized-grade-comparability-and-scheme-presets-extends-d-rank-refines-l-onerankscheme) | Multinational rank systems, standardized-grade comparability, presets |
+| [D-RLSLiveReach](#d-rlslivereach--rls-policies-compute-reach-live-in-sql-the-guc-contract-is-o1) | RLS policies compute reach live in SQL; O(1) GUC contract |
+| [D-AuthzRequestContext](#d-authzrequestcontext--authority-state-is-fetched-once-per-request-and-snapshotted-on-the-context) | Authority state fetched once per request, snapshotted on context |
+| [D-AuthzGrantCache](#d-authzgrantcache--epoch-validated-per-process-grant-cache-2-s-revocation-bound) | Epoch-validated per-process grant cache (2 s revocation bound) |
+| [D-PersonSearch](#d-personsearch--trigram-indexed-directory-search-over-names--variants-filtered-in-sql) | Trigram-indexed directory search over names + variants |
+| [D-AuditRetention](#d-auditretention--monthly-partitioned-audit-ledger-retention-is-an-operator-act) | Monthly-partitioned audit ledger; retention is an operator act |
+| [D-PersonModuleSplit](#d-personmodulesplit--the-person-god-module-splits-into-core--profile--sensitive-behind-one-personservice) | The person god module splits into core / profile / sensitive |
+| [D-EventOutbox](#d-eventoutbox--transactional-outbox-for-the-notify-event-class-extends-the-pkgevents-bus) | Transactional outbox for the notify event class |
+| [D-DataScope](#d-datascope--what-a-deployment-may-hold-the-product-is-a-personnel-directory--registry-platform-owns-the-pci-dss-posture) | What a deployment may hold; product is a registry platform; PCI-DSS posture |
+| L-\* locks | [Carried-over locks](#carried-over-locks-settled-earlier-restated-for-self-containment): L-AuthzOnly, L-AccountOptional, L-SingleDomain, L-UnitIsTenant, L-OneRankScheme, L-Visibility, L-OperatorDB, L-UpgradeSafe, L-Conventions |
+
+---
+
 ## Resolved this session
 
 ### D-Graph — The unit hierarchy is a DAG
@@ -290,6 +351,19 @@ store; see [conventions.md](conventions.md) (i18n) and [patterns.md](patterns.md
 label). **Extended by D-Documents / D-Orders:** the catalog type names `document_type` and
 `order_type` are translatable on the same footing as the entities listed above, so the
 `i18n_translations.entity_type` set and the translatable-entity enumerations include them.
+
+**Amended (review R-19, 2026-07-11): an optional `locales=` projection bounds response size without
+reversing the decision.** All-locales-in-every-response stays the **default**; a client MAY pass a
+repeated `locales=ukr&locales=eng` query param to trim every translatable label map to that subset
+(intersection with what is stored). This is a payload-size **projection, explicitly NOT
+Accept-Language content negotiation** — the server does not choose a locale, it returns exactly the
+subset asked for, and absent/empty means all locales. Demonstrated end-to-end on `GET
+/platform/v1/colors` (`listColors`, [platform.conjure.yml](../../api/platform.conjure.yml)); the
+transport-layer projection helper generalizes to any label-map endpoint. Response size on list
+endpoints scales ×|locales|, so this is the cap for an instance that enables many locales (no hard
+locale-count limit is imposed — the admin owns the locale set). Same pass: the fallback default-locale
+lookup (`DefaultLocale`), consulted on every `LabelsByID`/`NamesByID` call, is now cached with a short
+TTL + write-invalidation (it was a per-invocation `ListLocales` round-trip).
 
 ### D-Code — Stable, locale-agnostic codes separate from translatable names
 
@@ -1120,6 +1194,31 @@ payloads + `pii:special` person fields. The app DB never holds the KEK; the oper
 See [document](../modules/document.md), [platform](../modules/platform.md),
 [conventions.md](conventions.md), [open-questions](../open-questions.md) (DS-29).
 
+**Amended (review R-22, 2026-07-11): key rotation is a first-class, executable operation.** The
+`key_ref` persisted with every wrapped DEK was plumbing with no actuator — no way to rotate a KEK, so
+a suspected KEK leak had no remediation and PCI-DSS Req 3.6 (mandatory for the retained PANs under
+[D-DataScope](#d-datascope--what-a-deployment-may-hold-the-product-is-a-personnel-directory--registry-platform-owns-the-pci-dss-posture))
+was unmet. Closed with two pieces, no schema change:
+- **Rotation-capable provider.** A `KeyProvider` may hold an **active** KEK (used for `Wrap` +
+  `KeyRef`) plus zero or more **previous** KEKs used for `Unwrap` only; `Unwrap` tries active-then-
+  previous and relies on AES-GCM's auth tag to reject the wrong key (so the wrapped DEK's `key_ref`
+  need not be consulted to pick the KEK, and the `KeyProvider` interface is unchanged). The `local-dev`
+  backend reads previous KEKs from `crypto.local-dev.previous-keks`. A real KMS backend (aws-kms/vault/…)
+  slots behind the same seam later; config is already file-based, so the multi-KEK `local-dev` provider
+  is sufficient to rotate today.
+- **`oikumenea rewrap` maintenance CLI** (operator-host-gated, sibling of `seed`/`recover-admin`).
+  Walks a **code-defined registry of every envelope table** (guarded complete by
+  `TestRewrapTablesMatchSchema`) and re-wraps each DEK under the active KEK — **payload ciphertext
+  untouched**, only `wrapped_dek` + `key_ref` change. Batched per transaction and **resumable/idempotent**
+  by construction (each pass only selects rows whose `key_ref` isn't yet the active one, so a re-run or
+  a `kill -9` resumes). `--dry-run` prints the per-`key_ref` census; **`--reindex-blind-index`** runs a
+  second pass that decrypts each value and recomputes its `*_blind_index` under the active blind-index
+  key (the heavier blind-index rotation — safe because every module seals and blind-indexes the *same*
+  normalized bytes, so reindex is `Open → BlindIndex`). **Rotation runbook:** promote a new active
+  `kek`, move the old into `previous-keks`, deploy, run `oikumenea rewrap` (add `--reindex-blind-index`
+  when rotating the blind-index key), then drop the old KEK from config. See
+  [upgrade-safety.md](upgrade-safety.md).
+
 ---
 
 ### D-ResourceIdentifiers — Packed UUIDv8 RIDs as primary keys (Objects, Links, Actions)
@@ -1740,6 +1839,34 @@ query with no filter — keeping every plan index-served regardless of the prepa
 trigram) — acceptable for the rare short-prefix case. The membership→`person_persons` read in the
 scoped search is a sanctioned cross-module read (like the existing authz/tenant reads in that query).
 
+**Generalized (review-2026-08 R-21).** This is now the **standard** pattern for **every** typeahead /
+substring-list surface, not just persons. Migration `0037` extends it to language languoids, geo
+locations, education institutions, education publications/scholarships, and companies; the same rules
+apply everywhere:
+- **The filtered list splits into an unfiltered `List<X>` query and a trigram `Search<X>` query**, the
+  application branching on empty query. A `(@query = '' OR <ilike>)` guard is banned: under a generic
+  prepared-statement plan Postgres can't prove `@query` is non-empty and falls back to a seq scan, so
+  the guard silently defeats the GIN index. Splitting keeps the trigram predicate unconditional.
+- **One GIN over a `search_text` haystack, not per-column indexes.** A multi-column match is folded into
+  a single `lower(colA || ' ' || colB …)` haystack with one GIN trigram index, and `Search<X>` matches
+  `search_text ILIKE '%q%'` — exactly `person_persons`. This is a **STORED generated column** (measured:
+  a per-column BitmapOr *and* a bare expression index both lose to a seq scan at 30k rows, because the
+  planner has no selectivity stats for an ILIKE over a bare expression and defaults to ~4% → a seq scan
+  looks cheaper; a STORED column carries real `pg_stats`, so a rare substring is estimated correctly and
+  the index is used). The column also appears in the sqlc model of every package that reads the table —
+  an inert extra field on `tenant_organizations` (shared by institutions + companies), nothing selects
+  it into a domain type. Single-column surfaces (`company_org_profiles.short_name`) index the real
+  column directly (it already carries stats).
+- **A match spanning a join** (company: the org haystack on `tenant_organizations` **and** `short_name`
+  on the joined `company_org_profiles`) is a **UNION of id-sets**, never an OR across the join — an OR
+  can't BitmapOr across tables, whereas each UNION arm stays a bitmap scan (the persons names+variants
+  shape). The outer keyset then paginates by the driving RID.
+- **No `OFFSET` pagination anywhere.** Keyset only. R-21 converted geo's three offset-paginated queries
+  (the last in the codebase): `Search`/`Bbox` key on `id`; nearest-first `Near` keys on the
+  `(distance, id)` sort pair (using exact `ST_Distance` in ORDER BY *and* the keyset comparison — the
+  `<->` KNN operator's index-approximated order would skip rows at a page boundary; the distance is
+  returned and carried in the opaque page token).
+
 ### D-AuditRetention — Monthly-partitioned audit ledger; retention is an operator act
 
 **Decision.** The append-only audit ledger (`oikumenea.audit_log`, D-Audit) is **declaratively
@@ -1909,6 +2036,76 @@ rows is an operator concern (like audit partitions), an open seam.
 
 ---
 
+### D-DataScope — What a deployment may hold; the product is a personnel directory + registry platform (owns the PCI-DSS posture)
+
+**Decision.** go-oikumenea is a **personnel directory + multi-domain registry / intelligence
+platform** — this **re-frames** the earlier "generic, domain-agnostic personnel & authorization
+service (Keycloak-like)" label, which no longer describes the schema. Beyond identity/directory data
+(names, ranks, positions, documents, declared attributes) a deployment MAY hold the following
+**enumerated, bounded** data classes — this list *is* the boundary; adding a class outside it is a
+decision-level change, not a routine migration:
+
+| Class | Home | Tier |
+| --- | --- | --- |
+| Payment cards (**recoverable PAN**, no CVV) + bank accounts (IBAN) | D-Finance | `pii:special` (envelope-encrypted) |
+| Crypto wallets (address, balance) | D-PersonOverlays | `pii:sensitive` |
+| **Inferred** political leaning | D-PersonOverlays | `pii:special` (encrypted, one-active, crypto-erased) |
+| Self-declared ethnicity | D-PhysicalIdentity | `pii:special` (envelope-encrypted) |
+| Religious affiliation | D-ReligiousAffiliation | `pii:special` |
+| Watchlist / sanctions / PEP matches | D-Watchlists | metadata-only snapshot |
+| Physical identity, aliases, marks | D-PhysicalIdentity | `pii:sensitive` |
+| Addresses / location | D-PersonAddresses / D-Location | `pii:contact` |
+
+**PAN policy.** The **recoverable full PAN is deliberately retained** (D-Finance) — a registry
+platform legitimately needs the full instrument, so this is not truncated to BIN + last4. The
+consequence is owned, not waved away: **every deployment therefore falls into PCI-DSS Cardholder
+Data Environment (CDE) scope** — the whole Postgres, the oikumenea binary, its host, and arguably
+the operator's network segment become auditable CDE. **Envelope encryption does not de-scope this.**
+This is an explicit **operator responsibility**, stated so at deploy time.
+
+**Aggregation rule.** One `person` read must never unlock the join of ethnicity + religion + politics
++ finance + location. **Every `pii:special` surface is gated behind its own permission code** — this
+is the load-bearing reason for the R-09 `person`→core/profile/sensitive split
+([D-PersonModuleSplit](#d-personmodulesplit--the-person-god-module-splits-into-core--profile--sensitive-behind-one-personservice))
+and per-module permission codes, not mere hygiene. **Enforced (R-14 audit, 2026-07-11):** the three
+`pii:special` person surfaces read on their own codes — `person.ethnicity.read`,
+`person.political_leaning.read`, `person.party_membership.read` — which are **not** in the base
+`unit-reader` set and are **not** folded into `unit-manager`/`unit-admin`; they compose a standalone,
+additive **`sensitive-reader`** base role, so reading Art.9 person data is always an explicit grant
+(no graduated role unlocks the aggregation). Religion affiliation (`affiliation.manage`) and finance
+(`finance.read`) were already isolated the same way; the person module was the one exception the audit
+closed. **Residual:** `person_persons.attributes` is itself `pii:special` and is returned by the core
+`person.read`; because it is a free-form bag, the boundary here is **policy** — Art.9 content belongs
+in the typed special tables (ethnicity/politics/party), never the attributes bag — not a further code
+split.
+
+**Why.** Review-2026-08 **R-14**: the code already *is* a registry-platform data surface (PANs,
+IBANs, wallets, inferred politics, ethnicity, religion, sanctions), while the stated identity was
+"Keycloak-like." The honest move is to **name the boundary and own the compliance posture**, not to
+keep a directory-shaped label over intelligence-grade data. Enumerating the permitted classes turns
+unbounded scope-creep into a reviewable list; the per-code aggregation rule turns "we split the
+person module" from hygiene into an enforced access boundary.
+
+**Consequence.** The identity line in `CLAUDE.md` and [`../README.md`](../README.md) (and CLAUDE.md's
+module map) are re-framed to match (this is the docs half of R-14/R-18). PCI-DSS CDE scope is a
+documented operator responsibility. **Key rotation is a
+named must-fix**: PCI Req 3.6 requires it, and R-22 shows the current envelope scheme cannot rotate
+keys — so **full PAN without rotation is recorded compliance debt**, tracked as R-22 (Phase 11),
+*strengthened* (not resolved) by this decision. **No schema change** flows from D-DataScope itself
+(PAN kept as-is). The per-`pii:special`-code aggregation rule was **enforced** by the R-14 audit
+(2026-07-11): the audit found the person module lumped ethnicity/politics/party under `person.read`
+(which the base `unit-reader` holds) and closed it with three dedicated read codes + the
+`sensitive-reader` base role (no migration — code-defined permissions, idempotent base-role reseed).
+Relates to
+[D-Finance](roadmap-decisions.md#d-finance--bank-accounts--payment-cards-banks-as-company-orgs),
+[D-PersonOverlays](roadmap-decisions.md#d-personoverlays--financial-behavioral--psychological-overlays-extends-d-overlayfoundation-d-specialpii),
+[D-Watchlists](roadmap-decisions.md#d-watchlists--live-lookup-sanctionspepinterpol-via-hermenea--a-regulatory-sanctions-overlay-extends-d-hermenea),
+[D-SpecialPII](roadmap-decisions.md#d-specialpii--envelope-encryption-extended-to-the-piispecial-tier-resolves-the-person-field-half-of-ds-29),
+[D-CryptoProvider](#d-cryptoprovider--pluggable-envelope-encryption-for-sensitive-pii-reshapes-ds-29),
+and [D-PIITiers](#d-piitiers--5-tier-pii-classification-via-comment-on-column).
+
+---
+
 ### Planned-tier decisions (M16–M26) → [roadmap-decisions.md](roadmap-decisions.md)
 
 The decisions for the **not-yet-built planned tier** have been **moved out of this binding file**
@@ -1948,7 +2145,7 @@ These come from the high-level plan and are not re-litigated here.
   `account` is an optional attachment. People who never log in are first-class.
 - **L-SingleDomain — ~~Single~~ multi-domain per deployment.** Originally one instance = one domain
   (army OR church OR university), no org-type discriminator in data; `unit_kind` a descriptive label.
-  **Refined by [D-Religion](#d-religion--a-multi-faith-religion-vertical-catalog-driven-taxonomy-organization-graphs--discovery-reverses-the-drafts-religion-drop-refines-l-singledomain):**
+  **Refined by [D-Religion](roadmap-decisions.md#d-religion--a-multi-faith-religion-vertical-catalog-driven-taxonomy-organization-graphs--discovery-reverses-the-drafts-religion-drop-refines-l-singledomain):**
   the single domain may be **religion**, within which multiple religions/traditions coexist as
   **catalog data + units in graphs**. **Superseded for the org-structure scope by
   [D-TenantOrganizations](roadmap-decisions.md#d-tenantorganizations--domains--organizations-a-multi-domain-tenant-over-the-unit-graph)
@@ -1985,7 +2182,7 @@ These come from the high-level plan and are not re-litigated here.
 ### Explicitly dropped from `drafts/`
 
 ~~Religion-specific concepts (denominations, tradition families, the Nicene gate, ROC /
-Russian-locale rules)~~ (**superseded by [D-Religion](#d-religion--a-multi-faith-religion-vertical-catalog-driven-taxonomy-organization-graphs--discovery-reverses-the-drafts-religion-drop-refines-l-singledomain)** —
+Russian-locale rules)~~ (**superseded by [D-Religion](roadmap-decisions.md#d-religion--a-multi-faith-religion-vertical-catalog-driven-taxonomy-organization-graphs--discovery-reverses-the-drafts-religion-drop-refines-l-singledomain)** —
 re-adopted as a **multi-faith**, **catalog-driven** `religion` module: the dropped Christianity-shaped
 concepts return generalized to *all* faiths with no hard-coded vocabulary, the Nicene gate replaced by
 a generic data-driven org-policy, and the ROC/Russian-locale rules **not** carried over); the org-type

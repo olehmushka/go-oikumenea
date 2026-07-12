@@ -120,7 +120,7 @@ type Repository interface {
 	InsertPublication(ctx context.Context, in PublicationInput) (Publication, error)
 	GetPublication(ctx context.Context, id string) (Publication, error)
 	UpdatePublication(ctx context.Context, id string, in PublicationInput) (Publication, error)
-	ListPublications(ctx context.Context, query string) ([]Publication, error)
+	ListPublications(ctx context.Context, query, after string, lim int) ([]Publication, error)
 	SoftDeletePublication(ctx context.Context, id string) (int64, error)
 
 	// governance bodies
@@ -148,7 +148,7 @@ type Repository interface {
 	InsertScholarship(ctx context.Context, in ScholarshipInput) (Scholarship, error)
 	GetScholarship(ctx context.Context, id string) (Scholarship, error)
 	UpdateScholarship(ctx context.Context, id string, in ScholarshipInput) (Scholarship, error)
-	ListScholarships(ctx context.Context, query string) ([]Scholarship, error)
+	ListScholarships(ctx context.Context, query, after string, lim int) ([]Scholarship, error)
 	SoftDeleteScholarship(ctx context.Context, id string) (int64, error)
 
 	// accreditation events

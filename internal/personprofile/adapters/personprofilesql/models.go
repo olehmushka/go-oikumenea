@@ -780,6 +780,8 @@ type OikumeneaEducationPublication struct {
 	CreatedAt   pgtype.Timestamptz
 	UpdatedAt   pgtype.Timestamptz
 	DeletedAt   pgtype.Timestamptz
+	// pii:none
+	SearchText pgtype.Text
 }
 
 type OikumeneaEducationQualification struct {
@@ -862,6 +864,8 @@ type OikumeneaEducationScholarship struct {
 	CreatedAt  pgtype.Timestamptz
 	UpdatedAt  pgtype.Timestamptz
 	DeletedAt  pgtype.Timestamptz
+	// pii:none
+	SearchText pgtype.Text
 }
 
 type OikumeneaExternalOrgKind struct {
@@ -1146,6 +1150,8 @@ type OikumeneaLanguageLanguoid struct {
 	UpdatedAt        pgtype.Timestamptz
 	// pii:none
 	Origin string
+	// pii:none
+	SearchText pgtype.Text
 }
 
 type OikumeneaLanguageLanguoidClosure struct {
@@ -1203,6 +1209,8 @@ type OikumeneaLocationLocation struct {
 	CreatedAt  pgtype.Timestamptz
 	UpdatedAt  pgtype.Timestamptz
 	DeletedAt  pgtype.Timestamptz
+	// pii:none
+	SearchText pgtype.Text
 }
 
 type OikumeneaLocationLocationType struct {
@@ -2361,6 +2369,20 @@ type OikumeneaPlatformLegalBasisKind struct {
 	DeletedAt pgtype.Timestamptz
 }
 
+type OikumeneaPlatformOutbox struct {
+	ID            string
+	EventType     string
+	Payload       []byte
+	Status        string
+	Attempts      int32
+	MaxAttempts   int32
+	NextAttemptAt pgtype.Timestamptz
+	LastError     pgtype.Text
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	DispatchedAt  pgtype.Timestamptz
+}
+
 type OikumeneaPlatformRidService struct {
 	// pii:none
 	Code int16
@@ -2931,6 +2953,8 @@ type OikumeneaTenantOrganization struct {
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
+	// pii:basic
+	SearchText pgtype.Text
 }
 
 type OikumeneaTenantUnit struct {

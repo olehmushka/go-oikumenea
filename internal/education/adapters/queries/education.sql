@@ -49,14 +49,27 @@ WHERE institution_id = @id AND deleted_at IS NULL
 RETURNING *;
 
 -- name: ListInstitutions :many
--- Active institutions (orgs with an education profile), optional case-insensitive code/name filter,
--- keyset-paginated by org RID.
+-- Active institutions (orgs with an education profile), keyset-paginated by org RID. A text query routes
+-- to SearchInstitutions instead (review R-21): a `(@query = '' OR …)` guard would defeat the trigram GIN.
 SELECT o.id, o.code, o.name,
   p.kind_id, p.country_id, p.founded_on, p.closed_on, p.state, p.created_at, p.updated_at
 FROM oikumenea.education_org_profiles p
 JOIN oikumenea.tenant_organizations o ON o.id = p.institution_id AND o.deleted_at IS NULL
 WHERE p.deleted_at IS NULL
-  AND (@query = '' OR o.code ILIKE '%' || @query || '%' OR o.name ILIKE '%' || @query || '%')
+  AND (@after = '' OR o.id::text > @after)
+ORDER BY o.id
+LIMIT @lim;
+
+-- name: SearchInstitutions :many
+-- The trigram-served twin of ListInstitutions (review R-21): an unconditional case-insensitive match over
+-- the tenant_organizations STORED search_text haystack, served by the tenant_organizations_search_trgm
+-- GIN. Same projection and keyset as ListInstitutions so the two rows are convertible in the repository.
+SELECT o.id, o.code, o.name,
+  p.kind_id, p.country_id, p.founded_on, p.closed_on, p.state, p.created_at, p.updated_at
+FROM oikumenea.education_org_profiles p
+JOIN oikumenea.tenant_organizations o ON o.id = p.institution_id AND o.deleted_at IS NULL
+WHERE p.deleted_at IS NULL
+  AND o.search_text ILIKE '%' || @query || '%'
   AND (@after = '' OR o.id::text > @after)
 ORDER BY o.id
 LIMIT @lim;

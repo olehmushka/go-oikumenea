@@ -9,6 +9,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -20,6 +22,12 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
+
+// defaultLocaleTTL bounds how long the fallback default-locale code is cached (review R-19). It is
+// consulted on every LabelsByID/NamesByID call — i.e. per translatable field of every response — but
+// changes ~never (seed-set, single-default invariant), so a short TTL removes the per-invocation
+// ListLocales round-trip while keeping a local write and cross-replica change effective within it.
+const defaultLocaleTTL = 30 * time.Second
 
 // auditSubsystem labels the interim system actor for localization's admin writes. Until
 // authorization (M7) + identity-federation (M8) resolve the acting person, these writes cannot be
@@ -38,6 +46,11 @@ type Service struct {
 	pool    *pgxpool.Pool
 	newRepo RepositoryFactory
 	audit   *auditapp.Service
+
+	// defaultLocale caches the fallback default-locale code (review R-19); see defaultLocaleTTL.
+	defMu      sync.RWMutex
+	defLocale  string
+	defExpires time.Time
 }
 
 // NewService wires the service with the pool, the repository factory, and the audit service every
@@ -73,6 +86,9 @@ func (s *Service) AddLocale(ctx context.Context, l domain.Locale) (domain.Locale
 		out = created
 		return s.record(ctx, tx, "locale.add", "locale", created.Code, created)
 	})
+	if err == nil {
+		s.invalidateDefaultLocale()
+	}
 	return out, err
 }
 
@@ -98,6 +114,9 @@ func (s *Service) UpdateLocale(ctx context.Context, code string, patch domain.Lo
 		out = updated
 		return s.record(ctx, tx, "locale.update", "locale", updated.Code, updated)
 	})
+	if err == nil {
+		s.invalidateDefaultLocale()
+	}
 	return out, err
 }
 
@@ -158,16 +177,39 @@ func (s *Service) TranslationsFor(ctx context.Context, entityType string, entity
 // locale->text map from their own default-locale `name` column. Returns "" if no default is set
 // (the registry invariant should prevent that; callers treat "" as "no fallback key").
 func (s *Service) DefaultLocale(ctx context.Context) (string, error) {
+	s.defMu.RLock()
+	if time.Now().Before(s.defExpires) {
+		code := s.defLocale
+		s.defMu.RUnlock()
+		return code, nil
+	}
+	s.defMu.RUnlock()
+
 	locales, err := s.ListLocales(ctx)
 	if err != nil {
 		return "", err
 	}
+	code := ""
 	for _, l := range locales {
 		if l.IsDefault {
-			return l.Code, nil
+			code = l.Code
+			break
 		}
 	}
-	return "", nil
+	s.defMu.Lock()
+	s.defLocale = code
+	s.defExpires = time.Now().Add(defaultLocaleTTL)
+	s.defMu.Unlock()
+	return code, nil
+}
+
+// invalidateDefaultLocale drops the cached default-locale code so the next DefaultLocale recomputes.
+// Called after any write that could change the locale set (belt-and-braces: the default is currently
+// seed-fixed, but the TTL still backstops cross-replica changes).
+func (s *Service) invalidateDefaultLocale() {
+	s.defMu.Lock()
+	s.defExpires = time.Time{}
+	s.defMu.Unlock()
 }
 
 // NamesByID assembles the `locale -> text` display-name map for a set of another module's entities

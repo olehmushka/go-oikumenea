@@ -118,6 +118,27 @@ func (c *Cipher) Open(ctx context.Context, s Sealed) ([]byte, error) {
 	return plaintext, nil
 }
 
+// ActiveKeyRef reports the KeyRef the provider stamps on newly-wrapped DEKs (review R-22). A rewrap
+// re-wraps every row whose persisted key_ref differs from this.
+func (c *Cipher) ActiveKeyRef() string { return c.provider.KeyRef() }
+
+// Rewrap re-wraps an already-wrapped DEK under the provider's ACTIVE KEK without touching the value
+// ciphertext (review R-22, key rotation): it unwraps the DEK with whichever KEK produced it (the
+// provider tries active-then-previous) and wraps it again with the active KEK, returning the new
+// wrapped_dek + key_ref to persist. Idempotent: re-wrapping a DEK already on the active KEK yields an
+// envelope that still decrypts to the same DEK (the caller skips rows already on ActiveKeyRef).
+func (c *Cipher) Rewrap(ctx context.Context, wrapped []byte) (newWrapped []byte, newKeyRef string, err error) {
+	dek, err := c.provider.Unwrap(ctx, wrapped)
+	if err != nil {
+		return nil, "", fmt.Errorf("crypto: rewrap unwrap: %w", err)
+	}
+	rewrapped, err := c.provider.Wrap(ctx, dek)
+	if err != nil {
+		return nil, "", fmt.Errorf("crypto: rewrap wrap: %w", err)
+	}
+	return rewrapped, c.provider.KeyRef(), nil
+}
+
 // BlindIndex is the keyed HMAC-SHA256 of value, used for equality lookup / cross-person uniqueness
 // without decryption (D-CryptoProvider). It is deterministic for a given key + value and not reversible
 // to the value. Callers normalize the value (e.g. strip separators, upper-case) before indexing so

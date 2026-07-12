@@ -50,20 +50,23 @@ func (s *Service) ListLocationTypes(ctx context.Context) ([]domain.LocationType,
 }
 
 // ListLocationsNear returns locations within radiusM metres of (lat,lng), nearest first, plus a flag
-// for whether another page exists (the caller encodes the page token).
-func (s *Service) ListLocationsNear(ctx context.Context, lat, lng, radiusM float64, pageSize, offset int) ([]domain.Location, bool, error) {
+// for whether another page exists (the caller encodes the page token). Keyset-paginated on the
+// (distance, id) sort key: afterDist/afterID resume strictly after the last row of the previous page
+// (empty afterID starts at the nearest — review R-21, replacing OFFSET).
+func (s *Service) ListLocationsNear(ctx context.Context, lat, lng, radiusM, afterDist float64, afterID string, pageSize int) ([]domain.Location, bool, error) {
 	limit := clampPageSize(pageSize)
-	rows, err := s.newRepo(s.pool).ListLocationsNear(ctx, lat, lng, radiusM, limit+1, offset)
+	rows, err := s.newRepo(s.pool).ListLocationsNear(ctx, lat, lng, radiusM, afterDist, afterID, limit+1)
 	if err != nil {
 		return nil, false, err
 	}
 	return trimPage(rows, limit)
 }
 
-// ListLocationsInBbox returns locations whose coordinate falls inside the box, ordered by id.
-func (s *Service) ListLocationsInBbox(ctx context.Context, minLat, minLng, maxLat, maxLng float64, pageSize, offset int) ([]domain.Location, bool, error) {
+// ListLocationsInBbox returns locations whose coordinate falls inside the box, ordered by id,
+// keyset-paginated on id (review R-21, replacing OFFSET).
+func (s *Service) ListLocationsInBbox(ctx context.Context, minLat, minLng, maxLat, maxLng float64, after string, pageSize int) ([]domain.Location, bool, error) {
 	limit := clampPageSize(pageSize)
-	rows, err := s.newRepo(s.pool).ListLocationsInBbox(ctx, minLat, minLng, maxLat, maxLng, limit+1, offset)
+	rows, err := s.newRepo(s.pool).ListLocationsInBbox(ctx, minLat, minLng, maxLat, maxLng, after, limit+1)
 	if err != nil {
 		return nil, false, err
 	}
@@ -71,10 +74,10 @@ func (s *Service) ListLocationsInBbox(ctx context.Context, minLat, minLng, maxLa
 }
 
 // SearchLocations returns locations whose address fields match a case-insensitive text query, ordered
-// by id (no spatial window required) — backs the typeahead picker.
-func (s *Service) SearchLocations(ctx context.Context, query string, pageSize, offset int) ([]domain.Location, bool, error) {
+// by id, keyset-paginated on id (no spatial window required) — backs the typeahead picker (review R-21).
+func (s *Service) SearchLocations(ctx context.Context, query, after string, pageSize int) ([]domain.Location, bool, error) {
 	limit := clampPageSize(pageSize)
-	rows, err := s.newRepo(s.pool).SearchLocationsByText(ctx, query, limit+1, offset)
+	rows, err := s.newRepo(s.pool).SearchLocationsByText(ctx, query, after, limit+1)
 	if err != nil {
 		return nil, false, err
 	}

@@ -46,6 +46,136 @@
         ],
         "type": "object"
       },
+      "AccountHolder": {
+        "description": "The ownership edge (link__held_by). The holder is a person OR a company (polymorphic). Temporal:\nan ended holding closes effectiveTo, so the edge set is the holding history.\n",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "effectiveFrom": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "effectiveTo": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "holderId": {
+            "type": "string"
+          },
+          "holderKind": {
+            "description": "One of person | company.",
+            "type": "string"
+          },
+          "holderLabel": {
+            "description": "Best-effort display label (company legal name for company holders; empty for persons).",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "role": {
+            "description": "One of primary | joint | authorized_signer.",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "createdAt",
+          "effectiveFrom",
+          "holderId",
+          "holderKind",
+          "id",
+          "role",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "AccountHolderList": {
+        "properties": {
+          "holders": {
+            "items": {
+              "$ref": "#/components/schemas/AccountHolder"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "holders"
+        ],
+        "type": "object"
+      },
+      "AccountPage": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/Account"
+            },
+            "type": "array"
+          },
+          "nextPageToken": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accounts"
+        ],
+        "type": "object"
+      },
+      "AccountType": {
+        "description": "A bank-account kind (current/savings/deposit/loan…); instance-extensible.",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Default-locale fallback + i18n translations.",
+            "type": "object"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "id",
+          "name",
+          "status"
+        ],
+        "type": "object"
+      },
+      "AccountTypeList": {
+        "properties": {
+          "types": {
+            "items": {
+              "$ref": "#/components/schemas/AccountType"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "types"
+        ],
+        "type": "object"
+      },
       "AccreditationEvent": {
         "description": "An accreditation review cycle against an institution OR a program.",
         "properties": {
@@ -114,6 +244,25 @@
         ],
         "type": "object"
       },
+      "AddAccountHolderRequest": {
+        "description": "Add a holder (person or company) to the account; role defaults to primary.",
+        "properties": {
+          "holderId": {
+            "type": "string"
+          },
+          "holderKind": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "holderId",
+          "holderKind"
+        ],
+        "type": "object"
+      },
       "AddAffiliationRequest": {
         "properties": {
           "affiliationTypeId": {
@@ -141,6 +290,36 @@
         },
         "required": [
           "affiliationTypeId"
+        ],
+        "type": "object"
+      },
+      "AddCardRequest": {
+        "description": "Add a card to the account. The PAN is validated (Luhn), encrypted, and blind-indexed; bin/lastFour derive from it.",
+        "properties": {
+          "cardType": {
+            "type": "string"
+          },
+          "cardholderPersonId": {
+            "type": "string"
+          },
+          "expiryMonth": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "expiryYear": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "networkId": {
+            "type": "string"
+          },
+          "pan": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "cardType",
+          "pan"
         ],
         "type": "object"
       },
@@ -1321,6 +1500,10 @@
             "description": "ISO-8601 timestamp the upstream snapshot was generated (lineage only).",
             "type": "string"
           },
+          "isLast": {
+            "description": "True on the final chunk of a chunked run; triggers the object-type's batch\nfinalizers (e.g. the languoid closure + family_code rebuild). The final chunk may\ncarry zero records (a pure finalize marker).\n",
+            "type": "boolean"
+          },
           "license": {
             "description": "License/attribution string carried for lineage (not persisted per-row).",
             "type": "string"
@@ -1333,6 +1516,15 @@
             "description": "The object-type-specific records to upsert; each is a JSON object.",
             "items": {},
             "type": "array"
+          },
+          "runId": {
+            "description": "Hermenea's import-run identifier when the dataset arrives as a chunked sequence of\nenvelopes (R-05). Lineage/audit correlation only — oikumenea keeps no per-run state;\nresumability is owned by the sender (last-acked seq on the hermenea job).\n",
+            "type": "string"
+          },
+          "seq": {
+            "description": "1-based chunk index within a chunked run. Chunks are sent sequentially and each is\napplied in its own transaction; replaying a chunk is safe (every record apply is a\nnatural-key idempotent upsert). Absent (with runId/isLast absent) = a single-shot\nenvelope, the pre-chunking semantics.\n",
+            "format": "int32",
+            "type": "integer"
           },
           "source": {
             "description": "Stable source identifier (e.g. iso-3166) — stamped as row provenance.",
@@ -1347,6 +1539,129 @@
           "objectType",
           "records",
           "source"
+        ],
+        "type": "object"
+      },
+      "Card": {
+        "description": "A payment card contained by exactly one account. The full PAN is envelope-encrypted; `pan` is\npopulated (decrypted) only on getCard for authorized callers. bin (first 6) + lastFour are the\ndisplay-only clear digits, always returned. No CVV exists.\n",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "bin": {
+            "type": "string"
+          },
+          "cardType": {
+            "description": "One of debit | credit.",
+            "type": "string"
+          },
+          "cardholderPersonId": {
+            "description": "An optional named cardholder (a person RID), independent of the account's holders.",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expiryMonth": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "expiryYear": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastFour": {
+            "type": "string"
+          },
+          "networkId": {
+            "type": "string"
+          },
+          "networkLabel": {
+            "type": "string"
+          },
+          "pan": {
+            "description": "The decrypted PAN; present only on getCard for authorized callers.",
+            "type": "string"
+          },
+          "status": {
+            "description": "One of active | blocked | expired.",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "cardType",
+          "createdAt",
+          "id",
+          "status",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "CardList": {
+        "properties": {
+          "cards": {
+            "items": {
+              "$ref": "#/components/schemas/Card"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "cards"
+        ],
+        "type": "object"
+      },
+      "CardNetwork": {
+        "description": "A payment-card network (visa/mastercard/amex…); instance-extensible.",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "id",
+          "name",
+          "status"
+        ],
+        "type": "object"
+      },
+      "CardNetworkList": {
+        "properties": {
+          "networks": {
+            "items": {
+              "$ref": "#/components/schemas/CardNetwork"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "networks"
         ],
         "type": "object"
       },
@@ -2947,6 +3262,54 @@
         },
         "required": [
           "typeId"
+        ],
+        "type": "object"
+      },
+      "CryptoWallet": {
+        "description": "A crypto-wallet attribution for a person (D-PersonOverlays, M35) — an Object. The address is\npublic on-chain data, but attributing it to a person is pii:sensitive; synergy with the M34\nsanctioned-wallet cross-check. Hard-erased on purge.\n",
+        "properties": {
+          "address": {
+            "description": "The on-chain wallet address.",
+            "type": "string"
+          },
+          "attributionMethod": {
+            "description": "One of exchange_kyc | blockchain_analysis | self_declared | leak | public_post | other.",
+            "type": "string"
+          },
+          "balanceUsdApprox": {
+            "description": "Last-known approximate USD balance.",
+            "format": "double",
+            "type": "number"
+          },
+          "chain": {
+            "description": "One of bitcoin | ethereum | solana | tron | bnb | polygon | monero | other.",
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string"
+          },
+          "firstSeen": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastSeen": {
+            "type": "string"
+          },
+          "personId": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "attributionMethod",
+          "chain",
+          "id",
+          "personId"
         ],
         "type": "object"
       },
@@ -7065,6 +7428,60 @@
         ],
         "type": "object"
       },
+      "PersonAccount": {
+        "description": "An account a person holds, enriched with the bank + the person's holding role (read-only).",
+        "properties": {
+          "accountTypeLabel": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "institutionId": {
+            "type": "string"
+          },
+          "institutionLabel": {
+            "type": "string"
+          },
+          "role": {
+            "description": "The person's holding role on this account (primary | joint | authorized_signer).",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "createdAt",
+          "id",
+          "institutionId",
+          "role",
+          "status"
+        ],
+        "type": "object"
+      },
+      "PersonAccounts": {
+        "description": "A person's held accounts (newest first).",
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/PersonAccount"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "accounts"
+        ],
+        "type": "object"
+      },
       "PersonAppointment": {
         "description": "An appointment a person holds, enriched with the position's title and owning institution (read-only person view).",
         "properties": {
@@ -7462,6 +7879,50 @@
         ],
         "type": "object"
       },
+      "Personality": {
+        "description": "A declared or formally-assessed personality profile (D-PersonOverlays, M35) — an Object.\nDECLARED SURVEY OR FORMAL HR ASSESSMENT ONLY — never inferred from text. pii:sensitive.\n",
+        "properties": {
+          "assessedAt": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string"
+          },
+          "framework": {
+            "description": "One of mbti | big_five | disc | enneagram | other.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "instrument": {
+            "description": "The specific test/assessment used.",
+            "type": "string"
+          },
+          "method": {
+            "description": "One of self_declared_survey | hr_assessment (inference is forbidden).",
+            "type": "string"
+          },
+          "personId": {
+            "type": "string"
+          },
+          "result": {
+            "description": "The typed output, e.g. \"INTJ\", a Big-Five summary, an Enneagram type.",
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "framework",
+          "id",
+          "method",
+          "personId",
+          "result"
+        ],
+        "type": "object"
+      },
       "Phone": {
         "description": "A person's contact phone (D-PersonContactChannels). number is E.164-normalized; country is derived. pii:contact.",
         "properties": {
@@ -7785,6 +8246,47 @@
         ],
         "type": "object"
       },
+      "PoliticalLeaning": {
+        "description": "An INFERRED political leaning (D-PersonOverlays, M35) — an Object. Political opinion is a GDPR\nArt. 9 special category, so `spectrum` is envelope-encrypted at rest; the value here is decrypted\n(0 for a crypto-erased tombstone). legalBasis is required. This is a SEPARATE overlay and is NEVER\nmerged with the declared M33 party membership. pii:special.\n",
+        "properties": {
+          "assessedAt": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "inferenceSources": {
+            "description": "The inference methodology tags, e.g. social_media | voting_record | donation_records.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "legalBasis": {
+            "description": "The platform_legal_basis_kinds code authorizing this Art. 9 inference.",
+            "type": "string"
+          },
+          "personId": {
+            "type": "string"
+          },
+          "spectrum": {
+            "description": "The inferred left/right position in [-1,1]. Decrypted; 0 when crypto-erased.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "inferenceSources",
+          "legalBasis",
+          "personId",
+          "spectrum"
+        ],
+        "type": "object"
+      },
       "Position": {
         "description": "A unit-owned billet (D-Position) — an Object that exists whether or not anyone fills it (a\nVACANCY is an active position with no active filling). Position grants no authority. The\ncurrent holder is populated by getPosition and by listPositions (null when vacant).\n",
         "properties": {
@@ -8043,8 +8545,11 @@
         ],
         "type": "object"
       },
-      "PublicationList": {
+      "PublicationPage": {
         "properties": {
+          "nextPageToken": {
+            "type": "string"
+          },
           "publications": {
             "items": {
               "$ref": "#/components/schemas/Publication"
@@ -8739,6 +9244,64 @@
         ],
         "type": "object"
       },
+      "RegulatorySanction": {
+        "description": "A structured regulatory/enforcement action against a person (D-Watchlists, M34) — an Object.\nDurable reference data (operator-curated or hermenea-imported), distinct from the volatile\nlive-lookup above. Idempotent import keys on (person, externalId). pii:sensitive.\n",
+        "properties": {
+          "actionType": {
+            "description": "One of fine | ban | license_revocation | warning | settlement | debarment | other.",
+            "type": "string"
+          },
+          "amount": {
+            "format": "double",
+            "type": "number"
+          },
+          "confidence": {
+            "type": "string"
+          },
+          "currency": {
+            "description": "ISO-4217 code; required when amount is present.",
+            "type": "string"
+          },
+          "externalId": {
+            "description": "The id within the source system (the import idempotency key).",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "legalBasis": {
+            "type": "string"
+          },
+          "personId": {
+            "type": "string"
+          },
+          "regulator": {
+            "description": "The regulator/authority, e.g. \"SEC\", \"FCA\", \"NBU\".",
+            "type": "string"
+          },
+          "sanctionDate": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "sourceUrl": {
+            "type": "string"
+          },
+          "status": {
+            "description": "One of active | appealed | overturned | expired | settled.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "actionType",
+          "id",
+          "personId",
+          "regulator",
+          "status"
+        ],
+        "type": "object"
+      },
       "RelationType": {
         "description": "An instance-admin catalog entry for an open-ended person↔person relation label (D-PersonRelationships). Stable code + translatable name + category.",
         "properties": {
@@ -9210,8 +9773,11 @@
         ],
         "type": "object"
       },
-      "ScholarshipList": {
+      "ScholarshipPage": {
         "properties": {
+          "nextPageToken": {
+            "type": "string"
+          },
           "scholarships": {
             "items": {
               "$ref": "#/components/schemas/Scholarship"
@@ -10283,6 +10849,24 @@
         ],
         "type": "string"
       },
+      "UpdateAccountRequest": {
+        "description": "Update currency/accountTypeId/status and optionally re-key the IBAN; omitted fields are unchanged.",
+        "properties": {
+          "accountTypeId": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "iban": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "UpdateAffiliationRequest": {
         "description": "Flip status (active|lapsed|renounced) and/or re-encrypt a new belief value.",
         "properties": {
@@ -10307,6 +10891,32 @@
             "type": "string"
           },
           "unitId": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "UpdateCardRequest": {
+        "description": "Update network/type/expiry/cardholder/status; omitted fields are unchanged. The PAN is not re-keyed here.",
+        "properties": {
+          "cardType": {
+            "type": "string"
+          },
+          "cardholderPersonId": {
+            "type": "string"
+          },
+          "expiryMonth": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "expiryYear": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "networkId": {
+            "type": "string"
+          },
+          "status": {
             "type": "string"
           }
         },
@@ -10887,6 +11497,26 @@
         },
         "type": "object"
       },
+      "UpsertAccountTypeRequest": {
+        "description": "Create/update (by code) an account-type catalog entry. name is the default-locale fallback.",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "type": "object"
+      },
       "UpsertAccreditationEventRequest": {
         "properties": {
           "body": {
@@ -11058,6 +11688,25 @@
         ],
         "type": "object"
       },
+      "UpsertCardNetworkRequest": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "type": "object"
+      },
       "UpsertCatalogKindRequest": {
         "description": "Create/update an institution-kind or unit-kind. name is the default-locale fallback.",
         "properties": {
@@ -11217,6 +11866,43 @@
         "required": [
           "code",
           "title"
+        ],
+        "type": "object"
+      },
+      "UpsertCryptoWalletRequest": {
+        "description": "Add a crypto wallet, or replace one when id is supplied (D-PersonOverlays, M35).",
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "attributionMethod": {
+            "type": "string"
+          },
+          "balanceUsdApprox": {
+            "format": "double",
+            "type": "number"
+          },
+          "chain": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string"
+          },
+          "firstSeen": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastSeen": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "address"
         ],
         "type": "object"
       },
@@ -12111,6 +12797,39 @@
         ],
         "type": "object"
       },
+      "UpsertPersonalityRequest": {
+        "description": "Add a personality profile, or replace one when id is supplied (D-PersonOverlays, M35).",
+        "properties": {
+          "assessedAt": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string"
+          },
+          "framework": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "instrument": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "result": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "result"
+        ],
+        "type": "object"
+      },
       "UpsertPhoneRequest": {
         "description": "Add a contact phone, or replace one when id is supplied. number is E.164-normalized and country derived.",
         "properties": {
@@ -12234,6 +12953,36 @@
         "required": [
           "code",
           "title"
+        ],
+        "type": "object"
+      },
+      "UpsertPoliticalLeaningRequest": {
+        "description": "Set the person's inferred political leaning (replaces the single active row). Requires legalBasis\n(Art. 9). Inferred-only — never a declared party affiliation (D-PersonOverlays, M35).\n",
+        "properties": {
+          "assessedAt": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string"
+          },
+          "inferenceSources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "legalBasis": {
+            "type": "string"
+          },
+          "spectrum": {
+            "description": "The inferred position in [-1,1].",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "legalBasis",
+          "spectrum"
         ],
         "type": "object"
       },
@@ -12399,6 +13148,52 @@
         "required": [
           "identifier",
           "schemeId"
+        ],
+        "type": "object"
+      },
+      "UpsertRegulatorySanctionRequest": {
+        "description": "Add a regulatory sanction, or replace one when id is supplied (D-Watchlists, M34).",
+        "properties": {
+          "actionType": {
+            "type": "string"
+          },
+          "amount": {
+            "format": "double",
+            "type": "number"
+          },
+          "confidence": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "legalBasis": {
+            "type": "string"
+          },
+          "regulator": {
+            "type": "string"
+          },
+          "sanctionDate": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "sourceUrl": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "regulator"
         ],
         "type": "object"
       },
@@ -12950,6 +13745,126 @@
           "SHADOW"
         ],
         "type": "string"
+      },
+      "WatchlistMatch": {
+        "description": "The persisted residue of a live watchlist screening check (D-Watchlists, M34). Match METADATA\nonly — never the underlying lists. One row per person; CheckWatchlists refreshes it. `pep` is a\nsnapshot of the M33 government-position derivation captured at check time. pii:sensitive.\n",
+        "properties": {
+          "confidence": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastChecked": {
+            "type": "string"
+          },
+          "lists": {
+            "description": "The list codes matched, e.g. INTERPOL_RED, OFAC_SDN.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "matchScore": {
+            "description": "0..1 best-match score across providers.",
+            "format": "double",
+            "type": "number"
+          },
+          "nextCheckDue": {
+            "description": "RFC-3339 time the upstream ≤24h cache lapses.",
+            "type": "string"
+          },
+          "onList": {
+            "description": "Any hit across the queried providers (OFAC / EU / UN / INTERPOL).",
+            "type": "boolean"
+          },
+          "pep": {
+            "description": "Politically-exposed-person snapshot, derived from M33 government positions.",
+            "type": "boolean"
+          },
+          "personId": {
+            "type": "string"
+          },
+          "program": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "lastChecked",
+          "lists",
+          "onList",
+          "pep",
+          "personId"
+        ],
+        "type": "object"
+      },
+      "WatchlistQuery": {
+        "description": "A person-identity query for a live watchlist screening check (D-Watchlists, M34). oikumenea sends\nthis; hermenea owns egress to the OFAC/EU/UN/INTERPOL providers + a ≤24h cache. Only match\nmetadata comes back — never the lists themselves.\n",
+        "properties": {
+          "birthdate": {
+            "description": "ISO-8601 date, when known, to disambiguate matches.",
+            "type": "string"
+          },
+          "fullName": {
+            "description": "The name screened against the providers.",
+            "type": "string"
+          },
+          "nationality": {
+            "description": "ISO-3166 alpha-2, when known.",
+            "type": "string"
+          },
+          "subjectKey": {
+            "description": "An opaque caller key (the person RID) used to key the ≤24h cache; not sent upstream.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fullName",
+          "subjectKey"
+        ],
+        "type": "object"
+      },
+      "WatchlistResult": {
+        "description": "Per-person match metadata returned by a screening check (D-Watchlists, M34).",
+        "properties": {
+          "checkedAt": {
+            "description": "RFC-3339 time the check ran (cache hit or fresh).",
+            "type": "string"
+          },
+          "lists": {
+            "description": "The list codes matched, e.g. INTERPOL_RED, OFAC_SDN.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "matchScore": {
+            "description": "0..1 best-match score across providers.",
+            "format": "double",
+            "type": "number"
+          },
+          "nextCheckDue": {
+            "description": "RFC-3339 time the cache lapses (checkedAt + TTL).",
+            "type": "string"
+          },
+          "onList": {
+            "description": "Any hit across the queried providers.",
+            "type": "boolean"
+          },
+          "program": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "checkedAt",
+          "lists",
+          "onList"
+        ],
+        "type": "object"
       },
       "Whoami": {
         "description": "The caller's own resolved PDP context — the person (and optional account) the inbound token\nmapped to. Produced from the request context the validation middleware attached.\n",
@@ -20740,6 +21655,23 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -20747,7 +21679,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicationList"
+                  "$ref": "#/components/schemas/PublicationPage"
                 }
               }
             },
@@ -21294,6 +22226,23 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -21301,7 +22250,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ScholarshipList"
+                  "$ref": "#/components/schemas/ScholarshipPage"
                 }
               }
             },
@@ -22102,6 +23051,740 @@
         ]
       }
     },
+    "/finance/v1/account-types": {
+      "get": {
+        "operationId": "FinanceService_listAccountTypes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountTypeList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "FinanceService"
+        ]
+      },
+      "put": {
+        "operationId": "FinanceService_upsertAccountType",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertAccountTypeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountType"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "FinanceService"
+        ]
+      }
+    },
+    "/finance/v1/accounts": {
+      "get": {
+        "operationId": "FinanceService_listAccounts",
+        "parameters": [
+          {
+            "description": "Optional filter to one holding bank.",
+            "in": "query",
+            "name": "institutionId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountPage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "FinanceService"
+        ]
+      },
+      "post": {
+        "operationId": "FinanceService_createAccount",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "FinanceService"
+        ]
+      }
+    },
+    "/finance/v1/accounts/{accountId}": {
+      "delete": {
+        "operationId": "FinanceService_deleteAccount",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "FinanceService"
+        ]
+      },
+      "get": {
+        "description": "Returns the account with the decrypted IBAN for authorized callers.",
+        "operationId": "FinanceService_getAccount",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Returns the account with the decrypted IBAN for authorized callers.",
+        "tags": [
+          "FinanceService"
+        ]
+      },
+      "put": {
+        "operationId": "FinanceService_updateAccount",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "FinanceService"
+        ]
+      }
+    },
+    "/finance/v1/accounts/{accountId}/cards": {
+      "get": {
+        "operationId": "FinanceService_listCards",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "FinanceService"
+        ]
+      },
+      "post": {
+        "operationId": "FinanceService_addCard",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddCardRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Card"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "FinanceService"
+        ]
+      }
+    },
+    "/finance/v1/accounts/{accountId}/holders": {
+      "get": {
+        "operationId": "FinanceService_listAccountHolders",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountHolderList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "FinanceService"
+        ]
+      },
+      "post": {
+        "operationId": "FinanceService_addAccountHolder",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddAccountHolderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountHolder"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "FinanceService"
+        ]
+      }
+    },
+    "/finance/v1/card-networks": {
+      "get": {
+        "operationId": "FinanceService_listCardNetworks",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardNetworkList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "FinanceService"
+        ]
+      },
+      "put": {
+        "operationId": "FinanceService_upsertCardNetwork",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertCardNetworkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardNetwork"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "FinanceService"
+        ]
+      }
+    },
+    "/finance/v1/cards/{cardId}": {
+      "delete": {
+        "operationId": "FinanceService_deleteCard",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cardId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "FinanceService"
+        ]
+      },
+      "get": {
+        "description": "Returns the card with the decrypted PAN for authorized callers.",
+        "operationId": "FinanceService_getCard",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cardId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Card"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Returns the card with the decrypted PAN for authorized callers.",
+        "tags": [
+          "FinanceService"
+        ]
+      },
+      "put": {
+        "operationId": "FinanceService_updateCard",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cardId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCardRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Card"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "tags": [
+          "FinanceService"
+        ]
+      }
+    },
+    "/finance/v1/holders/{holderId}/end": {
+      "post": {
+        "description": "End an active holding (closes effectiveTo); the account and its history remain.",
+        "operationId": "FinanceService_endAccountHolding",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "holderId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountHolder"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "End an active holding (closes effectiveTo); the account and its history remain.",
+        "tags": [
+          "FinanceService"
+        ]
+      }
+    },
+    "/finance/v1/persons/{personId}/accounts": {
+      "get": {
+        "description": "Read-only view of the accounts a person holds.",
+        "operationId": "FinanceService_listPersonAccounts",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonAccounts"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Read-only view of the accounts a person holds.",
+        "tags": [
+          "FinanceService"
+        ]
+      }
+    },
     "/geo/v1/countries": {
       "get": {
         "description": "List the active countries in display order (sort_order, then code).",
@@ -22382,6 +24065,48 @@
           }
         },
         "summary": "Enqueue a sync job for a registered source (the push trigger from oikumenea).",
+        "tags": [
+          "HermeneaService"
+        ]
+      }
+    },
+    "/hermenea/v1/watchlist/check": {
+      "post": {
+        "description": "Run a live watchlist screening check (D-Watchlists, M34): the first SYNCHRONOUS oikumenea→hermenea\ncall. Hermenea owns the outbound egress to OFAC/EU/UN/INTERPOL and a ≤24h cache; only per-person\nmatch metadata is returned. The real interpol.api.bund.dev connector ships; sanctions providers\nare a documented pluggable stub.\n",
+        "operationId": "HermeneaService_checkWatchlist",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchlistQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchlistResult"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Run a live watchlist screening check (D-Watchlists, M34): the first SYNCHRONOUS oikumenea→hermenea",
         "tags": [
           "HermeneaService"
         ]
@@ -24862,7 +26587,7 @@
             }
           },
           {
-            "description": "Optional case-insensitive substring match on display name, code, given name, or surname.",
+            "description": "Optional case-insensitive substring match on the person's name/code haystack (display name, code, given, surname) or any of their name variants (transliterations / aliases). Trigram-indexed; a query of 3+ characters is served by an index (D-PersonSearch).",
             "in": "query",
             "name": "query",
             "required": false,
@@ -25535,6 +27260,144 @@
           }
         },
         "summary": "Remove a citizenship by country RID.",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/crypto-wallets": {
+      "get": {
+        "description": "List a person's crypto-wallet attributions (D-PersonOverlays, M35; pii:sensitive).",
+        "operationId": "PersonService_listCryptoWallets",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CryptoWallet"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List a person's crypto-wallet attributions (D-PersonOverlays, M35; pii:sensitive).",
+        "tags": [
+          "PersonService"
+        ]
+      },
+      "put": {
+        "description": "Add a crypto wallet, or replace one when id is supplied.",
+        "operationId": "PersonService_upsertCryptoWallet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertCryptoWalletRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CryptoWallet"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Add a crypto wallet, or replace one when id is supplied.",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/crypto-wallets/{walletId}": {
+      "delete": {
+        "description": "Remove a crypto wallet by id.",
+        "operationId": "PersonService_deleteCryptoWallet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "walletId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Remove a crypto wallet by id.",
         "tags": [
           "PersonService"
         ]
@@ -27515,6 +29378,144 @@
         ]
       }
     },
+    "/person/v1/persons/{personId}/personalities": {
+      "get": {
+        "description": "List a person's declared/assessed personality profiles (D-PersonOverlays, M35; pii:sensitive).",
+        "operationId": "PersonService_listPersonalities",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Personality"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List a person's declared/assessed personality profiles (D-PersonOverlays, M35; pii:sensitive).",
+        "tags": [
+          "PersonService"
+        ]
+      },
+      "put": {
+        "description": "Add a personality profile, or replace one when id is supplied.",
+        "operationId": "PersonService_upsertPersonality",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertPersonalityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Personality"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Add a personality profile, or replace one when id is supplied.",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/personalities/{personalityId}": {
+      "delete": {
+        "description": "Remove a personality profile by id.",
+        "operationId": "PersonService_deletePersonality",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "personalityId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Remove a personality profile by id.",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
     "/person/v1/persons/{personId}/phones": {
       "get": {
         "description": "List a person's contact phones.",
@@ -27791,6 +29792,131 @@
         ]
       }
     },
+    "/person/v1/persons/{personId}/political-leaning": {
+      "delete": {
+        "description": "Remove the person's inferred political leaning.",
+        "operationId": "PersonService_deletePoliticalLeaning",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Remove the person's inferred political leaning.",
+        "tags": [
+          "PersonService"
+        ]
+      },
+      "get": {
+        "description": "The person's inferred political leaning, or null if none (D-PersonOverlays, M35; pii:special,\ndecrypted). Never a declared party affiliation.\n",
+        "operationId": "PersonService_getPoliticalLeaning",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoliticalLeaning"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "The person's inferred political leaning, or null if none (D-PersonOverlays, M35; pii:special,",
+        "tags": [
+          "PersonService"
+        ]
+      },
+      "put": {
+        "description": "Set the person's inferred political leaning (replaces the single active row). Requires legalBasis.",
+        "operationId": "PersonService_setPoliticalLeaning",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertPoliticalLeaningRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoliticalLeaning"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Set the person's inferred political leaning (replaces the single active row). Requires legalBasis.",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
     "/person/v1/persons/{personId}/purge": {
       "post": {
         "description": "Hard-erase PII after the grace window (idempotent): NULLs every PII column and removes\ncitizenship/residence/name-variant rows, keeping the id as a tombstone so audit history\nstays intact. Returns Person:PersonLifecycleConflict before purgeAfter.\n",
@@ -27922,6 +30048,144 @@
           }
         },
         "summary": "Cancel deactivation within the grace window. Returns Person:PersonLifecycleConflict if not deactivated.",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/regulatory-sanctions": {
+      "get": {
+        "description": "List a person's regulatory-sanction overlay rows (D-Watchlists, M34; pii:sensitive).",
+        "operationId": "PersonService_listRegulatorySanctions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RegulatorySanction"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List a person's regulatory-sanction overlay rows (D-Watchlists, M34; pii:sensitive).",
+        "tags": [
+          "PersonService"
+        ]
+      },
+      "put": {
+        "description": "Add a regulatory sanction, or replace one when id is supplied.",
+        "operationId": "PersonService_upsertRegulatorySanction",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertRegulatorySanctionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegulatorySanction"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Add a regulatory sanction, or replace one when id is supplied.",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/regulatory-sanctions/{sanctionId}": {
+      "delete": {
+        "description": "Remove a regulatory sanction by id.",
+        "operationId": "PersonService_deleteRegulatorySanction",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sanctionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Remove a regulatory sanction by id.",
         "tags": [
           "PersonService"
         ]
@@ -28394,6 +30658,90 @@
         ]
       }
     },
+    "/person/v1/persons/{personId}/watchlist-check": {
+      "post": {
+        "description": "Run a live watchlist screening check for a person (D-Watchlists, M34). Routes egress OUT to the\nhermenea companion (which owns the OFAC/EU/UN/INTERPOL providers + a ≤24h cache), combines the\nreturned match metadata with the locally-derived PEP flag (M33 government positions), and\npersists the single per-person WatchlistMatch. Audited. Only match metadata is stored — never\nthe lists.\n",
+        "operationId": "PersonService_checkWatchlists",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchlistMatch"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Run a live watchlist screening check for a person (D-Watchlists, M34). Routes egress OUT to the",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/watchlist-match": {
+      "get": {
+        "description": "The person's most recent watchlist screening result, or null if never screened.",
+        "operationId": "PersonService_getWatchlistMatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchlistMatch"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "The person's most recent watchlist screening result, or null if never screened.",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
     "/person/v1/provisional-persons": {
       "post": {
         "description": "Create a minimal-PII PROVISIONAL stub (D-OverlayFoundation, M29) — an unresolved external /\nedge-target person so a relationship or overlay edge points at a real node. Resolve it later\nvia mergePerson. Only displayName is required.\n",
@@ -28448,6 +30796,18 @@
             "required": false,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "description": "Optional locale projection (D-i18n, review R-19): repeat `locales=ukr\u0026locales=eng` to\ntrim every translatable `name` map to just those locales (intersection with what is\nstored). Omit to receive all enabled locales (the default; this is NOT Accept-Language\ncontent negotiation — it is an opt-in payload-size projection).\n",
+            "in": "query",
+            "name": "locales",
+            "required": true,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
             }
           }
         ],

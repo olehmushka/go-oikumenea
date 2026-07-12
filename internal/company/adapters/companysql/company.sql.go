@@ -904,14 +904,12 @@ SELECT o.id, o.code, o.name AS legal_name,
 FROM oikumenea.company_org_profiles p
 JOIN oikumenea.tenant_organizations o ON o.id = p.company_id AND o.deleted_at IS NULL
 WHERE p.deleted_at IS NULL
-  AND ($1 = '' OR o.code ILIKE '%' || $1 || '%' OR o.name ILIKE '%' || $1 || '%' OR p.short_name ILIKE '%' || $1 || '%')
-  AND ($2 = '' OR o.id::text > $2)
+  AND ($1 = '' OR o.id::text > $1)
 ORDER BY o.id
-LIMIT $3
+LIMIT $2
 `
 
 type ListCompaniesParams struct {
-	Query interface{}
 	After interface{}
 	Lim   int32
 }
@@ -931,8 +929,10 @@ type ListCompaniesRow struct {
 	UpdatedAt         pgtype.Timestamptz
 }
 
+// Active companies, keyset-paginated by org RID. A text query routes to SearchCompanies (review R-21):
+// a `(@query = ” OR …)` guard would defeat the trigram GIN indexes.
 func (q *Queries) ListCompanies(ctx context.Context, arg ListCompaniesParams) ([]ListCompaniesRow, error) {
-	rows, err := q.db.Query(ctx, listCompanies, arg.Query, arg.After, arg.Lim)
+	rows, err := q.db.Query(ctx, listCompanies, arg.After, arg.Lim)
 	if err != nil {
 		return nil, err
 	}
@@ -1437,6 +1437,84 @@ func (q *Queries) ListSuccessionsByCompany(ctx context.Context, companyID string
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchCompanies = `-- name: SearchCompanies :many
+SELECT o.id, o.code, o.name AS legal_name,
+  p.short_name, p.legal_form_id, p.ownership_category, p.country_id,
+  p.founded_on, p.dissolved_on, p.state, p.created_at, p.updated_at
+FROM oikumenea.company_org_profiles p
+JOIN oikumenea.tenant_organizations o ON o.id = p.company_id AND o.deleted_at IS NULL
+WHERE p.deleted_at IS NULL
+  AND o.id IN (
+    SELECT org.id FROM oikumenea.tenant_organizations org
+      WHERE org.deleted_at IS NULL
+        AND org.search_text ILIKE '%' || $1 || '%'
+    UNION
+    SELECT cp.company_id FROM oikumenea.company_org_profiles cp
+      WHERE cp.deleted_at IS NULL AND cp.short_name ILIKE '%' || $1 || '%')
+  AND ($2 = '' OR o.id::text > $2)
+ORDER BY o.id
+LIMIT $3
+`
+
+type SearchCompaniesParams struct {
+	Query pgtype.Text
+	After interface{}
+	Lim   int32
+}
+
+type SearchCompaniesRow struct {
+	ID                string
+	Code              string
+	LegalName         string
+	ShortName         pgtype.Text
+	LegalFormID       string
+	OwnershipCategory string
+	CountryID         pgtype.Text
+	FoundedOn         pgtype.Date
+	DissolvedOn       pgtype.Date
+	State             string
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
+// The trigram-served twin of ListCompanies (review R-21). The match spans two tables — org code/name
+// (tenant_organizations) and short_name (the joined company_org_profiles) — so it is a UNION of id-sets
+// rather than an OR across the join: an OR spanning both tables can't BitmapOr, whereas each UNION arm
+// stays a GIN bitmap scan (the person names+variants pattern, D-PersonSearch). Same projection and keyset
+// as ListCompanies so the two rows are convertible in the repository.
+func (q *Queries) SearchCompanies(ctx context.Context, arg SearchCompaniesParams) ([]SearchCompaniesRow, error) {
+	rows, err := q.db.Query(ctx, searchCompanies, arg.Query, arg.After, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SearchCompaniesRow
+	for rows.Next() {
+		var i SearchCompaniesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.LegalName,
+			&i.ShortName,
+			&i.LegalFormID,
+			&i.OwnershipCategory,
+			&i.CountryID,
+			&i.FoundedOn,
+			&i.DissolvedOn,
+			&i.State,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}

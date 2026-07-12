@@ -78,9 +78,9 @@ func (r *Repository) SoftDeleteLocation(ctx context.Context, id string) (int64, 
 	return r.q.SoftDeleteLocation(ctx, id)
 }
 
-func (r *Repository) ListLocationsNear(ctx context.Context, lat, lng, radiusM float64, limit, offset int) ([]domain.Location, error) {
+func (r *Repository) ListLocationsNear(ctx context.Context, lat, lng, radiusM, afterDist float64, afterID string, limit int) ([]domain.Location, error) {
 	rows, err := r.q.ListLocationsNear(ctx, geosql.ListLocationsNearParams{
-		Lng: lng, Lat: lat, RadiusM: radiusM, Lim: int32(limit), Off: int32(offset),
+		Lng: lng, Lat: lat, RadiusM: radiusM, AfterDist: afterDist, AfterID: afterID, Lim: int32(limit),
 	})
 	if err != nil {
 		return nil, err
@@ -92,9 +92,9 @@ func (r *Repository) ListLocationsNear(ctx context.Context, lat, lng, radiusM fl
 	return out, nil
 }
 
-func (r *Repository) ListLocationsInBbox(ctx context.Context, minLat, minLng, maxLat, maxLng float64, limit, offset int) ([]domain.Location, error) {
+func (r *Repository) ListLocationsInBbox(ctx context.Context, minLat, minLng, maxLat, maxLng float64, after string, limit int) ([]domain.Location, error) {
 	rows, err := r.q.ListLocationsInBbox(ctx, geosql.ListLocationsInBboxParams{
-		MinLng: minLng, MinLat: minLat, MaxLng: maxLng, MaxLat: maxLat, Lim: int32(limit), Off: int32(offset),
+		MinLng: minLng, MinLat: minLat, MaxLng: maxLng, MaxLat: maxLat, After: after, Lim: int32(limit),
 	})
 	if err != nil {
 		return nil, err
@@ -106,9 +106,9 @@ func (r *Repository) ListLocationsInBbox(ctx context.Context, minLat, minLng, ma
 	return out, nil
 }
 
-func (r *Repository) SearchLocationsByText(ctx context.Context, query string, limit, offset int) ([]domain.Location, error) {
+func (r *Repository) SearchLocationsByText(ctx context.Context, query, after string, limit int) ([]domain.Location, error) {
 	rows, err := r.q.SearchLocationsByText(ctx, geosql.SearchLocationsByTextParams{
-		Query: query, Lim: int32(limit), Off: int32(offset),
+		Query: query, After: after, Lim: int32(limit),
 	})
 	if err != nil {
 		return nil, err
@@ -154,7 +154,17 @@ func locationFromUpdate(row geosql.UpdateLocationRow) domain.Location {
 }
 
 func locationFromNear(row geosql.ListLocationsNearRow) domain.Location {
-	return locationFromInsert(geosql.InsertLocationRow(row))
+	// The Near row carries the projection plus the computed distance_m (the second half of its keyset
+	// cursor); map the shared fields, then attach the distance for the transport's page token (review R-21).
+	loc := locationFromInsert(geosql.InsertLocationRow{
+		ID: row.ID, Latitude: row.Latitude, Longitude: row.Longitude, Mgrs: row.Mgrs,
+		SourceCoordinate: row.SourceCoordinate, CountryID: row.CountryID,
+		AdminArea1: row.AdminArea1, AdminArea2: row.AdminArea2, Locality: row.Locality,
+		Street: row.Street, HouseNumber: row.HouseNumber, PostalCode: row.PostalCode,
+		RawAddress: row.RawAddress, TypeID: row.TypeID, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+	})
+	loc.DistanceM = row.DistanceM
+	return loc
 }
 
 func locationFromBbox(row geosql.ListLocationsInBboxRow) domain.Location {

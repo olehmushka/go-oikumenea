@@ -17,7 +17,7 @@ import (
 // ---------------------------------------------------------------- party memberships
 
 func (s Service) ListPartyMemberships(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.PartyMembership, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+	if err := s.pep.RequireAnywhere(ctx, token, permPartyMembershipRead); err != nil {
 		return nil, err
 	}
 	ps, err := s.sensitive.ListPartyMemberships(ctx, personID)

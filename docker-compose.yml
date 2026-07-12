@@ -22,13 +22,13 @@ services:
     image: postgis/postgis:16-3.4
     # pg_stat_statements (review-2026-07 Phase 0): per-statement execution counts for the
     # authorization-path measurements. Preloading needs a server restart, hence process args here;
-    # an existing oik-pgdata volume picks it up on the next `docker compose down && up`.
+    # an existing oik-pgdata-prod volume picks it up on the next `docker compose down && up`.
     command: postgres -c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=all
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres
     volumes:
-      - oik-pgdata:/var/lib/postgresql/data
+      - oik-pgdata-prod:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -177,5 +177,9 @@ services:
       AUTH_KEYCLOAK_SECRET: "dev-oikumenea-web-secret"
       AUTH_KEYCLOAK_ISSUER: "http://localhost:8080/realms/oikumenea"
 
+# The prod data volume is deliberately named DISTINCTLY from the dev stack's `oik-pgdata`
+# (docker-compose.dev.yml) — review R-23. Sharing the name meant a prod `up` run from the same
+# directory after a dev `up` silently inherited the dev cluster + its password (Postgres skips init on a
+# non-empty data dir), bitten during M16. Distinct names keep the two stacks' data isolated by default.
 volumes:
-  oik-pgdata:
+  oik-pgdata-prod:

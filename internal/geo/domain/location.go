@@ -27,6 +27,10 @@ type Location struct {
 	TypeID           *string
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+	// DistanceM is the metres-from-query distance, populated only by the nearest-first radius search
+	// (ListLocationsNear) so the transport can build its (distance, id) keyset page token (review R-21).
+	// Zero for every other read; never surfaced in the API projection.
+	DistanceM float64
 }
 
 // LocationType is an instance-admin catalog label classifying a place (building/address/online);

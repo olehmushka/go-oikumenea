@@ -21,10 +21,12 @@ package geo_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	auditadapters "github.com/olegamysk/go-oikumenea/internal/audit/adapters"
@@ -212,7 +214,7 @@ func TestLocationRadiusQuery(t *testing.T) {
 		t.Fatalf("create far: %v", err)
 	}
 
-	rows, _, err := svc.ListLocationsNear(ctx, kyivLat, kyivLng, 5000, 100, 0)
+	rows, _, err := svc.ListLocationsNear(ctx, kyivLat, kyivLng, 5000, 0, "", 100)
 	if err != nil {
 		t.Fatalf("near: %v", err)
 	}
@@ -221,6 +223,109 @@ func TestLocationRadiusQuery(t *testing.T) {
 	}
 	if containsID(rows, far.ID) {
 		t.Fatalf("did not expect the ~150km location within 5km radius")
+	}
+}
+
+// TestLocationNearKeysetPagination walks the nearest-first radius search one row per page via the
+// (distance, id) keyset cursor (review R-21: OFFSET is gone). It asserts every location inside the
+// radius is returned exactly once, in non-decreasing distance order, and pages fill correctly.
+func TestLocationNearKeysetPagination(t *testing.T) {
+	pool := newPool(t)
+	svc := newService(t, pool)
+	ctx := context.Background()
+	ua := countryID(t, pool, "UA")
+
+	const n = 5
+	created := make(map[string]bool, n)
+	for i := 0; i < n; i++ {
+		// Distinct, increasing offsets so each sits at a different distance from the query point, all
+		// comfortably inside 50km.
+		loc, err := svc.CreateLocation(ctx, latLonInput(kyivLat+float64(i+1)*0.01, kyivLng, ua))
+		if err != nil {
+			t.Fatalf("create %d: %v", i, err)
+		}
+		created[loc.ID] = true
+	}
+
+	// The shared test DB holds locations from other tests (many at tied distances), so page all the way
+	// to exhaustion — a safety cap guards against a keyset that fails to advance (which would loop).
+	seen := make(map[string]bool, n)
+	var afterDist float64
+	var afterID string
+	lastDist := -1.0
+	for pages := 0; pages < 10000; pages++ {
+		page, more, err := svc.ListLocationsNear(ctx, kyivLat, kyivLng, 50000, afterDist, afterID, 1)
+		if err != nil {
+			t.Fatalf("near page: %v", err)
+		}
+		for _, r := range page {
+			if seen[r.ID] {
+				t.Fatalf("location %s returned twice across keyset pages", r.ID)
+			}
+			seen[r.ID] = true
+			if r.DistanceM < lastDist {
+				t.Fatalf("distance order regressed: %f after %f", r.DistanceM, lastDist)
+			}
+			lastDist = r.DistanceM
+			afterDist, afterID = r.DistanceM, r.ID
+		}
+		if !more {
+			break
+		}
+	}
+	for id := range created {
+		if !seen[id] {
+			t.Fatalf("keyset paging skipped location %s", id)
+		}
+	}
+}
+
+// TestLocationSearchKeysetPagination proves the trigram text search (review R-21: search_text GIN,
+// keyset on id, no OFFSET) is findable and pages fill correctly without duplicates.
+func TestLocationSearchKeysetPagination(t *testing.T) {
+	pool := newPool(t)
+	svc := newService(t, pool)
+	ctx := context.Background()
+	ua := countryID(t, pool, "UA")
+
+	// A per-run unique marker isolates this test's rows from prior runs' (the DB persists across the
+	// package run), so the search result set is exactly the n created below.
+	marker := fmt.Sprintf("zzqxmarker%d", time.Now().UnixNano())
+	const n = 4
+	created := make(map[string]bool, n)
+	for i := 0; i < n; i++ {
+		in := latLonInput(kyivLat+float64(i+1)*0.01, kyivLng, ua)
+		locality := marker
+		in.Locality = &locality
+		loc, err := svc.CreateLocation(ctx, in)
+		if err != nil {
+			t.Fatalf("create %d: %v", i, err)
+		}
+		created[loc.ID] = true
+	}
+
+	seen := make(map[string]bool, n)
+	after := ""
+	for pages := 0; pages < 10000; pages++ {
+		page, more, err := svc.SearchLocations(ctx, marker, after, 2)
+		if err != nil {
+			t.Fatalf("search page: %v", err)
+		}
+		for _, r := range page {
+			if seen[r.ID] {
+				t.Fatalf("location %s returned twice across search pages", r.ID)
+			}
+			seen[r.ID] = true
+			after = r.ID
+		}
+		if !more {
+			break
+		}
+	}
+	for id := range created {
+		if !seen[id] {
+			t.Fatalf("search keyset paging skipped location %s", id)
+		}
 	}
 }
 

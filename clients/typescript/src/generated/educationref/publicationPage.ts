@@ -1,5 +1,6 @@
 import { IPublication } from "./publication";
 
-export interface IPublicationList {
+export interface IPublicationPage {
     'publications': Array<IPublication>;
+    'nextPageToken'?: string | null;
 }

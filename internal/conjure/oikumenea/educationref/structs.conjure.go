@@ -916,32 +916,33 @@ func (o *PublicationAuthorshipList) UnmarshalYAML(unmarshal func(interface{}) er
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
-type PublicationList struct {
-	Publications []Publication `json:"publications"`
+type PublicationPage struct {
+	Publications  []Publication `json:"publications"`
+	NextPageToken *string       `json:"nextPageToken,omitempty"`
 }
 
-func (o PublicationList) MarshalJSON() ([]byte, error) {
+func (o PublicationPage) MarshalJSON() ([]byte, error) {
 	if o.Publications == nil {
 		o.Publications = make([]Publication, 0)
 	}
-	type _tmpPublicationList PublicationList
-	return safejson.Marshal(_tmpPublicationList(o))
+	type _tmpPublicationPage PublicationPage
+	return safejson.Marshal(_tmpPublicationPage(o))
 }
 
-func (o *PublicationList) UnmarshalJSON(data []byte) error {
-	type _tmpPublicationList PublicationList
-	var rawPublicationList _tmpPublicationList
-	if err := safejson.Unmarshal(data, &rawPublicationList); err != nil {
+func (o *PublicationPage) UnmarshalJSON(data []byte) error {
+	type _tmpPublicationPage PublicationPage
+	var rawPublicationPage _tmpPublicationPage
+	if err := safejson.Unmarshal(data, &rawPublicationPage); err != nil {
 		return err
 	}
-	if rawPublicationList.Publications == nil {
-		rawPublicationList.Publications = make([]Publication, 0)
+	if rawPublicationPage.Publications == nil {
+		rawPublicationPage.Publications = make([]Publication, 0)
 	}
-	*o = PublicationList(rawPublicationList)
+	*o = PublicationPage(rawPublicationPage)
 	return nil
 }
 
-func (o PublicationList) MarshalYAML() (interface{}, error) {
+func (o PublicationPage) MarshalYAML() (interface{}, error) {
 	jsonBytes, err := safejson.Marshal(o)
 	if err != nil {
 		return nil, err
@@ -949,7 +950,7 @@ func (o PublicationList) MarshalYAML() (interface{}, error) {
 	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
 }
 
-func (o *PublicationList) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (o *PublicationPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
@@ -1416,32 +1417,33 @@ func (o *ScholarshipAwardList) UnmarshalYAML(unmarshal func(interface{}) error) 
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
-type ScholarshipList struct {
-	Scholarships []Scholarship `json:"scholarships"`
+type ScholarshipPage struct {
+	Scholarships  []Scholarship `json:"scholarships"`
+	NextPageToken *string       `json:"nextPageToken,omitempty"`
 }
 
-func (o ScholarshipList) MarshalJSON() ([]byte, error) {
+func (o ScholarshipPage) MarshalJSON() ([]byte, error) {
 	if o.Scholarships == nil {
 		o.Scholarships = make([]Scholarship, 0)
 	}
-	type _tmpScholarshipList ScholarshipList
-	return safejson.Marshal(_tmpScholarshipList(o))
+	type _tmpScholarshipPage ScholarshipPage
+	return safejson.Marshal(_tmpScholarshipPage(o))
 }
 
-func (o *ScholarshipList) UnmarshalJSON(data []byte) error {
-	type _tmpScholarshipList ScholarshipList
-	var rawScholarshipList _tmpScholarshipList
-	if err := safejson.Unmarshal(data, &rawScholarshipList); err != nil {
+func (o *ScholarshipPage) UnmarshalJSON(data []byte) error {
+	type _tmpScholarshipPage ScholarshipPage
+	var rawScholarshipPage _tmpScholarshipPage
+	if err := safejson.Unmarshal(data, &rawScholarshipPage); err != nil {
 		return err
 	}
-	if rawScholarshipList.Scholarships == nil {
-		rawScholarshipList.Scholarships = make([]Scholarship, 0)
+	if rawScholarshipPage.Scholarships == nil {
+		rawScholarshipPage.Scholarships = make([]Scholarship, 0)
 	}
-	*o = ScholarshipList(rawScholarshipList)
+	*o = ScholarshipPage(rawScholarshipPage)
 	return nil
 }
 
-func (o ScholarshipList) MarshalYAML() (interface{}, error) {
+func (o ScholarshipPage) MarshalYAML() (interface{}, error) {
 	jsonBytes, err := safejson.Marshal(o)
 	if err != nil {
 		return nil, err
@@ -1449,7 +1451,7 @@ func (o ScholarshipList) MarshalYAML() (interface{}, error) {
 	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
 }
 
-func (o *ScholarshipList) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (o *ScholarshipPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

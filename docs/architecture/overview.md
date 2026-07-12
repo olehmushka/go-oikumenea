@@ -218,6 +218,49 @@ synchronous cross-module write.
 
 ---
 
+## Multi-replica posture (scale-out)
+
+oikumenea and hermenea are both **horizontally scalable** — run N replicas of either behind a plain
+round-robin load balancer. No sharding, no read replicas, no session affinity (nothing in the review
+findings needs more than one well-indexed primary). The properties that make this safe, and what an
+operator must know:
+
+**Replica-safe by construction.**
+- **Stateless request handlers.** A request carries its own identity (the inbound token, validated per
+  request → PDP context); no in-process session state means any replica serves any request.
+- **Boot seeding is serialized cluster-wide** by a Postgres advisory lock (`db.LockBootSeed`): the
+  first-admin bootstrap (D-Bootstrap) and the pinax autoseed (D-Pinax) run **exactly once** across all
+  replicas — the lock holder seeds, every other replica waits on the lock and then no-ops.
+- **Queue consumers share one queue via `FOR UPDATE SKIP LOCKED`.** The transactional-outbox dispatcher
+  (D-EventOutbox) and the hermenea worker both claim rows with `SKIP LOCKED`, so N replicas drain a
+  shared queue with no double-processing and no coordinator. Delivery is **at-least-once** (a crash
+  between a handler succeeding and its row being marked redelivers), so every notify handler must be
+  **idempotent** — a design constraint, not an option.
+
+**Per-process, converging through the DB.**
+- **The grant cache is in-process** (D-AuthzGrantCache), validated against the single-row
+  `authz_epoch` counter that every authority-mutating transaction bumps. A grant/revoke/role-edit on one
+  replica becomes effective on every other replica within **`grantCacheTTL` (2 s)**: a stale-by-clock
+  entry revalidates against the epoch and refetches only if it changed. The shared DB epoch **is** the
+  cross-replica invalidation channel — no cache-busting message bus is needed. Within the 2 s window a
+  replica may still serve its last decision; that bound is the deliberate trade for zero-read hot paths.
+- **Outbox poll timing is per-process** (each dispatcher polls independently); ordering across replicas
+  is not guaranteed and is not relied on.
+
+**Operator rules.**
+- Scale oikumenea and hermenea **independently**; neither requires the other's replica count.
+- No sticky sessions / no session affinity.
+- Alarm on the R-20 signals (`docs/modules/platform.md`): `outbox.dead > 0` (a notify event exhausted
+  retries — silent data-flow loss), `outbox.oldest_pending_age_seconds` past a few poll intervals (a
+  wedged or absent dispatcher), grant-cache hit rate `< ~90%` steady-state (TTL misconfig or epoch-bump
+  storm).
+
+**Proof.** `scripts/scale-e2e.sh` (env-gated `OIKUMENEA_SCALE_E2E=1`) boots two replicas against one
+Postgres and asserts all four properties end-to-end: single boot-seed pass, shared-outbox exactly-once
+delivery with **both** replicas draining, `kill -9` mid-dispatch redelivery on the survivor, and a
+grant on one replica flipping a PDP decision on the other within the TTL. It is isolated (its own
+compose project + volume) and repeatable.
+
 ## Where the runtime concerns live
 
 | Concern | Owner doc |

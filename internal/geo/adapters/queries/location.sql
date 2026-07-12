@@ -62,25 +62,36 @@ SET deleted_at = now()
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL;
 
 -- name: ListLocationsNear :many
--- Locations within radiusM metres of (lat,lng), nearest first (ST_DWithin on geography). Offset/limit
--- paginated by the application's opaque page token.
+-- Locations within radiusM metres of (lat,lng), nearest first (ST_DWithin on geography). Keyset-paginated
+-- (review R-21: replaces the last offset-paginated query in the codebase, which re-scanned and shifted
+-- rows under concurrent inserts). The sort key is the (distance, id) pair, so the cursor is that pair: the
+-- distance_m column is returned for the application to carry into the next page token, and the row-value
+-- predicate resumes strictly after the last row seen. Empty after_id starts at the nearest. Distance is
+-- the EXACT ST_Distance (not the `<->` KNN operator) in every clause — mixing the index-approximated KNN
+-- order with an exact keyset recompute would skip rows at the page boundary; the ST_DWithin radius bounds
+-- the set, so ordering without the KNN index is fine.
 SELECT id,
   ST_Y(geom::geometry)::double precision AS latitude,
   ST_X(geom::geometry)::double precision AS longitude,
   mgrs, source_coordinate, country_id,
   admin_area_1, admin_area_2, locality, street, house_number, postal_code, raw_address,
-  type_id, created_at, updated_at
+  type_id, created_at, updated_at,
+  ST_Distance(geom, ST_SetSRID(ST_MakePoint(sqlc.arg(lng)::double precision, sqlc.arg(lat)::double precision), 4326)::geography)::double precision AS distance_m
 FROM oikumenea.location_locations
 WHERE deleted_at IS NULL
   AND ST_DWithin(
         geom,
         ST_SetSRID(ST_MakePoint(sqlc.arg(lng)::double precision, sqlc.arg(lat)::double precision), 4326)::geography,
         sqlc.arg(radius_m)::double precision)
-ORDER BY geom <-> ST_SetSRID(ST_MakePoint(sqlc.arg(lng)::double precision, sqlc.arg(lat)::double precision), 4326)::geography, id
-LIMIT sqlc.arg(lim)::int OFFSET sqlc.arg(off)::int;
+  AND (sqlc.arg(after_id)::text = ''
+       OR (ST_Distance(geom, ST_SetSRID(ST_MakePoint(sqlc.arg(lng)::double precision, sqlc.arg(lat)::double precision), 4326)::geography)::double precision,
+            id::text) > (sqlc.arg(after_dist)::double precision, sqlc.arg(after_id)::text))
+ORDER BY ST_Distance(geom, ST_SetSRID(ST_MakePoint(sqlc.arg(lng)::double precision, sqlc.arg(lat)::double precision), 4326)::geography), id
+LIMIT sqlc.arg(lim)::int;
 
 -- name: ListLocationsInBbox :many
--- Locations whose coordinate falls inside the bounding box, ordered by id for stable pagination.
+-- Locations whose coordinate falls inside the bounding box, keyset-paginated by id (review R-21:
+-- replaces offset pagination). Empty after starts at the beginning.
 SELECT id,
   ST_Y(geom::geometry)::double precision AS latitude,
   ST_X(geom::geometry)::double precision AS longitude,
@@ -93,13 +104,15 @@ WHERE deleted_at IS NULL
         geom,
         ST_MakeEnvelope(sqlc.arg(min_lng)::double precision, sqlc.arg(min_lat)::double precision,
                         sqlc.arg(max_lng)::double precision, sqlc.arg(max_lat)::double precision, 4326)::geography)
+  AND (sqlc.arg(after)::text = '' OR id::text > sqlc.arg(after)::text)
 ORDER BY id
-LIMIT sqlc.arg(lim)::int OFFSET sqlc.arg(off)::int;
+LIMIT sqlc.arg(lim)::int;
 
 -- name: SearchLocationsByText :many
--- Case-insensitive text search over the address fields (no spatial window required), ordered by id for
--- stable pagination. Backs the typeahead picker — a location has no `code`, so the match runs over
--- locality, the admin areas, street, mgrs, and the raw address.
+-- Case-insensitive text search over the address fields (no spatial window required), keyset-paginated by
+-- id (review R-21: replaces offset pagination). Backs the typeahead picker — a location has no `code`, so the match runs
+-- over locality, the admin areas, street, mgrs, and the raw address, folded into the STORED search_text
+-- haystack that the location_locations_search_trgm GIN index serves as a bitmap scan.
 SELECT id,
   ST_Y(geom::geometry)::double precision AS latitude,
   ST_X(geom::geometry)::double precision AS longitude,
@@ -108,14 +121,10 @@ SELECT id,
   type_id, created_at, updated_at
 FROM oikumenea.location_locations
 WHERE deleted_at IS NULL
-  AND (locality ILIKE '%' || sqlc.arg(query)::text || '%'
-       OR admin_area_1 ILIKE '%' || sqlc.arg(query)::text || '%'
-       OR admin_area_2 ILIKE '%' || sqlc.arg(query)::text || '%'
-       OR street ILIKE '%' || sqlc.arg(query)::text || '%'
-       OR mgrs ILIKE '%' || sqlc.arg(query)::text || '%'
-       OR raw_address ILIKE '%' || sqlc.arg(query)::text || '%')
+  AND search_text ILIKE '%' || sqlc.arg(query)::text || '%'
+  AND (sqlc.arg(after)::text = '' OR id::text > sqlc.arg(after)::text)
 ORDER BY id
-LIMIT sqlc.arg(lim)::int OFFSET sqlc.arg(off)::int;
+LIMIT sqlc.arg(lim)::int;
 
 -- name: ListLocationTypes :many
 SELECT id, code, name, status FROM oikumenea.location_location_types

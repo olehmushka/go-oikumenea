@@ -10,8 +10,11 @@
 
 ## What go-oikumenea is
 
-A generic, domain-agnostic **personnel & authorization service** — Keycloak-like, but for
-**hierarchical, multi-tenant organizations** (an army, a church, a university). It is:
+A **personnel directory + multi-domain registry / intelligence platform** for **hierarchical,
+multi-tenant organizations** (an army, a church, a university, a government, a company). Its
+authorization plane is Keycloak-like (a PDP over a unit graph); on top of the directory it is a
+**registry** holding rich, permission-gated subject data whose boundary and compliance posture are
+governed by **[D-DataScope](architecture/decisions.md)**. It is:
 
 - **API-first.** The contract is [Conjure](architecture/overview.md) IDL; clients and an
   [OpenAPI reference](api/README.md) are generated from it. The service ships **no UI of its

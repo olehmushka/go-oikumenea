@@ -271,7 +271,7 @@ func toAPIEthnicityType(t domain.EthnicityType, name map[string]string, langs, c
 }
 
 func (s Service) ListEthnicities(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.Ethnicity, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+	if err := s.pep.RequireAnywhere(ctx, token, permEthnicityRead); err != nil {
 		return nil, err
 	}
 	es, err := s.sensitive.ListEthnicities(ctx, personID)

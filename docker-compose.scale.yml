@@ -1,15 +1,22 @@
 # Multi-replica override (R-13 / M49 verification): the base compose file publishes fixed host ports,
 # which caps a service at one replica. This override un-publishes them so the R-13 acceptance run
 #
-#   docker compose -f docker-compose.yml -f docker-compose.scale.yml up -d --scale app=2
+#   OIKUMENEA_SCALE_E2E=1 scripts/scale-e2e.sh
+#     (which runs: docker compose -f docker-compose.yml -f docker-compose.scale.yml -p oik-scale up -d --scale app=2)
 #
-# boots two oikumenea replicas against the same fresh DB and proves exactly ONE boot-seed pass (the
-# advisory lock serializes pinax autoseed + first-admin bootstrap; the loser waits, then no-ops).
-# Reach the replicas from inside the compose network (e.g. `docker compose exec hermenea curl
-# https://app:8443/...`) or add your own proxy — this file is for the scale verification, not serving.
+# boots two oikumenea replicas against the same fresh DB and proves: exactly ONE boot-seed pass (the
+# advisory lock serializes pinax autoseed + first-admin bootstrap; the loser waits, then no-ops),
+# shared-outbox exactly-once delivery under FOR UPDATE SKIP LOCKED, kill -9 redelivery on the survivor,
+# and grant-cache convergence across the two processes. Reach the replicas by container IP (the host can
+# on Linux) or from inside the compose network — this file is for the scale verification, not serving.
 # `!reset` needs docker compose v2.24+.
 services:
   app:
     ports: !reset []
+    # Enable the env-gated outbox self-test seam (review R-13) on BOTH serving replicas so the counting
+    # notify handler is registered at boot; scripts/scale-e2e.sh enqueues events and asserts delivery.
+    # Inert outside this scale override.
+    environment:
+      OIKUMENEA_OUTBOX_SELFTEST: "1"
   hermenea:
     ports: !reset []

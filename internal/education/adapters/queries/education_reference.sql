@@ -252,10 +252,23 @@ WHERE id = @id AND deleted_at IS NULL
 RETURNING *;
 
 -- name: ListPublications :many
+-- Keyset-paginated by RID (review R-21: was an unbounded ORDER BY code full scan). A text query routes
+-- to SearchPublications so the trigram GIN is not defeated by a `(@query = '' OR …)` guard.
 SELECT * FROM oikumenea.education_publications
 WHERE deleted_at IS NULL
-  AND (@query = '' OR code ILIKE '%' || @query || '%' OR title ILIKE '%' || @query || '%')
-ORDER BY code;
+  AND (@after = '' OR id::text > @after)
+ORDER BY id
+LIMIT @lim;
+
+-- name: SearchPublications :many
+-- The trigram-served twin of ListPublications (review R-21): an unconditional match over the STORED
+-- search_text haystack served by the education_publications_search_trgm GIN, keyset-paginated by RID.
+SELECT * FROM oikumenea.education_publications
+WHERE deleted_at IS NULL
+  AND search_text ILIKE '%' || @query || '%'
+  AND (@after = '' OR id::text > @after)
+ORDER BY id
+LIMIT @lim;
 
 -- name: SoftDeletePublication :execrows
 UPDATE oikumenea.education_publications SET deleted_at = now() WHERE id = @id AND deleted_at IS NULL;
@@ -375,10 +388,23 @@ WHERE id = @id AND deleted_at IS NULL
 RETURNING *;
 
 -- name: ListScholarships :many
+-- Keyset-paginated by RID (review R-21: was an unbounded ORDER BY code full scan). A text query routes
+-- to SearchScholarships so the trigram GIN is not defeated by a `(@query = '' OR …)` guard.
 SELECT * FROM oikumenea.education_scholarships
 WHERE deleted_at IS NULL
-  AND (@query = '' OR code ILIKE '%' || @query || '%' OR name ILIKE '%' || @query || '%')
-ORDER BY code;
+  AND (@after = '' OR id::text > @after)
+ORDER BY id
+LIMIT @lim;
+
+-- name: SearchScholarships :many
+-- The trigram-served twin of ListScholarships (review R-21): an unconditional match over the STORED
+-- search_text haystack served by the education_scholarships_search_trgm GIN, keyset-paginated by RID.
+SELECT * FROM oikumenea.education_scholarships
+WHERE deleted_at IS NULL
+  AND search_text ILIKE '%' || @query || '%'
+  AND (@after = '' OR id::text > @after)
+ORDER BY id
+LIMIT @lim;
 
 -- name: SoftDeleteScholarship :execrows
 UPDATE oikumenea.education_scholarships SET deleted_at = now() WHERE id = @id AND deleted_at IS NULL;

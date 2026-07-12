@@ -5,6 +5,7 @@ package educationref
 import (
 	"context"
 	"net/http"
+	"strconv"
 
 	"github.com/palantir/conjure-go-runtime/v2/conjure-go-contract/codecs"
 	"github.com/palantir/conjure-go-runtime/v2/conjure-go-contract/errors"
@@ -60,7 +61,7 @@ type EducationReferenceService interface {
 	UpdateGrant(ctx context.Context, authHeader bearertoken.Token, grantIdArg string, requestArg UpsertGrantRequest) (Grant, error)
 	DeleteGrant(ctx context.Context, authHeader bearertoken.Token, grantIdArg string) error
 	CreatePublication(ctx context.Context, authHeader bearertoken.Token, requestArg UpsertPublicationRequest) (Publication, error)
-	ListPublications(ctx context.Context, authHeader bearertoken.Token, queryArg *string) (PublicationList, error)
+	ListPublications(ctx context.Context, authHeader bearertoken.Token, queryArg *string, pageSizeArg *int, pageTokenArg *string) (PublicationPage, error)
 	GetPublication(ctx context.Context, authHeader bearertoken.Token, publicationIdArg string) (Publication, error)
 	UpdatePublication(ctx context.Context, authHeader bearertoken.Token, publicationIdArg string, requestArg UpsertPublicationRequest) (Publication, error)
 	DeletePublication(ctx context.Context, authHeader bearertoken.Token, publicationIdArg string) error
@@ -80,7 +81,7 @@ type EducationReferenceService interface {
 	UpdateQualification(ctx context.Context, authHeader bearertoken.Token, qualificationIdArg string, requestArg UpsertQualificationRequest) (Qualification, error)
 	DeleteQualification(ctx context.Context, authHeader bearertoken.Token, qualificationIdArg string) error
 	CreateScholarship(ctx context.Context, authHeader bearertoken.Token, requestArg UpsertScholarshipRequest) (Scholarship, error)
-	ListScholarships(ctx context.Context, authHeader bearertoken.Token, queryArg *string) (ScholarshipList, error)
+	ListScholarships(ctx context.Context, authHeader bearertoken.Token, queryArg *string, pageSizeArg *int, pageTokenArg *string) (ScholarshipPage, error)
 	GetScholarship(ctx context.Context, authHeader bearertoken.Token, scholarshipIdArg string) (Scholarship, error)
 	UpdateScholarship(ctx context.Context, authHeader bearertoken.Token, scholarshipIdArg string, requestArg UpsertScholarshipRequest) (Scholarship, error)
 	DeleteScholarship(ctx context.Context, authHeader bearertoken.Token, scholarshipIdArg string) error
@@ -1258,7 +1259,20 @@ func (e *educationReferenceServiceHandler) HandleListPublications(rw http.Respon
 		queryArgInternal := queryArgStr
 		queryArg = &queryArgInternal
 	}
-	respArg, err := e.impl.ListPublications(req.Context(), bearertoken.Token(authHeader), queryArg)
+	var pageSizeArg *int
+	if pageSizeArgStr := req.URL.Query().Get("pageSize"); pageSizeArgStr != "" {
+		pageSizeArgInternal, err := strconv.Atoi(pageSizeArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"pageSize\" as integer")
+		}
+		pageSizeArg = &pageSizeArgInternal
+	}
+	var pageTokenArg *string
+	if pageTokenArgStr := req.URL.Query().Get("pageToken"); pageTokenArgStr != "" {
+		pageTokenArgInternal := pageTokenArgStr
+		pageTokenArg = &pageTokenArgInternal
+	}
+	respArg, err := e.impl.ListPublications(req.Context(), bearertoken.Token(authHeader), queryArg, pageSizeArg, pageTokenArg)
 	if err != nil {
 		return err
 	}
@@ -1695,7 +1709,20 @@ func (e *educationReferenceServiceHandler) HandleListScholarships(rw http.Respon
 		queryArgInternal := queryArgStr
 		queryArg = &queryArgInternal
 	}
-	respArg, err := e.impl.ListScholarships(req.Context(), bearertoken.Token(authHeader), queryArg)
+	var pageSizeArg *int
+	if pageSizeArgStr := req.URL.Query().Get("pageSize"); pageSizeArgStr != "" {
+		pageSizeArgInternal, err := strconv.Atoi(pageSizeArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"pageSize\" as integer")
+		}
+		pageSizeArg = &pageSizeArgInternal
+	}
+	var pageTokenArg *string
+	if pageTokenArgStr := req.URL.Query().Get("pageToken"); pageTokenArgStr != "" {
+		pageTokenArgInternal := pageTokenArgStr
+		pageTokenArg = &pageTokenArgInternal
+	}
+	respArg, err := e.impl.ListScholarships(req.Context(), bearertoken.Token(authHeader), queryArg, pageSizeArg, pageTokenArg)
 	if err != nil {
 		return err
 	}

@@ -132,6 +132,14 @@ services:
             type: optional<string>
             param-type: query
             docs: Restrict to one palette; omit to list every domain.
+          locales:
+            type: list<string>
+            param-type: query
+            docs: |
+              Optional locale projection (D-i18n, review R-19): repeat `locales=ukr&locales=eng` to
+              trim every translatable `name` map to just those locales (intersection with what is
+              stored). Omit to receive all enabled locales (the default; this is NOT Accept-Language
+              content negotiation — it is an opt-in payload-size projection).
         returns: ColorList
       upsertColor:
         http: PUT /colors

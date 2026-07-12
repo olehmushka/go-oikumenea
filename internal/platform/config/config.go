@@ -189,8 +189,13 @@ type Crypto struct {
 
 // CryptoLocalDev is the local-dev KeyProvider's key material.
 type CryptoLocalDev struct {
-	// KEK is the base64-encoded 32-byte key-encryption key that wraps per-record DEKs (secret).
+	// KEK is the base64-encoded 32-byte ACTIVE key-encryption key that wraps per-record DEKs (secret).
 	KEK string `yaml:"kek"`
+	// PreviousKEKs are base64-encoded 32-byte KEKs retained for UNWRAP only during a key rotation
+	// (review R-22): the operator promotes a new active `kek`, moves the old one here, runs
+	// `oikumenea rewrap` (re-wraps every DEK under the new active KEK), then removes it. Empty in
+	// steady state.
+	PreviousKEKs []string `yaml:"previous-keks"`
 }
 
 // Runtime is the hot-reloadable configuration (var/conf/runtime.yml), read through a refreshable.

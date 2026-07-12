@@ -1,4 +1,4 @@
-h1:/CE5QvBuPxvLCUSzTXxPVXrqo+qGC5TPAiRY8yUdeZQ=
+h1:mFQRhpVKG3kt5NAQwxUq0m1HakhvlTv7arjjrN4AkM4=
 20260601000000_schema_bootstrap.sql h1:6sV+mR08nzCE04BwP0m6mCw5S1m0UaNM3QJBSdJPsgw=
 20260601000001_audit_log.sql h1:ZcBZckRBkDJSLC73KJZQbatt7np7KQRJb+ko0XP65LA=
 20260601000002_localization.sql h1:7yHKasuocRLtxyybIdcSnKoVqyt3E+b7tbaNNf8nHQ4=
@@ -36,3 +36,4 @@ h1:/CE5QvBuPxvLCUSzTXxPVXrqo+qGC5TPAiRY8yUdeZQ=
 20260601000034_finance.sql h1:AN6AawP/KRBIp3GIGYJMzA2B35lq1bMVdFFGlv0kCTg=
 20260601000035_person_overlays.sql h1:Pg+2DsARGF72bxNqy3bzT5p6Q3q9+hcBqBSFwo4x78g=
 20260601000036_events_outbox.sql h1:wTC9hQ1p5jt3Xp3k9mV+o39BsCB0AjP5qrIbMfDQZ1A=
+20260601000037_search_generalization.sql h1:z5rq+aSiPrux/HG85ueT1LUqZd3luR2NQiTUyx2DN3c=

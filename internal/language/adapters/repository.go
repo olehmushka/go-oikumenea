@@ -7,6 +7,7 @@ package adapters
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/olegamysk/go-oikumenea/internal/language/adapters/languagesql"
@@ -28,19 +29,41 @@ func NewRepository(conn db.DBTX) *Repository {
 
 var _ domain.Repository = (*Repository)(nil)
 
-// ListLanguoids returns languoids matching the filter, in code order.
+// ListLanguoids returns languoids matching the filter, in code order. A non-empty text query routes to
+// the dedicated trigram SearchLanguoids (review R-21 / D-PersonSearch generalized) so the name/code
+// match stays a GIN bitmap scan; the empty case is the plain keyset list. The two queries share the
+// projection, so their rows are convertible and map through the one loop below.
 func (r *Repository) ListLanguoids(ctx context.Context, f domain.Filter) ([]domain.Languoid, error) {
-	rows, err := r.q.ListLanguoids(ctx, languagesql.ListLanguoidsParams{
-		Level:    f.Level,
-		Family:   f.Family,
-		Parent:   f.Parent,
-		TopLevel: f.TopLevel,
-		Q:        f.Query,
-		After:    f.After,
-		Lim:      int32(f.Limit),
-	})
-	if err != nil {
-		return nil, err
+	var rows []languagesql.ListLanguoidsRow
+	if q := strings.TrimSpace(f.Query); q != "" {
+		found, err := r.q.SearchLanguoids(ctx, languagesql.SearchLanguoidsParams{
+			Level:    f.Level,
+			Family:   f.Family,
+			Parent:   f.Parent,
+			TopLevel: f.TopLevel,
+			Q:        q,
+			After:    f.After,
+			Lim:      int32(f.Limit),
+		})
+		if err != nil {
+			return nil, err
+		}
+		rows = make([]languagesql.ListLanguoidsRow, len(found))
+		for i, row := range found {
+			rows[i] = languagesql.ListLanguoidsRow(row)
+		}
+	} else {
+		var err error
+		if rows, err = r.q.ListLanguoids(ctx, languagesql.ListLanguoidsParams{
+			Level:    f.Level,
+			Family:   f.Family,
+			Parent:   f.Parent,
+			TopLevel: f.TopLevel,
+			After:    f.After,
+			Lim:      int32(f.Limit),
+		}); err != nil {
+			return nil, err
+		}
 	}
 	out := make([]domain.Languoid, 0, len(rows))
 	for _, row := range rows {

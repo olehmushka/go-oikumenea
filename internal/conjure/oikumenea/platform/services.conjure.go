@@ -24,7 +24,7 @@ type PlatformCatalogServiceClient interface {
 	// Add or update a lawful-basis catalog entry (instance-admin; `legal-basis.manage`).
 	UpsertLegalBasisKind(ctx context.Context, authHeader bearertoken.Token, codeArg string, requestArg UpsertLegalBasisKindRequest) (LegalBasisKind, error)
 	// List the color catalog (D-Color), optionally filtered to one domain (eye | hair | vehicle).
-	ListColors(ctx context.Context, authHeader bearertoken.Token, domainArg *string) (ColorList, error)
+	ListColors(ctx context.Context, authHeader bearertoken.Token, domainArg *string, localesArg []string) (ColorList, error)
 	// Add or update a color (instance-admin; `color.manage`). Upserts on (domain, code).
 	UpsertColor(ctx context.Context, authHeader bearertoken.Token, requestArg UpsertColorRequest) (Color, error)
 }
@@ -72,7 +72,7 @@ func (c *platformCatalogServiceClient) UpsertLegalBasisKind(ctx context.Context,
 	return *returnVal, nil
 }
 
-func (c *platformCatalogServiceClient) ListColors(ctx context.Context, authHeader bearertoken.Token, domainArg *string) (ColorList, error) {
+func (c *platformCatalogServiceClient) ListColors(ctx context.Context, authHeader bearertoken.Token, domainArg *string, localesArg []string) (ColorList, error) {
 	var returnVal *ColorList
 	var requestParams []httpclient.RequestParam
 	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListColors"))
@@ -81,6 +81,9 @@ func (c *platformCatalogServiceClient) ListColors(ctx context.Context, authHeade
 	queryParams := make(url.Values)
 	if domainArg != nil {
 		queryParams.Set("domain", fmt.Sprint(*domainArg))
+	}
+	for _, v := range localesArg {
+		queryParams.Add("locales", fmt.Sprint(v))
 	}
 	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
 	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
@@ -123,7 +126,7 @@ type PlatformCatalogServiceClientWithAuth interface {
 	// Add or update a lawful-basis catalog entry (instance-admin; `legal-basis.manage`).
 	UpsertLegalBasisKind(ctx context.Context, codeArg string, requestArg UpsertLegalBasisKindRequest) (LegalBasisKind, error)
 	// List the color catalog (D-Color), optionally filtered to one domain (eye | hair | vehicle).
-	ListColors(ctx context.Context, domainArg *string) (ColorList, error)
+	ListColors(ctx context.Context, domainArg *string, localesArg []string) (ColorList, error)
 	// Add or update a color (instance-admin; `color.manage`). Upserts on (domain, code).
 	UpsertColor(ctx context.Context, requestArg UpsertColorRequest) (Color, error)
 }
@@ -145,8 +148,8 @@ func (c *platformCatalogServiceClientWithAuth) UpsertLegalBasisKind(ctx context.
 	return c.client.UpsertLegalBasisKind(ctx, c.authHeader, codeArg, requestArg)
 }
 
-func (c *platformCatalogServiceClientWithAuth) ListColors(ctx context.Context, domainArg *string) (ColorList, error) {
-	return c.client.ListColors(ctx, c.authHeader, domainArg)
+func (c *platformCatalogServiceClientWithAuth) ListColors(ctx context.Context, domainArg *string, localesArg []string) (ColorList, error) {
+	return c.client.ListColors(ctx, c.authHeader, domainArg, localesArg)
 }
 
 func (c *platformCatalogServiceClientWithAuth) UpsertColor(ctx context.Context, requestArg UpsertColorRequest) (Color, error) {
@@ -178,12 +181,12 @@ func (c *platformCatalogServiceClientWithTokenProvider) UpsertLegalBasisKind(ctx
 	return c.client.UpsertLegalBasisKind(ctx, bearertoken.Token(token), codeArg, requestArg)
 }
 
-func (c *platformCatalogServiceClientWithTokenProvider) ListColors(ctx context.Context, domainArg *string) (ColorList, error) {
+func (c *platformCatalogServiceClientWithTokenProvider) ListColors(ctx context.Context, domainArg *string, localesArg []string) (ColorList, error) {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
 		return *new(ColorList), err
 	}
-	return c.client.ListColors(ctx, bearertoken.Token(token), domainArg)
+	return c.client.ListColors(ctx, bearertoken.Token(token), domainArg, localesArg)
 }
 
 func (c *platformCatalogServiceClientWithTokenProvider) UpsertColor(ctx context.Context, requestArg UpsertColorRequest) (Color, error) {

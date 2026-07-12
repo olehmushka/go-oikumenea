@@ -295,11 +295,11 @@ types:
       ResearchCentreList: { fields: { researchCentres: list<ResearchCentre> } }
       ResearchGroupList: { fields: { researchGroups: list<ResearchGroup> } }
       GrantList: { fields: { grants: list<Grant> } }
-      PublicationList: { fields: { publications: list<Publication> } }
+      PublicationPage: { fields: { publications: list<Publication>, nextPageToken: optional<string> } }
       GovernanceBodyList: { fields: { governanceBodies: list<GovernanceBody> } }
       PolicyList: { fields: { policies: list<Policy> } }
       QualificationList: { fields: { qualifications: list<Qualification> } }
-      ScholarshipList: { fields: { scholarships: list<Scholarship> } }
+      ScholarshipPage: { fields: { scholarships: list<Scholarship>, nextPageToken: optional<string> } }
       AccreditationEventList: { fields: { events: list<AccreditationEvent> } }
       PublicationAuthorshipList: { fields: { authorships: list<PublicationAuthorship> } }
       ResearchMembershipList: { fields: { memberships: list<ResearchMembership> } }
@@ -567,7 +567,7 @@ services:
       deleteGrant: { http: "DELETE /grants/{grantId}", args: { grantId: { type: string, param-type: path } } }
       # ---- publications ----
       createPublication: { http: "POST /publications", args: { request: UpsertPublicationRequest }, returns: Publication }
-      listPublications: { http: "GET /publications", args: { query: { type: optional<string>, param-type: query } }, returns: PublicationList }
+      listPublications: { http: "GET /publications", args: { query: { type: optional<string>, param-type: query }, pageSize: { type: optional<integer>, param-type: query }, pageToken: { type: optional<string>, param-type: query } }, returns: PublicationPage }
       getPublication: { http: "GET /publications/{publicationId}", args: { publicationId: { type: string, param-type: path } }, returns: Publication }
       updatePublication: { http: "PUT /publications/{publicationId}", args: { publicationId: { type: string, param-type: path }, request: UpsertPublicationRequest }, returns: Publication }
       deletePublication: { http: "DELETE /publications/{publicationId}", args: { publicationId: { type: string, param-type: path } } }
@@ -589,7 +589,7 @@ services:
       updateQualification: { http: "PUT /qualifications/{qualificationId}", args: { qualificationId: { type: string, param-type: path }, request: UpsertQualificationRequest }, returns: Qualification }
       deleteQualification: { http: "DELETE /qualifications/{qualificationId}", args: { qualificationId: { type: string, param-type: path } } }
       createScholarship: { http: "POST /scholarships", args: { request: UpsertScholarshipRequest }, returns: Scholarship }
-      listScholarships: { http: "GET /scholarships", args: { query: { type: optional<string>, param-type: query } }, returns: ScholarshipList }
+      listScholarships: { http: "GET /scholarships", args: { query: { type: optional<string>, param-type: query }, pageSize: { type: optional<integer>, param-type: query }, pageToken: { type: optional<string>, param-type: query } }, returns: ScholarshipPage }
       getScholarship: { http: "GET /scholarships/{scholarshipId}", args: { scholarshipId: { type: string, param-type: path } }, returns: Scholarship }
       updateScholarship: { http: "PUT /scholarships/{scholarshipId}", args: { scholarshipId: { type: string, param-type: path }, request: UpsertScholarshipRequest }, returns: Scholarship }
       deleteScholarship: { http: "DELETE /scholarships/{scholarshipId}", args: { scholarshipId: { type: string, param-type: path } } }

@@ -85,7 +85,7 @@ func toAPILegalBasis(k catalog.LegalBasisKind) platformapi.LegalBasisKind {
 }
 
 // ListColors implements GET /colors (D-Color). Reference data: read anywhere via the PEP.
-func (s CatalogService) ListColors(ctx context.Context, token bearertoken.Token, domain *string) (platformapi.ColorList, error) {
+func (s CatalogService) ListColors(ctx context.Context, token bearertoken.Token, domain *string, locales []string) (platformapi.ColorList, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermColorRead)); err != nil {
 		return platformapi.ColorList{}, err
 	}
@@ -101,11 +101,47 @@ func (s CatalogService) ListColors(ctx context.Context, token bearertoken.Token,
 	if err != nil {
 		return platformapi.ColorList{}, werror.WrapWithContextParams(ctx, err, "resolve color names failed")
 	}
+	want := localeProjection(locales)
 	out := make([]platformapi.Color, 0, len(colors))
 	for _, c := range colors {
-		out = append(out, toAPIColor(c, names[c.ID]))
+		out = append(out, toAPIColor(c, projectLocales(names[c.ID], want)))
 	}
 	return platformapi.ColorList{Colors: out}, nil
+}
+
+// localeProjection normalizes the `locales=` query projection (D-i18n, review R-19) into a lookup
+// set, or nil for "no projection — return all enabled locales" (the default). An absent or empty list
+// is treated as no projection (a caller asking for nothing gets everything, never a silently blank
+// label).
+func localeProjection(locales []string) map[string]struct{} {
+	if len(locales) == 0 {
+		return nil
+	}
+	want := make(map[string]struct{}, len(locales))
+	for _, l := range locales {
+		if l != "" {
+			want[l] = struct{}{}
+		}
+	}
+	if len(want) == 0 {
+		return nil
+	}
+	return want
+}
+
+// projectLocales trims a locale->text label map to the requested locales (intersection with what is
+// stored). want == nil means no projection: the full map is returned unchanged.
+func projectLocales(m map[string]string, want map[string]struct{}) map[string]string {
+	if want == nil {
+		return m
+	}
+	out := make(map[string]string, len(want))
+	for locale, text := range m {
+		if _, ok := want[locale]; ok {
+			out[locale] = text
+		}
+	}
+	return out
 }
 
 // UpsertColor implements PUT /colors (instance-admin; `color.manage`).

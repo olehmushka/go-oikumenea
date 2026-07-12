@@ -42,6 +42,46 @@ M39 compensation/payroll) carry **no** decision yet — they are designed in the
 
 ---
 
+## Decision index
+
+Load this table, fetch the block you need. The built/in-progress (M0–M15) decisions have their own
+index in [`decisions.md`](decisions.md).
+
+| ID | Decision |
+| --- | --- |
+| [D-Worker](#d-worker--a-first-class-background-job-runtime-promotes-ds-25) | A first-class background-job runtime *(superseded by D-Hermenea)* |
+| [D-Hermenea](#d-hermenea--an-out-of-process-ingestion--scheduler-companion-supersedes-d-worker-folds-d-dataingestion) | An out-of-process ingestion & scheduler companion |
+| [D-DataIngestion](#d-dataingestion--a-generic-reference-data-ingestion--connector-framework-extends-d-ontology) | A generic reference-data ingestion & connector framework |
+| [D-Languages](#d-languages--languages-language-groups--writing-systems-as-a-glottolog-faithful-registry-extends-d-ontology-d-i18n) | Languages, language groups & writing systems (Glottolog-faithful) |
+| [D-Location](#d-location--a-shared-standalone-location-entity-postgis-app-derived-mgrs-multi-format-input) | A shared, standalone Location entity (PostGIS; app-derived MGRS) |
+| [D-Education](#d-education--an-education-module-institutions-structure-and-person-bindings-extends-d-ontology) | An education module: institutions, structure, person bindings |
+| [D-Companies](#d-companies--a-company-legal-entity-registry-with-an-ownershipaffiliation-graph-extends-d-ontology) | A company legal-entity registry with an ownership/affiliation graph |
+| [D-Religion](#d-religion--a-multi-faith-religion-vertical-catalog-driven-taxonomy-organization-graphs--discovery-reverses-the-drafts-religion-drop-refines-l-singledomain) | A multi-faith religion vertical: taxonomy, org graphs & discovery |
+| [D-ClergyCredential](#d-clergycredential--clergy-grades--credentials-as-a-per-tradition-ordered-catalog--reified-link-faith-agnostic-parallels-d-rank) | Clergy grades & credentials as a per-tradition ordered catalog + Link |
+| [D-ReligiousAffiliation](#d-religiousaffiliation--lay-religious-affiliation-as-a-reified-piispecial-link-on-d-specialpii) | Lay religious affiliation as a reified pii:special Link |
+| [D-SpecialPII](#d-specialpii--envelope-encryption-extended-to-the-piispecial-tier-resolves-the-person-field-half-of-ds-29) | Envelope encryption extended to the pii:special tier |
+| [D-GeoPlaces](#d-geoplaces--whos-on-first-administrative-gazetteer-geoplaces-the-first-hermenea-connector-extends-d-geo-supersedes-d-geosubdivisions-pulls-postgis-forward) | Who's-On-First administrative gazetteer; first hermenea connector |
+| [D-GeoSubdivisions](#d-geosubdivisions--seeded-iso-3166-2-subnational-division-registry-extends-d-geo--superseded-by-d-geoplaces) | Seeded ISO-3166-2 subnational-division registry *(superseded)* |
+| [D-Vehicles](#d-vehicles--a-vehicle-registry-binding-people--companies-to-vehicles-extends-d-ontology) | A vehicle registry binding people & companies to vehicles |
+| [D-ClientSDK](#d-clientsdk--unified-go--typescript-sdks-generated-from-the-conjure-contract-extends-d-conjure-d-webui) | Unified Go + TypeScript SDKs from the Conjure contract |
+| [D-UnitCodeLifecycle](#d-unitcodelifecycle--unit-codes-are-optional-mutable-human-readable-ids-amends-d-code) | Unit codes are optional, mutable, human-readable IDs |
+| [D-TenantOrganizations](#d-tenantorganizations--domains--organizations-a-multi-domain-tenant-over-the-unit-graph-extends-d-graphd-graphs-amends-d-code-refines-l-singledomain) | Domains + Organizations: a multi-domain tenant over the unit graph |
+| [D-UnifiedOrgGraph](#d-unifiedorggraph--verticals-reuse-the-tenant-org-graph-per-vertical-sidecars-reverses-d-education-amends-d-companiesd-religion-extends-d-tenantorganizations) | Verticals reuse the tenant org-graph; per-vertical sidecars |
+| [D-Color](#d-color--structural-color-as-a-per-domain-platform-catalog-referenced-by-hard-fk-extends-d-code-d-i18n-d-ontology-amends-d-vehicles-d-physicalidentity) | Structural color as a per-domain platform catalog (hard FK) |
+| [D-OverlayFoundation](#d-overlayfoundation--provisional-entities-attribution--legalbasis-substrate-extends-d-ontology-d-personsocialchannels-d-piitiers) | Provisional entities, attribution & legal_basis substrate |
+| [D-ExternalOrgs](#d-externalorgs--a-registry-of-external-organizations-party--government--military--ngo--registrant-extends-d-ontology) | A registry of external organizations |
+| [D-PhysicalIdentity](#d-physicalidentity--aliases-physical-description--declared-ethnicity-extends-d-personnamescldr-d-specialpii) | Aliases, physical description & declared ethnicity |
+| [D-PersonAddresses](#d-personaddresses--structured-effective-dated-person-addresses-over-location-extends-d-location) | Structured, effective-dated person addresses over Location |
+| [D-InstitutionalTies](#d-institutionalties--personorganization-affiliation-edges-party--government--lobbying--foreign-military--references-extends-d-ontology-d-overlayfoundation-d-externalorgs) | Person↔organization affiliation edges |
+| [D-Watchlists](#d-watchlists--live-lookup-sanctionspepinterpol-via-hermenea--a-regulatory-sanctions-overlay-extends-d-hermenea) | Live-lookup sanctions/PEP/Interpol + regulatory-sanctions overlay |
+| [D-PersonOverlays](#d-personoverlays--financial-behavioral--psychological-overlays-extends-d-overlayfoundation-d-specialpii) | Financial, behavioral & psychological overlays |
+| [D-HealthVulnerability](#d-healthvulnerability--category-level-health--vulnerability-records-piispecial-extends-d-specialpii) | Category-level health & vulnerability records (pii:special) |
+| [D-LoginSecurityLog](#d-loginsecuritylog--a-first-party-loginip-security-log-on-the-federation-seam-extends-l-authzonly) | A first-party login/IP security log on the federation seam |
+| [D-Finance](#d-finance--bank-accounts--payment-cards-banks-as-company-orgs-extends-d-ontology-d-personalcodes-d-unifiedorggraph) | Bank accounts & payment cards, banks as company orgs |
+| [D-Pinax](#d-pinax--the-reference-plane-a-named-world-model-plane-with-an-origin-marker--bundled-yaml-seed-presets-self-seeded-at-boot-extends-d-ontology-d-i18n-d-hermenea-d-dataingestion-amends-d-languages-d-geo-d-rank-d-religion-d-physicalidentitym43-d-color) | The reference plane: origin marker + bundled YAML seed presets |
+
+---
+
 ### D-Worker — A first-class background-job runtime (promotes DS-25)
 
 > **Superseded by [D-Hermenea](#d-hermenea--an-out-of-process-ingestion--scheduler-companion-supersedes-d-worker-folds-d-dataingestion) (M16).** The
@@ -475,7 +515,7 @@ Islam, Judaism, Hinduism, Buddhism, Sikhism, Bahá'í, Shinto, traditional/indig
 the existing `tenant` unit graph, `person`, `membership`, `order`, `authorization`, `localization`,
 and the shared `location` entity (D-Location), and adding only the religion-specific structures. This
 **reverses the explicit `drafts/` drop of religion-specific concepts** — re-adopted with rationale,
-exactly as [D-Location](#d-location--a-shared-standalone-location-entity-postgis--h3-reverses-the-drafts-geography-drop)
+exactly as [D-Location](#d-location--a-shared-standalone-location-entity-postgis-app-derived-mgrs-multi-format-input)
 re-adopted geography and [D-WebUI](decisions.md#d-webui--an-optional-standalone-nextjs-admin-ui-reverses-the-api-only-no-ui-drop)
 re-adopted the UI. **Binding design rule: no faith's vocabulary is hard-coded.** Every
 religion-specific value (organization kind, sub-tradition, clergy grade, office type, affiliation

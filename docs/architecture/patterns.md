@@ -170,6 +170,20 @@ There are **two classes**, and choosing the wrong one is a correctness/scale bug
   publisher's transaction** (longer lock lists, more fate-sharing), so it is a **decision-level change**,
   not a routine wiring edit. The bus is **sealed** after boot (`Bus.Seal` in the composition root); a
   `Subscribe` afterwards **panics** (review-2026-07 R-10) — subscribers are wired once, before serving.
+
+  **Purge/merge fan-out width baseline (review R-24).** The person purge/merge fan-out is the widest
+  `atomic` transaction: **18 subscriptions across 12 modules** (`cmd/oikumenea/main.go` —
+  `SubscribePersonPurge` erases a module's person-owned rows in the purge tx; `SubscribePersonEvents`
+  re-homes rows on a merge). Two signals keep this from growing invisibly (the M31–M45 pattern of
+  subscribers accruing with no number moving): (1) `TestPersonFanoutWidthGuard`
+  (`cmd/oikumenea`) pins the subscription count — a module joining the fan-out fails it, forcing a
+  conscious decision + a baseline bump; (2) `TestPurgeWidthBudget` (`internal/person`) records the
+  actual SQL width of a representative person-family purge — **35 statements** (personprofile
+  hard-delete + personsensitive crypto-erase, 2026-07-12) — and asserts a **generous budget (80, ~2×)**
+  as a step-change tripwire (catches an N+1 or a heavy new erase handler, not normal drift). What is
+  **auto-guarded**: the person-family SQL width + the subscription count. What stays **decision-gated**
+  (the whole-fan-out cross-module SQL width isn't measured — it would need most of the composition
+  root): use the count guard + this rule when adding a subscriber.
 - **`notify`** — after-commit, at-least-once, out of process, via the **transactional outbox**
   (`oikumenea.platform_outbox`, migration 0036; D-EventOutbox). The producer enqueues on its own write
   tx (`events.OutboxWriter.PublishNotify`) so the event commits atomically with the write; the dispatcher

@@ -100,6 +100,37 @@ See [patterns.md](patterns.md) (Reversibility, Immutable event log).
 
 ---
 
+## Key rotation (envelope encryption)
+
+Envelope-encrypted `pii:sensitive`/`pii:special` values (D-CryptoProvider, R-22) support **online KEK
+rotation** with no schema change and no downtime — the KEK only wraps per-record DEKs, so rotating it
+re-wraps the DEKs and never touches (or risks) the value ciphertext.
+
+Rotate the **key-encryption key (KEK)**:
+
+1. Generate a new KEK. Set it as the **active** `crypto.local-dev.kek` and move the current one into
+   `crypto.local-dev.previous-keks` (a real KMS backend does the equivalent behind the same seam).
+2. Deploy the config. The service now *writes* new envelopes under the new KEK and can still *read*
+   old ones (the provider tries active-then-previous; AES-GCM authentication picks the right key).
+3. Run `oikumenea rewrap` (operator-host-gated, like `seed`). It re-wraps every stored DEK under the
+   active KEK, flipping `key_ref`; the value ciphertext is untouched. It is **batched, resumable, and
+   idempotent** — safe to re-run, and a `kill -9` mid-run just resumes (each pass only sees rows not
+   yet on the active `key_ref`). Use `--dry-run` first for the per-`key_ref` census.
+4. When `oikumenea rewrap --dry-run` shows every row on the active `key_ref`, **remove the old KEK**
+   from `previous-keks` and redeploy. The old key is now retired.
+
+Rotate the **blind-index HMAC key** (rarer; needed if that key is suspected leaked): set the new
+blind-index key, deploy, and run `oikumenea rewrap --reindex-blind-index`. This pass decrypts each
+value and recomputes its blind index under the new key. **Caveat:** equality lookups on not-yet-
+reindexed rows fail until the pass completes, so run it as a maintenance operation; it is idempotent
+and resumable by re-running.
+
+A suspected KEK compromise is remediated by rotating (steps 1–4); a suspected *DB* compromise where
+ciphertext + wrapped DEKs leaked is remediated by rotating the KEK **and** treating the exposed
+window's plaintext as disclosed (rotation protects future reads, not an attacker's past copy).
+
+---
+
 ## Operator guidance (to land in `UPGRADING.md` at implementation time)
 
 - Always `pg_dump` before upgrading (the operator owns the DB; this is their cheap insurance).

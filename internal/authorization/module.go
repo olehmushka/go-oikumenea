@@ -1,7 +1,7 @@
 // Package authorization is the composition seam for the authorization module
 // (docs/modules/authorization.md) — the centerpiece: RBAC + the PDP. Register builds the PDP over
 // the tenant graph closure (cross-module query), wires the pgx/sqlc repository, the application
-// service, and the transport, seeds the four base roles at boot (D-BaseRoles / D-RIDSeeding), binds
+// service, and the transport, seeds the five base roles at boot (D-BaseRoles / D-RIDSeeding), binds
 // the shared PEP enforcer the other modules' transports use, and registers the AuthorizationService
 // routes.
 //

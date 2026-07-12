@@ -477,19 +477,29 @@ func (s ReferenceService) CreatePublication(ctx context.Context, t bearertoken.T
 	return publicationAPI(v), nil
 }
 
-func (s ReferenceService) ListPublications(ctx context.Context, t bearertoken.Token, query *string) (educationrefapi.PublicationList, error) {
+func (s ReferenceService) ListPublications(ctx context.Context, t bearertoken.Token, query *string, pageSize *int, pageToken *string) (educationrefapi.PublicationPage, error) {
 	if err := s.pep.RequireAnywhere(ctx, t, refReadPerm); err != nil {
-		return educationrefapi.PublicationList{}, err
+		return educationrefapi.PublicationPage{}, err
 	}
-	rows, err := s.app.ListPublications(ctx, strOr(query))
+	limit := pageSizeOr(pageSize)
+	rows, err := s.app.ListPublications(ctx, strOr(query), decodeToken(pageToken), limit)
 	if err != nil {
-		return educationrefapi.PublicationList{}, s.err(ctx, err)
+		return educationrefapi.PublicationPage{}, s.err(ctx, err)
+	}
+	next := ""
+	if len(rows) > limit {
+		rows = rows[:limit]
+		next = encodeToken(rows[len(rows)-1].ID)
 	}
 	out := make([]educationrefapi.Publication, 0, len(rows))
 	for _, v := range rows {
 		out = append(out, publicationAPI(v))
 	}
-	return educationrefapi.PublicationList{Publications: out}, nil
+	page := educationrefapi.PublicationPage{Publications: out}
+	if next != "" {
+		page.NextPageToken = &next
+	}
+	return page, nil
 }
 
 func (s ReferenceService) GetPublication(ctx context.Context, t bearertoken.Token, id string) (educationrefapi.Publication, error) {
@@ -705,19 +715,29 @@ func (s ReferenceService) CreateScholarship(ctx context.Context, t bearertoken.T
 	return scholarshipAPI(v), nil
 }
 
-func (s ReferenceService) ListScholarships(ctx context.Context, t bearertoken.Token, query *string) (educationrefapi.ScholarshipList, error) {
+func (s ReferenceService) ListScholarships(ctx context.Context, t bearertoken.Token, query *string, pageSize *int, pageToken *string) (educationrefapi.ScholarshipPage, error) {
 	if err := s.pep.RequireAnywhere(ctx, t, refReadPerm); err != nil {
-		return educationrefapi.ScholarshipList{}, err
+		return educationrefapi.ScholarshipPage{}, err
 	}
-	rows, err := s.app.ListScholarships(ctx, strOr(query))
+	limit := pageSizeOr(pageSize)
+	rows, err := s.app.ListScholarships(ctx, strOr(query), decodeToken(pageToken), limit)
 	if err != nil {
-		return educationrefapi.ScholarshipList{}, s.err(ctx, err)
+		return educationrefapi.ScholarshipPage{}, s.err(ctx, err)
+	}
+	next := ""
+	if len(rows) > limit {
+		rows = rows[:limit]
+		next = encodeToken(rows[len(rows)-1].ID)
 	}
 	out := make([]educationrefapi.Scholarship, 0, len(rows))
 	for _, v := range rows {
 		out = append(out, scholarshipAPI(v))
 	}
-	return educationrefapi.ScholarshipList{Scholarships: out}, nil
+	page := educationrefapi.ScholarshipPage{Scholarships: out}
+	if next != "" {
+		page.NextPageToken = &next
+	}
+	return page, nil
 }
 
 func (s ReferenceService) GetScholarship(ctx context.Context, t bearertoken.Token, id string) (educationrefapi.Scholarship, error) {

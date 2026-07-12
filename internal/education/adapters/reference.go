@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/olegamysk/go-oikumenea/internal/education/adapters/educationsql"
@@ -423,10 +424,22 @@ func (r *Repository) UpdatePublication(ctx context.Context, id string, in domain
 	return toPublication(row), nil
 }
 
-func (r *Repository) ListPublications(ctx context.Context, query string) ([]domain.Publication, error) {
-	rows, err := r.q.ListPublications(ctx, query)
-	if err != nil {
-		return nil, err
+// ListPublications returns a keyset page of publications. A non-empty query routes to the dedicated
+// trigram SearchPublications (review R-21) so the code/title match stays a GIN bitmap scan; the empty
+// case is the plain keyset list. Both are `SELECT *`, so their rows share the model type.
+func (r *Repository) ListPublications(ctx context.Context, query, after string, lim int) ([]domain.Publication, error) {
+	var rows []educationsql.OikumeneaEducationPublication
+	if q := strings.TrimSpace(query); q != "" {
+		found, err := r.q.SearchPublications(ctx, educationsql.SearchPublicationsParams{Query: pgtype.Text{String: q, Valid: true}, After: after, Lim: int32(lim)})
+		if err != nil {
+			return nil, err
+		}
+		rows = found
+	} else {
+		var err error
+		if rows, err = r.q.ListPublications(ctx, educationsql.ListPublicationsParams{After: after, Lim: int32(lim)}); err != nil {
+			return nil, err
+		}
 	}
 	out := make([]domain.Publication, 0, len(rows))
 	for _, row := range rows {
@@ -613,10 +626,22 @@ func (r *Repository) UpdateScholarship(ctx context.Context, id string, in domain
 	return toScholarship(row), nil
 }
 
-func (r *Repository) ListScholarships(ctx context.Context, query string) ([]domain.Scholarship, error) {
-	rows, err := r.q.ListScholarships(ctx, query)
-	if err != nil {
-		return nil, err
+// ListScholarships returns a keyset page of scholarships. A non-empty query routes to the dedicated
+// trigram SearchScholarships (review R-21) so the code/name match stays a GIN bitmap scan; the empty
+// case is the plain keyset list. Both are `SELECT *`, so their rows share the model type.
+func (r *Repository) ListScholarships(ctx context.Context, query, after string, lim int) ([]domain.Scholarship, error) {
+	var rows []educationsql.OikumeneaEducationScholarship
+	if q := strings.TrimSpace(query); q != "" {
+		found, err := r.q.SearchScholarships(ctx, educationsql.SearchScholarshipsParams{Query: pgtype.Text{String: q, Valid: true}, After: after, Lim: int32(lim)})
+		if err != nil {
+			return nil, err
+		}
+		rows = found
+	} else {
+		var err error
+		if rows, err = r.q.ListScholarships(ctx, educationsql.ListScholarshipsParams{After: after, Lim: int32(lim)}); err != nil {
+			return nil, err
+		}
 	}
 	out := make([]domain.Scholarship, 0, len(rows))
 	for _, row := range rows {

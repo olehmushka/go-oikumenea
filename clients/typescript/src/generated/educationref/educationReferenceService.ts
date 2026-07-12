@@ -24,7 +24,7 @@ import { IProgramList } from "./programList";
 import { IPublication } from "./publication";
 import { IPublicationAuthorship } from "./publicationAuthorship";
 import { IPublicationAuthorshipList } from "./publicationAuthorshipList";
-import { IPublicationList } from "./publicationList";
+import { IPublicationPage } from "./publicationPage";
 import { IQualification } from "./qualification";
 import { IQualificationAward } from "./qualificationAward";
 import { IQualificationAwardList } from "./qualificationAwardList";
@@ -38,7 +38,7 @@ import { IResearchMembershipList } from "./researchMembershipList";
 import { IScholarship } from "./scholarship";
 import { IScholarshipAward } from "./scholarshipAward";
 import { IScholarshipAwardList } from "./scholarshipAwardList";
-import { IScholarshipList } from "./scholarshipList";
+import { IScholarshipPage } from "./scholarshipPage";
 import { IUpsertAccreditationEventRequest } from "./upsertAccreditationEventRequest";
 import { IUpsertCourseRequest } from "./upsertCourseRequest";
 import { IUpsertCurriculumItemRequest } from "./upsertCurriculumItemRequest";
@@ -109,7 +109,7 @@ export interface IEducationReferenceService {
     updateGrant(grantId: string, request: IUpsertGrantRequest): Promise<IGrant>;
     deleteGrant(grantId: string): Promise<void>;
     createPublication(request: IUpsertPublicationRequest): Promise<IPublication>;
-    listPublications(query?: string | null): Promise<IPublicationList>;
+    listPublications(query?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IPublicationPage>;
     getPublication(publicationId: string): Promise<IPublication>;
     updatePublication(publicationId: string, request: IUpsertPublicationRequest): Promise<IPublication>;
     deletePublication(publicationId: string): Promise<void>;
@@ -129,7 +129,7 @@ export interface IEducationReferenceService {
     updateQualification(qualificationId: string, request: IUpsertQualificationRequest): Promise<IQualification>;
     deleteQualification(qualificationId: string): Promise<void>;
     createScholarship(request: IUpsertScholarshipRequest): Promise<IScholarship>;
-    listScholarships(query?: string | null): Promise<IScholarshipList>;
+    listScholarships(query?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IScholarshipPage>;
     getScholarship(scholarshipId: string): Promise<IScholarship>;
     updateScholarship(scholarshipId: string, request: IUpsertScholarshipRequest): Promise<IScholarship>;
     deleteScholarship(scholarshipId: string): Promise<void>;
@@ -812,8 +812,8 @@ export class EducationReferenceService implements IEducationReferenceService {
         );
     }
 
-    public listPublications(query?: string | null): Promise<IPublicationList> {
-        return this.bridge.call<IPublicationList>(
+    public listPublications(query?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IPublicationPage> {
+        return this.bridge.call<IPublicationPage>(
             "EducationReferenceService",
             "listPublications",
             "GET",
@@ -822,6 +822,8 @@ export class EducationReferenceService implements IEducationReferenceService {
             __undefined,
             {
                 "query": query,
+                "pageSize": pageSize,
+                "pageToken": pageToken,
             },
             __undefined,
             __undefined,
@@ -1150,8 +1152,8 @@ export class EducationReferenceService implements IEducationReferenceService {
         );
     }
 
-    public listScholarships(query?: string | null): Promise<IScholarshipList> {
-        return this.bridge.call<IScholarshipList>(
+    public listScholarships(query?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IScholarshipPage> {
+        return this.bridge.call<IScholarshipPage>(
             "EducationReferenceService",
             "listScholarships",
             "GET",
@@ -1160,6 +1162,8 @@ export class EducationReferenceService implements IEducationReferenceService {
             __undefined,
             {
                 "query": query,
+                "pageSize": pageSize,
+                "pageToken": pageToken,
             },
             __undefined,
             __undefined,

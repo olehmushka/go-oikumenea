@@ -1,5 +1,6 @@
 import { IScholarship } from "./scholarship";
 
-export interface IScholarshipList {
+export interface IScholarshipPage {
     'scholarships': Array<IScholarship>;
+    'nextPageToken'?: string | null;
 }

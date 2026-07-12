@@ -63,10 +63,9 @@ WHERE ($1::text = '' OR l.level = $1::text)
   AND ($2::text = '' OR l.family_code = $2::text)
   AND ($3::text = '' OR l.parent_id::text = $3::text)
   AND (NOT $4::bool OR l.parent_id IS NULL)
-  AND ($5::text = '' OR l.name ILIKE '%' || $5::text || '%' OR l.code ILIKE $5::text || '%')
-  AND ($6::text = '' OR l.code > $6::text)
+  AND ($5::text = '' OR l.code > $5::text)
 ORDER BY l.code
-LIMIT $7::int
+LIMIT $6::int
 `
 
 type ListLanguoidsParams struct {
@@ -74,7 +73,6 @@ type ListLanguoidsParams struct {
 	Family   string
 	Parent   string
 	TopLevel bool
-	Q        string
 	After    string
 	Lim      int32
 }
@@ -96,18 +94,19 @@ type ListLanguoidsRow struct {
 // RID-keyed Glottolog languoid forest + ISO-15924 writing-system registry. The catalog is written by
 // the hermenea import pipeline (language-scheme / language-scripts), not here.
 // Languoids in code order, optionally filtered by level, root family (family_code), immediate parent
-// (one tree level), top-level-only, a name/glottocode substring, and a keyset cursor (after: return
-// rows whose code sorts strictly after it, for pagination). The empty-string / false sentinels disable
-// each filter; the limit is clamped by the application. has_children flags whether
-// the node has any non-dialect child, so a tree browser can show an expand affordance only where it
-// leads somewhere (family → language; languages whose only children are dialects read as leaves).
+// (one tree level), top-level-only, and a keyset cursor (after: return rows whose code sorts strictly
+// after it, for pagination). The empty-string / false sentinels disable each filter; the limit is
+// clamped by the application. A text query routes to SearchLanguoids instead (review R-21): folding the
+// trigram predicate behind `(@q = ” OR …)` here would defeat the GIN index under a generic plan.
+// has_children flags whether the node has any non-dialect child, so a tree browser can show an expand
+// affordance only where it leads somewhere (family → language; languages whose only children are
+// dialects read as leaves).
 func (q *Queries) ListLanguoids(ctx context.Context, arg ListLanguoidsParams) ([]ListLanguoidsRow, error) {
 	rows, err := q.db.Query(ctx, listLanguoids,
 		arg.Level,
 		arg.Family,
 		arg.Parent,
 		arg.TopLevel,
-		arg.Q,
 		arg.After,
 		arg.Lim,
 	)
@@ -165,6 +164,89 @@ func (q *Queries) ListWritingSystems(ctx context.Context) ([]ListWritingSystemsR
 			&i.Code,
 			&i.Name,
 			&i.ScriptType,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchLanguoids = `-- name: SearchLanguoids :many
+SELECT l.id, l.code, l.level, l.name, l.parent_id, l.family_code, l.iso639_3, l.macroarea, l.status,
+  EXISTS (
+    SELECT 1 FROM oikumenea.language_languoids c
+    WHERE c.parent_id = l.id AND c.level <> 'dialect'
+  ) AS has_children
+FROM oikumenea.language_languoids l
+WHERE ($1::text = '' OR l.level = $1::text)
+  AND ($2::text = '' OR l.family_code = $2::text)
+  AND ($3::text = '' OR l.parent_id::text = $3::text)
+  AND (NOT $4::bool OR l.parent_id IS NULL)
+  AND l.search_text ILIKE '%' || $5::text || '%'
+  AND ($6::text = '' OR l.code > $6::text)
+ORDER BY l.code
+LIMIT $7::int
+`
+
+type SearchLanguoidsParams struct {
+	Level    string
+	Family   string
+	Parent   string
+	TopLevel bool
+	Q        string
+	After    string
+	Lim      int32
+}
+
+type SearchLanguoidsRow struct {
+	ID          string
+	Code        string
+	Level       string
+	Name        string
+	ParentID    pgtype.Text
+	FamilyCode  pgtype.Text
+	Iso6393     pgtype.Text
+	Macroarea   pgtype.Text
+	Status      string
+	HasChildren bool
+}
+
+// The trigram-served twin of ListLanguoids (review R-21 / D-PersonSearch generalized): a non-empty
+// name/glottocode substring, matched against the STORED search_text haystack unconditionally so the
+// single pg_trgm GIN index serves it as a bitmap scan rather than a per-keystroke sequential scan. Same
+// structural filters, projection and keyset as ListLanguoids so the two rows are convertible in the repo.
+func (q *Queries) SearchLanguoids(ctx context.Context, arg SearchLanguoidsParams) ([]SearchLanguoidsRow, error) {
+	rows, err := q.db.Query(ctx, searchLanguoids,
+		arg.Level,
+		arg.Family,
+		arg.Parent,
+		arg.TopLevel,
+		arg.Q,
+		arg.After,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SearchLanguoidsRow
+	for rows.Next() {
+		var i SearchLanguoidsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Level,
+			&i.Name,
+			&i.ParentID,
+			&i.FamilyCode,
+			&i.Iso6393,
+			&i.Macroarea,
+			&i.Status,
+			&i.HasChildren,
 		); err != nil {
 			return nil, err
 		}

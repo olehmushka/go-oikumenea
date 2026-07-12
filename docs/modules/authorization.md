@@ -40,7 +40,12 @@ Generic, domain-agnostic. Representative set (final list is fixed in code):
 - **unit edges (per graph; D-EdgePerms):** `unit.edges.manage` (broad fallback / custom graphs),
   `unit.edges.command.manage`, `unit.edges.operational.manage`
 - **person:** `person.read`, `person.create`, `person.update`, `person.rank.assign`,
-  `person.lifecycle`, `person.purge`
+  `person.lifecycle`, `person.purge`, `person.merge`
+- **person `pii:special` reads (D-DataScope, R-14):** `person.ethnicity.read`,
+  `person.political_leaning.read`, `person.party_membership.read` — each Art.9 person surface reads on
+  its own code (writes still ride `person.update`), deliberately outside `unit-reader`/`-manager`/`-admin`
+  so no graduated role unlocks the ethnicity + politics + party aggregation; they compose the
+  `sensitive-reader` base role below
 - **membership:** `membership.read`, `membership.create`, `membership.update`
 - **position** (unit-scoped — billets belong to a unit): `position.read`, `position.create`,
   `position.update`
@@ -74,9 +79,10 @@ on read paths.
 
 ## Base roles (seeded)
 
-Four `is_base = TRUE`, **unit-scoped** roles ship seeded (D-BaseRoles), defined in code alongside the
-catalog and assignable with `unit` or `subtree` scope. They graduate like the Kubernetes
-`view`/`edit`/`admin` defaults; the instance-admin plane is the `cluster-admin` analog (not a role).
+Five `is_base = TRUE`, **unit-scoped** roles ship seeded (D-BaseRoles), defined in code alongside the
+catalog and assignable with `unit` or `subtree` scope. The first three graduate like the Kubernetes
+`view`/`edit`/`admin` defaults; `auditor` and `sensitive-reader` are **standalone, additive** roles
+(not part of the ladder); the instance-admin plane is the `cluster-admin` analog (not a role).
 
 | Base role | Permission codes |
 |---|---|
@@ -84,6 +90,7 @@ catalog and assignable with `unit` or `subtree` scope. They graduate like the Ku
 | **`unit-manager`** | *reader* + `unit.create`, `unit.update`, `person.create`, `person.update`, `person.rank.assign`, `membership.create`, `membership.update`, `position.create`, `position.update`, `document.create`, `document.update`, `personal-code.create`, `personal-code.update`, `order.create` |
 | **`unit-admin`** | *manager* + `unit.edges.manage` (broad — covers all graphs incl. custom; D-EdgePerms), `unit.lifecycle`, `person.lifecycle`, `person.purge`, `document.delete`, `personal-code.delete`, `order.issue`, `order.revoke`, `assignment.grant`, `assignment.revoke` |
 | **`auditor`** | `audit.read` only (separation of duties; assign alongside `unit-reader` to resolve referenced entities) |
+| **`sensitive-reader`** | `person.ethnicity.read`, `person.political_leaning.read`, `person.party_membership.read` — the `pii:special` Art.9 person reads (D-DataScope, R-14). Additive and explicit: assign alongside `unit-reader`; deliberately **not** implied by `unit-admin`, so no graduated role unlocks the ethnicity + politics + party aggregation |
 
 Instance-only permissions (`role.create/update/delete`, `rank.scheme.manage`, `graph.manage`,
 `closure.rebuild`, `document.type.manage`, `order.type.manage`, `personal-code-scheme.manage`,

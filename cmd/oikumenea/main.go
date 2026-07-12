@@ -80,8 +80,16 @@ func main() {
 		// pinax reference-plane seed (D-Pinax, M45): manually apply the bundled presets (for
 		// pinax.autoseed:false, or an explicit refresh). Operator-host-gated, like the admin CLIs.
 		os.Exit(runSeedCLI(os.Args[2:]))
+	case "outbox-selftest-enqueue":
+		// Env-gated outbox self-test driver (review R-13, Phase 8): enqueue N notify events onto the
+		// shared outbox for the scripts/scale-e2e.sh two-replica verification. Inert unless OIKUMENEA_OUTBOX_SELFTEST=1.
+		os.Exit(runOutboxSelftestEnqueue(os.Args[2:]))
+	case "rewrap":
+		// Envelope key-rotation maintenance (review R-22 / D-CryptoProvider): re-wrap every DEK under the
+		// active KEK (optionally reindex blind indexes). Operator-host-gated, like the seed/admin CLIs.
+		os.Exit(runRewrapCLI(os.Args[2:]))
 	default:
-		fmt.Fprintf(os.Stderr, "unknown subcommand %q (known: serve, bootstrap-admin, recover-admin, seed)\n", cmd)
+		fmt.Fprintf(os.Stderr, "unknown subcommand %q (known: serve, bootstrap-admin, recover-admin, seed, rewrap)\n", cmd)
 		os.Exit(2)
 	}
 }
@@ -493,6 +501,10 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// exist yet — every domain event is `atomic` today — so it runs live over an empty queue as a proven
 	// seam; consumers register on it (before Seal) as `notify` needs land. Sealed with no handlers today.
 	dispatcher := outbox.New(pool, outbox.Config{})
+	// Env-gated multi-replica self-test seam (review R-13, Phase 8): wires a counting notify handler
+	// (before Seal) only when OIKUMENEA_OUTBOX_SELFTEST=1, so the scale-e2e scenario can prove
+	// cross-replica outbox delivery. A no-op otherwise — no handler, no table, no schema change.
+	registerOutboxSelftest(ctx, pool, dispatcher)
 	dispatcher.Seal()
 	stopDispatcher := dispatcher.Start(ctx)
 	baseCleanup := cleanup
@@ -569,7 +581,16 @@ func buildCipher(install config.Install) (*crypto.Cipher, error) {
 		if err != nil {
 			return nil, werror.Wrap(err, "decode crypto.local-dev.kek (base64)")
 		}
-		kp, err = crypto.NewLocalDevProvider(kek)
+		// Previous KEKs are unwrap-only, retained across a rotation until `rewrap` completes (R-22).
+		previous := make([][]byte, 0, len(c.LocalDev.PreviousKEKs))
+		for i, pk := range c.LocalDev.PreviousKEKs {
+			b, err := base64.StdEncoding.DecodeString(pk)
+			if err != nil {
+				return nil, werror.Wrap(err, "decode crypto.local-dev.previous-keks (base64)", werror.SafeParam("index", i))
+			}
+			previous = append(previous, b)
+		}
+		kp, err = crypto.NewLocalDevProviderWithPrevious(kek, previous)
 		if err != nil {
 			return nil, err
 		}
