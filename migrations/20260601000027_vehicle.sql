@@ -269,7 +269,15 @@ CREATE TABLE oikumenea.vehicle_registrations (
   updated_at          timestamptz NOT NULL DEFAULT now(),
   deleted_at          timestamptz,
   CONSTRAINT vehicle_registrations_rid_shape
-    CHECK (oikumenea.rid_service(id)=17 AND oikumenea.rid_kind(id)=2 AND oikumenea.rid_type(id)=2)
+    CHECK (oikumenea.rid_service(id)=17 AND oikumenea.rid_kind(id)=2 AND oikumenea.rid_type(id)=2),
+  -- The polymorphic owner end carries no FK, so this shape CHECK is its only integrity on the id:
+  -- a 'person' owner must be a person object RID (6,1,1); a 'company' owner must be a company-domain
+  -- tenant ORGANIZATION RID (4,1,6) — M41/D-UnifiedOrgGraph. The ::uuid cast also rejects a malformed
+  -- id. Existence stays app-enforced (R-32, review-2026-09).
+  CONSTRAINT vehicle_registrations_owner_shape CHECK (
+    (owner_kind <> 'person'  OR (oikumenea.rid_service(owner_id::uuid)=6 AND oikumenea.rid_kind(owner_id::uuid)=1 AND oikumenea.rid_type(owner_id::uuid)=1)) AND
+    (owner_kind <> 'company' OR (oikumenea.rid_service(owner_id::uuid)=4 AND oikumenea.rid_kind(owner_id::uuid)=1 AND oikumenea.rid_type(owner_id::uuid)=6))
+  )
 );
 -- A plate number is unique among ACTIVE registrations within a country.
 CREATE UNIQUE INDEX vehicle_registrations_country_plate_active

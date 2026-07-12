@@ -357,7 +357,15 @@ CREATE TABLE oikumenea.company_foundings (
   updated_at  timestamptz NOT NULL DEFAULT now(),
   deleted_at  timestamptz,
   CONSTRAINT company_foundings_rid_shape
-    CHECK (oikumenea.rid_service(id)=15 AND oikumenea.rid_kind(id)=2 AND oikumenea.rid_type(id)=2)
+    CHECK (oikumenea.rid_service(id)=15 AND oikumenea.rid_kind(id)=2 AND oikumenea.rid_type(id)=2),
+  -- The polymorphic founder end carries no FK, so this shape CHECK is its only integrity on the id:
+  -- a 'person' founder must be a person object RID (6,1,1); a 'company' founder must be a company-domain
+  -- tenant ORGANIZATION RID (4,1,6) — M41/D-UnifiedOrgGraph. The ::uuid cast also rejects a malformed
+  -- id. Existence stays app-enforced (R-32, review-2026-09).
+  CONSTRAINT company_foundings_holder_shape CHECK (
+    (holder_kind <> 'person'  OR (oikumenea.rid_service(holder_id::uuid)=6 AND oikumenea.rid_kind(holder_id::uuid)=1 AND oikumenea.rid_type(holder_id::uuid)=1)) AND
+    (holder_kind <> 'company' OR (oikumenea.rid_service(holder_id::uuid)=4 AND oikumenea.rid_kind(holder_id::uuid)=1 AND oikumenea.rid_type(holder_id::uuid)=6))
+  )
 );
 CREATE INDEX company_foundings_company_idx
   ON oikumenea.company_foundings (company_id) WHERE deleted_at IS NULL;
@@ -386,7 +394,15 @@ CREATE TABLE oikumenea.company_shareholdings (
   updated_at     timestamptz NOT NULL DEFAULT now(),
   deleted_at     timestamptz,
   CONSTRAINT company_shareholdings_rid_shape
-    CHECK (oikumenea.rid_service(id)=15 AND oikumenea.rid_kind(id)=2 AND oikumenea.rid_type(id)=3)
+    CHECK (oikumenea.rid_service(id)=15 AND oikumenea.rid_kind(id)=2 AND oikumenea.rid_type(id)=3),
+  -- The polymorphic holder end carries no FK, so this shape CHECK is its only integrity on the id:
+  -- a 'person' holder must be a person object RID (6,1,1); a 'company' holder must be a company-domain
+  -- tenant ORGANIZATION RID (4,1,6) — M41/D-UnifiedOrgGraph. The ::uuid cast also rejects a malformed
+  -- id. Existence stays app-enforced (R-32, review-2026-09).
+  CONSTRAINT company_shareholdings_holder_shape CHECK (
+    (holder_kind <> 'person'  OR (oikumenea.rid_service(holder_id::uuid)=6 AND oikumenea.rid_kind(holder_id::uuid)=1 AND oikumenea.rid_type(holder_id::uuid)=1)) AND
+    (holder_kind <> 'company' OR (oikumenea.rid_service(holder_id::uuid)=4 AND oikumenea.rid_kind(holder_id::uuid)=1 AND oikumenea.rid_type(holder_id::uuid)=6))
+  )
 );
 CREATE INDEX company_shareholdings_company_idx
   ON oikumenea.company_shareholdings (company_id) WHERE deleted_at IS NULL;

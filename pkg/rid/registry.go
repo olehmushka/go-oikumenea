@@ -3,6 +3,7 @@ package rid
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -224,6 +225,43 @@ const (
 	LinkNextOfKin    = "next_of_kin"
 	LinkAssociation  = "associated_with"
 )
+
+// TypeInfo is one entry of the type registry: a (service, kind, type_code) triple and its bare name.
+type TypeInfo struct {
+	Service int
+	Kind    int
+	Code    int
+	Name    string
+}
+
+// Services returns a copy of the (service code -> module name) registry. It is the single source of
+// truth the web RID mirror (web/src/lib/ontology/generated-rid.ts) is generated from.
+func Services() map[int]string {
+	out := make(map[int]string, len(serviceNames))
+	for k, v := range serviceNames {
+		out[k] = v
+	}
+	return out
+}
+
+// Types returns the full type registry sorted by (service, kind, code). It is the single source of
+// truth the web RID mirror is generated from and the ontology-mapping.md coherence test checks against.
+func Types() []TypeInfo {
+	out := make([]TypeInfo, 0, len(typeNames))
+	for k, name := range typeNames {
+		out = append(out, TypeInfo{Service: k.service, Kind: k.kind, Code: k.code, Name: name})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Service != out[j].Service {
+			return out[i].Service < out[j].Service
+		}
+		if out[i].Kind != out[j].Kind {
+			return out[i].Kind < out[j].Kind
+		}
+		return out[i].Code < out[j].Code
+	})
+	return out
+}
 
 // Querier is the minimal pgx surface AssertMatches needs (satisfied by *pgxpool.Pool / pgx.Conn / tx).
 type Querier interface {

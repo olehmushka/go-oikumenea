@@ -15,9 +15,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	auditadapters "github.com/olegamysk/go-oikumenea/internal/audit/adapters"
 	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
@@ -300,6 +302,15 @@ func TestCompanyVertical(t *testing.T) {
 	if len(g.Founders) != 1 || g.Founders[0].HolderID != founder {
 		t.Fatalf("expected one founder, got %+v", g.Founders)
 	}
+
+	// R-32: the DB shape CHECK rejects a wrong-RID-type founder even if an app-layer check is bypassed.
+	// A tenant-org RID (4,1,6) stored under holder_kind='person' must fail at the DB. The failing UPDATE
+	// leaves the founder founding intact for the later person-purge erasure assertion.
+	if _, err := pool.Exec(ctx,
+		`UPDATE oikumenea.company_foundings SET holder_id = oikumenea.new_id(4,1,6)::text WHERE holder_kind='person' AND holder_id=$1`,
+		founder); !isCheckViolation(err, "holder_shape") {
+		t.Fatalf("a tenant-org RID stored under holder_kind='person' must fail the DB shape check, got %v", err)
+	}
 	if len(g.Branches) != 1 || g.Branches[0].BranchID != sub.ID {
 		t.Fatalf("expected one branch, got %+v", g.Branches)
 	}
@@ -360,4 +371,11 @@ func hasHolding(rows []domain.Shareholding, issuerID string) bool {
 		}
 	}
 	return false
+}
+
+// isCheckViolation reports whether err is a Postgres CHECK-constraint violation (SQLSTATE 23514)
+// whose constraint name contains constraintSubstr — used to assert the R-32 holder-shape gate.
+func isCheckViolation(err error, constraintSubstr string) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23514" && strings.Contains(pgErr.ConstraintName, constraintSubstr)
 }

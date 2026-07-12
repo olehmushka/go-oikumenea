@@ -54,6 +54,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/pkg/crypto"
 	"github.com/olegamysk/go-oikumenea/pkg/events"
 	"github.com/olegamysk/go-oikumenea/pkg/personalcode"
+	"github.com/olegamysk/go-oikumenea/pkg/rid"
 	"github.com/palantir/conjure-go-runtime/v2/conjure-go-client/httpclient"
 	werror "github.com/palantir/witchcraft-go-error"
 	"github.com/palantir/witchcraft-go-logging/wlog"
@@ -134,6 +135,14 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	pool, cleanup, err := platform.Bootstrap(ctx, info)
 	if err != nil {
 		return nil, err
+	}
+
+	// Fail fast if the Go RID registry (pkg/rid) has drifted from the migration-seeded
+	// platform_rid_services / platform_rid_types tables: a mismatched registry would mint wrong RIDs
+	// (R-28, review-2026-09). conventions.md § Resource identifiers documents this as boot-asserted.
+	if err := rid.AssertMatches(ctx, pool); err != nil {
+		cleanup()
+		return nil, werror.Wrap(err, "rid registry drifted from platform_rid_* seed")
 	}
 
 	// The PEP enforcer is created UNBOUND and threaded into every module's transport: the PDP it

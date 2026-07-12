@@ -6,6 +6,12 @@
 // Byte layout (0-indexed): byte6 = version(4b)=8 << 4 | kind(4b); byte7 = app; byte8 = variant(2b) <<
 // 6 | service(6b); byte9 = type low 8 bits; byte10 high nibble = type high 4 bits.
 
+// SERVICE_NAMES + RID_TYPES are GENERATED from pkg/rid (the boot-asserted source of truth) by
+// tools/gen-ontology-mirror — never hand-edit them here (R-28, review-2026-09). RID_TYPES carries,
+// per `${service}/${kind}/${typeCode}` triple, the registry token (the key registry.ts is keyed by)
+// and the bare type name (a fallback label for any RID that has no rich registry view).
+import { SERVICE_NAMES, RID_TYPES } from "./generated-rid";
+
 export interface ParsedRid {
   service: string;
   /** retained for backward compatibility; the environment is no longer encoded in the id */
@@ -18,43 +24,6 @@ export interface ParsedRid {
 }
 
 const APP = 1;
-
-const SERVICE_NAMES: Record<number, string> = {
-  1: "platform", 2: "i18n", 3: "audit", 4: "tenant", 5: "rank", 6: "person",
-  7: "membership", 8: "authz", 9: "account", 10: "document", 11: "order",
-  12: "geo", 13: "language", 14: "education",
-  18: "external_organization",
-};
-
-// Token by `${service}/${kind}/${typeCode}` — kind 1=object, 2=link, 3=action. Mirrors the SQL
-// platform_rid_types / pkg/rid registry, but emits the registry.ts key tokens (link__*, rank_system).
-const TYPE_TOKENS: Record<string, string> = {
-  "2/1/1": "translation",
-  "4/1/1": "unit", "4/1/2": "graph", "4/1/3": "unit_lifecycle_event", "4/2/1": "link__parent_of",
-  "5/1/1": "rank_system", "5/1/2": "rank_category", "5/1/3": "rank_type", "5/1/4": "rank",
-  "6/1/1": "person", "6/1/2": "name_variant", "6/1/3": "citizenship", "6/1/4": "residence",
-  "6/1/5": "email", "6/1/6": "phone", "6/1/7": "call_sign", "6/1/8": "messenger_link",
-  "6/1/9": "social_account", "6/1/10": "social_handle",
-  "6/2/1": "link__holds_rank", "6/2/2": "link__partnered_with", "6/2/3": "link__kin_parent_of",
-  "6/2/4": "link__guardian_of", "6/2/5": "link__sponsor_of", "6/2/6": "link__next_of_kin",
-  "6/2/7": "link__associated_with",
-  "7/1/1": "position", "7/2/1": "link__member_of",
-  "8/1/1": "role", "8/2/1": "link__has_role", "8/2/2": "link__instance_admin",
-  "9/1/1": "account", "9/1/2": "external_identity",
-  "10/1/1": "document_type", "10/1/2": "document", "10/1/3": "personal_code",
-  "11/1/1": "order_type", "11/1/2": "order", "11/1/3": "order_item",
-  "13/1/1": "languoid", "13/1/2": "writing_system", "13/1/3": "writing_system_script_type",
-  "13/2/1": "link__written_in",
-  "6/2/8": "link__speaks", "4/2/2": "link__unit_language", "2/2/1": "link__locale_language",
-  // education (M20 / D-Education)
-  "14/1/1": "institution", "14/1/2": "education_unit", "14/1/3": "building", "14/1/4": "group",
-  "14/1/5": "education_position", "14/1/6": "institution_kind", "14/1/7": "unit_kind",
-  "14/1/8": "degree_level",
-  "14/2/1": "link__education_unit_parent_of", "14/2/2": "link__studied_at",
-  "14/2/3": "link__resided_in_dormitory", "14/2/4": "link__holds_education_position",
-  // external organizations (M30 / D-ExternalOrgs)
-  "18/1/1": "external_organization", "18/1/2": "external_org_kind",
-};
 
 interface Decoded {
   app: number;
@@ -92,7 +61,8 @@ export function parseRid(s: string | null | undefined): ParsedRid | null {
   const d = decode(s);
   if (!d || d.version !== 8 || d.app !== APP) return null;
   const kind = KINDS[d.kind] ?? "object";
-  const token = TYPE_TOKENS[`${d.service}/${d.kind}/${d.typeCode}`] ?? (kind === "action" ? "action" : "");
+  const info = RID_TYPES[`${d.service}/${d.kind}/${d.typeCode}`];
+  const token = info?.token ?? (kind === "action" ? "action" : "");
   return {
     service: SERVICE_NAMES[d.service] ?? `s${d.service}`,
     env: "",
@@ -105,6 +75,14 @@ export function parseRid(s: string | null | undefined): ParsedRid | null {
 /** The registry token of a RID (the registry key), or null. */
 export function ridType(s: string | null | undefined): string | null {
   return parseRid(s)?.type || null;
+}
+
+/** The bare, human-readable type name of a RID from the generated registry (e.g. "account" for a
+ *  finance account RID), or null. A fallback label for any RID without a rich registry.ts view. */
+export function ridTypeName(s: string | null | undefined): string | null {
+  const d = decode(s ?? "");
+  if (!d || d.version !== 8 || d.app !== APP) return null;
+  return RID_TYPES[`${d.service}/${d.kind}/${d.typeCode}`]?.name ?? null;
 }
 
 /** Ontology kind of a RID. (Kept compatible: also accepts a bare token string.) */

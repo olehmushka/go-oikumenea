@@ -1,0 +1,40 @@
+# Drift gate for the web console's RID decode tables. web/src/lib/ontology/generated-rid.ts is a
+# derived artifact generated from pkg/rid (the boot-asserted source of truth for the ontology type
+# registry — R-28, review-2026-09), so it must never be hand-edited or left stale. This job
+# regenerates it and fails if the committed copy differs. Go toolchain only — the generator reads
+# pkg/rid and needs no npm.
+name: Ontology mirror
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pkg/rid/**"
+      - "tools/gen-ontology-mirror/**"
+      - "scripts/gen-ontology-mirror.sh"
+      - "web/src/lib/ontology/generated-rid.ts"
+      - ".github/workflows/ontology-mirror.yml"
+  pull_request:
+    paths:
+      - "pkg/rid/**"
+      - "tools/gen-ontology-mirror/**"
+      - "scripts/gen-ontology-mirror.sh"
+      - "web/src/lib/ontology/generated-rid.ts"
+      - ".github/workflows/ontology-mirror.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Fail if web/src/lib/ontology/generated-rid.ts is stale vs pkg/rid (regenerate + commit).
+      - name: Verify the RID mirror is up to date
+        run: scripts/gen-ontology-mirror.sh --verify

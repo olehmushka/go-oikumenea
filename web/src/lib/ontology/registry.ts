@@ -648,8 +648,8 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
   },
 
   // ── M15: rank systems ───────────────────────────────────────────────────────
-  rank_system: {
-    type: "rank_system",
+  system: {
+    type: "system",
     kind: "object",
     label: "Rank system",
     labelPlural: "Rank systems",

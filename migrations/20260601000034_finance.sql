@@ -205,7 +205,15 @@ CREATE TABLE oikumenea.finance_account_holders (
   updated_at     timestamptz NOT NULL DEFAULT now(),
   deleted_at     timestamptz,
   CONSTRAINT finance_account_holders_rid_shape
-    CHECK (oikumenea.rid_service(id)=19 AND oikumenea.rid_kind(id)=2 AND oikumenea.rid_type(id)=1)
+    CHECK (oikumenea.rid_service(id)=19 AND oikumenea.rid_kind(id)=2 AND oikumenea.rid_type(id)=1),
+  -- The polymorphic holder end carries no FK, so this shape CHECK is its only integrity on the id:
+  -- a 'person' holder must be a person object RID (6,1,1); a 'company' holder must be a company-domain
+  -- tenant ORGANIZATION RID (4,1,6) — M41/D-UnifiedOrgGraph: a company IS a tenant org, no own company
+  -- object RID. The ::uuid cast also rejects a malformed id. Existence stays app-enforced (R-32).
+  CONSTRAINT finance_account_holders_holder_shape CHECK (
+    (holder_kind <> 'person'  OR (oikumenea.rid_service(holder_id::uuid)=6 AND oikumenea.rid_kind(holder_id::uuid)=1 AND oikumenea.rid_type(holder_id::uuid)=1)) AND
+    (holder_kind <> 'company' OR (oikumenea.rid_service(holder_id::uuid)=4 AND oikumenea.rid_kind(holder_id::uuid)=1 AND oikumenea.rid_type(holder_id::uuid)=6))
+  )
 );
 CREATE TRIGGER finance_account_holders_set_updated_at
   BEFORE UPDATE ON oikumenea.finance_account_holders

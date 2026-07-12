@@ -17,9 +17,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	auditadapters "github.com/olegamysk/go-oikumenea/internal/audit/adapters"
 	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
@@ -243,6 +245,15 @@ func TestFinanceVertical(t *testing.T) {
 		t.Fatalf("bad PAN (Luhn) should be invalid, got %v", err)
 	}
 
+	// --- 5b. R-32: the DB shape CHECK rejects a wrong-RID-type holder, even when an app-layer
+	//         existence check is bypassed (a future write path / an M49 import). `company` is a
+	//         tenant-org RID (4,1,6); stored under holder_kind='person' it must fail at the DB. ---
+	if _, rawErr := pool.Exec(ctx,
+		`INSERT INTO oikumenea.finance_account_holders (account_id, holder_kind, holder_id) VALUES ($1, 'person', $2)`,
+		acct.ID, company); !isCheckViolation(rawErr, "holder_shape") {
+		t.Fatalf("a company RID stored under holder_kind='person' must fail the DB shape check, got %v", rawErr)
+	}
+
 	// --- 6. a company-SOLELY-held account (no person holder) that must survive a person purge ---
 	corpAcct, err := svc.CreateAccount(ctx, bank, "DE89370400440532013000", "EUR", current)
 	if err != nil {
@@ -329,3 +340,10 @@ func assertEnvelopeIntact(t *testing.T, pool *pgxpool.Pool, accountID string) {
 }
 
 func ptrInt(i int) *int { return &i }
+
+// isCheckViolation reports whether err is a Postgres CHECK-constraint violation (SQLSTATE 23514)
+// whose constraint name contains constraintSubstr — used to assert the R-32 holder-shape gate.
+func isCheckViolation(err error, constraintSubstr string) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23514" && strings.Contains(pgErr.ConstraintName, constraintSubstr)
+}

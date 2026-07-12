@@ -15,9 +15,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	auditadapters "github.com/olegamysk/go-oikumenea/internal/audit/adapters"
 	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
@@ -288,6 +290,15 @@ func TestVehicleVertical(t *testing.T) {
 		t.Fatalf("expected 1 person-owned registration (historical), got %d", len(pv))
 	}
 
+	// --- 9b. R-32: the DB shape CHECK rejects a wrong-RID-type owner even if an app-layer check is
+	//          bypassed. A tenant-org RID (4,1,6) stored under owner_kind='person' must fail at the DB.
+	//          The failing UPDATE leaves the (still-live) person registration intact for section 10. ---
+	if _, err := pool.Exec(ctx,
+		`UPDATE oikumenea.vehicle_registrations SET owner_id = oikumenea.new_id(4,1,6)::text WHERE owner_kind='person' AND owner_id=$1`,
+		person); !isCheckViolation(err, "owner_shape") {
+		t.Fatalf("a tenant-org RID stored under owner_kind='person' must fail the DB shape check, got %v", err)
+	}
+
 	// --- 10. purge erasure: a person purge erases person-owned registrations ---
 	if countRows(t, pool, "SELECT count(*) FROM oikumenea.vehicle_registrations WHERE owner_kind='person' AND owner_id=$1 AND deleted_at IS NULL", person) != 1 {
 		t.Fatalf("precondition: person should have 1 live owned registration")
@@ -309,4 +320,11 @@ func TestVehicleVertical(t *testing.T) {
 	if len(pv2) != 0 {
 		t.Fatalf("expected 0 person vehicles after erasure, got %d", len(pv2))
 	}
+}
+
+// isCheckViolation reports whether err is a Postgres CHECK-constraint violation (SQLSTATE 23514)
+// whose constraint name contains constraintSubstr — used to assert the R-32 owner-shape gate.
+func isCheckViolation(err error, constraintSubstr string) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23514" && strings.Contains(pgErr.ConstraintName, constraintSubstr)
 }
