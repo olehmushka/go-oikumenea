@@ -78,6 +78,7 @@ planned-tier (M16–M45) decisions live in [`roadmap-decisions.md`](roadmap-deci
 | [D-LinkTraversal](#d-linktraversal--one-generic-getobjectlinks-endpoint-as-a-fan-in-over-a-pkgrid-derived-link-descriptor-registry) | One generic getObjectLinks endpoint as a fan-in over a pkg/rid-derived link-descriptor registry |
 | [D-ActionTypes](#d-actiontypes--a-checked-action-type-catalog-behind-the-free-text-audit_logaction) | A checked action-type catalog behind the free-text audit_log.action |
 | [D-ActionInvocation](#d-actioninvocation--an-ir-derived-endpoint-binding-per-action-driving-a-generic-console-action-runner) | An IR-derived endpoint binding per action, driving a generic console action runner |
+| [D-LinkPermissions](#d-linkpermissions--per-relationship-read-codes-gating-the-module-endpoint-and-the-traversal-arm-alike) | Per-relationship read codes gating the module endpoint and the traversal arm alike |
 | [D-Temporal](#d-temporal--a-three-tier-link-history-classification-native-validity-by-default-plus-getobjecthistory-over-the-audit-ledger) | A three-tier link-history classification (native validity by default) plus getObjectHistory over the audit ledger |
 | L-\* locks | [Carried-over locks](#carried-over-locks-settled-earlier-restated-for-self-containment): L-AuthzOnly, L-AccountOptional, L-SingleDomain, L-UnitIsTenant, L-OneRankScheme, L-Visibility, L-OperatorDB, L-UpgradeSafe, L-Conventions |
 
@@ -2322,6 +2323,44 @@ it is wired or exempted. Nested-object bodies (5 actions, all with richer **besp
 JSON editor rather than a recursive schema pipeline — a deliberate bound, since those forms are the
 better UX. `permission`-gating is unchanged: the runner shows every catalogued action, and the PDP
 rejects a POST the subject may not make (surfaced as the endpoint's error).
+
+---
+
+### D-LinkPermissions — Per-relationship read codes gating the module endpoint and the traversal arm alike
+
+**Decision.** A **relationship is its own disclosure**, separate from the objects it connects. Each
+reified relationship that a deployment should be able to withhold gets its **own read permission code**,
+and that one code gates **both** its dedicated module list endpoint **and** its
+[link-traversal](../modules/links.md) arm (D-LinkTraversal) — so the bespoke page and the generic object
+graph can never disagree about what a subject may see. Landed for the **person relationship graph** —
+`person.partnership.read`, `person.kinship.read`, `person.guardianship.read`, `person.sponsorship.read`,
+`person.next_of_kin.read`, `person.association.read`, `person.address.read` — and the two **ownership**
+links: `finance.holder.read` (who holds an account) and `vehicle.registration.read` (who a vehicle is
+registered to). They compose **additive, per-module base roles** (`person-relationship-reader`,
+`finance-graph-reader`, `vehicle-graph-reader`), deliberately **outside** `unit-reader`/`-manager`/
+`-admin` — exactly the D-DataScope (R-14) treatment of the Art.9 set: `person.read` lists people but no
+longer reveals *who they are related to* or *where they live*; `finance.read` lists accounts but not
+*whose* they are.
+
+**Why.** The links engine originally gated every arm on the owning module's coarse read
+(`person.read`, `finance.read`, …) — the named open seam in links.md. That makes the relationship graph
+exactly as disclosed as the directory, which is wrong for a registry/intelligence platform: the personal
+graph (kin, guardians, partners, home address) and asset ownership are the sensitive product, and the
+coarse code conflated "may see this person" with "may see their whole network".
+
+**Consequence.** Two boundaries are ratified rather than papered over. (1) **Aggregate-embedded links
+keep the coarse code**: `holds_rank` and `speaks` are returned *inside* the person aggregate
+(`getPerson`), so a separate arm code would hide them in the graph while the page still showed them —
+incoherent, so they stay on `person.read`. (2) **Structural/reference links keep the coarse code**:
+`parent_of` (the unit org tree), `written_in`, `unit_language`, `curriculum_item`,
+`course_prerequisite`, `manufactured_by`, `has_industry`, `branch_of`, … have no personal subject; a
+per-link code there restricts nothing and a restrictive role would hide the org tree from a plain
+reader. The rule is therefore **"a code per relationship that is a distinct disclosure"**, not a code
+per link table. The narrowing is real and intentional: a subject with only `unit-reader` sees fewer
+links than before and must be granted the additive role — proven by `TestRelationshipCodeGate`
+(cmd/oikumenea) and the base-role invariant `TestRelationshipReadsGatedByOwnCodes`. Remaining modules
+(company ownership, education person-links, religion clergy) follow the same pattern where they warrant
+a distinct disclosure; unwired links keep their module read with no engine change.
 
 ---
 

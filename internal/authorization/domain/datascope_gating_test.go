@@ -65,3 +65,65 @@ func TestSensitivePersonReadsGatedByOwnCodes(t *testing.T) {
 		}
 	}
 }
+
+// TestRelationshipReadsGatedByOwnCodes is the D-LinkPermissions analog of the D-DataScope rule above:
+// the person relationship graph (who someone is partnered with / related to / vouches for / lists as
+// next of kin / associates with, and where they live) carries per-link read codes that (a) are in the
+// closed catalog and unit-scope, (b) are reachable through NO graduated base role — person.read alone
+// no longer discloses the personal graph — and (c) are bundled by exactly the standalone
+// person-relationship-reader role. The SAME codes gate the person module's dedicated list endpoints and
+// the link-traversal arms (cmd/oikumenea/link_descriptors.go), so the page and the object graph agree.
+func TestRelationshipReadsGatedByOwnCodes(t *testing.T) {
+	rels := []Permission{
+		PermPersonPartnershipRead, PermPersonKinshipRead, PermPersonGuardianshipRead,
+		PermPersonSponsorshipRead, PermPersonNextOfKinRead, PermPersonAssociationRead,
+		PermPersonAddressRead,
+	}
+
+	for _, p := range rels {
+		if !IsKnownPermission(string(p)) {
+			t.Fatalf("%q must be in the closed permission catalog", p)
+		}
+		if IsInstanceScope(string(p)) {
+			t.Fatalf("%q must be unit-scope (assignable), not instance-plane", p)
+		}
+	}
+
+	roles := map[string]map[Permission]bool{}
+	for _, br := range BaseRoles() {
+		set := map[Permission]bool{}
+		for _, p := range br.Permissions {
+			set[p] = true
+		}
+		roles[br.Code] = set
+	}
+
+	// No graduated role — nor auditor/sensitive-reader — grants a relationship read: it is additive.
+	for _, code := range []string{
+		BaseRoleUnitReader, BaseRoleUnitManager, BaseRoleUnitAdmin, BaseRoleAuditor, BaseRoleSensitiveReader,
+	} {
+		set, ok := roles[code]
+		if !ok {
+			t.Fatalf("base role %q not seeded", code)
+		}
+		for _, p := range rels {
+			if set[p] {
+				t.Fatalf("base role %q must NOT grant the relationship read %q (D-LinkPermissions)", code, p)
+			}
+		}
+	}
+
+	// person-relationship-reader grants exactly the relationship set — no more, no less.
+	rr, ok := roles[BaseRolePersonRelationshipReader]
+	if !ok {
+		t.Fatalf("person-relationship-reader base role must be seeded")
+	}
+	if len(rr) != len(rels) {
+		t.Fatalf("person-relationship-reader must hold exactly %d permissions, got %d", len(rels), len(rr))
+	}
+	for _, p := range rels {
+		if !rr[p] {
+			t.Fatalf("person-relationship-reader must grant %q", p)
+		}
+	}
+}

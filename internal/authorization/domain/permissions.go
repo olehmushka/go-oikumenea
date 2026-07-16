@@ -55,6 +55,20 @@ const (
 	PermPersonPoliticalLeaningRead Permission = "person.political_leaning.read"
 	PermPersonPartyMembershipRead  Permission = "person.party_membership.read"
 
+	// person relationship graph (D-LinkPermissions) — the person↔person social/family links and the
+	// person's home address. Each reified relationship gets its OWN read code, gating BOTH its dedicated
+	// list endpoint AND the generic link-traversal arm (D-LinkTraversal), so the person page and the
+	// graph can never disagree. Like the Art.9 set these are pii:sensitive and deliberately NOT in
+	// unit-reader: knowing WHO someone is related to (and where they live) is a separate disclosure from
+	// basic directory data. They compose the additive person-relationship-reader base role.
+	PermPersonPartnershipRead  Permission = "person.partnership.read"
+	PermPersonKinshipRead      Permission = "person.kinship.read"
+	PermPersonGuardianshipRead Permission = "person.guardianship.read"
+	PermPersonSponsorshipRead  Permission = "person.sponsorship.read"
+	PermPersonNextOfKinRead    Permission = "person.next_of_kin.read"
+	PermPersonAssociationRead  Permission = "person.association.read"
+	PermPersonAddressRead      Permission = "person.address.read"
+
 	// membership
 	PermMembershipRead   Permission = "membership.read"
 	PermMembershipCreate Permission = "membership.create"
@@ -139,6 +153,11 @@ const (
 	// instance-plane `vehicle.catalog.manage` (below).
 	PermVehicleRead   Permission = "vehicle.read"
 	PermVehicleManage Permission = "vehicle.manage"
+	// The vehicle↔owner registration link (D-LinkPermissions): vehicle.read lists vehicles, but WHO a
+	// vehicle is registered to is a separate disclosure. Gates ListRegistrations + ListPersonVehicles and
+	// the registered_to traversal arm; composes the additive vehicle-graph-reader base role. (The
+	// brand→manufacturer link stays on vehicle.read — reference data, not ownership.)
+	PermVehicleRegistrationRead Permission = "vehicle.registration.read"
 
 	// finance (D-Finance, M44) — bank accounts + payment cards. Authoritative first-party directory data
 	// (not tenant-unit scoped): reads/writes are satisfied anywhere via the PEP; person-held rows are
@@ -146,6 +165,10 @@ const (
 	// `finance.catalog.manage` (below). Holding an account never grants authority (parallel to D-Rank).
 	PermFinanceRead   Permission = "finance.read"
 	PermFinanceManage Permission = "finance.manage"
+	// The account↔holder ownership link (D-LinkPermissions): finance.read lists accounts/cards, but WHO
+	// holds an account is a separate disclosure. Gates ListAccountHolders + ListPersonAccounts and the
+	// held_by traversal arm; composes the additive finance-graph-reader base role.
+	PermFinanceHolderRead Permission = "finance.holder.read"
 
 	// religion (D-Religion, M22) — the multi-faith taxonomy (religion_taxa + closure) + the per-faith
 	// catalogs are instance-global reference data (read anywhere; catalog writes on the instance plane
@@ -260,6 +283,8 @@ var catalog = func() map[Permission]struct{} {
 		PermDomainManage, PermUnitKindManage,
 		PermPersonRead, PermPersonCreate, PermPersonUpdate, PermPersonRankAssign, PermPersonLifecycle, PermPersonPurge, PermPersonMerge,
 		PermPersonEthnicityRead, PermPersonPoliticalLeaningRead, PermPersonPartyMembershipRead,
+		PermPersonPartnershipRead, PermPersonKinshipRead, PermPersonGuardianshipRead, PermPersonSponsorshipRead,
+		PermPersonNextOfKinRead, PermPersonAssociationRead, PermPersonAddressRead,
 		PermMembershipRead, PermMembershipCreate, PermMembershipUpdate,
 		PermPositionRead, PermPositionCreate, PermPositionUpdate,
 		PermDocumentRead, PermDocumentCreate, PermDocumentUpdate, PermDocumentDelete, PermDocumentTypeRead,
@@ -274,8 +299,8 @@ var catalog = func() map[Permission]struct{} {
 		PermLocationRead, PermLocationCreate, PermLocationUpdate,
 		PermEducationRead, PermEducationManage, PermEducationPositionManage, PermEducationEnrollmentManage,
 		PermCompanyRead, PermCompanyManage, PermCompanyPositionManage,
-		PermVehicleRead, PermVehicleManage,
-		PermFinanceRead, PermFinanceManage,
+		PermVehicleRead, PermVehicleManage, PermVehicleRegistrationRead,
+		PermFinanceRead, PermFinanceManage, PermFinanceHolderRead,
 		PermReligionRead, PermReligionOrgManage, PermClergyManage, PermAffiliationManage, PermSiteManage, PermScheduleManage,
 		PermLegalBasisRead, PermLegalBasisManage,
 		PermColorRead, PermColorManage,
@@ -328,11 +353,14 @@ type BaseRole struct {
 
 // Base role codes (seeded; immutable by convention).
 const (
-	BaseRoleUnitReader      = "unit-reader"
-	BaseRoleUnitManager     = "unit-manager"
-	BaseRoleUnitAdmin       = "unit-admin"
-	BaseRoleAuditor         = "auditor"
-	BaseRoleSensitiveReader = "sensitive-reader"
+	BaseRoleUnitReader               = "unit-reader"
+	BaseRoleUnitManager              = "unit-manager"
+	BaseRoleUnitAdmin                = "unit-admin"
+	BaseRoleAuditor                  = "auditor"
+	BaseRoleSensitiveReader          = "sensitive-reader"
+	BaseRolePersonRelationshipReader = "person-relationship-reader"
+	BaseRoleFinanceGraphReader       = "finance-graph-reader"
+	BaseRoleVehicleGraphReader       = "vehicle-graph-reader"
 )
 
 // readerPerms / managerOnlyPerms / adminOnlyPerms compose the graduated base-role sets
@@ -370,6 +398,25 @@ var sensitiveReaderPerms = []Permission{
 	PermPersonEthnicityRead, PermPersonPoliticalLeaningRead, PermPersonPartyMembershipRead,
 }
 
+// personRelationshipReaderPerms is the additive base role for the person relationship graph
+// (D-LinkPermissions): who a person is partnered with / related to / guardian of / vouched for / lists
+// as next of kin / associates with, and where they live. Held together because they are one coherent
+// disclosure (the personal graph), but each is its own code so a deployment can compose a narrower role.
+// Deliberately NOT folded into reader/manager/admin: the relationship graph is a separate disclosure
+// from directory data, exactly like the Art.9 set (D-DataScope). Pair with unit-reader for context.
+var personRelationshipReaderPerms = []Permission{
+	PermPersonPartnershipRead, PermPersonKinshipRead, PermPersonGuardianshipRead,
+	PermPersonSponsorshipRead, PermPersonNextOfKinRead, PermPersonAssociationRead,
+	PermPersonAddressRead,
+}
+
+// financeGraphReaderPerms / vehicleGraphReaderPerms are the per-module ownership-link roles
+// (D-LinkPermissions): the module read lists the assets, these disclose WHO holds/owns them. Additive
+// and per-module so "can see bank accounts exist" and "can see whose they are" are separate grants.
+var financeGraphReaderPerms = []Permission{PermFinanceHolderRead}
+
+var vehicleGraphReaderPerms = []Permission{PermVehicleRegistrationRead}
+
 var adminOnlyPerms = []Permission{
 	PermUnitEdgesManage, // broad form — covers all graphs incl. custom (D-EdgePerms)
 	PermUnitLifecycle,
@@ -392,6 +439,9 @@ func BaseRoles() []BaseRole {
 		{Code: BaseRoleUnitAdmin, Name: "Unit Admin", Description: "Full unit administration within scope: edges, lifecycle, purge, order issue/revoke, and granting assignments.", Permissions: admin},
 		{Code: BaseRoleAuditor, Name: "Auditor", Description: "Read the audit log only (separation of duties; pair with unit-reader to resolve referenced entities).", Permissions: []Permission{PermAuditRead}},
 		{Code: BaseRoleSensitiveReader, Name: "Sensitive Reader", Description: "Read a person's pii:special Art.9 data (ethnicity, inferred political leaning, party membership). Additive and explicit — pair with unit-reader; deliberately not implied by unit-admin (D-DataScope, R-14).", Permissions: sensitiveReaderPerms},
+		{Code: BaseRolePersonRelationshipReader, Name: "Person Relationship Reader", Description: "Read a person's relationship graph (partnerships, kinships, guardianships, sponsorships, next of kin, associations) and home addresses — on the person page and in the object graph alike. Additive and explicit — pair with unit-reader; deliberately not implied by unit-admin (D-LinkPermissions).", Permissions: personRelationshipReaderPerms},
+		{Code: BaseRoleFinanceGraphReader, Name: "Finance Graph Reader", Description: "Read who holds a bank account (the account↔holder ownership link), on the account/person pages and in the object graph alike. Additive — pair with finance.read, which lists the accounts themselves (D-LinkPermissions).", Permissions: financeGraphReaderPerms},
+		{Code: BaseRoleVehicleGraphReader, Name: "Vehicle Graph Reader", Description: "Read who a vehicle is registered to (the vehicle↔owner link), on the vehicle/person pages and in the object graph alike. Additive — pair with vehicle.read, which lists the vehicles themselves (D-LinkPermissions).", Permissions: vehicleGraphReaderPerms},
 	}
 }
 

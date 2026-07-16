@@ -134,7 +134,9 @@ func (s Service) DeleteDistinguishingMark(ctx context.Context, token bearertoken
 }
 
 func (s Service) ListAddresses(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.Address, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+	// Where a person lives is its own disclosure (D-LinkPermissions) — same code as the lives_at
+	// traversal arm, so the person page and the object graph agree.
+	if err := s.pep.RequireAnywhere(ctx, token, permAddressRead); err != nil {
 		return nil, err
 	}
 	as, err := s.profile.ListAddresses(ctx, personID)

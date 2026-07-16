@@ -252,25 +252,28 @@ func descriptors() []linksdomain.Descriptor {
 		// language
 		{Service: rid.SvcLanguage, Code: 1, LinkName: "written_in", Table: "oikumenea.language_writing_systems",
 			A: plain("languoid_id", "languoid"), B: plain("writing_system_id", "writing_system"), Permission: string(authzdomain.PermLanguageRead), AttrCols: []string{"is_primary"}},
-		// person links (all gate on person.read — RequireAnywhere permRead)
+		// person links. holds_rank/speaks keep the coarse person.read: they are directory attributes
+		// returned INSIDE the person aggregate (getPerson), so a separate arm code would hide them in the
+		// graph while the person page still shows them — incoherent (D-LinkPermissions). The relationship
+		// graph + address each carry their OWN code, the same one their dedicated list endpoint requires.
 		{Service: rid.SvcPerson, Code: 1, LinkName: "holds_rank", Table: "oikumenea.person_ranks",
 			A: plain("person_id", "person"), B: plain("rank_id", "rank"), Permission: p},
 		{Service: rid.SvcPerson, Code: 2, LinkName: "partnered_with", Table: "oikumenea.person_partnerships",
-			A: plain("person_id_a", "person"), B: plain("person_id_b", "person"), Permission: p, AttrCols: []string{"status"}},
+			A: plain("person_id_a", "person"), B: plain("person_id_b", "person"), Permission: string(authzdomain.PermPersonPartnershipRead), AttrCols: []string{"status"}},
 		{Service: rid.SvcPerson, Code: 3, LinkName: "kin_parent_of", Table: "oikumenea.person_kinships",
-			A: plain("parent_id", "person"), B: plain("child_id", "person"), Permission: p, AttrCols: []string{"status"}},
+			A: plain("parent_id", "person"), B: plain("child_id", "person"), Permission: string(authzdomain.PermPersonKinshipRead), AttrCols: []string{"status"}},
 		{Service: rid.SvcPerson, Code: 4, LinkName: "guardian_of", Table: "oikumenea.person_guardianships",
-			A: plain("guardian_id", "person"), B: plain("ward_id", "person"), Permission: p, AttrCols: []string{"status"}},
+			A: plain("guardian_id", "person"), B: plain("ward_id", "person"), Permission: string(authzdomain.PermPersonGuardianshipRead), AttrCols: []string{"status"}},
 		{Service: rid.SvcPerson, Code: 5, LinkName: "sponsor_of", Table: "oikumenea.person_sponsorships",
-			A: plain("sponsor_id", "person"), B: plain("sponsored_id", "person"), Permission: p, AttrCols: []string{"status"}},
+			A: plain("sponsor_id", "person"), B: plain("sponsored_id", "person"), Permission: string(authzdomain.PermPersonSponsorshipRead), AttrCols: []string{"status"}},
 		{Service: rid.SvcPerson, Code: 6, LinkName: "next_of_kin", Table: "oikumenea.person_next_of_kin",
-			A: plain("subject_id", "person"), B: plain("contact_id", "person"), Permission: p, AttrCols: []string{"status"}},
+			A: plain("subject_id", "person"), B: plain("contact_id", "person"), Permission: string(authzdomain.PermPersonNextOfKinRead), AttrCols: []string{"status"}},
 		{Service: rid.SvcPerson, Code: 7, LinkName: "associated_with", Table: "oikumenea.person_associations",
-			A: plain("person_id_a", "person"), B: plain("person_id_b", "person"), Permission: p, AttrCols: []string{"status"}},
+			A: plain("person_id_a", "person"), B: plain("person_id_b", "person"), Permission: string(authzdomain.PermPersonAssociationRead), AttrCols: []string{"status"}},
 		{Service: rid.SvcPerson, Code: 8, LinkName: "speaks", Table: "oikumenea.person_languages",
 			A: plain("person_id", "person"), B: plain("language_id", "languoid"), Permission: p},
 		{Service: rid.SvcPerson, Code: 10, LinkName: "lives_at", Table: "oikumenea.person_addresses",
-			A: plain("person_id", "person"), B: plain("location_id", "location"), Permission: p, AttrCols: []string{"role"}},
+			A: plain("person_id", "person"), B: plain("location_id", "location"), Permission: string(authzdomain.PermPersonAddressRead), AttrCols: []string{"role"}},
 		// membership
 		{Service: rid.SvcMembership, Code: 1, LinkName: "member_of", Table: "oikumenea.membership_memberships",
 			A: plain("person_id", "person"), B: plain("unit_id", "unit"), Permission: string(authzdomain.PermMembershipRead), AttrCols: []string{"status"}},
@@ -325,9 +328,9 @@ func descriptors() []linksdomain.Descriptor {
 		{Service: rid.SvcVehicle, Code: 1, LinkName: "manufactured_by", Table: "oikumenea.vehicle_brand_manufacturers",
 			A: plain("brand_id", "vehicle_brand"), B: plain("company_id", "organization"), Permission: string(authzdomain.PermVehicleRead)},
 		{Service: rid.SvcVehicle, Code: 2, LinkName: "registered_to", Table: "oikumenea.vehicle_registrations",
-			A: plain("vehicle_id", "vehicle"), B: personOrCompany("owner_id", "owner_kind"), Permission: string(authzdomain.PermVehicleRead)},
+			A: plain("vehicle_id", "vehicle"), B: personOrCompany("owner_id", "owner_kind"), Permission: string(authzdomain.PermVehicleRegistrationRead)},
 		// finance
 		{Service: rid.SvcFinance, Code: 1, LinkName: "held_by", Table: "oikumenea.finance_account_holders",
-			A: plain("account_id", "account"), B: personOrCompany("holder_id", "holder_kind"), Permission: string(authzdomain.PermFinanceRead)},
+			A: plain("account_id", "account"), B: personOrCompany("holder_id", "holder_kind"), Permission: string(authzdomain.PermFinanceHolderRead)},
 	}
 }

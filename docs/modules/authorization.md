@@ -46,6 +46,16 @@ Generic, domain-agnostic. Representative set (final list is fixed in code):
   its own code (writes still ride `person.update`), deliberately outside `unit-reader`/`-manager`/`-admin`
   so no graduated role unlocks the ethnicity + politics + party aggregation; they compose the
   `sensitive-reader` base role below
+- **person relationship-graph reads (D-LinkPermissions):** `person.partnership.read`,
+  `person.kinship.read`, `person.guardianship.read`, `person.sponsorship.read`,
+  `person.next_of_kin.read`, `person.association.read`, `person.address.read` — each reified
+  relationship reads on its own code (writes still ride `person.update`). The SAME code gates the
+  module's dedicated list endpoint **and** the generic link-traversal arm
+  ([links](links.md)), so the person page and the object graph disclose the same set. Outside
+  `unit-reader`: `person.read` no longer reveals *who a person is related to* or *where they live*;
+  they compose the `person-relationship-reader` base role below. `holds_rank`/`speaks` deliberately
+  stay on `person.read` — they are returned inside the person aggregate, so a separate code would be
+  incoherent
 - **membership:** `membership.read`, `membership.create`, `membership.update`
 - **position** (unit-scoped — billets belong to a unit): `position.read`, `position.create`,
   `position.update`
@@ -79,10 +89,11 @@ on read paths.
 
 ## Base roles (seeded)
 
-Five `is_base = TRUE`, **unit-scoped** roles ship seeded (D-BaseRoles), defined in code alongside the
+Eight `is_base = TRUE`, **unit-scoped** roles ship seeded (D-BaseRoles), defined in code alongside the
 catalog and assignable with `unit` or `subtree` scope. The first three graduate like the Kubernetes
-`view`/`edit`/`admin` defaults; `auditor` and `sensitive-reader` are **standalone, additive** roles
-(not part of the ladder); the instance-admin plane is the `cluster-admin` analog (not a role).
+`view`/`edit`/`admin` defaults; `auditor`, `sensitive-reader` and the three **graph-reader** roles
+(D-LinkPermissions) are **standalone, additive** roles (not part of the ladder); the instance-admin
+plane is the `cluster-admin` analog (not a role).
 
 | Base role | Permission codes |
 |---|---|
@@ -91,6 +102,9 @@ catalog and assignable with `unit` or `subtree` scope. The first three graduate 
 | **`unit-admin`** | *manager* + `unit.edges.manage` (broad — covers all graphs incl. custom; D-EdgePerms), `unit.lifecycle`, `person.lifecycle`, `person.purge`, `document.delete`, `personal-code.delete`, `order.issue`, `order.revoke`, `assignment.grant`, `assignment.revoke` |
 | **`auditor`** | `audit.read` only (separation of duties; assign alongside `unit-reader` to resolve referenced entities) |
 | **`sensitive-reader`** | `person.ethnicity.read`, `person.political_leaning.read`, `person.party_membership.read` — the `pii:special` Art.9 person reads (D-DataScope, R-14). Additive and explicit: assign alongside `unit-reader`; deliberately **not** implied by `unit-admin`, so no graduated role unlocks the ethnicity + politics + party aggregation |
+| **`person-relationship-reader`** | `person.partnership.read`, `person.kinship.read`, `person.guardianship.read`, `person.sponsorship.read`, `person.next_of_kin.read`, `person.association.read`, `person.address.read` — the person relationship graph + home address (D-LinkPermissions). Additive: assign alongside `unit-reader`; `person.read` alone no longer discloses **who** a person is related to or **where** they live, on the person page or in the object graph |
+| **`finance-graph-reader`** | `finance.holder.read` — who holds a bank account (the account↔holder ownership link). Additive: assign alongside `finance.read`, which lists the accounts themselves (D-LinkPermissions) |
+| **`vehicle-graph-reader`** | `vehicle.registration.read` — who a vehicle is registered to (the vehicle↔owner link). Additive: assign alongside `vehicle.read`, which lists the vehicles themselves (D-LinkPermissions) |
 
 Instance-only permissions (`role.create/update/delete`, `rank.scheme.manage`, `graph.manage`,
 `closure.rebuild`, `document.type.manage`, `order.type.manage`, `personal-code-scheme.manage`,

@@ -45,6 +45,17 @@ const (
 	permEthnicityRead        = string(authzdomain.PermPersonEthnicityRead)
 	permPoliticalLeaningRead = string(authzdomain.PermPersonPoliticalLeaningRead)
 	permPartyMembershipRead  = string(authzdomain.PermPersonPartyMembershipRead)
+	// Relationship-graph reads — one code per reified relationship (D-LinkPermissions). The SAME code
+	// gates the dedicated list endpoint here and the link-traversal arm in cmd/oikumenea/link_descriptors.go,
+	// so the person page and the object graph disclose exactly the same set. Composed into the additive
+	// person-relationship-reader base role; NOT in unit-reader.
+	permPartnershipRead  = string(authzdomain.PermPersonPartnershipRead)
+	permKinshipRead      = string(authzdomain.PermPersonKinshipRead)
+	permGuardianshipRead = string(authzdomain.PermPersonGuardianshipRead)
+	permSponsorshipRead  = string(authzdomain.PermPersonSponsorshipRead)
+	permNextOfKinRead    = string(authzdomain.PermPersonNextOfKinRead)
+	permAssociationRead  = string(authzdomain.PermPersonAssociationRead)
+	permAddressRead      = string(authzdomain.PermPersonAddressRead)
 )
 
 // Localization entity-type keys for the translatable contact-kind / platform catalog names (D-i18n).

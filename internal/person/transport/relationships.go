@@ -50,7 +50,7 @@ func directedEndpoints(personID, counterpart, role, fromRole, toRole string) (fr
 }
 
 func (s Service) ListPartnerships(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.Partnership, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+	if err := s.pep.RequireAnywhere(ctx, token, permPartnershipRead); err != nil {
 		return nil, err
 	}
 	rs, err := s.profile.ListPartnerships(ctx, personID)
@@ -83,7 +83,7 @@ func (s Service) UpsertPartnership(ctx context.Context, token bearertoken.Token,
 }
 
 func (s Service) ListKinships(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.Kinship, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+	if err := s.pep.RequireAnywhere(ctx, token, permKinshipRead); err != nil {
 		return nil, err
 	}
 	rs, err := s.profile.ListKinships(ctx, personID)
@@ -115,7 +115,7 @@ func (s Service) UpsertKinship(ctx context.Context, token bearertoken.Token, per
 }
 
 func (s Service) ListGuardianships(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.Guardianship, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+	if err := s.pep.RequireAnywhere(ctx, token, permGuardianshipRead); err != nil {
 		return nil, err
 	}
 	rs, err := s.profile.ListGuardianships(ctx, personID)
@@ -148,7 +148,7 @@ func (s Service) UpsertGuardianship(ctx context.Context, token bearertoken.Token
 }
 
 func (s Service) ListSponsorships(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.Sponsorship, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+	if err := s.pep.RequireAnywhere(ctx, token, permSponsorshipRead); err != nil {
 		return nil, err
 	}
 	rs, err := s.profile.ListSponsorships(ctx, personID)
@@ -182,7 +182,7 @@ func (s Service) UpsertSponsorship(ctx context.Context, token bearertoken.Token,
 }
 
 func (s Service) ListNextOfKin(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.NextOfKin, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+	if err := s.pep.RequireAnywhere(ctx, token, permNextOfKinRead); err != nil {
 		return nil, err
 	}
 	rs, err := s.profile.ListNextOfKin(ctx, personID)
@@ -211,7 +211,7 @@ func (s Service) UpsertNextOfKin(ctx context.Context, token bearertoken.Token, p
 }
 
 func (s Service) ListAssociations(ctx context.Context, token bearertoken.Token, personID string) ([]personapi.Association, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
+	if err := s.pep.RequireAnywhere(ctx, token, permAssociationRead); err != nil {
 		return nil, err
 	}
 	rs, err := s.profile.ListAssociations(ctx, personID)

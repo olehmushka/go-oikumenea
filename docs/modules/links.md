@@ -118,9 +118,18 @@ authorization is entirely per-arm gate + per-row trim —
   store through `localization.NamesByID` (types with no translation rows degrade to a single
   default-locale entry). Comprehensive across all named neighbor types; the RID-tail fallback survives
   only for the genuinely nameless (`curriculum_version`, `vehicle`, `account`).
-- **Per-link-type permission codes:** arms currently gate on the owning module's read permission;
-  where a module later defines a finer per-relationship code, the descriptor's `Permission` swaps to
-  it with no engine change.
+- **Per-link-type permission codes — delivered (D-LinkPermissions).** A relationship that is its own
+  disclosure now carries its own read code, and that code gates **both** the owning module's dedicated
+  list endpoint and this engine's arm — so the bespoke page and the object graph never disagree. Landed
+  for the person relationship graph (`person.partnership.read`, `person.kinship.read`,
+  `person.guardianship.read`, `person.sponsorship.read`, `person.next_of_kin.read`,
+  `person.association.read`, `person.address.read`) and the ownership links (`finance.holder.read`,
+  `vehicle.registration.read`), composing the additive `person-relationship-reader` /
+  `finance-graph-reader` / `vehicle-graph-reader` base roles. Two classes deliberately keep the coarse
+  module read: **aggregate-embedded** links (`holds_rank`, `speaks` — returned inside `getPerson`, so a
+  separate arm code would be incoherent) and **structural/reference** links (`parent_of`, `written_in`,
+  `unit_language`, `curriculum_item`, `manufactured_by`, `has_industry`, … — no personal subject, so a
+  per-link code restricts nothing). Remaining modules follow the same pattern with no engine change.
 - **Currently exempt link types** (8): `locale_language` (text-code end), `has_ethnicity` /
   `party_membership` / `government_position` / `lobbying_rel` (encrypted / free-text / untyped
   polymorphic ends), `has_role` (three-way assignment), `instance_admin` (no neighbor),

@@ -34,6 +34,9 @@ const (
 	readPerm    = string(authzdomain.PermFinanceRead)
 	managePerm  = string(authzdomain.PermFinanceManage)
 	catalogPerm = string(authzdomain.PermFinanceCatalogManage)
+	// The account↔holder ownership link carries its own read code (D-LinkPermissions): finance.read
+	// lists the accounts, this discloses WHOSE they are. Same code gates the held_by traversal arm.
+	holderReadPerm = string(authzdomain.PermFinanceHolderRead)
 )
 
 // FinanceService adapts *application.Service to the generated financeapi.FinanceService interface.
@@ -199,7 +202,7 @@ func (s FinanceService) DeleteAccount(ctx context.Context, token bearertoken.Tok
 // ============================ holders ============================
 
 func (s FinanceService) ListAccountHolders(ctx context.Context, token bearertoken.Token, accountID string) (financeapi.AccountHolderList, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
+	if err := s.pep.RequireAnywhere(ctx, token, holderReadPerm); err != nil {
 		return financeapi.AccountHolderList{}, err
 	}
 	rows, err := s.app.ListAccountHolders(ctx, accountID)
@@ -320,7 +323,7 @@ func (s FinanceService) DeleteCard(ctx context.Context, token bearertoken.Token,
 // ============================ person view ============================
 
 func (s FinanceService) ListPersonAccounts(ctx context.Context, token bearertoken.Token, personID string) (financeapi.PersonAccounts, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
+	if err := s.pep.RequireAnywhere(ctx, token, holderReadPerm); err != nil {
 		return financeapi.PersonAccounts{}, err
 	}
 	rows, err := s.app.ListPersonAccounts(ctx, personID)

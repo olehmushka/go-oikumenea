@@ -35,6 +35,9 @@ const (
 	readPerm    = string(authzdomain.PermVehicleRead)
 	managePerm  = string(authzdomain.PermVehicleManage)
 	catalogPerm = string(authzdomain.PermVehicleCatalogManage)
+	// The vehicle↔owner registration link carries its own read code (D-LinkPermissions): vehicle.read
+	// lists the vehicles, this discloses WHO they are registered to. Same code gates the registered_to arm.
+	registrationReadPerm = string(authzdomain.PermVehicleRegistrationRead)
 )
 
 // VehicleService adapts *application.Service to the generated vehicleapi.VehicleService interface.
@@ -291,7 +294,7 @@ func (s VehicleService) DeleteVehicle(ctx context.Context, token bearertoken.Tok
 // ============================ registrations ============================
 
 func (s VehicleService) ListRegistrations(ctx context.Context, token bearertoken.Token, vehicleID string) (vehicleapi.RegistrationList, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
+	if err := s.pep.RequireAnywhere(ctx, token, registrationReadPerm); err != nil {
 		return vehicleapi.RegistrationList{}, err
 	}
 	rows, err := s.app.ListRegistrationsByVehicle(ctx, vehicleID)
@@ -389,7 +392,7 @@ func (s VehicleService) RemoveManufacturer(ctx context.Context, token bearertoke
 // ============================ person view ============================
 
 func (s VehicleService) ListPersonVehicles(ctx context.Context, token bearertoken.Token, personID string) (vehicleapi.PersonVehicles, error) {
-	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
+	if err := s.pep.RequireAnywhere(ctx, token, registrationReadPerm); err != nil {
 		return vehicleapi.PersonVehicles{}, err
 	}
 	rows, err := s.app.ListPersonVehicles(ctx, personID)

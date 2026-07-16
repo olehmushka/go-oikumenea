@@ -360,10 +360,45 @@ func TestPermissionGate(t *testing.T) {
 		t.Errorf("member_of should be visible with membership.read; got %v", idx["member_of"])
 	}
 	if len(idx["kin_parent_of"]) != 0 {
-		t.Errorf("kin_parent_of must be gated off without person.read; got %v", idx["kin_parent_of"])
+		t.Errorf("kin_parent_of must be gated off without person.kinship.read; got %v", idx["kin_parent_of"])
 	}
 	if len(idx["held_by"]) != 0 {
 		t.Errorf("held_by must be gated off without finance.read; got %v", idx["held_by"])
+	}
+}
+
+// TestRelationshipCodeGate pins the D-LinkPermissions narrowing: the person relationship graph carries
+// its OWN read code, so plain person.read (base unit-reader) no longer discloses who a person is
+// related to — the person-relationship-reader grant does. This is the invariant that makes the per-link
+// codes real rather than cosmetic; it is the same code the person module's ListKinships requires, so
+// the object graph and the person page disclose the same set.
+func TestRelationshipCodeGate(t *testing.T) {
+	w := newLinkWorld(t)
+	unit := w.seedUnit(t)
+	p := w.seedPerson(t, "Rel Subject", unit)
+	child := w.seedPerson(t, "Rel Child", unit)
+	w.seedKinship(t, p, child)
+
+	// A plain person reader: sees the person, NOT the relationship graph.
+	reader := w.seedPerson(t, "Plain Reader", unit)
+	w.seedGrant(t, reader, unit, string(authzdomain.PermPersonRead))
+	res, err := w.engine.GetObjectLinks(linksSubjectCtx(reader), p, "kin_parent_of", 0, "")
+	if err != nil {
+		t.Fatalf("GetObjectLinks(reader): %v", err)
+	}
+	if got := collect(res)["kin_parent_of"]; len(got) != 0 {
+		t.Errorf("person.read alone must NOT disclose the relationship graph; got %v", got)
+	}
+
+	// A relationship reader: the arm opens.
+	relReader := w.seedPerson(t, "Rel Reader", unit)
+	w.seedGrant(t, relReader, unit, string(authzdomain.PermPersonRead), string(authzdomain.PermPersonKinshipRead))
+	res, err = w.engine.GetObjectLinks(linksSubjectCtx(relReader), p, "kin_parent_of", 0, "")
+	if err != nil {
+		t.Fatalf("GetObjectLinks(relReader): %v", err)
+	}
+	if kin := collect(res)["kin_parent_of"]["person"]; !contains(kin, child) {
+		t.Errorf("person.kinship.read should disclose the kin child %s; got %v", child, kin)
 	}
 }
 
@@ -380,7 +415,10 @@ func TestNeighborTrim(t *testing.T) {
 	w.seedKinship(t, p, far)
 
 	subject := w.seedPerson(t, "Trim Viewer", reachUnit)
-	w.seedGrant(t, subject, reachUnit, string(authzdomain.PermPersonRead))
+	// person.read alone no longer opens the kin arm: the relationship graph carries its own code
+	// (D-LinkPermissions, the person-relationship-reader role). This test is about the neighbor TRIM,
+	// so grant the arm and assert the trim still bites.
+	w.seedGrant(t, subject, reachUnit, string(authzdomain.PermPersonRead), string(authzdomain.PermPersonKinshipRead))
 
 	res, err := w.engine.GetObjectLinks(linksSubjectCtx(subject), p, "kin_parent_of", 0, "")
 	if err != nil {
