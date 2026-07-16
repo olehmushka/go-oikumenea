@@ -147,7 +147,7 @@ func (q *Queries) GetAppointment(ctx context.Context, id string) (OikumeneaCompa
 }
 
 const getBeneficiary = `-- name: GetBeneficiary :one
-SELECT id, company_id, person_id, ultimate_pct, declared, created_at, updated_at, deleted_at FROM oikumenea.company_beneficiaries WHERE id = $1 AND deleted_at IS NULL
+SELECT id, company_id, person_id, ultimate_pct, declared, valid_from, valid_to, created_at, updated_at, deleted_at FROM oikumenea.company_beneficiaries WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetBeneficiary(ctx context.Context, id string) (OikumeneaCompanyBeneficiary, error) {
@@ -159,6 +159,8 @@ func (q *Queries) GetBeneficiary(ctx context.Context, id string) (OikumeneaCompa
 		&i.PersonID,
 		&i.UltimatePct,
 		&i.Declared,
+		&i.ValidFrom,
+		&i.ValidTo,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -167,7 +169,7 @@ func (q *Queries) GetBeneficiary(ctx context.Context, id string) (OikumeneaCompa
 }
 
 const getBranch = `-- name: GetBranch :one
-SELECT id, branch_id, parent_id, created_at, updated_at, deleted_at FROM oikumenea.company_branches WHERE id = $1 AND deleted_at IS NULL
+SELECT id, branch_id, parent_id, valid_from, valid_to, created_at, updated_at, deleted_at FROM oikumenea.company_branches WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetBranch(ctx context.Context, id string) (OikumeneaCompanyBranch, error) {
@@ -177,6 +179,8 @@ func (q *Queries) GetBranch(ctx context.Context, id string) (OikumeneaCompanyBra
 		&i.ID,
 		&i.BranchID,
 		&i.ParentID,
+		&i.ValidFrom,
+		&i.ValidTo,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -334,7 +338,7 @@ func (q *Queries) GetShareholding(ctx context.Context, id string) (OikumeneaComp
 }
 
 const getSuccession = `-- name: GetSuccession :one
-SELECT id, predecessor_id, successor_id, kind, effective_on, created_at, updated_at, deleted_at FROM oikumenea.company_successions WHERE id = $1 AND deleted_at IS NULL
+SELECT id, predecessor_id, successor_id, kind, effective_on, valid_from, valid_to, created_at, updated_at, deleted_at FROM oikumenea.company_successions WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetSuccession(ctx context.Context, id string) (OikumeneaCompanySuccession, error) {
@@ -346,6 +350,8 @@ func (q *Queries) GetSuccession(ctx context.Context, id string) (OikumeneaCompan
 		&i.SuccessorID,
 		&i.Kind,
 		&i.EffectiveOn,
+		&i.ValidFrom,
+		&i.ValidTo,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -386,7 +392,7 @@ const insertBeneficiary = `-- name: InsertBeneficiary :one
 
 INSERT INTO oikumenea.company_beneficiaries (company_id, person_id, ultimate_pct, declared)
 VALUES ($1, $2, $3, $4)
-RETURNING id, company_id, person_id, ultimate_pct, declared, created_at, updated_at, deleted_at
+RETURNING id, company_id, person_id, ultimate_pct, declared, valid_from, valid_to, created_at, updated_at, deleted_at
 `
 
 type InsertBeneficiaryParams struct {
@@ -411,6 +417,8 @@ func (q *Queries) InsertBeneficiary(ctx context.Context, arg InsertBeneficiaryPa
 		&i.PersonID,
 		&i.UltimatePct,
 		&i.Declared,
+		&i.ValidFrom,
+		&i.ValidTo,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -422,7 +430,7 @@ const insertBranch = `-- name: InsertBranch :one
 
 INSERT INTO oikumenea.company_branches (parent_id, branch_id)
 VALUES ($1, $2)
-RETURNING id, branch_id, parent_id, created_at, updated_at, deleted_at
+RETURNING id, branch_id, parent_id, valid_from, valid_to, created_at, updated_at, deleted_at
 `
 
 type InsertBranchParams struct {
@@ -438,6 +446,8 @@ func (q *Queries) InsertBranch(ctx context.Context, arg InsertBranchParams) (Oik
 		&i.ID,
 		&i.BranchID,
 		&i.ParentID,
+		&i.ValidFrom,
+		&i.ValidTo,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -449,7 +459,7 @@ const insertCompanyLocation = `-- name: InsertCompanyLocation :one
 
 INSERT INTO oikumenea.company_locations (company_id, location_id, role)
 VALUES ($1, $2, $3)
-RETURNING id, company_id, location_id, role, created_at, updated_at, deleted_at
+RETURNING id, company_id, location_id, role, valid_from, valid_to, created_at, updated_at, deleted_at
 `
 
 type InsertCompanyLocationParams struct {
@@ -467,6 +477,8 @@ func (q *Queries) InsertCompanyLocation(ctx context.Context, arg InsertCompanyLo
 		&i.CompanyID,
 		&i.LocationID,
 		&i.Role,
+		&i.ValidFrom,
+		&i.ValidTo,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -514,7 +526,7 @@ const insertIndustryAssignment = `-- name: InsertIndustryAssignment :one
 
 INSERT INTO oikumenea.company_industry_assignments (company_id, industry_class_id, is_primary)
 VALUES ($1, $2, $3)
-RETURNING id, company_id, industry_class_id, is_primary, created_at, updated_at, deleted_at
+RETURNING id, company_id, industry_class_id, is_primary, valid_from, valid_to, created_at, updated_at, deleted_at
 `
 
 type InsertIndustryAssignmentParams struct {
@@ -532,6 +544,8 @@ func (q *Queries) InsertIndustryAssignment(ctx context.Context, arg InsertIndust
 		&i.CompanyID,
 		&i.IndustryClassID,
 		&i.IsPrimary,
+		&i.ValidFrom,
+		&i.ValidTo,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -707,7 +721,7 @@ const insertSuccession = `-- name: InsertSuccession :one
 
 INSERT INTO oikumenea.company_successions (predecessor_id, successor_id, kind, effective_on)
 VALUES ($1, $2, COALESCE($3, 'reorganization'), $4)
-RETURNING id, predecessor_id, successor_id, kind, effective_on, created_at, updated_at, deleted_at
+RETURNING id, predecessor_id, successor_id, kind, effective_on, valid_from, valid_to, created_at, updated_at, deleted_at
 `
 
 type InsertSuccessionParams struct {
@@ -732,6 +746,8 @@ func (q *Queries) InsertSuccession(ctx context.Context, arg InsertSuccessionPara
 		&i.SuccessorID,
 		&i.Kind,
 		&i.EffectiveOn,
+		&i.ValidFrom,
+		&i.ValidTo,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -798,7 +814,7 @@ func (q *Queries) ListAppointmentsByPerson(ctx context.Context, personID string)
 }
 
 const listBeneficiariesByCompany = `-- name: ListBeneficiariesByCompany :many
-SELECT id, company_id, person_id, ultimate_pct, declared, created_at, updated_at, deleted_at FROM oikumenea.company_beneficiaries
+SELECT id, company_id, person_id, ultimate_pct, declared, valid_from, valid_to, created_at, updated_at, deleted_at FROM oikumenea.company_beneficiaries
 WHERE company_id = $1 AND deleted_at IS NULL ORDER BY ultimate_pct DESC NULLS LAST, created_at
 `
 
@@ -817,6 +833,8 @@ func (q *Queries) ListBeneficiariesByCompany(ctx context.Context, companyID stri
 			&i.PersonID,
 			&i.UltimatePct,
 			&i.Declared,
+			&i.ValidFrom,
+			&i.ValidTo,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
@@ -832,7 +850,7 @@ func (q *Queries) ListBeneficiariesByCompany(ctx context.Context, companyID stri
 }
 
 const listBeneficiariesByPerson = `-- name: ListBeneficiariesByPerson :many
-SELECT id, company_id, person_id, ultimate_pct, declared, created_at, updated_at, deleted_at FROM oikumenea.company_beneficiaries
+SELECT id, company_id, person_id, ultimate_pct, declared, valid_from, valid_to, created_at, updated_at, deleted_at FROM oikumenea.company_beneficiaries
 WHERE person_id = $1 AND deleted_at IS NULL ORDER BY created_at
 `
 
@@ -851,6 +869,8 @@ func (q *Queries) ListBeneficiariesByPerson(ctx context.Context, personID string
 			&i.PersonID,
 			&i.UltimatePct,
 			&i.Declared,
+			&i.ValidFrom,
+			&i.ValidTo,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
@@ -866,7 +886,7 @@ func (q *Queries) ListBeneficiariesByPerson(ctx context.Context, personID string
 }
 
 const listBranchesByParent = `-- name: ListBranchesByParent :many
-SELECT id, branch_id, parent_id, created_at, updated_at, deleted_at FROM oikumenea.company_branches
+SELECT id, branch_id, parent_id, valid_from, valid_to, created_at, updated_at, deleted_at FROM oikumenea.company_branches
 WHERE parent_id = $1 AND deleted_at IS NULL ORDER BY created_at
 `
 
@@ -883,6 +903,8 @@ func (q *Queries) ListBranchesByParent(ctx context.Context, parentID string) ([]
 			&i.ID,
 			&i.BranchID,
 			&i.ParentID,
+			&i.ValidFrom,
+			&i.ValidTo,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
@@ -965,7 +987,7 @@ func (q *Queries) ListCompanies(ctx context.Context, arg ListCompaniesParams) ([
 }
 
 const listCompanyLocationsByCompany = `-- name: ListCompanyLocationsByCompany :many
-SELECT id, company_id, location_id, role, created_at, updated_at, deleted_at FROM oikumenea.company_locations
+SELECT id, company_id, location_id, role, valid_from, valid_to, created_at, updated_at, deleted_at FROM oikumenea.company_locations
 WHERE company_id = $1 AND deleted_at IS NULL ORDER BY created_at
 `
 
@@ -983,6 +1005,8 @@ func (q *Queries) ListCompanyLocationsByCompany(ctx context.Context, companyID s
 			&i.CompanyID,
 			&i.LocationID,
 			&i.Role,
+			&i.ValidFrom,
+			&i.ValidTo,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
@@ -1102,7 +1126,7 @@ func (q *Queries) ListHoldingsByCompanyHolder(ctx context.Context, companyID str
 }
 
 const listIndustriesByCompany = `-- name: ListIndustriesByCompany :many
-SELECT id, company_id, industry_class_id, is_primary, created_at, updated_at, deleted_at FROM oikumenea.company_industry_assignments
+SELECT id, company_id, industry_class_id, is_primary, valid_from, valid_to, created_at, updated_at, deleted_at FROM oikumenea.company_industry_assignments
 WHERE company_id = $1 AND deleted_at IS NULL ORDER BY is_primary DESC, created_at
 `
 
@@ -1120,6 +1144,8 @@ func (q *Queries) ListIndustriesByCompany(ctx context.Context, companyID string)
 			&i.CompanyID,
 			&i.IndustryClassID,
 			&i.IsPrimary,
+			&i.ValidFrom,
+			&i.ValidTo,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
@@ -1415,7 +1441,7 @@ func (q *Queries) ListShareholdingsByPersonHolder(ctx context.Context, personID 
 }
 
 const listSuccessionsByCompany = `-- name: ListSuccessionsByCompany :many
-SELECT id, predecessor_id, successor_id, kind, effective_on, created_at, updated_at, deleted_at FROM oikumenea.company_successions
+SELECT id, predecessor_id, successor_id, kind, effective_on, valid_from, valid_to, created_at, updated_at, deleted_at FROM oikumenea.company_successions
 WHERE (predecessor_id = $1 OR successor_id = $1) AND deleted_at IS NULL ORDER BY created_at
 `
 
@@ -1434,6 +1460,8 @@ func (q *Queries) ListSuccessionsByCompany(ctx context.Context, companyID string
 			&i.SuccessorID,
 			&i.Kind,
 			&i.EffectiveOn,
+			&i.ValidFrom,
+			&i.ValidTo,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,

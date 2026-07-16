@@ -10,6 +10,7 @@
 //
 //	VisiblePersonIDsForSubject  ≡ persons with an active membership in ReachSet(grants).Readable
 //	SubjectCanReadPerson        ≡ per-person membership of that same set
+//	SubjectReadablePersonsAmong ≡ the batch form of the same probe (D-VisibilityScope, R-30)
 //	ReadableUnitsForSubjectAmong ≡ ReachSet(grants).Readable ∩ candidates
 //
 // The two known parity traps are exercised by construction: a directory-only subtree grant
@@ -136,6 +137,14 @@ func TestReachDifferential(t *testing.T) {
 				t.Fatalf("seed=%d world=%d SubjectCanReadPerson(%s) = %v, oracle %v", seed, wi, p, got, wantPersons[p])
 			}
 		}
+
+		// (b2) Batch person probe over every world person (D-VisibilityScope person scope, R-30):
+		// must equal the point probe's oracle set exactly.
+		gotAmong, err := memRepo.SubjectReadablePersonsAmong(ctx, w.subject, w.persons)
+		if err != nil {
+			t.Fatalf("seed=%d world=%d SubjectReadablePersonsAmong: %v", seed, wi, err)
+		}
+		assertSameSet(t, seed, wi, "SubjectReadablePersonsAmong", gotAmong, wantPersons)
 
 		// (c) Batch unit probe over every world unit.
 		gotUnits, err := authzRepo.ReadableUnitsForSubjectAmong(ctx, w.subject, w.units)

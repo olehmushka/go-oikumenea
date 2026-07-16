@@ -26,6 +26,21 @@ type AuditService interface {
 	Query(ctx context.Context, authHeader bearertoken.Token, actorPersonIdArg *string, actorTypeArg *AuditActorType, targetTypeArg *string, targetIdArg *string, unitIdArg *string, actionArg *string, outcomeArg *AuditOutcome, sinceArg *datetime.DateTime, untilArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditEntryPage, error)
 	// Read one entry by its Action RID. Returns Audit:AuditEntryNotFound when absent.
 	Get(ctx context.Context, authHeader bearertoken.Token, entryIdArg string) (AuditEntry, error)
+	/*
+	   The full action-type catalog (D-ActionTypes, R-29), sorted by (service, code). Lets a client
+	   — e.g. the console's object-actions panel — discover what actions exist and their gating
+	   permission, instead of hard-coding them. Static registry read; requires only an
+	   authenticated subject.
+	*/
+	ListActionTypes(ctx context.Context, authHeader bearertoken.Token) ([]ActionType, error)
+	/*
+	   The reverse-chronological audit history of one object (D-Temporal tier b, R-31): every
+	   recorded change to the object with `target_id = {rid}`, token-paginated. Gated by
+	   `audit.read`; the `before`/`after` change payloads are **redacted** (null, `redacted=true`)
+	   unless the caller also holds the sensitive-reader capability, because a folded per-object
+	   timeline can surface pii up to the D-DataScope special-category ceiling.
+	*/
+	GetObjectHistory(ctx context.Context, authHeader bearertoken.Token, ridArg string, pageSizeArg *int, pageTokenArg *string) (ObjectHistory, error)
 }
 
 // RegisterRoutesAuditService registers handlers for the AuditService endpoints with a witchcraft wrouter.
@@ -40,6 +55,12 @@ func RegisterRoutesAuditService(router wrouter.Router, impl AuditService, router
 	}
 	if err := resource.Get("Get", "/audit/v1/audit/{entryId}", httpserver.NewJSONHandler(handler.HandleGet, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add get route")
+	}
+	if err := resource.Get("ListActionTypes", "/audit/v1/action-types", httpserver.NewJSONHandler(handler.HandleListActionTypes, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listActionTypes route")
+	}
+	if err := resource.Get("GetObjectHistory", "/audit/v1/objects/{rid}/history", httpserver.NewJSONHandler(handler.HandleGetObjectHistory, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getObjectHistory route")
 	}
 	return nil
 }
@@ -145,6 +166,53 @@ func (a *auditServiceHandler) HandleGet(rw http.ResponseWriter, req *http.Reques
 		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"entryId\" not present")
 	}
 	respArg, err := a.impl.Get(req.Context(), bearertoken.Token(authHeader), entryIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (a *auditServiceHandler) HandleListActionTypes(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	respArg, err := a.impl.ListActionTypes(req.Context(), bearertoken.Token(authHeader))
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (a *auditServiceHandler) HandleGetObjectHistory(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	ridArg, ok := pathParams["rid"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"rid\" not present")
+	}
+	var pageSizeArg *int
+	if pageSizeArgStr := req.URL.Query().Get("pageSize"); pageSizeArgStr != "" {
+		pageSizeArgInternal, err := strconv.Atoi(pageSizeArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"pageSize\" as integer")
+		}
+		pageSizeArg = &pageSizeArgInternal
+	}
+	var pageTokenArg *string
+	if pageTokenArgStr := req.URL.Query().Get("pageToken"); pageTokenArgStr != "" {
+		pageTokenArgInternal := pageTokenArgStr
+		pageTokenArg = &pageTokenArgInternal
+	}
+	respArg, err := a.impl.GetObjectHistory(req.Context(), bearertoken.Token(authHeader), ridArg, pageSizeArg, pageTokenArg)
 	if err != nil {
 		return err
 	}

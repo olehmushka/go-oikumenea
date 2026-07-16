@@ -3,6 +3,7 @@ import { EmptyState, ErrorNotice, Mono, PageHeader, Pill, Table } from "@/compon
 import { Localized } from "@/components/Localized";
 import { T } from "@/components/T";
 import { AddLocale, ToggleLocale } from "./LocaleForms";
+import { TranslationEditor } from "./TranslationEditor";
 import type { LocaleLanguage, LocaleList } from "@/lib/api/types";
 
 export default async function LocalizationPage() {
@@ -64,6 +65,15 @@ export default async function LocalizationPage() {
 
       <div className="mt-6 max-w-md">
         <AddLocale />
+      </div>
+
+      <div className="mt-8">
+        <TranslationEditor
+          locales={(list?.locales ?? [])
+            .filter((l) => l.enabled)
+            .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+            .map((l) => ({ code: l.code, name: l.name }))}
+        />
       </div>
 
       <h2 className="mb-2 mt-8 text-sm font-semibold text-slate-900"><T>Canonical languages</T></h2>

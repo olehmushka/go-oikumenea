@@ -1,8 +1,9 @@
 import { oikumenea } from "@/lib/api/server";
 import { EmptyState, ErrorNotice, Mono, Pager, PageHeader, Pill, Table } from "@/components/ui";
-import { LookupForm } from "@/components/LookupForm";
+import { ActionFilter } from "@/components/ActionFilter";
+import { ActionParamsList } from "@/components/ActionParamsList";
 import { T } from "@/components/T";
-import type { AuditEntryPage } from "@/lib/api/types";
+import type { ActionType, AuditEntryPage } from "@/lib/api/types";
 
 export default async function AuditPage({
   searchParams,
@@ -11,9 +12,11 @@ export default async function AuditPage({
 }) {
   const { action, outcome, pageToken } = await searchParams;
   let page: AuditEntryPage | null = null;
+  let actionTypes: ActionType[] = [];
   let error: unknown = null;
   try {
-    page = await oikumenea().then((ok) =>
+    const ok = await oikumenea();
+    [page, actionTypes] = await Promise.all([
       ok.audit.query(
         undefined, // actorPersonId
         undefined, // actorType
@@ -27,7 +30,8 @@ export default async function AuditPage({
         50,
         pageToken ?? undefined,
       ),
-    );
+      ok.audit.listActionTypes().catch(() => [] as ActionType[]),
+    ]);
   } catch (e) {
     error = e;
   }
@@ -47,14 +51,44 @@ export default async function AuditPage({
       />
 
       <div className="mb-5 max-w-md">
-        <LookupForm
-          basePath="/audit"
-          param="action"
-          label="Filter by action"
-          placeholder="e.g. assignment.grant"
-          current={action}
-        />
+        {actionTypes.length > 0 ? (
+          <ActionFilter current={action} actions={actionTypes} />
+        ) : null}
       </div>
+
+      {actionTypes.length > 0 ? (
+        <details className="mb-5">
+          <summary className="cursor-pointer text-sm font-medium text-indigo-600 hover:underline">
+            <T>Action-type catalog</T> ({actionTypes.length})
+          </summary>
+          <p className="mb-3 mt-2 text-xs text-slate-500">
+            <T>Every registered action code (D-ActionTypes, R-29): the machine catalog behind the free-text audit action, with its owning module and gating write permission.</T>
+          </p>
+          <Table
+            head={
+              <>
+                <th className="th"><T>Code</T></th>
+                <th className="th"><T>Service</T></th>
+                <th className="th"><T>Target type</T></th>
+                <th className="th"><T>Permission</T></th>
+                <th className="th"><T>Parameters</T></th>
+              </>
+            }
+          >
+            {[...actionTypes]
+              .sort((a, b) => a.code.localeCompare(b.code))
+              .map((a) => (
+                <tr key={a.code}>
+                  <td className="td align-top"><Mono>{a.code}</Mono></td>
+                  <td className="td align-top text-slate-600">{a.service}</td>
+                  <td className="td align-top text-slate-600">{a.targetType}</td>
+                  <td className="td align-top"><Mono>{a.permission}</Mono></td>
+                  <td className="td align-top"><ActionParamsList params={a.parameters} /></td>
+                </tr>
+              ))}
+          </Table>
+        </details>
+      ) : null}
 
       {error ? <ErrorNotice error={error} /> : null}
       {page && (page.entries?.length ?? 0) === 0 && <EmptyState><T>No audit entries.</T></EmptyState>}

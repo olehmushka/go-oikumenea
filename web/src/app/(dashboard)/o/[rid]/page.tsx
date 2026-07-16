@@ -6,8 +6,12 @@ import { ObjectHeader } from "@/components/ontology/ObjectHeader";
 import { ObjectActions } from "@/components/ontology/ObjectActions";
 import { PropertyList } from "@/components/ontology/PropertyList";
 import { LinksPanel, type LinkGroup } from "@/components/ontology/LinksPanel";
+import { HistoryPanel } from "@/components/ontology/HistoryPanel";
+import { ActionParamsList } from "@/components/ActionParamsList";
 import { RecordVisit } from "@/components/ontology/RecordVisit";
+import type { ActionType } from "@/lib/api/types";
 import { OBJECT_TYPES, type Row } from "@/lib/ontology/registry";
+import { toLinkGroups } from "@/lib/ontology/links";
 import { parseRid } from "@/lib/ontology/rid";
 import { T } from "@/components/T";
 
@@ -46,20 +50,17 @@ export default async function ObjectPage({ params }: { params: Promise<{ rid: st
   let obj: Row | null = null;
   let error: unknown = null;
   let groups: LinkGroup[] = [];
+  let actions: ActionType[] = [];
   try {
     const ok = await oikumenea();
     obj = await ok.request<Row>("GET", def.get(rid));
-    const linkDefs = (def.links ?? []).filter((l) => l.path(rid) !== "");
-    groups = await Promise.all(
-      linkDefs.map(async (l): Promise<LinkGroup> => {
-        try {
-          const res = await ok.request("GET", l.path(rid));
-          return { label: l.label, targetType: l.targetType, rows: l.parse(res, rid) };
-        } catch {
-          return { label: l.label, targetType: l.targetType, rows: [] };
-        }
-      }),
-    );
+    // One generic traversal call replaces the former per-collection fan-out (D-LinkTraversal, R-27).
+    const linked = await ok.links.getObjectLinks(rid, undefined, 200);
+    groups = toLinkGroups(linked.groups);
+    // The type's registered actions + parameter schemas (D-ActionTypes, R-29) — enumerated from the
+    // endpoint, not registry.ts. Read-only discoverability; invocation stays on the bespoke forms.
+    const cat = await ok.audit.listActionTypes().catch(() => [] as ActionType[]);
+    actions = cat.filter((a) => a.targetType === def.type);
   } catch (e) {
     error = e;
   }
@@ -96,6 +97,33 @@ export default async function ObjectPage({ params }: { params: Promise<{ rid: st
           <LinksPanel groups={groups} />
         </Card>
       </div>
+
+      {actions.length > 0 ? (
+        <Card className="mt-4">
+          <h2 className="mb-1 text-sm font-semibold text-slate-900"><T>Actions</T></h2>
+          <p className="mb-3 text-xs text-slate-500">
+            <T>Registered actions for this type and their parameter schemas (D-ActionTypes, R-29), enumerated from the catalog. Read-only — run them from the object's dedicated forms.</T>
+          </p>
+          <ul className="divide-y divide-slate-100">
+            {actions.map((a) => (
+              <li key={a.code} className="py-2">
+                <div className="flex items-center gap-2">
+                  <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-700">{a.code}</code>
+                  <span className="text-xs text-slate-400">{a.permission}</span>
+                </div>
+                <div className="mt-1">
+                  <ActionParamsList params={a.parameters} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
+
+      <Card className="mt-4">
+        <h2 className="mb-3 text-sm font-semibold text-slate-900"><T>History</T></h2>
+        <HistoryPanel rid={rid} />
+      </Card>
     </div>
   );
 }

@@ -196,6 +196,8 @@ type OikumeneaCompanyBeneficiary struct {
 	// pii:none
 	UltimatePct pgtype.Numeric
 	Declared    bool
+	ValidFrom   pgtype.Timestamptz
+	ValidTo     pgtype.Timestamptz
 	CreatedAt   pgtype.Timestamptz
 	UpdatedAt   pgtype.Timestamptz
 	DeletedAt   pgtype.Timestamptz
@@ -208,6 +210,8 @@ type OikumeneaCompanyBranch struct {
 	BranchID string
 	// pii:none
 	ParentID  string
+	ValidFrom pgtype.Timestamptz
+	ValidTo   pgtype.Timestamptz
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
@@ -237,6 +241,8 @@ type OikumeneaCompanyIndustryAssignment struct {
 	IndustryClassID string
 	// pii:none
 	IsPrimary bool
+	ValidFrom pgtype.Timestamptz
+	ValidTo   pgtype.Timestamptz
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
@@ -285,6 +291,8 @@ type OikumeneaCompanyLocation struct {
 	LocationID string
 	// pii:none
 	Role      string
+	ValidFrom pgtype.Timestamptz
+	ValidTo   pgtype.Timestamptz
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
@@ -386,6 +394,8 @@ type OikumeneaCompanySuccession struct {
 	// pii:none
 	Kind        string
 	EffectiveOn pgtype.Date
+	ValidFrom   pgtype.Timestamptz
+	ValidTo     pgtype.Timestamptz
 	CreatedAt   pgtype.Timestamptz
 	UpdatedAt   pgtype.Timestamptz
 	DeletedAt   pgtype.Timestamptz
@@ -1370,6 +1380,8 @@ type OikumeneaPersonAssociation struct {
 	Kind string
 	// pii:none
 	Status    string
+	ValidFrom pgtype.Timestamptz
+	ValidTo   pgtype.Timestamptz
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
@@ -1743,6 +1755,8 @@ type OikumeneaPersonKinship struct {
 	ChildID string
 	// pii:none
 	Status    string
+	ValidFrom pgtype.Timestamptz
+	ValidTo   pgtype.Timestamptz
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
@@ -1761,6 +1775,8 @@ type OikumeneaPersonLanguage struct {
 	CefrLevel pgtype.Text
 	// pii:basic
 	IsNative  bool
+	ValidFrom pgtype.Timestamptz
+	ValidTo   pgtype.Timestamptz
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
@@ -1868,6 +1884,8 @@ type OikumeneaPersonNextOfKin struct {
 	Priority int32
 	// pii:none
 	Status    string
+	ValidFrom pgtype.Timestamptz
+	ValidTo   pgtype.Timestamptz
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
@@ -2122,6 +2140,8 @@ type OikumeneaPersonRank struct {
 	SystemID string
 	// pii:none
 	RankID    string
+	ValidFrom pgtype.Timestamptz
+	ValidTo   pgtype.Timestamptz
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
@@ -2656,6 +2676,8 @@ type OikumeneaReligionOrgClassification struct {
 	IsPrimary  bool
 	Source     pgtype.Text
 	Confidence pgtype.Text
+	ValidFrom  pgtype.Timestamptz
+	ValidTo    pgtype.Timestamptz
 	CreatedAt  pgtype.Timestamptz
 	UpdatedAt  pgtype.Timestamptz
 	DeletedAt  pgtype.Timestamptz
@@ -2769,6 +2791,8 @@ type OikumeneaReligionSite struct {
 	Visibility      string
 	PublicPrecision string
 	IsPrimary       bool
+	ValidFrom       pgtype.Timestamptz
+	ValidTo         pgtype.Timestamptz
 	CreatedAt       pgtype.Timestamptz
 	UpdatedAt       pgtype.Timestamptz
 	DeletedAt       pgtype.Timestamptz
@@ -3023,6 +3047,8 @@ type OikumeneaTenantUnitEdge struct {
 	ParentID string
 	// pii:none
 	ChildID   string
+	ValidFrom pgtype.Timestamptz
+	ValidTo   pgtype.Timestamptz
 	CreatedAt pgtype.Timestamptz
 	// pii:basic
 	CreatedBy pgtype.Text

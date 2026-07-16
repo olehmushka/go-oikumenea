@@ -10,7 +10,7 @@ import {
   type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { resolveLinkGroups } from "@/lib/api/browser";
+import { resolveNeighbors } from "@/lib/api/browser";
 import { api } from "@/lib/api/client";
 import { OBJECT_TYPES, type Row } from "@/lib/ontology/registry";
 import { parseRid } from "@/lib/ontology/rid";
@@ -54,13 +54,12 @@ export function GraphExplorer({ rid }: { rid: string }) {
   const [edges, setEdges] = useState<Edge[]>([]);
   const expanded = useRef<Set<string>>(new Set());
 
-  const addNeighbors = useCallback(async (id: string, type: string, cx: number, cy: number) => {
+  const addNeighbors = useCallback(async (id: string, _type: string, cx: number, cy: number) => {
     if (expanded.current.has(id)) return;
     expanded.current.add(id);
-    const def = OBJECT_TYPES[type];
-    if (!def) return;
-    const groups = await resolveLinkGroups(def, id);
-    const fresh = groups.flatMap((g) => g.rows.map((r) => ({ ...r, targetType: g.targetType })));
+    // One flat search-around call per node (D-LinkTraversal, R-27) — works for ANY type straight from
+    // its RID, so a link table added by a new milestone expands here without touching the registry.
+    const fresh = await resolveNeighbors(id);
 
     setNodes((prev) => {
       const known = new Set(prev.map((n) => n.id));

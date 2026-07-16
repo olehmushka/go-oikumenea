@@ -185,6 +185,9 @@ CREATE TABLE oikumenea.religion_sites (
   public_precision text NOT NULL DEFAULT 'exact'
                    CHECK (public_precision IN ('exact','street','neighborhood','city','hidden')),
   is_primary       boolean NOT NULL DEFAULT false,
+  -- native validity (D-Temporal, R-31): the interval this site-of holds; NULL valid_to = active.
+  valid_from       timestamptz NOT NULL DEFAULT now(),
+  valid_to         timestamptz CHECK (valid_to IS NULL OR valid_to >= valid_from),
   created_at       timestamptz NOT NULL DEFAULT now(),
   updated_at       timestamptz NOT NULL DEFAULT now(),
   deleted_at       timestamptz,

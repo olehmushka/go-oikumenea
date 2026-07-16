@@ -8,6 +8,97 @@ import (
 	"github.com/palantir/pkg/safeyaml"
 )
 
+/*
+One argument of an action type, projected from its Conjure request field (D-ActionTypes, R-29).
+Descriptive only — used for discoverability (the console action catalog), not write-time
+validation.
+*/
+type ActionParam struct {
+	// The request field name, e.g. subjectPersonId, scope.
+	Name string `json:"name"`
+	// A display type token derived from the Conjure field type, e.g. string, rid, datetime, enum, list<string>.
+	Type string `json:"type"`
+	// True when the field is non-optional in the request.
+	Required bool `json:"required"`
+	// The field's documentation from the contract, when present.
+	Docs *string `json:"docs,omitempty"`
+}
+
+func (o ActionParam) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ActionParam) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+One registered action type (D-ActionTypes, review-2026-09 R-29): the machine catalog behind
+the free-text `audit_log.action`. `code` is what an audit entry's `action` carries.
+*/
+type ActionType struct {
+	// Stable dotted action code, e.g. assignment.grant, unit.transition.
+	Code string `json:"code"`
+	// The owning RID service (module) name, e.g. authz, tenant, person.
+	Service string `json:"service"`
+	// The object type the action targets (the audit target_type), e.g. unit, person, education.
+	TargetType string `json:"targetType"`
+	// The gating write permission (module-granular), e.g. assignment.grant, education.manage.
+	Permission string `json:"permission"`
+	/*
+	   The action's argument schema (D-ActionTypes, review-2026-09 R-29 parameter-schema seam),
+	   single-sourced from the Conjure request type that carries the action's inputs and derived
+	   from the IR — never hand-authored. Empty for actions with no request body (deletes,
+	   lifecycle POSTs, imports) or not yet annotated (the catalog is expand-only).
+	*/
+	Parameters []ActionParam `json:"parameters"`
+}
+
+func (o ActionType) MarshalJSON() ([]byte, error) {
+	if o.Parameters == nil {
+		o.Parameters = make([]ActionParam, 0)
+	}
+	type _tmpActionType ActionType
+	return safejson.Marshal(_tmpActionType(o))
+}
+
+func (o *ActionType) UnmarshalJSON(data []byte) error {
+	type _tmpActionType ActionType
+	var rawActionType _tmpActionType
+	if err := safejson.Unmarshal(data, &rawActionType); err != nil {
+		return err
+	}
+	if rawActionType.Parameters == nil {
+		rawActionType.Parameters = make([]ActionParam, 0)
+	}
+	*o = ActionType(rawActionType)
+	return nil
+}
+
+func (o ActionType) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ActionType) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // One immutable audit record — who did what to which target, when, in which request.
 type AuditEntry struct {
 	// The Action RID (action__<type>) this entry records; the audit log is the action ledger.
@@ -86,6 +177,103 @@ func (o AuditEntryPage) MarshalYAML() (interface{}, error) {
 }
 
 func (o *AuditEntryPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+A paginated, reverse-chronological history of one object, read from the audit ledger
+(D-Temporal tier b, R-31). Serves the "what did this record say / who changed it when"
+question a Gotham-style dossier timeline needs.
+*/
+type ObjectHistory struct {
+	// The object RID whose history this is (the audit target_id filter).
+	Rid           string               `json:"rid"`
+	Events        []ObjectHistoryEvent `json:"events"`
+	NextPageToken *string              `json:"nextPageToken,omitempty"`
+	/*
+	   True when this response withheld before/after payloads because the caller lacks the
+	   sensitive-reader capability. The timeline itself is unaffected.
+	*/
+	Redacted bool `json:"redacted"`
+}
+
+func (o ObjectHistory) MarshalJSON() ([]byte, error) {
+	if o.Events == nil {
+		o.Events = make([]ObjectHistoryEvent, 0)
+	}
+	type _tmpObjectHistory ObjectHistory
+	return safejson.Marshal(_tmpObjectHistory(o))
+}
+
+func (o *ObjectHistory) UnmarshalJSON(data []byte) error {
+	type _tmpObjectHistory ObjectHistory
+	var rawObjectHistory _tmpObjectHistory
+	if err := safejson.Unmarshal(data, &rawObjectHistory); err != nil {
+		return err
+	}
+	if rawObjectHistory.Events == nil {
+		rawObjectHistory.Events = make([]ObjectHistoryEvent, 0)
+	}
+	*o = ObjectHistory(rawObjectHistory)
+	return nil
+}
+
+func (o ObjectHistory) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ObjectHistory) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+One dated change in an object's history (D-Temporal, review-2026-09 R-31): a projection of an
+audit row keyed to this object's RID. `before`/`after` carry the change payload and are
+**redacted (null) unless the caller holds the sensitive-reader capability** — the timeline
+(when/what/who) is always visible under `audit.read`.
+*/
+type ObjectHistoryEvent struct {
+	// When the change was recorded (the audit row's createdAt).
+	At datetime.DateTime `json:"at"`
+	// The action code that produced the change, e.g. person.rank.assign, unit.transition.
+	Action    string         `json:"action"`
+	ActorType AuditActorType `json:"actorType"`
+	// The person who acted; present iff actorType is PERSON.
+	ActorPersonId *string `json:"actorPersonId,omitempty"`
+	// Originating source for SYSTEM actions; present iff actorType is SYSTEM.
+	Subsystem *string `json:"subsystem,omitempty"`
+	// The acted-on entity kind (the audit target_type), e.g. person, unit.
+	TargetType string       `json:"targetType"`
+	Outcome    AuditOutcome `json:"outcome"`
+	// Correlation key shared with logs, metrics, and traces.
+	RequestId string `json:"requestId"`
+	// State before the change; null when redacted (caller lacks sensitive-reader) or absent.
+	Before *interface{} `json:"before,omitempty"`
+	// State after the change; null when redacted (caller lacks sensitive-reader) or absent.
+	After *interface{} `json:"after,omitempty"`
+}
+
+func (o ObjectHistoryEvent) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ObjectHistoryEvent) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

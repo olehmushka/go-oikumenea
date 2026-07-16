@@ -1,0 +1,100 @@
+# Unified cross-type object search (review-2026-09 R-26 / D-UnifiedSearch).
+#
+# ONE endpoint over all registered searchable object types, implemented as a fan-in over the
+# per-module trigram search queries (D-PersonSearch + the R-21 generalization) — no global index
+# table. Modules register a SearchProvider + a D-VisibilityScope Visibility at composition time
+# (internal/search); per request each provider is SKIPPED entirely unless the subject holds its
+# read permission, and returned rows are trimmed through the registered visibility scope, so a hit
+# set is never wider than what the owning module's own endpoints would serve.
+#
+# Hits are type-generic: the RID is self-describing (D-ResourceIdentifiers packs service/kind/type
+# into the UUID), so a hit needs no per-type response shape; `objectType` is the ontology registry
+# token (the same vocabulary as pkg/rid / the generated web mirror). RID-bearing fields travel as
+# canonical UUID text `string` (Conjure reserves the `rid` primitive for its own `ri.` format).
+#
+# Pagination is a composite keyset token: base64url JSON carrying one cursor per non-exhausted
+# provider. Providers run in fixed lexicographic type order; results are grouped by type (trigram
+# search has no relevance rank — deterministic order instead). Generated Go lands in
+# internal/conjure and is never hand-edited.
+types:
+  definitions:
+    default-package: oikumenea.search
+    objects:
+      SearchHit:
+        docs: One matched object, type-erased down to what every object shares.
+        fields:
+          rid:
+            type: string
+            docs: The object's RID (canonical UUID text; self-describes service/kind/type).
+          objectType:
+            type: string
+            docs: The ontology registry token for the hit's type (e.g. person, languoid, company).
+          label:
+            type: string
+            docs: Primary display line (person display name, catalog name, organization name, …).
+          snippet:
+            type: optional<string>
+            docs: Optional secondary line (code, MGRS, title detail) — provider-chosen.
+      SearchResultPage:
+        docs: Hits grouped by object type in fixed lexicographic type order.
+        fields:
+          hits: list<SearchHit>
+          nextPageToken:
+            type: optional<string>
+            docs: Opaque composite keyset token; absent when every selected provider is exhausted.
+    errors:
+      QueryTooShort:
+        docs: The query must be at least 2 characters (mirrors the console palette's gate).
+        namespace: Search
+        code: INVALID_ARGUMENT
+        safe-args:
+          minLength: integer
+      UnknownObjectType:
+        docs: A `types` filter entry names no registered searchable object type.
+        namespace: Search
+        code: INVALID_ARGUMENT
+        safe-args:
+          objectType: string
+      InvalidPageToken:
+        docs: The page token is not a token this endpoint issued.
+        namespace: Search
+        code: INVALID_ARGUMENT
+        safe-args: {}
+services:
+  SearchService:
+    name: Search Service
+    package: oikumenea.search
+    base-path: /search/v1
+    docs: |
+      Unified cross-type object search (D-UnifiedSearch). Requires only an authenticated subject;
+      authorization is per-provider (read-permission gate) + per-row (visibility trim).
+    default-auth: header
+    endpoints:
+      searchObjects:
+        http: GET /objects
+        docs: |
+          Search all (or the filtered subset of) registered object types for `query`. Each selected
+          provider contributes up to perTypeLimit hits per page; pageToken continues every
+          non-exhausted provider's keyset.
+        args:
+          query:
+            type: string
+            param-type: query
+            docs: Case-insensitive substring query (min 2 chars) over each type's search haystack.
+          types:
+            type: optional<string>
+            param-type: query
+            docs: Comma-separated objectType tokens to restrict the search to (default all).
+          perTypeLimit:
+            type: optional<integer>
+            param-type: query
+            docs: Max hits per object type per page (default 5, clamped to [1, 50]).
+          pageSize:
+            type: optional<integer>
+            param-type: query
+            docs: Max total hits per page (default 25, clamped to [1, 100]).
+          pageToken:
+            type: optional<string>
+            param-type: query
+            docs: Opaque composite keyset token from a previous page.
+        returns: SearchResultPage

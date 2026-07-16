@@ -59,6 +59,21 @@ function RadiusSearch() {
   const [err, setErr] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [rows, setRows] = useState<Location[] | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  async function onDelete(id: string) {
+    if (!window.confirm("Delete this location? This fails if the location is still in use.")) return;
+    setDeleting(id);
+    setErr(null);
+    try {
+      await api.location.deleteLocation(id);
+      setRows((prev) => (prev ? prev.filter((r) => r.id !== id) : prev));
+    } catch (e) {
+      setErr(e);
+    } finally {
+      setDeleting(null);
+    }
+  }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -116,6 +131,7 @@ function RadiusSearch() {
               <th className="th"><T>Locality</T></th>
               <th className="th text-right"><T>Lat</T></th>
               <th className="th text-right"><T>Lng</T></th>
+              <th className="th"></th>
             </>
           }
         >
@@ -129,6 +145,16 @@ function RadiusSearch() {
               <td className="td">{l.locality ?? "—"}</td>
               <td className="td text-right"><Mono>{l.latitude}</Mono></td>
               <td className="td text-right"><Mono>{l.longitude}</Mono></td>
+              <td className="td text-right">
+                <button
+                  type="button"
+                  className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
+                  disabled={deleting === l.id}
+                  onClick={() => onDelete(l.id)}
+                >
+                  {deleting === l.id ? <T>Deleting…</T> : <T>Delete</T>}
+                </button>
+              </td>
             </tr>
           ))}
         </Table>

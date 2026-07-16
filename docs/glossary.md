@@ -320,6 +320,21 @@ separate super-admin entity (D-Audit, OQ-1).
 **Effective permissions.** The union of all permissions a person holds on a given unit,
 computed by the PDP at decision time.
 
+**Visibility scope.** The **one** shared row-level read-trim interface
+(`ReadableIDs(subject, candidates) → readable subset`; **D-VisibilityScope**, review-2026-09
+R‑30) with exactly three canonical shapes matching the system's real policies: **person scope**
+(the D-PersonReadScope membership semi-join), **unit scope** (owning-unit mapping + the shadow
+gate), **catalog scope** (the read-permission gate is the whole decision, no row trim). Every
+object type on a cross-type surface (unified search, generic links) registers one at composition
+— an unregistered type fails boot, never serves untrimmed. Additive: per-module endpoints keep
+their own code paths; the contract is differential equality with them.
+
+**Unified search.** The one cross-type `searchObjects` endpoint
+([search](modules/search.md), **D-UnifiedSearch**, review-2026-09 R‑26): a **fan-in over the
+per-module trigram search queries** (no global index), each provider skipped unless the subject
+holds its read permission and trimmed through its visibility scope. Hits are `{rid, objectType,
+label, snippet}` — the RID is self-describing, so one response shape serves every type.
+
 ---
 
 ## Localization (i18n)
@@ -401,6 +416,13 @@ entity's **code** stays the stable *business* key. Distinct kinds for Objects, L
 lives in `audit_log.action`, not the RID. Each [audit](modules/audit.md) row is keyed by the Action RID
 of the write it records — the audit log is the action ledger.
 
+**Action type / action-type catalog (D-ActionTypes).** The machine catalog (`pkg/action`) of every
+named audited write — each `{code, service, targetType, permission}` keyed by the dotted
+`audit_log.action` code. It is the read-time contract the free-text action name lacked: audit writes
+are validated against it, the [ontology-mapping §3.1](ontology-mapping.md) table is generated from it
+and coherence-checked, and `AuditService.listActionTypes` serves it. Expand-only; the Action RID
+stays generic kind=action/type 0.
+
 **Service / type codes.** The numeric `service` (per module) and per-service `type` codes packed into
 every RID, held in the seeded `platform_rid_services` / `platform_rid_types` registries and mirrored in
 `pkg/rid`. The owning module is the RID's `service`; environment is no longer encoded (the URN
@@ -409,6 +431,18 @@ every RID, held in the seeded `platform_rid_services` / `platform_rid_types` reg
 **Audit log.** An append-only record of permission-sensitive actions, correlated by
 `request_id`. Never updated or deleted (guarded by a `reject_mutation()` trigger). Owned by
 [audit](modules/audit.md).
+
+**History tier (D-Temporal).** The classification every reified Link declares at design time:
+**(a) native validity** — the default for relationship/state Links, which carry `valid_from`/`valid_to`
+(or grandfathered `effective_from/to` · `granted_at/revoked_at` · `founded_on` · `awarded_on`);
+**(b) object history** — read back from the audit ledger via `getObjectHistory`, no per-row interval;
+**(c) history-exempt** — a reference/structural association deliberately undated (a closed six-member
+set). Enforced by a build-time drift guard; the boundary R-31 made the ontology declare instead of
+re-deciding ad hoc per milestone.
+
+**Object history / `getObjectHistory`.** The reverse-chronological, token-paginated read of one
+object's audited changes (audit rows with `target_id = rid`), gated by `audit.read` with `before`/`after`
+change payloads **redacted unless the caller holds the sensitive-reader capability** (D-Temporal, R-31).
 
 **Append-only / immutable event log.** A table whose rows are never updated or deleted;
 current state is derived or kept in a separate mutable overlay. Used for audit and unit
@@ -701,10 +735,10 @@ brings the deployment into **PCI-DSS cardholder-data scope**.
 Account · Account holder · Action (type) · Action RID · Affiliation type · Append-only event log · Atomic permission · Audit log · Authority-bearing · Background worker · Bank / financial institution · Bank account · Beneficial owner (UBO) · Blind index ·
 Call sign · Canonical envelope · Canonical graph · Citizenship · Clergy credential · Clergy grade · Clergy office · Closure · Code · Company (legal entity) · Country · Data ingestion / connector · Document · Document attribute schema · Document type · Dormant seam ·
 Education reference layer · Educational institution · Effective permissions · Email (contact) · Email type · Envelope encryption · Environment slot · Expand/contract · External identity · Finance module ·
-Gate · Graph (named hierarchy) · Hermenea · Instance admin · Languoid · Level · Link (type) · Link RID · Locale · Location · Membership · Name (CLDR) ·
-Object (type) · Object-set · Ontology · Order ·
+Gate · Graph (named hierarchy) · Hermenea · History tier · Instance admin · Languoid · Level · Link (type) · Link RID · Locale · Location · Membership · Name (CLDR) ·
+Object (type) · Object history · Object-set · Ontology · Order ·
 Order category · Order item · Order type · Org kind · Payment card · PDP · PDP context · Person · person core / personprofile / personsensitive · Personal code ·
 Personal-code scheme · Phone (contact) · Phone type · PII tier · Pinax (reference plane) · Position · `origin` (seeded/operator) · Public precision · Public/shadow · Rank · Rank category · Rank preset ·
 Rank scheme · Rank system · Rank type · Religion (faith) · Religious affiliation · Religious organization · Religious site · Residence · Reversibility · RID (Resource Identifier) · RLS backstop · Role · Role assignment · Scope ·
-Service principal (hermenea-importer) · Service schedule · Service type · Site type · Stage board · Standardized grade (NATO STANAG 2116) · Sub-tradition · Subdivision · Supported language · TODO-N · Tradition family · Translation · Transliteration · Unit · Unit graph (DAG) · Unit kind ·
-Vacancy · Vehicle · Vehicle brand · Vehicle registration · Visibility · Writing system
+Service principal (hermenea-importer) · Service schedule · Service type · Site type · Stage board · Standardized grade (NATO STANAG 2116) · Sub-tradition · Subdivision · Supported language · TODO-N · Tradition family · Translation · Transliteration · Unified search · Unit · Unit graph (DAG) · Unit kind ·
+Vacancy · Vehicle · Vehicle brand · Vehicle registration · Visibility · Visibility scope · Writing system

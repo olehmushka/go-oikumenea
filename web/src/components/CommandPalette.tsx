@@ -3,50 +3,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Command } from "cmdk";
-import {
-  EXPLORABLE_TYPES,
-  OBJECT_TYPES,
-  rowSearchText,
-  typeDef,
-  type ObjectTypeDef,
-  type Row,
-} from "@/lib/ontology/registry";
-import { parseRid } from "@/lib/ontology/rid";
+import { EXPLORABLE_TYPES, typeDef } from "@/lib/ontology/registry";
+import { parseRid, ridType } from "@/lib/ontology/rid";
 import { api } from "@/lib/api/client";
 import { pushRecent } from "@/lib/ontology/recents";
 import { useLocale } from "@/lib/locale";
 import { setActiveLocale } from "@/lib/i18n";
 import { tg } from "@/lib/messages";
+import type { search as searchapi } from "oikumenea-client";
 
-// ── fan-out object cache (no server-side search exists; we fetch one page per type and filter in the
-// browser). Module-level so it survives palette re-opens within a session; short TTL keeps it fresh. ──
-type Cache = { at: number; byType: Record<string, Row[]> };
-let CACHE: Cache | null = null;
-let INFLIGHT: Promise<Cache> | null = null;
-const TTL_MS = 60_000;
-
-async function loadIndex(): Promise<Cache> {
-  if (CACHE && Date.now() - CACHE.at < TTL_MS) return CACHE;
-  if (INFLIGHT) return INFLIGHT;
-  INFLIGHT = (async () => {
-    const byType: Record<string, Row[]> = {};
-    await Promise.all(
-      EXPLORABLE_TYPES.map(async (def) => {
-        try {
-          const search = def.list!.search ?? "?pageSize=100";
-          const res = await api.request(`GET`, `${def.list!.path}${search}`);
-          byType[def.type] = def.list!.parse(res).rows;
-        } catch {
-          byType[def.type] = [];
-        }
-      }),
-    );
-    CACHE = { at: Date.now(), byType };
-    INFLIGHT = null;
-    return CACHE;
-  })();
-  return INFLIGHT;
-}
+// Object search is SERVER-SIDE (D-UnifiedSearch, review-2026-09 R-26): one call to
+// SearchService.searchObjects fans in every registered type's trigram index, permission-gated and
+// visibility-trimmed per type — replacing the old client-side first-page-per-type fan-out cache,
+// which silently missed anything beyond each type's first 100 rows.
+const PER_TYPE_LIMIT = 5;
+const PAGE_SIZE = 40;
 
 // ── static quick actions ──
 interface QuickAction {
@@ -69,22 +40,25 @@ const QUICK_ACTIONS: QuickAction[] = [
   },
 ];
 
-interface ObjectHit {
-  def: ObjectTypeDef;
-  row: Row;
+// The badge text for a hit: the registry label when the type is known to the console, else the
+// server's objectType token (a type can be searchable before it has a web registry entry).
+function hitKind(hit: searchapi.ISearchHit): string {
+  const token = ridType(hit.rid) ?? hit.objectType;
+  return typeDef(token)?.label ?? hit.objectType;
 }
 
 export function CommandPalette() {
   const router = useRouter();
-  // Subscribe to the UI locale so result titles/subtitles re-render in the chosen locale on switch
-  // (the cached rows keep their full `locale → text` maps; only the picked label changes).
+  // Subscribe to the UI locale so navigation/action labels re-render on switch (object hit labels
+  // come from the server in the default locale).
   const { locale } = useLocale();
   setActiveLocale(locale);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [hits, setHits] = useState<ObjectHit[]>([]);
+  const [hits, setHits] = useState<searchapi.ISearchHit[]>([]);
   const [loading, setLoading] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const requestSeq = useRef(0);
 
   // ⌘K / Ctrl-K toggles the palette anywhere.
   useEffect(() => {
@@ -103,32 +77,29 @@ export function CommandPalette() {
     };
   }, []);
 
-  // Warm the fan-out index when the palette opens.
-  useEffect(() => {
-    if (!open) return;
-    setLoading(true);
-    loadIndex().finally(() => setLoading(false));
-  }, [open]);
-
-  // Filter the cached objects as the user types (debounced; client-side substring match).
+  // Query the unified search endpoint as the user types (debounced; stale responses dropped).
   useEffect(() => {
     if (debounce.current) clearTimeout(debounce.current);
-    const q = query.trim().toLowerCase();
+    const q = query.trim();
     if (q.length < 2) {
       setHits([]);
+      setLoading(false);
       return;
     }
+    const seq = ++requestSeq.current;
+    setLoading(true);
     debounce.current = setTimeout(async () => {
-      const idx = await loadIndex();
-      const out: ObjectHit[] = [];
-      for (const def of EXPLORABLE_TYPES) {
-        for (const row of idx.byType[def.type] ?? []) {
-          if (rowSearchText(def, row).includes(q)) out.push({ def, row });
-          if (out.length >= 40) break;
-        }
+      try {
+        const page = await api.search.searchObjects(q, undefined, PER_TYPE_LIMIT, PAGE_SIZE);
+        if (seq !== requestSeq.current) return;
+        setHits(page.hits);
+      } catch {
+        if (seq !== requestSeq.current) return;
+        setHits([]);
+      } finally {
+        if (seq === requestSeq.current) setLoading(false);
       }
-      setHits(out);
-    }, 120);
+    }, 150);
   }, [query]);
 
   const go = useCallback(
@@ -140,10 +111,10 @@ export function CommandPalette() {
     [router],
   );
 
-  const openObject = useCallback(
-    (def: ObjectTypeDef, row: Row) => {
-      pushRecent({ id: row.id, type: def.type, label: def.title(row) });
-      go(`/o/${encodeURIComponent(row.id)}`);
+  const openHit = useCallback(
+    (hit: searchapi.ISearchHit) => {
+      pushRecent({ id: hit.rid, type: ridType(hit.rid) ?? hit.objectType, label: hit.label });
+      go(`/o/${encodeURIComponent(hit.rid)}`);
     },
     [go],
   );
@@ -182,7 +153,7 @@ export function CommandPalette() {
         autoFocus
       />
       <Command.List>
-        {loading ? <div className="cmdk-status">{tg("Indexing…")}</div> : null}
+        {loading ? <div className="cmdk-status">{tg("Searching…")}</div> : null}
 
         {ridKnown ? (
           <Command.Group heading={tg("Open")}>
@@ -228,17 +199,15 @@ export function CommandPalette() {
 
         {hits.length > 0 ? (
           <Command.Group heading={tg("Objects")}>
-            {hits.map(({ def, row }, i) => (
+            {hits.map((hit, i) => (
               <Command.Item
-                key={`${row.id}-${i}`}
-                value={`obj-${row.id}-${i}`}
-                onSelect={() => openObject(def, row)}
+                key={`${hit.rid}-${i}`}
+                value={`obj-${hit.rid}-${i}`}
+                onSelect={() => openHit(hit)}
               >
-                <span className="cmdk-kind">{tg(def.label)}</span>
-                <span className="truncate">{def.title(row)}</span>
-                {def.subtitle?.(row) ? (
-                  <span className="cmdk-hint">{def.subtitle(row)}</span>
-                ) : null}
+                <span className="cmdk-kind">{tg(hitKind(hit))}</span>
+                <span className="truncate">{hit.label}</span>
+                {hit.snippet ? <span className="cmdk-hint">{hit.snippet}</span> : null}
               </Command.Item>
             ))}
           </Command.Group>

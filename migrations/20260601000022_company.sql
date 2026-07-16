@@ -235,6 +235,9 @@ CREATE TABLE oikumenea.company_industry_assignments (
   company_id         uuid NOT NULL REFERENCES oikumenea.tenant_organizations(id) ON DELETE CASCADE,
   industry_class_id  uuid NOT NULL REFERENCES oikumenea.company_industry_classes(id) ON DELETE RESTRICT,
   is_primary         boolean NOT NULL DEFAULT false,
+  -- native validity (D-Temporal, R-31): the interval this industry classification holds; NULL = active.
+  valid_from         timestamptz NOT NULL DEFAULT now(),
+  valid_to           timestamptz CHECK (valid_to IS NULL OR valid_to >= valid_from),
   created_at         timestamptz NOT NULL DEFAULT now(),
   updated_at         timestamptz NOT NULL DEFAULT now(),
   deleted_at         timestamptz,
@@ -261,6 +264,9 @@ CREATE TABLE oikumenea.company_locations (
   company_id  uuid NOT NULL REFERENCES oikumenea.tenant_organizations(id) ON DELETE CASCADE,
   location_id uuid NOT NULL REFERENCES oikumenea.location_locations(id) ON DELETE RESTRICT,  -- M19
   role        text NOT NULL DEFAULT 'registered' CHECK (role IN ('registered','operating','branch')),
+  -- native validity (D-Temporal, R-31): the interval this location holds; NULL valid_to = active.
+  valid_from  timestamptz NOT NULL DEFAULT now(),
+  valid_to    timestamptz CHECK (valid_to IS NULL OR valid_to >= valid_from),
   created_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now(),
   deleted_at  timestamptz,
@@ -427,6 +433,9 @@ CREATE TABLE oikumenea.company_beneficiaries (
   person_id    uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
   ultimate_pct numeric(7,4) CHECK (ultimate_pct IS NULL OR (ultimate_pct >= 0 AND ultimate_pct <= 100)),
   declared     boolean NOT NULL DEFAULT true,
+  -- native validity (D-Temporal, R-31): the interval this benefit holds; NULL valid_to = active.
+  valid_from   timestamptz NOT NULL DEFAULT now(),
+  valid_to     timestamptz CHECK (valid_to IS NULL OR valid_to >= valid_from),
   created_at   timestamptz NOT NULL DEFAULT now(),
   updated_at   timestamptz NOT NULL DEFAULT now(),
   deleted_at   timestamptz,
@@ -454,6 +463,9 @@ CREATE TABLE oikumenea.company_successions (
   kind           text NOT NULL DEFAULT 'reorganization'
                    CHECK (kind IN ('merger','reorganization','rename','acquisition','spinoff')),
   effective_on   date,
+  -- native validity (D-Temporal, R-31): the interval this succession holds; NULL valid_to = active.
+  valid_from     timestamptz NOT NULL DEFAULT now(),
+  valid_to       timestamptz CHECK (valid_to IS NULL OR valid_to >= valid_from),
   created_at     timestamptz NOT NULL DEFAULT now(),
   updated_at     timestamptz NOT NULL DEFAULT now(),
   deleted_at     timestamptz,
@@ -479,6 +491,9 @@ CREATE TABLE oikumenea.company_branches (
   id         uuid PRIMARY KEY DEFAULT oikumenea.new_id(15,2,6),  -- company / link / branch_of
   branch_id  uuid NOT NULL REFERENCES oikumenea.tenant_organizations(id) ON DELETE CASCADE,
   parent_id  uuid NOT NULL REFERENCES oikumenea.tenant_organizations(id) ON DELETE CASCADE,
+  -- native validity (D-Temporal, R-31): the interval this branch-of holds; NULL valid_to = active.
+  valid_from timestamptz NOT NULL DEFAULT now(),
+  valid_to   timestamptz CHECK (valid_to IS NULL OR valid_to >= valid_from),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,

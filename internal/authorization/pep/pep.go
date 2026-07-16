@@ -137,6 +137,18 @@ func (e *Enforcer) RequireImport(ctx context.Context, token bearertoken.Token) e
 	return e.RequireAnywhere(ctx, token, string(domain.PermImportManage))
 }
 
+// AllowedAnywhere is the non-erroring probe form of RequireAnywhere: whether the request subject
+// holds `action` at some unit (or on the instance plane). Cross-type surfaces (unified search,
+// D-UnifiedSearch) use it to SKIP a per-type provider the subject cannot read rather than fail the
+// whole request. An absent subject is simply not allowed (false, nil).
+func (e *Enforcer) AllowedAnywhere(ctx context.Context, token bearertoken.Token, action string) (bool, error) {
+	subject := Subject(ctx)
+	if subject == "" {
+		return false, nil
+	}
+	return e.svc.HoldsPermissionAnywhere(ctx, subject, action)
+}
+
 // RequireAnywhere enforces that the token's subject can satisfy `action` at some unit (or on the
 // instance plane) — the gate for instance-global reads whose resource is not unit-keyed.
 func (e *Enforcer) RequireAnywhere(ctx context.Context, token bearertoken.Token, action string) error {

@@ -124,6 +124,9 @@ CREATE TABLE oikumenea.person_kinships (
   parent_id  uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
   child_id   uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
   status     text NOT NULL DEFAULT 'active' CHECK (status IN ('active','disestablished')),
+  -- native validity (D-Temporal, R-31): the interval this kinship holds; NULL valid_to = active.
+  valid_from timestamptz NOT NULL DEFAULT now(),
+  valid_to   timestamptz CHECK (valid_to IS NULL OR valid_to >= valid_from),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,
@@ -246,6 +249,9 @@ CREATE TABLE oikumenea.person_next_of_kin (
   relation_code text REFERENCES oikumenea.person_relation_types(code) ON DELETE RESTRICT,
   priority      int  NOT NULL DEFAULT 1,
   status        text NOT NULL DEFAULT 'active' CHECK (status IN ('active','withdrawn')),
+  -- native validity (D-Temporal, R-31): the interval this next-of-kin holds; NULL valid_to = active.
+  valid_from    timestamptz NOT NULL DEFAULT now(),
+  valid_to      timestamptz CHECK (valid_to IS NULL OR valid_to >= valid_from),
   created_at    timestamptz NOT NULL DEFAULT now(),
   updated_at    timestamptz NOT NULL DEFAULT now(),
   deleted_at    timestamptz,
@@ -286,6 +292,9 @@ CREATE TABLE oikumenea.person_associations (
   relation_code text REFERENCES oikumenea.person_relation_types(code) ON DELETE RESTRICT,
   kind          text NOT NULL CHECK (kind IN ('associate','coi','no_contact')),
   status        text NOT NULL DEFAULT 'active' CHECK (status IN ('active','ended')),
+  -- native validity (D-Temporal, R-31): the interval this association holds; NULL valid_to = active.
+  valid_from    timestamptz NOT NULL DEFAULT now(),
+  valid_to      timestamptz CHECK (valid_to IS NULL OR valid_to >= valid_from),
   created_at    timestamptz NOT NULL DEFAULT now(),
   updated_at    timestamptz NOT NULL DEFAULT now(),
   deleted_at    timestamptz,

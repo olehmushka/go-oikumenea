@@ -1,7 +1,9 @@
+import { IActionType } from "./actionType";
 import { AuditActorType } from "./auditActorType";
 import { IAuditEntry } from "./auditEntry";
 import { IAuditEntryPage } from "./auditEntryPage";
 import { AuditOutcome } from "./auditOutcome";
+import { IObjectHistory } from "./objectHistory";
 import type { IHttpApiBridge } from "conjure-client";
 
 /** Constant reference to `undefined` that we expect to get minified and therefore reduce total code size */
@@ -17,6 +19,23 @@ export interface IAuditService {
     query(actorPersonId?: string | null, actorType?: AuditActorType | null, targetType?: string | null, targetId?: string | null, unitId?: string | null, action?: string | null, outcome?: AuditOutcome | null, since?: string | null, until?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IAuditEntryPage>;
     /** Read one entry by its Action RID. Returns Audit:AuditEntryNotFound when absent. */
     get(entryId: string): Promise<IAuditEntry>;
+    /**
+     * The full action-type catalog (D-ActionTypes, R-29), sorted by (service, code). Lets a client
+     * — e.g. the console's object-actions panel — discover what actions exist and their gating
+     * permission, instead of hard-coding them. Static registry read; requires only an
+     * authenticated subject.
+     *
+     */
+    listActionTypes(): Promise<Array<IActionType>>;
+    /**
+     * The reverse-chronological audit history of one object (D-Temporal tier b, R-31): every
+     * recorded change to the object with `target_id = {rid}`, token-paginated. Gated by
+     * `audit.read`; the `before`/`after` change payloads are **redacted** (null, `redacted=true`)
+     * unless the caller also holds the sensitive-reader capability, because a folded per-object
+     * timeline can surface pii up to the D-DataScope special-category ceiling.
+     *
+     */
+    getObjectHistory(rid: string, pageSize?: number | null, pageToken?: string | null): Promise<IObjectHistory>;
 }
 
 export class AuditService implements IAuditService {
@@ -63,6 +82,56 @@ export class AuditService implements IAuditService {
             __undefined,
             [
                 entryId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * The full action-type catalog (D-ActionTypes, R-29), sorted by (service, code). Lets a client
+     * — e.g. the console's object-actions panel — discover what actions exist and their gating
+     * permission, instead of hard-coding them. Static registry read; requires only an
+     * authenticated subject.
+     *
+     */
+    public listActionTypes(): Promise<Array<IActionType>> {
+        return this.bridge.call<Array<IActionType>>(
+            "AuditService",
+            "listActionTypes",
+            "GET",
+            "/audit/v1/action-types",
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * The reverse-chronological audit history of one object (D-Temporal tier b, R-31): every
+     * recorded change to the object with `target_id = {rid}`, token-paginated. Gated by
+     * `audit.read`; the `before`/`after` change payloads are **redacted** (null, `redacted=true`)
+     * unless the caller also holds the sensitive-reader capability, because a folded per-object
+     * timeline can surface pii up to the D-DataScope special-category ceiling.
+     *
+     */
+    public getObjectHistory(rid: string, pageSize?: number | null, pageToken?: string | null): Promise<IObjectHistory> {
+        return this.bridge.call<IObjectHistory>(
+            "AuditService",
+            "getObjectHistory",
+            "GET",
+            "/audit/v1/objects/{rid}/history",
+            __undefined,
+            __undefined,
+            {
+                "pageSize": pageSize,
+                "pageToken": pageToken,
+            },
+            [
+                rid,
             ],
             __undefined,
             __undefined

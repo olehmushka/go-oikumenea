@@ -195,4 +195,7 @@ type Repository interface {
 	// SubjectCanReadPerson is the point probe of the same reach predicate: whether any of the
 	// person's active-membership units falls in the subject's readable reach.
 	SubjectCanReadPerson(ctx context.Context, subjectPersonID, personID string) (bool, error)
+	// SubjectReadablePersonsAmong is the batch form of the same probe: the subset of candidate
+	// persons in the subject's readable reach (unordered; D-VisibilityScope person scope, R-30).
+	SubjectReadablePersonsAmong(ctx context.Context, subjectPersonID string, personIDs []string) ([]string, error)
 }

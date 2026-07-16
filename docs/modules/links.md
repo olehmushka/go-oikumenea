@@ -1,0 +1,128 @@
+# Links module
+
+> **Status: review-2026-09 Phase 15 — verified.** Binding decision: **D-LinkTraversal**
+> ([decisions.md](../architecture/decisions.md)), building on **D-VisibilityScope**. Resolves review
+> finding **R‑27** (no backend "links for object X" / search-around) and closes **R‑32**'s
+> fix-sketch item 2 (declaring the polymorphic ends for generic traversal) —
+> [review-2026-09.md](../architecture/review-2026-09.md). The web console's universal object page
+> (`/o/[rid]`) and graph explorer (`/graph`) are its first consumers, replacing the client-side
+> per-collection fan-out over the hand-authored `registry.ts` `links[]`.
+
+## Purpose
+
+One generic answer to **"what links does object X have?"** over the whole registry — the Gotham-style
+object-explorer / search-around primitive. `LinkService.getObjectLinks` fans in the **existing
+reified link tables** (kind=link RID PK, two endpoint columns, per-endpoint partial index): no graph
+database, no new edge/join table, no client fan-out. The module hosts the composition-time
+**link-descriptor registry** — the Go counterpart of the console's hand-authored `links[]`, but its
+link types are validated against the drift-proof **pkg/rid** link-type registry (R‑28) and its
+coverage is boot-asserted, so a link table a new milestone adds surfaces in the console **without
+editing `web/`**, or fails boot until wired. It is the **links facet** of the same cross-type
+registry seam D-UnifiedSearch introduced (one registry, three facets: provider, visibility, links).
+
+## Entities
+
+None owned. The module owns **no tables and mints no RIDs** (no RID service number): every link and
+every neighbor is another module's Object/Link, identified by its self-describing RID
+(D-ResourceIdentifiers). `LinkRow`/`LinkGroup` are projections, not ontology entities — nothing to
+register in [ontology-mapping.md](../ontology-mapping.md).
+
+## Data model
+
+None. No migration; the reified link tables and their endpoint indexes already exist (per module,
+migrations `0003`–`0034`). The engine runs one **keyset query per incident link arm** over those
+tables — the one place raw dynamic SQL is justified (a union over a runtime-registered set of tables
+is not expressible in sqlc): identifiers come from the compile-time descriptor registry and pass
+through `pgx.Identifier.Sanitize`; the queried RID, the polymorphic discriminator, the keyset cursor
+and the limit are bound value params.
+
+## Conjure endpoint sketch
+
+`api/links.conjure.yml` — `LinkService`, base path `/links/v1`:
+
+- `getObjectLinks(rid, linkTypes?, pageSize?, pageToken?) → ObjectLinks` — `GET
+  /objects/{rid}/links`. Returns the object's links grouped by `(linkType, direction, targetType)`;
+  a `LinkRow` is `{linkRid, targetRid, targetType, targetLabel?, direction, attrs?}`. `linkTypes` is
+  a CSV of bare pkg/rid link-type names (default all incident); `pageSize` default 50, clamped
+  `[1,200]`. `rid` that decodes to no registered object type → `Links:UnknownObjectType`.
+- `searchAround(rid, linkTypes?, pageSize?, pageToken?) → Neighborhood` — `GET
+  /objects/{rid}/search-around`. The same engine flattened to a neighbor list (the graph shape).
+  **Depth-1 only** — depth>1 is a deliberate non-goal for this endpoint (revisit with measurements).
+- **Pagination** is a composite keyset token (`Links:InvalidPageToken`): base64url JSON
+  `{"v":1,"c":{"<linkName>/<side>":"<lastLinkRID>"}}` — one cursor per non-exhausted arm, keysetting
+  over the link table's RID PK. Cursors advance over **raw** pre-trim rows, so a visibility-trimmed
+  page may run short but never skips a row.
+
+## Dependencies
+
+- **authorization** — `pep.SubjectAuthority` (subject + admin flag, zero request-path queries),
+  `pep.AllowedAnywhere` (the non-erroring per-arm permission probe), and the
+  `internal/authorization/scope` Visibility adapters (D-VisibilityScope).
+- **The shared pool** — the engine runs the generic per-arm queries directly (unlike search, which
+  delegates to module services).
+- **Descriptor wiring** (`cmd/oikumenea/link_descriptors.go`, composition-time): the pool, the
+  membership person-scope batch probe (`SubjectReadablePersonsAmong`), and the authorization
+  `FilterVisibleUnits` shadow gate for the unit scope. The engine imports no other module — table
+  and column identifiers are supplied as descriptor data.
+
+## Authorization touchpoints
+
+The endpoint requires only an **authenticated subject** (no dedicated `links.*` permission code):
+authorization is entirely per-arm gate + per-row trim —
+
+- **Arm gate:** a link arm is **skipped** (not failed) unless the subject holds the descriptor's read
+  permission somewhere (`person.read` for the person-owned links, `membership.read`, `education.read`,
+  `company.read`, `finance.read`, `vehicle.read`, `religion.read`, `language.read`, `unit.read`). A
+  subject with no relevant grants gets an empty result.
+- **Neighbor trim (D-VisibilityScope):** each arm's neighbor rows pass through the neighbor object
+  type's registered `Visibility` — **person** → person-scope (membership semi-join); **unit** →
+  unit-scope (owning-unit identity map + shadow flags + the shadow gate `FilterVisibleUnits`); every
+  other neighbor type → catalog-scope (identity; differential-equal to the owning module's coarse
+  read-permission gate). Registering a neighbor type without a visibility fails boot.
+- Reads are **not audited** (matches every read path).
+
+## Patterns
+
+- **Fan-in, not graph DB:** federates the existing reified link tables; each arm stays on its own
+  endpoint partial index. Explicitly NOT: a graph database, an edge/EAV table, a client fan-out
+  (review-2026-09 "NOT recommended").
+- **Registry-derived-from-pkg/rid:** a `Descriptor`'s `(service, code)` must be a real kind=link RID
+  type (validated at `Register`), and `MustBeBound` fails boot unless **every** kind=link type is
+  registered **or** explicitly exempt — the R‑27 drift guard, pairing R‑28. A migration adding a link
+  type without wiring it here fails boot (and the integration `TestLinkCoverage`).
+- **Raw-cursor advance:** an arm's cursor advances over its raw (pre-trim) rows — a trimmed page runs
+  short, but the walk never skips or duplicates.
+- **Polymorphic ends declared:** the F-014 `holder_kind`/`holder_id` (finance held_by, vehicle
+  registered_to, company founded/owns_stake) ends declare one target per discriminator (person
+  `(6,1,1)` / company = tenant org `(4,1,6)`), so generic traversal — which cannot discover a
+  no-FK text edge from the schema — includes them (closes R‑32 item 2).
+
+## Invariants
+
+- A link/neighbor set is **never wider** than what the owning module's endpoints would serve the same
+  subject (R‑30). Fail closed: no registered visibility → the neighbor type can't be registered;
+  unmapped unit-scope candidate → dropped.
+- Every kind=link RID type is either **registered** or **exempt** (boot-asserted) — the console never
+  silently under-reports a relationship because a link table was added without wiring.
+- The page token only ever names registered arms; a token naming anything else is rejected.
+- A RID that does not decode to a registered **object** type is rejected (`UnknownObjectType`).
+
+## Open seams / future
+
+- **Depth-2 search-around** ("any path between these two people?"): the depth-1 primitive is here;
+  depth-2 lands only with M49-scale measurements (review-2026-09 explicitly gates it on numbers).
+- **Server-side neighbor labelers — delivered.** Each neighbor object type registers a batch labeler
+  (`RegisterLabeler`) that resolves its RIDs to a `targetLabel` **locale→text map** (D-i18n: all
+  locales, no negotiation): person from `display_name` + per-locale name variants, everything else via
+  an `overlayLabeler` that reads the neighbor's base `name`/`title` and overlays the `i18n_translations`
+  store through `localization.NamesByID` (types with no translation rows degrade to a single
+  default-locale entry). Comprehensive across all named neighbor types; the RID-tail fallback survives
+  only for the genuinely nameless (`curriculum_version`, `vehicle`, `account`).
+- **Per-link-type permission codes:** arms currently gate on the owning module's read permission;
+  where a module later defines a finer per-relationship code, the descriptor's `Permission` swaps to
+  it with no engine change.
+- **Currently exempt link types** (8): `locale_language` (text-code end), `has_ethnicity` /
+  `party_membership` / `government_position` / `lobbying_rel` (encrypted / free-text / untyped
+  polymorphic ends), `has_role` (three-way assignment), `instance_admin` (no neighbor),
+  `affiliated_with` (multi-ended optional affiliation) — each becomes traversable if/when it gains a
+  cleanly-typed RID neighbor.

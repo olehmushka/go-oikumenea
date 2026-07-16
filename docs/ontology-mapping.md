@@ -144,6 +144,17 @@ lower_snake (e.g. the `PARENT_OF` row → `link__parent_of`, `HAS_ROLE` → `lin
 Links additionally carry `valid_from`/`valid_to`
 ([Identifier scheme](#identifier-scheme-rids)).
 
+Since **review-2026-09 Phase 15 (D-LinkTraversal, R‑27)** these Links are **generically traversable**
+through one API (`LinkService.getObjectLinks`): each link table registers a `Descriptor` — validated
+against this registry — so "what links does object X have?" is answered by a fan-in over the tables
+below, without a per-relationship endpoint. The **polymorphic F‑014 ends**
+(`held_by`/`registered_to`/`founded`/`owns_stake` — `holder_kind`/`holder_id text`, no FK) declare
+one target per discriminator (person `(6,1,1)` / company = tenant org `(4,1,6)`), the declaration
+generic traversal needs since it cannot infer a no-FK text edge from the schema. A handful of
+non-RID / multi-ended / encrypted-end Links (`locale_language`, `has_ethnicity`, `party_membership`,
+`government_position`, `lobbying_rel`, `has_role`, `instance_admin`, `affiliated_with`) are
+**explicitly exempt** from traversal — see [modules/links.md](modules/links.md).
+
 | Link Type | From → To | Module | Carries | Temporal? |
 |---|---|---|---|---|
 | `PARENT_OF` (per graph) | `Unit` → `Unit` | [tenant](modules/tenant.md) | `graph_id`, `created_by` provenance | created-only; multi-parent DAG, no validity interval |
@@ -277,6 +288,321 @@ ledger ([Identifier scheme](#identifier-scheme-rids)).
 
 ---
 
+
+### 3.1 The action-type catalog (D-ActionTypes)
+
+Until review-2026-09 R-29, the Action *names* above were free text in `audit_log.action` with no
+read-time contract (D-Audit deliberately keeps the Action RID at the generic kind=action
+`type_code 0`). **D-ActionTypes** turns them into a checked, enumerable catalog: the binding
+source is the Go registry `pkg/action` (mirrored to the machine table below and served by
+`AuditService.listActionTypes`). Every audited write is validated against it at write time
+(`audit.Service.Record`), so a typo or an un-catalogued action fails a test rather than drifting.
+The [order](modules/order.md) module is the **reference pattern** — a typed action
+(`order_order_types.effect`) whose all-or-nothing effects apply via domain events in one
+transaction; `order.issue` / `order.revoke` are its catalog entries. This table is generated
+from `pkg/action` and coherence-checked (`pkg/action/catalog_doc_test.go`); it is **expand-only**.
+Beyond the four columns below, an action optionally carries a **parameter schema** (R-29): where a
+row names its Conjure request type (`ActionType.RequestType`), `listActionTypes` returns the argument
+list (`{name, type, required, docs}`) **derived from the Conjure IR** (`tools/genactionparams`), so it
+cannot drift from the contract. Descriptive only (discoverability), not write-time validation.
+
+<!-- BEGIN action-catalog (generated from pkg/action — do not hand-edit; keep in sync via the coherence test) -->
+| Action code | Service | Target type | Permission |
+|---|---|---|---|
+| `account.create` | account | `account` | `instance.admin.manage` |
+| `account.disable` | account | `account` | `instance.admin.manage` |
+| `assignment.grant` | authz | `assignment` | `assignment.grant` |
+| `assignment.revoke` | authz | `assignment` | `assignment.revoke` |
+| `closure.rebuild` | tenant | `graph` | `closure.rebuild` |
+| `closure.verify` | tenant | `graph` | `unit.edges.manage` |
+| `color.upsert` | platform | `color` | `color.manage` |
+| `company.appointment.end` | company | `company` | `company.position.manage` |
+| `company.appointment.fill` | company | `company` | `company.position.manage` |
+| `company.beneficiary.record` | company | `company` | `company.manage` |
+| `company.branch.record` | company | `company` | `company.manage` |
+| `company.create` | company | `company` | `company.manage` |
+| `company.delete` | company | `company` | `company.manage` |
+| `company.founding.record` | company | `company` | `company.manage` |
+| `company.industry-class.upsert` | company | `company` | `company.catalog.manage` |
+| `company.industry.assign` | company | `company` | `company.manage` |
+| `company.legal-form.upsert` | company | `company` | `company.catalog.manage` |
+| `company.location.add` | company | `company` | `company.manage` |
+| `company.position.abolish` | company | `company` | `company.position.manage` |
+| `company.position.create` | company | `company` | `company.position.manage` |
+| `company.position.update` | company | `company` | `company.position.manage` |
+| `company.registration-scheme.upsert` | company | `company` | `company.catalog.manage` |
+| `company.registration.add` | company | `company` | `company.manage` |
+| `company.registration.update` | company | `company` | `company.manage` |
+| `company.shareholding.record` | company | `company` | `company.manage` |
+| `company.succession.record` | company | `company` | `company.manage` |
+| `company.update` | company | `company` | `company.manage` |
+| `document.create` | document | `document` | `document.create` |
+| `document.delete` | document | `document` | `document.delete` |
+| `document.person.erase` | document | `person` | `person.purge` |
+| `document.type.create` | document | `document_type` | `document.type.manage` |
+| `document.type.update` | document | `document_type` | `document.type.manage` |
+| `document.update` | document | `document` | `document.update` |
+| `domain.create` | tenant | `domain` | `domain.manage` |
+| `domain.update` | tenant | `domain` | `domain.manage` |
+| `education.accreditation-event.create` | education | `education` | `education.catalog.manage` |
+| `education.accreditation-event.update` | education | `education` | `education.catalog.manage` |
+| `education.appointment.end` | education | `education` | `education.position.manage` |
+| `education.appointment.fill` | education | `education` | `education.position.manage` |
+| `education.building.create` | education | `education` | `education.manage` |
+| `education.building.delete` | education | `education` | `education.manage` |
+| `education.building.update` | education | `education` | `education.manage` |
+| `education.course-prerequisite.create` | education | `education` | `education.manage` |
+| `education.course.create` | education | `education` | `education.manage` |
+| `education.course.update` | education | `education` | `education.manage` |
+| `education.curriculum-item.create` | education | `education` | `education.manage` |
+| `education.curriculum-item.update` | education | `education` | `education.manage` |
+| `education.curriculum-version.create` | education | `education` | `education.manage` |
+| `education.curriculum-version.update` | education | `education` | `education.manage` |
+| `education.dormitory-stay.create` | education | `education` | `education.manage` |
+| `education.dormitory-stay.delete` | education | `education` | `education.manage` |
+| `education.dormitory-stay.update` | education | `education` | `education.manage` |
+| `education.enrollment.create` | education | `education` | `education.enrollment.manage` |
+| `education.enrollment.delete` | education | `education` | `education.enrollment.manage` |
+| `education.enrollment.update` | education | `education` | `education.enrollment.manage` |
+| `education.governance-body.create` | education | `education` | `education.manage` |
+| `education.governance-body.update` | education | `education` | `education.manage` |
+| `education.governance-membership.create` | education | `education` | `education.manage` |
+| `education.governance-membership.update` | education | `education` | `education.manage` |
+| `education.grant-holding.create` | education | `education` | `education.manage` |
+| `education.grant-holding.update` | education | `education` | `education.manage` |
+| `education.grant.create` | education | `education` | `education.manage` |
+| `education.grant.update` | education | `education` | `education.manage` |
+| `education.group.create` | education | `education` | `education.manage` |
+| `education.group.delete` | education | `education` | `education.manage` |
+| `education.group.update` | education | `education` | `education.manage` |
+| `education.institution-kind.upsert` | education | `education` | `education.catalog.manage` |
+| `education.institution.create` | education | `education` | `education.manage` |
+| `education.institution.delete` | education | `education` | `education.manage` |
+| `education.institution.update` | education | `education` | `education.manage` |
+| `education.policy.create` | education | `education` | `education.manage` |
+| `education.policy.update` | education | `education` | `education.manage` |
+| `education.position.abolish` | education | `education` | `education.position.manage` |
+| `education.position.create` | education | `education` | `education.position.manage` |
+| `education.position.update` | education | `education` | `education.position.manage` |
+| `education.program.create` | education | `education` | `education.manage` |
+| `education.program.update` | education | `education` | `education.manage` |
+| `education.publication-authorship.create` | education | `education` | `education.manage` |
+| `education.publication-authorship.update` | education | `education` | `education.manage` |
+| `education.publication.create` | education | `education` | `education.manage` |
+| `education.publication.update` | education | `education` | `education.manage` |
+| `education.qualification-award.create` | education | `education` | `education.manage` |
+| `education.qualification-award.update` | education | `education` | `education.manage` |
+| `education.qualification.create` | education | `education` | `education.manage` |
+| `education.qualification.update` | education | `education` | `education.manage` |
+| `education.research-centre.create` | education | `education` | `education.manage` |
+| `education.research-centre.update` | education | `education` | `education.manage` |
+| `education.research-group.create` | education | `education` | `education.manage` |
+| `education.research-group.update` | education | `education` | `education.manage` |
+| `education.research-membership.create` | education | `education` | `education.manage` |
+| `education.research-membership.update` | education | `education` | `education.manage` |
+| `education.scholarship-award.create` | education | `education` | `education.manage` |
+| `education.scholarship-award.update` | education | `education` | `education.manage` |
+| `education.scholarship.create` | education | `education` | `education.manage` |
+| `education.scholarship.update` | education | `education` | `education.manage` |
+| `external-org.create` | external_organization | `external_organization` | `externalorg.manage` |
+| `external-org.delete` | external_organization | `external_organization` | `externalorg.manage` |
+| `external-org.kind.upsert` | external_organization | `external_organization` | `externalorg.manage` |
+| `external-org.merge` | external_organization | `external_organization` | `externalorg.manage` |
+| `external-org.update` | external_organization | `external_organization` | `externalorg.manage` |
+| `finance.account-type.upsert` | finance | `finance` | `finance.catalog.manage` |
+| `finance.account.create` | finance | `finance` | `finance.manage` |
+| `finance.account.delete` | finance | `finance` | `finance.manage` |
+| `finance.account.update` | finance | `finance` | `finance.manage` |
+| `finance.card-network.upsert` | finance | `finance` | `finance.catalog.manage` |
+| `finance.card.add` | finance | `finance` | `finance.manage` |
+| `finance.card.delete` | finance | `finance` | `finance.manage` |
+| `finance.card.update` | finance | `finance` | `finance.manage` |
+| `finance.holder.add` | finance | `finance` | `finance.manage` |
+| `finance.holder.end` | finance | `finance` | `finance.manage` |
+| `finance.holdings.erase` | finance | `finance` | `finance.manage` |
+| `graph.create` | tenant | `graph` | `graph.manage` |
+| `graph.delete` | tenant | `graph` | `graph.manage` |
+| `graph.update` | tenant | `graph` | `graph.manage` |
+| `identity.link` | account | `external_identity` | `instance.admin.manage` |
+| `identity.unlink` | account | `external_identity` | `instance.admin.manage` |
+| `import.colors` | platform | `colors` | `import.manage` |
+| `import.ethnicity-scheme` | platform | `ethnicity-scheme` | `import.manage` |
+| `import.external-organizations` | platform | `external-organizations` | `import.manage` |
+| `import.geo-countries` | platform | `geo-countries` | `import.manage` |
+| `import.geo-places` | platform | `geo-places` | `import.manage` |
+| `import.language-scheme` | platform | `language-scheme` | `import.manage` |
+| `import.language-scripts` | platform | `language-scripts` | `import.manage` |
+| `import.person-regulatory-sanctions` | platform | `person-regulatory-sanctions` | `import.manage` |
+| `import.religion-scheme` | platform | `religion-scheme` | `import.manage` |
+| `import.translations` | platform | `translations` | `import.manage` |
+| `instance.admin.grant` | authz | `instance_admin` | `instance.admin.manage` |
+| `instance.admin.revoke` | authz | `instance_admin` | `instance.admin.manage` |
+| `legal-basis.upsert` | platform | `color` | `legal-basis.manage` |
+| `locale.add` | i18n | `locale` | `locale.manage` |
+| `locale.update` | i18n | `locale` | `locale.manage` |
+| `location.create` | location | `location` | `location.create` |
+| `location.delete` | location | `location` | `location.update` |
+| `location.update` | location | `location` | `location.update` |
+| `membership.create` | membership | `membership` | `membership.create` |
+| `membership.end` | membership | `membership` | `membership.update` |
+| `membership.fill` | membership | `membership` | `membership.create` |
+| `order.create` | order | `order` | `order.create` |
+| `order.issue` | order | `order` | `order.issue` |
+| `order.revoke` | order | `order` | `order.revoke` |
+| `order.type.create` | order | `order_type` | `order.type.manage` |
+| `order.type.update` | order | `order_type` | `order.type.manage` |
+| `order.update` | order | `order` | `order.create` |
+| `organization.create` | tenant | `organization` | `organization.create` |
+| `organization.transition` | tenant | `organization` | `organization.lifecycle` |
+| `organization.update` | tenant | `organization` | `organization.update` |
+| `person.address.delete` | person | `person` | `person.update` |
+| `person.address.upsert` | person | `person` | `person.update` |
+| `person.association.upsert` | person | `person` | `person.update` |
+| `person.call-sign.delete` | person | `person` | `person.update` |
+| `person.call-sign.upsert` | person | `person` | `person.update` |
+| `person.citizenship.delete` | person | `person` | `person.update` |
+| `person.citizenship.upsert` | person | `person` | `person.update` |
+| `person.create` | account | `person` | `person.create` |
+| `person.crypto_wallet.delete` | person | `person` | `person.update` |
+| `person.crypto_wallet.upsert` | person | `person` | `person.update` |
+| `person.deactivate` | person | `person` | `person.update` |
+| `person.distinguishing_mark.delete` | person | `person` | `person.update` |
+| `person.distinguishing_mark.upsert` | person | `person` | `person.update` |
+| `person.email.delete` | person | `person` | `person.update` |
+| `person.email.upsert` | person | `person` | `person.update` |
+| `person.ethnicity.add` | person | `person` | `person.update` |
+| `person.ethnicity.delete` | person | `person` | `person.update` |
+| `person.ethnicity.erase` | person | `person` | `person.update` |
+| `person.ethnicity.update` | person | `person` | `person.update` |
+| `person.ethnicity_type.upsert` | person | `person` | `person.update` |
+| `person.external_reference.delete` | person | `person` | `person.update` |
+| `person.external_reference.upsert` | person | `person` | `person.update` |
+| `person.government_position.delete` | person | `person` | `person.update` |
+| `person.government_position.upsert` | person | `person` | `person.update` |
+| `person.guardianship.upsert` | person | `person` | `person.update` |
+| `person.kinship.upsert` | person | `person` | `person.update` |
+| `person.language.delete` | person | `person` | `person.update` |
+| `person.language.upsert` | person | `person` | `person.update` |
+| `person.lobbying.delete` | person | `person` | `person.update` |
+| `person.lobbying.upsert` | person | `person` | `person.update` |
+| `person.merge` | person | `person` | `person.merge` |
+| `person.messenger-link.delete` | person | `person` | `person.update` |
+| `person.messenger-link.upsert` | person | `person` | `person.update` |
+| `person.name_alias.add` | person | `person` | `person.update` |
+| `person.name_alias.delete` | person | `person` | `person.update` |
+| `person.name_variant.delete` | person | `person` | `person.update` |
+| `person.name_variant.upsert` | person | `person` | `person.update` |
+| `person.next-of-kin.upsert` | person | `person` | `person.update` |
+| `person.partnership.upsert` | person | `person` | `person.update` |
+| `person.party_membership.delete` | person | `person` | `person.update` |
+| `person.party_membership.upsert` | person | `person` | `person.update` |
+| `person.personality.delete` | person | `person` | `person.update` |
+| `person.personality.upsert` | person | `person` | `person.update` |
+| `person.phone.delete` | person | `person` | `person.update` |
+| `person.phone.upsert` | person | `person` | `person.update` |
+| `person.physical_description.delete` | person | `person` | `person.update` |
+| `person.physical_description.upsert` | person | `person` | `person.update` |
+| `person.political_leaning.delete` | person | `person` | `person.update` |
+| `person.political_leaning.set` | person | `person` | `person.update` |
+| `person.provisional.create` | person | `person` | `person.update` |
+| `person.purge` | person | `person` | `person.purge` |
+| `person.rank.assign` | person | `person` | `person.rank.assign` |
+| `person.reactivate` | person | `person` | `person.update` |
+| `person.regulatory_sanction.delete` | person | `person` | `person.update` |
+| `person.regulatory_sanction.upsert` | person | `person` | `person.update` |
+| `person.relationship.delete` | person | `person` | `person.update` |
+| `person.residence.delete` | person | `person` | `person.update` |
+| `person.residence.upsert` | person | `person` | `person.update` |
+| `person.social-account.delete` | person | `person` | `person.update` |
+| `person.social-account.upsert` | person | `person` | `person.update` |
+| `person.sponsorship.upsert` | person | `person` | `person.update` |
+| `person.update` | person | `person` | `person.update` |
+| `person.watchlist.check` | person | `person` | `person.update` |
+| `personal-code-scheme.create` | document | `document` | `personal-code-scheme.manage` |
+| `personal-code-scheme.update` | document | `document` | `personal-code-scheme.manage` |
+| `personal-code.create` | document | `personal_code` | `personal-code.create` |
+| `personal-code.delete` | document | `personal_code` | `personal-code.delete` |
+| `personal-code.update` | document | `personal_code` | `personal-code.update` |
+| `position.abolish` | membership | `position` | `position.update` |
+| `position.create` | membership | `position` | `position.create` |
+| `position.update` | membership | `position` | `position.update` |
+| `rank.category.create` | rank | `rank_category` | `rank.scheme.manage` |
+| `rank.category.delete` | rank | `rank_category` | `rank.scheme.manage` |
+| `rank.category.update` | rank | `rank_category` | `rank.scheme.manage` |
+| `rank.rank.create` | rank | `rank` | `rank.scheme.manage` |
+| `rank.rank.delete` | rank | `rank` | `rank.scheme.manage` |
+| `rank.rank.update` | rank | `rank` | `rank.scheme.manage` |
+| `rank.scheme.import` | rank | `rank_system` | `rank.scheme.manage` |
+| `rank.system.create` | rank | `rank_system` | `rank.scheme.manage` |
+| `rank.system.delete` | rank | `rank_system` | `rank.scheme.manage` |
+| `rank.system.update` | rank | `rank_system` | `rank.scheme.manage` |
+| `rank.type.create` | rank | `rank_type` | `rank.scheme.manage` |
+| `rank.type.delete` | rank | `rank_type` | `rank.scheme.manage` |
+| `rank.type.update` | rank | `rank_type` | `rank.scheme.manage` |
+| `religion.affiliation-type.upsert` | religion | `religion` | `affiliation.manage` |
+| `religion.affiliation.add` | religion | `religion` | `affiliation.manage` |
+| `religion.affiliation.delete` | religion | `religion` | `affiliation.manage` |
+| `religion.affiliation.erase` | religion | `religion` | `affiliation.manage` |
+| `religion.affiliation.update` | religion | `religion` | `affiliation.manage` |
+| `religion.alias.add` | religion | `religion` | `site.manage` |
+| `religion.alias.delete` | religion | `religion` | `site.manage` |
+| `religion.classification.upsert` | religion | `religion` | `religion.catalog.manage` |
+| `religion.clergy-credential.add` | religion | `religion` | `clergy.manage` |
+| `religion.clergy-credential.update` | religion | `religion` | `clergy.manage` |
+| `religion.clergy-grade.upsert` | religion | `religion` | `clergy.manage` |
+| `religion.grade-category.upsert` | religion | `religion` | `religion.catalog.manage` |
+| `religion.office-type.upsert` | religion | `religion` | `religion.catalog.manage` |
+| `religion.org-classification.add` | religion | `religion` | `religionorg.manage` |
+| `religion.org-classification.remove` | religion | `religion` | `religionorg.manage` |
+| `religion.org-kind.upsert` | religion | `religion` | `religion.catalog.manage` |
+| `religion.org-policy.add` | religion | `religion` | `religionorg.manage` |
+| `religion.org-policy.remove` | religion | `religion` | `religionorg.manage` |
+| `religion.org-profile.set` | religion | `religion` | `religionorg.manage` |
+| `religion.policy-kind.upsert` | religion | `religion` | `religion.catalog.manage` |
+| `religion.schedule.add` | religion | `religion` | `schedule.manage` |
+| `religion.schedule.delete` | religion | `religion` | `schedule.manage` |
+| `religion.service-type.upsert` | religion | `religion` | `religion.catalog.manage` |
+| `religion.site-type.upsert` | religion | `religion` | `site.manage` |
+| `religion.site.add` | religion | `religion` | `site.manage` |
+| `religion.site.delete` | religion | `religion` | `site.manage` |
+| `religion.site.update` | religion | `religion` | `site.manage` |
+| `religion.taxon-rank.upsert` | religion | `religion` | `religion.catalog.manage` |
+| `religion.taxon.create` | religion | `religion` | `religion.catalog.manage` |
+| `religion.taxon.delete` | religion | `religion` | `religion.catalog.manage` |
+| `religion.taxon.reparent` | religion | `religion` | `religion.catalog.manage` |
+| `religion.taxon.set-classifications` | religion | `religion` | `religion.catalog.manage` |
+| `religion.taxon.update` | religion | `religion` | `religion.catalog.manage` |
+| `religion.taxonomy.rebuild-closure` | religion | `religion` | `religion.catalog.manage` |
+| `religion.unit-type-override.set` | religion | `religion` | `religionorg.manage` |
+| `role.create` | authz | `role` | `role.create` |
+| `role.delete` | authz | `role` | `role.delete` |
+| `role.update` | authz | `role` | `role.update` |
+| `translation.upsert` | i18n | `languoid` | `translation.manage` |
+| `unit-kind.create` | tenant | `unit` | `unit-kind.manage` |
+| `unit-kind.update` | tenant | `unit` | `unit-kind.manage` |
+| `unit.create` | tenant | `unit` | `unit.create` |
+| `unit.edge.add` | tenant | `unit` | `unit.edges.manage` |
+| `unit.edge.remove` | tenant | `unit` | `unit.edges.manage` |
+| `unit.language.delete` | tenant | `unit` | `unit.update` |
+| `unit.language.upsert` | tenant | `unit` | `unit.update` |
+| `unit.recode` | tenant | `unit` | `unit.recode` |
+| `unit.transition` | tenant | `unit` | `unit.lifecycle` |
+| `unit.update` | tenant | `unit` | `unit.update` |
+| `vehicle.brand.upsert` | vehicle | `vehicle` | `vehicle.catalog.manage` |
+| `vehicle.create` | vehicle | `vehicle` | `vehicle.manage` |
+| `vehicle.delete` | vehicle | `vehicle` | `vehicle.manage` |
+| `vehicle.manufacturer.add` | vehicle | `vehicle` | `vehicle.catalog.manage` |
+| `vehicle.manufacturer.remove` | vehicle | `vehicle` | `vehicle.catalog.manage` |
+| `vehicle.model.upsert` | vehicle | `vehicle` | `vehicle.catalog.manage` |
+| `vehicle.number-type.upsert` | vehicle | `vehicle` | `vehicle.catalog.manage` |
+| `vehicle.register` | vehicle | `vehicle` | `vehicle.manage` |
+| `vehicle.registration.close` | vehicle | `vehicle` | `vehicle.manage` |
+| `vehicle.registrations.erase` | vehicle | `vehicle` | `vehicle.manage` |
+| `vehicle.type.upsert` | vehicle | `vehicle` | `vehicle.catalog.manage` |
+| `vehicle.update` | vehicle | `vehicle` | `vehicle.manage` |
+
+<!-- END action-catalog -->
+
 ## 4. Ratified divergences from the ontology ideal
 
 Each is framed: *what the textbook ontology rule wants → what go-oikumenea does → why it is ratified.*
@@ -289,10 +615,21 @@ defects or open gaps.
 events, and the [audit](modules/audit.md) log. Notably the *membership* Link **does** carry
 `effective_from`/`effective_to` (close to the ontology ideal), but most other Links (edges,
 assignments) capture history as grant/revoke timestamps + audit, not as link-native bitemporal
-validity. **Verdict:** real divergence, but **narrowing** — under D-ResourceIdentifiers temporal Links
-are now defined to carry `valid_from`/`valid_to` (NULL `valid_to` = active), and the existing
-`effective_from`/`effective_to` and `granted_at`/`revoked_at`(+`expires_at`) columns *are* that pair.
-History is recoverable; full bitemporality (a second, transaction-time axis) remains an additive seam.
+validity. **Verdict:** real divergence, now **bounded and mandated** by
+[**D-Temporal**](architecture/decisions.md#d-temporal--a-three-tier-link-history-classification-native-validity-by-default-plus-getobjecthistory-over-the-audit-ledger)
+(review-2026-09 R-31), which replaces this open-ended "narrowing" with a **three-tier classification
+every Link declares at design time**: (a) **native validity** — the default for relationship/state
+Links, carrying `valid_from`/`valid_to` (the canonical pair) or the grandfathered
+`effective_from`/`effective_to` · `granted_at`/`revoked_at` · `founded_on` · `awarded_on` equivalents;
+(b) **object history** served from the audit ledger by `AuditService.getObjectHistory`; (c) an
+explicit, **closed six-member** history-exempt set (reference/structural associations —
+`locale_language`, `unit_language`, `written_in`, `curriculum_item`, `course_prerequisite`,
+`has_ethnicity`). The thirteen previously-undated relationship Links were brought up to tier (a) by
+folding `valid_from`/`valid_to` into each one's original `CREATE TABLE` (edit-in-place + DB rebuild,
+the unreleased-build-out convention); a boot/CI drift guard (`temporal_tiers_test.go`) fails the build
+if a new kind=Link type is unclassified or a tier-(a) Link's DDL lacks a validity column. As-of
+*reconstruction* and full bitemporality (a second, transaction-time axis) remain named seams — not
+implied.
 
 **4.2 Rank/position modeled as Links yet barred from authority.** `HOLDS_RANK` and `FILLS` look like
 ontology edges, and they are correctly modeled as relationships (not embedded columns). But the design

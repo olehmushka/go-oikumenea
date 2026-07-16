@@ -81,9 +81,13 @@ and update the [stage board](milestones.md#stage-board) cell you just passed.
    template (**purpose → entities → data model → Conjure sketch → dependencies → authorization
    touchpoints → patterns → invariants → open seams**); keep each entity owned by **exactly one**
    module. Register new Objects/Links/Actions in [`ontology-mapping.md`](ontology-mapping.md) and add
-   terms to [`glossary.md`](glossary.md). Add the `M#` row to [`milestones.md`](milestones.md) (table,
-   prose section, **and** stage-board row). Mark the `TODO-N` `promoted→M#`, then delete it once the
-   `M#` row exists.
+   terms to [`glossary.md`](glossary.md). **For every new reified Link, declare its history tier**
+   ([D-Temporal](architecture/decisions.md#d-temporal--a-three-tier-link-history-classification-native-validity-by-default-plus-getobjecthistory-over-the-audit-ledger)):
+   a relationship/state Link is tier-(a) **native validity** (it carries `valid_from`/`valid_to`) by
+   default; a reference/structural Link is tier-(c) history-exempt only by explicit rationale — the
+   `temporal_tiers_test.go` drift guard fails the build until the new Link type is classified. Add the
+   `M#` row to [`milestones.md`](milestones.md) (table, prose section, **and** stage-board row). Mark
+   the `TODO-N` `promoted→M#`, then delete it once the `M#` row exists.
 4. **Build backend (→ backend).** Add/extend the `api/<module>.conjure.yml` contract first, generate,
    then implement `internal/<module>/` across `transport → application → domain → adapters`. Follow
    [`conventions.md`](architecture/conventions.md). Audit-on-write for permission-sensitive mutations.

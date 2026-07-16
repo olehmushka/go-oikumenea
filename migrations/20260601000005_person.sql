@@ -115,6 +115,9 @@ CREATE TABLE oikumenea.person_ranks (
   person_id  uuid NOT NULL REFERENCES oikumenea.person_persons(id) ON DELETE CASCADE,
   system_id  uuid NOT NULL REFERENCES oikumenea.rank_systems(id) ON DELETE RESTRICT,  -- denormalized from the rank
   rank_id    uuid NOT NULL REFERENCES oikumenea.rank_ranks(id) ON DELETE RESTRICT,
+  -- native validity (D-Temporal, R-31): the interval this rank is held; NULL valid_to = active.
+  valid_from timestamptz NOT NULL DEFAULT now(),
+  valid_to   timestamptz CHECK (valid_to IS NULL OR valid_to >= valid_from),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,

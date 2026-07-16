@@ -336,3 +336,37 @@ WHERE p.deleted_at IS NULL
   )
 ORDER BY p.id
 LIMIT @lim;
+
+-- name: SubjectReadablePersonsAmong :many
+-- Batch variant of SubjectCanReadPerson for the D-VisibilityScope person-scope adapter (R-30):
+-- which of the candidate persons does the subject's '*.read' reach through an active membership?
+-- Same PARITY CONTRACT as SubjectCanReadPerson / VisiblePersonIDsForSubject; unnest-probe shape
+-- mirrors authorization's ReadableUnitsForSubjectAmong.
+SELECT cand.person_id::uuid AS person_id
+FROM unnest(@person_ids::uuid[]) AS cand(person_id)
+WHERE EXISTS (
+  SELECT 1
+  FROM oikumenea.membership_memberships m
+  WHERE m.person_id = cand.person_id AND m.status = 'active' AND m.deleted_at IS NULL
+    AND EXISTS (
+      SELECT 1
+      FROM oikumenea.authz_role_assignments a
+      JOIN oikumenea.authz_roles r ON r.id = a.role_id AND r.deleted_at IS NULL
+      WHERE a.subject_person_id = @subject_person_id
+        AND a.revoked_at IS NULL
+        AND (a.expires_at IS NULL OR a.expires_at > now())
+        AND EXISTS (SELECT 1 FROM oikumenea.authz_role_permissions rp
+                    WHERE rp.role_id = a.role_id AND rp.permission_code LIKE '%.read')
+        AND ((a.scope = 'unit' AND a.target_unit_id = m.unit_id)
+          OR (a.scope = 'subtree'
+              AND EXISTS (SELECT 1 FROM oikumenea.tenant_graphs g
+                          WHERE g.id = a.graph_id AND g.is_authority_bearing AND g.deleted_at IS NULL)
+              AND (a.target_unit_id = m.unit_id
+                OR EXISTS (SELECT 1
+                           FROM oikumenea.tenant_unit_closure c
+                           JOIN oikumenea.tenant_units u ON u.id = c.descendant_id AND u.deleted_at IS NULL
+                           WHERE c.graph_id = a.graph_id
+                             AND c.ancestor_id = a.target_unit_id
+                             AND c.descendant_id = m.unit_id))))
+    )
+);

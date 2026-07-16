@@ -400,3 +400,14 @@ func concat(a, b []Permission) []Permission {
 	out = append(out, a...)
 	return append(out, b...)
 }
+
+// SensitiveReadPermissions returns the pii:special person-read permission set that composes the
+// sensitive-reader base role (D-DataScope, R-14). Holding all of them (or being an instance admin)
+// is the "sensitive-reader capability" the audit object-history endpoint requires before it reveals
+// before/after change payloads (D-Temporal, R-31) — the same bar as reading that Art.9 data directly,
+// so the audit projection can never leak special-category PII to a subject who couldn't read it.
+func SensitiveReadPermissions() []Permission {
+	out := make([]Permission, len(sensitiveReaderPerms))
+	copy(out, sensitiveReaderPerms)
+	return out
+}

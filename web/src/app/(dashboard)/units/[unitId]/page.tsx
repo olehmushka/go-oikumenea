@@ -15,6 +15,7 @@ import { EdgeManager } from "@/components/EdgeManager";
 import { CreatePosition, FillPosition, PersonLink, PositionAdmin } from "@/components/PositionForms";
 import { UnitAdmin } from "@/components/UnitForms";
 import { UnitLanguageManager } from "@/components/UnitLanguageForms";
+import { HistoryPanel } from "@/components/ontology/HistoryPanel";
 import type { Position, Unit, UnitCodeEventList, UnitRefList } from "@/lib/api/types";
 
 export default async function UnitDetailPage({
@@ -155,6 +156,14 @@ export default async function UnitDetailPage({
           <T>The unit's official / working languages (D-Languages).</T>
         </p>
         <UnitLanguageManager unitId={unitId} />
+      </Card>
+
+      <Card className="mt-4">
+        <h2 className="text-sm font-semibold text-slate-900"><T>History</T></h2>
+        <p className="mb-3 mt-1 text-xs text-slate-500">
+          <T>Every recorded change to this unit, newest first (audit ledger; D-Temporal, R-31).</T>
+        </p>
+        <HistoryPanel rid={unitId} />
       </Card>
 
       <h2 className="mb-3 mt-8 text-sm font-semibold text-slate-900"><T>Positions</T></h2>

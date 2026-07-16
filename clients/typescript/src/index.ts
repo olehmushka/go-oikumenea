@@ -37,6 +37,7 @@ import {
   hermenea,
   identityfederation,
   language,
+  links,
   localization,
   location,
   membership,
@@ -45,6 +46,7 @@ import {
   platform,
   rank,
   religion,
+  search,
   tenant,
   vehicle,
 } from "./generated";
@@ -107,6 +109,9 @@ export interface OikumeneaClient {
   readonly platformCatalog: platform.PlatformCatalogService;
   readonly rank: rank.RankService;
   readonly religion: religion.ReligionService;
+  readonly search: search.SearchService;
+  /** Generic object-link traversal — "what links does object X have?" (D-LinkTraversal, R-27). */
+  readonly links: links.LinkService;
   readonly tenant: tenant.TenantService;
   readonly vehicle: vehicle.VehicleService;
   /** Bank accounts & payment cards — encrypted IBAN/PAN directory data (D-Finance, M44). */
@@ -221,6 +226,8 @@ export function createOikumeneaClient(
     platformCatalog: new platform.PlatformCatalogService(bridge),
     rank: new rank.RankService(bridge),
     religion: new religion.ReligionService(bridge),
+    search: new search.SearchService(bridge),
+    links: new links.LinkService(bridge),
     tenant: new tenant.TenantService(bridge),
     vehicle: new vehicle.VehicleService(bridge),
     finance: new finance.FinanceService(bridge),

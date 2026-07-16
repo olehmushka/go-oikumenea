@@ -243,6 +243,15 @@ func (r *Repository) SubjectCanReadPerson(ctx context.Context, subjectPersonID, 
 	})
 }
 
+func (r *Repository) SubjectReadablePersonsAmong(ctx context.Context, subjectPersonID string, personIDs []string) ([]string, error) {
+	if len(personIDs) == 0 {
+		return nil, nil
+	}
+	return r.q.SubjectReadablePersonsAmong(ctx, membershipsql.SubjectReadablePersonsAmongParams{
+		SubjectPersonID: subjectPersonID, PersonIds: personIDs,
+	})
+}
+
 // ---------------------------------------------------------------- mapping helpers
 
 func toPosition(r membershipsql.OikumeneaMembershipPosition) domain.Position {

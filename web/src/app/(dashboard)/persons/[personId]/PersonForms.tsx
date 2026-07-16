@@ -822,7 +822,7 @@ export function PhysicalIdentityManager({ personId }: { personId: string }) {
   useEffect(() => {
     load();
     // D-Color: load the eye + hair palettes to resolve description color RIDs to swatch+label.
-    Promise.all([api.platformCatalog.listColors("eye"), api.platformCatalog.listColors("hair")])
+    Promise.all([api.platformCatalog.listColors([], "eye"), api.platformCatalog.listColors([], "hair")])
       .then(([e, h]) => {
         const m: Record<string, { name?: Record<string, string>; code: string; hex?: string | null }> = {};
         for (const c of [...(e?.colors ?? []), ...(h?.colors ?? [])]) m[c.id] = { name: c.name, code: c.code, hex: c.hex };

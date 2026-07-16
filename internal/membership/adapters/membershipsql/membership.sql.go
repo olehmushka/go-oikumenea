@@ -684,6 +684,66 @@ func (q *Queries) SubjectCanReadPerson(ctx context.Context, arg SubjectCanReadPe
 	return can_read, err
 }
 
+const subjectReadablePersonsAmong = `-- name: SubjectReadablePersonsAmong :many
+SELECT cand.person_id::uuid AS person_id
+FROM unnest($1::uuid[]) AS cand(person_id)
+WHERE EXISTS (
+  SELECT 1
+  FROM oikumenea.membership_memberships m
+  WHERE m.person_id = cand.person_id AND m.status = 'active' AND m.deleted_at IS NULL
+    AND EXISTS (
+      SELECT 1
+      FROM oikumenea.authz_role_assignments a
+      JOIN oikumenea.authz_roles r ON r.id = a.role_id AND r.deleted_at IS NULL
+      WHERE a.subject_person_id = $2
+        AND a.revoked_at IS NULL
+        AND (a.expires_at IS NULL OR a.expires_at > now())
+        AND EXISTS (SELECT 1 FROM oikumenea.authz_role_permissions rp
+                    WHERE rp.role_id = a.role_id AND rp.permission_code LIKE '%.read')
+        AND ((a.scope = 'unit' AND a.target_unit_id = m.unit_id)
+          OR (a.scope = 'subtree'
+              AND EXISTS (SELECT 1 FROM oikumenea.tenant_graphs g
+                          WHERE g.id = a.graph_id AND g.is_authority_bearing AND g.deleted_at IS NULL)
+              AND (a.target_unit_id = m.unit_id
+                OR EXISTS (SELECT 1
+                           FROM oikumenea.tenant_unit_closure c
+                           JOIN oikumenea.tenant_units u ON u.id = c.descendant_id AND u.deleted_at IS NULL
+                           WHERE c.graph_id = a.graph_id
+                             AND c.ancestor_id = a.target_unit_id
+                             AND c.descendant_id = m.unit_id))))
+    )
+)
+`
+
+type SubjectReadablePersonsAmongParams struct {
+	PersonIds       []string
+	SubjectPersonID string
+}
+
+// Batch variant of SubjectCanReadPerson for the D-VisibilityScope person-scope adapter (R-30):
+// which of the candidate persons does the subject's '*.read' reach through an active membership?
+// Same PARITY CONTRACT as SubjectCanReadPerson / VisiblePersonIDsForSubject; unnest-probe shape
+// mirrors authorization's ReadableUnitsForSubjectAmong.
+func (q *Queries) SubjectReadablePersonsAmong(ctx context.Context, arg SubjectReadablePersonsAmongParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, subjectReadablePersonsAmong, arg.PersonIds, arg.SubjectPersonID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var person_id string
+		if err := rows.Scan(&person_id); err != nil {
+			return nil, err
+		}
+		items = append(items, person_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updatePosition = `-- name: UpdatePosition :one
 UPDATE oikumenea.membership_positions SET
   title            = COALESCE($1, title),

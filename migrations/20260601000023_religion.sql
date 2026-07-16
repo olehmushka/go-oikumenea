@@ -514,6 +514,9 @@ CREATE TABLE oikumenea.religion_org_classifications (
   is_primary boolean NOT NULL DEFAULT false,
   source     text,
   confidence text,
+  -- native validity (D-Temporal, R-31): the interval this classification holds; NULL valid_to = active.
+  valid_from timestamptz NOT NULL DEFAULT now(),
+  valid_to   timestamptz CHECK (valid_to IS NULL OR valid_to >= valid_from),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,

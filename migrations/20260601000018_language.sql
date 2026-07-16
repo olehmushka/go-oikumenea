@@ -358,6 +358,9 @@ CREATE TABLE oikumenea.person_languages (
   language_level text NOT NULL DEFAULT 'language' CHECK (language_level = 'language'),
   cefr_level     text CHECK (cefr_level IN ('A1','A2','B1','B2','C1','C2')),
   is_native      boolean NOT NULL DEFAULT false,
+  -- native validity (D-Temporal, R-31): the interval this person speaks it; NULL valid_to = active.
+  valid_from     timestamptz NOT NULL DEFAULT now(),
+  valid_to       timestamptz CHECK (valid_to IS NULL OR valid_to >= valid_from),
   created_at     timestamptz NOT NULL DEFAULT now(),
   updated_at     timestamptz NOT NULL DEFAULT now(),
   deleted_at     timestamptz,

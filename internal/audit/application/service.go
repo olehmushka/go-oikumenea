@@ -10,6 +10,7 @@ import (
 
 	"github.com/olegamysk/go-oikumenea/internal/audit/domain"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olegamysk/go-oikumenea/pkg/action"
 )
 
 // MaxPageSize caps a client-requested page size (API conventions: token pagination, bounded pages).
@@ -48,6 +49,11 @@ func (s *Service) reader(ctx context.Context) db.DBTX {
 // write endpoint.
 func (s *Service) Record(ctx context.Context, conn db.DBTX, e domain.Entry) error {
 	if err := e.Validate(); err != nil {
+		return err
+	}
+	// Write-time action-type gate (D-ActionTypes, review-2026-09 R-29): the action must be in the
+	// pkg/action catalog. Kept out of domain.Validate so the domain stays stdlib-only.
+	if err := action.Validate(e.Action); err != nil {
 		return err
 	}
 	return s.newRepo(conn).Insert(ctx, e)

@@ -62,6 +62,8 @@ across graphs. That — *hierarchy + inheritance + visibility, decided by a PDP*
 | [localization](modules/localization.md) | i18n: instance-admin-managed locales + the translation store for entity labels. |
 | [platform](modules/platform.md) | witchcraft bootstrap, config, observability, schema bootstrap, country registry + the WOF `geo_places` gazetteer (D-GeoPlaces, M16), crypto/KMS seam, boot-time schema-version check. Hosts the generic **`POST /import/{objectType}`** upsert endpoint + the `import.manage` **service principal** the hermenea companion calls (M16). |
 | [audit](modules/audit.md) | Append-only audit trail of permission-sensitive actions. |
+| [search](modules/search.md) | **Unified cross-type object search** (D-UnifiedSearch, review-2026-09): one `searchObjects` endpoint fanning in the per-module trigram queries, permission-gated + **visibility-trimmed** per type (D-VisibilityScope). Owns no tables. |
+| [links](modules/links.md) | **Generic object-link traversal** (D-LinkTraversal, review-2026-09): one `getObjectLinks` + depth‑1 `searchAround` endpoint fanning in the reified link tables over a pkg/rid-derived, boot-asserted descriptor registry, per-arm permission-gated + neighbor **visibility-trimmed** (D-VisibilityScope). Owns no tables. |
 
 > **person is internally three Go modules** behind the one Conjure `PersonService`
 > (**D-PersonModuleSplit**, review-2026-07 R-09): [person](modules/person.md) core (identity, names,

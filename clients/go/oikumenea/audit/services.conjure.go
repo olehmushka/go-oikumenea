@@ -23,6 +23,21 @@ type AuditServiceClient interface {
 	Query(ctx context.Context, authHeader bearertoken.Token, actorPersonIdArg *string, actorTypeArg *AuditActorType, targetTypeArg *string, targetIdArg *string, unitIdArg *string, actionArg *string, outcomeArg *AuditOutcome, sinceArg *datetime.DateTime, untilArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditEntryPage, error)
 	// Read one entry by its Action RID. Returns Audit:AuditEntryNotFound when absent.
 	Get(ctx context.Context, authHeader bearertoken.Token, entryIdArg string) (AuditEntry, error)
+	/*
+	   The full action-type catalog (D-ActionTypes, R-29), sorted by (service, code). Lets a client
+	   — e.g. the console's object-actions panel — discover what actions exist and their gating
+	   permission, instead of hard-coding them. Static registry read; requires only an
+	   authenticated subject.
+	*/
+	ListActionTypes(ctx context.Context, authHeader bearertoken.Token) ([]ActionType, error)
+	/*
+	   The reverse-chronological audit history of one object (D-Temporal tier b, R-31): every
+	   recorded change to the object with `target_id = {rid}`, token-paginated. Gated by
+	   `audit.read`; the `before`/`after` change payloads are **redacted** (null, `redacted=true`)
+	   unless the caller also holds the sensitive-reader capability, because a folded per-object
+	   timeline can surface pii up to the D-DataScope special-category ceiling.
+	*/
+	GetObjectHistory(ctx context.Context, authHeader bearertoken.Token, ridArg string, pageSizeArg *int, pageTokenArg *string) (ObjectHistory, error)
 }
 
 type auditServiceClient struct {
@@ -102,6 +117,48 @@ func (c *auditServiceClient) Get(ctx context.Context, authHeader bearertoken.Tok
 	return *returnVal, nil
 }
 
+func (c *auditServiceClient) ListActionTypes(ctx context.Context, authHeader bearertoken.Token) ([]ActionType, error) {
+	var returnVal []ActionType
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListActionTypes"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/audit/v1/action-types"))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listActionTypes failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listActionTypes response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *auditServiceClient) GetObjectHistory(ctx context.Context, authHeader bearertoken.Token, ridArg string, pageSizeArg *int, pageTokenArg *string) (ObjectHistory, error) {
+	var returnVal *ObjectHistory
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("GetObjectHistory"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/audit/v1/objects/%s/history", url.PathEscape(fmt.Sprint(ridArg))))
+	queryParams := make(url.Values)
+	if pageSizeArg != nil {
+		queryParams.Set("pageSize", fmt.Sprint(*pageSizeArg))
+	}
+	if pageTokenArg != nil {
+		queryParams.Set("pageToken", fmt.Sprint(*pageTokenArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(ObjectHistory), werror.WrapWithContextParams(ctx, err, "getObjectHistory failed")
+	}
+	if returnVal == nil {
+		return *new(ObjectHistory), werror.ErrorWithContextParams(ctx, "getObjectHistory response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 /*
 Read-only access to the append-only audit log (D-Audit). Gated by `audit.read`, unit-scoped
 exactly like `person.read` (PDP over the closure + shadow gate) once authorization lands (M7).
@@ -111,6 +168,21 @@ type AuditServiceClientWithAuth interface {
 	Query(ctx context.Context, actorPersonIdArg *string, actorTypeArg *AuditActorType, targetTypeArg *string, targetIdArg *string, unitIdArg *string, actionArg *string, outcomeArg *AuditOutcome, sinceArg *datetime.DateTime, untilArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditEntryPage, error)
 	// Read one entry by its Action RID. Returns Audit:AuditEntryNotFound when absent.
 	Get(ctx context.Context, entryIdArg string) (AuditEntry, error)
+	/*
+	   The full action-type catalog (D-ActionTypes, R-29), sorted by (service, code). Lets a client
+	   — e.g. the console's object-actions panel — discover what actions exist and their gating
+	   permission, instead of hard-coding them. Static registry read; requires only an
+	   authenticated subject.
+	*/
+	ListActionTypes(ctx context.Context) ([]ActionType, error)
+	/*
+	   The reverse-chronological audit history of one object (D-Temporal tier b, R-31): every
+	   recorded change to the object with `target_id = {rid}`, token-paginated. Gated by
+	   `audit.read`; the `before`/`after` change payloads are **redacted** (null, `redacted=true`)
+	   unless the caller also holds the sensitive-reader capability, because a folded per-object
+	   timeline can surface pii up to the D-DataScope special-category ceiling.
+	*/
+	GetObjectHistory(ctx context.Context, ridArg string, pageSizeArg *int, pageTokenArg *string) (ObjectHistory, error)
 }
 
 func NewAuditServiceClientWithAuth(client AuditServiceClient, authHeader bearertoken.Token) AuditServiceClientWithAuth {
@@ -128,6 +200,14 @@ func (c *auditServiceClientWithAuth) Query(ctx context.Context, actorPersonIdArg
 
 func (c *auditServiceClientWithAuth) Get(ctx context.Context, entryIdArg string) (AuditEntry, error) {
 	return c.client.Get(ctx, c.authHeader, entryIdArg)
+}
+
+func (c *auditServiceClientWithAuth) ListActionTypes(ctx context.Context) ([]ActionType, error) {
+	return c.client.ListActionTypes(ctx, c.authHeader)
+}
+
+func (c *auditServiceClientWithAuth) GetObjectHistory(ctx context.Context, ridArg string, pageSizeArg *int, pageTokenArg *string) (ObjectHistory, error) {
+	return c.client.GetObjectHistory(ctx, c.authHeader, ridArg, pageSizeArg, pageTokenArg)
 }
 
 func NewAuditServiceClientWithTokenProvider(client AuditServiceClient, tokenProvider httpclient.TokenProvider) AuditServiceClientWithAuth {
@@ -153,4 +233,20 @@ func (c *auditServiceClientWithTokenProvider) Get(ctx context.Context, entryIdAr
 		return *new(AuditEntry), err
 	}
 	return c.client.Get(ctx, bearertoken.Token(token), entryIdArg)
+}
+
+func (c *auditServiceClientWithTokenProvider) ListActionTypes(ctx context.Context) ([]ActionType, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListActionTypes(ctx, bearertoken.Token(token))
+}
+
+func (c *auditServiceClientWithTokenProvider) GetObjectHistory(ctx context.Context, ridArg string, pageSizeArg *int, pageTokenArg *string) (ObjectHistory, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(ObjectHistory), err
+	}
+	return c.client.GetObjectHistory(ctx, bearertoken.Token(token), ridArg, pageSizeArg, pageTokenArg)
 }

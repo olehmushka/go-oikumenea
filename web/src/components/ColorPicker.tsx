@@ -70,7 +70,7 @@ export function ColorPicker({
   function load() {
     if (colors) return;
     api.platformCatalog
-      .listColors(domain)
+      .listColors([], domain)
       .then((r) => setColors((r?.colors ?? []) as unknown as Color[]))
       .catch(() => setColors([]));
   }
@@ -83,7 +83,7 @@ export function ColorPicker({
     }
     if (selected?.id === value) return;
     api.platformCatalog
-      .listColors(domain)
+      .listColors([], domain)
       .then((r) => {
         const list = (r?.colors ?? []) as unknown as Color[];
         setColors(list);

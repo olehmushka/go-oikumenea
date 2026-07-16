@@ -431,7 +431,7 @@ func (q *Queries) ListNameVariants(ctx context.Context, personID string) ([]Oiku
 }
 
 const listPersonRanks = `-- name: ListPersonRanks :many
-SELECT pr.id, pr.person_id, pr.system_id, pr.rank_id, pr.created_at, pr.updated_at, pr.deleted_at FROM oikumenea.person_ranks pr
+SELECT pr.id, pr.person_id, pr.system_id, pr.rank_id, pr.valid_from, pr.valid_to, pr.created_at, pr.updated_at, pr.deleted_at FROM oikumenea.person_ranks pr
 JOIN oikumenea.rank_systems s ON s.id = pr.system_id
 WHERE pr.person_id = $1 AND pr.deleted_at IS NULL
 ORDER BY s.sort_order, pr.system_id
@@ -452,6 +452,8 @@ func (q *Queries) ListPersonRanks(ctx context.Context, personID string) ([]Oikum
 			&i.PersonID,
 			&i.SystemID,
 			&i.RankID,
+			&i.ValidFrom,
+			&i.ValidTo,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
@@ -994,7 +996,7 @@ FROM oikumenea.rank_ranks r
 WHERE r.id = $2 AND r.deleted_at IS NULL
 ON CONFLICT (person_id, system_id) WHERE deleted_at IS NULL
   DO UPDATE SET rank_id = excluded.rank_id
-RETURNING id, person_id, system_id, rank_id, created_at, updated_at, deleted_at
+RETURNING id, person_id, system_id, rank_id, valid_from, valid_to, created_at, updated_at, deleted_at
 `
 
 type UpsertPersonRankParams struct {
@@ -1015,6 +1017,8 @@ func (q *Queries) UpsertPersonRank(ctx context.Context, arg UpsertPersonRankPara
 		&i.PersonID,
 		&i.SystemID,
 		&i.RankID,
+		&i.ValidFrom,
+		&i.ValidTo,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,

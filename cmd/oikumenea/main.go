@@ -32,6 +32,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation/bootstrap"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation/middleware"
 	"github.com/olegamysk/go-oikumenea/internal/language"
+	"github.com/olegamysk/go-oikumenea/internal/links"
 	"github.com/olegamysk/go-oikumenea/internal/localization"
 	"github.com/olegamysk/go-oikumenea/internal/membership"
 	"github.com/olegamysk/go-oikumenea/internal/order"
@@ -48,6 +49,7 @@ import (
 	rankapp "github.com/olegamysk/go-oikumenea/internal/rank/application"
 	rankdomain "github.com/olegamysk/go-oikumenea/internal/rank/domain"
 	"github.com/olegamysk/go-oikumenea/internal/religion"
+	"github.com/olegamysk/go-oikumenea/internal/search"
 	"github.com/olegamysk/go-oikumenea/internal/tenant"
 	"github.com/olegamysk/go-oikumenea/internal/vehicle"
 	"github.com/olegamysk/go-oikumenea/internal/watchlistclient"
@@ -372,7 +374,8 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// Language (M18 / D-Languages): read-only lookup over the Glottolog languoid forest + ISO-15924
 	// writing systems. The registry is written by the hermenea import pipeline (language-scheme /
 	// language-scripts), not here.
-	if _, err := language.Register(info, pool, locSvc, enforcer); err != nil {
+	languageSvc, err := language.Register(info, pool, locSvc, enforcer)
+	if err != nil {
 		cleanup()
 		return nil, err
 	}
@@ -447,6 +450,34 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	religionSvc.SubscribePersonEvents(bus)
 	religionSvc.SubscribePersonPurge(bus) // erase this module's rows on PersonPurged (D-PersonModuleSplit)
 
+	// Unified search (review-2026-09 R-26 / D-UnifiedSearch): ONE cross-type endpoint fanning in the
+	// per-module trigram queries. The module owns no tables; providers register here with their
+	// D-VisibilityScope adapters (search_providers.go), and the engine joins the boot seam loop so an
+	// empty provider set fails startup instead of serving an empty (or untrimmed) search.
+	searchSvc, err := search.Register(info, enforcer)
+	if err != nil {
+		cleanup()
+		return nil, err
+	}
+	if err := registerSearchProviders(searchSvc, personSvc, membershipSvc, languageSvc, geoSvc, educationSvc, companySvc); err != nil {
+		cleanup()
+		return nil, werror.Wrap(err, "composition root: search provider registration")
+	}
+
+	// Generic link traversal (review-2026-09 R-27 / D-LinkTraversal): ONE endpoint answering "what
+	// links does object X have?" as a fan-in over the reified link tables. The module owns no tables;
+	// descriptors register here (link_descriptors.go), and the engine's coverage assertion joins the
+	// boot seam loop so a kind=link type that is neither registered nor exempt fails startup.
+	linksSvc, err := links.Register(info, pool, enforcer)
+	if err != nil {
+		cleanup()
+		return nil, err
+	}
+	if err := registerLinkDescriptors(linksSvc, pool, membershipSvc, authzSvc, locSvc); err != nil {
+		cleanup()
+		return nil, werror.Wrap(err, "composition root: link descriptor registration")
+	}
+
 	// Identity-federation: the external-IdP seam. Its application service is the (issuer, subject)
 	// resolver the validation middleware binds to.
 	identitySvc, err := identityfederation.Register(info, pool, auditSvc, enforcer, install.IdentityLinkingEnabled, issuerOptions(install))
@@ -493,7 +524,7 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// serve. A forgotten Set*/Bind otherwise compiles and surfaces at request time — as a nil deref or,
 	// worse, a silently-empty read-scope page that reads as "no access" rather than "mis-wired server".
 	// Fail fast here, naming the missing seam, instead.
-	for _, seam := range []interface{ MustBeBound() error }{authenticator, enforcer, personSvc, profileSvc, sensitiveSvc} {
+	for _, seam := range []interface{ MustBeBound() error }{authenticator, enforcer, personSvc, profileSvc, sensitiveSvc, searchSvc, linksSvc} {
 		if err := seam.MustBeBound(); err != nil {
 			cleanup()
 			return nil, werror.Wrap(err, "composition root: late-bound seam not wired")

@@ -85,7 +85,7 @@ companion ingestion + scheduler service with its **own Postgres** and **own Atla
 `POST /import/{objectType}` endpoint; it never touches oikumenea's DB). D-Hermenea **supersedes
 D-Worker** (in-process worker) and **folds D-DataIngestion (M17)** into M16.
 
-The **eleven core modules** (`docs/modules/`):
+The **twelve core modules** (`docs/modules/`):
 
 - **tenant** — **domains** (org-kind catalog) → **organizations** (the realm a person joins) → units
   as a DAG (multi-parent, multi-root) + a maintained transitive-closure table; per-org `command`/
@@ -107,6 +107,9 @@ The **eleven core modules** (`docs/modules/`):
 - **platform** — witchcraft bootstrap, config (ECV + refreshable), observability, schema bootstrap,
   boot-time schema-version check, shared kernel `pkg/`.
 - **audit** — append-only audit log of permission-sensitive actions.
+- **search** — unified cross-type object search (D-UnifiedSearch): one endpoint fanning in the
+  per-module trigram queries, permission-gated + visibility-trimmed per type (D-VisibilityScope);
+  owns no tables.
 
 Plus the **vertical / person-enrichment / reference modules** added M18–M50 (each with its own
 `docs/modules/*.md` or decision block): **geo** (countries + WOF gazetteer + `location`), **language**

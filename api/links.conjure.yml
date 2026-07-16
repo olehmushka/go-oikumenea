@@ -1,0 +1,143 @@
+# Generic object-link traversal (review-2026-09 R-27 / D-LinkTraversal).
+#
+# ONE endpoint answering "what links does object X have?" over ALL registered reified link tables,
+# implemented as a fan-in (logical union) over the per-module link tables — no new join table, no
+# graph database. Each module registers a link Descriptor (link type, table, endpoint columns,
+# target object types, read permission) at composition time (internal/links), derived from the same
+# pkg/rid link-type registry that R-28 made drift-proof; a link type that is neither registered nor
+# explicitly exempt fails boot (the coverage assertion). Per request each matching link arm is
+# SKIPPED entirely unless the subject holds its read permission (pep.AllowedAnywhere), and neighbor
+# rows are trimmed through the neighbor object type's D-VisibilityScope adapter (R-30) — so a link
+# set is never wider than what the owning module's own endpoints would serve.
+#
+# Everything is type-generic: a RID self-describes service/kind/type (D-ResourceIdentifiers), so a
+# link row needs no per-type response shape. RID-bearing fields travel as canonical UUID text
+# `string` (Conjure reserves the `rid` primitive for its own `ri.` format). Pagination is a
+# composite keyset token: base64url JSON carrying one cursor per non-exhausted link arm, each arm
+# keysetting over its link table's RID PK. Generated Go lands in internal/conjure and is never
+# hand-edited.
+types:
+  definitions:
+    default-package: oikumenea.links
+    objects:
+      LinkRow:
+        docs: One reified link incident to the queried object, type-erased to what every link shares.
+        fields:
+          linkRid:
+            type: string
+            docs: The reified link's own RID (kind=link; self-describes which link type this is).
+          targetRid:
+            type: string
+            docs: The neighbor object's RID at the other end of the link (canonical UUID text).
+          targetType:
+            type: string
+            docs: The ontology registry token for the neighbor's type (person, unit, organization, …).
+          targetLabel:
+            type: optional<map<string, string>>
+            docs: >-
+              Best-effort neighbor display name as a locale→text map (D-i18n: all locales in every
+              response, no negotiation); absent ⇒ the client falls back to the RID tail. Resolved
+              server-side by the neighbor type's registered labeler.
+          direction:
+            type: string
+            docs: 'out (queried object is the source end), in (the target end), or peer (symmetric link).'
+          attrs:
+            type: optional<map<string, string>>
+            docs: Optional link attributes chosen by the descriptor (status, role, effective dates, …).
+      LinkGroup:
+        docs: All links of one type + direction incident to the queried object.
+        fields:
+          linkType:
+            type: string
+            docs: The bare link-type name from the pkg/rid registry (e.g. member_of, kin_parent_of).
+          targetType:
+            type: string
+            docs: The neighbor object type all rows in this group point at.
+          direction: string
+          rows: list<LinkRow>
+      ObjectLinks:
+        docs: The queried object's links, grouped by (link type, direction) in fixed order.
+        fields:
+          rid:
+            type: string
+            docs: Echo of the queried object RID.
+          groups: list<LinkGroup>
+          nextPageToken:
+            type: optional<string>
+            docs: Opaque composite keyset token; absent when every selected link arm is exhausted.
+      Neighborhood:
+        docs: |
+          The queried object's depth-1 neighborhood as a flat neighbor list — the graph-explorer
+          shape (search-around). Depth>1 is a deliberate non-goal for this endpoint (review-2026-09).
+        fields:
+          rid: string
+          neighbors: list<LinkRow>
+          nextPageToken: optional<string>
+    errors:
+      UnknownObjectType:
+        docs: The RID does not decode to a registered object type (unknown service/kind/type).
+        namespace: Links
+        code: INVALID_ARGUMENT
+        safe-args:
+          rid: string
+      InvalidPageToken:
+        docs: The page token is not a token this endpoint issued.
+        namespace: Links
+        code: INVALID_ARGUMENT
+        safe-args: {}
+services:
+  LinkService:
+    name: Link Service
+    package: oikumenea.links
+    base-path: /links/v1
+    docs: |
+      Generic object-link traversal (D-LinkTraversal). Requires only an authenticated subject;
+      authorization is per-link-arm (read-permission gate) + per-row (neighbor visibility trim).
+    default-auth: header
+    endpoints:
+      getObjectLinks:
+        http: GET /objects/{rid}/links
+        docs: |
+          Return every registered link incident to `rid`, grouped by (link type, direction). Each
+          arm contributes up to pageSize rows; pageToken continues every non-exhausted arm's keyset.
+        args:
+          rid:
+            type: string
+            param-type: path
+            docs: The object RID to expand (canonical UUID text).
+          linkTypes:
+            type: optional<string>
+            param-type: query
+            docs: Comma-separated bare link-type names to restrict to (default all incident types).
+          pageSize:
+            type: optional<integer>
+            param-type: query
+            docs: Max total link rows per page (default 50, clamped to [1, 200]).
+          pageToken:
+            type: optional<string>
+            param-type: query
+            docs: Opaque composite keyset token from a previous page.
+        returns: ObjectLinks
+      searchAround:
+        http: GET /objects/{rid}/search-around
+        docs: |
+          Depth-1 neighborhood of `rid` as a flat neighbor list (the graph-explorer shape). Same
+          engine as getObjectLinks, flattened; depth>1 is out of scope (review-2026-09 Phase 15).
+        args:
+          rid:
+            type: string
+            param-type: path
+            docs: The object RID whose neighbors to fetch.
+          linkTypes:
+            type: optional<string>
+            param-type: query
+            docs: Comma-separated bare link-type names to restrict the expansion to (default all).
+          pageSize:
+            type: optional<integer>
+            param-type: query
+            docs: Max neighbors per page (default 50, clamped to [1, 200]).
+          pageToken:
+            type: optional<string>
+            param-type: query
+            docs: Opaque composite keyset token from a previous page.
+        returns: Neighborhood

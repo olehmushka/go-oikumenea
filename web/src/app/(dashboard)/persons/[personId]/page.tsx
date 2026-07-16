@@ -29,6 +29,7 @@ import {
   SetRank,
   SocialAccountManager,
 } from "./PersonForms";
+import { HistoryPanel } from "@/components/ontology/HistoryPanel";
 import { PersonEducationManager } from "./PersonEducation";
 import { PersonCompaniesManager } from "./PersonCompanies";
 import { PersonVehiclesManager } from "./PersonVehicles";
@@ -188,6 +189,16 @@ export default async function PersonDetailPage({
         <Card className="lg:col-span-2">
           <h2 className="text-sm font-semibold text-slate-900"><T>Financial, behavioural &amp; psychological overlays</T></h2>
           <OverlaysManager personId={person.id} />
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <h2 className="text-sm font-semibold text-slate-900"><T>History</T></h2>
+          <p className="mt-1 text-xs text-slate-500">
+            <T>Every recorded change to this person, newest first (audit ledger; D-Temporal, R-31). Sensitive before/after values require the sensitive-reader capability.</T>
+          </p>
+          <div className="mt-3">
+            <HistoryPanel rid={person.id} />
+          </div>
         </Card>
       </div>
 

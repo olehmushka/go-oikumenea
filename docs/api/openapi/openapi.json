@@ -244,6 +244,69 @@
         ],
         "type": "object"
       },
+      "ActionParam": {
+        "description": "One argument of an action type, projected from its Conjure request field (D-ActionTypes, R-29).\nDescriptive only — used for discoverability (the console action catalog), not write-time\nvalidation.\n",
+        "properties": {
+          "docs": {
+            "description": "The field's documentation from the contract, when present.",
+            "type": "string"
+          },
+          "name": {
+            "description": "The request field name, e.g. subjectPersonId, scope.",
+            "type": "string"
+          },
+          "required": {
+            "description": "True when the field is non-optional in the request.",
+            "type": "boolean"
+          },
+          "type": {
+            "description": "A display type token derived from the Conjure field type, e.g. string, rid, datetime, enum, list\u003cstring\u003e.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "required",
+          "type"
+        ],
+        "type": "object"
+      },
+      "ActionType": {
+        "description": "One registered action type (D-ActionTypes, review-2026-09 R-29): the machine catalog behind\nthe free-text `audit_log.action`. `code` is what an audit entry's `action` carries.\n",
+        "properties": {
+          "code": {
+            "description": "Stable dotted action code, e.g. assignment.grant, unit.transition.",
+            "type": "string"
+          },
+          "parameters": {
+            "description": "The action's argument schema (D-ActionTypes, review-2026-09 R-29 parameter-schema seam),\nsingle-sourced from the Conjure request type that carries the action's inputs and derived\nfrom the IR — never hand-authored. Empty for actions with no request body (deletes,\nlifecycle POSTs, imports) or not yet annotated (the catalog is expand-only).\n",
+            "items": {
+              "$ref": "#/components/schemas/ActionParam"
+            },
+            "type": "array"
+          },
+          "permission": {
+            "description": "The gating write permission (module-granular), e.g. assignment.grant, education.manage.",
+            "type": "string"
+          },
+          "service": {
+            "description": "The owning RID service (module) name, e.g. authz, tenant, person.",
+            "type": "string"
+          },
+          "targetType": {
+            "description": "The object type the action targets (the audit target_type), e.g. unit, person, education.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "parameters",
+          "permission",
+          "service",
+          "targetType"
+        ],
+        "type": "object"
+      },
       "AddAccountHolderRequest": {
         "description": "Add a holder (person or company) to the account; role defaults to primary.",
         "properties": {
@@ -5836,6 +5899,35 @@
         ],
         "type": "object"
       },
+      "LinkGroup": {
+        "description": "All links of one type + direction incident to the queried object.",
+        "properties": {
+          "direction": {
+            "type": "string"
+          },
+          "linkType": {
+            "description": "The bare link-type name from the pkg/rid registry (e.g. member_of, kin_parent_of).",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/LinkRow"
+            },
+            "type": "array"
+          },
+          "targetType": {
+            "description": "The neighbor object type all rows in this group point at.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "direction",
+          "linkType",
+          "rows",
+          "targetType"
+        ],
+        "type": "object"
+      },
       "LinkIdentityRequest": {
         "description": "Link a verified (issuer, subject) login point to an account.",
         "properties": {
@@ -5849,6 +5941,48 @@
         "required": [
           "issuer",
           "subject"
+        ],
+        "type": "object"
+      },
+      "LinkRow": {
+        "description": "One reified link incident to the queried object, type-erased to what every link shares.",
+        "properties": {
+          "attrs": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Optional link attributes chosen by the descriptor (status, role, effective dates, …).",
+            "type": "object"
+          },
+          "direction": {
+            "description": "out (queried object is the source end), in (the target end), or peer (symmetric link).",
+            "type": "string"
+          },
+          "linkRid": {
+            "description": "The reified link's own RID (kind=link; self-describes which link type this is).",
+            "type": "string"
+          },
+          "targetLabel": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Best-effort neighbor display name as a locale→text map (D-i18n: all locales in every response, no negotiation); absent ⇒ the client falls back to the RID tail. Resolved server-side by the neighbor type's registered labeler.",
+            "type": "object"
+          },
+          "targetRid": {
+            "description": "The neighbor object's RID at the other end of the link (canonical UUID text).",
+            "type": "string"
+          },
+          "targetType": {
+            "description": "The ontology registry token for the neighbor's type (person, unit, organization, …).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "direction",
+          "linkRid",
+          "targetRid",
+          "targetType"
         ],
         "type": "object"
       },
@@ -6537,6 +6671,28 @@
         ],
         "type": "object"
       },
+      "Neighborhood": {
+        "description": "The queried object's depth-1 neighborhood as a flat neighbor list — the graph-explorer\nshape (search-around). Depth\u003e1 is a deliberate non-goal for this endpoint (review-2026-09).\n",
+        "properties": {
+          "neighbors": {
+            "items": {
+              "$ref": "#/components/schemas/LinkRow"
+            },
+            "type": "array"
+          },
+          "nextPageToken": {
+            "type": "string"
+          },
+          "rid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "neighbors",
+          "rid"
+        ],
+        "type": "object"
+      },
       "NextOfKin": {
         "description": "An in-directory next-of-kin nomination (subject→contact, both directory persons; D-PersonRelationships; Link link__next_of_kin). A nomination, not a blood fact.",
         "properties": {
@@ -6571,6 +6727,109 @@
           "priority",
           "status",
           "subjectId"
+        ],
+        "type": "object"
+      },
+      "ObjectHistory": {
+        "description": "A paginated, reverse-chronological history of one object, read from the audit ledger\n(D-Temporal tier b, R-31). Serves the \"what did this record say / who changed it when\"\nquestion a Gotham-style dossier timeline needs.\n",
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/ObjectHistoryEvent"
+            },
+            "type": "array"
+          },
+          "nextPageToken": {
+            "type": "string"
+          },
+          "redacted": {
+            "description": "True when this response withheld before/after payloads because the caller lacks the\nsensitive-reader capability. The timeline itself is unaffected.\n",
+            "type": "boolean"
+          },
+          "rid": {
+            "description": "The object RID whose history this is (the audit target_id filter).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "events",
+          "redacted",
+          "rid"
+        ],
+        "type": "object"
+      },
+      "ObjectHistoryEvent": {
+        "description": "One dated change in an object's history (D-Temporal, review-2026-09 R-31): a projection of an\naudit row keyed to this object's RID. `before`/`after` carry the change payload and are\n**redacted (null) unless the caller holds the sensitive-reader capability** — the timeline\n(when/what/who) is always visible under `audit.read`.\n",
+        "properties": {
+          "action": {
+            "description": "The action code that produced the change, e.g. person.rank.assign, unit.transition.",
+            "type": "string"
+          },
+          "actorPersonId": {
+            "description": "The person who acted; present iff actorType is PERSON.",
+            "type": "string"
+          },
+          "actorType": {
+            "$ref": "#/components/schemas/AuditActorType"
+          },
+          "after": {
+            "description": "State after the change; null when redacted (caller lacks sensitive-reader) or absent."
+          },
+          "at": {
+            "description": "When the change was recorded (the audit row's createdAt).",
+            "format": "date-time",
+            "type": "string"
+          },
+          "before": {
+            "description": "State before the change; null when redacted (caller lacks sensitive-reader) or absent."
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/AuditOutcome"
+          },
+          "requestId": {
+            "description": "Correlation key shared with logs, metrics, and traces.",
+            "type": "string"
+          },
+          "subsystem": {
+            "description": "Originating source for SYSTEM actions; present iff actorType is SYSTEM.",
+            "type": "string"
+          },
+          "targetType": {
+            "description": "The acted-on entity kind (the audit target_type), e.g. person, unit.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "actorType",
+          "at",
+          "outcome",
+          "requestId",
+          "targetType"
+        ],
+        "type": "object"
+      },
+      "ObjectLinks": {
+        "description": "The queried object's links, grouped by (link type, direction) in fixed order.",
+        "properties": {
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/LinkGroup"
+            },
+            "type": "array"
+          },
+          "nextPageToken": {
+            "description": "Opaque composite keyset token; absent when every selected link arm is exhausted.",
+            "type": "string"
+          },
+          "rid": {
+            "description": "Echo of the queried object RID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "groups",
+          "rid"
         ],
         "type": "object"
       },
@@ -9787,6 +10046,52 @@
         },
         "required": [
           "scholarships"
+        ],
+        "type": "object"
+      },
+      "SearchHit": {
+        "description": "One matched object, type-erased down to what every object shares.",
+        "properties": {
+          "label": {
+            "description": "Primary display line (person display name, catalog name, organization name, …).",
+            "type": "string"
+          },
+          "objectType": {
+            "description": "The ontology registry token for the hit's type (e.g. person, languoid, company).",
+            "type": "string"
+          },
+          "rid": {
+            "description": "The object's RID (canonical UUID text; self-describes service/kind/type).",
+            "type": "string"
+          },
+          "snippet": {
+            "description": "Optional secondary line (code, MGRS, title detail) — provider-chosen.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "objectType",
+          "rid"
+        ],
+        "type": "object"
+      },
+      "SearchResultPage": {
+        "description": "Hits grouped by object type in fixed lexicographic type order.",
+        "properties": {
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHit"
+            },
+            "type": "array"
+          },
+          "nextPageToken": {
+            "description": "Opaque composite keyset token; absent when every selected provider is exhausted.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hits"
         ],
         "type": "object"
       },
@@ -13989,6 +14294,41 @@
   },
   "openapi": "3.0.3",
   "paths": {
+    "/audit/v1/action-types": {
+      "get": {
+        "description": "The full action-type catalog (D-ActionTypes, R-29), sorted by (service, code). Lets a client\n— e.g. the console's object-actions panel — discover what actions exist and their gating\npermission, instead of hard-coding them. Static registry read; requires only an\nauthenticated subject.\n",
+        "operationId": "AuditService_listActionTypes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ActionType"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "The full action-type catalog (D-ActionTypes, R-29), sorted by (service, code). Lets a client",
+        "tags": [
+          "AuditService"
+        ]
+      }
+    },
     "/audit/v1/audit": {
       "get": {
         "description": "Query the log, filterable by actor/target/unit/action/outcome/time, token-paginated.",
@@ -14151,6 +14491,65 @@
           }
         },
         "summary": "Read one entry by its Action RID. Returns Audit:AuditEntryNotFound when absent.",
+        "tags": [
+          "AuditService"
+        ]
+      }
+    },
+    "/audit/v1/objects/{rid}/history": {
+      "get": {
+        "description": "The reverse-chronological audit history of one object (D-Temporal tier b, R-31): every\nrecorded change to the object with `target_id = {rid}`, token-paginated. Gated by\n`audit.read`; the `before`/`after` change payloads are **redacted** (null, `redacted=true`)\nunless the caller also holds the sensitive-reader capability, because a folded per-object\ntimeline can surface pii up to the D-DataScope special-category ceiling.\n",
+        "operationId": "AuditService_getObjectHistory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectHistory"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "The reverse-chronological audit history of one object (D-Temporal tier b, R-31): every",
         "tags": [
           "AuditService"
         ]
@@ -24668,6 +25067,148 @@
         ]
       }
     },
+    "/links/v1/objects/{rid}/links": {
+      "get": {
+        "description": "Return every registered link incident to `rid`, grouped by (link type, direction). Each\narm contributes up to pageSize rows; pageToken continues every non-exhausted arm's keyset.\n",
+        "operationId": "LinkService_getObjectLinks",
+        "parameters": [
+          {
+            "description": "The object RID to expand (canonical UUID text).",
+            "in": "path",
+            "name": "rid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated bare link-type names to restrict to (default all incident types).",
+            "in": "query",
+            "name": "linkTypes",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Max total link rows per page (default 50, clamped to [1, 200]).",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque composite keyset token from a previous page.",
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectLinks"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Return every registered link incident to `rid`, grouped by (link type, direction). Each",
+        "tags": [
+          "LinkService"
+        ]
+      }
+    },
+    "/links/v1/objects/{rid}/search-around": {
+      "get": {
+        "description": "Depth-1 neighborhood of `rid` as a flat neighbor list (the graph-explorer shape). Same\nengine as getObjectLinks, flattened; depth\u003e1 is out of scope (review-2026-09 Phase 15).\n",
+        "operationId": "LinkService_searchAround",
+        "parameters": [
+          {
+            "description": "The object RID whose neighbors to fetch.",
+            "in": "path",
+            "name": "rid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated bare link-type names to restrict the expansion to (default all).",
+            "in": "query",
+            "name": "linkTypes",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Max neighbors per page (default 50, clamped to [1, 200]).",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque composite keyset token from a previous page.",
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Neighborhood"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Depth-1 neighborhood of `rid` as a flat neighbor list (the graph-explorer shape). Same",
+        "tags": [
+          "LinkService"
+        ]
+      }
+    },
     "/localization/v1/locale-languages": {
       "get": {
         "description": "List each supported locale's canonical Glottolog language (D-Languages, M18). Read-only — the\nlinks are reconciled by the language-scheme import, not edited here.\n",
@@ -34077,6 +34618,87 @@
         "summary": "Replace the unit's theism override set (empty list clears it, restoring inheritance).",
         "tags": [
           "ReligionService"
+        ]
+      }
+    },
+    "/search/v1/objects": {
+      "get": {
+        "description": "Search all (or the filtered subset of) registered object types for `query`. Each selected\nprovider contributes up to perTypeLimit hits per page; pageToken continues every\nnon-exhausted provider's keyset.\n",
+        "operationId": "SearchService_searchObjects",
+        "parameters": [
+          {
+            "description": "Case-insensitive substring query (min 2 chars) over each type's search haystack.",
+            "in": "query",
+            "name": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated objectType tokens to restrict the search to (default all).",
+            "in": "query",
+            "name": "types",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Max hits per object type per page (default 5, clamped to [1, 50]).",
+            "in": "query",
+            "name": "perTypeLimit",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Max total hits per page (default 25, clamped to [1, 100]).",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque composite keyset token from a previous page.",
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResultPage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Search all (or the filtered subset of) registered object types for `query`. Each selected",
+        "tags": [
+          "SearchService"
         ]
       }
     },

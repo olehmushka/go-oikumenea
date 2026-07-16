@@ -123,6 +123,8 @@ is read-only and not audited). Denied attempts on these are recorded with `outco
 |---|---|---|
 | `GET /audit` | Query the log (filter by actor/target/unit/time, token-paginated) | `audit.read` |
 | `GET /audit/{id}` | Read one entry | `audit.read` |
+| `GET /action-types` | The action-type catalog (D-ActionTypes, R-29): `{code, service, targetType, permission}` | authenticated |
+| `GET /objects/{rid}/history` | The object's reverse-chronological change history (D-Temporal tier b, R-31): the audit rows with `target_id = {rid}`, token-paginated; `before`/`after` **redacted unless sensitive-reader** | `audit.read` |
 
 Audit reads are unit-scoped where a `unit_id` is present (an admin reads audit reaching their
 subtree); instance-scope admins read all. Reads pass the shadow gate for `shadow`-unit context.
@@ -155,6 +157,21 @@ of an already-authorized — or explicitly denied — action); reading the log i
   range partitions + `ensure_audit_partition` roll-forward + `detach_audit_partitions_before`
   operator helper (see *Data model* above). The remaining seam is an **automated scheduled enforcer**
   that reads `audit.retention-months` and detaches/archives without an operator command.
+- **Object history (D-Temporal, review-2026-09 R-31): delivered.** `getObjectHistory` reads the
+  ledger back as a per-object timeline (tier b of the three-tier history classification); tier-a Links
+  carry native `valid_from`/`valid_to` instead. Open seams: **as-of reconstruction** (folding
+  `before/after` into a point-in-time object view) and full **bitemporality** (a transaction-time
+  axis) are deliberately *not* built — recorded as seams, not implied.
 - **PII envelope** (encrypt attributed free-text with per-row keys, erase by key deletion) is a
   reserved enhancement if richer PII ever lands in audit payloads.
 - A streaming/export sink (SIEM) sits naturally behind `audit2log`.
+- **Action-type catalog (D-ActionTypes, review-2026-09 R-29): delivered.** Every audited write's
+  `action` is validated at write time against the `pkg/action` catalog (rejecting typos/un-catalogued
+  actions), and `listActionTypes` (`GET /audit/v1/action-types`) serves the catalog
+  (`{code, service, targetType, permission, parameters}`) so clients enumerate actions instead of
+  hard-coding them. **Parameter schemas: delivered** — each action optionally names its Conjure request
+  type (`ActionType.RequestType`), and its `parameters` (`{name, type, required, docs}`) are **derived
+  from the Conjure IR** (`tools/genactionparams` → `pkg/action/params_gen.go`, drift-tested), so they
+  can't diverge from the contract; descriptive/discoverability only (no write-time argument validation).
+  Remaining seam: annotating the not-yet-mapped modules' `RequestType`s (expand-only — unannotated
+  actions simply report no parameters).

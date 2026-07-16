@@ -408,6 +408,13 @@ func (s *Service) SubjectCanReadPerson(ctx context.Context, subjectPersonID, per
 	return s.newRepo(s.querier(ctx)).SubjectCanReadPerson(ctx, subjectPersonID, personID)
 }
 
+// SubjectReadablePersonsAmong is the batch form of the same probe: which of the candidate persons
+// fall in the subject's readable reach (D-VisibilityScope person-scope adapter, review-2026-09 R-30).
+// Unordered set semantics; callers preserve their own candidate order.
+func (s *Service) SubjectReadablePersonsAmong(ctx context.Context, subjectPersonID string, personIDs []string) ([]string, error) {
+	return s.newRepo(s.querier(ctx)).SubjectReadablePersonsAmong(ctx, subjectPersonID, personIDs)
+}
+
 // ---------------------------------------------------------------- helpers
 
 // checkPositionForFill verifies a referenced position exists, is active, and belongs to the cited

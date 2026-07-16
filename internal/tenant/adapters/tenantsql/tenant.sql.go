@@ -494,7 +494,7 @@ const insertEdge = `-- name: InsertEdge :one
 
 INSERT INTO oikumenea.tenant_unit_edges (graph_id, parent_id, child_id, created_by)
 VALUES ($1, $2, $3, $4)
-RETURNING id, graph_id, parent_id, child_id, created_at, created_by
+RETURNING id, graph_id, parent_id, child_id, valid_from, valid_to, created_at, created_by
 `
 
 type InsertEdgeParams struct {
@@ -518,6 +518,8 @@ func (q *Queries) InsertEdge(ctx context.Context, arg InsertEdgeParams) (Oikumen
 		&i.GraphID,
 		&i.ParentID,
 		&i.ChildID,
+		&i.ValidFrom,
+		&i.ValidTo,
 		&i.CreatedAt,
 		&i.CreatedBy,
 	)

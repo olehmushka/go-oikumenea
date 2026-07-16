@@ -63,6 +63,97 @@ types:
         fields:
           entries: list<AuditEntry>
           nextPageToken: optional<string>
+      ActionType:
+        docs: |
+          One registered action type (D-ActionTypes, review-2026-09 R-29): the machine catalog behind
+          the free-text `audit_log.action`. `code` is what an audit entry's `action` carries.
+        fields:
+          code:
+            type: string
+            docs: Stable dotted action code, e.g. assignment.grant, unit.transition.
+          service:
+            type: string
+            docs: The owning RID service (module) name, e.g. authz, tenant, person.
+          targetType:
+            type: string
+            docs: The object type the action targets (the audit target_type), e.g. unit, person, education.
+          permission:
+            type: string
+            docs: The gating write permission (module-granular), e.g. assignment.grant, education.manage.
+          parameters:
+            type: list<ActionParam>
+            docs: |
+              The action's argument schema (D-ActionTypes, review-2026-09 R-29 parameter-schema seam),
+              single-sourced from the Conjure request type that carries the action's inputs and derived
+              from the IR — never hand-authored. Empty for actions with no request body (deletes,
+              lifecycle POSTs, imports) or not yet annotated (the catalog is expand-only).
+      ActionParam:
+        docs: |
+          One argument of an action type, projected from its Conjure request field (D-ActionTypes, R-29).
+          Descriptive only — used for discoverability (the console action catalog), not write-time
+          validation.
+        fields:
+          name:
+            type: string
+            docs: The request field name, e.g. subjectPersonId, scope.
+          type:
+            type: string
+            docs: A display type token derived from the Conjure field type, e.g. string, rid, datetime, enum, list<string>.
+          required:
+            type: boolean
+            docs: True when the field is non-optional in the request.
+          docs:
+            type: optional<string>
+            docs: The field's documentation from the contract, when present.
+      ObjectHistoryEvent:
+        docs: |
+          One dated change in an object's history (D-Temporal, review-2026-09 R-31): a projection of an
+          audit row keyed to this object's RID. `before`/`after` carry the change payload and are
+          **redacted (null) unless the caller holds the sensitive-reader capability** — the timeline
+          (when/what/who) is always visible under `audit.read`.
+        fields:
+          at:
+            type: datetime
+            docs: When the change was recorded (the audit row's createdAt).
+          action:
+            type: string
+            docs: The action code that produced the change, e.g. person.rank.assign, unit.transition.
+          actorType: AuditActorType
+          actorPersonId:
+            type: optional<string>
+            docs: The person who acted; present iff actorType is PERSON.
+          subsystem:
+            type: optional<string>
+            docs: Originating source for SYSTEM actions; present iff actorType is SYSTEM.
+          targetType:
+            type: string
+            docs: The acted-on entity kind (the audit target_type), e.g. person, unit.
+          outcome: AuditOutcome
+          requestId:
+            type: string
+            docs: Correlation key shared with logs, metrics, and traces.
+          before:
+            type: optional<any>
+            docs: State before the change; null when redacted (caller lacks sensitive-reader) or absent.
+          after:
+            type: optional<any>
+            docs: State after the change; null when redacted (caller lacks sensitive-reader) or absent.
+      ObjectHistory:
+        docs: |
+          A paginated, reverse-chronological history of one object, read from the audit ledger
+          (D-Temporal tier b, R-31). Serves the "what did this record say / who changed it when"
+          question a Gotham-style dossier timeline needs.
+        fields:
+          rid:
+            type: string
+            docs: The object RID whose history this is (the audit target_id filter).
+          events: list<ObjectHistoryEvent>
+          nextPageToken: optional<string>
+          redacted:
+            type: boolean
+            docs: |
+              True when this response withheld before/after payloads because the caller lacks the
+              sensitive-reader capability. The timeline itself is unaffected.
     errors:
       AuditEntryNotFound:
         namespace: Audit
@@ -125,3 +216,30 @@ services:
             type: string
             param-type: path
         returns: AuditEntry
+      listActionTypes:
+        http: GET /action-types
+        docs: |
+          The full action-type catalog (D-ActionTypes, R-29), sorted by (service, code). Lets a client
+          — e.g. the console's object-actions panel — discover what actions exist and their gating
+          permission, instead of hard-coding them. Static registry read; requires only an
+          authenticated subject.
+        returns: list<ActionType>
+      getObjectHistory:
+        http: GET /objects/{rid}/history
+        docs: |
+          The reverse-chronological audit history of one object (D-Temporal tier b, R-31): every
+          recorded change to the object with `target_id = {rid}`, token-paginated. Gated by
+          `audit.read`; the `before`/`after` change payloads are **redacted** (null, `redacted=true`)
+          unless the caller also holds the sensitive-reader capability, because a folded per-object
+          timeline can surface pii up to the D-DataScope special-category ceiling.
+        args:
+          rid:
+            type: string
+            param-type: path
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: ObjectHistory

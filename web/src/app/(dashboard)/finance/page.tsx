@@ -75,7 +75,22 @@ export default function FinancePage() {
               <td>{a.accountTypeLabel || "—"}</td>
               <td>{a.currency || "—"}</td>
               <td>{a.status}</td>
-              <td><button className="text-xs text-indigo-600 hover:underline" onClick={() => setSelected(a)}><T>Open</T></button></td>
+              <td>
+                <span className="flex items-center gap-3">
+                  <button className="text-xs text-indigo-600 hover:underline" onClick={() => setSelected(a)}><T>Open</T></button>
+                  <button
+                    className="text-xs text-red-600 hover:underline"
+                    onClick={() => {
+                      if (!window.confirm("Delete this account and its cards?")) return;
+                      api.finance.deleteAccount(a.id)
+                        .then(() => { if (selected?.id === a.id) setSelected(null); reload(); })
+                        .catch(setErr);
+                    }}
+                  >
+                    <T>Delete</T>
+                  </button>
+                </span>
+              </td>
             </tr>
           ))}
         </Table>
@@ -199,6 +214,7 @@ function AccountDetail({ account, networks, setErr }: { account: Account; networ
             <span className="font-mono">{c.bin || "••••••"} •••• {c.lastFour || "••••"}</span>
             {c.networkLabel ? ` · ${c.networkLabel}` : ""} · {c.cardType} · {c.status}
             <button className="ml-2 text-xs text-indigo-600 hover:underline" onClick={() => api.finance.getCard(c.id).then((full) => { const p = (full as unknown as Card).pan; if (p) alert(p); }).catch(setErr)}><T>Reveal PAN</T></button>
+            <button className="ml-2 text-xs text-red-600 hover:underline" onClick={() => { if (window.confirm("Delete this card?")) api.finance.deleteCard(c.id).then(reloadCards).catch(setErr); }}><T>Delete</T></button>
           </li>
         ))}
         {cards.length === 0 ? <li className="text-slate-400"><T>No cards.</T></li> : null}

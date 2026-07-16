@@ -256,6 +256,9 @@ CREATE TABLE oikumenea.tenant_unit_edges (
   graph_id   uuid NOT NULL REFERENCES oikumenea.tenant_graphs(id) ON DELETE RESTRICT,
   parent_id  uuid NOT NULL REFERENCES oikumenea.tenant_units(id) ON DELETE RESTRICT,
   child_id   uuid NOT NULL REFERENCES oikumenea.tenant_units(id) ON DELETE RESTRICT,
+  -- native validity (D-Temporal, R-31): the interval this edge is true; NULL valid_to = active.
+  valid_from timestamptz NOT NULL DEFAULT now(),
+  valid_to   timestamptz CHECK (valid_to IS NULL OR valid_to >= valid_from),
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid,   -- person RID provenance (nullable; identity lands in M8)
 

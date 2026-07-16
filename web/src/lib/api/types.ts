@@ -128,6 +128,10 @@ export type OrderType = order.IOrderType;
 // ── audit ────────────────────────────────────────────────────────────────────
 export type AuditEntry = audit.IAuditEntry;
 export type AuditEntryPage = audit.IAuditEntryPage;
+export type ObjectHistory = audit.IObjectHistory;
+export type ObjectHistoryEvent = audit.IObjectHistoryEvent;
+export type ActionType = audit.IActionType;
+export type ActionParam = audit.IActionParam;
 
 // ── platform ─────────────────────────────────────────────────────────────────
 export type VersionInfo = platform.IVersionInfo;

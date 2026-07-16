@@ -73,6 +73,11 @@ planned-tier (M16–M45) decisions live in [`roadmap-decisions.md`](roadmap-deci
 | [D-PersonModuleSplit](#d-personmodulesplit--the-person-god-module-splits-into-core--profile--sensitive-behind-one-personservice) | The person god module splits into core / profile / sensitive |
 | [D-EventOutbox](#d-eventoutbox--transactional-outbox-for-the-notify-event-class-extends-the-pkgevents-bus) | Transactional outbox for the notify event class |
 | [D-DataScope](#d-datascope--what-a-deployment-may-hold-the-product-is-a-personnel-directory--registry-platform-owns-the-pci-dss-posture) | What a deployment may hold; product is a registry platform; PCI-DSS posture |
+| [D-VisibilityScope](#d-visibilityscope--one-read-visibility-interface-three-canonical-scope-shapes-registered-per-object-type) | One read-visibility interface, three canonical scope shapes, registered per object type |
+| [D-UnifiedSearch](#d-unifiedsearch--one-cross-type-searchservice-as-a-fan-in-over-the-per-module-trigram-queries) | One cross-type SearchService as a fan-in over the per-module trigram queries |
+| [D-LinkTraversal](#d-linktraversal--one-generic-getobjectlinks-endpoint-as-a-fan-in-over-a-pkgrid-derived-link-descriptor-registry) | One generic getObjectLinks endpoint as a fan-in over a pkg/rid-derived link-descriptor registry |
+| [D-ActionTypes](#d-actiontypes--a-checked-action-type-catalog-behind-the-free-text-audit_logaction) | A checked action-type catalog behind the free-text audit_log.action |
+| [D-Temporal](#d-temporal--a-three-tier-link-history-classification-native-validity-by-default-plus-getobjecthistory-over-the-audit-ledger) | A three-tier link-history classification (native validity by default) plus getObjectHistory over the audit ledger |
 | L-\* locks | [Carried-over locks](#carried-over-locks-settled-earlier-restated-for-self-containment): L-AuthzOnly, L-AccountOptional, L-SingleDomain, L-UnitIsTenant, L-OneRankScheme, L-Visibility, L-OperatorDB, L-UpgradeSafe, L-Conventions |
 
 ---
@@ -2103,6 +2108,235 @@ Relates to
 [D-SpecialPII](roadmap-decisions.md#d-specialpii--envelope-encryption-extended-to-the-piispecial-tier-resolves-the-person-field-half-of-ds-29),
 [D-CryptoProvider](#d-cryptoprovider--pluggable-envelope-encryption-for-sensitive-pii-reshapes-ds-29),
 and [D-PIITiers](#d-piitiers--5-tier-pii-classification-via-comment-on-column).
+
+---
+
+### D-VisibilityScope — One read-visibility interface, three canonical scope shapes, registered per object type
+
+**Decision.** Row-level read visibility gets **one shared interface** in the authorization module
+(`internal/authorization/scope`): `Visibility.ReadableIDs(ctx, subject, isAdmin, candidateIDs) →
+ids` (order-preserving subset). Exactly **three canonical implementations** exist, matching the
+three real policies already in the code — **person-scope** (the D-PersonReadScope membership
+semi-join, via an injected batch probe), **unit-scope** (owning-unit mapping + the existing
+shadow-gate `FilterVisibleUnits`), and **catalog-scope** (the endpoint's read-permission gate is
+the entire decision; identity row trim). Every object type exposed on a **cross-type surface**
+(unified search R‑26, generic links R‑27, …) MUST register a `Visibility` at composition time;
+a cross-type surface with an unregistered type **fails composition** (boot), never serves
+untrimmed rows. The adapter is **additive**: existing per-module endpoints keep their current
+code paths; differential equality with each module's own list endpoint (same subject, same
+fixtures) is the correctness contract, enforced by tests.
+
+**Why.** Review-2026-09 **R‑30**: visibility was re-invented per module (person semi-join, tenant
+shadow gate, catalog coarse gates), so no generic surface could answer "may this subject read
+object X" — the load-bearing prerequisite for unified search and link traversal. This is the
+honest cost of D-NoRLS (app-layer row security): the obligation concentrates into exactly this
+adapter. Three named shapes — not a per-module bespoke fourth — keep the next module's choice a
+classification, not a design.
+
+**Consequence.** New `internal/authorization/scope` package (impls take injected funcs; the
+authorization module still imports no other module — the composition root wires concretes). New
+membership batch probe `SubjectReadablePersonsAmong` (the `= ANY` variant of the existing
+point-probe reach predicate; no schema change). `pep.Enforcer` gains the non-erroring
+`AllowedAnywhere` probe. New object types that want cross-type exposure declare their scope shape
+at design time (alongside their Object/Link/Action kind, D-Ontology).
+
+---
+
+### D-UnifiedSearch — One cross-type SearchService as a fan-in over the per-module trigram queries
+
+**Decision.** Cross-type object search is **one Conjure service** (`api/search.conjure.yml`,
+`SearchService.searchObjects` at `/search/v1/objects`) implemented as a **fan-in over the existing
+per-module trigram search queries** (D-PersonSearch + the R‑21 generalization) — **not** a global
+index table, not Elasticsearch, not a new ranking engine (all explicitly rejected by
+review-2026-09 "NOT recommended"). Modules register a `SearchProvider` (object-type token, read
+permission, keyset search func) **plus** a D-VisibilityScope `Visibility` in one composition-time
+registry (`internal/search`); the registry is the same seam the R‑27 link facet will extend.
+Per request: providers run in **fixed lexicographic type order**; a provider is **skipped
+entirely** if the subject lacks its read permission (non-erroring probe); returned rows are
+trimmed through the registered `Visibility` (person's provider searches pre-trimmed in SQL);
+hits are `{rid, objectType, label, snippet}` — the RID is self-describing, so no per-type
+response shapes. Pagination is a composite keyset token (per-provider cursors, base64url JSON);
+provider cursors advance over **raw** (pre-trim) rows so trimming can shorten a page but never
+skip a row. The endpoint itself requires only an authenticated subject — authorization is
+entirely per-provider gate + per-row trim.
+
+**Why.** Review-2026-09 **R‑26**: no unified search existed; the ⌘K palette substring-filtered
+the first 100 rows per type in the browser — at registry scale a search box that silently finds
+almost nothing, while the R‑21 trigram indexes sat unused by the first surface an operator
+reaches. The Gotham-style entry point ("search anything, then navigate") starts here. Fan-in
+over existing per-type queries keeps each arm on its proven index and keeps relevance/ranking
+out of scope (trigram has no rank; deterministic grouped-by-type order instead).
+
+**Consequence.** New thin `search` module (`internal/search`: no tables, no RIDs minted, no RID
+service number, reads not audited — consistent with every other read path). Provider wiring is
+composition glue (`cmd/oikumenea/search_providers.go`) closing over module services; initial
+providers: person, languoid, location, institution, company, publication, scholarship. The web
+palette (and progressively the console's other search boxes) consume the endpoint instead of
+client-side fan-out caches. Relevance ranking, locale-map labels, and per-provider snippets
+beyond a secondary line are named open seams in [modules/search.md](../modules/search.md).
+
+---
+
+### D-LinkTraversal — One generic getObjectLinks endpoint as a fan-in over a pkg/rid-derived link-descriptor registry
+
+**Decision.** "What links does object X have?" is answered by **one Conjure service**
+(`api/links.conjure.yml`, `LinkService.getObjectLinks` at `/links/v1/objects/{rid}/links`, plus a
+depth-1 `searchAround`) implemented as a **fan-in (logical union) over the existing reified link
+tables** — **not** a graph database, not a new join/edge table, not a client-side fan-out over the
+web registry. Each module registers a **link `Descriptor`** (link type, table, the two endpoint
+columns, per-end target object types, read permission) at composition time
+(`cmd/oikumenea/link_descriptors.go` → `internal/links`); the descriptor set is the Go counterpart
+of the web console's hand-authored `links[]`, but its link types are **validated against the
+drift-proof pkg/rid link-type registry** (R-28) at Register time, and the engine's **`MustBeBound`
+coverage assertion** (main.go's boot seam loop) fails startup if any kind=link RID type is neither
+registered **nor** explicitly **exempt** — so a link table added by a future milestone appears in the
+console **without editing `web/`**, or fails boot until wired. Per request: for the queried RID's
+decoded object type the engine selects every incident link arm, runs one **keyset query per arm** on
+that arm's existing endpoint index, **skips** an arm whose read permission the subject lacks
+(`pep.AllowedAnywhere`, non-erroring), and **trims neighbor rows** through the neighbor object type's
+D-VisibilityScope adapter (person → person-scope; unit → shadow gate; every other neighbor →
+catalog scope, differential-equal to the owning module's coarse-gated list). Pagination is a
+composite keyset token (per-arm cursors advancing over **raw** pre-trim rows, base64url JSON — a
+trimmed page shortens but never skips). Polymorphic F-014 ends (`holder_kind`/`holder_id`) declare
+one target per discriminator value (person `(6,1,1)` / company = tenant org `(4,1,6)`), closing
+R-32's fix-sketch item 2. The endpoint requires only an authenticated subject; authorization is
+entirely per-arm gate + per-row trim (an ungranted subject gets an empty result, not 403).
+
+**Why.** Review-2026-09 **R-27**: no backend answered "links for object X", so the universal object
+page and graph explorer fired ~19 HTTP GETs per object (one per hand-declared `links[]` collection),
+swallowed per-endpoint errors to empty groups, and — worst for a registry/watchlist product — under-
+reported relationships whenever a new link table outran the hand-maintained web registry. A
+descriptor registry **derived from pkg/rid** cannot drift; a generic UNION over the already-indexed
+link tables collapses the fan-out to O(1) and makes Gotham-style search-around reachable. Row
+security stays in the app layer (D-NoRLS): the obligation lands on the same D-VisibilityScope adapter
+Phase 14 built, which is why R-30 sequenced before this.
+
+**Consequence.** New thin `links` module (`internal/links`: no tables, no RIDs minted, reads not
+audited — like `search`). The one place **raw dynamic SQL** is justified in the codebase: a union
+over a runtime-registered set of tables is not expressible in sqlc, so the engine interpolates
+compile-time descriptor identifiers through `pgx.Identifier.Sanitize` with bound value params.
+Descriptor wiring is composition glue closing over the pool + module services; the initial set covers
+38 traversable link tables with 8 documented exemptions (encrypted/free-text/untyped-polymorphic
+ends, `has_role`'s three-way assignment, `instance_admin`'s absent neighbor). The web
+`resolveLinkGroups` (and the object page + graph explorer through it) consume the endpoint; the web
+`links[]` arrays become display-only hints, no longer the traversal source of truth. Server-side
+neighbor **labelers** are now delivered: each neighbor type registers a batch labeler that resolves a
+`targetLabel` **locale→text map** (D-i18n) — person from its name variants, everything else via an
+overlay over the base name + `i18n_translations` (`localization.NamesByID`) — so link/graph rows show a
+real name, not the RID tail. Depth-2 search-around and per-link-type (vs per-module) permission codes
+remain named open seams in [modules/links.md](../modules/links.md).
+
+---
+
+### D-ActionTypes — A checked action-type catalog behind the free-text audit_log.action
+
+**Decision.** Action *types* become a **checked, enumerable catalog** in Go (`pkg/action`): each
+registered action is `{code, service, targetType, permission}`, keyed by the stable dotted `code`
+that `audit_log.action` already carries (`assignment.grant`, `unit.transition`, …). The catalog is
+the **source of truth**, validated three ways: (1) **write-time** — `audit.Service.Record` rejects
+an entry whose action is not registered (`action.Validate`; kept out of the stdlib-only
+`audit/domain` so the domain stays dependency-free), so a typo (`assignment.granted`) or an
+un-catalogued new action fails a test rather than drifting across modules; (2) **doc coherence** —
+[ontology-mapping.md §3.1](../ontology-mapping.md) carries the catalog as a generated table that
+`pkg/action/catalog_doc_test.go` asserts equal to the registry (R-28-style); (3) **discoverability**
+— `AuditService.listActionTypes` (`GET /audit/v1/action-types`) serves it so a client (the
+console's actions panel) enumerates actions and their gating permission instead of hard-coding them.
+Each action also carries an optional **parameter schema** (R-29's deferred seam, now closed):
+`ActionType.RequestType` names the Conjure request type carrying the action's inputs, package-qualified
+(`oikumenea.authorization.GrantAssignmentRequest`), and the argument list is **derived from the Conjure
+IR** — never hand-authored — by `tools/genactionparams` (`scripts/gen-action-params.sh` → the generated
+`pkg/action/params_gen.go`), so it **cannot drift** from the contract (same single-source discipline as
+R-28). `listActionTypes` returns them as `parameters: list<ActionParam{name, type, required, docs}>`,
+rendered read-only in the audit action catalog and the `/o/[rid]` Actions panel. The schema is
+**descriptive / discoverability only** — *not* enforced at write time (`audit.Record` still validates the
+code, not arguments; validating arguments would thread request inputs into the audit writer across every
+module — the wrong layer). Annotation is **expand-only**: an unannotated action reports no parameters, and
+`TestRequestTypesResolve` fails if a named `RequestType` stops resolving in the IR.
+It is **expand-only**: the audit RID stays the generic **kind=action / type_code 0** (D-Audit —
+history is not rewritten); a new milestone adds catalog rows, and the coherence + validation tests
+fail until it does. The [order](../modules/order.md) module is named the **reference pattern** (a
+typed action with catalogued `effect`s applied all-or-nothing via events in one transaction).
+
+**Why.** Review-2026-09 **R-29**: action *instances* existed (every audited write mints a kind=action
+RID) but action *types* did not — the name was free text in `audit_log.action` with no read-time
+contract, so nothing prevented cross-module drift, nothing let an operator or the console *discover*
+what actions a type affords, and audit-analytics-by-type depended on string hygiene across ~26
+modules. The repo already paid the cost of the pattern (per-action permission codes, audit rows,
+endpoints) without the payoff of the catalog. A registry — **not a framework** — closes that at the
+schema-discipline level the rest of the ontology already meets.
+
+**Consequence.** New leaf `pkg/action` (imports only `pkg/rid`); the catalog was derived from the
+actual emit sites (runtime capture of every audited write ∪ static scan) so it is complete against
+what the code emits — the full integration suite is the standing completeness check (an unregistered
+emitted action fails its module's test). `permission` is the **module-granular gating write
+permission** (the finding's "required permission"); a dedicated per-action permission code, where a
+module later defines one, swaps in with no other change. Retrofitting per-action RID `type_code`s
+into historical audit rows is explicitly **not** done (kind=action/type 0 stays valid — expand-only).
+Per-action parameter schemas (originally a named open seam) are now delivered, IR-derived and
+descriptive (above); annotating the remaining modules' `RequestType`s is incremental follow-on.
+
+---
+
+### D-Temporal — A three-tier link-history classification (native validity by default) plus getObjectHistory over the audit ledger
+
+**Decision.** Every reified **Link** (kind=2) declares a **history tier** at design time, the same way
+it declares its Object/Link/Action kind (D-Ontology). There are three tiers:
+
+| Tier | What it means | Criterion | Where the history lives |
+|---|---|---|---|
+| **(a) native validity** — the **default** for relationship/state Links | the row carries its own truth-interval; history is never overwritten | the Link asserts a state that is *true over a period* (membership, ownership, a held rank, an affiliation, a residence) | on the row: `valid_from`/`valid_to` (NULL `valid_to` = active) — the **canonical pair** — or the grandfathered equivalents `effective_from`/`effective_to`, `granted_at`/`revoked_at`(+`expires_at`), `founded_on`, `awarded_on` (D-ResourceIdentifiers §4.1 already defines these **as** the validity pair) |
+| **(b) object history** | an Object's change history is read back from the **audit ledger**, not a per-row interval | any audited Object (person, unit, …) | `oikumenea.audit_log (target_type, target_id)` + `before/after`, served by **`AuditService.getObjectHistory`** |
+| **(c) history-exempt** | a reference/structural association whose change is a *correction*, not a dated historical event | validity would be noise (a linguistic fact, a catalog association, a structural edge within an already-versioned snapshot) | nothing — deliberately undated |
+
+**Tier (a) is the mandate going forward:** a new relationship Link **must** carry native validity;
+a new Link is tier-(c)-exempt only by an explicit, reasoned classification. The boundary is not prose
+— it is **enforced executable**: `cmd/oikumenea/temporal_tiers_test.go` holds a `temporalTiers`
+classification of **every** kind=Link RID type and fails the build if (1) a `pkg/rid` Link type is
+unclassified (`TestTemporalTierCoverage` — the drift guard R-31 makes real), or (2) a tier-(a) Link's
+migration DDL lacks a validity column (`TestValidityLinksHaveDatingColumn` — so "this Link is dated"
+can never be an unbacked claim). This is the temporal analogue of the R-27 link-coverage assertion and
+the R-28 RID coherence check.
+
+**The tier-(c) exempt set is closed and small** (six kind=Link types — the *bounded* divergence R-31
+demanded, replacing §4.1's open-ended hand-wave): `locale_language` (2,1) and `unit_language` (4,2)
+(reference associations), `written_in` (13,1) (a Glottolog languoid↔script linguistic fact),
+`curriculum_item` (14,5) and `course_prerequisite` (14,6) (structural facts inside an
+already-versioned curriculum), and `has_ethnicity` (6,9) (an encrypted self-declared *attribute*, not
+a dated edge). **Everything else is tier (a).** The gap was closed by adding `valid_from`/`valid_to` (+ an inline
+range CHECK) to the **thirteen** previously-undated relationship Links — `parent_of`, `holds_rank`,
+`kin_parent_of`, `next_of_kin`, `associated_with`, `speaks`, `beneficiary_of`, `succeeded_by`,
+`branch_of`, `has_industry`, `located_at`, `classified_as`, `site_of` — **folded directly into each
+table's original `CREATE TABLE`** in its existing migration and the dev/test DBs rebuilt, per the
+unreleased-build-out convention (edit in place, not an ALTER migration — the same way R-32's shape
+CHECKs were folded in). Existing dated Links keep their grandfathered column names (no churny rename);
+the canonical `valid_from`/`valid_to` pair applies to these newly-dated Links. On a real post-release
+upgrade the equivalent change would instead ship as an expand ALTER (`valid_from := created_at`,
+`valid_to := deleted_at`); pre-release, the migrations are the source and are edited in place.
+
+**The cheap read capability** ships with it: **`AuditService.getObjectHistory(rid)`**
+(`GET /audit/v1/objects/{rid}/history`) — a token-paginated, reverse-chronological read over
+`audit_log` filtered to `target_id = rid`, returning `{at, action, actor, targetType, outcome, before,
+after}`. It is gated by **`audit.read`** (it is a convenience projection of `GET /audit?targetId=…`, so
+a stronger whole-endpoint gate would be bypassable), but the **`before`/`after` payloads are redacted**
+(nulled, `redacted=true`) unless the caller also holds the **sensitive-reader capability**
+(`authorization.SensitiveReadPermissions()` — all of `person.{ethnicity,political_leaning,party_membership}.read`,
+or instance admin). Rationale: a folded per-object timeline can surface pii up to the **D-DataScope**
+special-category ceiling, so the payloads sit behind the same bar as reading that Art.9 data directly,
+while the *timeline* (when/what/who) stays visible to any `audit.read` holder.
+
+**Why.** Review-2026-09 **R-31**: the material for a Gotham-style dossier timeline existed — effective
+dating on some Links, append-only lifecycle ledgers, and a per-object-queryable audit log with
+`before/after` — but **no endpoint read any of it back as history**, and **§4.1 set no boundary** for
+which Links owe validity, so each milestone re-decided ad hoc (some M18–M50 Links got `valid_from/to`,
+some got nothing) and the divergence grew monotonically. For a registry whose identity includes
+watchlists and sanctions, *when we knew something* is the line between an intelligence platform and a
+CRUD directory — and it is unrecoverable for any table that overwrote state before dating was added.
+
+**Consequence.** As-of *reconstruction* (folding `before/after` into a point-in-time view of a whole
+object) and full **bitemporality** (a second, transaction-time axis) remain named seams — **not** shipped
+(and blanket bitemporality is explicitly *not* the plan; R-31 exists to *scope* history). Per-Link
+**parameter/attribute schemas** on the history events are also a seam (the events carry the audit
+payload as opaque JSON today). The console consumes `getObjectHistory` for object timelines.
 
 ---
 

@@ -77,7 +77,13 @@ export default function ExternalOrgsPage() {
               <td>{o.wikidataId ? <Mono>{o.wikidataId}</Mono> : "—"}</td>
               <td>{o.status}</td>
               <td className="text-slate-500">{o.source}</td>
-              <td><Merge org={o} orgs={orgs} onDone={reload} setErr={setErr} /></td>
+              <td>
+                <span className="flex items-center gap-2">
+                  <Merge org={o} orgs={orgs} onDone={reload} setErr={setErr} />
+                  <EditOrg org={o} kinds={kinds} onDone={reload} setErr={setErr} />
+                  <DeleteOrg org={o} onDone={reload} setErr={setErr} />
+                </span>
+              </td>
             </tr>
           ))}
           {orgs.length === 0 ? <tr><td colSpan={7} className="py-2 text-slate-400"><T>No organizations.</T></td></tr> : null}
@@ -188,6 +194,57 @@ function Merge({ org, orgs, onDone, setErr }: { org: Org; orgs: Org[]; onDone: (
       </select>
       <button className="text-xs text-indigo-600 hover:underline" onClick={submit}><T>Merge</T></button>
     </span>
+  );
+}
+
+// EditOrg edits name/code/kind/wikidata inline (updateExternalOrg; omitted fields unchanged).
+function EditOrg({ org, kinds, onDone, setErr }: { org: Org; kinds: Kind[]; onDone: () => void; setErr: (e: unknown) => void }) {
+  const [open, setOpen] = useState(false);
+  const [kindId, setKindId] = useState(org.kindId);
+  const [name, setName] = useState(label(org.name, ""));
+  const [code, setCode] = useState(org.code ?? "");
+  const [wikidataId, setWikidataId] = useState(org.wikidataId ?? "");
+
+  function submit() {
+    if (!name.trim()) return;
+    api.externalOrg
+      .updateExternalOrg(org.id, {
+        kindId: kindId || undefined,
+        name: name.trim(),
+        code: code.trim() || undefined,
+        wikidataId: wikidataId.trim() || undefined,
+      })
+      .then(() => { setOpen(false); onDone(); })
+      .catch(setErr);
+  }
+
+  if (!open) return <button className="text-xs text-indigo-600 hover:underline" onClick={() => setOpen(true)}><T>Edit</T></button>;
+  return (
+    <span className="flex flex-wrap items-center gap-1">
+      <select className="input w-auto text-xs" value={kindId} onChange={(e) => setKindId(e.target.value)}>
+        {kinds.map((k) => <option key={k.id} value={k.id}>{label(k.name, k.code)}</option>)}
+      </select>
+      <input className="input w-28 text-xs" value={name} onChange={(e) => setName(e.target.value)} placeholder="name" />
+      <input className="input w-20 text-xs" value={code} onChange={(e) => setCode(e.target.value)} placeholder="code" />
+      <input className="input w-24 text-xs" value={wikidataId} onChange={(e) => setWikidataId(e.target.value)} placeholder="Q-id" />
+      <button className="text-xs text-indigo-600 hover:underline" onClick={submit}><T>Save</T></button>
+      <button className="text-xs text-slate-400 hover:underline" onClick={() => setOpen(false)}><T>Cancel</T></button>
+    </span>
+  );
+}
+
+// DeleteOrg soft-deletes an external org (deleteExternalOrg).
+function DeleteOrg({ org, onDone, setErr }: { org: Org; onDone: () => void; setErr: (e: unknown) => void }) {
+  const [busy, setBusy] = useState(false);
+  function del() {
+    if (!window.confirm("Delete this external organization?")) return;
+    setBusy(true);
+    api.externalOrg.deleteExternalOrg(org.id).then(() => onDone()).catch(setErr).finally(() => setBusy(false));
+  }
+  return (
+    <button className="text-xs text-red-600 hover:underline disabled:opacity-50" disabled={busy} onClick={del}>
+      {busy ? <T>Deleting…</T> : <T>Delete</T>}
+    </button>
   );
 }
 

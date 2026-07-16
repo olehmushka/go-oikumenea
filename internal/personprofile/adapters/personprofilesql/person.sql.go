@@ -840,7 +840,7 @@ const insertAssociation = `-- name: InsertAssociation :one
 
 INSERT INTO oikumenea.person_associations (person_id_a, person_id_b, relation_code, kind, status)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, person_id_a, person_id_b, relation_code, kind, status, created_at, updated_at, deleted_at
+RETURNING id, person_id_a, person_id_b, relation_code, kind, status, valid_from, valid_to, created_at, updated_at, deleted_at
 `
 
 type InsertAssociationParams struct {
@@ -868,6 +868,8 @@ func (q *Queries) InsertAssociation(ctx context.Context, arg InsertAssociationPa
 		&i.RelationCode,
 		&i.Kind,
 		&i.Status,
+		&i.ValidFrom,
+		&i.ValidTo,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -1056,7 +1058,7 @@ const insertKinship = `-- name: InsertKinship :one
 
 INSERT INTO oikumenea.person_kinships (parent_id, child_id, status)
 VALUES ($1, $2, $3)
-RETURNING id, parent_id, child_id, status, created_at, updated_at, deleted_at
+RETURNING id, parent_id, child_id, status, valid_from, valid_to, created_at, updated_at, deleted_at
 `
 
 type InsertKinshipParams struct {
@@ -1074,6 +1076,8 @@ func (q *Queries) InsertKinship(ctx context.Context, arg InsertKinshipParams) (O
 		&i.ParentID,
 		&i.ChildID,
 		&i.Status,
+		&i.ValidFrom,
+		&i.ValidTo,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -1187,7 +1191,7 @@ const insertNextOfKin = `-- name: InsertNextOfKin :one
 
 INSERT INTO oikumenea.person_next_of_kin (subject_id, contact_id, relation_code, priority, status)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, subject_id, contact_id, relation_code, priority, status, created_at, updated_at, deleted_at
+RETURNING id, subject_id, contact_id, relation_code, priority, status, valid_from, valid_to, created_at, updated_at, deleted_at
 `
 
 type InsertNextOfKinParams struct {
@@ -1215,6 +1219,8 @@ func (q *Queries) InsertNextOfKin(ctx context.Context, arg InsertNextOfKinParams
 		&i.RelationCode,
 		&i.Priority,
 		&i.Status,
+		&i.ValidFrom,
+		&i.ValidTo,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -1559,7 +1565,7 @@ func (q *Queries) ListAddresses(ctx context.Context, personID string) ([]Oikumen
 }
 
 const listAssociations = `-- name: ListAssociations :many
-SELECT id, person_id_a, person_id_b, relation_code, kind, status, created_at, updated_at, deleted_at FROM oikumenea.person_associations
+SELECT id, person_id_a, person_id_b, relation_code, kind, status, valid_from, valid_to, created_at, updated_at, deleted_at FROM oikumenea.person_associations
 WHERE deleted_at IS NULL AND (person_id_a = $1 OR person_id_b = $1)
 ORDER BY created_at DESC, id
 `
@@ -1580,6 +1586,8 @@ func (q *Queries) ListAssociations(ctx context.Context, personID string) ([]Oiku
 			&i.RelationCode,
 			&i.Kind,
 			&i.Status,
+			&i.ValidFrom,
+			&i.ValidTo,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
@@ -1853,7 +1861,7 @@ func (q *Queries) ListGuardianships(ctx context.Context, personID string) ([]Oik
 }
 
 const listKinships = `-- name: ListKinships :many
-SELECT id, parent_id, child_id, status, created_at, updated_at, deleted_at FROM oikumenea.person_kinships
+SELECT id, parent_id, child_id, status, valid_from, valid_to, created_at, updated_at, deleted_at FROM oikumenea.person_kinships
 WHERE deleted_at IS NULL AND (parent_id = $1 OR child_id = $1)
 ORDER BY created_at DESC, id
 `
@@ -1872,6 +1880,8 @@ func (q *Queries) ListKinships(ctx context.Context, personID string) ([]Oikumene
 			&i.ParentID,
 			&i.ChildID,
 			&i.Status,
+			&i.ValidFrom,
+			&i.ValidTo,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
@@ -1968,7 +1978,7 @@ func (q *Queries) ListMessengerLinks(ctx context.Context, personID string) ([]Oi
 }
 
 const listNextOfKin = `-- name: ListNextOfKin :many
-SELECT id, subject_id, contact_id, relation_code, priority, status, created_at, updated_at, deleted_at FROM oikumenea.person_next_of_kin
+SELECT id, subject_id, contact_id, relation_code, priority, status, valid_from, valid_to, created_at, updated_at, deleted_at FROM oikumenea.person_next_of_kin
 WHERE deleted_at IS NULL AND (subject_id = $1 OR contact_id = $1)
 ORDER BY priority, created_at DESC, id
 `
@@ -1989,6 +1999,8 @@ func (q *Queries) ListNextOfKin(ctx context.Context, personID string) ([]Oikumen
 			&i.RelationCode,
 			&i.Priority,
 			&i.Status,
+			&i.ValidFrom,
+			&i.ValidTo,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
@@ -2476,7 +2488,7 @@ UPDATE oikumenea.person_associations SET
   person_id_a = $1, person_id_b = $2, relation_code = $3,
   kind = $4, status = $5
 WHERE id = $6 AND deleted_at IS NULL AND (person_id_a = $1 OR person_id_b = $2)
-RETURNING id, person_id_a, person_id_b, relation_code, kind, status, created_at, updated_at, deleted_at
+RETURNING id, person_id_a, person_id_b, relation_code, kind, status, valid_from, valid_to, created_at, updated_at, deleted_at
 `
 
 type UpdateAssociationParams struct {
@@ -2505,6 +2517,8 @@ func (q *Queries) UpdateAssociation(ctx context.Context, arg UpdateAssociationPa
 		&i.RelationCode,
 		&i.Kind,
 		&i.Status,
+		&i.ValidFrom,
+		&i.ValidTo,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -2750,7 +2764,7 @@ func (q *Queries) UpdateGuardianship(ctx context.Context, arg UpdateGuardianship
 const updateKinship = `-- name: UpdateKinship :one
 UPDATE oikumenea.person_kinships SET parent_id = $1, child_id = $2, status = $3
 WHERE id = $4 AND deleted_at IS NULL AND (parent_id = $1 OR child_id = $2)
-RETURNING id, parent_id, child_id, status, created_at, updated_at, deleted_at
+RETURNING id, parent_id, child_id, status, valid_from, valid_to, created_at, updated_at, deleted_at
 `
 
 type UpdateKinshipParams struct {
@@ -2773,6 +2787,8 @@ func (q *Queries) UpdateKinship(ctx context.Context, arg UpdateKinshipParams) (O
 		&i.ParentID,
 		&i.ChildID,
 		&i.Status,
+		&i.ValidFrom,
+		&i.ValidTo,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -2887,7 +2903,7 @@ UPDATE oikumenea.person_next_of_kin SET
   subject_id = $1, contact_id = $2, relation_code = $3,
   priority = $4, status = $5
 WHERE id = $6 AND deleted_at IS NULL AND (subject_id = $1 OR contact_id = $2)
-RETURNING id, subject_id, contact_id, relation_code, priority, status, created_at, updated_at, deleted_at
+RETURNING id, subject_id, contact_id, relation_code, priority, status, valid_from, valid_to, created_at, updated_at, deleted_at
 `
 
 type UpdateNextOfKinParams struct {
@@ -2916,6 +2932,8 @@ func (q *Queries) UpdateNextOfKin(ctx context.Context, arg UpdateNextOfKinParams
 		&i.RelationCode,
 		&i.Priority,
 		&i.Status,
+		&i.ValidFrom,
+		&i.ValidTo,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
