@@ -84,6 +84,15 @@ type ActionParam struct {
 	   authoritative. Absent for ordinary fields.
 	*/
 	Sensitivity *string `json:"sensitivity,omitempty"`
+	/*
+	   Present when this param is a nested object (or a list/set of one) whose own fields are all
+	   flat — the console runner then renders a structured sub-form (or repeatable group) instead
+	   of a raw-JSON editor (D-ActionInvocation, R-33). Emitted only **one level deep**: a nested
+	   object that itself contains a nested object, or a self-referential type (e.g. the rank
+	   import tree), carries no `fields` and falls back to the JSON editor. Nested field entries
+	   are always flat, so their own `fields` is absent.
+	*/
+	Fields *[]ActionParam `json:"fields,omitempty"`
 }
 
 func (o ActionParam) MarshalYAML() (interface{}, error) {

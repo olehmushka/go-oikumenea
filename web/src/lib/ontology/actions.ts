@@ -24,14 +24,16 @@ const FLAT = new Set([
 ]);
 
 /** How the runner renders a param: a single input (flat scalar), a repeatable list of scalar inputs
- * (list/set of a flat type), or a raw-JSON editor (nested object, list-of-object, map — the deep shapes,
- * whose 5 host actions all also have a richer bespoke form). */
-export type FieldKind = "flat" | "list" | "json";
+ * (list/set of a flat type), a structured sub-form (nested object one level deep, `fields` present), a
+ * repeatable structured group (list/set of such an object), or a raw-JSON editor for the deep shapes
+ * (deeper/self-referential nests, maps — which carry no `fields`). */
+export type FieldKind = "flat" | "list" | "object" | "listobject" | "json";
 
-export function fieldKind(type: string): FieldKind {
-  if (FLAT.has(type)) return "flat";
-  const m = /^(?:list|set)<(.+)>$/.exec(type);
-  if (m && FLAT.has(m[1])) return "list";
+export function fieldKind(p: ActionParam): FieldKind {
+  if (FLAT.has(p.type)) return "flat";
+  const listM = /^(?:list|set)<(.+)>$/.exec(p.type);
+  if ((p.fields?.length ?? 0) > 0) return listM ? "listobject" : "object";
+  if (listM && FLAT.has(listM[1])) return "list";
   return "json";
 }
 
@@ -95,7 +97,7 @@ export function coerceValue(type: string, raw: string): unknown {
 export function buildBody(params: ActionParam[], values: Record<string, unknown>): Record<string, unknown> {
   const body: Record<string, unknown> = {};
   for (const p of params) {
-    const kind = fieldKind(p.type);
+    const kind = fieldKind(p);
     if (kind === "flat") {
       if (p.type === "boolean") {
         body[p.name] = values[p.name] === true || values[p.name] === "true";
@@ -109,6 +111,16 @@ export function buildBody(params: ActionParam[], values: Record<string, unknown>
       if (arr.length === 0 && !p.required) continue;
       const item = listItemType(p.type);
       body[p.name] = arr.map((s) => coerceValue(item, s));
+    } else if (kind === "object") {
+      const nested = (values[p.name] as Record<string, unknown> | undefined) ?? {};
+      const built = buildBody(p.fields!, nested);
+      if (Object.keys(built).length === 0 && !p.required) continue;
+      body[p.name] = built;
+    } else if (kind === "listobject") {
+      const rows = (values[p.name] as Record<string, unknown>[] | undefined) ?? [];
+      const built = rows.map((r) => buildBody(p.fields!, r)).filter((o) => Object.keys(o).length > 0);
+      if (built.length === 0 && !p.required) continue;
+      body[p.name] = built;
     } else {
       const raw = String(values[p.name] ?? "").trim();
       if (raw === "" && !p.required) continue;

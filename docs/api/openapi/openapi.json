@@ -277,6 +277,13 @@
             "description": "The field's documentation from the contract, when present.",
             "type": "string"
           },
+          "fields": {
+            "description": "Present when this param is a nested object (or a list/set of one) whose own fields are all\nflat — the console runner then renders a structured sub-form (or repeatable group) instead\nof a raw-JSON editor (D-ActionInvocation, R-33). Emitted only **one level deep**: a nested\nobject that itself contains a nested object, or a self-referential type (e.g. the rank\nimport tree), carries no `fields` and falls back to the JSON editor. Nested field entries\nare always flat, so their own `fields` is absent.\n",
+            "items": {
+              "$ref": "#/components/schemas/ActionParam"
+            },
+            "type": "array"
+          },
           "name": {
             "description": "The request field name, e.g. subjectPersonId, scope.",
             "type": "string"

@@ -82,6 +82,7 @@ type irService = service
 type param struct {
 	Name, Type, Docs string
 	Required         bool
+	Fields           []param // nested object's flat sub-fields (one level; nil for flat/deep/JSON params)
 }
 
 func main() {
@@ -131,12 +132,21 @@ func main() {
 		}
 		var ps []param
 		for _, f := range t.Object.Fields {
-			ps = append(ps, param{
+			p := param{
 				Name:     f.FieldName,
 				Type:     token(f.Type, index),
 				Required: f.Type.Type != "optional",
 				Docs:     firstLine(f.Docs),
-			})
+			}
+			// One-level structured nesting (D-ActionInvocation R-33): if the field is a nested object
+			// (or a list/set of one) whose OWN fields are all flat, attach them so the runner renders a
+			// structured sub-form; a deeper or self-referential nest gets no Fields → JSON editor.
+			if obj := elementObject(f.Type, index); obj != "" {
+				if sf, ok := subFields(obj, index); ok {
+					p.Fields = sf
+				}
+			}
+			ps = append(ps, p)
 		}
 		params[name] = ps
 	}
@@ -190,6 +200,75 @@ func token(n typeNode, index map[string]irType) string {
 	return "any"
 }
 
+// isFlatType reports whether a type renders as a single input (or a list of them) — i.e. NOT a nested
+// object or a map. It is the "one-level structurable" test for a nested object's fields.
+func isFlatType(n typeNode, index map[string]irType) bool {
+	switch n.Type {
+	case "primitive", "external":
+		return true
+	case "optional":
+		return isFlatType(n.Optional.ItemType, index)
+	case "list":
+		return isFlatType(n.List.ItemType, index)
+	case "set":
+		return isFlatType(n.Set.ItemType, index)
+	case "map":
+		return false
+	case "reference":
+		ref := index[qual(*n.Reference)]
+		switch {
+		case ref.Enum != nil:
+			return true
+		case ref.Alias != nil:
+			return isFlatType(ref.Alias.Alias, index)
+		default:
+			return false // object reference — a nested object is not flat
+		}
+	}
+	return false
+}
+
+// elementObject returns the object type an incoming field ultimately references — unwrapping optional
+// and one level of list/set — or "" when the field is not (a collection of) an object.
+func elementObject(n typeNode, index map[string]irType) string {
+	switch n.Type {
+	case "optional":
+		return elementObject(n.Optional.ItemType, index)
+	case "list":
+		return elementObject(n.List.ItemType, index)
+	case "set":
+		return elementObject(n.Set.ItemType, index)
+	case "reference":
+		if ref := index[qual(*n.Reference)]; ref.Object != nil {
+			return qual(*n.Reference)
+		}
+	}
+	return ""
+}
+
+// subFields returns an object's fields as flat params IF every one is flat (so it can render as a
+// structured sub-form one level deep); (nil, false) otherwise — the caller then leaves Fields empty and
+// the runner falls back to the JSON editor for the whole param.
+func subFields(objName string, index map[string]irType) ([]param, bool) {
+	t, ok := index[objName]
+	if !ok || t.Object == nil {
+		return nil, false
+	}
+	var out []param
+	for _, f := range t.Object.Fields {
+		if !isFlatType(f.Type, index) {
+			return nil, false
+		}
+		out = append(out, param{
+			Name:     f.FieldName,
+			Type:     token(f.Type, index),
+			Required: f.Type.Type != "optional",
+			Docs:     firstLine(f.Docs),
+		})
+	}
+	return out, true
+}
+
 func firstLine(s string) string {
 	s = strings.TrimSpace(s)
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
@@ -215,7 +294,7 @@ func render(params map[string][]param) []byte {
 	for _, n := range names {
 		b.WriteString(fmt.Sprintf("\t%q: {\n", n))
 		for _, p := range params[n] {
-			b.WriteString(fmt.Sprintf("\t\t{Name: %q, Type: %q, Required: %t, Docs: %q},\n", p.Name, p.Type, p.Required, p.Docs))
+			renderParam(&b, p, 2)
 		}
 		b.WriteString("\t},\n")
 	}
@@ -226,4 +305,18 @@ func render(params map[string][]param) []byte {
 		log.Fatalf("genactionparams: gofmt: %v", err)
 	}
 	return src
+}
+
+// renderParam emits one Param literal, recursing into Fields for a one-level nested object.
+func renderParam(b *bytes.Buffer, p param, indent int) {
+	tab := strings.Repeat("\t", indent)
+	if len(p.Fields) == 0 {
+		fmt.Fprintf(b, "%s{Name: %q, Type: %q, Required: %t, Docs: %q},\n", tab, p.Name, p.Type, p.Required, p.Docs)
+		return
+	}
+	fmt.Fprintf(b, "%s{Name: %q, Type: %q, Required: %t, Docs: %q, Fields: []Param{\n", tab, p.Name, p.Type, p.Required, p.Docs)
+	for _, f := range p.Fields {
+		renderParam(b, f, indent+1)
+	}
+	fmt.Fprintf(b, "%s}},\n", tab)
 }

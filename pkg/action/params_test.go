@@ -91,6 +91,36 @@ func lastDot(s string) int {
 	return -1
 }
 
+// TestNestedParamStructure: one-level structured nesting (D-ActionInvocation R-33). A nested object
+// (or list of one) with all-flat fields carries Fields; a deep/self-referential type (the rank import
+// tree) carries none (JSON fallback); nested entries are themselves flat.
+func TestNestedParamStructure(t *testing.T) {
+	coord := findParam(Params("location.create"), "coordinate") // nested object CoordinateInput
+	if coord == nil || len(coord.Fields) == 0 {
+		t.Fatalf("location.create coordinate should have nested Fields")
+	}
+	for _, f := range coord.Fields {
+		if len(f.Fields) != 0 {
+			t.Errorf("nested field %s should be flat (no further Fields)", f.Name)
+		}
+	}
+	if items := findParam(Params("order.create"), "items"); items == nil || len(items.Fields) == 0 {
+		t.Error("order.create items (list<OrderItemInput>) should have nested Fields")
+	}
+	if sys := findParam(Params("rank.scheme.import"), "system"); sys == nil || len(sys.Fields) != 0 {
+		t.Errorf("rank.scheme.import system is deep/recursive and must have NO Fields (JSON fallback)")
+	}
+}
+
+func findParam(ps []Param, name string) *Param {
+	for i := range ps {
+		if ps[i].Name == name {
+			return &ps[i]
+		}
+	}
+	return nil
+}
+
 // TestParamsWellFormed: every generated param has a name and a type token.
 func TestParamsWellFormed(t *testing.T) {
 	for rt, ps := range requestParams {

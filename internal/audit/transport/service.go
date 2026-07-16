@@ -313,6 +313,10 @@ func toActionParams(ps []action.Param) []auditapi.ActionParam {
 			s := p.Sensitivity
 			ap.Sensitivity = &s
 		}
+		if len(p.Fields) > 0 {
+			f := toActionParams(p.Fields) // one level deep; nested entries are flat (D-ActionInvocation R-33)
+			ap.Fields = &f
+		}
 		out = append(out, ap)
 	}
 	return out

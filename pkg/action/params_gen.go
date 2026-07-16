@@ -14,7 +14,10 @@ var requestParams = map[string][]Param{
 	},
 	"oikumenea.authorization.BatchAuthorizeRequest": {
 		{Name: "subjectPersonId", Type: "string", Required: true, Docs: ""},
-		{Name: "queries", Type: "list<authorizequery>", Required: true, Docs: ""},
+		{Name: "queries", Type: "list<authorizequery>", Required: true, Docs: "", Fields: []Param{
+			{Name: "action", Type: "string", Required: true, Docs: ""},
+			{Name: "unitId", Type: "string", Required: false, Docs: ""},
+		}},
 		{Name: "explain", Type: "boolean", Required: false, Docs: ""},
 	},
 	"oikumenea.authorization.CreateRoleRequest": {
@@ -546,7 +549,10 @@ var requestParams = map[string][]Param{
 	"oikumenea.identityfederation.CreateAccountRequest": {
 		{Name: "personId", Type: "string", Required: true, Docs: ""},
 		{Name: "email", Type: "string", Required: false, Docs: "The IdP-asserted email, if known."},
-		{Name: "identity", Type: "linkidentityrequest", Required: false, Docs: "The first login point to link; omit to create a login-less account shell."},
+		{Name: "identity", Type: "linkidentityrequest", Required: false, Docs: "The first login point to link; omit to create a login-less account shell.", Fields: []Param{
+			{Name: "issuer", Type: "string", Required: true, Docs: ""},
+			{Name: "subject", Type: "string", Required: true, Docs: ""},
+		}},
 	},
 	"oikumenea.identityfederation.LinkIdentityRequest": {
 		{Name: "issuer", Type: "string", Required: true, Docs: ""},
@@ -565,7 +571,17 @@ var requestParams = map[string][]Param{
 		{Name: "sortOrder", Type: "integer", Required: false, Docs: ""},
 	},
 	"oikumenea.location.LocationWrite": {
-		{Name: "coordinate", Type: "coordinateinput", Required: false, Docs: "The coordinate in any supported format; required (absence → Location:CoordinateRequired)."},
+		{Name: "coordinate", Type: "coordinateinput", Required: false, Docs: "The coordinate in any supported format; required (absence → Location:CoordinateRequired).", Fields: []Param{
+			{Name: "format", Type: "string", Required: true, Docs: "One of latlon | mgrs | utm | sk42 | sk42grid."},
+			{Name: "latitude", Type: "double", Required: false, Docs: "WGS84 latitude (format=latlon)."},
+			{Name: "longitude", Type: "double", Required: false, Docs: "WGS84 longitude (format=latlon)."},
+			{Name: "mgrs", Type: "string", Required: false, Docs: "MGRS grid reference, e.g. 36UUA2418291607 (format=mgrs)."},
+			{Name: "zone", Type: "integer", Required: false, Docs: "UTM or СК-42 (Gauss-Krüger) zone number (format=utm|sk42)."},
+			{Name: "hemisphere", Type: "string", Required: false, Docs: "N | S, the UTM hemisphere (format=utm)."},
+			{Name: "easting", Type: "double", Required: false, Docs: "Easting in metres (format=utm|sk42)."},
+			{Name: "northing", Type: "double", Required: false, Docs: "Northing in metres (format=utm|sk42)."},
+			{Name: "grid", Type: "string", Required: false, Docs: "СК-42 grid-square reference (format=sk42grid)."},
+		}},
 		{Name: "countryId", Type: "string", Required: true, Docs: "The country's RID (required)."},
 		{Name: "adminArea1", Type: "string", Required: false, Docs: ""},
 		{Name: "adminArea2", Type: "string", Required: false, Docs: ""},
@@ -606,7 +622,16 @@ var requestParams = map[string][]Param{
 	"oikumenea.order.CreateOrderRequest": {
 		{Name: "number", Type: "string", Required: false, Docs: ""},
 		{Name: "issuedOn", Type: "string", Required: false, Docs: ""},
-		{Name: "items", Type: "list<orderiteminput>", Required: true, Docs: ""},
+		{Name: "items", Type: "list<orderiteminput>", Required: true, Docs: "", Fields: []Param{
+			{Name: "typeId", Type: "string", Required: true, Docs: ""},
+			{Name: "personId", Type: "string", Required: true, Docs: ""},
+			{Name: "unitId", Type: "string", Required: false, Docs: ""},
+			{Name: "positionId", Type: "string", Required: false, Docs: ""},
+			{Name: "rankId", Type: "string", Required: false, Docs: ""},
+			{Name: "effectiveFrom", Type: "string", Required: false, Docs: ""},
+			{Name: "effectiveTo", Type: "string", Required: false, Docs: ""},
+			{Name: "note", Type: "string", Required: false, Docs: ""},
+		}},
 	},
 	"oikumenea.order.CreateOrderTypeRequest": {
 		{Name: "code", Type: "string", Required: true, Docs: ""},
@@ -621,7 +646,16 @@ var requestParams = map[string][]Param{
 	"oikumenea.order.UpdateOrderRequest": {
 		{Name: "number", Type: "string", Required: false, Docs: ""},
 		{Name: "issuedOn", Type: "string", Required: false, Docs: ""},
-		{Name: "items", Type: "list<orderiteminput>", Required: false, Docs: ""},
+		{Name: "items", Type: "list<orderiteminput>", Required: false, Docs: "", Fields: []Param{
+			{Name: "typeId", Type: "string", Required: true, Docs: ""},
+			{Name: "personId", Type: "string", Required: true, Docs: ""},
+			{Name: "unitId", Type: "string", Required: false, Docs: ""},
+			{Name: "positionId", Type: "string", Required: false, Docs: ""},
+			{Name: "rankId", Type: "string", Required: false, Docs: ""},
+			{Name: "effectiveFrom", Type: "string", Required: false, Docs: ""},
+			{Name: "effectiveTo", Type: "string", Required: false, Docs: ""},
+			{Name: "note", Type: "string", Required: false, Docs: ""},
+		}},
 	},
 	"oikumenea.order.UpdateOrderTypeRequest": {
 		{Name: "name", Type: "string", Required: false, Docs: ""},

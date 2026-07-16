@@ -68,6 +68,11 @@ type Param struct {
 	// COMPLIANCE fact, not an IR fact — hand-authored in paramSensitivity, overlaid here. The server's
 	// pkg/personalcode validators remain authoritative; the client masking/validation is advisory.
 	Sensitivity string // "" | "pan" | "iban" | "spectrum" | "secret"
+	// Fields is set (by genactionparams) when this param is a nested object — or a list/set of one —
+	// whose own fields are all flat, so the runner renders a structured sub-form ONE level deep. Empty
+	// for flat params and for deeper/self-referential nests (those fall back to the JSON editor). Nested
+	// entries are always flat, so their own Fields is nil.
+	Fields []Param
 }
 
 // paramSensitivity classifies regulated/secret request fields, keyed "requestType.field". Hand-authored

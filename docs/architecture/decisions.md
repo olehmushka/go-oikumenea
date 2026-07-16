@@ -2273,6 +2273,10 @@ emitted action fails its module's test). `permission` is the **module-granular g
 permission** (the finding's "required permission"); a dedicated per-action permission code, where a
 module later defines one, swaps in with no other change. Retrofitting per-action RID `type_code`s
 into historical audit rows is explicitly **not** done (kind=action/type 0 stays valid — expand-only).
+Nested-body rendering is capped at **one level** by decision: the four nested request types are three
+shallow all-flat objects (coordinate, order-item, link-identity — structured) plus the rank import
+**tree** (deep + self-referential — JSON), and a full recursive form for the latter is worse UX than
+JSON, so `ActionParam.fields` is emitted only for a one-level-structurable nest.
 Per-action parameter schemas (originally a named open seam) are now delivered, IR-derived and
 descriptive (above); annotating the remaining modules' `RequestType`s is incremental follow-on.
 
@@ -2292,8 +2296,10 @@ binding is caught in CI, not at runtime. `pkg/action.EndpointFor(code)` exposes 
 `AuditService.listActionTypes` returns it as `endpoint: optional<ActionEndpoint>`. The **web action
 runner** (`components/ontology/ActionRunner.tsx`) builds the request from `parameters` + `endpoint`
 and POSTs via the SDK's generic `request()` — no hand-authored URL. It renders **flat** params as
-inputs, **`list<scalar>`** as repeatable inputs, and the few genuinely nested bodies as a raw-JSON
-editor; the object's own RID fills the single path param. It surfaces on the universal object page
+inputs, **`list<scalar>`** as repeatable inputs, and a **nested object one level deep** (or a list of
+one) whose fields are all flat as a **structured sub-form** (`ActionParam.fields`, emitted by
+`genactionparams`); a **deeper or self-referential** body (the rank import tree) carries no `fields` and
+falls back to a raw-JSON editor. The object's own RID fills the single path param. It surfaces on the universal object page
 (`/o/[rid]`) and — because that page redirects person/unit to bespoke routes — as a collapsed
 "Actions (advanced)" panel on the person & unit pages. **Sub-resource** update/delete actions (≥2 path
 params: the parent RID + a child id the object doesn't carry) stay non-inline — routed to the bespoke

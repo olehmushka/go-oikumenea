@@ -160,9 +160,58 @@ function RunForm({ action, rid, onClose }: { action: ActionType; rid: string; on
 }
 
 /** Renders one request-body param by its kind: a flat scalar input, a repeatable list of scalar inputs,
- * or a raw-JSON editor for the deep shapes (nested objects, list-of-object, map). */
+ * a structured sub-form (nested object one level deep), a repeatable structured group (list of such an
+ * object), or a raw-JSON editor for the deep/self-referential shapes. */
 function Field({ param, value, onChange }: { param: ActionParam; value: unknown; onChange: (v: unknown) => void }) {
-  const kind = fieldKind(param.type);
+  const kind = fieldKind(param);
+
+  if (kind === "object") {
+    const rec = (value as Record<string, unknown> | undefined) ?? {};
+    return (
+      <div className="space-y-1.5 rounded border border-slate-200 bg-white p-2">
+        {(param.fields ?? []).map((sub) => (
+          <SubField key={sub.name} param={sub} value={rec[sub.name]} onChange={(v) => onChange({ ...rec, [sub.name]: v })} />
+        ))}
+      </div>
+    );
+  }
+
+  if (kind === "listobject") {
+    const rows = (value as Record<string, unknown>[] | undefined) ?? [];
+    return (
+      <div className="space-y-2">
+        {rows.map((row, i) => (
+          <div key={i} className="space-y-1.5 rounded border border-slate-200 bg-white p-2">
+            <div className="flex justify-end">
+              <button
+                type="button"
+                className="px-1 text-xs text-slate-400 hover:text-red-600"
+                title="remove"
+                onClick={() => onChange(rows.filter((_, j) => j !== i))}
+              >
+                × remove
+              </button>
+            </div>
+            {(param.fields ?? []).map((sub) => (
+              <SubField
+                key={sub.name}
+                param={sub}
+                value={row[sub.name]}
+                onChange={(v) => onChange(rows.map((r, j) => (j === i ? { ...r, [sub.name]: v } : r)))}
+              />
+            ))}
+          </div>
+        ))}
+        <button
+          type="button"
+          className="text-xs text-indigo-600 hover:underline"
+          onClick={() => onChange([...rows, {}])}
+        >
+          <T>+ add item</T>
+        </button>
+      </div>
+    );
+  }
 
   if (kind === "list") {
     const items = (value as string[] | undefined) ?? [""];
@@ -236,6 +285,22 @@ function Field({ param, value, onChange }: { param: ActionParam; value: unknown;
         />
       </div>
       {advisory ? <p className="mt-0.5 text-[11px] text-red-600">{advisory}</p> : null}
+    </div>
+  );
+}
+
+/** A labelled nested field inside a structured group (compact; its input is a plain Field — sub-fields
+ * are always flat, so this never recurses further). */
+function SubField({ param, value, onChange }: { param: ActionParam; value: unknown; onChange: (v: unknown) => void }) {
+  return (
+    <div>
+      <label className="label flex items-center gap-1">
+        <code className="font-mono text-[11px]">{param.name}</code>
+        {param.required ? <span className="text-amber-600" title="required">*</span> : null}
+        <span className="text-[11px] text-slate-400">: {param.type}</span>
+      </label>
+      <Field param={param} value={value} onChange={onChange} />
+      {param.docs ? <p className="text-[10px] text-slate-400">{param.docs}</p> : null}
     </div>
   );
 }
