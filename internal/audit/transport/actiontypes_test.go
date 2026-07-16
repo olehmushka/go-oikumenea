@@ -54,4 +54,22 @@ func TestListActionTypesAttachesParams(t *testing.T) {
 			t.Errorf("graph.delete should have no parameters, got %d", len(got[i].Parameters))
 		}
 	}
+
+	// The endpoint binding is attached (D-ActionInvocation, R-33): assignment.grant is invocable via
+	// its POST endpoint; graph.delete via a DELETE with the graph RID path param; a purge-cascade erase
+	// is non-invocable (no endpoint).
+	if grant.Endpoint == nil || grant.Endpoint.Method != "POST" {
+		t.Errorf("assignment.grant should carry a POST endpoint, got %+v", grant.Endpoint)
+	}
+	if i, ok := byCode["graph.delete"]; ok {
+		e := got[i].Endpoint
+		if e == nil || e.Method != "DELETE" || len(e.PathParams) != 1 {
+			t.Errorf("graph.delete endpoint malformed: %+v", e)
+		}
+	}
+	if i, ok := byCode["document.person.erase"]; ok {
+		if got[i].Endpoint != nil {
+			t.Errorf("document.person.erase is a purge-cascade action and must have no endpoint, got %+v", got[i].Endpoint)
+		}
+	}
 }

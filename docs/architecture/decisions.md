@@ -77,6 +77,7 @@ planned-tier (M16–M45) decisions live in [`roadmap-decisions.md`](roadmap-deci
 | [D-UnifiedSearch](#d-unifiedsearch--one-cross-type-searchservice-as-a-fan-in-over-the-per-module-trigram-queries) | One cross-type SearchService as a fan-in over the per-module trigram queries |
 | [D-LinkTraversal](#d-linktraversal--one-generic-getobjectlinks-endpoint-as-a-fan-in-over-a-pkgrid-derived-link-descriptor-registry) | One generic getObjectLinks endpoint as a fan-in over a pkg/rid-derived link-descriptor registry |
 | [D-ActionTypes](#d-actiontypes--a-checked-action-type-catalog-behind-the-free-text-audit_logaction) | A checked action-type catalog behind the free-text audit_log.action |
+| [D-ActionInvocation](#d-actioninvocation--an-ir-derived-endpoint-binding-per-action-driving-a-generic-console-action-runner) | An IR-derived endpoint binding per action, driving a generic console action runner |
 | [D-Temporal](#d-temporal--a-three-tier-link-history-classification-native-validity-by-default-plus-getobjecthistory-over-the-audit-ledger) | A three-tier link-history classification (native validity by default) plus getObjectHistory over the audit ledger |
 | L-\* locks | [Carried-over locks](#carried-over-locks-settled-earlier-restated-for-self-containment): L-AuthzOnly, L-AccountOptional, L-SingleDomain, L-UnitIsTenant, L-OneRankScheme, L-Visibility, L-OperatorDB, L-UpgradeSafe, L-Conventions |
 
@@ -2274,6 +2275,47 @@ module later defines one, swaps in with no other change. Retrofitting per-action
 into historical audit rows is explicitly **not** done (kind=action/type 0 stays valid — expand-only).
 Per-action parameter schemas (originally a named open seam) are now delivered, IR-derived and
 descriptive (above); annotating the remaining modules' `RequestType`s is incremental follow-on.
+
+---
+
+### D-ActionInvocation — An IR-derived endpoint binding per action, driving a generic console action runner
+
+**Decision.** Extend the action catalog (D-ActionTypes) from *describing* an action to letting the
+console **run** it. Each action gains an **endpoint binding** — `{method, path, pathParams}` — that is
+**derived from the Conjure IR** by `tools/genactionendpoints` (`scripts/gen-action-params.sh` → the
+generated `pkg/action/endpoints_gen.go`), the same single-source discipline as the R-29 parameter
+schema: an action is joined to its endpoint by request-body type, with the code's verb+tokens
+disambiguating the create/update pairs that share a body and a module-prefix scan resolving the
+body-less deletes/lifecycle POSTs. The generator **fails the build** if an action does not resolve to
+exactly one real endpoint (or a duplicate-binding guard fires) — so a contract change that breaks a
+binding is caught in CI, not at runtime. `pkg/action.EndpointFor(code)` exposes it and
+`AuditService.listActionTypes` returns it as `endpoint: optional<ActionEndpoint>`. The **web action
+runner** (`components/ontology/ActionRunner.tsx`) builds the request from `parameters` + `endpoint`
+and POSTs via the SDK's generic `request()` — no hand-authored URL. It renders **flat** params as
+inputs, **`list<scalar>`** as repeatable inputs, and the few genuinely nested bodies as a raw-JSON
+editor; the object's own RID fills the single path param. It surfaces on the universal object page
+(`/o/[rid]`) and — because that page redirects person/unit to bespoke routes — as a collapsed
+"Actions (advanced)" panel on the person & unit pages. **Sub-resource** update/delete actions (≥2 path
+params: the parent RID + a child id the object doesn't carry) stay non-inline — routed to the bespoke
+row managers that already hold the child id. Regulated/secret params (**PAN, IBAN, inferred political
+spectrum, wallet address**) are tagged `sensitivity` in the catalog (`pkg/action.paramSensitivity`, a
+hand-authored **D-DataScope** policy fact) so the runner **masks** the input and runs an **advisory**
+client validator; the server's `pkg/personalcode` validators remain authoritative.
+
+**Why.** R-29 delivered the parameter schema but left invocation as a named open seam ("the framework
+R-29 warned against"). The trap was a *hand-authored* action→URL map — reintroducing exactly the drift
+R-29 killed. Deriving the binding from the IR and asserting it at build time avoids that: the runner is
+*generated wiring*, not a parallel routing table. The result closes the loop from Foundry's ontology
+benchmark — an object page where a catalogued Action is not just discoverable but runnable.
+
+**Consequence.** Actions with **no invocable endpoint** are explicitly **exempt** (a test-pinned set,
+mirrored in the generator): purge-cascade erasures (`*.erase`, emitted internally on `PersonPurged`) and
+the bulk `import.*` ingestion plane (hermenea's job, not a per-object console action). The catalog is
+never *narrower* than reality — a new action without a binding fails `TestActionEndpointCoverage` until
+it is wired or exempted. Nested-object bodies (5 actions, all with richer **bespoke** forms) use the
+JSON editor rather than a recursive schema pipeline — a deliberate bound, since those forms are the
+better UX. `permission`-gating is unchanged: the runner shows every catalogued action, and the PDP
+rejects a POST the subject may not make (surfaced as the endpoint's error).
 
 ---
 

@@ -30,6 +30,7 @@ import {
   SocialAccountManager,
 } from "./PersonForms";
 import { HistoryPanel } from "@/components/ontology/HistoryPanel";
+import { ObjectActionsCard } from "@/components/ontology/ObjectActionsCard";
 import { PersonEducationManager } from "./PersonEducation";
 import { PersonCompaniesManager } from "./PersonCompanies";
 import { PersonVehiclesManager } from "./PersonVehicles";
@@ -190,6 +191,8 @@ export default async function PersonDetailPage({
           <h2 className="text-sm font-semibold text-slate-900"><T>Financial, behavioural &amp; psychological overlays</T></h2>
           <OverlaysManager personId={person.id} />
         </Card>
+
+        <ObjectActionsCard targetType="person" rid={person.id} className="lg:col-span-2" />
 
         <Card className="lg:col-span-2">
           <h2 className="text-sm font-semibold text-slate-900"><T>History</T></h2>

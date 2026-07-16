@@ -16,6 +16,7 @@ import { CreatePosition, FillPosition, PersonLink, PositionAdmin } from "@/compo
 import { UnitAdmin } from "@/components/UnitForms";
 import { UnitLanguageManager } from "@/components/UnitLanguageForms";
 import { HistoryPanel } from "@/components/ontology/HistoryPanel";
+import { ObjectActionsCard } from "@/components/ontology/ObjectActionsCard";
 import type { Position, Unit, UnitCodeEventList, UnitRefList } from "@/lib/api/types";
 
 export default async function UnitDetailPage({
@@ -165,6 +166,8 @@ export default async function UnitDetailPage({
         </p>
         <HistoryPanel rid={unitId} />
       </Card>
+
+      <ObjectActionsCard targetType="unit" rid={unitId} className="mt-4" />
 
       <h2 className="mb-3 mt-8 text-sm font-semibold text-slate-900"><T>Positions</T></h2>
       {positions && positions.positions?.length > 0 ? (

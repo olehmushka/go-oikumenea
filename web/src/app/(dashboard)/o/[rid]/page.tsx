@@ -7,7 +7,7 @@ import { ObjectActions } from "@/components/ontology/ObjectActions";
 import { PropertyList } from "@/components/ontology/PropertyList";
 import { LinksPanel, type LinkGroup } from "@/components/ontology/LinksPanel";
 import { HistoryPanel } from "@/components/ontology/HistoryPanel";
-import { ActionParamsList } from "@/components/ActionParamsList";
+import { ActionRunner } from "@/components/ontology/ActionRunner";
 import { RecordVisit } from "@/components/ontology/RecordVisit";
 import type { ActionType } from "@/lib/api/types";
 import { OBJECT_TYPES, type Row } from "@/lib/ontology/registry";
@@ -102,21 +102,9 @@ export default async function ObjectPage({ params }: { params: Promise<{ rid: st
         <Card className="mt-4">
           <h2 className="mb-1 text-sm font-semibold text-slate-900"><T>Actions</T></h2>
           <p className="mb-3 text-xs text-slate-500">
-            <T>Registered actions for this type and their parameter schemas (D-ActionTypes, R-29), enumerated from the catalog. Read-only — run them from the object's dedicated forms.</T>
+            <T>Registered actions for this type (D-ActionTypes, R-29), each bound to its endpoint (D-ActionInvocation, R-33). Object-level actions with a simple body can be run inline; structured or sub-resource actions run from the object's dedicated form.</T>
           </p>
-          <ul className="divide-y divide-slate-100">
-            {actions.map((a) => (
-              <li key={a.code} className="py-2">
-                <div className="flex items-center gap-2">
-                  <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-700">{a.code}</code>
-                  <span className="text-xs text-slate-400">{a.permission}</span>
-                </div>
-                <div className="mt-1">
-                  <ActionParamsList params={a.parameters} />
-                </div>
-              </li>
-            ))}
-          </ul>
+          <ActionRunner actions={actions} rid={rid} />
         </Card>
       ) : null}
 

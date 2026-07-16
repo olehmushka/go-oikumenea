@@ -44,6 +44,53 @@ func TestUnannotatedHaveNoParams(t *testing.T) {
 	}
 }
 
+// TestSensitivityOverlay: the compliance-authored paramSensitivity map surfaces on the right Params,
+// and every entry keys a real (RequestType, field) pair — so a renamed field drops its masking here
+// rather than silently exposing a PAN in the generic runner.
+func TestSensitivityOverlay(t *testing.T) {
+	// Every paramSensitivity key must resolve to an actual generated param.
+	for key, kind := range paramSensitivity {
+		i := lastDot(key)
+		rt, field := key[:i], key[i+1:]
+		ps, ok := requestParams[rt]
+		if !ok {
+			t.Errorf("paramSensitivity key %q: unknown request type", key)
+			continue
+		}
+		found := false
+		for _, p := range ps {
+			if p.Name == field {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("paramSensitivity key %q: request type has no field %q", key, field)
+		}
+		if kind == "" {
+			t.Errorf("paramSensitivity[%q] is empty", key)
+		}
+	}
+	// The finance PAN action carries the "pan" sensitivity on its pan field.
+	var sawPAN bool
+	for _, p := range Params("finance.card.add") {
+		if p.Name == "pan" && p.Sensitivity == "pan" {
+			sawPAN = true
+		}
+	}
+	if !sawPAN {
+		t.Error("finance.card.add.pan should be marked sensitivity=pan")
+	}
+}
+
+func lastDot(s string) int {
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] == '.' {
+			return i
+		}
+	}
+	return -1
+}
+
 // TestParamsWellFormed: every generated param has a name and a type token.
 func TestParamsWellFormed(t *testing.T) {
 	for rt, ps := range requestParams {

@@ -281,9 +281,24 @@ func (s Service) ListActionTypes(ctx context.Context, _ bearertoken.Token) ([]au
 			// Parameter schema single-sourced from the Conjure request type (R-29 seam); empty for
 			// actions with no request body or not yet annotated (expand-only).
 			Parameters: toActionParams(action.Params(a.Code)),
+			// HTTP endpoint binding single-sourced from the IR (D-ActionInvocation, R-33); absent for
+			// actions with no invocable endpoint (purge-cascade erasures, the import.* ingestion plane).
+			Endpoint: toActionEndpoint(a.Code),
 		})
 	}
 	return out, nil
+}
+
+func toActionEndpoint(code string) *auditapi.ActionEndpoint {
+	e, ok := action.EndpointFor(code)
+	if !ok {
+		return nil
+	}
+	pp := e.PathParams
+	if pp == nil {
+		pp = []string{}
+	}
+	return &auditapi.ActionEndpoint{Method: e.Method, Path: e.Path, PathParams: pp}
 }
 
 func toActionParams(ps []action.Param) []auditapi.ActionParam {
@@ -293,6 +308,10 @@ func toActionParams(ps []action.Param) []auditapi.ActionParam {
 		if p.Docs != "" {
 			d := p.Docs
 			ap.Docs = &d
+		}
+		if p.Sensitivity != "" {
+			s := p.Sensitivity
+			ap.Sensitivity = &s
 		}
 		out = append(out, ap)
 	}

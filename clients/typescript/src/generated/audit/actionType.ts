@@ -1,3 +1,4 @@
+import { IActionEndpoint } from "./actionEndpoint";
 import { IActionParam } from "./actionParam";
 
 /**
@@ -22,4 +23,12 @@ export interface IActionType {
      *
      */
     'parameters': Array<IActionParam>;
+    /**
+     * The HTTP endpoint an invocation targets (D-ActionInvocation, review-2026-09 R-33),
+     * single-sourced from the Conjure IR. Absent for actions with no invocable endpoint
+     * (purge-cascade erasures emitted internally on PersonPurged; the bulk import.* ingestion
+     * plane) — those are catalogued and audited but not runnable from the console.
+     *
+     */
+    'endpoint'?: IActionEndpoint | null;
 }

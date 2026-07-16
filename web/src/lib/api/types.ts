@@ -132,6 +132,7 @@ export type ObjectHistory = audit.IObjectHistory;
 export type ObjectHistoryEvent = audit.IObjectHistoryEvent;
 export type ActionType = audit.IActionType;
 export type ActionParam = audit.IActionParam;
+export type ActionEndpoint = audit.IActionEndpoint;
 
 // ── platform ─────────────────────────────────────────────────────────────────
 export type VersionInfo = platform.IVersionInfo;

@@ -123,7 +123,7 @@ is read-only and not audited). Denied attempts on these are recorded with `outco
 |---|---|---|
 | `GET /audit` | Query the log (filter by actor/target/unit/time, token-paginated) | `audit.read` |
 | `GET /audit/{id}` | Read one entry | `audit.read` |
-| `GET /action-types` | The action-type catalog (D-ActionTypes, R-29): `{code, service, targetType, permission}` | authenticated |
+| `GET /action-types` | The action-type catalog (D-ActionTypes, R-29): `{code, service, targetType, permission, parameters, endpoint}` — `endpoint` drives the console action runner (D-ActionInvocation) | authenticated |
 | `GET /objects/{rid}/history` | The object's reverse-chronological change history (D-Temporal tier b, R-31): the audit rows with `target_id = {rid}`, token-paginated; `before`/`after` **redacted unless sensitive-reader** | `audit.read` |
 
 Audit reads are unit-scoped where a `unit_id` is present (an admin reads audit reaching their
@@ -175,3 +175,10 @@ of an already-authorized — or explicitly denied — action); reading the log i
   can't diverge from the contract; descriptive/discoverability only (no write-time argument validation).
   Remaining seam: annotating the not-yet-mapped modules' `RequestType`s (expand-only — unannotated
   actions simply report no parameters).
+- **Action invocation (D-ActionInvocation): delivered.** Each `ActionType` also carries an
+  `endpoint: optional<ActionEndpoint{method, path, pathParams}>`, **derived from the IR**
+  (`tools/genactionendpoints` → `pkg/action/endpoints_gen.go`, build-failing on drift/ambiguity via a
+  duplicate-binding guard), so the console's generic **action runner** builds and POSTs the request
+  with no hand-authored URL. Actions with no invocable endpoint — purge-cascade `*.erase` and the bulk
+  `import.*` plane — are **exempt** (test-pinned). Regulated params (`pan`/`iban`/`spectrum`/`secret`)
+  carry a `sensitivity` tag driving input masking + advisory client validation (server authoritative).

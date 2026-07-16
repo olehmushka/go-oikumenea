@@ -9,6 +9,61 @@ import (
 )
 
 /*
+The HTTP binding an action invocation targets (D-ActionInvocation, review-2026-09 R-33),
+derived from the Conjure IR by tools/genactionendpoints — never hand-authored, so it cannot
+drift from the contract.
+*/
+type ActionEndpoint struct {
+	// HTTP method, e.g. POST, PUT, DELETE.
+	Method string `json:"method"`
+	// Conjure path template, e.g. /person/v1/persons/{personId}/emails.
+	Path string `json:"path"`
+	/*
+	   Path parameter names in path order. By convention the first is the target object's own
+	   RID (the object the action runs on); any remainder are sub-resource ids the caller supplies
+	   (e.g. the card id of a finance.card.update).
+	*/
+	PathParams []string `json:"pathParams"`
+}
+
+func (o ActionEndpoint) MarshalJSON() ([]byte, error) {
+	if o.PathParams == nil {
+		o.PathParams = make([]string, 0)
+	}
+	type _tmpActionEndpoint ActionEndpoint
+	return safejson.Marshal(_tmpActionEndpoint(o))
+}
+
+func (o *ActionEndpoint) UnmarshalJSON(data []byte) error {
+	type _tmpActionEndpoint ActionEndpoint
+	var rawActionEndpoint _tmpActionEndpoint
+	if err := safejson.Unmarshal(data, &rawActionEndpoint); err != nil {
+		return err
+	}
+	if rawActionEndpoint.PathParams == nil {
+		rawActionEndpoint.PathParams = make([]string, 0)
+	}
+	*o = ActionEndpoint(rawActionEndpoint)
+	return nil
+}
+
+func (o ActionEndpoint) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ActionEndpoint) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
 One argument of an action type, projected from its Conjure request field (D-ActionTypes, R-29).
 Descriptive only — used for discoverability (the console action catalog), not write-time
 validation.
@@ -22,6 +77,13 @@ type ActionParam struct {
 	Required bool `json:"required"`
 	// The field's documentation from the contract, when present.
 	Docs *string `json:"docs,omitempty"`
+	/*
+	   Set for a regulated/secret field (D-DataScope): `pan` (PCI card number), `iban`, `spectrum`
+	   (special-category inference, range [-1,1]) or `secret`. The console runner masks the input
+	   and runs the matching advisory validator; the server's pkg/personalcode validators remain
+	   authoritative. Absent for ordinary fields.
+	*/
+	Sensitivity *string `json:"sensitivity,omitempty"`
 }
 
 func (o ActionParam) MarshalYAML() (interface{}, error) {
@@ -60,6 +122,13 @@ type ActionType struct {
 	   lifecycle POSTs, imports) or not yet annotated (the catalog is expand-only).
 	*/
 	Parameters []ActionParam `json:"parameters"`
+	/*
+	   The HTTP endpoint an invocation targets (D-ActionInvocation, review-2026-09 R-33),
+	   single-sourced from the Conjure IR. Absent for actions with no invocable endpoint
+	   (purge-cascade erasures emitted internally on PersonPurged; the bulk import.* ingestion
+	   plane) — those are catalogued and audited but not runnable from the console.
+	*/
+	Endpoint *ActionEndpoint `json:"endpoint,omitempty"`
 }
 
 func (o ActionType) MarshalJSON() ([]byte, error) {

@@ -55,25 +55,52 @@ type ActionType struct {
 	RequestType string
 }
 
-// Param is one argument of an action, projected from a Conjure request field. It is DERIVED from the
-// IR by tools/genactionparams (see params_gen.go) — never hand-written — so it cannot drift from the
-// contract. Descriptive only (discoverability), not a write-time validation schema.
+// Param is one argument of an action, projected from a Conjure request field. Name/Type/Required/Docs
+// are DERIVED from the IR by tools/genactionparams (see params_gen.go) — never hand-written — so they
+// cannot drift from the contract. Descriptive only (discoverability), not a write-time validation schema.
 type Param struct {
 	Name     string
 	Type     string // display token derived from the Conjure field type: string, rid, datetime, enum, list<string>, …
 	Required bool
 	Docs     string
+	// Sensitivity classifies a regulated/secret field so the console runner can mask it and apply the
+	// right advisory validator (D-DataScope; D-ActionInvocation R-33). "" for ordinary fields. It is a
+	// COMPLIANCE fact, not an IR fact — hand-authored in paramSensitivity, overlaid here. The server's
+	// pkg/personalcode validators remain authoritative; the client masking/validation is advisory.
+	Sensitivity string // "" | "pan" | "iban" | "spectrum" | "secret"
+}
+
+// paramSensitivity classifies regulated/secret request fields, keyed "requestType.field". Hand-authored
+// (a D-DataScope policy decision) — the IR carries no pii classification. Overlaid onto Params so the
+// runner masks the input and runs the matching advisory validator.
+var paramSensitivity = map[string]string{
+	"oikumenea.finance.AddCardRequest.pan":                    "pan",  // PCI PAN — masked, Luhn
+	"oikumenea.finance.CreateAccountRequest.iban":             "iban", // IBAN — masked, mod-97
+	"oikumenea.finance.UpdateAccountRequest.iban":             "iban",
+	"oikumenea.person.UpsertPoliticalLeaningRequest.spectrum": "spectrum", // special-category, range [-1,1]
+	"oikumenea.person.UpsertCryptoWalletRequest.address":      "secret",   // wallet address — masked
 }
 
 // Params returns the argument schema for an action code, single-sourced from its RequestType's Conjure
-// fields (nil when the action has no request body or is not yet annotated). Backs the parameters field
-// on AuditService.listActionTypes.
+// fields (nil when the action has no request body or is not yet annotated), with sensitivity overlaid.
+// Backs the parameters field on AuditService.listActionTypes.
 func Params(code string) []Param {
 	a, ok := byCode[code]
 	if !ok || a.RequestType == "" {
 		return nil
 	}
-	return requestParams[a.RequestType]
+	base := requestParams[a.RequestType]
+	if len(base) == 0 {
+		return base
+	}
+	out := make([]Param, len(base))
+	copy(out, base)
+	for i := range out {
+		if s, ok := paramSensitivity[a.RequestType+"."+out[i].Name]; ok {
+			out[i].Sensitivity = s
+		}
+	}
+	return out
 }
 
 // actionTypes is the full catalog, sorted by (service, code). Derived from the audit emit sites

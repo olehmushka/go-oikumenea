@@ -17,4 +17,8 @@ go run ./tools/ir2openapi -dump-ir "$TMP/ir.json"
 echo "generating pkg/action/params_gen.go…"
 go run ./tools/genactionparams -ir "$TMP/ir.json" -out pkg/action/params_gen.go
 gofmt -w pkg/action/params_gen.go
+
+echo "generating pkg/action/endpoints_gen.go…"
+go run ./tools/genactionendpoints -ir "$TMP/ir.json" -out pkg/action/endpoints_gen.go
+gofmt -w pkg/action/endpoints_gen.go
 echo "done."
