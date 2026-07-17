@@ -855,6 +855,177 @@ func toStoredLeaning(r personsensitivesql.OikumeneaPersonPoliticalLeaning) domai
 	}
 }
 
+// ---------------------------------------------------------------- health & vulnerability (M36, D-HealthVulnerability)
+
+// InsertHealthRecord stores a new encrypted category-level record (the detail envelope is sealed
+// upstream); UpdateHealthRecord re-seals the single active row for the given (person, kind).
+func (r *Repository) InsertHealthRecord(ctx context.Context, h domain.StoredHealthRecord) (domain.StoredHealthRecord, error) {
+	row, err := r.q.InsertHealthRecord(ctx, personsensitivesql.InsertHealthRecordParams{
+		PersonID:         h.PersonID,
+		Kind:             h.Kind,
+		DetailCiphertext: h.DetailCiphertext,
+		DetailWrappedDek: h.DetailWrappedDEK,
+		DetailKeyRef:     text(h.DetailKeyRef),
+		DetailBlindIndex: h.DetailBlindIndex,
+		IsPublicRecord:   h.IsPublicRecord,
+		AssessedAt:       dateText(h.AssessedAt),
+		LegalBasis:       h.LegalBasis,
+		Source:           h.Source,
+		Confidence:       h.Confidence,
+	})
+	if err != nil {
+		return domain.StoredHealthRecord{}, mapWriteErr(err)
+	}
+	return toStoredHealthRecord(row), nil
+}
+
+func (r *Repository) UpdateHealthRecord(ctx context.Context, h domain.StoredHealthRecord) (domain.StoredHealthRecord, error) {
+	row, err := r.q.UpdateHealthRecord(ctx, personsensitivesql.UpdateHealthRecordParams{
+		DetailCiphertext: h.DetailCiphertext,
+		DetailWrappedDek: h.DetailWrappedDEK,
+		DetailKeyRef:     text(h.DetailKeyRef),
+		DetailBlindIndex: h.DetailBlindIndex,
+		IsPublicRecord:   h.IsPublicRecord,
+		AssessedAt:       dateText(h.AssessedAt),
+		LegalBasis:       h.LegalBasis,
+		Source:           h.Source,
+		Confidence:       h.Confidence,
+		PersonID:         h.PersonID,
+		Kind:             h.Kind,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.StoredHealthRecord{}, domain.ErrHealthRecordNotFound
+		}
+		return domain.StoredHealthRecord{}, mapWriteErr(err)
+	}
+	return toStoredHealthRecord(row), nil
+}
+
+func (r *Repository) DeleteHealthRecord(ctx context.Context, personID, id string) error {
+	if _, err := r.q.DeleteHealthRecord(ctx, personsensitivesql.DeleteHealthRecordParams{ID: id, PersonID: personID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrHealthRecordNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) ListHealthRecords(ctx context.Context, personID string) ([]domain.StoredHealthRecord, error) {
+	rows, err := r.q.ListHealthRecords(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.StoredHealthRecord, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toStoredHealthRecord(row))
+	}
+	return out, nil
+}
+
+func (r *Repository) CryptoEraseHealthRecords(ctx context.Context, personID string) (int64, error) {
+	return r.q.CryptoEraseHealthRecords(ctx, personID)
+}
+
+// UpsertInsurance inserts a new row when i.ID is empty, otherwise replaces the named row.
+func (r *Repository) UpsertInsurance(ctx context.Context, i domain.Insurance) (domain.Insurance, error) {
+	if i.ID == "" {
+		row, err := r.q.InsertInsurance(ctx, personsensitivesql.InsertInsuranceParams{
+			PersonID:          i.PersonID,
+			Type:              i.Type,
+			Provider:          text(i.Provider),
+			PolicyReference:   text(i.PolicyReference),
+			EmployerSponsored: i.EmployerSponsored,
+			ValidFrom:         dateText(i.ValidFrom),
+			ValidTo:           dateText(i.ValidTo),
+			Source:            i.Source,
+			Confidence:        i.Confidence,
+		})
+		if err != nil {
+			return domain.Insurance{}, mapWriteErr(err)
+		}
+		return toInsurance(row), nil
+	}
+	row, err := r.q.UpdateInsurance(ctx, personsensitivesql.UpdateInsuranceParams{
+		Type:              i.Type,
+		Provider:          text(i.Provider),
+		PolicyReference:   text(i.PolicyReference),
+		EmployerSponsored: i.EmployerSponsored,
+		ValidFrom:         dateText(i.ValidFrom),
+		ValidTo:           dateText(i.ValidTo),
+		Source:            i.Source,
+		Confidence:        i.Confidence,
+		ID:                i.ID,
+		PersonID:          i.PersonID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Insurance{}, domain.ErrInsuranceNotFound
+		}
+		return domain.Insurance{}, mapWriteErr(err)
+	}
+	return toInsurance(row), nil
+}
+
+func (r *Repository) DeleteInsurance(ctx context.Context, personID, id string) error {
+	if _, err := r.q.DeleteInsurance(ctx, personsensitivesql.DeleteInsuranceParams{ID: id, PersonID: personID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrInsuranceNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) ListInsurance(ctx context.Context, personID string) ([]domain.Insurance, error) {
+	rows, err := r.q.ListInsurance(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Insurance, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toInsurance(row))
+	}
+	return out, nil
+}
+
+func toStoredHealthRecord(r personsensitivesql.OikumeneaPersonHealthRecord) domain.StoredHealthRecord {
+	return domain.StoredHealthRecord{
+		ID:               r.ID,
+		PersonID:         r.PersonID,
+		Kind:             r.Kind,
+		DetailCiphertext: r.DetailCiphertext,
+		DetailWrappedDEK: r.DetailWrappedDek,
+		DetailKeyRef:     strText(r.DetailKeyRef),
+		DetailBlindIndex: r.DetailBlindIndex,
+		IsPublicRecord:   r.IsPublicRecord,
+		AssessedAt:       dateStr(r.AssessedAt),
+		LegalBasis:       r.LegalBasis,
+		Source:           r.Source,
+		Confidence:       r.Confidence,
+		CreatedAt:        r.CreatedAt.Time,
+		UpdatedAt:        r.UpdatedAt.Time,
+	}
+}
+
+func toInsurance(r personsensitivesql.OikumeneaPersonInsurance) domain.Insurance {
+	return domain.Insurance{
+		ID:                r.ID,
+		PersonID:          r.PersonID,
+		Type:              r.Type,
+		Provider:          strText(r.Provider),
+		PolicyReference:   strText(r.PolicyReference),
+		EmployerSponsored: r.EmployerSponsored,
+		ValidFrom:         dateStr(r.ValidFrom),
+		ValidTo:           dateStr(r.ValidTo),
+		Source:            r.Source,
+		Confidence:        r.Confidence,
+		CreatedAt:         r.CreatedAt.Time,
+		UpdatedAt:         r.UpdatedAt.Time,
+	}
+}
+
 // nonNilStrs returns s, or an empty (non-nil) slice so a NULL never reaches a NOT NULL text[] column.
 
 // relDelete maps a person-scoped soft-delete-by-id (RETURNING id) to ErrRelationshipNotFound when no
@@ -1160,6 +1331,7 @@ func (r *Repository) ErasePerson(ctx context.Context, personID string) error {
 		r.q.DeleteAllRegulatorySanctions,
 		r.q.DeleteAllCryptoWallets,
 		r.q.DeleteAllPersonalities,
+		r.q.DeleteAllInsurance,
 	}
 	for _, step := range deletes {
 		if err := step(ctx, personID); err != nil {
@@ -1170,6 +1342,7 @@ func (r *Repository) ErasePerson(ctx context.Context, personID string) error {
 		r.q.CryptoEraseEthnicities,      // D-PhysicalIdentity, M31
 		r.q.CryptoErasePartyMemberships, // D-InstitutionalTies, M33
 		r.q.CryptoErasePoliticalLeaning, // D-PersonOverlays, M35
+		r.q.CryptoEraseHealthRecords,    // D-HealthVulnerability, M36
 	}
 	for _, step := range cryptoErases {
 		if _, err := step(ctx, personID); err != nil {

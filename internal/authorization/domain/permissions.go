@@ -54,6 +54,7 @@ const (
 	PermPersonEthnicityRead        Permission = "person.ethnicity.read"
 	PermPersonPoliticalLeaningRead Permission = "person.political_leaning.read"
 	PermPersonPartyMembershipRead  Permission = "person.party_membership.read"
+	PermPersonHealthRead           Permission = "person.health.read" // category-level health/vulnerability (M36)
 
 	// person relationship graph (D-LinkPermissions) — the person↔person social/family links and the
 	// person's home address. Each reified relationship gets its OWN read code, gating BOTH its dedicated
@@ -282,7 +283,7 @@ var catalog = func() map[Permission]struct{} {
 		PermDomainRead, PermUnitKindRead, PermOrganizationRead, PermOrganizationCreate, PermOrganizationUpdate, PermOrganizationLifecycle,
 		PermDomainManage, PermUnitKindManage,
 		PermPersonRead, PermPersonCreate, PermPersonUpdate, PermPersonRankAssign, PermPersonLifecycle, PermPersonPurge, PermPersonMerge,
-		PermPersonEthnicityRead, PermPersonPoliticalLeaningRead, PermPersonPartyMembershipRead,
+		PermPersonEthnicityRead, PermPersonPoliticalLeaningRead, PermPersonPartyMembershipRead, PermPersonHealthRead,
 		PermPersonPartnershipRead, PermPersonKinshipRead, PermPersonGuardianshipRead, PermPersonSponsorshipRead,
 		PermPersonNextOfKinRead, PermPersonAssociationRead, PermPersonAddressRead,
 		PermMembershipRead, PermMembershipCreate, PermMembershipUpdate,
@@ -395,7 +396,7 @@ var managerOnlyPerms = []Permission{
 // the ethnicity + politics + party aggregation — reading Art.9 person data requires this explicit
 // grant, on top of unit-reader for the surrounding directory context (D-DataScope, review R-14).
 var sensitiveReaderPerms = []Permission{
-	PermPersonEthnicityRead, PermPersonPoliticalLeaningRead, PermPersonPartyMembershipRead,
+	PermPersonEthnicityRead, PermPersonPoliticalLeaningRead, PermPersonPartyMembershipRead, PermPersonHealthRead,
 }
 
 // personRelationshipReaderPerms is the additive base role for the person relationship graph
@@ -438,7 +439,7 @@ func BaseRoles() []BaseRole {
 		{Code: BaseRoleUnitManager, Name: "Unit Manager", Description: "Create/update people, memberships, positions, units, and orders within scope.", Permissions: manager},
 		{Code: BaseRoleUnitAdmin, Name: "Unit Admin", Description: "Full unit administration within scope: edges, lifecycle, purge, order issue/revoke, and granting assignments.", Permissions: admin},
 		{Code: BaseRoleAuditor, Name: "Auditor", Description: "Read the audit log only (separation of duties; pair with unit-reader to resolve referenced entities).", Permissions: []Permission{PermAuditRead}},
-		{Code: BaseRoleSensitiveReader, Name: "Sensitive Reader", Description: "Read a person's pii:special Art.9 data (ethnicity, inferred political leaning, party membership). Additive and explicit — pair with unit-reader; deliberately not implied by unit-admin (D-DataScope, R-14).", Permissions: sensitiveReaderPerms},
+		{Code: BaseRoleSensitiveReader, Name: "Sensitive Reader", Description: "Read a person's pii:special Art.9 data (ethnicity, inferred political leaning, party membership, category-level health & vulnerability). Additive and explicit — pair with unit-reader; deliberately not implied by unit-admin (D-DataScope, R-14).", Permissions: sensitiveReaderPerms},
 		{Code: BaseRolePersonRelationshipReader, Name: "Person Relationship Reader", Description: "Read a person's relationship graph (partnerships, kinships, guardianships, sponsorships, next of kin, associations) and home addresses — on the person page and in the object graph alike. Additive and explicit — pair with unit-reader; deliberately not implied by unit-admin (D-LinkPermissions).", Permissions: personRelationshipReaderPerms},
 		{Code: BaseRoleFinanceGraphReader, Name: "Finance Graph Reader", Description: "Read who holds a bank account (the account↔holder ownership link), on the account/person pages and in the object graph alike. Additive — pair with finance.read, which lists the accounts themselves (D-LinkPermissions).", Permissions: financeGraphReaderPerms},
 		{Code: BaseRoleVehicleGraphReader, Name: "Vehicle Graph Reader", Description: "Read who a vehicle is registered to (the vehicle↔owner link), on the vehicle/person pages and in the object graph alike. Additive — pair with vehicle.read, which lists the vehicles themselves (D-LinkPermissions).", Permissions: vehicleGraphReaderPerms},

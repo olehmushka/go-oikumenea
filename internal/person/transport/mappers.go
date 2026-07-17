@@ -421,7 +421,16 @@ func (s Service) mapError(ctx context.Context, err error, personID string) error
 		errors.Is(err, domain.ErrLobbyingNotFound),
 		errors.Is(err, domain.ErrExternalReferenceNotFound),
 		errors.Is(err, domain.ErrRegulatorySanctionNotFound),
-		errors.Is(err, domain.ErrRelationshipNotFound):
+		errors.Is(err, domain.ErrRelationshipNotFound),
+		errors.Is(err, domain.ErrEthnicityNotFound),
+		errors.Is(err, domain.ErrNameAliasNotFound),
+		errors.Is(err, domain.ErrPhysicalDescriptionNotFound),
+		errors.Is(err, domain.ErrDistinguishingMarkNotFound),
+		errors.Is(err, domain.ErrCryptoWalletNotFound),
+		errors.Is(err, domain.ErrPersonalityNotFound),
+		errors.Is(err, domain.ErrPoliticalLeaningNotFound),
+		errors.Is(err, domain.ErrHealthRecordNotFound),
+		errors.Is(err, domain.ErrInsuranceNotFound):
 		return personapi.NewPersonNotFound(personID)
 	case errors.Is(err, domain.ErrCodeConflict):
 		return personapi.NewPersonConflict("a person with this code already exists")
@@ -479,6 +488,10 @@ func (s Service) mapError(ctx context.Context, err error, personID string) error
 		return personapi.NewPersonInvalid("color is not in the expected eye/hair palette (D-Color)")
 	case errors.Is(err, domain.ErrUnknownLocation):
 		return personapi.NewPersonInvalid("location does not exist (D-PersonAddresses)")
+	case errors.Is(err, domain.ErrUnknownLegalBasis):
+		return personapi.NewPersonInvalid("legal basis does not exist")
+	case errors.Is(err, domain.ErrUnknownEthnicityType):
+		return personapi.NewPersonInvalid("ethnicity type does not exist")
 	case errors.Is(err, domain.ErrWatchlistUnavailable):
 		return personapi.NewPersonInvalid("watchlist screening is not configured (D-Watchlists)")
 	case errors.Is(err, domain.ErrInvalid):

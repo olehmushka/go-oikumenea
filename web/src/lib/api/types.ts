@@ -77,6 +77,8 @@ export type RegulatorySanction = person.IRegulatorySanction;
 export type CryptoWallet = person.ICryptoWallet;
 export type Personality = person.IPersonality;
 export type PoliticalLeaning = person.IPoliticalLeaning;
+export type HealthRecord = person.IHealthRecord;
+export type Insurance = person.IInsurance;
 
 // ── localization / language ──────────────────────────────────────────────────
 export type LocaleLanguage = localization.ILocaleLanguage;

@@ -673,6 +673,79 @@ func (o *Guardianship) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+/*
+A category-level health & vulnerability record (D-HealthVulnerability, M36) — an Object. Health is
+a GDPR Art. 9 special category, so the category-level `detail` is envelope-encrypted at rest; the
+value here is decrypted ("" for a crypto-erased tombstone). CATEGORY-LEVEL ONLY — never a diagnosis,
+never inferred. legalBasis is required and reads need the person.health.read code. pii:special.
+*/
+type HealthRecord struct {
+	Id       string `json:"id"`
+	PersonId string `json:"personId"`
+	// One of hospitalization | mental_health | disability.
+	Kind string `json:"kind"`
+	// The decrypted category-level note (coarse, NO diagnosis); "" when crypto-erased.
+	Detail string `json:"detail"`
+	// True when derived from a public record.
+	IsPublicRecord bool    `json:"isPublicRecord"`
+	AssessedAt     *string `json:"assessedAt,omitempty"`
+	// The platform_legal_basis_kinds code authorizing this Art. 9 record.
+	LegalBasis string  `json:"legalBasis"`
+	Source     *string `json:"source,omitempty"`
+	Confidence *string `json:"confidence,omitempty"`
+}
+
+func (o HealthRecord) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *HealthRecord) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+A person's insurance coverage (D-HealthVulnerability, M36) — an Object. pii:sensitive; gated on
+person.read. Hard-erased on purge.
+*/
+type Insurance struct {
+	Id       string `json:"id"`
+	PersonId string `json:"personId"`
+	// One of health | life | disability | ltc.
+	Type            string  `json:"type"`
+	Provider        *string `json:"provider,omitempty"`
+	PolicyReference *string `json:"policyReference,omitempty"`
+	// True when the coverage is employer-sponsored.
+	EmployerSponsored bool    `json:"employerSponsored"`
+	ValidFrom         *string `json:"validFrom,omitempty"`
+	ValidTo           *string `json:"validTo,omitempty"`
+	Source            *string `json:"source,omitempty"`
+	Confidence        *string `json:"confidence,omitempty"`
+}
+
+func (o Insurance) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *Insurance) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // A directional parent→child blood/legal parentage link (D-PersonRelationships; Link link__kin_parent_of). Siblings are derived, never stored.
 type Kinship struct {
 	Id string `json:"id"`
@@ -2120,6 +2193,66 @@ func (o UpsertGuardianshipRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *UpsertGuardianshipRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+Add or replace the person's category-level health record for a kind (one active row per kind,
+replaced in place). Requires legalBasis (Art. 9). Category-level only — never a diagnosis
+(D-HealthVulnerability, M36).
+*/
+type UpsertHealthRecordRequest struct {
+	Kind           string  `json:"kind"`
+	Detail         string  `json:"detail"`
+	IsPublicRecord *bool   `json:"isPublicRecord,omitempty"`
+	AssessedAt     *string `json:"assessedAt,omitempty"`
+	LegalBasis     string  `json:"legalBasis"`
+	Source         *string `json:"source,omitempty"`
+	Confidence     *string `json:"confidence,omitempty"`
+}
+
+func (o UpsertHealthRecordRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertHealthRecordRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// Add an insurance row, or replace one when id is supplied (D-HealthVulnerability, M36).
+type UpsertInsuranceRequest struct {
+	Id                *string `json:"id,omitempty"`
+	Type              string  `json:"type"`
+	Provider          *string `json:"provider,omitempty"`
+	PolicyReference   *string `json:"policyReference,omitempty"`
+	EmployerSponsored *bool   `json:"employerSponsored,omitempty"`
+	ValidFrom         *string `json:"validFrom,omitempty"`
+	ValidTo           *string `json:"validTo,omitempty"`
+	Source            *string `json:"source,omitempty"`
+	Confidence        *string `json:"confidence,omitempty"`
+}
+
+func (o UpsertInsuranceRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertInsuranceRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

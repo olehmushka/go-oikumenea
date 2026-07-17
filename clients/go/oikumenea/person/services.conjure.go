@@ -142,6 +142,24 @@ type PersonServiceClient interface {
 	// Remove the person's inferred political leaning.
 	DeletePoliticalLeaning(ctx context.Context, authHeader bearertoken.Token, personIdArg string) error
 	/*
+	   List a person's category-level health & vulnerability records (D-HealthVulnerability, M36;
+	   pii:special, decrypted). Requires the person.health.read need-to-know code.
+	*/
+	ListHealthRecords(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]HealthRecord, error)
+	/*
+	   Add or replace the person's category-level health record for a kind (one active row per kind).
+	   Requires legalBasis (Art. 9). Category-level only — never a diagnosis.
+	*/
+	UpsertHealthRecord(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertHealthRecordRequest) (HealthRecord, error)
+	// Remove a health record by id.
+	DeleteHealthRecord(ctx context.Context, authHeader bearertoken.Token, personIdArg string, recordIdArg string) error
+	// List a person's insurance coverage (D-HealthVulnerability, M36; pii:sensitive).
+	ListInsurance(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Insurance, error)
+	// Add an insurance row, or replace one when id is supplied.
+	UpsertInsurance(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertInsuranceRequest) (Insurance, error)
+	// Remove an insurance row by id.
+	DeleteInsurance(ctx context.Context, authHeader bearertoken.Token, personIdArg string, insuranceIdArg string) error
+	/*
 	   List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
 	   the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
 	   expansion), or a name/code substring (query). `hasChildren` is set on each entry.
@@ -1059,6 +1077,100 @@ func (c *personServiceClient) DeletePoliticalLeaning(ctx context.Context, authHe
 	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
 	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
 		return werror.WrapWithContextParams(ctx, err, "deletePoliticalLeaning failed")
+	}
+	return nil
+}
+
+func (c *personServiceClient) ListHealthRecords(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]HealthRecord, error) {
+	var returnVal []HealthRecord
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListHealthRecords"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/health-records", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listHealthRecords failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listHealthRecords response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) UpsertHealthRecord(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertHealthRecordRequest) (HealthRecord, error) {
+	var returnVal *HealthRecord
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertHealthRecord"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/health-records", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(HealthRecord), werror.WrapWithContextParams(ctx, err, "upsertHealthRecord failed")
+	}
+	if returnVal == nil {
+		return *new(HealthRecord), werror.ErrorWithContextParams(ctx, "upsertHealthRecord response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) DeleteHealthRecord(ctx context.Context, authHeader bearertoken.Token, personIdArg string, recordIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeleteHealthRecord"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/health-records/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(recordIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deleteHealthRecord failed")
+	}
+	return nil
+}
+
+func (c *personServiceClient) ListInsurance(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Insurance, error) {
+	var returnVal []Insurance
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListInsurance"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/insurance", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listInsurance failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listInsurance response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) UpsertInsurance(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertInsuranceRequest) (Insurance, error) {
+	var returnVal *Insurance
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertInsurance"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/insurance", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(Insurance), werror.WrapWithContextParams(ctx, err, "upsertInsurance failed")
+	}
+	if returnVal == nil {
+		return *new(Insurance), werror.ErrorWithContextParams(ctx, "upsertInsurance response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) DeleteInsurance(ctx context.Context, authHeader bearertoken.Token, personIdArg string, insuranceIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeleteInsurance"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/insurance/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(insuranceIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deleteInsurance failed")
 	}
 	return nil
 }
@@ -2006,6 +2118,24 @@ type PersonServiceClientWithAuth interface {
 	// Remove the person's inferred political leaning.
 	DeletePoliticalLeaning(ctx context.Context, personIdArg string) error
 	/*
+	   List a person's category-level health & vulnerability records (D-HealthVulnerability, M36;
+	   pii:special, decrypted). Requires the person.health.read need-to-know code.
+	*/
+	ListHealthRecords(ctx context.Context, personIdArg string) ([]HealthRecord, error)
+	/*
+	   Add or replace the person's category-level health record for a kind (one active row per kind).
+	   Requires legalBasis (Art. 9). Category-level only — never a diagnosis.
+	*/
+	UpsertHealthRecord(ctx context.Context, personIdArg string, requestArg UpsertHealthRecordRequest) (HealthRecord, error)
+	// Remove a health record by id.
+	DeleteHealthRecord(ctx context.Context, personIdArg string, recordIdArg string) error
+	// List a person's insurance coverage (D-HealthVulnerability, M36; pii:sensitive).
+	ListInsurance(ctx context.Context, personIdArg string) ([]Insurance, error)
+	// Add an insurance row, or replace one when id is supplied.
+	UpsertInsurance(ctx context.Context, personIdArg string, requestArg UpsertInsuranceRequest) (Insurance, error)
+	// Remove an insurance row by id.
+	DeleteInsurance(ctx context.Context, personIdArg string, insuranceIdArg string) error
+	/*
 	   List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
 	   the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
 	   expansion), or a name/code substring (query). `hasChildren` is set on each entry.
@@ -2330,6 +2460,30 @@ func (c *personServiceClientWithAuth) SetPoliticalLeaning(ctx context.Context, p
 
 func (c *personServiceClientWithAuth) DeletePoliticalLeaning(ctx context.Context, personIdArg string) error {
 	return c.client.DeletePoliticalLeaning(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) ListHealthRecords(ctx context.Context, personIdArg string) ([]HealthRecord, error) {
+	return c.client.ListHealthRecords(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertHealthRecord(ctx context.Context, personIdArg string, requestArg UpsertHealthRecordRequest) (HealthRecord, error) {
+	return c.client.UpsertHealthRecord(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) DeleteHealthRecord(ctx context.Context, personIdArg string, recordIdArg string) error {
+	return c.client.DeleteHealthRecord(ctx, c.authHeader, personIdArg, recordIdArg)
+}
+
+func (c *personServiceClientWithAuth) ListInsurance(ctx context.Context, personIdArg string) ([]Insurance, error) {
+	return c.client.ListInsurance(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertInsurance(ctx context.Context, personIdArg string, requestArg UpsertInsuranceRequest) (Insurance, error) {
+	return c.client.UpsertInsurance(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) DeleteInsurance(ctx context.Context, personIdArg string, insuranceIdArg string) error {
+	return c.client.DeleteInsurance(ctx, c.authHeader, personIdArg, insuranceIdArg)
 }
 
 func (c *personServiceClientWithAuth) ListEthnicityTypes(ctx context.Context, topLevelArg *bool, parentArg *string, queryArg *string, limitArg *int) ([]EthnicityType, error) {
@@ -2927,6 +3081,54 @@ func (c *personServiceClientWithTokenProvider) DeletePoliticalLeaning(ctx contex
 		return err
 	}
 	return c.client.DeletePoliticalLeaning(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListHealthRecords(ctx context.Context, personIdArg string) ([]HealthRecord, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListHealthRecords(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertHealthRecord(ctx context.Context, personIdArg string, requestArg UpsertHealthRecordRequest) (HealthRecord, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(HealthRecord), err
+	}
+	return c.client.UpsertHealthRecord(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) DeleteHealthRecord(ctx context.Context, personIdArg string, recordIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeleteHealthRecord(ctx, bearertoken.Token(token), personIdArg, recordIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListInsurance(ctx context.Context, personIdArg string) ([]Insurance, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListInsurance(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertInsurance(ctx context.Context, personIdArg string, requestArg UpsertInsuranceRequest) (Insurance, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(Insurance), err
+	}
+	return c.client.UpsertInsurance(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) DeleteInsurance(ctx context.Context, personIdArg string, insuranceIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeleteInsurance(ctx, bearertoken.Token(token), personIdArg, insuranceIdArg)
 }
 
 func (c *personServiceClientWithTokenProvider) ListEthnicityTypes(ctx context.Context, topLevelArg *bool, parentArg *string, queryArg *string, limitArg *int) ([]EthnicityType, error) {

@@ -32,6 +32,8 @@ import type {
   Ethnicity,
   ExternalReference,
   GovernmentPosition,
+  HealthRecord,
+  Insurance,
   Personality,
   PoliticalLeaning,
   LobbyingRelationship,
@@ -1333,6 +1335,8 @@ const WALLET_CHAINS = ["bitcoin", "ethereum", "solana", "tron", "bnb", "polygon"
 const WALLET_METHODS = ["exchange_kyc", "blockchain_analysis", "self_declared", "leak", "public_post", "other"] as const;
 const PERSONALITY_FRAMEWORKS = ["mbti", "big_five", "disc", "enneagram", "other"] as const;
 const PERSONALITY_METHODS = ["self_declared_survey", "hr_assessment"] as const;
+const HEALTH_KINDS = ["hospitalization", "mental_health", "disability"] as const;
+const INSURANCE_TYPES = ["health", "life", "disability", "ltc"] as const;
 
 // OverlaysManager owns the M35 panels (D-PersonOverlays): crypto wallets + personality profiles
 // (pii:sensitive) and the inferred political leaning (pii:special, encrypted, single-active-per-person —
@@ -1525,6 +1529,144 @@ export function OverlaysManager({ personId }: { personId: string }) {
             {bases.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
           </select>
           <button className="btn-ghost" disabled={busy}><T>Set</T></button>
+        </form>
+      </ChannelBlock>
+    </>
+  );
+}
+
+// HealthManager owns the M36 panels (D-HealthVulnerability): category-level health & vulnerability records
+// (pii:special, envelope-encrypted, legalBasis required — one active row per kind) and insurance coverage
+// (pii:sensitive). Health reads need the person.health.read code; a viewer lacking it sees the panel error.
+export function HealthManager({ personId }: { personId: string }) {
+  const [records, setRecords] = useState<HealthRecord[] | null>(null);
+  const [insurance, setInsurance] = useState<Insurance[] | null>(null);
+  const [bases, setBases] = useState<{ code: string; name: string }[]>([]);
+  const [healthErr, setHealthErr] = useState<unknown>(null);
+  const [err, setErr] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = () => {
+    api.person.listHealthRecords(personId).then(setRecords).catch(setHealthErr);
+    api.person.listInsurance(personId).then(setInsurance).catch(setErr);
+  };
+  useEffect(() => {
+    load();
+    // Health is GDPR Art. 9 — offer the Art. 9 lawful bases.
+    api.platformCatalog.listLegalBasisKinds()
+      .then((r) => setBases((r?.kinds ?? []).filter((k) => k.article === "art9").map((k) => ({ code: k.code, name: k.name }))))
+      .catch(setErr);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personId]);
+
+  const run = async (fn: () => Promise<unknown>, after?: () => void) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await fn();
+      after?.();
+      load();
+    } catch (e) {
+      setErr(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <ChannelBlock title="Health & vulnerability records" err={healthErr}>
+        <p className="mt-1 text-xs text-amber-600"><T>Category-level special-category data (GDPR Art. 9) — encrypted at rest; NO diagnosis; never inferred.</T></p>
+        <ItemList
+          items={records ?? undefined}
+          render={(h) => (
+            <span className="inline-flex flex-wrap items-center gap-x-1">
+              <span className="text-xs font-medium text-slate-500">{h.kind}</span>
+              <span className="mx-1 text-slate-300">·</span>
+              <span className="font-medium">{h.detail || "—"}</span>
+              {h.isPublicRecord ? <span className="ml-1 text-xs text-slate-400">· public record</span> : null}
+              <span className="ml-1 text-xs text-slate-400">· {h.legalBasis}</span>
+            </span>
+          )}
+          del={(h) => `/person/v1/persons/${personId}/health-records/${h.id}`}
+          delConfirm="Remove this health record?"
+        />
+        <form
+          className="mt-2 grid grid-cols-[9rem_1fr_1fr_auto] gap-2"
+          onSubmit={(ev) => {
+            ev.preventDefault();
+            const f = new FormData(ev.currentTarget);
+            const detail = s(f, "detail");
+            const legalBasis = s(f, "legalBasis");
+            if (!detail || !legalBasis) return;
+            const form = ev.currentTarget;
+            run(
+              () => api.person.upsertHealthRecord(personId, {
+                kind: s(f, "kind") ?? "hospitalization",
+                detail,
+                legalBasis,
+              }),
+              () => form.reset(),
+            );
+          }}
+        >
+          <select name="kind" className="input" defaultValue="hospitalization">
+            {HEALTH_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+          </select>
+          <input name="detail" className="input" placeholder="category-level note (no diagnosis)…" required />
+          <select name="legalBasis" className="input" defaultValue="" required>
+            <option value="">legal basis…</option>
+            {bases.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
+          </select>
+          <button className="btn-ghost" disabled={busy}><T>Add</T></button>
+        </form>
+      </ChannelBlock>
+
+      <ChannelBlock title="Insurance" err={err}>
+        <p className="mt-1 text-xs text-amber-600"><T>Sensitive-tier coverage data.</T></p>
+        <ItemList
+          items={insurance ?? undefined}
+          render={(i) => {
+            const period = [i.validFrom, i.validTo].filter(Boolean).join(" → ");
+            return (
+              <span className="inline-flex flex-wrap items-center gap-x-1">
+                <span className="text-xs font-medium text-slate-500">{i.type}</span>
+                <span className="mx-1 text-slate-300">·</span>
+                <span className="font-medium">{i.provider || "—"}</span>
+                {i.employerSponsored ? <span className="ml-1 text-xs text-slate-400">· employer</span> : null}
+                {period ? <span className="ml-1 text-xs text-slate-400">· {period}</span> : null}
+              </span>
+            );
+          }}
+          del={(i) => `/person/v1/persons/${personId}/insurance/${i.id}`}
+          delConfirm="Remove this insurance row?"
+        />
+        <form
+          className="mt-2 grid grid-cols-[7rem_1fr_8rem_auto] gap-2"
+          onSubmit={(ev) => {
+            ev.preventDefault();
+            const f = new FormData(ev.currentTarget);
+            const type = s(f, "type");
+            if (!type) return;
+            const form = ev.currentTarget;
+            run(
+              () => api.person.upsertInsurance(personId, {
+                type,
+                provider: s(f, "provider"),
+                employerSponsored: f.get("employer") === "on",
+              }),
+              () => form.reset(),
+            );
+          }}
+        >
+          <select name="type" className="input" defaultValue="health">
+            {INSURANCE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <input name="provider" className="input" placeholder="provider…" />
+          <label className="flex items-center gap-1 text-xs text-slate-500">
+            <input type="checkbox" name="employer" /> <T>employer</T>
+          </label>
+          <button className="btn-ghost" disabled={busy}><T>Add</T></button>
         </form>
       </ChannelBlock>
     </>

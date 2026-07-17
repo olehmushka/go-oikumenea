@@ -1288,4 +1288,21 @@ type SensitiveRepository interface {
 	UpdatePoliticalLeaning(ctx context.Context, l StoredPoliticalLeaning) (StoredPoliticalLeaning, error) // ErrPoliticalLeaningNotFound
 	GetPoliticalLeaning(ctx context.Context, personID string) (StoredPoliticalLeaning, error)             // ErrPoliticalLeaningNotFound
 	DeletePoliticalLeaning(ctx context.Context, personID string) error                                    // ErrPoliticalLeaningNotFound
+
+	// health & vulnerability records (D-HealthVulnerability, M36)
+
+	// health records — the encrypted object health_record (one active row per (person, kind); the
+	// category-level detail envelope is sealed upstream). Insert when none exists for the kind, else re-seal
+	// the active row in place.
+	InsertHealthRecord(ctx context.Context, h StoredHealthRecord) (StoredHealthRecord, error)
+	UpdateHealthRecord(ctx context.Context, h StoredHealthRecord) (StoredHealthRecord, error) // ErrHealthRecordNotFound
+	DeleteHealthRecord(ctx context.Context, personID, id string) error                        // ErrHealthRecordNotFound
+	ListHealthRecords(ctx context.Context, personID string) ([]StoredHealthRecord, error)
+	// CryptoEraseHealthRecords drops the envelope on all of a person's health records (purge path).
+	CryptoEraseHealthRecords(ctx context.Context, personID string) (int64, error)
+
+	// insurance — object insurance, pii:sensitive (i.ID == "" => insert; else replace that row)
+	UpsertInsurance(ctx context.Context, i Insurance) (Insurance, error) // ErrInsuranceNotFound
+	DeleteInsurance(ctx context.Context, personID, id string) error      // ErrInsuranceNotFound
+	ListInsurance(ctx context.Context, personID string) ([]Insurance, error)
 }

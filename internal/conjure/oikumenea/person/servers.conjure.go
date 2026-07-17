@@ -145,6 +145,24 @@ type PersonService interface {
 	// Remove the person's inferred political leaning.
 	DeletePoliticalLeaning(ctx context.Context, authHeader bearertoken.Token, personIdArg string) error
 	/*
+	   List a person's category-level health & vulnerability records (D-HealthVulnerability, M36;
+	   pii:special, decrypted). Requires the person.health.read need-to-know code.
+	*/
+	ListHealthRecords(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]HealthRecord, error)
+	/*
+	   Add or replace the person's category-level health record for a kind (one active row per kind).
+	   Requires legalBasis (Art. 9). Category-level only — never a diagnosis.
+	*/
+	UpsertHealthRecord(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertHealthRecordRequest) (HealthRecord, error)
+	// Remove a health record by id.
+	DeleteHealthRecord(ctx context.Context, authHeader bearertoken.Token, personIdArg string, recordIdArg string) error
+	// List a person's insurance coverage (D-HealthVulnerability, M36; pii:sensitive).
+	ListInsurance(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]Insurance, error)
+	// Add an insurance row, or replace one when id is supplied.
+	UpsertInsurance(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertInsuranceRequest) (Insurance, error)
+	// Remove an insurance row by id.
+	DeleteInsurance(ctx context.Context, authHeader bearertoken.Token, personIdArg string, insuranceIdArg string) error
+	/*
 	   List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
 	   the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
 	   expansion), or a name/code substring (query). `hasChildren` is set on each entry.
@@ -419,6 +437,24 @@ func RegisterRoutesPersonService(router wrouter.Router, impl PersonService, rout
 	}
 	if err := resource.Delete("DeletePoliticalLeaning", "/person/v1/persons/{personId}/political-leaning", httpserver.NewJSONHandler(handler.HandleDeletePoliticalLeaning, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deletePoliticalLeaning route")
+	}
+	if err := resource.Get("ListHealthRecords", "/person/v1/persons/{personId}/health-records", httpserver.NewJSONHandler(handler.HandleListHealthRecords, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listHealthRecords route")
+	}
+	if err := resource.Put("UpsertHealthRecord", "/person/v1/persons/{personId}/health-records", httpserver.NewJSONHandler(handler.HandleUpsertHealthRecord, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertHealthRecord route")
+	}
+	if err := resource.Delete("DeleteHealthRecord", "/person/v1/persons/{personId}/health-records/{recordId}", httpserver.NewJSONHandler(handler.HandleDeleteHealthRecord, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteHealthRecord route")
+	}
+	if err := resource.Get("ListInsurance", "/person/v1/persons/{personId}/insurance", httpserver.NewJSONHandler(handler.HandleListInsurance, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listInsurance route")
+	}
+	if err := resource.Put("UpsertInsurance", "/person/v1/persons/{personId}/insurance", httpserver.NewJSONHandler(handler.HandleUpsertInsurance, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add upsertInsurance route")
+	}
+	if err := resource.Delete("DeleteInsurance", "/person/v1/persons/{personId}/insurance/{insuranceId}", httpserver.NewJSONHandler(handler.HandleDeleteInsurance, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add deleteInsurance route")
 	}
 	if err := resource.Get("ListEthnicityTypes", "/person/v1/ethnicity-types", httpserver.NewJSONHandler(handler.HandleListEthnicityTypes, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listEthnicityTypes route")
@@ -1710,6 +1746,146 @@ func (p *personServiceHandler) HandleDeletePoliticalLeaning(rw http.ResponseWrit
 		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
 	}
 	if err := p.impl.DeletePoliticalLeaning(req.Context(), bearertoken.Token(authHeader), personIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (p *personServiceHandler) HandleListHealthRecords(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.ListHealthRecords(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpsertHealthRecord(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg UpsertHealthRecordRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertHealthRecord(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleDeleteHealthRecord(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	recordIdArg, ok := pathParams["recordId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"recordId\" not present")
+	}
+	if err := p.impl.DeleteHealthRecord(req.Context(), bearertoken.Token(authHeader), personIdArg, recordIdArg); err != nil {
+		return err
+	}
+	rw.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (p *personServiceHandler) HandleListInsurance(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	respArg, err := p.impl.ListInsurance(req.Context(), bearertoken.Token(authHeader), personIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleUpsertInsurance(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	var requestArg UpsertInsuranceRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := p.impl.UpsertInsurance(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandleDeleteInsurance(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	personIdArg, ok := pathParams["personId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"personId\" not present")
+	}
+	insuranceIdArg, ok := pathParams["insuranceId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"insuranceId\" not present")
+	}
+	if err := p.impl.DeleteInsurance(req.Context(), bearertoken.Token(authHeader), personIdArg, insuranceIdArg); err != nil {
 		return err
 	}
 	rw.WriteHeader(http.StatusNoContent)

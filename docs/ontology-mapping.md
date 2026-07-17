@@ -480,6 +480,10 @@ cannot drift from the contract. Descriptive only (discoverability), not write-ti
 | `person.government_position.delete` | person | `person` | `person.update` |
 | `person.government_position.upsert` | person | `person` | `person.update` |
 | `person.guardianship.upsert` | person | `person` | `person.update` |
+| `person.health_record.delete` | person | `person` | `person.update` |
+| `person.health_record.upsert` | person | `person` | `person.update` |
+| `person.insurance.delete` | person | `person` | `person.update` |
+| `person.insurance.upsert` | person | `person` | `person.update` |
 | `person.kinship.upsert` | person | `person` | `person.update` |
 | `person.language.delete` | person | `person` | `person.update` |
 | `person.language.upsert` | person | `person` | `person.update` |

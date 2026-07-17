@@ -440,6 +440,8 @@ func (s Service) mapError(ctx context.Context, err error, c errCtx) error {
 		return rankapi.NewRankCodeConflict(c.level, c.code)
 	case errors.Is(err, domain.ErrInUse):
 		return rankapi.NewRankInUse(err.Error())
+	case errors.Is(err, domain.ErrUnknownCountry):
+		return rankapi.NewRankInvalid("country does not exist")
 	case errors.Is(err, domain.ErrInvalid):
 		return rankapi.NewRankInvalid(err.Error())
 	default:

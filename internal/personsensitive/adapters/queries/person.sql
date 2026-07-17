@@ -378,6 +378,82 @@ UPDATE oikumenea.person_political_leaning
 SET leaning_ciphertext = NULL, leaning_wrapped_dek = NULL, leaning_key_ref = NULL, leaning_blind_index = NULL
 WHERE person_id = @person_id AND deleted_at IS NULL AND leaning_ciphertext IS NOT NULL;
 
+-- ============================================================================================
+-- Health & vulnerability records (D-HealthVulnerability, M36)
+-- ============================================================================================
+
+-- ---- health records (object health_record, pii:special, ENCRYPTED; one active per (person, kind)) ----
+
+-- name: InsertHealthRecord :one
+-- The category-level detail is supplied as the envelope (ciphertext/wrapped_dek/key_ref/blind_index)
+-- sealed in the application; legal_basis FK validates the lawful basis (Art. 9 health data).
+INSERT INTO oikumenea.person_health_records (
+  person_id, kind, detail_ciphertext, detail_wrapped_dek, detail_key_ref, detail_blind_index,
+  is_public_record, assessed_at, legal_basis, source, confidence
+) VALUES (
+  @person_id, @kind, @detail_ciphertext, @detail_wrapped_dek, @detail_key_ref, @detail_blind_index,
+  @is_public_record, sqlc.narg('assessed_at')::date, @legal_basis, @source, @confidence
+)
+RETURNING *;
+
+-- name: UpdateHealthRecord :one
+-- Re-seal the detail and/or flip the attributes for the single active row of this (person, kind).
+UPDATE oikumenea.person_health_records SET
+  detail_ciphertext = @detail_ciphertext, detail_wrapped_dek = @detail_wrapped_dek,
+  detail_key_ref = @detail_key_ref, detail_blind_index = @detail_blind_index,
+  is_public_record = @is_public_record, assessed_at = sqlc.narg('assessed_at')::date,
+  legal_basis = @legal_basis, source = @source, confidence = @confidence
+WHERE person_id = @person_id AND kind = @kind AND deleted_at IS NULL
+RETURNING *;
+
+-- name: DeleteHealthRecord :one
+UPDATE oikumenea.person_health_records SET deleted_at = now()
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING id;
+
+-- name: ListHealthRecords :many
+SELECT * FROM oikumenea.person_health_records
+WHERE person_id = @person_id AND deleted_at IS NULL
+ORDER BY created_at DESC, id;
+
+-- name: CryptoEraseHealthRecords :execrows
+-- Crypto-erase a person's health records on purge (drop the envelope, keep the row tombstones).
+UPDATE oikumenea.person_health_records
+SET detail_ciphertext = NULL, detail_wrapped_dek = NULL, detail_key_ref = NULL, detail_blind_index = NULL
+WHERE person_id = @person_id AND deleted_at IS NULL AND detail_ciphertext IS NOT NULL;
+
+-- ---- insurance (object insurance, pii:sensitive) ----
+
+-- name: InsertInsurance :one
+INSERT INTO oikumenea.person_insurance (
+  person_id, type, provider, policy_reference, employer_sponsored, valid_from, valid_to, source, confidence
+) VALUES (
+  @person_id, @type, sqlc.narg('provider'), sqlc.narg('policy_reference'), @employer_sponsored,
+  sqlc.narg('valid_from')::date, sqlc.narg('valid_to')::date, @source, @confidence
+)
+RETURNING *;
+
+-- name: UpdateInsurance :one
+UPDATE oikumenea.person_insurance SET
+  type = @type, provider = sqlc.narg('provider'), policy_reference = sqlc.narg('policy_reference'),
+  employer_sponsored = @employer_sponsored, valid_from = sqlc.narg('valid_from')::date,
+  valid_to = sqlc.narg('valid_to')::date, source = @source, confidence = @confidence
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING *;
+
+-- name: DeleteInsurance :one
+UPDATE oikumenea.person_insurance SET deleted_at = now()
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING id;
+
+-- name: ListInsurance :many
+SELECT * FROM oikumenea.person_insurance
+WHERE person_id = @person_id AND deleted_at IS NULL
+ORDER BY created_at DESC, id;
+
+-- name: DeleteAllInsurance :exec
+DELETE FROM oikumenea.person_insurance WHERE person_id = @person_id;
+
 -- ============================ person existence / identity (parent guard) ============================
 
 -- name: PersonExists :one

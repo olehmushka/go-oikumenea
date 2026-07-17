@@ -13,6 +13,7 @@ func TestSensitivePersonReadsGatedByOwnCodes(t *testing.T) {
 		PermPersonEthnicityRead,
 		PermPersonPoliticalLeaningRead,
 		PermPersonPartyMembershipRead,
+		PermPersonHealthRead,
 	}
 
 	// (a) each is a known, unit-scope permission.

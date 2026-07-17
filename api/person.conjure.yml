@@ -632,6 +632,74 @@ types:
           assessedAt: optional<string>
           legalBasis: string
           confidence: optional<string>
+      HealthRecord:
+        docs: |
+          A category-level health & vulnerability record (D-HealthVulnerability, M36) — an Object. Health is
+          a GDPR Art. 9 special category, so the category-level `detail` is envelope-encrypted at rest; the
+          value here is decrypted ("" for a crypto-erased tombstone). CATEGORY-LEVEL ONLY — never a diagnosis,
+          never inferred. legalBasis is required and reads need the person.health.read code. pii:special.
+        fields:
+          id: string
+          personId: string
+          kind:
+            type: string
+            docs: One of hospitalization | mental_health | disability.
+          detail:
+            type: string
+            docs: The decrypted category-level note (coarse, NO diagnosis); "" when crypto-erased.
+          isPublicRecord:
+            type: boolean
+            docs: True when derived from a public record.
+          assessedAt: optional<string>
+          legalBasis:
+            type: string
+            docs: The platform_legal_basis_kinds code authorizing this Art. 9 record.
+          source: optional<string>
+          confidence: optional<string>
+      UpsertHealthRecordRequest:
+        docs: |
+          Add or replace the person's category-level health record for a kind (one active row per kind,
+          replaced in place). Requires legalBasis (Art. 9). Category-level only — never a diagnosis
+          (D-HealthVulnerability, M36).
+        fields:
+          kind: string
+          detail: string
+          isPublicRecord: optional<boolean>
+          assessedAt: optional<string>
+          legalBasis: string
+          source: optional<string>
+          confidence: optional<string>
+      Insurance:
+        docs: |
+          A person's insurance coverage (D-HealthVulnerability, M36) — an Object. pii:sensitive; gated on
+          person.read. Hard-erased on purge.
+        fields:
+          id: string
+          personId: string
+          type:
+            type: string
+            docs: One of health | life | disability | ltc.
+          provider: optional<string>
+          policyReference: optional<string>
+          employerSponsored:
+            type: boolean
+            docs: True when the coverage is employer-sponsored.
+          validFrom: optional<string>
+          validTo: optional<string>
+          source: optional<string>
+          confidence: optional<string>
+      UpsertInsuranceRequest:
+        docs: Add an insurance row, or replace one when id is supplied (D-HealthVulnerability, M36).
+        fields:
+          id: optional<string>
+          type: string
+          provider: optional<string>
+          policyReference: optional<string>
+          employerSponsored: optional<boolean>
+          validFrom: optional<string>
+          validTo: optional<string>
+          source: optional<string>
+          confidence: optional<string>
       Email:
         docs: A person's contact email (D-PersonContactChannels). pii:contact; distinct from the login email.
         fields:
@@ -1829,6 +1897,64 @@ services:
         docs: Remove the person's inferred political leaning.
         args:
           personId:
+            type: string
+            param-type: path
+      listHealthRecords:
+        http: GET /persons/{personId}/health-records
+        docs: |
+          List a person's category-level health & vulnerability records (D-HealthVulnerability, M36;
+          pii:special, decrypted). Requires the person.health.read need-to-know code.
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<HealthRecord>
+      upsertHealthRecord:
+        http: PUT /persons/{personId}/health-records
+        docs: |
+          Add or replace the person's category-level health record for a kind (one active row per kind).
+          Requires legalBasis (Art. 9). Category-level only — never a diagnosis.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertHealthRecordRequest
+        returns: HealthRecord
+      deleteHealthRecord:
+        http: DELETE /persons/{personId}/health-records/{recordId}
+        docs: Remove a health record by id.
+        args:
+          personId:
+            type: string
+            param-type: path
+          recordId:
+            type: string
+            param-type: path
+      listInsurance:
+        http: GET /persons/{personId}/insurance
+        docs: List a person's insurance coverage (D-HealthVulnerability, M36; pii:sensitive).
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<Insurance>
+      upsertInsurance:
+        http: PUT /persons/{personId}/insurance
+        docs: Add an insurance row, or replace one when id is supplied.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertInsuranceRequest
+        returns: Insurance
+      deleteInsurance:
+        http: DELETE /persons/{personId}/insurance/{insuranceId}
+        docs: Remove an insurance row by id.
+        args:
+          personId:
+            type: string
+            param-type: path
+          insuranceId:
             type: string
             param-type: path
       listEthnicityTypes:

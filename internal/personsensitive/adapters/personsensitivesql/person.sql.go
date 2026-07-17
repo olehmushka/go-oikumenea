@@ -27,6 +27,21 @@ func (q *Queries) CryptoEraseEthnicities(ctx context.Context, personID string) (
 	return result.RowsAffected(), nil
 }
 
+const cryptoEraseHealthRecords = `-- name: CryptoEraseHealthRecords :execrows
+UPDATE oikumenea.person_health_records
+SET detail_ciphertext = NULL, detail_wrapped_dek = NULL, detail_key_ref = NULL, detail_blind_index = NULL
+WHERE person_id = $1 AND deleted_at IS NULL AND detail_ciphertext IS NOT NULL
+`
+
+// Crypto-erase a person's health records on purge (drop the envelope, keep the row tombstones).
+func (q *Queries) CryptoEraseHealthRecords(ctx context.Context, personID string) (int64, error) {
+	result, err := q.db.Exec(ctx, cryptoEraseHealthRecords, personID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const cryptoErasePartyMemberships = `-- name: CryptoErasePartyMemberships :execrows
 UPDATE oikumenea.person_party_memberships
 SET party_ciphertext = NULL, party_wrapped_dek = NULL, party_key_ref = NULL, party_blind_index = NULL
@@ -72,6 +87,15 @@ DELETE FROM oikumenea.person_distinguishing_marks WHERE person_id = $1
 
 func (q *Queries) DeleteAllDistinguishingMarks(ctx context.Context, personID string) error {
 	_, err := q.db.Exec(ctx, deleteAllDistinguishingMarks, personID)
+	return err
+}
+
+const deleteAllInsurance = `-- name: DeleteAllInsurance :exec
+DELETE FROM oikumenea.person_insurance WHERE person_id = $1
+`
+
+func (q *Queries) DeleteAllInsurance(ctx context.Context, personID string) error {
+	_, err := q.db.Exec(ctx, deleteAllInsurance, personID)
 	return err
 }
 
@@ -161,6 +185,42 @@ type DeleteEthnicityParams struct {
 
 func (q *Queries) DeleteEthnicity(ctx context.Context, arg DeleteEthnicityParams) (string, error) {
 	row := q.db.QueryRow(ctx, deleteEthnicity, arg.ID, arg.PersonID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
+const deleteHealthRecord = `-- name: DeleteHealthRecord :one
+UPDATE oikumenea.person_health_records SET deleted_at = now()
+WHERE id = $1 AND person_id = $2 AND deleted_at IS NULL
+RETURNING id
+`
+
+type DeleteHealthRecordParams struct {
+	ID       string
+	PersonID string
+}
+
+func (q *Queries) DeleteHealthRecord(ctx context.Context, arg DeleteHealthRecordParams) (string, error) {
+	row := q.db.QueryRow(ctx, deleteHealthRecord, arg.ID, arg.PersonID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
+const deleteInsurance = `-- name: DeleteInsurance :one
+UPDATE oikumenea.person_insurance SET deleted_at = now()
+WHERE id = $1 AND person_id = $2 AND deleted_at IS NULL
+RETURNING id
+`
+
+type DeleteInsuranceParams struct {
+	ID       string
+	PersonID string
+}
+
+func (q *Queries) DeleteInsurance(ctx context.Context, arg DeleteInsuranceParams) (string, error) {
+	row := q.db.QueryRow(ctx, deleteInsurance, arg.ID, arg.PersonID)
 	var id string
 	err := row.Scan(&id)
 	return id, err
@@ -555,6 +615,129 @@ func (q *Queries) InsertEthnicity(ctx context.Context, arg InsertEthnicityParams
 		&i.ValueBlindIndex,
 		&i.LegalBasis,
 		&i.Status,
+		&i.Source,
+		&i.Confidence,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const insertHealthRecord = `-- name: InsertHealthRecord :one
+
+
+INSERT INTO oikumenea.person_health_records (
+  person_id, kind, detail_ciphertext, detail_wrapped_dek, detail_key_ref, detail_blind_index,
+  is_public_record, assessed_at, legal_basis, source, confidence
+) VALUES (
+  $1, $2, $3, $4, $5, $6,
+  $7, $8::date, $9, $10, $11
+)
+RETURNING id, person_id, kind, detail_ciphertext, detail_wrapped_dek, detail_key_ref, detail_blind_index, is_public_record, assessed_at, legal_basis, source, confidence, created_at, updated_at, deleted_at
+`
+
+type InsertHealthRecordParams struct {
+	PersonID         string
+	Kind             string
+	DetailCiphertext []byte
+	DetailWrappedDek []byte
+	DetailKeyRef     pgtype.Text
+	DetailBlindIndex []byte
+	IsPublicRecord   bool
+	AssessedAt       pgtype.Date
+	LegalBasis       string
+	Source           string
+	Confidence       string
+}
+
+// ============================================================================================
+// Health & vulnerability records (D-HealthVulnerability, M36)
+// ============================================================================================
+// ---- health records (object health_record, pii:special, ENCRYPTED; one active per (person, kind)) ----
+// The category-level detail is supplied as the envelope (ciphertext/wrapped_dek/key_ref/blind_index)
+// sealed in the application; legal_basis FK validates the lawful basis (Art. 9 health data).
+func (q *Queries) InsertHealthRecord(ctx context.Context, arg InsertHealthRecordParams) (OikumeneaPersonHealthRecord, error) {
+	row := q.db.QueryRow(ctx, insertHealthRecord,
+		arg.PersonID,
+		arg.Kind,
+		arg.DetailCiphertext,
+		arg.DetailWrappedDek,
+		arg.DetailKeyRef,
+		arg.DetailBlindIndex,
+		arg.IsPublicRecord,
+		arg.AssessedAt,
+		arg.LegalBasis,
+		arg.Source,
+		arg.Confidence,
+	)
+	var i OikumeneaPersonHealthRecord
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.Kind,
+		&i.DetailCiphertext,
+		&i.DetailWrappedDek,
+		&i.DetailKeyRef,
+		&i.DetailBlindIndex,
+		&i.IsPublicRecord,
+		&i.AssessedAt,
+		&i.LegalBasis,
+		&i.Source,
+		&i.Confidence,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const insertInsurance = `-- name: InsertInsurance :one
+
+INSERT INTO oikumenea.person_insurance (
+  person_id, type, provider, policy_reference, employer_sponsored, valid_from, valid_to, source, confidence
+) VALUES (
+  $1, $2, $3, $4, $5,
+  $6::date, $7::date, $8, $9
+)
+RETURNING id, person_id, type, provider, policy_reference, employer_sponsored, valid_from, valid_to, source, confidence, created_at, updated_at, deleted_at
+`
+
+type InsertInsuranceParams struct {
+	PersonID          string
+	Type              string
+	Provider          pgtype.Text
+	PolicyReference   pgtype.Text
+	EmployerSponsored bool
+	ValidFrom         pgtype.Date
+	ValidTo           pgtype.Date
+	Source            string
+	Confidence        string
+}
+
+// ---- insurance (object insurance, pii:sensitive) ----
+func (q *Queries) InsertInsurance(ctx context.Context, arg InsertInsuranceParams) (OikumeneaPersonInsurance, error) {
+	row := q.db.QueryRow(ctx, insertInsurance,
+		arg.PersonID,
+		arg.Type,
+		arg.Provider,
+		arg.PolicyReference,
+		arg.EmployerSponsored,
+		arg.ValidFrom,
+		arg.ValidTo,
+		arg.Source,
+		arg.Confidence,
+	)
+	var i OikumeneaPersonInsurance
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.Type,
+		&i.Provider,
+		&i.PolicyReference,
+		&i.EmployerSponsored,
+		&i.ValidFrom,
+		&i.ValidTo,
 		&i.Source,
 		&i.Confidence,
 		&i.CreatedAt,
@@ -1056,6 +1239,88 @@ func (q *Queries) ListEthnicityTypes(ctx context.Context, arg ListEthnicityTypes
 	return items, nil
 }
 
+const listHealthRecords = `-- name: ListHealthRecords :many
+SELECT id, person_id, kind, detail_ciphertext, detail_wrapped_dek, detail_key_ref, detail_blind_index, is_public_record, assessed_at, legal_basis, source, confidence, created_at, updated_at, deleted_at FROM oikumenea.person_health_records
+WHERE person_id = $1 AND deleted_at IS NULL
+ORDER BY created_at DESC, id
+`
+
+func (q *Queries) ListHealthRecords(ctx context.Context, personID string) ([]OikumeneaPersonHealthRecord, error) {
+	rows, err := q.db.Query(ctx, listHealthRecords, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonHealthRecord
+	for rows.Next() {
+		var i OikumeneaPersonHealthRecord
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.Kind,
+			&i.DetailCiphertext,
+			&i.DetailWrappedDek,
+			&i.DetailKeyRef,
+			&i.DetailBlindIndex,
+			&i.IsPublicRecord,
+			&i.AssessedAt,
+			&i.LegalBasis,
+			&i.Source,
+			&i.Confidence,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listInsurance = `-- name: ListInsurance :many
+SELECT id, person_id, type, provider, policy_reference, employer_sponsored, valid_from, valid_to, source, confidence, created_at, updated_at, deleted_at FROM oikumenea.person_insurance
+WHERE person_id = $1 AND deleted_at IS NULL
+ORDER BY created_at DESC, id
+`
+
+func (q *Queries) ListInsurance(ctx context.Context, personID string) ([]OikumeneaPersonInsurance, error) {
+	rows, err := q.db.Query(ctx, listInsurance, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaPersonInsurance
+	for rows.Next() {
+		var i OikumeneaPersonInsurance
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.Type,
+			&i.Provider,
+			&i.PolicyReference,
+			&i.EmployerSponsored,
+			&i.ValidFrom,
+			&i.ValidTo,
+			&i.Source,
+			&i.Confidence,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPartyMemberships = `-- name: ListPartyMemberships :many
 SELECT id, person_id, party_ciphertext, party_wrapped_dek, party_key_ref, party_blind_index, role, valid_from, valid_to, legal_basis, status, source, confidence, created_at, updated_at, deleted_at FROM oikumenea.person_party_memberships
 WHERE person_id = $1 AND deleted_at IS NULL
@@ -1384,6 +1649,120 @@ func (q *Queries) UpdateEthnicity(ctx context.Context, arg UpdateEthnicityParams
 		&i.ValueBlindIndex,
 		&i.LegalBasis,
 		&i.Status,
+		&i.Source,
+		&i.Confidence,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const updateHealthRecord = `-- name: UpdateHealthRecord :one
+UPDATE oikumenea.person_health_records SET
+  detail_ciphertext = $1, detail_wrapped_dek = $2,
+  detail_key_ref = $3, detail_blind_index = $4,
+  is_public_record = $5, assessed_at = $6::date,
+  legal_basis = $7, source = $8, confidence = $9
+WHERE person_id = $10 AND kind = $11 AND deleted_at IS NULL
+RETURNING id, person_id, kind, detail_ciphertext, detail_wrapped_dek, detail_key_ref, detail_blind_index, is_public_record, assessed_at, legal_basis, source, confidence, created_at, updated_at, deleted_at
+`
+
+type UpdateHealthRecordParams struct {
+	DetailCiphertext []byte
+	DetailWrappedDek []byte
+	DetailKeyRef     pgtype.Text
+	DetailBlindIndex []byte
+	IsPublicRecord   bool
+	AssessedAt       pgtype.Date
+	LegalBasis       string
+	Source           string
+	Confidence       string
+	PersonID         string
+	Kind             string
+}
+
+// Re-seal the detail and/or flip the attributes for the single active row of this (person, kind).
+func (q *Queries) UpdateHealthRecord(ctx context.Context, arg UpdateHealthRecordParams) (OikumeneaPersonHealthRecord, error) {
+	row := q.db.QueryRow(ctx, updateHealthRecord,
+		arg.DetailCiphertext,
+		arg.DetailWrappedDek,
+		arg.DetailKeyRef,
+		arg.DetailBlindIndex,
+		arg.IsPublicRecord,
+		arg.AssessedAt,
+		arg.LegalBasis,
+		arg.Source,
+		arg.Confidence,
+		arg.PersonID,
+		arg.Kind,
+	)
+	var i OikumeneaPersonHealthRecord
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.Kind,
+		&i.DetailCiphertext,
+		&i.DetailWrappedDek,
+		&i.DetailKeyRef,
+		&i.DetailBlindIndex,
+		&i.IsPublicRecord,
+		&i.AssessedAt,
+		&i.LegalBasis,
+		&i.Source,
+		&i.Confidence,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const updateInsurance = `-- name: UpdateInsurance :one
+UPDATE oikumenea.person_insurance SET
+  type = $1, provider = $2, policy_reference = $3,
+  employer_sponsored = $4, valid_from = $5::date,
+  valid_to = $6::date, source = $7, confidence = $8
+WHERE id = $9 AND person_id = $10 AND deleted_at IS NULL
+RETURNING id, person_id, type, provider, policy_reference, employer_sponsored, valid_from, valid_to, source, confidence, created_at, updated_at, deleted_at
+`
+
+type UpdateInsuranceParams struct {
+	Type              string
+	Provider          pgtype.Text
+	PolicyReference   pgtype.Text
+	EmployerSponsored bool
+	ValidFrom         pgtype.Date
+	ValidTo           pgtype.Date
+	Source            string
+	Confidence        string
+	ID                string
+	PersonID          string
+}
+
+func (q *Queries) UpdateInsurance(ctx context.Context, arg UpdateInsuranceParams) (OikumeneaPersonInsurance, error) {
+	row := q.db.QueryRow(ctx, updateInsurance,
+		arg.Type,
+		arg.Provider,
+		arg.PolicyReference,
+		arg.EmployerSponsored,
+		arg.ValidFrom,
+		arg.ValidTo,
+		arg.Source,
+		arg.Confidence,
+		arg.ID,
+		arg.PersonID,
+	)
+	var i OikumeneaPersonInsurance
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.Type,
+		&i.Provider,
+		&i.PolicyReference,
+		&i.EmployerSponsored,
+		&i.ValidFrom,
+		&i.ValidTo,
 		&i.Source,
 		&i.Confidence,
 		&i.CreatedAt,

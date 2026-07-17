@@ -1746,6 +1746,62 @@ type OikumeneaPersonGuardianship struct {
 	DeletedAt   pgtype.Timestamptz
 }
 
+type OikumeneaPersonHealthRecord struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:special
+	Kind string
+	// pii:special
+	DetailCiphertext []byte
+	// pii:special
+	DetailWrappedDek []byte
+	// pii:none
+	DetailKeyRef pgtype.Text
+	// pii:special
+	DetailBlindIndex []byte
+	// pii:basic
+	IsPublicRecord bool
+	// pii:basic
+	AssessedAt pgtype.Date
+	// pii:none
+	LegalBasis string
+	// pii:none
+	Source string
+	// pii:none
+	Confidence string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
+}
+
+type OikumeneaPersonInsurance struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:sensitive
+	Type string
+	// pii:sensitive
+	Provider pgtype.Text
+	// pii:sensitive
+	PolicyReference pgtype.Text
+	// pii:basic
+	EmployerSponsored bool
+	// pii:basic
+	ValidFrom pgtype.Date
+	// pii:basic
+	ValidTo pgtype.Date
+	// pii:none
+	Source string
+	// pii:none
+	Confidence string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
+}
+
 type OikumeneaPersonKinship struct {
 	// pii:none
 	ID string

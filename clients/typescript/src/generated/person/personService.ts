@@ -16,6 +16,8 @@ import { IEthnicityType } from "./ethnicityType";
 import { IExternalReference } from "./externalReference";
 import { IGovernmentPosition } from "./governmentPosition";
 import { IGuardianship } from "./guardianship";
+import { IHealthRecord } from "./healthRecord";
+import { IInsurance } from "./insurance";
 import { IKinship } from "./kinship";
 import { ILobbyingRelationship } from "./lobbyingRelationship";
 import { IMergePersonRequest } from "./mergePersonRequest";
@@ -53,6 +55,8 @@ import { IUpsertEthnicityTypeRequest } from "./upsertEthnicityTypeRequest";
 import { IUpsertExternalReferenceRequest } from "./upsertExternalReferenceRequest";
 import { IUpsertGovernmentPositionRequest } from "./upsertGovernmentPositionRequest";
 import { IUpsertGuardianshipRequest } from "./upsertGuardianshipRequest";
+import { IUpsertHealthRecordRequest } from "./upsertHealthRecordRequest";
+import { IUpsertInsuranceRequest } from "./upsertInsuranceRequest";
 import { IUpsertKinshipRequest } from "./upsertKinshipRequest";
 import { IUpsertLobbyingRelationshipRequest } from "./upsertLobbyingRelationshipRequest";
 import { IUpsertMessengerLinkRequest } from "./upsertMessengerLinkRequest";
@@ -209,6 +213,26 @@ export interface IPersonService {
     setPoliticalLeaning(personId: string, request: IUpsertPoliticalLeaningRequest): Promise<IPoliticalLeaning>;
     /** Remove the person's inferred political leaning. */
     deletePoliticalLeaning(personId: string): Promise<void>;
+    /**
+     * List a person's category-level health & vulnerability records (D-HealthVulnerability, M36;
+     * pii:special, decrypted). Requires the person.health.read need-to-know code.
+     *
+     */
+    listHealthRecords(personId: string): Promise<Array<IHealthRecord>>;
+    /**
+     * Add or replace the person's category-level health record for a kind (one active row per kind).
+     * Requires legalBasis (Art. 9). Category-level only — never a diagnosis.
+     *
+     */
+    upsertHealthRecord(personId: string, request: IUpsertHealthRecordRequest): Promise<IHealthRecord>;
+    /** Remove a health record by id. */
+    deleteHealthRecord(personId: string, recordId: string): Promise<void>;
+    /** List a person's insurance coverage (D-HealthVulnerability, M36; pii:sensitive). */
+    listInsurance(personId: string): Promise<Array<IInsurance>>;
+    /** Add an insurance row, or replace one when id is supplied. */
+    upsertInsurance(personId: string, request: IUpsertInsuranceRequest): Promise<IInsurance>;
+    /** Remove an insurance row by id. */
+    deleteInsurance(personId: string, insuranceId: string): Promise<void>;
     /**
      * List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
      * the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
@@ -1255,6 +1279,124 @@ export class PersonService implements IPersonService {
             __undefined,
             [
                 personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * List a person's category-level health & vulnerability records (D-HealthVulnerability, M36;
+     * pii:special, decrypted). Requires the person.health.read need-to-know code.
+     *
+     */
+    public listHealthRecords(personId: string): Promise<Array<IHealthRecord>> {
+        return this.bridge.call<Array<IHealthRecord>>(
+            "PersonService",
+            "listHealthRecords",
+            "GET",
+            "/person/v1/persons/{personId}/health-records",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Add or replace the person's category-level health record for a kind (one active row per kind).
+     * Requires legalBasis (Art. 9). Category-level only — never a diagnosis.
+     *
+     */
+    public upsertHealthRecord(personId: string, request: IUpsertHealthRecordRequest): Promise<IHealthRecord> {
+        return this.bridge.call<IHealthRecord>(
+            "PersonService",
+            "upsertHealthRecord",
+            "PUT",
+            "/person/v1/persons/{personId}/health-records",
+            request,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Remove a health record by id. */
+    public deleteHealthRecord(personId: string, recordId: string): Promise<void> {
+        return this.bridge.call<void>(
+            "PersonService",
+            "deleteHealthRecord",
+            "DELETE",
+            "/person/v1/persons/{personId}/health-records/{recordId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+                recordId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** List a person's insurance coverage (D-HealthVulnerability, M36; pii:sensitive). */
+    public listInsurance(personId: string): Promise<Array<IInsurance>> {
+        return this.bridge.call<Array<IInsurance>>(
+            "PersonService",
+            "listInsurance",
+            "GET",
+            "/person/v1/persons/{personId}/insurance",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Add an insurance row, or replace one when id is supplied. */
+    public upsertInsurance(personId: string, request: IUpsertInsuranceRequest): Promise<IInsurance> {
+        return this.bridge.call<IInsurance>(
+            "PersonService",
+            "upsertInsurance",
+            "PUT",
+            "/person/v1/persons/{personId}/insurance",
+            request,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Remove an insurance row by id. */
+    public deleteInsurance(personId: string, insuranceId: string): Promise<void> {
+        return this.bridge.call<void>(
+            "PersonService",
+            "deleteInsurance",
+            "DELETE",
+            "/person/v1/persons/{personId}/insurance/{insuranceId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+                insuranceId,
             ],
             __undefined,
             __undefined

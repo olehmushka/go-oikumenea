@@ -1,4 +1,4 @@
-h1:EDquaJtjlBQkXolu9zuE2/7ImAqBQWknRSHfWZoFE0M=
+h1:D7Gkhw4PjBVvYVZcN22Nqkg+xzNTd6CwYkskzcDYOLQ=
 20260601000000_schema_bootstrap.sql h1:6sV+mR08nzCE04BwP0m6mCw5S1m0UaNM3QJBSdJPsgw=
 20260601000001_audit_log.sql h1:ZcBZckRBkDJSLC73KJZQbatt7np7KQRJb+ko0XP65LA=
 20260601000002_localization.sql h1:7yHKasuocRLtxyybIdcSnKoVqyt3E+b7tbaNNf8nHQ4=
@@ -37,3 +37,4 @@ h1:EDquaJtjlBQkXolu9zuE2/7ImAqBQWknRSHfWZoFE0M=
 20260601000035_person_overlays.sql h1:O1tk9ncH5dFjaJa0MONsUzEhagXcta8T3pTMCyM4tO0=
 20260601000036_events_outbox.sql h1:PjwF/NODC5kC34GhFFf4qVuhmZe9TQUbrvDwtZghlxY=
 20260601000037_search_generalization.sql h1:0wGMSHSJKrG+IZIiB8iKGzCKOlWXnzkmDAjd55i8+yY=
+20260601000038_person_health.sql h1:EdMSZTWVByoruWsE0s/FoDJ0UPAqu0rN3wI6g0le6b4=

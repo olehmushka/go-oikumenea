@@ -45,6 +45,7 @@ const (
 	permEthnicityRead        = string(authzdomain.PermPersonEthnicityRead)
 	permPoliticalLeaningRead = string(authzdomain.PermPersonPoliticalLeaningRead)
 	permPartyMembershipRead  = string(authzdomain.PermPersonPartyMembershipRead)
+	permHealthRead           = string(authzdomain.PermPersonHealthRead)
 	// Relationship-graph reads — one code per reified relationship (D-LinkPermissions). The SAME code
 	// gates the dedicated list endpoint here and the link-traversal arm in cmd/oikumenea/link_descriptors.go,
 	// so the person page and the object graph disclose exactly the same set. Composed into the additive
