@@ -120,7 +120,10 @@ A **consumer** of the above (not a backend module), documented alongside them:
    in-progress surface (M0–M15): what is locked and why. If code and a decision disagree, the code is
    wrong. The **planned-tier (M16–M26)** decisions live in
    [`architecture/roadmap-decisions.md`](architecture/roadmap-decisions.md) (decided/designed, not yet
-   built; binding once their milestone enters implementation).
+   built; binding once their milestone enters implementation). The
+   **[north star](architecture/north-star.md)** records the target-state topology those decisions
+   converge on (headless core · facades · service principals · connector plane · data packs;
+   M51–M54).
 5. [`architecture/conventions.md`](architecture/conventions.md) — schema, Go/witchcraft,
    Conjure, and API conventions that every module follows.
 6. [`ontology-mapping.md`](ontology-mapping.md) — the **binding Object / Link / Action registry**

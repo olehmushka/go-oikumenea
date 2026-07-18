@@ -77,6 +77,10 @@ migrates, and demos** on its own, so the service is runnable at every step.
 | **M48** | Incremental closure maintenance | Phase 2 of the review (R‑04, amends the D-Graphs maintenance note): edge attach/detach adjusts only the affected `anc*(parent) × desc*(child)` closure slice in the write transaction (attach = closure∘closure join with `LEAST`-depth merge; detach = slice delete + bounded re-derivation + reflexive prune, gated on the edge having existed) under a per-graph `FOR NO KEY UPDATE` lock (also closes the guard-then-insert cycle race); the full rebuild survives only as the D-ClosureIntegrity repair path; `VerifyClosureForGraph` becomes depth-inclusive; proven by a random attach/detach differential test vs a Go BFS oracle + scale numbers (single edit 16.6 s → 3–265 ms) | M46 |
 | **M49** | Import pipeline industrialization | Phase 3 of the review (R‑05 + the Phase‑3 parts of R‑13, amends D-Hermenea): chunked import runs — `CanonicalEnvelope` gains optional `(runId, seq, isLast)`, the loader sends ~5k-record chunks (one oikumenea transaction each) ended by a trailing finalize chunk, with a finite per-request deadline replacing `WithHTTPTimeout(0)`; the 4 high-volume upsert handlers (geo-places, language-scheme, external-organizations, person-regulatory-sanctions) replace per-record loops with one parallel-array UNNEST merge per chunk (two-pass self-referential parent resolution); a checksum-guarded per-job resume cursor (`worker_jobs.resume_seq`, hermenea migration `0005`) makes a killed run resume instead of restart; `worker.concurrency` fans out N SKIP-LOCKED claim loops; oikumenea boot seeding (pinax + first-admin) runs under a `pg_advisory_lock`. Proven by a 1M-record synthetic WOF run in compose surviving kill −9 of both binaries | M48 |
 | **M50** | Search & audit physicals | Phase 4 of the review (R‑06 + R‑07; new decisions D-PersonSearch, D-AuditRetention). **R‑06**: pg_trgm GIN over a generated `search_text` on `person_persons` + `person_name_variants`; directory search matches names **and** transliterations/aliases, filtered in SQL via UNION-of-id-set semi-joins (admin `SearchPersons`, scoped `VisiblePersonIDsForSubjectSearch`) — the Go post-filter (empty-page-while-`hasMore` bug) is deleted. **R‑07**: `audit_log` monthly RANGE-partitioned on `created_at`, PK `(id, created_at)`, index diet 6→4, boot-time `ensure_audit_partition` roll-forward under the boot-seed advisory lock + `DEFAULT` backstop, operator `detach_audit_partitions_before` + `audit.retention-months` config (default retain forever); D-Audit semantics (append-only, RLS) intact. Migrations `0001`/`0005` edited in place | M46 |
+| **M51** | Service identities | Machine clients (facades, connectors) authenticate via the external IdP's **OAuth2 client-credentials** flow through the existing OIDC/JWKS middleware, resolving to **service principals** — a registered machine subject kind in the PDP with its own role assignments; admin-managed `(issuer, subject)` registry generalizes the M16 `hermenea-importer`; env-secret path kept as minimal-install fallback (D-ServiceIdentities) | M8, M7 |
+| **M52** | Console facade (headless topology) | **console-bff** — the first facade: owns the browser session, forwards the **end-user's token** (no on-behalf-of), speaks the Conjure API via the M27 SDKs; the Next.js console moves behind it and oikumenea leaves the public network in the compose topology (D-HeadlessTopology, amends D-WebUI) | M27 (M51 optional) |
+| **M53** | Connector plane | Connector registry (`Connector`/`Source` Objects + audited sync-run reporting), the narrow permission-gated **wiring API** (RID resolution, reference catalogs, sync cursors), and the M34 `watchlistclient` generalized into one typed **connector-call seam**; hermenea registers as the first connector — push / pull-wiring / on-demand-lookup contract (D-ConnectorPlane) | M51, M16, M34, M49 |
+| **M54** | Data packs & enable flags | The plugin system as **data, not code**: operator-mounted versioned **data packs** through the generalized D-Pinax autoseeder (first pack: a **locale pack**) + per-module `modules.*.enabled` install flags (endpoints hidden, schema still migrates) (D-DataPacks) | M45 |
 
 M1/M2 and M3/M4 are independent and may be built in parallel. Everything after M2 assumes audit + i18n exist.
 M12 is **verified** — see its section below (D-PersonContactChannels, D-DocumentAttrSchema, expanded D-PersonalCodes, D-PersonBio amendment); additive person/document enrichments, proven end-to-end (integration suites + a live HTTP demo on the running server).
@@ -151,6 +155,10 @@ Legend: `✅` done · `🚧` in progress · `⬜` not started · `➖` not appli
 | **M48** | ✅ | ✅ | ✅ | ➖ | ➖ | ✅ | verified — incremental closure maintenance ([review-2026-07](architecture/review-2026-07.md) Phase 2 / R‑04; amends the **D-Graphs** maintenance note, strengthens D-ClosureIntegrity verify). `AddEdge`/`RemoveEdge` no longer DELETE+rebuild the whole graph closure: attach = reflexive seed + `anc*(parent) × desc*(child)` closure∘closure join with `LEAST`-depth merge; detach = slice delete → bounded re-derivation (edge-walk inside the ancestor set + one trusted closure jump, provably shortest-depth) → reflexive prune, **gated on `DeleteEdge` rows>0** (phantom detach must not shrink); per-graph `tenant_graphs FOR NO KEY UPDATE` lock serializes closure maintenance (attach/detach/rebuild) and closes the pre-existing guard-then-insert cycle race; `RecomputeClosure` survives only as the D-ClosureIntegrity repair path (`POST /closure/rebuild`); `VerifyClosureForGraph` diff is now **depth-inclusive**. New queries in `tenant.sql` (sqlc regen confined to `tenantsql`), repo `ExtendClosureForEdge`/`ShrinkClosureForEdge`/`LockGraphForClosure`. **No schema change** (`Migrated ➖`, migration untouched), headless (`UI ➖`). Verified: `TestClosureIncrementalPropertyDifferential` (random attach/detach incl. rejected cycles/dups/phantoms, stored rows+depths ≡ independent Go BFS oracle after EVERY op + depth-inclusive verify zero-drift; 40-seed soak green) + 4 targeted regressions (alternative path survives at greater depth, `LEAST` shortcut + exact reversal, last-detach clears reflexive rows, phantom detach untouched); tenant/membership/religion/authz/platform integration suites + full unit sweep green; scale numbers on the M46 100k-unit world (`TestScaleClosureMeasure`): single edge edit **16.6 s (full rebuild before) → 3–265 ms**, rows touched = slice size (5 for a mid-tree leaf, 1,914 for moving a 658-unit subtree), recorded in review § Measurements |
 | **M49** | ✅ | ✅ | ✅ | ✅ | ➖ | ✅ | verified — import pipeline industrialization ([review-2026-07](architecture/review-2026-07.md) Phase 3: R‑05 + the Phase‑3 parts of R‑13; **amends D-Hermenea** in [roadmap-decisions.md](architecture/roadmap-decisions.md)). **Chunked runs**: `CanonicalEnvelope` + `(runId, seq, isLast)` (optional — absent = pre‑M49 single-shot, pinax/CLI untouched), loader slices ~5k-record chunks (install-tunable `oikumenea.chunk-size` / `http-timeout-ms`, default 120 s — `WithHTTPTimeout(0)` retired), trailing empty finalize chunk runs the batch finalizers (languoid closure etc. gate on `chunk.IsLast && (touched || chunked)`); oikumenea stays stateless per chunk. **Set-based apply**: the 4 high-volume handlers merge each chunk with one `unnest(...) ON CONFLICT … WHERE source_version IS DISTINCT FROM EXCLUDED` statement + `RETURNING (xmax=0)` exact counts; self-referential parents (geo place / languoid) resolve in a second pass over the touched rows so a parent may arrive in the same chunk; in-chunk duplicates dedupe last-wins; the 7 low-volume handlers keep loops. **Resume**: `worker_jobs.resume_seq`+`resume_checksum` (additive hermenea migration `0005`) persisted per acked chunk; a retried attempt skips acked chunks iff the re-staged checksum matches. **R‑13 parts**: `worker.concurrency` N claim loops (SKIP LOCKED already multi-claimer-safe; WorkerID now hostname-based + per-goroutine suffix); pinax autoseed + first-admin bootstrap under session `pg_advisory_lock` (`db.LockBootSeed`, first advisory lock in the repo — loser waits then no-ops); `docker-compose.scale.yml` un-publishes host ports for `--scale`. Verified: geo merge differential test vs in-Go oracle (random chunked runs incl. child-before-parent in-chunk, dups, edition bumps — table state + Summary ≡ oracle); loader chunk/seq/finalize/resume unit tests; cursor round-trip + 4-way worker-concurrency barrier integration tests; advisory-lock mutual-exclusion test; 27k Glottolog full-load e2e green on the merge path (27127 created + 50 updated, closure 212,955); **1M-record synthetic WOF compose run** (`scripts/gen-wof-synthetic` + `wof-geo-synth` source): 204 chunks, wall **4 m 31 s including kill −9 of hermenea (seq 56) and of oikumenea (seq 126)** — both resumed from the cursor, audit shows no chunk applied twice; merge tx **320 ms mean / 616 ms max** (vs one whole-dataset transaction before); RSS at full throughput oikumenea **41 MiB** / hermenea **87 MiB**; idempotent re-run **1,000,000 skipped in 72 s**; `--scale app=2` fresh-DB boot: one pinax pass (8 presets applied once, 27,177 languoids) + replica 2 bootstrap “skipped: admin exists”, zero constraint noise. Numbers in review § Measurements |
 | **M50** | ✅ | ✅ | ✅ | ✅ | ➖ | ✅ | verified — search & audit physicals ([review-2026-07](architecture/review-2026-07.md) Phase 4: R‑06 + R‑07; 2 new decisions **D-PersonSearch**, **D-AuditRetention** amends the physical layout of D-Audit). **R‑06 (D-PersonSearch)**: `pg_trgm` + `STORED` generated `search_text` + GIN trigram index on `person_persons` **and** `person_name_variants` (migration `0005` in place); directory search matches names **and** transliterations/aliases, filtered **in SQL** — admin `SearchPersons` and scoped `VisiblePersonIDsForSubjectSearch` are UNION-of-id-set semi-joins (each branch stays a GIN bitmap scan; an `A OR EXISTS(subquery)` predicate is not index-able), keyset on person RID; the Go `matchesPersonQuery` post-filter is deleted (fixes the scoped empty-page-while-`hasMore` bug). **R‑07 (D-AuditRetention)**: `audit_log` monthly RANGE-partitioned on `created_at` (migration `0001` in place), PK `(id, created_at)`, index diet **6→4** (dropped `actor_type`/`request_id` singles), boot-time `ensure_audit_partition` roll-forward under `db.LockBootSeed` + `DEFAULT` backstop, operator `detach_audit_partitions_before` helper + `audit.retention-months` config (default 0 = retain forever); `reject_mutation` + RLS cascade to partitions unchanged (D-Audit semantics intact). No new migration file (edited `0001`/`0005` in place → `ExpectedSchemaRevision` unchanged; re-hash `atlas.sum` with stable atlas before commit). No UI change (web already sends `?query=`). Verified: `internal/person/search_integration_test.go` (admin variant/alias find; scoped drain — no empty page while `hasMore`, no out-of-reach leak) + person/membership/audit/RLS integration suites green on rebuilt `oikumenea_test`; DB-level partition routing (Jul→month partition, gap→DEFAULT), UPDATE/DELETE rejected on partitions, detach rehearsal; plans (200k rows): admin search **0.35 ms** custom / 4.3 ms forced-generic GIN bitmap vs 183 ms seq scan. Numbers in review § Measurements |
+| **M51** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | decided — service identities ([D-ServiceIdentities](architecture/roadmap-decisions.md#d-serviceidentities--machine-clients-authenticate-via-idp-client-credentials-and-resolve-to-service-principals-extends-d-hermenea-l-authzonly); [north star](architecture/north-star.md) plane 2) |
+| **M52** | ✅ | ⬜ | ⬜ | ➖ | ⬜ | ⬜ | decided — console facade / headless topology ([D-HeadlessTopology](architecture/roadmap-decisions.md#d-headlesstopology--oikumenea-is-internal-only-behind-unprivileged-user-token-passthrough-facades-extends-l-authzonly-amends-d-webui); [north star](architecture/north-star.md) plane 3); Migrated `➖` (topology + a new deployable, no schema) |
+| **M53** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | decided — connector plane ([D-ConnectorPlane](architecture/roadmap-decisions.md#d-connectorplane--a-connector-registry--a-three-mode-contract-push-pull-wiring-on-demand-lookup-extends-d-hermenea-d-watchlists); [north star](architecture/north-star.md) plane 4) |
+| **M54** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | decided — data packs & enable flags ([D-DataPacks](architecture/roadmap-decisions.md#d-datapacks--plugins-are-versioned-data-packs--per-module-enable-flags-no-runtime-code-loading-extends-d-pinax-d-i18n); [north star](architecture/north-star.md) plane 5) |
 
 Notes on the planned tier (M16–M37): all have a landed `D-<Name>` decision (in
 [roadmap-decisions.md](architecture/roadmap-decisions.md)), so all are at least
@@ -1425,3 +1433,65 @@ presets self-seeded at boot, sharing one import pipeline with the hermenea conne
   survives (its higher-provenance `locale→text` entry is not clobbered); `pinax.autoseed:false` skips
   seeding and `oikumenea seed` performs it; the massive `geo_places` backfill still runs via the remote
   hermenea connector.
+
+---
+
+# North-star topology cluster (M51–M54)
+
+The four milestones realizing the **[north star](architecture/north-star.md)** (agreed 2026-07-18):
+oikumenea as a **headless internal core** behind unprivileged facades, machine callers as service
+principals, hermenea generalized into a **connector plane**, and deployments tailored by **data
+packs**. Decisions live in the [roadmap-decisions.md north-star cluster](architecture/roadmap-decisions.md#north-star-topology-cluster-m51m54).
+Dependency order **M51 → M52 → M53 → M54**; each leaves the system deployable.
+
+## M51 — Service identities
+
+- **Delivers:** the OIDC/JWKS middleware accepts **client-credentials** tokens and resolves them to
+  **service principals** (a machine subject kind in the PDP context, `person | service`); an
+  admin-managed `(issuer, subject) → principal` registry on identity-federation with standard role
+  assignments; the audit `system` actor becomes attributable to a specific principal. The M16
+  `hermenea-importer` env-secret path survives as the minimal-install fallback.
+- **Implements:** D-ServiceIdentities (extends D-Hermenea — amends its "Why not (e)" — and
+  L-AuthzOnly).
+- **Exit (verified when):** a client-credentials token from the compose Keycloak resolves to a
+  registered principal and passes a guarded endpoint gated on its granted code; an unregistered
+  `(issuer, subject)` is rejected 401; the audit row names the principal; the env-secret fallback
+  still imports.
+
+## M52 — Console facade (headless topology)
+
+- **Delivers:** the **console-bff** deployable (session + user-token passthrough + console
+  hosting/proxy, built on the M27 SDKs, zero privileged credentials, **no on-behalf-of**); the
+  Next.js console served behind it; compose stops publishing oikumenea's port (internal network
+  only).
+- **Implements:** D-HeadlessTopology (extends L-AuthzOnly, amends D-WebUI).
+- **Exit (verified when):** the full console click-through works with oikumenea unreachable from
+  the host network; the PDP decides against the real logged-in user (a permission revoke is
+  reflected through the facade within the D-AuthzGrantCache bound); the facade holds no token able
+  to read anything its user cannot.
+
+## M53 — Connector plane
+
+- **Delivers:** the connector **registry** (`Connector`/`Source` Objects + RID types, audited
+  sync-run reporting endpoint); the narrow permission-gated **wiring API** (natural-key→RID
+  resolution, reference-catalog reads, sync cursors — each surface its own permission code); the
+  M34 `watchlistclient` refactored into the generic typed **connector-call seam** (deadline
+  mandatory); hermenea registers itself and reports its runs.
+- **Implements:** D-ConnectorPlane (extends D-Hermenea, D-Watchlists; requires M51).
+- **Exit (verified when):** hermenea appears in the registry with its sources and a completed
+  sync run visible from the core; a wiring read succeeds under a granted principal and 403s
+  without the grant; the watchlist check works unchanged through the generalized seam; a second
+  (fixture) connector registers with zero core code changes.
+
+## M54 — Data packs & enable flags
+
+- **Delivers:** the D-Pinax autoseeder generalized to scan **operator-mounted packs** beside the
+  embedded presets (same create-if-absent / fill-if-empty / never-delete + `pinax_seed_state`
+  version gating, pack name+version recorded); a **locale pack** as the first packaged kind (new
+  `i18n_locales` row + translation overlays); the `modules.*.enabled` install-config map — a
+  disabled module hides its endpoints and codes but its **schema still migrates**.
+- **Implements:** D-DataPacks (extends D-Pinax, D-i18n).
+- **Exit (verified when):** mounting a locale pack on a fresh boot adds the locale + translations
+  (second boot no-op; operator edits survive); a deployment with `modules.finance.enabled: false`
+  404s the finance surface, omits it from search/links fan-ins and grantable codes, yet migrates
+  its schema and re-enables by config flip alone.

@@ -496,10 +496,11 @@ idea]`. It is not on the stage board; once promoted to a milestone it is marked 
 then deleted. `todo.md` may legitimately not exist when nothing is pending. The parked-seam
 counterpart for *known* future seams is **DS-N** in [open-questions.md](open-questions.md).
 
-## Planned domains (M16–M45)
+## Planned domains (M16–M54)
 
 > Vocabulary for the [milestones.md](milestones.md) M16–M45 planned cluster (derived from the
-> superbrain/OSINT draft + the original `todo.md`). Designed and decision-backed
+> superbrain/OSINT draft + the original `todo.md`) and the **M51–M54 north-star topology cluster**
+> ([north-star.md](architecture/north-star.md)). Designed and decision-backed
 > ([roadmap-decisions.md](architecture/roadmap-decisions.md)); full module docs follow at
 > implementation time (the **religion** vertical, the shared [location](modules/location.md), and the
 > new [external-organizations](modules/external-organizations.md) docs already exist).
@@ -546,9 +547,45 @@ right-sized analog of Palantir Foundry's Data Connection → Pipeline → Ontolo
 **Canonical envelope.** The interchange document hermenea POSTs to oikumenea's import endpoint:
 `{ objectType, source, sourceVersion, license, generatedAt, records[] }`.
 
-**Service principal (`hermenea-importer`).** The identity hermenea presents to oikumenea: a **runtime
-shared secret** (`HERMENEA_OIKUMENEA_TOKEN`, never stored) maps to a principal holding **exactly**
-`import.manage`, audited as a **`system`** actor (amends L-AuthzOnly).
+**Service principal.** A **machine subject** in the PDP — a registered non-person caller (a facade
+with standing of its own, a connector) holding its own role assignments, audited as a **`system`**
+actor attributable to the specific principal (D-ServiceIdentities, M51 — amends L-AuthzOnly). In the
+target state a principal authenticates via the external IdP's **client-credentials** flow and is
+resolved by the same OIDC/JWKS middleware as humans (`(issuer, subject) → principal`, admin-managed).
+The original form — **`hermenea-importer`**, a **runtime shared secret** (`HERMENEA_OIKUMENEA_TOKEN`,
+never stored) mapping to a principal holding exactly `import.manage` (D-Hermenea, M16) — survives as
+the minimal-install fallback.
+
+**North star.** The agreed **target-state topology** ([north-star.md](architecture/north-star.md),
+2026-07-18): oikumenea as the **headless internal core** (the brain — persons, units, roles,
+relationships, the PDP) behind unprivileged **facades**, fed by the **connector plane**, tailored by
+**data packs**. Realized by D-HeadlessTopology / D-ServiceIdentities / D-ConnectorPlane / D-DataPacks
+(M51–M54). A destination the stage board converges on, not a status claim.
+
+**Facade.** A per-audience **BFF service** in front of the headless core (D-HeadlessTopology, M52) —
+the admin console behind **console-bff**, a future HR app behind its own facade. Owns the browser
+session and response shaping, speaks the Conjure API via the generated SDKs, and is **unprivileged**:
+it always forwards the **end-user's IdP token** (no on-behalf-of), so the PDP decides against the
+real user and a compromised facade can impersonate nobody.
+
+**Connector plane.** The generalization of hermenea into a **family of connectors**
+(D-ConnectorPlane, M53): each connector keeps its own storage + scheduler, couples over HTTP only,
+and interacts in up to three modes — **push** (bulk import envelopes), **pull-wiring** (reads on the
+wiring API), **on-demand lookup** (core→connector synchronous calls with a deadline, the generalized
+M34 watchlist seam). oikumenea holds a **registry** (`Connector`/`Source` Objects + audited sync-run
+reporting) for **visibility, not orchestration**.
+
+**Wiring API.** The narrow, permission-gated **read surface for connectors** (D-ConnectorPlane, M53):
+natural-key → RID resolution, reference-catalog reads, a connector's own sync cursors. Each surface
+is its own permission code granted to a service principal — what a connector may see is a grant,
+never a default.
+
+**Data pack.** A **versioned bundle of seedable content** — a locale pack, a pinax-style world-model
+preset, a catalog, a rank scheme — mounted by the operator and loaded by the boot autoseeder under
+the D-Pinax invariants (create-if-absent / fill-if-empty / never-delete, version-gated). The unit of
+deployment tailoring (D-DataPacks, M54): plugins are **data, not code** — no runtime code loading.
+Paired with **per-module enable flags** (`modules.*.enabled`): a disabled vertical hides its API
+surface but its schema still migrates.
 
 **Languoid.** A node in the Glottolog genealogical forest (D-Languages, M18): `level ∈ family | language
 | dialect`, keyed by its **glottocode**, optional ISO 639-3, with an AES endangerment **status**. The
@@ -733,12 +770,12 @@ brings the deployment into **PCI-DSS cardholder-data scope**.
 ## Alphabetical index
 
 Account · Account holder · Action (type) · Action RID · Affiliation type · Append-only event log · Atomic permission · Audit log · Authority-bearing · Background worker · Bank / financial institution · Bank account · Beneficial owner (UBO) · Blind index ·
-Call sign · Canonical envelope · Canonical graph · Citizenship · Clergy credential · Clergy grade · Clergy office · Closure · Code · Company (legal entity) · Country · Data ingestion / connector · Document · Document attribute schema · Document type · Dormant seam ·
-Education reference layer · Educational institution · Effective permissions · Email (contact) · Email type · Envelope encryption · Environment slot · Expand/contract · External identity · Finance module ·
+Call sign · Canonical envelope · Canonical graph · Citizenship · Clergy credential · Clergy grade · Clergy office · Closure · Code · Company (legal entity) · Connector plane · Country · Data ingestion / connector · Data pack · Document · Document attribute schema · Document type · Dormant seam ·
+Education reference layer · Educational institution · Effective permissions · Email (contact) · Email type · Envelope encryption · Environment slot · Expand/contract · External identity · Facade · Finance module ·
 Gate · Graph (named hierarchy) · Hermenea · History tier · Instance admin · Languoid · Level · Link (type) · Link RID · Locale · Location · Membership · Name (CLDR) ·
-Object (type) · Object history · Object-set · Ontology · Order ·
+North star · Object (type) · Object history · Object-set · Ontology · Order ·
 Order category · Order item · Order type · Org kind · Payment card · PDP · PDP context · Person · person core / personprofile / personsensitive · Personal code ·
 Personal-code scheme · Phone (contact) · Phone type · PII tier · Pinax (reference plane) · Position · `origin` (seeded/operator) · Public precision · Public/shadow · Rank · Rank category · Rank preset ·
 Rank scheme · Rank system · Rank type · Religion (faith) · Religious affiliation · Religious organization · Religious site · Residence · Reversibility · RID (Resource Identifier) · RLS backstop · Role · Role assignment · Scope ·
-Service principal (hermenea-importer) · Service schedule · Service type · Site type · Stage board · Standardized grade (NATO STANAG 2116) · Sub-tradition · Subdivision · Supported language · TODO-N · Tradition family · Translation · Transliteration · Unified search · Unit · Unit graph (DAG) · Unit kind ·
-Vacancy · Vehicle · Vehicle brand · Vehicle registration · Visibility · Visibility scope · Writing system
+Service principal · Service schedule · Service type · Site type · Stage board · Standardized grade (NATO STANAG 2116) · Sub-tradition · Subdivision · Supported language · TODO-N · Tradition family · Translation · Transliteration · Unified search · Unit · Unit graph (DAG) · Unit kind ·
+Vacancy · Vehicle · Vehicle brand · Vehicle registration · Visibility · Visibility scope · Wiring API · Writing system

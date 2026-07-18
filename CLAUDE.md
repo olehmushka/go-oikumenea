@@ -15,6 +15,10 @@ architecture-hardening cycle** (`docs/architecture/review-2026-08.md`), worked t
 answer "what stage is feature X in?" read the **[stage board](docs/milestones.md#stage-board)** — it
 is the scannable index; **do not trust milestone claims in this header over the board.**
 
+The **target-state topology** — oikumenea as a headless internal core behind unprivileged facades,
+with service principals, a connector plane, and data packs (M51–M54) — is recorded in
+**`docs/architecture/north-star.md`** (agreed 2026-07-18); it is a destination, not a status claim.
+
 `docs/` remains the **source of truth**, and `docs/architecture/decisions.md` is **binding**: if
 code and a decision recorded there disagree, **the code is wrong**. Change a decision by editing
 that file (with rationale), not by diverging in code. The **planned-tier (M16–M45)** decisions live

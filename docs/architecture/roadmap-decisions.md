@@ -1,6 +1,6 @@
-# Roadmap decisions (planned tier — M16–M45)
+# Roadmap decisions (planned tier — M16–M54)
 
-The landed architectural decisions for the **planned milestones M16–M39** — verticals that are
+The landed architectural decisions for the **planned milestones M16–M54** — verticals that are
 **decided and designed but not yet built** (no `internal/` or `migrations/` artifacts exist for them
 yet). They carry the same ADR rigor as [`decisions.md`](decisions.md) and are **authoritative for
 those verticals' design**; they become **binding-against-code** as each milestone enters
@@ -26,6 +26,13 @@ SDKs from the Conjure contract; *in implementation*) · **D-UnitCodeLifecycle** 
 reference/operational split) · **D-Pinax** (M45, the `pinax` reference plane: an `origin` marker +
 bundled YAML seed presets `go:embed`-ed into oikumenea and boot-autoseeded create-if-absent, one
 import pipeline shared with the hermenea connectors).
+
+The **north-star topology cluster** (M51–M54, from the [north star](north-star.md) agreed
+2026-07-18): **D-HeadlessTopology** (M52, oikumenea internal-only behind unprivileged
+user-token-passthrough facades) · **D-ServiceIdentities** (M51, machine clients via IdP
+client-credentials → service principals) · **D-ConnectorPlane** (M53, a connector registry + the
+push / pull-wiring / on-demand-lookup contract) · **D-DataPacks** (M54, plugins as versioned data
+packs + per-module enable flags).
 
 The **person-intelligence / OSINT-enrichment cluster** (M29–M37, derived from
 [`draft_superbrain_schema.md`](../draft_superbrain_schema.md)): **D-OverlayFoundation** (M29, the
@@ -79,6 +86,10 @@ index in [`decisions.md`](decisions.md).
 | [D-LoginSecurityLog](#d-loginsecuritylog--a-first-party-loginip-security-log-on-the-federation-seam-extends-l-authzonly) | A first-party login/IP security log on the federation seam |
 | [D-Finance](#d-finance--bank-accounts--payment-cards-banks-as-company-orgs-extends-d-ontology-d-personalcodes-d-unifiedorggraph) | Bank accounts & payment cards, banks as company orgs |
 | [D-Pinax](#d-pinax--the-reference-plane-a-named-world-model-plane-with-an-origin-marker--bundled-yaml-seed-presets-self-seeded-at-boot-extends-d-ontology-d-i18n-d-hermenea-d-dataingestion-amends-d-languages-d-geo-d-rank-d-religion-d-physicalidentitym43-d-color) | The reference plane: origin marker + bundled YAML seed presets |
+| [D-HeadlessTopology](#d-headlesstopology--oikumenea-is-internal-only-behind-unprivileged-user-token-passthrough-facades-extends-l-authzonly-amends-d-webui) | oikumenea internal-only behind unprivileged passthrough facades |
+| [D-ServiceIdentities](#d-serviceidentities--machine-clients-authenticate-via-idp-client-credentials-and-resolve-to-service-principals-extends-d-hermenea-l-authzonly) | Machine clients via IdP client-credentials → service principals |
+| [D-ConnectorPlane](#d-connectorplane--a-connector-registry--a-three-mode-contract-push-pull-wiring-on-demand-lookup-extends-d-hermenea-d-watchlists) | A connector registry + the push / pull-wiring / lookup contract |
+| [D-DataPacks](#d-datapacks--plugins-are-versioned-data-packs--per-module-enable-flags-no-runtime-code-loading-extends-d-pinax-d-i18n) | Plugins are versioned data packs + per-module enable flags |
 
 ---
 
@@ -1807,3 +1818,159 @@ D-Religion** (their catalogs join the plane + gain `origin`), **D-PhysicalIdenti
 loader + default-seeded), and **D-Color** (new domains + `color_id` on seeded catalogs). **Depends on**
 D-Languages (M18), D-Hermenea/D-DataIngestion (M16), D-Color (M42), D-PhysicalIdentity/M43. Lands as
 **M45** ([milestones](../milestones.md)); see the [pinax plane note](pinax.md). Additive / expand-only.
+
+---
+
+## North-star topology cluster (M51–M54)
+
+The four decisions realizing the [north star](north-star.md) (agreed 2026-07-18): oikumenea as a
+**headless internal core** behind unprivileged **facades**, with machine callers as **service
+principals**, the ingestion companions generalized into a **connector plane**, and deployments
+tailored by **data packs** rather than runtime code. Sequenced as **M51–M54** on the
+[stage board](../milestones.md#stage-board), dependency order M51 → M52 → M53 → M54.
+
+### D-ServiceIdentities — Machine clients authenticate via IdP client-credentials and resolve to service principals (extends D-Hermenea, L-AuthzOnly)
+
+**Decision.** Machine callers — facades with standing of their own, and every connector calling the
+core — authenticate through the **same external IdP** that authenticates humans, using the OAuth2
+**client-credentials** grant. The existing OIDC/JWKS validation middleware
+([identity-federation](../modules/identity-federation.md)) accepts these tokens on the same path and
+resolves them not to a person but to a **service principal**: a registered machine subject holding
+its own role assignments in the standard PDP model (instance-scoped codes such as `import.manage`,
+or the D-ConnectorPlane wiring codes). Service principals are first-class, auditable subjects
+(actor shape `system`, D-Audit) registered in oikumenea by an instance admin: `(issuer, subject) →
+service principal`, mirroring the person-side external-identity mapping. This **generalizes the M16
+`hermenea-importer`** from a token-mapped singleton into a registry, and **amends D-Hermenea's
+"Why not (e)"**: the shared runtime env-secret (`HERMENEA_OIKUMENEA_TOKEN`) was the right call for
+*one* companion, but a fleet of facades + connectors makes per-pair shared secrets an unmanageable
+mesh — the IdP already deployed for humans issues, rotates, and revokes machine credentials
+instead. The env-secret path **remains supported** as a fallback for minimal installs (a
+single-connector deployment without a client-credentials-capable IdP).
+
+**Why.** Both the access plane (D-HeadlessTopology) and the connector plane (D-ConnectorPlane) need
+machine callers with *scoped, revocable, auditable* identity. Reusing the IdP + the existing
+middleware keeps L-AuthzOnly intact — oikumenea still stores no credentials and issues no tokens —
+and gives operators one place to rotate/revoke everything. One validation path for humans and
+machines means no second auth stack to harden.
+
+**Why not** (a) *oikumenea-issued API keys*: reverses L-AuthzOnly's no-credentials stance — the
+core would store secrets and become an issuer. (b) *mTLS service mesh*: real, but an
+infrastructure-layer control; it does not name a PDP subject, and most target deployments
+(docker-compose, single host) have no mesh. (c) *Per-pair shared secrets at fleet scale*: n×m
+secret sprawl with no central revocation; kept only as the minimal-install fallback.
+
+**Consequence.** identity-federation gains a service-principal registry (admin-managed
+`(issuer, subject)` mappings + role assignments on the machine subject) and the middleware gains
+the resolve-to-service-principal arm; the PDP context carries a subject kind (person | service).
+The audit `system` actor becomes attributable to a specific principal. Prerequisite for M52/M53.
+Lands as **M51** ([milestones](../milestones.md)). Additive.
+
+### D-HeadlessTopology — oikumenea is internal-only behind unprivileged user-token-passthrough facades (extends L-AuthzOnly, amends D-WebUI)
+
+**Decision.** In the target topology **oikumenea has no public exposure**: it listens on an
+internal network, and every human-facing consumer reaches it through a per-audience **facade**
+(BFF) speaking the Conjure API via the generated SDKs (D-ClientSDK). Facades may own the browser
+session, shape/aggregate responses, and cache — but they are **unprivileged**: a facade always
+forwards the **end-user's IdP token**; oikumenea re-validates it and runs the PDP against the real
+user, exactly as today. There is **no on-behalf-of assertion** — no facade can tell the core "act
+as person X" — and a facade holds no credential that widens access, so a compromised facade can
+impersonate nobody (no confused deputy). The first facade is **console-bff**, in front of the
+existing Next.js console; this **amends D-WebUI** (the console stops being a direct public-API
+consumer) without changing the console's optional, separately-deployed nature.
+
+**Why.** The product direction is oikumenea as the **brain of a system of services** — other
+products (an HR app, a church app, the admin console) present it to their audiences. Making the
+core internal-only shrinks its attack surface to authenticated internal callers; making facades
+unprivileged keeps the PDP the *only* authority — per-audience UX concerns (sessions, aggregation,
+rate shaping) land in facades without any facade entering the trust computing base.
+
+**Why not** (a) *Facade-terminated auth + on-behalf-of headers*: makes every facade a trusted
+deputy whose compromise is a full impersonation primitive; rejected. (b) *Keep the public API +
+optional facades*: leaves two exposure paths to harden and lets consumers bypass their facade;
+the single internal path is strictly simpler to reason about. (c) *An API gateway product in
+front*: a deployment choice operators may still make; the architecture only requires that the
+thing facing the public is not oikumenea itself.
+
+**Consequence.** A new `console-bff` deployable (thin: session + passthrough + static console
+hosting or proxy); compose topologies stop publishing oikumenea's port; docs/config gain the
+internal-network stance. The Conjure contract is unchanged — facades consume it as-is. Requires
+M51 only for facades that also need standing of their own (health probes, cache warmers); pure
+passthrough works with the user token alone. Lands as **M52** ([milestones](../milestones.md)).
+
+### D-ConnectorPlane — A connector registry + a three-mode contract: push, pull-wiring, on-demand lookup (extends D-Hermenea, D-Watchlists)
+
+**Decision.** hermenea generalizes into a **family of connectors** (Palantir data-connection-style:
+agents beside the core, never inside it). Each connector keeps its own storage + scheduler and
+couples to oikumenea **only over HTTP** (the D-Hermenea boundary, kept). oikumenea gains a
+**connector registry** — `Connector` and `Source` become first-class Objects, with audited
+**sync-run reporting** (a connector posts run start/finish/failure; the core displays and audits,
+it does not orchestrate). The connector contract names **three interaction modes**, per connector
+per source:
+
+- **push** — bulk data in via the existing chunked, resumable `POST /import/{objectType}`
+  envelopes (M49); the workhorse, unchanged.
+- **pull-wiring** — connector → oikumenea *reads* on a narrow **wiring API**: resolve natural
+  keys to RIDs, read reference catalogs (countries, languoids, legal-basis kinds), fetch its own
+  sync cursors/registry row. Authenticated as a D-ServiceIdentities principal; each wiring read
+  surface is its own permission code — what a connector may see is a grant, not a default.
+- **on-demand lookup** — oikumenea → connector synchronous calls with a deadline: the M34
+  watchlist check generalized into one typed connector-call seam (per-lookup-kind interface,
+  late-bound in `main.go`, deadline mandatory per R-12).
+
+**Why.** The user direction is "hermenea-like services" (plural) for one-shot and permanent data
+flows — that needs a *contract*, not another bespoke integration. Push alone has already proven
+insufficient twice: M34 needed a synchronous egress (hard-wired), and real mappers need reference
+reads (today they re-derive or guess natural keys). Naming the three modes keeps each narrow
+instead of growing one god-API; the registry makes the fleet observable from the core, where
+operators already look.
+
+**Why not** (a) *Core-side orchestration (oikumenea schedules connector runs)*: reverses
+D-Hermenea's separation — the core would hold connector operational state and outbound coupling to
+every connector; visibility-not-orchestration keeps the blast radius out. (b) *Connectors read the
+core DB replica*: breaks the HTTP-only boundary and the PDP/visibility gates; rejected outright.
+(c) *A message broker between core and connectors*: new infrastructure for what HTTP + idempotent
+envelopes already deliver; reconsider only if fan-out demands it.
+
+**Consequence.** New registry tables + Objects (`Connector`, `Source`, sync-run Action) with RID
+types; the wiring API endpoints + per-surface permission codes; the `watchlistclient` seam
+refactored into the generic connector-call seam (M34 behavior unchanged); hermenea registers
+itself as the first connector and its sources migrate into the registry. `import.manage` stays
+the push gate. Requires M51. Lands as **M53** ([milestones](../milestones.md)). Additive /
+expand-only on the core.
+
+### D-DataPacks — Plugins are versioned data packs + per-module enable flags, no runtime code loading (extends D-Pinax, D-i18n)
+
+**Decision.** The plugin system is **data, not code**. A **data pack** is a versioned bundle of
+seedable content — locale packs (new supported locales + translation overlays), pinax-style
+world-model presets, catalogs, rank schemes — in the D-Pinax YAML preset format, loaded by the
+boot autoseeder under its existing invariants (**create-if-absent / fill-if-empty / never-delete**,
+version-gated, `origin`-marked). D-Pinax's `go:embed`-bundled presets generalize to
+**operator-mounted packs** (a `pinax.packs` directory scanned at boot beside the embedded set;
+same pipeline, same `pinax_seed_state` gating, pack name + version recorded). Alongside packs, a
+**per-module enable flag** surface (install config, e.g. `modules.finance.enabled`) lets a
+deployment switch verticals off: a disabled module's endpoints are hidden/404 and its permission
+codes are not grantable, but its **schema still migrates** — schema presence is not capability,
+and re-enabling is a config flip, not a migration. There is **no runtime code loading**: Go links
+statically and the Conjure surface is generated at build time; code-level extension = building
+from source against the module registration seam in `main.go` — a documented seam, not a product
+feature.
+
+**Why.** Every plugin the direction actually named ("more locales", reference content) is
+data-shaped, and D-Pinax already built the safe loader for exactly that — generalizing its input
+is cheap and honors upgrade-safety (L-UpgradeSafe). Runtime code plugins would fight the entire
+toolchain (static linking, generated contracts, `atlas` migration lint) for a need nobody has
+stated. Enable flags deliver the real "modular deployment" want — a lean army install without
+finance/religion — without demoting verticals from the core (D-DataScope identity preserved).
+
+**Why not** (a) *Go `plugin` / .so loading*: platform-fragile, version-locked to the exact
+toolchain, incompatible with the single-binary story. (b) *Embedded interpreter (Lua/JS hooks)*:
+a sandboxing + audit surface with no named use case. (c) *Skipping a disabled module's
+migrations*: creates per-deployment schema divergence and breaks the boot-time schema-version
+check; schema always converges, capability is config.
+
+**Consequence.** The pinax loader gains a pack scanner (mounted dir + embedded, unified
+`pinax_seed_state` versioning); locale packs become the first packaged kind (a pack may add an
+`i18n_locales` row + translation overlays — extends D-i18n's admin-managed locale set); platform
+config gains the `modules.*.enabled` map consulted at module registration in `main.go`;
+witchcraft route registration + the search/links fan-in registries skip disabled modules. Lands
+as **M54** ([milestones](../milestones.md)). Additive.
