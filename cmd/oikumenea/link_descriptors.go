@@ -119,6 +119,7 @@ func registerLinkDescriptors(
 	linksSvc.Exempt(rid.SvcPerson, 13, "lobbying_rel: registrant/client ends are free text, not RIDs")
 	linksSvc.Exempt(rid.SvcAuthz, 1, "has_role: a three-way assignment (role + target unit), not a 2-ended object link")
 	linksSvc.Exempt(rid.SvcAuthz, 2, "instance_admin: the instance plane, no neighbor object")
+	linksSvc.Exempt(rid.SvcAuthz, 3, "principal_grant: authority plumbing — the permission end is a code, not a RID, and machine authority is not object-graph data (M51)")
 	linksSvc.Exempt(rid.SvcReligion, 3, "affiliated_with: multi-ended optional affiliation (taxon + tradition + community units)")
 
 	// --- descriptors ---

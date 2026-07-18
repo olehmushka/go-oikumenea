@@ -3,6 +3,10 @@ import { ICreateAccountRequest } from "./createAccountRequest";
 import { IExternalIdentity } from "./externalIdentity";
 import { IIssuerOption } from "./issuerOption";
 import { ILinkIdentityRequest } from "./linkIdentityRequest";
+import { IRegisterServicePrincipalRequest } from "./registerServicePrincipalRequest";
+import { IServicePrincipal } from "./servicePrincipal";
+import { IServicePrincipalPage } from "./servicePrincipalPage";
+import { IUpdateServicePrincipalRequest } from "./updateServicePrincipalRequest";
 import { IWhoami } from "./whoami";
 import type { IHttpApiBridge } from "conjure-client";
 
@@ -52,6 +56,32 @@ export interface IIdentityFederationService {
     unlinkIdentity(accountId: string, identityId: string): Promise<void>;
     /** Resolve the caller's own PDP context (person + account) from the validated inbound token. */
     whoami(): Promise<IWhoami>;
+    /**
+     * Register a machine subject (M51 / D-ServiceIdentities). Instance-plane act gated on
+     * `service-principal.manage`. Returns ServicePrincipal:ServicePrincipalConflict when the code
+     * or the (issuer, subject) is taken — including when that pair is already a person's external
+     * identity. Creates no credential: the external IdP owns the client secret.
+     *
+     */
+    registerServicePrincipal(request: IRegisterServicePrincipalRequest): Promise<IServicePrincipal>;
+    /** Keyset page over the registry. Gates on `service-principal.read`. */
+    listServicePrincipals(pageSize?: number | null, pageToken?: string | null): Promise<IServicePrincipalPage>;
+    /** Read one machine subject. Gates on `service-principal.read`. */
+    getServicePrincipal(principalId: string): Promise<IServicePrincipal>;
+    /**
+     * Update the display fields. Gates on `service-principal.manage`. The (issuer, subject) key is
+     * immutable — see UpdateServicePrincipalRequest.
+     *
+     */
+    updateServicePrincipal(principalId: string, request: IUpdateServicePrincipalRequest): Promise<IServicePrincipal>;
+    /**
+     * Reversible kill switch: a disabled principal fails token resolution immediately, while the
+     * audit rows naming it stay intact. Gates on `service-principal.manage`.
+     *
+     */
+    disableServicePrincipal(principalId: string): Promise<IServicePrincipal>;
+    /** Re-enable a disabled machine subject. Gates on `service-principal.manage`. */
+    enableServicePrincipal(principalId: string): Promise<IServicePrincipal>;
 }
 
 export class IdentityFederationService implements IIdentityFederationService {
@@ -211,6 +241,127 @@ export class IdentityFederationService implements IIdentityFederationService {
             __undefined,
             __undefined,
             __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Register a machine subject (M51 / D-ServiceIdentities). Instance-plane act gated on
+     * `service-principal.manage`. Returns ServicePrincipal:ServicePrincipalConflict when the code
+     * or the (issuer, subject) is taken — including when that pair is already a person's external
+     * identity. Creates no credential: the external IdP owns the client secret.
+     *
+     */
+    public registerServicePrincipal(request: IRegisterServicePrincipalRequest): Promise<IServicePrincipal> {
+        return this.bridge.call<IServicePrincipal>(
+            "IdentityFederationService",
+            "registerServicePrincipal",
+            "POST",
+            "/identity/v1/service-principals",
+            request,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Keyset page over the registry. Gates on `service-principal.read`. */
+    public listServicePrincipals(pageSize?: number | null, pageToken?: string | null): Promise<IServicePrincipalPage> {
+        return this.bridge.call<IServicePrincipalPage>(
+            "IdentityFederationService",
+            "listServicePrincipals",
+            "GET",
+            "/identity/v1/service-principals",
+            __undefined,
+            __undefined,
+            {
+                "pageSize": pageSize,
+                "pageToken": pageToken,
+            },
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Read one machine subject. Gates on `service-principal.read`. */
+    public getServicePrincipal(principalId: string): Promise<IServicePrincipal> {
+        return this.bridge.call<IServicePrincipal>(
+            "IdentityFederationService",
+            "getServicePrincipal",
+            "GET",
+            "/identity/v1/service-principals/{principalId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                principalId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Update the display fields. Gates on `service-principal.manage`. The (issuer, subject) key is
+     * immutable — see UpdateServicePrincipalRequest.
+     *
+     */
+    public updateServicePrincipal(principalId: string, request: IUpdateServicePrincipalRequest): Promise<IServicePrincipal> {
+        return this.bridge.call<IServicePrincipal>(
+            "IdentityFederationService",
+            "updateServicePrincipal",
+            "PUT",
+            "/identity/v1/service-principals/{principalId}",
+            request,
+            __undefined,
+            __undefined,
+            [
+                principalId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Reversible kill switch: a disabled principal fails token resolution immediately, while the
+     * audit rows naming it stay intact. Gates on `service-principal.manage`.
+     *
+     */
+    public disableServicePrincipal(principalId: string): Promise<IServicePrincipal> {
+        return this.bridge.call<IServicePrincipal>(
+            "IdentityFederationService",
+            "disableServicePrincipal",
+            "POST",
+            "/identity/v1/service-principals/{principalId}/disable",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                principalId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Re-enable a disabled machine subject. Gates on `service-principal.manage`. */
+    public enableServicePrincipal(principalId: string): Promise<IServicePrincipal> {
+        return this.bridge.call<IServicePrincipal>(
+            "IdentityFederationService",
+            "enableServicePrincipal",
+            "POST",
+            "/identity/v1/service-principals/{principalId}/enable",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                principalId,
+            ],
             __undefined,
             __undefined
         );

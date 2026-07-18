@@ -11,6 +11,14 @@ export interface IAuditEntry {
     'actorPersonId'?: string | null;
     /** Originating source for SYSTEM actions (bootstrap, event-subscriber, …); present iff actorType is SYSTEM. */
     'subsystem'?: string | null;
+    /**
+     * The SERVICE PRINCIPAL that acted (M51 / D-ServiceIdentities) — a machine subject naming
+     * itself. Only ever present on SYSTEM entries: a principal is a `system` actor, not a third
+     * actor kind (D-Audit's two kinds are binding). Absent for system actions with no machine
+     * caller (bootstrap, event subscribers).
+     *
+     */
+    'actorPrincipalId'?: string | null;
     /** The action code, e.g. assignment.grant, unit.transition, rank.scheme.update. */
     'action': string;
     /** The acted-on entity kind, e.g. unit, person, role_assignment, account, graph. */

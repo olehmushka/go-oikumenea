@@ -7,7 +7,10 @@ import { IBatchAuthorizeResponse } from "./batchAuthorizeResponse";
 import { ICreateRoleRequest } from "./createRoleRequest";
 import { IGrantAssignmentRequest } from "./grantAssignmentRequest";
 import { IGrantInstanceAdminRequest } from "./grantInstanceAdminRequest";
+import { IGrantPrincipalPermissionRequest } from "./grantPrincipalPermissionRequest";
 import { IInstanceAdmin } from "./instanceAdmin";
+import { IPrincipalGrant } from "./principalGrant";
+import { IPrincipalGrantPage } from "./principalGrantPage";
 import { IRole } from "./role";
 import { IRolePage } from "./rolePage";
 import { IUpdateRoleRequest } from "./updateRoleRequest";
@@ -49,6 +52,24 @@ export interface IAuthorizationService {
     grantInstanceAdmin(request: IGrantInstanceAdminRequest): Promise<IInstanceAdmin>;
     /** Revoke instance-admin (instance.admin.manage; reversible flip). */
     revokeInstanceAdmin(instanceAdminId: string): Promise<IInstanceAdmin>;
+    /**
+     * Grant a permission code to a machine subject (M51 / D-ServiceIdentities), optionally confined
+     * to one organization. Instance-plane act gated on `service-principal.manage`.
+     *
+     * A principal never holds a ROLE: instance-scope codes such as `import.manage` are satisfiable
+     * only on the instance plane, so a role could not carry them (see the PDP). Audited.
+     *
+     */
+    grantPrincipalPermission(request: IGrantPrincipalPermissionRequest): Promise<IPrincipalGrant>;
+    /**
+     * Revoke-flip a principal grant (the row survives; the history stays readable). Takes effect
+     * immediately — principal grants are read per request, not cached. Gates on
+     * `service-principal.manage`. Audited.
+     *
+     */
+    revokePrincipalPermission(grantId: string): Promise<IPrincipalGrant>;
+    /** List a machine subject's active grants. Gates on `service-principal.read`. */
+    listPrincipalGrants(principalId: string): Promise<IPrincipalGrantPage>;
 }
 
 export class AuthorizationService implements IAuthorizationService {
@@ -260,6 +281,70 @@ export class AuthorizationService implements IAuthorizationService {
             [
                 instanceAdminId,
             ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Grant a permission code to a machine subject (M51 / D-ServiceIdentities), optionally confined
+     * to one organization. Instance-plane act gated on `service-principal.manage`.
+     *
+     * A principal never holds a ROLE: instance-scope codes such as `import.manage` are satisfiable
+     * only on the instance plane, so a role could not carry them (see the PDP). Audited.
+     *
+     */
+    public grantPrincipalPermission(request: IGrantPrincipalPermissionRequest): Promise<IPrincipalGrant> {
+        return this.bridge.call<IPrincipalGrant>(
+            "AuthorizationService",
+            "grantPrincipalPermission",
+            "POST",
+            "/authorization/v1/principal-grants",
+            request,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Revoke-flip a principal grant (the row survives; the history stays readable). Takes effect
+     * immediately — principal grants are read per request, not cached. Gates on
+     * `service-principal.manage`. Audited.
+     *
+     */
+    public revokePrincipalPermission(grantId: string): Promise<IPrincipalGrant> {
+        return this.bridge.call<IPrincipalGrant>(
+            "AuthorizationService",
+            "revokePrincipalPermission",
+            "DELETE",
+            "/authorization/v1/principal-grants/{grantId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                grantId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** List a machine subject's active grants. Gates on `service-principal.read`. */
+    public listPrincipalGrants(principalId: string): Promise<IPrincipalGrantPage> {
+        return this.bridge.call<IPrincipalGrantPage>(
+            "AuthorizationService",
+            "listPrincipalGrants",
+            "GET",
+            "/authorization/v1/principal-grants",
+            __undefined,
+            __undefined,
+            {
+                "principalId": principalId,
+            },
+            __undefined,
             __undefined,
             __undefined
         );

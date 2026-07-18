@@ -96,7 +96,9 @@ func newHarness(t *testing.T) harness {
 	pdp := authzdomain.NewPDP(tenantSvc)
 	authzSvc := authzapp.NewService(pool, func(conn pdb.DBTX) authzdomain.Repository {
 		return authzadapters.NewRepository(conn)
-	}, audit, pdp, tenantSvc)
+	}, audit, pdp, tenantSvc, func(conn pdb.DBTX) authzdomain.PrincipalRepository {
+		return authzadapters.NewRepository(conn)
+	})
 
 	if err := authzSvc.SeedBaseRoles(context.Background()); err != nil {
 		t.Fatalf("seed base roles: %v", err)

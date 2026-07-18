@@ -72,7 +72,8 @@ func newService(t *testing.T, linking *bool) (*application.Service, *pgxpool.Poo
 	t.Helper()
 	pool := newPool(t)
 	repoFor := func(conn pdb.DBTX) domain.Repository { return adapters.NewRepository(conn) }
-	return application.NewService(pool, repoFor, newAudit(pool), func() bool { return *linking }), pool
+	principalRepoFor := func(conn pdb.DBTX) domain.PrincipalRepository { return adapters.NewRepository(conn) }
+	return application.NewService(pool, repoFor, newAudit(pool), func() bool { return *linking }, principalRepoFor), pool
 }
 
 func makePerson(t *testing.T, pool *pgxpool.Pool, code string) string {

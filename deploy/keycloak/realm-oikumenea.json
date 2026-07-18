@@ -14,8 +14,12 @@
       "directAccessGrantsEnabled": true,
       "standardFlowEnabled": true,
       "serviceAccountsEnabled": false,
-      "redirectUris": ["*"],
-      "webOrigins": ["*"],
+      "redirectUris": [
+        "*"
+      ],
+      "webOrigins": [
+        "*"
+      ],
       "protocolMappers": [
         {
           "name": "oikumenea-audience",
@@ -58,7 +62,9 @@
       "redirectUris": [
         "http://localhost:8445/api/auth/callback/keycloak"
       ],
-      "webOrigins": ["http://localhost:8445"],
+      "webOrigins": [
+        "http://localhost:8445"
+      ],
       "attributes": {
         "post.logout.redirect.uris": "http://localhost:8445/login##http://localhost:8445"
       },
@@ -89,6 +95,30 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "oikumenea-connector",
+      "name": "go-oikumenea connector (local dev)",
+      "description": "Confidential service-account client for the M51 client-credentials path (D-ServiceIdentities): a MACHINE subject. Its token's (iss, sub) is registered as a service principal in oikumenea; the secret is owned here, never by oikumenea.",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "connector-dev-secret",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "protocolMappers": [
+        {
+          "name": "oikumenea-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "oikumenea",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
     }
   ],
   "users": [
@@ -107,7 +137,9 @@
           "temporary": false
         }
       ],
-      "realmRoles": ["default-roles-oikumenea"]
+      "realmRoles": [
+        "default-roles-oikumenea"
+      ]
     }
   ]
 }

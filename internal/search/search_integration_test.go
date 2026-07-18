@@ -88,7 +88,9 @@ func newWorld(t *testing.T) world {
 	}, audit)
 	authzSvc := authzapp.NewService(pool, func(conn pdb.DBTX) authzdomain.Repository {
 		return authzadapters.NewRepository(conn)
-	}, audit, authzdomain.NewPDP(tenantSvc), tenantSvc)
+	}, audit, authzdomain.NewPDP(tenantSvc), tenantSvc, func(conn pdb.DBTX) authzdomain.PrincipalRepository {
+		return authzadapters.NewRepository(conn)
+	})
 	enforcer := pep.New(authzSvc)
 
 	personSvc := personapp.NewService(pool, func(conn pdb.DBTX) persondomain.Repository {

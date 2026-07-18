@@ -49,7 +49,9 @@ func TestScaleMeasure(t *testing.T) {
 	}, audit)
 	authzSvc := authzapp.NewService(pool, func(conn pdb.DBTX) authzdomain.Repository {
 		return authzadapters.NewRepository(conn)
-	}, audit, authzdomain.NewPDP(tenantSvc), tenantSvc)
+	}, audit, authzdomain.NewPDP(tenantSvc), tenantSvc, func(conn pdb.DBTX) authzdomain.PrincipalRepository {
+		return authzadapters.NewRepository(conn)
+	})
 	memRepo := membershipadapters.NewRepository(pool)
 
 	var anyUnit string
