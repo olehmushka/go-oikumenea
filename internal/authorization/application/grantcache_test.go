@@ -40,7 +40,7 @@ func (r epochRepo) ReadAuthzEpoch(ctx context.Context) (int64, error) {
 
 func newCacheTestService(grants []domain.ActiveGrant) (*Service, *epochRepo, *time.Time) {
 	repo := &epochRepo{epoch: &atomic.Int64{}, adminReads: &atomic.Int64{}, epochReads: &atomic.Int64{}, grants: grants}
-	svc := NewService(nil, func(conn db.DBTX) domain.Repository { return *repo }, nil, domain.NewPDP(fakeClosure{}), nil)
+	svc := NewService(nil, func(conn db.DBTX) domain.Repository { return *repo }, nil, domain.NewPDP(fakeClosure{}), nil, nil)
 	now := time.Now()
 	svc.grants.now = func() time.Time { return now }
 	return svc, repo, &now

@@ -176,8 +176,9 @@ func toAPIIdentity(e domain.ExternalIdentity) identityapi.ExternalIdentity {
 // ---------------------------------------------------------------- error mapping
 
 type errCtx struct {
-	accountID  string
-	identityID string
+	accountID   string
+	identityID  string
+	principalID string
 }
 
 // mapError translates domain/application errors into the Conjure SerializableError contract.
@@ -199,6 +200,14 @@ func (s Service) mapError(ctx context.Context, err error, c errCtx) error {
 		return identityapi.NewIdentityConflict("additional identity linking is disabled for this account")
 	case errors.Is(err, domain.ErrIdentityInvalid):
 		return identityapi.NewIdentityInvalid(err.Error())
+	case errors.Is(err, domain.ErrPrincipalNotFound):
+		return identityapi.NewServicePrincipalNotFound(c.principalID)
+	case errors.Is(err, domain.ErrPrincipalConflict):
+		return identityapi.NewServicePrincipalConflict("the code or (issuer, subject) is already taken — an (issuer, subject) is a person identity or a service principal, never both")
+	case errors.Is(err, domain.ErrPrincipalIdentityImmutable):
+		return identityapi.NewServicePrincipalInvalid("a service principal's (issuer, subject) is immutable; register a new principal instead")
+	case errors.Is(err, domain.ErrPrincipalInvalid):
+		return identityapi.NewServicePrincipalInvalid(err.Error())
 	default:
 		return werror.WrapWithContextParams(ctx, err, "identity-federation request failed")
 	}

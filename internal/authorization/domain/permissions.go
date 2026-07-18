@@ -236,10 +236,16 @@ const (
 	PermFinanceCatalogManage     Permission = "finance.catalog.manage" // instance-admin manages the account-type / card-network catalogs (D-Finance, M44)
 	PermInstanceConfig           Permission = "instance.config"
 	PermInstanceAdminManage      Permission = "instance.admin.manage"
-	// import — the generic reference-data import endpoint (M16 / D-Hermenea). Held by the
-	// `hermenea-importer` service principal (shared-secret path) and grantable to a human instance
+	// import — the generic reference-data import endpoint (M16 / D-Hermenea). Held by a service
+	// principal as a per-principal grant (M51 / D-ServiceIdentities) and grantable to a human instance
 	// admin; the PDP only satisfies it on the instance plane.
 	PermImportManage Permission = "import.manage"
+
+	// service-principal — the machine-subject registry + its grants (M51 / D-ServiceIdentities).
+	// Minting a machine identity is instance-admin-only: these gate the registry endpoints on
+	// identity-federation AND the principal-grant endpoints on authorization.
+	PermServicePrincipalRead   Permission = "service-principal.read"
+	PermServicePrincipalManage Permission = "service-principal.manage"
 )
 
 // instanceScope is the set of permissions only meaningful on the instance-admin plane
@@ -272,6 +278,8 @@ var instanceScope = map[Permission]struct{}{
 	PermInstanceConfig:           {},
 	PermInstanceAdminManage:      {},
 	PermImportManage:             {},
+	PermServicePrincipalRead:     {},
+	PermServicePrincipalManage:   {},
 }
 
 // catalog is the closed vocabulary — the union of every permission constant above. It is the
@@ -310,6 +318,7 @@ var catalog = func() map[Permission]struct{} {
 		PermRankSchemeManage, PermGraphManage, PermClosureRebuild, PermDocumentTypeManage, PermOrderTypeManage,
 		PermPersonalCodeSchemeManage, PermCountryManage, PermLocationTypesManage, PermEducationCatalogManage, PermCompanyCatalogManage, PermVehicleCatalogManage, PermFinanceCatalogManage, PermReligionCatalogManage, PermInstanceConfig, PermInstanceAdminManage,
 		PermImportManage,
+		PermServicePrincipalRead, PermServicePrincipalManage,
 	}
 	m := make(map[Permission]struct{}, len(all))
 	for _, p := range all {

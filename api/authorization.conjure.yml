@@ -173,6 +173,39 @@ types:
       BatchAuthorizeResponse:
         fields:
           decisions: list<AuthorizeResponse>
+      PrincipalGrant:
+        docs: |
+          One permission code held by a MACHINE subject (M51 / D-ServiceIdentities) — the reified
+          PRINCIPAL_GRANT link. FLAT by construction: no target unit, no scope, no graph, because a
+          service principal has no unit reach.
+
+          `orgId` absent means INSTANCE-WIDE (reference-catalog imports, the M53 wiring codes); a named
+          organization confines the principal to that organization's data — the blast-radius boundary
+          for a connector is the organization, not the unit.
+        fields:
+          id: string
+          principalId:
+            type: string
+            docs: The service principal's URN RID (registered on IdentityFederationService).
+          permission:
+            type: string
+            docs: A code from the closed permission catalog.
+          orgId:
+            type: optional<string>
+            docs: Absent = instance-wide; present = confined to that organization.
+          grantedBy: optional<string>
+          grantedAt: datetime
+          revokedAt: optional<datetime>
+      GrantPrincipalPermissionRequest:
+        fields:
+          principalId: string
+          permission: string
+          orgId:
+            type: optional<string>
+            docs: Omit for an instance-wide grant; set to confine the machine to one organization.
+      PrincipalGrantPage:
+        fields:
+          grants: list<PrincipalGrant>
     errors:
       RoleNotFound:
         namespace: Role
@@ -249,6 +282,26 @@ types:
         code: CONFLICT
         safe-args:
           reason: string
+      PrincipalGrantNotFound:
+        namespace: PrincipalGrant
+        code: NOT_FOUND
+        safe-args:
+          grantId: string
+      PrincipalGrantConflict:
+        docs: An identical active grant already exists for this principal.
+        namespace: PrincipalGrant
+        code: CONFLICT
+        safe-args:
+          reason: string
+      PrincipalGrantInvalid:
+        docs: |
+          The request is malformed, names an unknown permission code, or names a principal that does
+          not exist or is disabled.
+        namespace: PrincipalGrant
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
+
 services:
   AuthorizationService:
     name: Authorization Service
@@ -360,3 +413,33 @@ services:
             type: string
             param-type: path
         returns: InstanceAdmin
+      grantPrincipalPermission:
+        http: POST /principal-grants
+        docs: |
+          Grant a permission code to a machine subject (M51 / D-ServiceIdentities), optionally confined
+          to one organization. Instance-plane act gated on `service-principal.manage`.
+
+          A principal never holds a ROLE: instance-scope codes such as `import.manage` are satisfiable
+          only on the instance plane, so a role could not carry them (see the PDP). Audited.
+        args:
+          request: GrantPrincipalPermissionRequest
+        returns: PrincipalGrant
+      revokePrincipalPermission:
+        http: DELETE /principal-grants/{grantId}
+        docs: |
+          Revoke-flip a principal grant (the row survives; the history stays readable). Takes effect
+          immediately — principal grants are read per request, not cached. Gates on
+          `service-principal.manage`. Audited.
+        args:
+          grantId:
+            type: string
+            param-type: path
+        returns: PrincipalGrant
+      listPrincipalGrants:
+        http: GET /principal-grants
+        docs: List a machine subject's active grants. Gates on `service-principal.read`.
+        args:
+          principalId:
+            type: string
+            param-type: query
+        returns: PrincipalGrantPage

@@ -11,29 +11,50 @@ package authn
 
 import "context"
 
-// Subject is the resolved PDP context attached to an authenticated request. PersonID is the PDP
-// subject the authorization layer decides on; AccountID/Email are the login attachment it came
-// through (empty for out-of-band/system contexts that set only a person). Service is set instead of
-// PersonID for a non-person SERVICE PRINCIPAL — the hermenea importer authenticated by a runtime
-// shared secret (D-Hermenea; L-AuthzOnly amendment): it holds a fixed permission set and is audited
-// as a `system` actor, not a person.
+// Subject is the resolved PDP context attached to an authenticated request. It is EITHER a person
+// or a machine, never both:
+//
+//   - PERSON: PersonID is the PDP subject the authorization layer decides on; AccountID/Email are the
+//     login attachment it came through (empty for out-of-band/system contexts that set only a person).
+//   - SERVICE PRINCIPAL (M51 / D-ServiceIdentities): PrincipalID + Service (the principal's stable
+//     code) are set INSTEAD of PersonID, for a machine caller — a facade with standing of its own or
+//     a connector — authenticated by the external IdP's client-credentials grant, or by the
+//     shared-secret fallback (D-Hermenea). Its authority is the flat per-principal grant set, it has
+//     NO unit reach, and it is audited as a `system` actor naming itself.
+//
+// Because PersonID stays empty for a machine, every person-shaped PEP path denies a principal at its
+// existing empty-subject guard — the safety property is structural, not a check someone must
+// remember to write.
 type Subject struct {
-	PersonID  string
-	AccountID string
-	Email     string
-	Service   string
+	PersonID    string
+	AccountID   string
+	Email       string
+	Service     string // the service principal's stable code (D-Code)
+	PrincipalID string // the service principal's RID
 }
 
-// ServiceHermeneaImporter is the service-principal id of the hermenea companion's importer: it holds
-// exactly `import.manage` (instance scope). Set as Subject.Service by the shared-secret auth path.
+// ServiceHermeneaImporter is the stable code of the hermenea companion's importer principal. It is
+// now a REGISTERED principal holding an instance-wide `import.manage` grant like any other (M51);
+// the shared-secret path boot-seeds it so that caller resolves to the same subject shape a
+// client-credentials caller would.
 const ServiceHermeneaImporter = "hermenea-importer"
 
-// ServiceID returns the service-principal id attached to ctx (empty when the subject is a person or
-// absent). Consumers use it to recognize the import service principal.
+// ServiceID returns the service principal's CODE attached to ctx (empty when the subject is a person
+// or absent).
 func ServiceID(ctx context.Context) string {
 	s, _ := FromContext(ctx)
 	return s.Service
 }
+
+// PrincipalID returns the service principal's RID attached to ctx, or "" when the request is a person
+// or unauthenticated. It is the authorization key for machine callers (the code is a label).
+func PrincipalID(ctx context.Context) string {
+	s, _ := FromContext(ctx)
+	return s.PrincipalID
+}
+
+// IsService reports whether the request is acting as a machine subject.
+func IsService(ctx context.Context) bool { return PrincipalID(ctx) != "" }
 
 // ctxKey is the unexported context key type (avoids collisions with other packages' keys).
 type ctxKey struct{}

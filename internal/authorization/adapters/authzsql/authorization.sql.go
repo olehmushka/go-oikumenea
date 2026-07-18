@@ -11,6 +11,41 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const activeGrantsForPrincipal = `-- name: ActiveGrantsForPrincipal :many
+SELECT permission_code, org_id
+FROM oikumenea.authz_principal_grants
+WHERE principal_id = $1 AND revoked_at IS NULL
+ORDER BY permission_code
+`
+
+type ActiveGrantsForPrincipalRow struct {
+	PermissionCode string
+	OrgID          pgtype.Text
+}
+
+// The per-request authority fetch for a machine subject — the service-side counterpart of
+// ActiveGrantsForSubject. Flat rows: the PDP is not involved (a principal decision is a grant match,
+// not a DAG traversal).
+func (q *Queries) ActiveGrantsForPrincipal(ctx context.Context, principalID string) ([]ActiveGrantsForPrincipalRow, error) {
+	rows, err := q.db.Query(ctx, activeGrantsForPrincipal, principalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ActiveGrantsForPrincipalRow
+	for rows.Next() {
+		var i ActiveGrantsForPrincipalRow
+		if err := rows.Scan(&i.PermissionCode, &i.OrgID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const activeGrantsForSubject = `-- name: ActiveGrantsForSubject :many
 SELECT a.id, a.role_id, r.code AS role_code, a.target_unit_id, a.scope,
        a.graph_id, g.code AS graph_code, rp.permission_code
@@ -133,6 +168,26 @@ func (q *Queries) GetInstanceAdmin(ctx context.Context, id string) (OikumeneaAut
 		&i.RevokedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getPrincipalGrant = `-- name: GetPrincipalGrant :one
+SELECT id, principal_id, permission_code, org_id, granted_by, granted_at, revoked_at, revoked_by FROM oikumenea.authz_principal_grants WHERE id = $1
+`
+
+func (q *Queries) GetPrincipalGrant(ctx context.Context, id string) (OikumeneaAuthzPrincipalGrant, error) {
+	row := q.db.QueryRow(ctx, getPrincipalGrant, id)
+	var i OikumeneaAuthzPrincipalGrant
+	err := row.Scan(
+		&i.ID,
+		&i.PrincipalID,
+		&i.PermissionCode,
+		&i.OrgID,
+		&i.GrantedBy,
+		&i.GrantedAt,
+		&i.RevokedAt,
+		&i.RevokedBy,
 	)
 	return i, err
 }
@@ -320,6 +375,50 @@ func (q *Queries) InsertInstanceAdmin(ctx context.Context, arg InsertInstanceAdm
 	return i, err
 }
 
+const insertPrincipalGrant = `-- name: InsertPrincipalGrant :one
+
+INSERT INTO oikumenea.authz_principal_grants (principal_id, permission_code, org_id, granted_by)
+VALUES ($1, $2, $3, $4)
+RETURNING id, principal_id, permission_code, org_id, granted_by, granted_at, revoked_at, revoked_by
+`
+
+type InsertPrincipalGrantParams struct {
+	PrincipalID    string
+	PermissionCode string
+	OrgID          pgtype.Text
+	GrantedBy      pgtype.Text
+}
+
+// ============================ principal grants (M51) ============================
+// The machine-subject authority plane (D-ServiceIdentities). A grant is FLAT — no target unit, no
+// scope, no graph — because a service principal has no unit reach by construction. org_id NULL means
+// instance-wide; a named organization confines a connector to that org's data.
+//
+// permission_code is validated in the application against the Go catalog, exactly as
+// authz_role_permissions is: the permission catalog is CODE, never a table (D-Code).
+// The two partial unique indexes (instance-wide vs org-scoped) backstop double-granting; the
+// principal FK backstops existence.
+func (q *Queries) InsertPrincipalGrant(ctx context.Context, arg InsertPrincipalGrantParams) (OikumeneaAuthzPrincipalGrant, error) {
+	row := q.db.QueryRow(ctx, insertPrincipalGrant,
+		arg.PrincipalID,
+		arg.PermissionCode,
+		arg.OrgID,
+		arg.GrantedBy,
+	)
+	var i OikumeneaAuthzPrincipalGrant
+	err := row.Scan(
+		&i.ID,
+		&i.PrincipalID,
+		&i.PermissionCode,
+		&i.OrgID,
+		&i.GrantedBy,
+		&i.GrantedAt,
+		&i.RevokedAt,
+		&i.RevokedBy,
+	)
+	return i, err
+}
+
 const insertRole = `-- name: InsertRole :one
 
 
@@ -488,6 +587,41 @@ func (q *Queries) ListAssignmentsByUnit(ctx context.Context, arg ListAssignments
 			&i.ExpiresAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPrincipalGrants = `-- name: ListPrincipalGrants :many
+SELECT id, principal_id, permission_code, org_id, granted_by, granted_at, revoked_at, revoked_by FROM oikumenea.authz_principal_grants
+WHERE principal_id = $1 AND revoked_at IS NULL
+ORDER BY permission_code, id
+`
+
+func (q *Queries) ListPrincipalGrants(ctx context.Context, principalID string) ([]OikumeneaAuthzPrincipalGrant, error) {
+	rows, err := q.db.Query(ctx, listPrincipalGrants, principalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaAuthzPrincipalGrant
+	for rows.Next() {
+		var i OikumeneaAuthzPrincipalGrant
+		if err := rows.Scan(
+			&i.ID,
+			&i.PrincipalID,
+			&i.PermissionCode,
+			&i.OrgID,
+			&i.GrantedBy,
+			&i.GrantedAt,
+			&i.RevokedAt,
+			&i.RevokedBy,
 		); err != nil {
 			return nil, err
 		}
@@ -684,6 +818,36 @@ func (q *Queries) RevokeInstanceAdmin(ctx context.Context, arg RevokeInstanceAdm
 		&i.RevokedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const revokePrincipalGrant = `-- name: RevokePrincipalGrant :one
+UPDATE oikumenea.authz_principal_grants
+SET revoked_at = now(), revoked_by = $1
+WHERE id = $2 AND revoked_at IS NULL
+RETURNING id, principal_id, permission_code, org_id, granted_by, granted_at, revoked_at, revoked_by
+`
+
+type RevokePrincipalGrantParams struct {
+	RevokedBy pgtype.Text
+	ID        string
+}
+
+// Revoke-flip, never a delete: the grant's history stays readable (D-Audit). Already-revoked rows are
+// excluded so a second revoke is a no-op the application maps to not-found.
+func (q *Queries) RevokePrincipalGrant(ctx context.Context, arg RevokePrincipalGrantParams) (OikumeneaAuthzPrincipalGrant, error) {
+	row := q.db.QueryRow(ctx, revokePrincipalGrant, arg.RevokedBy, arg.ID)
+	var i OikumeneaAuthzPrincipalGrant
+	err := row.Scan(
+		&i.ID,
+		&i.PrincipalID,
+		&i.PermissionCode,
+		&i.OrgID,
+		&i.GrantedBy,
+		&i.GrantedAt,
+		&i.RevokedAt,
+		&i.RevokedBy,
 	)
 	return i, err
 }

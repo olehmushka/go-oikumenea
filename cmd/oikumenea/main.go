@@ -17,6 +17,8 @@ import (
 	auditapp "github.com/olegamysk/go-oikumenea/internal/audit/application"
 	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
 	"github.com/olegamysk/go-oikumenea/internal/authorization"
+	authzapp "github.com/olegamysk/go-oikumenea/internal/authorization/application"
+	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
 	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
 	"github.com/olegamysk/go-oikumenea/internal/company"
 	hermeneaapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/hermenea"
@@ -29,7 +31,9 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/finance"
 	"github.com/olegamysk/go-oikumenea/internal/geo"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation"
+	identityapp "github.com/olegamysk/go-oikumenea/internal/identityfederation/application"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation/bootstrap"
+	identitydomain "github.com/olegamysk/go-oikumenea/internal/identityfederation/domain"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation/middleware"
 	"github.com/olegamysk/go-oikumenea/internal/language"
 	"github.com/olegamysk/go-oikumenea/internal/links"
@@ -53,6 +57,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/tenant"
 	"github.com/olegamysk/go-oikumenea/internal/vehicle"
 	"github.com/olegamysk/go-oikumenea/internal/watchlistclient"
+	"github.com/olegamysk/go-oikumenea/pkg/authn"
 	"github.com/olegamysk/go-oikumenea/pkg/crypto"
 	"github.com/olegamysk/go-oikumenea/pkg/events"
 	"github.com/olegamysk/go-oikumenea/pkg/personalcode"
@@ -495,13 +500,35 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 		cleanup()
 		return nil, werror.Wrap(err, "reject symmetric issuer outside local/dev")
 	}
-	authenticator.Bind(middleware.NewValidator(vcfg), identitySvc, personSvc, install.IDP.JIT.Enabled, authzSvc, pool)
+	// The reserved local issuer backs the shared-secret fallback principal and must never be a real
+	// configured issuer, or an operator's IdP could mint tokens for it (M51 / D-ServiceIdentities).
+	if err := middleware.GuardReservedIssuer(vcfg.Issuers); err != nil {
+		cleanup()
+		return nil, werror.Wrap(err, "reject reserved issuer in idp config")
+	}
+	// Late-bind the machine-subject registry into authorization (M51): identity-federation registers
+	// after authorization, so the grant writer gets its principal directory here — asserted below.
+	authzSvc.BindPrincipalDirectory(identitySvc)
+	authenticator.Bind(middleware.NewValidator(vcfg), identitySvc, personSvc, install.IDP.JIT.Enabled, authzSvc, pool, identitySvc, authzSvc)
 
-	// The hermenea import service-principal shared secret (D-Hermenea / L-AuthzOnly amendment): the
-	// inbound token from install config (hermenea.inbound-token), still honouring the
-	// HERMENEA_OIKUMENEA_TOKEN env override via ResolveInboundToken (architecture review R-16). When
-	// set, a bearer matching it authenticates the `hermenea-importer` principal holding import.manage.
-	authenticator.SetImportServiceToken(install.Hermenea.ResolveInboundToken())
+	// The hermenea import shared secret (D-Hermenea, retained by D-ServiceIdentities as the
+	// minimal-install fallback): the inbound token from install config (hermenea.inbound-token),
+	// honouring the HERMENEA_OIKUMENEA_TOKEN env override via ResolveInboundToken (review R-16).
+	//
+	// Since M51 the secret no longer grants a hard-coded exemption: it authenticates a REGISTERED
+	// principal seeded here (create-if-absent, under the boot-seed advisory lock so replicas do not
+	// race) holding an instance-wide import.manage grant. A shared-secret caller therefore produces
+	// the same subject shape, the same grants and the same audit attribution as a client-credentials
+	// one — one downstream path, and the operator can revoke it like any other machine.
+	if inbound := install.Hermenea.ResolveInboundToken(); inbound != "" {
+		authenticator.SetImportServiceToken(inbound)
+		if err := db.WithAdvisoryLock(ctx, pool, db.LockBootSeed, func(ctx context.Context) error {
+			return seedSharedSecretPrincipal(ctx, identitySvc, authzSvc)
+		}); err != nil {
+			cleanup()
+			return nil, werror.Wrap(err, "seed shared-secret import principal")
+		}
+	}
 
 	// First-admin bootstrap (D-Bootstrap): idempotent — skips once any instance admin exists. The
 	// has-admin check is read-then-write, so it is additionally serialized across replicas by the
@@ -529,6 +556,10 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 			cleanup()
 			return nil, werror.Wrap(err, "composition root: late-bound seam not wired")
 		}
+	}
+	if !authzSvc.PrincipalDirectoryBound() {
+		cleanup()
+		return nil, werror.Error("composition root: authorization principal directory not bound (M51)")
 	}
 
 	// Seal the atomic event bus (review-2026-07 R-10): every module has now wired its same-transaction
@@ -643,6 +674,40 @@ func buildCipher(install config.Install) (*crypto.Cipher, error) {
 		ttl = defaultDEKCacheTTLSeconds
 	}
 	return crypto.NewCipher(kp, blind, time.Duration(ttl)*time.Second)
+}
+
+// seedSharedSecretPrincipal registers the shared-secret import caller as a REAL service principal
+// (M51 / D-ServiceIdentities) and grants it instance-wide import.manage, both create-if-absent.
+//
+// This is what lets the D-Hermenea shared-secret path keep working without a hard-coded PEP
+// exemption: the caller resolves through the same registry lookup as a client-credentials caller, so
+// it carries a principal RID, real grants and real audit attribution. Idempotent — a second boot (or
+// a replica that lost the advisory-lock race) re-runs the now-no-op checks.
+func seedSharedSecretPrincipal(ctx context.Context, identitySvc *identityapp.Service, authzSvc *authzapp.Service) error {
+	principal, err := identitySvc.EnsurePrincipal(ctx, identitydomain.ServicePrincipal{
+		Code:        authn.ServiceHermeneaImporter,
+		Name:        "hermenea importer (shared secret)",
+		Description: "Boot-seeded for the HERMENEA_OIKUMENEA_TOKEN fallback path (D-Hermenea).",
+		Issuer:      middleware.ReservedLocalIssuer,
+		Subject:     authn.ServiceHermeneaImporter,
+	})
+	if err != nil {
+		return err
+	}
+	grants, err := authzSvc.ListPrincipalGrants(ctx, principal.ID)
+	if err != nil {
+		return err
+	}
+	for _, g := range grants {
+		if g.Permission == authzdomain.PermImportManage && g.OrgID == "" {
+			return nil // already granted
+		}
+	}
+	_, err = authzSvc.GrantPrincipalPermission(ctx, authzdomain.PrincipalGrantInput{
+		PrincipalID: principal.ID,
+		Permission:  authzdomain.PermImportManage,
+	})
+	return err
 }
 
 func seedFrom(b config.BootstrapAdmin) bootstrap.AdminSeed {

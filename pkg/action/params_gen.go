@@ -37,6 +37,11 @@ var requestParams = map[string][]Param{
 	"oikumenea.authorization.GrantInstanceAdminRequest": {
 		{Name: "personId", Type: "string", Required: true, Docs: ""},
 	},
+	"oikumenea.authorization.GrantPrincipalPermissionRequest": {
+		{Name: "principalId", Type: "string", Required: true, Docs: ""},
+		{Name: "permission", Type: "string", Required: true, Docs: ""},
+		{Name: "orgId", Type: "string", Required: false, Docs: "Omit for an instance-wide grant; set to confine the machine to one organization."},
+	},
 	"oikumenea.authorization.UpdateRoleRequest": {
 		{Name: "name", Type: "string", Required: false, Docs: ""},
 		{Name: "description", Type: "string", Required: false, Docs: ""},
@@ -557,6 +562,19 @@ var requestParams = map[string][]Param{
 	"oikumenea.identityfederation.LinkIdentityRequest": {
 		{Name: "issuer", Type: "string", Required: true, Docs: ""},
 		{Name: "subject", Type: "string", Required: true, Docs: ""},
+	},
+	"oikumenea.identityfederation.RegisterServicePrincipalRequest": {
+		{Name: "code", Type: "string", Required: true, Docs: ""},
+		{Name: "name", Type: "string", Required: true, Docs: ""},
+		{Name: "description", Type: "string", Required: false, Docs: ""},
+		{Name: "issuer", Type: "string", Required: true, Docs: "The IdP `iss` the machine's tokens carry."},
+		{Name: "subject", Type: "string", Required: true, Docs: "The IdP `sub` the machine's tokens carry. For Keycloak this is the service-account user"},
+		{Name: "clientId", Type: "string", Required: false, Docs: ""},
+	},
+	"oikumenea.identityfederation.UpdateServicePrincipalRequest": {
+		{Name: "name", Type: "string", Required: true, Docs: ""},
+		{Name: "description", Type: "string", Required: false, Docs: ""},
+		{Name: "clientId", Type: "string", Required: false, Docs: ""},
 	},
 	"oikumenea.localization.AddLocaleRequest": {
 		{Name: "code", Type: "string", Required: true, Docs: "ISO 639-3 code; must be unique."},

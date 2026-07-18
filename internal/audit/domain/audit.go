@@ -49,14 +49,19 @@ type Entry struct {
 	ActorType     ActorType
 	ActorPersonID string // required iff ActorType == ActorPerson
 	Subsystem     string // required iff ActorType == ActorSystem
-	Action        string
-	TargetType    string
-	TargetID      string
-	UnitID        string
-	RequestID     string
-	Before        json.RawMessage // pii:special ceiling — no special-category data until DS-29
-	After         json.RawMessage
-	Outcome       Outcome
+	// ActorPrincipalID names the SERVICE PRINCIPAL that acted (M51 / D-ServiceIdentities) — a machine
+	// subject naming itself. Permitted ONLY on the system arm: a principal is a `system` actor, not a
+	// third actor kind (D-Audit's two kinds are binding). Optional: system actions with no machine
+	// caller (bootstrap, event subscribers) leave it empty.
+	ActorPrincipalID string
+	Action           string
+	TargetType       string
+	TargetID         string
+	UnitID           string
+	RequestID        string
+	Before           json.RawMessage // pii:special ceiling — no special-category data until DS-29
+	After            json.RawMessage
+	Outcome          Outcome
 }
 
 // Validate enforces the entry invariants before it is recorded (D-Audit): a well-formed Action
@@ -77,6 +82,9 @@ func (e Entry) Validate() error {
 	case ActorPerson:
 		if e.ActorPersonID == "" || e.Subsystem != "" {
 			return wrap("person actor requires actorPersonId and no subsystem")
+		}
+		if e.ActorPrincipalID != "" {
+			return wrap("person actor cannot carry actorPrincipalId (a principal is a system actor)")
 		}
 	case ActorSystem:
 		if e.Subsystem == "" || e.ActorPersonID != "" {

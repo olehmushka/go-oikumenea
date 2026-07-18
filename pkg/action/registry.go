@@ -242,6 +242,14 @@ var actionTypes = []ActionType{
 	{Code: "account.disable", Service: rid.SvcAccount, TargetType: "account", Permission: "instance.admin.manage"},
 	{Code: "identity.link", Service: rid.SvcAccount, TargetType: "external_identity", Permission: "instance.admin.manage", RequestType: "oikumenea.identityfederation.LinkIdentityRequest"},
 	{Code: "identity.unlink", Service: rid.SvcAccount, TargetType: "external_identity", Permission: "instance.admin.manage"},
+	// Service principals — machine subjects (M51 / D-ServiceIdentities). Registry acts live on the
+	// account service; the grant acts on authz, mirroring where each table lives.
+	{Code: "service-principal.register", Service: rid.SvcAccount, TargetType: "service_principal", Permission: "service-principal.manage", RequestType: "oikumenea.identityfederation.RegisterServicePrincipalRequest"},
+	{Code: "service-principal.update", Service: rid.SvcAccount, TargetType: "service_principal", Permission: "service-principal.manage", RequestType: "oikumenea.identityfederation.UpdateServicePrincipalRequest"},
+	{Code: "service-principal.disable", Service: rid.SvcAccount, TargetType: "service_principal", Permission: "service-principal.manage"},
+	{Code: "service-principal.enable", Service: rid.SvcAccount, TargetType: "service_principal", Permission: "service-principal.manage"},
+	{Code: "service-principal.grant", Service: rid.SvcAuthz, TargetType: "principal_grant", Permission: "service-principal.manage", RequestType: "oikumenea.authorization.GrantPrincipalPermissionRequest"},
+	{Code: "service-principal.revoke", Service: rid.SvcAuthz, TargetType: "principal_grant", Permission: "service-principal.manage"},
 	{Code: "person.create", Service: rid.SvcAccount, TargetType: "person", Permission: "person.create", RequestType: "oikumenea.person.CreatePersonRequest"},
 	{Code: "document.create", Service: rid.SvcDocument, TargetType: "document", Permission: "document.create", RequestType: "oikumenea.document.CreateDocumentRequest"},
 	{Code: "document.delete", Service: rid.SvcDocument, TargetType: "document", Permission: "document.delete"},

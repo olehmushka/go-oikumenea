@@ -38,7 +38,8 @@ import (
 func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, loc *locapp.Service, tenantSvc *tenantapp.Service, enforcer *pep.Enforcer) (*application.Service, error) {
 	pdp := domain.NewPDP(tenantSvc) // tenant.Service implements domain.ClosurePort
 	repoFor := func(conn db.DBTX) domain.Repository { return adapters.NewRepository(conn) }
-	svc := application.NewService(pool, repoFor, audit, pdp, tenantSvc) // tenant.Service implements GraphPort
+	principalRepoFor := func(conn db.DBTX) domain.PrincipalRepository { return adapters.NewRepository(conn) }
+	svc := application.NewService(pool, repoFor, audit, pdp, tenantSvc, principalRepoFor) // tenant.Service implements GraphPort
 
 	if err := svc.SeedBaseRoles(context.Background()); err != nil {
 		return nil, werror.Wrap(err, "seed authorization base roles")

@@ -48,6 +48,22 @@ type AuthorizationService interface {
 	GrantInstanceAdmin(ctx context.Context, authHeader bearertoken.Token, requestArg GrantInstanceAdminRequest) (InstanceAdmin, error)
 	// Revoke instance-admin (instance.admin.manage; reversible flip).
 	RevokeInstanceAdmin(ctx context.Context, authHeader bearertoken.Token, instanceAdminIdArg string) (InstanceAdmin, error)
+	/*
+	   Grant a permission code to a machine subject (M51 / D-ServiceIdentities), optionally confined
+	   to one organization. Instance-plane act gated on `service-principal.manage`.
+
+	   A principal never holds a ROLE: instance-scope codes such as `import.manage` are satisfiable
+	   only on the instance plane, so a role could not carry them (see the PDP). Audited.
+	*/
+	GrantPrincipalPermission(ctx context.Context, authHeader bearertoken.Token, requestArg GrantPrincipalPermissionRequest) (PrincipalGrant, error)
+	/*
+	   Revoke-flip a principal grant (the row survives; the history stays readable). Takes effect
+	   immediately — principal grants are read per request, not cached. Gates on
+	   `service-principal.manage`. Audited.
+	*/
+	RevokePrincipalPermission(ctx context.Context, authHeader bearertoken.Token, grantIdArg string) (PrincipalGrant, error)
+	// List a machine subject's active grants. Gates on `service-principal.read`.
+	ListPrincipalGrants(ctx context.Context, authHeader bearertoken.Token, principalIdArg string) (PrincipalGrantPage, error)
 }
 
 // RegisterRoutesAuthorizationService registers handlers for the AuthorizationService endpoints with a witchcraft wrouter.
@@ -92,6 +108,15 @@ func RegisterRoutesAuthorizationService(router wrouter.Router, impl Authorizatio
 	}
 	if err := resource.Delete("RevokeInstanceAdmin", "/authorization/v1/instance-admins/{instanceAdminId}", httpserver.NewJSONHandler(handler.HandleRevokeInstanceAdmin, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add revokeInstanceAdmin route")
+	}
+	if err := resource.Post("GrantPrincipalPermission", "/authorization/v1/principal-grants", httpserver.NewJSONHandler(handler.HandleGrantPrincipalPermission, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add grantPrincipalPermission route")
+	}
+	if err := resource.Delete("RevokePrincipalPermission", "/authorization/v1/principal-grants/{grantId}", httpserver.NewJSONHandler(handler.HandleRevokePrincipalPermission, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add revokePrincipalPermission route")
+	}
+	if err := resource.Get("ListPrincipalGrants", "/authorization/v1/principal-grants", httpserver.NewJSONHandler(handler.HandleListPrincipalGrants, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listPrincipalGrants route")
 	}
 	return nil
 }
@@ -348,6 +373,58 @@ func (a *authorizationServiceHandler) HandleRevokeInstanceAdmin(rw http.Response
 		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"instanceAdminId\" not present")
 	}
 	respArg, err := a.impl.RevokeInstanceAdmin(req.Context(), bearertoken.Token(authHeader), instanceAdminIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (a *authorizationServiceHandler) HandleGrantPrincipalPermission(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var requestArg GrantPrincipalPermissionRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := a.impl.GrantPrincipalPermission(req.Context(), bearertoken.Token(authHeader), requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (a *authorizationServiceHandler) HandleRevokePrincipalPermission(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	grantIdArg, ok := pathParams["grantId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"grantId\" not present")
+	}
+	respArg, err := a.impl.RevokePrincipalPermission(req.Context(), bearertoken.Token(authHeader), grantIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (a *authorizationServiceHandler) HandleListPrincipalGrants(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	principalIdArg := req.URL.Query().Get("principalId")
+	respArg, err := a.impl.ListPrincipalGrants(req.Context(), bearertoken.Token(authHeader), principalIdArg)
 	if err != nil {
 		return err
 	}

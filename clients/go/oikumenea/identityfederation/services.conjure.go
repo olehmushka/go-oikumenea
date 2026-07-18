@@ -51,6 +51,29 @@ type IdentityFederationServiceClient interface {
 	UnlinkIdentity(ctx context.Context, authHeader bearertoken.Token, accountIdArg string, identityIdArg string) error
 	// Resolve the caller's own PDP context (person + account) from the validated inbound token.
 	Whoami(ctx context.Context, authHeader bearertoken.Token) (Whoami, error)
+	/*
+	   Register a machine subject (M51 / D-ServiceIdentities). Instance-plane act gated on
+	   `service-principal.manage`. Returns ServicePrincipal:ServicePrincipalConflict when the code
+	   or the (issuer, subject) is taken — including when that pair is already a person's external
+	   identity. Creates no credential: the external IdP owns the client secret.
+	*/
+	RegisterServicePrincipal(ctx context.Context, authHeader bearertoken.Token, requestArg RegisterServicePrincipalRequest) (ServicePrincipal, error)
+	// Keyset page over the registry. Gates on `service-principal.read`.
+	ListServicePrincipals(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string) (ServicePrincipalPage, error)
+	// Read one machine subject. Gates on `service-principal.read`.
+	GetServicePrincipal(ctx context.Context, authHeader bearertoken.Token, principalIdArg string) (ServicePrincipal, error)
+	/*
+	   Update the display fields. Gates on `service-principal.manage`. The (issuer, subject) key is
+	   immutable — see UpdateServicePrincipalRequest.
+	*/
+	UpdateServicePrincipal(ctx context.Context, authHeader bearertoken.Token, principalIdArg string, requestArg UpdateServicePrincipalRequest) (ServicePrincipal, error)
+	/*
+	   Reversible kill switch: a disabled principal fails token resolution immediately, while the
+	   audit rows naming it stay intact. Gates on `service-principal.manage`.
+	*/
+	DisableServicePrincipal(ctx context.Context, authHeader bearertoken.Token, principalIdArg string) (ServicePrincipal, error)
+	// Re-enable a disabled machine subject. Gates on `service-principal.manage`.
+	EnableServicePrincipal(ctx context.Context, authHeader bearertoken.Token, principalIdArg string) (ServicePrincipal, error)
 }
 
 type identityFederationServiceClient struct {
@@ -194,6 +217,118 @@ func (c *identityFederationServiceClient) Whoami(ctx context.Context, authHeader
 	return *returnVal, nil
 }
 
+func (c *identityFederationServiceClient) RegisterServicePrincipal(ctx context.Context, authHeader bearertoken.Token, requestArg RegisterServicePrincipalRequest) (ServicePrincipal, error) {
+	var returnVal *ServicePrincipal
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("RegisterServicePrincipal"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/identity/v1/service-principals"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(ServicePrincipal), werror.WrapWithContextParams(ctx, err, "registerServicePrincipal failed")
+	}
+	if returnVal == nil {
+		return *new(ServicePrincipal), werror.ErrorWithContextParams(ctx, "registerServicePrincipal response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *identityFederationServiceClient) ListServicePrincipals(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string) (ServicePrincipalPage, error) {
+	var returnVal *ServicePrincipalPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListServicePrincipals"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/identity/v1/service-principals"))
+	queryParams := make(url.Values)
+	if pageSizeArg != nil {
+		queryParams.Set("pageSize", fmt.Sprint(*pageSizeArg))
+	}
+	if pageTokenArg != nil {
+		queryParams.Set("pageToken", fmt.Sprint(*pageTokenArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(ServicePrincipalPage), werror.WrapWithContextParams(ctx, err, "listServicePrincipals failed")
+	}
+	if returnVal == nil {
+		return *new(ServicePrincipalPage), werror.ErrorWithContextParams(ctx, "listServicePrincipals response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *identityFederationServiceClient) GetServicePrincipal(ctx context.Context, authHeader bearertoken.Token, principalIdArg string) (ServicePrincipal, error) {
+	var returnVal *ServicePrincipal
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("GetServicePrincipal"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/identity/v1/service-principals/%s", url.PathEscape(fmt.Sprint(principalIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(ServicePrincipal), werror.WrapWithContextParams(ctx, err, "getServicePrincipal failed")
+	}
+	if returnVal == nil {
+		return *new(ServicePrincipal), werror.ErrorWithContextParams(ctx, "getServicePrincipal response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *identityFederationServiceClient) UpdateServicePrincipal(ctx context.Context, authHeader bearertoken.Token, principalIdArg string, requestArg UpdateServicePrincipalRequest) (ServicePrincipal, error) {
+	var returnVal *ServicePrincipal
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpdateServicePrincipal"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/identity/v1/service-principals/%s", url.PathEscape(fmt.Sprint(principalIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(ServicePrincipal), werror.WrapWithContextParams(ctx, err, "updateServicePrincipal failed")
+	}
+	if returnVal == nil {
+		return *new(ServicePrincipal), werror.ErrorWithContextParams(ctx, "updateServicePrincipal response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *identityFederationServiceClient) DisableServicePrincipal(ctx context.Context, authHeader bearertoken.Token, principalIdArg string) (ServicePrincipal, error) {
+	var returnVal *ServicePrincipal
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DisableServicePrincipal"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/identity/v1/service-principals/%s/disable", url.PathEscape(fmt.Sprint(principalIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(ServicePrincipal), werror.WrapWithContextParams(ctx, err, "disableServicePrincipal failed")
+	}
+	if returnVal == nil {
+		return *new(ServicePrincipal), werror.ErrorWithContextParams(ctx, "disableServicePrincipal response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *identityFederationServiceClient) EnableServicePrincipal(ctx context.Context, authHeader bearertoken.Token, principalIdArg string) (ServicePrincipal, error) {
+	var returnVal *ServicePrincipal
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("EnableServicePrincipal"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/identity/v1/service-principals/%s/enable", url.PathEscape(fmt.Sprint(principalIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(ServicePrincipal), werror.WrapWithContextParams(ctx, err, "enableServicePrincipal failed")
+	}
+	if returnVal == nil {
+		return *new(ServicePrincipal), werror.ErrorWithContextParams(ctx, "enableServicePrincipal response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 /*
 Optional login accounts + the external identities that federate to them. Account/identity
 management gates on the `person.*` permissions of the linked person; /whoami is
@@ -232,6 +367,29 @@ type IdentityFederationServiceClientWithAuth interface {
 	UnlinkIdentity(ctx context.Context, accountIdArg string, identityIdArg string) error
 	// Resolve the caller's own PDP context (person + account) from the validated inbound token.
 	Whoami(ctx context.Context) (Whoami, error)
+	/*
+	   Register a machine subject (M51 / D-ServiceIdentities). Instance-plane act gated on
+	   `service-principal.manage`. Returns ServicePrincipal:ServicePrincipalConflict when the code
+	   or the (issuer, subject) is taken — including when that pair is already a person's external
+	   identity. Creates no credential: the external IdP owns the client secret.
+	*/
+	RegisterServicePrincipal(ctx context.Context, requestArg RegisterServicePrincipalRequest) (ServicePrincipal, error)
+	// Keyset page over the registry. Gates on `service-principal.read`.
+	ListServicePrincipals(ctx context.Context, pageSizeArg *int, pageTokenArg *string) (ServicePrincipalPage, error)
+	// Read one machine subject. Gates on `service-principal.read`.
+	GetServicePrincipal(ctx context.Context, principalIdArg string) (ServicePrincipal, error)
+	/*
+	   Update the display fields. Gates on `service-principal.manage`. The (issuer, subject) key is
+	   immutable — see UpdateServicePrincipalRequest.
+	*/
+	UpdateServicePrincipal(ctx context.Context, principalIdArg string, requestArg UpdateServicePrincipalRequest) (ServicePrincipal, error)
+	/*
+	   Reversible kill switch: a disabled principal fails token resolution immediately, while the
+	   audit rows naming it stay intact. Gates on `service-principal.manage`.
+	*/
+	DisableServicePrincipal(ctx context.Context, principalIdArg string) (ServicePrincipal, error)
+	// Re-enable a disabled machine subject. Gates on `service-principal.manage`.
+	EnableServicePrincipal(ctx context.Context, principalIdArg string) (ServicePrincipal, error)
 }
 
 func NewIdentityFederationServiceClientWithAuth(client IdentityFederationServiceClient, authHeader bearertoken.Token) IdentityFederationServiceClientWithAuth {
@@ -273,6 +431,30 @@ func (c *identityFederationServiceClientWithAuth) UnlinkIdentity(ctx context.Con
 
 func (c *identityFederationServiceClientWithAuth) Whoami(ctx context.Context) (Whoami, error) {
 	return c.client.Whoami(ctx, c.authHeader)
+}
+
+func (c *identityFederationServiceClientWithAuth) RegisterServicePrincipal(ctx context.Context, requestArg RegisterServicePrincipalRequest) (ServicePrincipal, error) {
+	return c.client.RegisterServicePrincipal(ctx, c.authHeader, requestArg)
+}
+
+func (c *identityFederationServiceClientWithAuth) ListServicePrincipals(ctx context.Context, pageSizeArg *int, pageTokenArg *string) (ServicePrincipalPage, error) {
+	return c.client.ListServicePrincipals(ctx, c.authHeader, pageSizeArg, pageTokenArg)
+}
+
+func (c *identityFederationServiceClientWithAuth) GetServicePrincipal(ctx context.Context, principalIdArg string) (ServicePrincipal, error) {
+	return c.client.GetServicePrincipal(ctx, c.authHeader, principalIdArg)
+}
+
+func (c *identityFederationServiceClientWithAuth) UpdateServicePrincipal(ctx context.Context, principalIdArg string, requestArg UpdateServicePrincipalRequest) (ServicePrincipal, error) {
+	return c.client.UpdateServicePrincipal(ctx, c.authHeader, principalIdArg, requestArg)
+}
+
+func (c *identityFederationServiceClientWithAuth) DisableServicePrincipal(ctx context.Context, principalIdArg string) (ServicePrincipal, error) {
+	return c.client.DisableServicePrincipal(ctx, c.authHeader, principalIdArg)
+}
+
+func (c *identityFederationServiceClientWithAuth) EnableServicePrincipal(ctx context.Context, principalIdArg string) (ServicePrincipal, error) {
+	return c.client.EnableServicePrincipal(ctx, c.authHeader, principalIdArg)
 }
 
 func NewIdentityFederationServiceClientWithTokenProvider(client IdentityFederationServiceClient, tokenProvider httpclient.TokenProvider) IdentityFederationServiceClientWithAuth {
@@ -346,4 +528,52 @@ func (c *identityFederationServiceClientWithTokenProvider) Whoami(ctx context.Co
 		return *new(Whoami), err
 	}
 	return c.client.Whoami(ctx, bearertoken.Token(token))
+}
+
+func (c *identityFederationServiceClientWithTokenProvider) RegisterServicePrincipal(ctx context.Context, requestArg RegisterServicePrincipalRequest) (ServicePrincipal, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(ServicePrincipal), err
+	}
+	return c.client.RegisterServicePrincipal(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *identityFederationServiceClientWithTokenProvider) ListServicePrincipals(ctx context.Context, pageSizeArg *int, pageTokenArg *string) (ServicePrincipalPage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(ServicePrincipalPage), err
+	}
+	return c.client.ListServicePrincipals(ctx, bearertoken.Token(token), pageSizeArg, pageTokenArg)
+}
+
+func (c *identityFederationServiceClientWithTokenProvider) GetServicePrincipal(ctx context.Context, principalIdArg string) (ServicePrincipal, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(ServicePrincipal), err
+	}
+	return c.client.GetServicePrincipal(ctx, bearertoken.Token(token), principalIdArg)
+}
+
+func (c *identityFederationServiceClientWithTokenProvider) UpdateServicePrincipal(ctx context.Context, principalIdArg string, requestArg UpdateServicePrincipalRequest) (ServicePrincipal, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(ServicePrincipal), err
+	}
+	return c.client.UpdateServicePrincipal(ctx, bearertoken.Token(token), principalIdArg, requestArg)
+}
+
+func (c *identityFederationServiceClientWithTokenProvider) DisableServicePrincipal(ctx context.Context, principalIdArg string) (ServicePrincipal, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(ServicePrincipal), err
+	}
+	return c.client.DisableServicePrincipal(ctx, bearertoken.Token(token), principalIdArg)
+}
+
+func (c *identityFederationServiceClientWithTokenProvider) EnableServicePrincipal(ctx context.Context, principalIdArg string) (ServicePrincipal, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(ServicePrincipal), err
+	}
+	return c.client.EnableServicePrincipal(ctx, bearertoken.Token(token), principalIdArg)
 }

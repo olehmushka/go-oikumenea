@@ -53,12 +53,18 @@ type Service struct {
 	newRepo        RepositoryFactory
 	audit          *auditapp.Service
 	linkingEnabled func() bool // account.identity_linking.enabled (install config)
+	// newPrincipalRepo binds the service-principal registry (M51 / D-ServiceIdentities) — the
+	// machine counterpart of newRepo, injected by module.go alongside it.
+	newPrincipalRepo PrincipalRepositoryFactory
 }
 
 // NewService wires the service with the pool, the repository factory, the audit service every write
 // records into, and the linking-enabled config accessor.
-func NewService(pool *pgxpool.Pool, newRepo RepositoryFactory, audit *auditapp.Service, linkingEnabled func() bool) *Service {
-	return &Service{pool: pool, newRepo: newRepo, audit: audit, linkingEnabled: linkingEnabled}
+func NewService(pool *pgxpool.Pool, newRepo RepositoryFactory, audit *auditapp.Service, linkingEnabled func() bool, newPrincipalRepo PrincipalRepositoryFactory) *Service {
+	return &Service{
+		pool: pool, newRepo: newRepo, audit: audit, linkingEnabled: linkingEnabled,
+		newPrincipalRepo: newPrincipalRepo,
+	}
 }
 
 // ---------------------------------------------------------------- accounts

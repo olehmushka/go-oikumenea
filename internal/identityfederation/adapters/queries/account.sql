@@ -64,3 +64,64 @@ FROM oikumenea.account_external_identities e
 JOIN oikumenea.account_accounts a ON a.id = e.account_id
 WHERE e.issuer = @issuer AND e.subject = @subject
   AND a.deleted_at IS NULL AND a.status = 'active';
+
+-- ---------------------------------------------------------------------------------------------------
+-- Service principals (M51 / D-ServiceIdentities): the (issuer, subject) -> MACHINE-subject registry.
+-- Same key shape as account_external_identities, resolved by the same middleware. A principal holds no
+-- role assignment and no unit reach; its authority is authz_principal_grants (authorization module).
+
+-- name: InsertPrincipal :one
+-- Register a machine subject. The active (issuer, subject) and code unique indexes backstop the
+-- conflict shapes; the symmetric collision trigger backstops "this pair is already a person identity".
+INSERT INTO oikumenea.account_service_principals (code, name, description, issuer, subject, client_id)
+VALUES (@code, @name, sqlc.narg('description'), @issuer, @subject, sqlc.narg('client_id'))
+RETURNING *;
+
+-- name: GetPrincipal :one
+SELECT * FROM oikumenea.account_service_principals
+WHERE id = @id AND deleted_at IS NULL;
+
+-- name: GetPrincipalByCode :one
+SELECT * FROM oikumenea.account_service_principals
+WHERE code = @code AND deleted_at IS NULL;
+
+-- name: UpdatePrincipal :one
+-- Mutable fields only. (issuer, subject) is the identity key the middleware resolves on and is
+-- immutable by design — re-pointing it would silently transfer a machine's authority to another IdP
+-- client, so the application rejects it rather than offering it here.
+UPDATE oikumenea.account_service_principals
+SET name = @name, description = sqlc.narg('description'), client_id = sqlc.narg('client_id')
+WHERE id = @id AND deleted_at IS NULL
+RETURNING *;
+
+-- name: SetPrincipalStatus :one
+-- Reversible kill switch: a disabled principal fails resolution, so its tokens stop working at once
+-- while the audit rows referencing it stay intact.
+UPDATE oikumenea.account_service_principals
+SET status = @status
+WHERE id = @id AND deleted_at IS NULL
+RETURNING *;
+
+-- name: ListPrincipals :many
+-- Keyset page over the registry (RID order), matching the repo-wide token-pagination convention.
+SELECT * FROM oikumenea.account_service_principals
+WHERE deleted_at IS NULL
+  AND (sqlc.arg('after')::text = '' OR id::text > sqlc.arg('after')::text)
+ORDER BY id
+LIMIT @row_limit;
+
+-- name: ResolvePrincipalBySubject :one
+-- The inbound machine-token lookup. Restricting to active, not-soft-deleted principals means a
+-- disabled or removed principal resolves to nothing -> the middleware rejects (uniform Unauthorized).
+SELECT id, code, client_id
+FROM oikumenea.account_service_principals
+WHERE issuer = @issuer AND subject = @subject
+  AND deleted_at IS NULL AND status = 'active';
+
+-- name: PrincipalIsActive :one
+-- Backs the authorization module's PrincipalDirectory port so a grant write validates its principal
+-- without reading this module's table directly (CLAUDE.md: cross-module queries are interface calls).
+SELECT EXISTS (
+  SELECT 1 FROM oikumenea.account_service_principals
+  WHERE id = @id AND deleted_at IS NULL AND status = 'active'
+);

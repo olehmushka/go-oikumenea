@@ -39,6 +39,28 @@ type OikumeneaAccountExternalIdentity struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type OikumeneaAccountServicePrincipal struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	Description pgtype.Text
+	// pii:none
+	Issuer string
+	// pii:none
+	Subject string
+	// pii:none
+	ClientID pgtype.Text
+	// pii:none
+	Status    string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
 type OikumeneaAuditLog struct {
 	// pii:none
 	ID string
@@ -66,6 +88,8 @@ type OikumeneaAuditLog struct {
 	After []byte
 	// pii:none
 	Outcome string
+	// pii:none
+	ActorPrincipalID pgtype.Text
 }
 
 type OikumeneaAuditLogDefault struct {
@@ -118,6 +142,23 @@ type OikumeneaAuthzInstanceAdmin struct {
 	RevokedBy pgtype.Text
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
+}
+
+type OikumeneaAuthzPrincipalGrant struct {
+	// pii:none
+	ID string
+	// pii:none
+	PrincipalID string
+	// pii:none
+	PermissionCode string
+	// pii:none
+	OrgID pgtype.Text
+	// pii:basic
+	GrantedBy pgtype.Text
+	GrantedAt pgtype.Timestamptz
+	RevokedAt pgtype.Timestamptz
+	// pii:basic
+	RevokedBy pgtype.Text
 }
 
 type OikumeneaAuthzRole struct {

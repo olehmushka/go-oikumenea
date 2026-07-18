@@ -45,6 +45,22 @@ type AuthorizationServiceClient interface {
 	GrantInstanceAdmin(ctx context.Context, authHeader bearertoken.Token, requestArg GrantInstanceAdminRequest) (InstanceAdmin, error)
 	// Revoke instance-admin (instance.admin.manage; reversible flip).
 	RevokeInstanceAdmin(ctx context.Context, authHeader bearertoken.Token, instanceAdminIdArg string) (InstanceAdmin, error)
+	/*
+	   Grant a permission code to a machine subject (M51 / D-ServiceIdentities), optionally confined
+	   to one organization. Instance-plane act gated on `service-principal.manage`.
+
+	   A principal never holds a ROLE: instance-scope codes such as `import.manage` are satisfiable
+	   only on the instance plane, so a role could not carry them (see the PDP). Audited.
+	*/
+	GrantPrincipalPermission(ctx context.Context, authHeader bearertoken.Token, requestArg GrantPrincipalPermissionRequest) (PrincipalGrant, error)
+	/*
+	   Revoke-flip a principal grant (the row survives; the history stays readable). Takes effect
+	   immediately — principal grants are read per request, not cached. Gates on
+	   `service-principal.manage`. Audited.
+	*/
+	RevokePrincipalPermission(ctx context.Context, authHeader bearertoken.Token, grantIdArg string) (PrincipalGrant, error)
+	// List a machine subject's active grants. Gates on `service-principal.read`.
+	ListPrincipalGrants(ctx context.Context, authHeader bearertoken.Token, principalIdArg string) (PrincipalGrantPage, error)
 }
 
 type authorizationServiceClient struct {
@@ -282,6 +298,61 @@ func (c *authorizationServiceClient) RevokeInstanceAdmin(ctx context.Context, au
 	return *returnVal, nil
 }
 
+func (c *authorizationServiceClient) GrantPrincipalPermission(ctx context.Context, authHeader bearertoken.Token, requestArg GrantPrincipalPermissionRequest) (PrincipalGrant, error) {
+	var returnVal *PrincipalGrant
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("GrantPrincipalPermission"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/authorization/v1/principal-grants"))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Post(ctx, requestParams...); err != nil {
+		return *new(PrincipalGrant), werror.WrapWithContextParams(ctx, err, "grantPrincipalPermission failed")
+	}
+	if returnVal == nil {
+		return *new(PrincipalGrant), werror.ErrorWithContextParams(ctx, "grantPrincipalPermission response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *authorizationServiceClient) RevokePrincipalPermission(ctx context.Context, authHeader bearertoken.Token, grantIdArg string) (PrincipalGrant, error) {
+	var returnVal *PrincipalGrant
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("RevokePrincipalPermission"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/authorization/v1/principal-grants/%s", url.PathEscape(fmt.Sprint(grantIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return *new(PrincipalGrant), werror.WrapWithContextParams(ctx, err, "revokePrincipalPermission failed")
+	}
+	if returnVal == nil {
+		return *new(PrincipalGrant), werror.ErrorWithContextParams(ctx, "revokePrincipalPermission response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *authorizationServiceClient) ListPrincipalGrants(ctx context.Context, authHeader bearertoken.Token, principalIdArg string) (PrincipalGrantPage, error) {
+	var returnVal *PrincipalGrantPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListPrincipalGrants"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/authorization/v1/principal-grants"))
+	queryParams := make(url.Values)
+	queryParams.Set("principalId", fmt.Sprint(principalIdArg))
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(PrincipalGrantPage), werror.WrapWithContextParams(ctx, err, "listPrincipalGrants failed")
+	}
+	if returnVal == nil {
+		return *new(PrincipalGrantPage), werror.ErrorWithContextParams(ctx, "listPrincipalGrants response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 /*
 The PDP + RBAC management. /authorize answers (person, action, unit) over the unit-graph
 closure; roles/assignments/instance-admins are policy-as-data. /authorize requires
@@ -314,6 +385,22 @@ type AuthorizationServiceClientWithAuth interface {
 	GrantInstanceAdmin(ctx context.Context, requestArg GrantInstanceAdminRequest) (InstanceAdmin, error)
 	// Revoke instance-admin (instance.admin.manage; reversible flip).
 	RevokeInstanceAdmin(ctx context.Context, instanceAdminIdArg string) (InstanceAdmin, error)
+	/*
+	   Grant a permission code to a machine subject (M51 / D-ServiceIdentities), optionally confined
+	   to one organization. Instance-plane act gated on `service-principal.manage`.
+
+	   A principal never holds a ROLE: instance-scope codes such as `import.manage` are satisfiable
+	   only on the instance plane, so a role could not carry them (see the PDP). Audited.
+	*/
+	GrantPrincipalPermission(ctx context.Context, requestArg GrantPrincipalPermissionRequest) (PrincipalGrant, error)
+	/*
+	   Revoke-flip a principal grant (the row survives; the history stays readable). Takes effect
+	   immediately — principal grants are read per request, not cached. Gates on
+	   `service-principal.manage`. Audited.
+	*/
+	RevokePrincipalPermission(ctx context.Context, grantIdArg string) (PrincipalGrant, error)
+	// List a machine subject's active grants. Gates on `service-principal.read`.
+	ListPrincipalGrants(ctx context.Context, principalIdArg string) (PrincipalGrantPage, error)
 }
 
 func NewAuthorizationServiceClientWithAuth(client AuthorizationServiceClient, authHeader bearertoken.Token) AuthorizationServiceClientWithAuth {
@@ -371,6 +458,18 @@ func (c *authorizationServiceClientWithAuth) GrantInstanceAdmin(ctx context.Cont
 
 func (c *authorizationServiceClientWithAuth) RevokeInstanceAdmin(ctx context.Context, instanceAdminIdArg string) (InstanceAdmin, error) {
 	return c.client.RevokeInstanceAdmin(ctx, c.authHeader, instanceAdminIdArg)
+}
+
+func (c *authorizationServiceClientWithAuth) GrantPrincipalPermission(ctx context.Context, requestArg GrantPrincipalPermissionRequest) (PrincipalGrant, error) {
+	return c.client.GrantPrincipalPermission(ctx, c.authHeader, requestArg)
+}
+
+func (c *authorizationServiceClientWithAuth) RevokePrincipalPermission(ctx context.Context, grantIdArg string) (PrincipalGrant, error) {
+	return c.client.RevokePrincipalPermission(ctx, c.authHeader, grantIdArg)
+}
+
+func (c *authorizationServiceClientWithAuth) ListPrincipalGrants(ctx context.Context, principalIdArg string) (PrincipalGrantPage, error) {
+	return c.client.ListPrincipalGrants(ctx, c.authHeader, principalIdArg)
 }
 
 func NewAuthorizationServiceClientWithTokenProvider(client AuthorizationServiceClient, tokenProvider httpclient.TokenProvider) AuthorizationServiceClientWithAuth {
@@ -476,4 +575,28 @@ func (c *authorizationServiceClientWithTokenProvider) RevokeInstanceAdmin(ctx co
 		return *new(InstanceAdmin), err
 	}
 	return c.client.RevokeInstanceAdmin(ctx, bearertoken.Token(token), instanceAdminIdArg)
+}
+
+func (c *authorizationServiceClientWithTokenProvider) GrantPrincipalPermission(ctx context.Context, requestArg GrantPrincipalPermissionRequest) (PrincipalGrant, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(PrincipalGrant), err
+	}
+	return c.client.GrantPrincipalPermission(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *authorizationServiceClientWithTokenProvider) RevokePrincipalPermission(ctx context.Context, grantIdArg string) (PrincipalGrant, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(PrincipalGrant), err
+	}
+	return c.client.RevokePrincipalPermission(ctx, bearertoken.Token(token), grantIdArg)
+}
+
+func (c *authorizationServiceClientWithTokenProvider) ListPrincipalGrants(ctx context.Context, principalIdArg string) (PrincipalGrantPage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(PrincipalGrantPage), err
+	}
+	return c.client.ListPrincipalGrants(ctx, bearertoken.Token(token), principalIdArg)
 }

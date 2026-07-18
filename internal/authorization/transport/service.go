@@ -386,6 +386,16 @@ func (s Service) mapError(ctx context.Context, err error) error {
 		return authzapi.NewInstanceAdminNotFound("")
 	case errors.Is(err, domain.ErrInstanceAdminConflict):
 		return authzapi.NewInstanceAdminConflict("the person is already an active instance admin")
+	case errors.Is(err, domain.ErrPrincipalGrantNotFound):
+		return authzapi.NewPrincipalGrantNotFound("")
+	case errors.Is(err, domain.ErrPrincipalGrantConflict):
+		return authzapi.NewPrincipalGrantConflict("an identical active grant already exists for this principal")
+	case errors.Is(err, domain.ErrUnknownPrincipal):
+		return authzapi.NewPrincipalGrantInvalid("service principal does not exist or is not active")
+	case errors.Is(err, domain.ErrUnknownOrganization):
+		return authzapi.NewPrincipalGrantInvalid("organization does not exist")
+	case errors.Is(err, domain.ErrPrincipalGrantInvalid):
+		return authzapi.NewPrincipalGrantInvalid(err.Error())
 	case errors.Is(err, domain.ErrPermissionDenied):
 		return authzapi.NewPermissionDenied("")
 	default:

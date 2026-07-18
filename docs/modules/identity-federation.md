@@ -166,6 +166,62 @@ check.
   **link-on-match only** via a configurable claim→person-key mapping — it never auto-creates a
   person. Full auto-enrolment remains out of scope.
 
+## Service principals (M51)
+
+> **Binding via [D-ServiceIdentities](../architecture/roadmap-decisions.md)** (M51). This module owns
+> the **registry**; [authorization](authorization.md) owns the **grants**.
+
+A **service principal** is a machine subject — a facade with standing of its own, or a connector.
+It authenticates through the **same external IdP and the same middleware** as a human, using the
+OAuth2 **client-credentials** grant, and resolves to a principal instead of a person. oikumenea
+still stores no credentials and issues no tokens (L-AuthzOnly): the IdP owns the client secret, and
+this service only verifies signatures. This generalizes the M16 `hermenea-importer` from a
+token-mapped singleton (D-Hermenea) into a registry.
+
+**`account_service_principals`** (Object, RID `9,1,3`)
+- `id` PK, `code` (stable, locale-agnostic — D-Code), `name`, `description`
+- `issuer` / `subject` — the IdP `iss`/`sub`; `UNIQUE (issuer, subject) WHERE deleted_at IS NULL`,
+  the **same key shape** as `account_external_identities` — `pii:none` (it names a machine)
+- `client_id` — optional display label projected from the token's `azp` / `client_id` claim.
+  **Never an authorization input**; the identity key is `(issuer, subject)` only.
+- `status ∈ active|disabled`, `created_at`/`updated_at`/`deleted_at`
+- `UNIQUE (code) WHERE deleted_at IS NULL`
+
+Unlike `account_external_identities` this table is **not** append-only (`name`/`description`/
+`client_id`/`status` are editable), so it carries no `reject_mutation()` guard; `(issuer, subject)`
+immutability is enforced in the application service.
+
+**An `(issuer, subject)` is a person identity XOR a principal.** Two UNIQUE indexes on two tables
+cannot express that, so symmetric `BEFORE INSERT/UPDATE` triggers on both tables reject a collision,
+with an application pre-check returning a typed 409 rather than a raw constraint error. The triggers
+are not race-free at `READ COMMITTED` — acceptable at admin-mutation rate, and noted in the migration.
+
+**Resolution order** in the middleware: person `Resolve` first; on `ErrIdentityNotFound`, try
+`ResolvePrincipal`; on a miss, the existing JIT path, then reject. The human path is unchanged, so a
+registered person still costs no extra query. A rejected unknown token logs its `issuer`/`azp`
+(safe) + `subject` (unsafe) so an operator can copy the pair straight into the registration call.
+
+**A principal gets no reach.** The service arm attaches the principal subject but deliberately
+**skips the authority snapshot and the RLS connection pinning** — RLS policies key on `app.person_id`
+and D-RLSLiveReach has no principal arm. Every person-shaped PEP path therefore denies a principal at
+its existing empty-subject guard. Machine access to RLS-protected, organization-owned data is
+**M53 / D-ConnectorPlane**.
+
+**Authority** is `authz_principal_grants` — see [authorization](authorization.md). A grant is
+`(principal, permission_code, org_id)`, where `org_id` NULL means instance-wide and a named
+organization confines a connector to that org's data. A principal never holds a role assignment
+(`authz_role_assignments.subject_person_id` is a person FK) and instance-scope codes such as
+`import.manage` are admin-only through the PDP — which is why grants are flat rather than roles.
+
+**Shared-secret fallback.** `HERMENEA_OIKUMENEA_TOKEN` (D-Hermenea) remains supported for minimal
+installs. It is boot-seeded as a real principal on the reserved issuer `urn:oikumenea:local` with an
+instance-wide `import.manage` grant, so a shared-secret caller produces the **same subject shape** as
+a client-credentials one — same grants, same audit attribution, one downstream path. A boot guard
+refuses startup if an operator configures the reserved issuer.
+
+**Audit.** A principal is a `system` actor that names itself: `audit_log.actor_principal_id`. No
+third `actor_type` — D-Audit's two-kind CHECK holds.
+
 ## Planned: login security log (M37 / D-LoginSecurityLog)
 
 > **Status: planned (designed).** Binding via **D-LoginSecurityLog** in

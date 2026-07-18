@@ -10,6 +10,14 @@
 // absent subject is denied (read is an explicit grant; D-BaseRoles). The `token` parameter is retained
 // on the Require* methods purely for call-site stability (the M7 transports already thread it
 // through); the subject now comes from the context, so the parameter is unused.
+//
+// MACHINE SUBJECTS (M51 / D-ServiceIdentities): a request may instead act as a SERVICE PRINCIPAL — a
+// facade with standing of its own, or a connector. A principal sets no PersonID, so every
+// person-shaped method here (Require, RequireAny, RequireAnywhere, AllowedAnywhere, SubjectAuthority,
+// FilterVisibleUnits) denies it structurally, and it pins no RLS connection. Machine access goes
+// exclusively through RequireService / RequireServiceOrPerson, which consult the principal's flat
+// grant set. Until the RLS service arm lands (M53) that is the whole story: a principal can reach the
+// import endpoint and nothing that is unit-scoped or RLS-guarded.
 package pep
 
 import (
@@ -108,6 +116,12 @@ func firstOr(actions []string) string {
 // An absent subject yields ("", false), never an error — the permission precondition is enforced
 // separately by RequireAnywhere.
 func (e *Enforcer) SubjectAuthority(ctx context.Context) (string, bool, error) {
+	// A machine subject has no person identity and no reach (M51 / D-ServiceIdentities), so it can
+	// never be instance admin. Stated explicitly rather than relying on PersonID happening to be
+	// empty, so a future change to Subject cannot silently promote a principal.
+	if authn.IsService(ctx) {
+		return "", false, nil
+	}
 	subject := Subject(ctx)
 	if subject == "" {
 		return "", false, nil
@@ -123,18 +137,61 @@ func (e *Enforcer) SubjectAuthority(ctx context.Context) (string, bool, error) {
 // permission decision (the tenant_units public-read RLS policy is its DB-level mirror). Call sites
 // gate on RequireAnywhere/Require first, so the subject is non-empty here.
 func (e *Enforcer) FilterVisibleUnits(ctx context.Context, candidates []string, shadow map[string]bool) ([]string, error) {
+	// Unlike the Require* methods this has no empty-subject guard of its own (call sites gate first),
+	// so deny a machine subject explicitly: a principal has no reach, and passing its empty person id
+	// through would ask the shadow gate a question about "the person with no RID" (M51).
+	if authn.IsService(ctx) {
+		return nil, nil
+	}
 	return e.svc.FilterVisibleUnits(ctx, Subject(ctx), candidates, shadow)
 }
 
-// RequireImport gates the generic data-import endpoint (M16 / D-Hermenea). The `hermenea-importer`
-// service principal (authenticated by the shared-secret middleware path) holds exactly `import.manage`
-// and is allowed directly; otherwise a human instance admin holding `import.manage` may also call it
-// (RequireAnywhere over the PDP). An absent/other subject is denied.
-func (e *Enforcer) RequireImport(ctx context.Context, token bearertoken.Token) error {
-	if authn.ServiceID(ctx) == authn.ServiceHermeneaImporter {
-		return nil
+// ============================ machine subjects (M51 / D-ServiceIdentities) ============================
+
+// RequireService enforces `action` for a MACHINE subject (a facade with standing of its own, or a
+// connector). A principal's authority is a flat per-principal grant set — no roles, no unit reach —
+// so this consults the grants directly and never the PDP (a principal decision is a grant match, not
+// a DAG traversal).
+//
+// orgID "" means the request is NOT organization-qualified and only an INSTANCE-WIDE grant satisfies
+// it; an org-confined connector is denied there, because such an endpoint could otherwise reach data
+// outside its organization. A non-empty orgID is satisfied by an instance-wide grant OR one naming
+// that organization. A non-machine (or absent) subject is denied.
+func (e *Enforcer) RequireService(ctx context.Context, token bearertoken.Token, action, orgID string) error {
+	principalID := authn.PrincipalID(ctx)
+	if principalID == "" {
+		return authzapi.NewPermissionDenied(action)
 	}
-	return e.RequireAnywhere(ctx, token, string(domain.PermImportManage))
+	ok, err := e.svc.HoldsPrincipalPermission(ctx, principalID, action, orgID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return authzapi.NewPermissionDenied(action)
+	}
+	return nil
+}
+
+// RequireServiceOrPerson gates a surface reachable by BOTH a machine and a human instance admin,
+// dispatching on the actor kind: a principal is checked against its grants, a person against the PDP
+// on the instance plane.
+func (e *Enforcer) RequireServiceOrPerson(ctx context.Context, token bearertoken.Token, action, orgID string) error {
+	if authn.IsService(ctx) {
+		return e.RequireService(ctx, token, action, orgID)
+	}
+	return e.RequireAnywhere(ctx, token, action)
+}
+
+// RequireImport gates the generic data-import endpoint (M16 / D-Hermenea). Since M51 the importer is
+// a REGISTERED service principal holding an instance-wide `import.manage` grant like any other — the
+// hard-coded `hermenea-importer` exemption is gone, so a machine's import rights are grantable and
+// revocable. A human instance admin holding `import.manage` may still call it.
+//
+// The empty orgID demands an instance-wide grant: every object type this endpoint accepts today is an
+// instance-wide reference catalog, so an org-confined connector must not pass here. Org-owned import
+// targets arrive with the M53 wiring API, which will pass a real orgID.
+func (e *Enforcer) RequireImport(ctx context.Context, token bearertoken.Token) error {
+	return e.RequireServiceOrPerson(ctx, token, string(domain.PermImportManage), "")
 }
 
 // AllowedAnywhere is the non-erroring probe form of RequireAnywhere: whether the request subject

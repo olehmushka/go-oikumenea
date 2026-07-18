@@ -45,7 +45,7 @@ func (fakeClosure) DescendantUnitIDs(ctx context.Context, graphID, unitID string
 
 func newAuthorityTestService(fetches *int, grants []domain.ActiveGrant) *Service {
 	repo := fakeRepo{fetches: fetches, grants: grants}
-	return NewService(nil, func(conn db.DBTX) domain.Repository { return repo }, nil, domain.NewPDP(fakeClosure{}), nil)
+	return NewService(nil, func(conn db.DBTX) domain.Repository { return repo }, nil, domain.NewPDP(fakeClosure{}), nil, nil)
 }
 
 func grantOn(unit string, perms ...domain.Permission) domain.ActiveGrant {

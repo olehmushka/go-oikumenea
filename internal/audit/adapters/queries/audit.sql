@@ -5,11 +5,11 @@
 -- Records one Action in the same transaction as the write it describes (D-Audit). The id is the
 -- supplied Action RID (action__<type>); the row commits iff the caller's transaction commits.
 INSERT INTO oikumenea.audit_log (
-  id, actor_type, actor_person_id, subsystem,
+  id, actor_type, actor_person_id, subsystem, actor_principal_id,
   action, target_type, target_id, unit_id,
   request_id, before, after, outcome
 ) VALUES (
-  @id, @actor_type, @actor_person_id, @subsystem,
+  @id, @actor_type, @actor_person_id, @subsystem, sqlc.narg('actor_principal_id'),
   @action, @target_type, @target_id, @unit_id,
   @request_id, @before, @after, @outcome
 );

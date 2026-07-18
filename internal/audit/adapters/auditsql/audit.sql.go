@@ -25,7 +25,7 @@ func (q *Queries) EnsureAuditPartitions(ctx context.Context) error {
 }
 
 const getAuditEntry = `-- name: GetAuditEntry :one
-SELECT id, created_at, actor_type, actor_person_id, subsystem, action, target_type, target_id, unit_id, request_id, before, after, outcome FROM oikumenea.audit_log WHERE id = $1
+SELECT id, created_at, actor_type, actor_person_id, subsystem, action, target_type, target_id, unit_id, request_id, before, after, outcome, actor_principal_id FROM oikumenea.audit_log WHERE id = $1
 `
 
 // Reads one entry by its Action RID.
@@ -46,6 +46,7 @@ func (q *Queries) GetAuditEntry(ctx context.Context, id string) (OikumeneaAuditL
 		&i.Before,
 		&i.After,
 		&i.Outcome,
+		&i.ActorPrincipalID,
 	)
 	return i, err
 }
@@ -53,29 +54,30 @@ func (q *Queries) GetAuditEntry(ctx context.Context, id string) (OikumeneaAuditL
 const insertAuditEntry = `-- name: InsertAuditEntry :exec
 
 INSERT INTO oikumenea.audit_log (
-  id, actor_type, actor_person_id, subsystem,
+  id, actor_type, actor_person_id, subsystem, actor_principal_id,
   action, target_type, target_id, unit_id,
   request_id, before, after, outcome
 ) VALUES (
-  $1, $2, $3, $4,
-  $5, $6, $7, $8,
-  $9, $10, $11, $12
+  $1, $2, $3, $4, $5,
+  $6, $7, $8, $9,
+  $10, $11, $12, $13
 )
 `
 
 type InsertAuditEntryParams struct {
-	ID            string
-	ActorType     string
-	ActorPersonID pgtype.Text
-	Subsystem     pgtype.Text
-	Action        string
-	TargetType    string
-	TargetID      pgtype.Text
-	UnitID        pgtype.Text
-	RequestID     string
-	Before        []byte
-	After         []byte
-	Outcome       string
+	ID               string
+	ActorType        string
+	ActorPersonID    pgtype.Text
+	Subsystem        pgtype.Text
+	ActorPrincipalID pgtype.Text
+	Action           string
+	TargetType       string
+	TargetID         pgtype.Text
+	UnitID           pgtype.Text
+	RequestID        string
+	Before           []byte
+	After            []byte
+	Outcome          string
 }
 
 // Audit module queries (docs/modules/audit.md). The audit log is append-only: insert + read only,
@@ -88,6 +90,7 @@ func (q *Queries) InsertAuditEntry(ctx context.Context, arg InsertAuditEntryPara
 		arg.ActorType,
 		arg.ActorPersonID,
 		arg.Subsystem,
+		arg.ActorPrincipalID,
 		arg.Action,
 		arg.TargetType,
 		arg.TargetID,
@@ -101,7 +104,7 @@ func (q *Queries) InsertAuditEntry(ctx context.Context, arg InsertAuditEntryPara
 }
 
 const queryAuditLog = `-- name: QueryAuditLog :many
-SELECT id, created_at, actor_type, actor_person_id, subsystem, action, target_type, target_id, unit_id, request_id, before, after, outcome FROM oikumenea.audit_log
+SELECT id, created_at, actor_type, actor_person_id, subsystem, action, target_type, target_id, unit_id, request_id, before, after, outcome, actor_principal_id FROM oikumenea.audit_log
 WHERE ($1::uuid IS NULL OR actor_person_id = $1::uuid)
   AND ($2::text     IS NULL OR actor_type      = $2)
   AND ($3::text    IS NULL OR target_type     = $3)
@@ -173,6 +176,7 @@ func (q *Queries) QueryAuditLog(ctx context.Context, arg QueryAuditLogParams) ([
 			&i.Before,
 			&i.After,
 			&i.Outcome,
+			&i.ActorPrincipalID,
 		); err != nil {
 			return nil, err
 		}

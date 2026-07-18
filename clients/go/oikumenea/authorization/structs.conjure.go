@@ -413,6 +413,29 @@ func (o *GrantInstanceAdminRequest) UnmarshalYAML(unmarshal func(interface{}) er
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+type GrantPrincipalPermissionRequest struct {
+	PrincipalId string `json:"principalId"`
+	Permission  string `json:"permission"`
+	// Omit for an instance-wide grant; set to confine the machine to one organization.
+	OrgId *string `json:"orgId,omitempty"`
+}
+
+func (o GrantPrincipalPermissionRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *GrantPrincipalPermissionRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // A person on the instance-wide authority plane (the reified link__instance_admin).
 type InstanceAdmin struct {
 	// The grant's URN RID (carried as a plain string).
@@ -434,6 +457,85 @@ func (o InstanceAdmin) MarshalYAML() (interface{}, error) {
 }
 
 func (o *InstanceAdmin) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+One permission code held by a MACHINE subject (M51 / D-ServiceIdentities) — the reified
+PRINCIPAL_GRANT link. FLAT by construction: no target unit, no scope, no graph, because a
+service principal has no unit reach.
+
+`orgId` absent means INSTANCE-WIDE (reference-catalog imports, the M53 wiring codes); a named
+organization confines the principal to that organization's data — the blast-radius boundary
+for a connector is the organization, not the unit.
+*/
+type PrincipalGrant struct {
+	Id string `json:"id"`
+	// The service principal's URN RID (registered on IdentityFederationService).
+	PrincipalId string `json:"principalId"`
+	// A code from the closed permission catalog.
+	Permission string `json:"permission"`
+	// Absent = instance-wide; present = confined to that organization.
+	OrgId     *string            `json:"orgId,omitempty"`
+	GrantedBy *string            `json:"grantedBy,omitempty"`
+	GrantedAt datetime.DateTime  `json:"grantedAt"`
+	RevokedAt *datetime.DateTime `json:"revokedAt,omitempty"`
+}
+
+func (o PrincipalGrant) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *PrincipalGrant) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type PrincipalGrantPage struct {
+	Grants []PrincipalGrant `json:"grants"`
+}
+
+func (o PrincipalGrantPage) MarshalJSON() ([]byte, error) {
+	if o.Grants == nil {
+		o.Grants = make([]PrincipalGrant, 0)
+	}
+	type _tmpPrincipalGrantPage PrincipalGrantPage
+	return safejson.Marshal(_tmpPrincipalGrantPage(o))
+}
+
+func (o *PrincipalGrantPage) UnmarshalJSON(data []byte) error {
+	type _tmpPrincipalGrantPage PrincipalGrantPage
+	var rawPrincipalGrantPage _tmpPrincipalGrantPage
+	if err := safejson.Unmarshal(data, &rawPrincipalGrantPage); err != nil {
+		return err
+	}
+	if rawPrincipalGrantPage.Grants == nil {
+		rawPrincipalGrantPage.Grants = make([]PrincipalGrant, 0)
+	}
+	*o = PrincipalGrantPage(rawPrincipalGrantPage)
+	return nil
+}
+
+func (o PrincipalGrantPage) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *PrincipalGrantPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

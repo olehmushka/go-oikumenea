@@ -916,6 +916,458 @@ func (e *IdentityNotFound) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type servicePrincipalConflict struct {
+	Reason string `json:"reason"`
+}
+
+func (o servicePrincipalConflict) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *servicePrincipalConflict) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewServicePrincipalConflict returns new instance of ServicePrincipalConflict error.
+func NewServicePrincipalConflict(reasonArg string) *ServicePrincipalConflict {
+	return &ServicePrincipalConflict{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), servicePrincipalConflict: servicePrincipalConflict{Reason: reasonArg}}
+}
+
+// WrapWithServicePrincipalConflict returns new instance of ServicePrincipalConflict error wrapping an existing error.
+func WrapWithServicePrincipalConflict(err error, reasonArg string) *ServicePrincipalConflict {
+	return &ServicePrincipalConflict{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, servicePrincipalConflict: servicePrincipalConflict{Reason: reasonArg}}
+}
+
+// ServicePrincipalConflict is an error type.
+/*
+The code is taken, or the (issuer, subject) already names a principal OR a person external
+identity — an inbound token must resolve to exactly one subject.
+*/
+type ServicePrincipalConflict struct {
+	errorInstanceID uuid.UUID
+	servicePrincipalConflict
+	cause error
+	stack werror.StackTrace
+}
+
+// IsServicePrincipalConflict returns true if err is an instance of ServicePrincipalConflict.
+func IsServicePrincipalConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*ServicePrincipalConflict)
+	return ok
+}
+
+func (e *ServicePrincipalConflict) Error() string {
+	return fmt.Sprintf("CONFLICT ServicePrincipal:ServicePrincipalConflict (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *ServicePrincipalConflict) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *ServicePrincipalConflict) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *ServicePrincipalConflict) Message() string {
+	return "CONFLICT ServicePrincipal:ServicePrincipalConflict"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *ServicePrincipalConflict) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *ServicePrincipalConflict) Code() errors.ErrorCode {
+	return errors.Conflict
+}
+
+// Name returns an error name identifying error type.
+func (e *ServicePrincipalConflict) Name() string {
+	return "ServicePrincipal:ServicePrincipalConflict"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *ServicePrincipalConflict) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *ServicePrincipalConflict) Parameters() map[string]interface{} {
+	return map[string]interface{}{"reason": e.Reason}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *ServicePrincipalConflict) safeParams() map[string]interface{} {
+	return map[string]interface{}{"reason": e.Reason, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *ServicePrincipalConflict) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *ServicePrincipalConflict) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *ServicePrincipalConflict) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e ServicePrincipalConflict) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.servicePrincipalConflict)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.Conflict, ErrorName: "ServicePrincipal:ServicePrincipalConflict", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *ServicePrincipalConflict) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters servicePrincipalConflict
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.servicePrincipalConflict = parameters
+	return nil
+}
+
+type servicePrincipalInvalid struct {
+	Reason string `json:"reason"`
+}
+
+func (o servicePrincipalInvalid) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *servicePrincipalInvalid) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewServicePrincipalInvalid returns new instance of ServicePrincipalInvalid error.
+func NewServicePrincipalInvalid(reasonArg string) *ServicePrincipalInvalid {
+	return &ServicePrincipalInvalid{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), servicePrincipalInvalid: servicePrincipalInvalid{Reason: reasonArg}}
+}
+
+// WrapWithServicePrincipalInvalid returns new instance of ServicePrincipalInvalid error wrapping an existing error.
+func WrapWithServicePrincipalInvalid(err error, reasonArg string) *ServicePrincipalInvalid {
+	return &ServicePrincipalInvalid{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, servicePrincipalInvalid: servicePrincipalInvalid{Reason: reasonArg}}
+}
+
+// ServicePrincipalInvalid is an error type.
+// The request is malformed, or attempts to change the immutable (issuer, subject) key.
+type ServicePrincipalInvalid struct {
+	errorInstanceID uuid.UUID
+	servicePrincipalInvalid
+	cause error
+	stack werror.StackTrace
+}
+
+// IsServicePrincipalInvalid returns true if err is an instance of ServicePrincipalInvalid.
+func IsServicePrincipalInvalid(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*ServicePrincipalInvalid)
+	return ok
+}
+
+func (e *ServicePrincipalInvalid) Error() string {
+	return fmt.Sprintf("INVALID_ARGUMENT ServicePrincipal:ServicePrincipalInvalid (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *ServicePrincipalInvalid) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *ServicePrincipalInvalid) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *ServicePrincipalInvalid) Message() string {
+	return "INVALID_ARGUMENT ServicePrincipal:ServicePrincipalInvalid"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *ServicePrincipalInvalid) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *ServicePrincipalInvalid) Code() errors.ErrorCode {
+	return errors.InvalidArgument
+}
+
+// Name returns an error name identifying error type.
+func (e *ServicePrincipalInvalid) Name() string {
+	return "ServicePrincipal:ServicePrincipalInvalid"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *ServicePrincipalInvalid) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *ServicePrincipalInvalid) Parameters() map[string]interface{} {
+	return map[string]interface{}{"reason": e.Reason}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *ServicePrincipalInvalid) safeParams() map[string]interface{} {
+	return map[string]interface{}{"reason": e.Reason, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *ServicePrincipalInvalid) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *ServicePrincipalInvalid) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *ServicePrincipalInvalid) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e ServicePrincipalInvalid) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.servicePrincipalInvalid)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.InvalidArgument, ErrorName: "ServicePrincipal:ServicePrincipalInvalid", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *ServicePrincipalInvalid) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters servicePrincipalInvalid
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.servicePrincipalInvalid = parameters
+	return nil
+}
+
+type servicePrincipalNotFound struct {
+	PrincipalId string `json:"principalId"`
+}
+
+func (o servicePrincipalNotFound) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *servicePrincipalNotFound) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewServicePrincipalNotFound returns new instance of ServicePrincipalNotFound error.
+func NewServicePrincipalNotFound(principalIdArg string) *ServicePrincipalNotFound {
+	return &ServicePrincipalNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), servicePrincipalNotFound: servicePrincipalNotFound{PrincipalId: principalIdArg}}
+}
+
+// WrapWithServicePrincipalNotFound returns new instance of ServicePrincipalNotFound error wrapping an existing error.
+func WrapWithServicePrincipalNotFound(err error, principalIdArg string) *ServicePrincipalNotFound {
+	return &ServicePrincipalNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, servicePrincipalNotFound: servicePrincipalNotFound{PrincipalId: principalIdArg}}
+}
+
+// ServicePrincipalNotFound is an error type.
+type ServicePrincipalNotFound struct {
+	errorInstanceID uuid.UUID
+	servicePrincipalNotFound
+	cause error
+	stack werror.StackTrace
+}
+
+// IsServicePrincipalNotFound returns true if err is an instance of ServicePrincipalNotFound.
+func IsServicePrincipalNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*ServicePrincipalNotFound)
+	return ok
+}
+
+func (e *ServicePrincipalNotFound) Error() string {
+	return fmt.Sprintf("NOT_FOUND ServicePrincipal:ServicePrincipalNotFound (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *ServicePrincipalNotFound) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *ServicePrincipalNotFound) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *ServicePrincipalNotFound) Message() string {
+	return "NOT_FOUND ServicePrincipal:ServicePrincipalNotFound"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *ServicePrincipalNotFound) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *ServicePrincipalNotFound) Code() errors.ErrorCode {
+	return errors.NotFound
+}
+
+// Name returns an error name identifying error type.
+func (e *ServicePrincipalNotFound) Name() string {
+	return "ServicePrincipal:ServicePrincipalNotFound"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *ServicePrincipalNotFound) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *ServicePrincipalNotFound) Parameters() map[string]interface{} {
+	return map[string]interface{}{"principalId": e.PrincipalId}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *ServicePrincipalNotFound) safeParams() map[string]interface{} {
+	return map[string]interface{}{"principalId": e.PrincipalId, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *ServicePrincipalNotFound) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *ServicePrincipalNotFound) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *ServicePrincipalNotFound) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e ServicePrincipalNotFound) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.servicePrincipalNotFound)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.NotFound, ErrorName: "ServicePrincipal:ServicePrincipalNotFound", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *ServicePrincipalNotFound) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters servicePrincipalNotFound
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.servicePrincipalNotFound = parameters
+	return nil
+}
+
 func init() {
 	conjureerrors.RegisterErrorType("Account:AccountConflict", reflect.TypeOf(AccountConflict{}))
 	conjureerrors.RegisterErrorType("Account:AccountInvalid", reflect.TypeOf(AccountInvalid{}))
@@ -923,4 +1375,7 @@ func init() {
 	conjureerrors.RegisterErrorType("Identity:IdentityConflict", reflect.TypeOf(IdentityConflict{}))
 	conjureerrors.RegisterErrorType("Identity:IdentityInvalid", reflect.TypeOf(IdentityInvalid{}))
 	conjureerrors.RegisterErrorType("Identity:IdentityNotFound", reflect.TypeOf(IdentityNotFound{}))
+	conjureerrors.RegisterErrorType("ServicePrincipal:ServicePrincipalConflict", reflect.TypeOf(ServicePrincipalConflict{}))
+	conjureerrors.RegisterErrorType("ServicePrincipal:ServicePrincipalInvalid", reflect.TypeOf(ServicePrincipalInvalid{}))
+	conjureerrors.RegisterErrorType("ServicePrincipal:ServicePrincipalNotFound", reflect.TypeOf(ServicePrincipalNotFound{}))
 }

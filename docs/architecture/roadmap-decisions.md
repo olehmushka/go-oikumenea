@@ -1836,10 +1836,21 @@ core — authenticate through the **same external IdP** that authenticates human
 **client-credentials** grant. The existing OIDC/JWKS validation middleware
 ([identity-federation](../modules/identity-federation.md)) accepts these tokens on the same path and
 resolves them not to a person but to a **service principal**: a registered machine subject holding
-its own role assignments in the standard PDP model (instance-scoped codes such as `import.manage`,
-or the D-ConnectorPlane wiring codes). Service principals are first-class, auditable subjects
+**per-principal grants** `(principal, permission_code, org_id)` — `org_id` **NULL = instance-wide**
+(reference-catalog imports, the D-ConnectorPlane wiring codes), a **named organization** confining a
+connector to that organization's data. Service principals are first-class, auditable subjects
 (actor shape `system`, D-Audit) registered in oikumenea by an instance admin: `(issuer, subject) →
-service principal`, mirroring the person-side external-identity mapping. This **generalizes the M16
+service principal`, mirroring the person-side external-identity mapping.
+
+A principal **never** holds a role assignment and **never** has unit reach. Two properties of the
+built system forbid the "give the machine a role" reading: `authz_role_assignments.subject_person_id`
+is a hard `person_persons` FK, and the PDP satisfies **instance-scope** permissions — which
+`import.manage` and every wiring code are — **only** for instance admins, never through a role
+(`internal/authorization/domain/pdp.go`, D-InstanceAdmin). A principal granted a role could therefore
+not import at all. Flat per-principal grants also keep machines out of the unit DAG, so the
+D-RLSLiveReach / D-AuthzGrantCache hot path built by M47 is untouched; the **organization** (not the
+unit) is the right blast-radius boundary for a connector, since a scraper feeds one organization
+(D-TenantOrganizations). This **generalizes the M16
 `hermenea-importer`** from a token-mapped singleton into a registry, and **amends D-Hermenea's
 "Why not (e)"**: the shared runtime env-secret (`HERMENEA_OIKUMENEA_TOKEN`) was the right call for
 *one* companion, but a fleet of facades + connectors makes per-pair shared secrets an unmanageable
@@ -1859,11 +1870,22 @@ infrastructure-layer control; it does not name a PDP subject, and most target de
 (docker-compose, single host) have no mesh. (c) *Per-pair shared secrets at fleet scale*: n×m
 secret sprawl with no central revocation; kept only as the minimal-install fallback.
 
-**Consequence.** identity-federation gains a service-principal registry (admin-managed
-`(issuer, subject)` mappings + role assignments on the machine subject) and the middleware gains
-the resolve-to-service-principal arm; the PDP context carries a subject kind (person | service).
-The audit `system` actor becomes attributable to a specific principal. Prerequisite for M52/M53.
-Lands as **M51** ([milestones](../milestones.md)). Additive.
+**Consequence.** identity-federation gains the **service-principal registry**
+(`account_service_principals`, admin-managed `(issuer, subject)` mappings) and the middleware gains
+the resolve-to-service-principal arm; authorization gains **`authz_principal_grants`**
+`(principal, permission_code, org_id NULL)` and the PEP a service branch (`RequireService` /
+`RequireServiceOrPerson`), while the PDP itself is untouched — a principal decision is a flat grant
+match, not a DAG traversal. The request context carries a subject kind (person | service), on its own
+snapshot/cache keyspace so a principal can never alias a person. The audit `system` actor becomes
+attributable to a specific principal (`audit_log.actor_principal_id`; no third `actor_type` — D-Audit
+holds). `RequireImport`'s hard-coded `hermenea-importer` branch is deleted in favor of a real grant.
+
+**Boundary.** A service principal gets **no RLS reach**: the request sets no `app.person_id` GUC, so
+every person-shaped PEP path denies it by construction. Machine access to RLS-protected,
+organization-owned data (scraped units, memberships, clergy, university staff) requires an RLS
+service arm and lands with **D-ConnectorPlane / M53**; M51 ships the mechanism plus the instance-wide
+capability that exists today. The `org_id` column and its enforcement ship in M51 so M53 retrofits
+nothing. Prerequisite for M52/M53. Lands as **M51** ([milestones](../milestones.md)). Additive.
 
 ### D-HeadlessTopology — oikumenea is internal-only behind unprivileged user-token-passthrough facades (extends L-AuthzOnly, amends D-WebUI)
 

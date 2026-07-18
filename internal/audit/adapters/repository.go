@@ -35,18 +35,19 @@ var _ domain.Repository = (*Repository)(nil)
 // at the database.
 func (r *Repository) Insert(ctx context.Context, e domain.Entry) error {
 	return r.q.InsertAuditEntry(ctx, auditsql.InsertAuditEntryParams{
-		ID:            e.ID,
-		ActorType:     string(e.ActorType),
-		ActorPersonID: text(e.ActorPersonID),
-		Subsystem:     text(e.Subsystem),
-		Action:        e.Action,
-		TargetType:    e.TargetType,
-		TargetID:      text(e.TargetID),
-		UnitID:        text(e.UnitID),
-		RequestID:     e.RequestID,
-		Before:        e.Before,
-		After:         e.After,
-		Outcome:       string(e.Outcome),
+		ID:               e.ID,
+		ActorType:        string(e.ActorType),
+		ActorPersonID:    text(e.ActorPersonID),
+		Subsystem:        text(e.Subsystem),
+		ActorPrincipalID: text(e.ActorPrincipalID),
+		Action:           e.Action,
+		TargetType:       e.TargetType,
+		TargetID:         text(e.TargetID),
+		UnitID:           text(e.UnitID),
+		RequestID:        e.RequestID,
+		Before:           e.Before,
+		After:            e.After,
+		Outcome:          string(e.Outcome),
 	})
 }
 
@@ -101,19 +102,20 @@ func (r *Repository) Query(ctx context.Context, f domain.Filter) ([]domain.Entry
 
 func toEntry(row auditsql.OikumeneaAuditLog) domain.Entry {
 	return domain.Entry{
-		ID:            row.ID,
-		CreatedAt:     row.CreatedAt.Time,
-		ActorType:     domain.ActorType(row.ActorType),
-		ActorPersonID: row.ActorPersonID.String,
-		Subsystem:     row.Subsystem.String,
-		Action:        row.Action,
-		TargetType:    row.TargetType,
-		TargetID:      row.TargetID.String,
-		UnitID:        row.UnitID.String,
-		RequestID:     row.RequestID,
-		Before:        row.Before,
-		After:         row.After,
-		Outcome:       domain.Outcome(row.Outcome),
+		ID:               row.ID,
+		CreatedAt:        row.CreatedAt.Time,
+		ActorType:        domain.ActorType(row.ActorType),
+		ActorPersonID:    row.ActorPersonID.String,
+		Subsystem:        row.Subsystem.String,
+		ActorPrincipalID: row.ActorPrincipalID.String,
+		Action:           row.Action,
+		TargetType:       row.TargetType,
+		TargetID:         row.TargetID.String,
+		UnitID:           row.UnitID.String,
+		RequestID:        row.RequestID,
+		Before:           row.Before,
+		After:            row.After,
+		Outcome:          domain.Outcome(row.Outcome),
 	}
 }
 

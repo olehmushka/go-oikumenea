@@ -134,6 +134,54 @@ func (q *Queries) GetIdentity(ctx context.Context, id string) (OikumeneaAccountE
 	return i, err
 }
 
+const getPrincipal = `-- name: GetPrincipal :one
+SELECT id, code, name, description, issuer, subject, client_id, status, created_at, updated_at, deleted_at FROM oikumenea.account_service_principals
+WHERE id = $1 AND deleted_at IS NULL
+`
+
+func (q *Queries) GetPrincipal(ctx context.Context, id string) (OikumeneaAccountServicePrincipal, error) {
+	row := q.db.QueryRow(ctx, getPrincipal, id)
+	var i OikumeneaAccountServicePrincipal
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.Description,
+		&i.Issuer,
+		&i.Subject,
+		&i.ClientID,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const getPrincipalByCode = `-- name: GetPrincipalByCode :one
+SELECT id, code, name, description, issuer, subject, client_id, status, created_at, updated_at, deleted_at FROM oikumenea.account_service_principals
+WHERE code = $1 AND deleted_at IS NULL
+`
+
+func (q *Queries) GetPrincipalByCode(ctx context.Context, code string) (OikumeneaAccountServicePrincipal, error) {
+	row := q.db.QueryRow(ctx, getPrincipalByCode, code)
+	var i OikumeneaAccountServicePrincipal
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.Description,
+		&i.Issuer,
+		&i.Subject,
+		&i.ClientID,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const insertAccount = `-- name: InsertAccount :one
 
 INSERT INTO oikumenea.account_accounts (person_id, email)
@@ -196,6 +244,54 @@ func (q *Queries) InsertIdentity(ctx context.Context, arg InsertIdentityParams) 
 	return i, err
 }
 
+const insertPrincipal = `-- name: InsertPrincipal :one
+
+INSERT INTO oikumenea.account_service_principals (code, name, description, issuer, subject, client_id)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, code, name, description, issuer, subject, client_id, status, created_at, updated_at, deleted_at
+`
+
+type InsertPrincipalParams struct {
+	Code        string
+	Name        string
+	Description pgtype.Text
+	Issuer      string
+	Subject     string
+	ClientID    pgtype.Text
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Service principals (M51 / D-ServiceIdentities): the (issuer, subject) -> MACHINE-subject registry.
+// Same key shape as account_external_identities, resolved by the same middleware. A principal holds no
+// role assignment and no unit reach; its authority is authz_principal_grants (authorization module).
+// Register a machine subject. The active (issuer, subject) and code unique indexes backstop the
+// conflict shapes; the symmetric collision trigger backstops "this pair is already a person identity".
+func (q *Queries) InsertPrincipal(ctx context.Context, arg InsertPrincipalParams) (OikumeneaAccountServicePrincipal, error) {
+	row := q.db.QueryRow(ctx, insertPrincipal,
+		arg.Code,
+		arg.Name,
+		arg.Description,
+		arg.Issuer,
+		arg.Subject,
+		arg.ClientID,
+	)
+	var i OikumeneaAccountServicePrincipal
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.Description,
+		&i.Issuer,
+		&i.Subject,
+		&i.ClientID,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const listIdentitiesByAccount = `-- name: ListIdentitiesByAccount :many
 SELECT id, account_id, issuer, subject, created_at FROM oikumenea.account_external_identities
 WHERE account_id = $1
@@ -228,6 +324,68 @@ func (q *Queries) ListIdentitiesByAccount(ctx context.Context, accountID string)
 	return items, nil
 }
 
+const listPrincipals = `-- name: ListPrincipals :many
+SELECT id, code, name, description, issuer, subject, client_id, status, created_at, updated_at, deleted_at FROM oikumenea.account_service_principals
+WHERE deleted_at IS NULL
+  AND ($1::text = '' OR id::text > $1::text)
+ORDER BY id
+LIMIT $2
+`
+
+type ListPrincipalsParams struct {
+	After    string
+	RowLimit int32
+}
+
+// Keyset page over the registry (RID order), matching the repo-wide token-pagination convention.
+func (q *Queries) ListPrincipals(ctx context.Context, arg ListPrincipalsParams) ([]OikumeneaAccountServicePrincipal, error) {
+	rows, err := q.db.Query(ctx, listPrincipals, arg.After, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaAccountServicePrincipal
+	for rows.Next() {
+		var i OikumeneaAccountServicePrincipal
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.Description,
+			&i.Issuer,
+			&i.Subject,
+			&i.ClientID,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const principalIsActive = `-- name: PrincipalIsActive :one
+SELECT EXISTS (
+  SELECT 1 FROM oikumenea.account_service_principals
+  WHERE id = $1 AND deleted_at IS NULL AND status = 'active'
+)
+`
+
+// Backs the authorization module's PrincipalDirectory port so a grant write validates its principal
+// without reading this module's table directly (CLAUDE.md: cross-module queries are interface calls).
+func (q *Queries) PrincipalIsActive(ctx context.Context, id string) (bool, error) {
+	row := q.db.QueryRow(ctx, principalIsActive, id)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const resolveBySubject = `-- name: ResolveBySubject :one
 SELECT a.person_id, a.id AS account_id, a.email
 FROM oikumenea.account_external_identities e
@@ -254,5 +412,106 @@ func (q *Queries) ResolveBySubject(ctx context.Context, arg ResolveBySubjectPara
 	row := q.db.QueryRow(ctx, resolveBySubject, arg.Issuer, arg.Subject)
 	var i ResolveBySubjectRow
 	err := row.Scan(&i.PersonID, &i.AccountID, &i.Email)
+	return i, err
+}
+
+const resolvePrincipalBySubject = `-- name: ResolvePrincipalBySubject :one
+SELECT id, code, client_id
+FROM oikumenea.account_service_principals
+WHERE issuer = $1 AND subject = $2
+  AND deleted_at IS NULL AND status = 'active'
+`
+
+type ResolvePrincipalBySubjectParams struct {
+	Issuer  string
+	Subject string
+}
+
+type ResolvePrincipalBySubjectRow struct {
+	ID       string
+	Code     string
+	ClientID pgtype.Text
+}
+
+// The inbound machine-token lookup. Restricting to active, not-soft-deleted principals means a
+// disabled or removed principal resolves to nothing -> the middleware rejects (uniform Unauthorized).
+func (q *Queries) ResolvePrincipalBySubject(ctx context.Context, arg ResolvePrincipalBySubjectParams) (ResolvePrincipalBySubjectRow, error) {
+	row := q.db.QueryRow(ctx, resolvePrincipalBySubject, arg.Issuer, arg.Subject)
+	var i ResolvePrincipalBySubjectRow
+	err := row.Scan(&i.ID, &i.Code, &i.ClientID)
+	return i, err
+}
+
+const setPrincipalStatus = `-- name: SetPrincipalStatus :one
+UPDATE oikumenea.account_service_principals
+SET status = $1
+WHERE id = $2 AND deleted_at IS NULL
+RETURNING id, code, name, description, issuer, subject, client_id, status, created_at, updated_at, deleted_at
+`
+
+type SetPrincipalStatusParams struct {
+	Status string
+	ID     string
+}
+
+// Reversible kill switch: a disabled principal fails resolution, so its tokens stop working at once
+// while the audit rows referencing it stay intact.
+func (q *Queries) SetPrincipalStatus(ctx context.Context, arg SetPrincipalStatusParams) (OikumeneaAccountServicePrincipal, error) {
+	row := q.db.QueryRow(ctx, setPrincipalStatus, arg.Status, arg.ID)
+	var i OikumeneaAccountServicePrincipal
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.Description,
+		&i.Issuer,
+		&i.Subject,
+		&i.ClientID,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const updatePrincipal = `-- name: UpdatePrincipal :one
+UPDATE oikumenea.account_service_principals
+SET name = $1, description = $2, client_id = $3
+WHERE id = $4 AND deleted_at IS NULL
+RETURNING id, code, name, description, issuer, subject, client_id, status, created_at, updated_at, deleted_at
+`
+
+type UpdatePrincipalParams struct {
+	Name        string
+	Description pgtype.Text
+	ClientID    pgtype.Text
+	ID          string
+}
+
+// Mutable fields only. (issuer, subject) is the identity key the middleware resolves on and is
+// immutable by design — re-pointing it would silently transfer a machine's authority to another IdP
+// client, so the application rejects it rather than offering it here.
+func (q *Queries) UpdatePrincipal(ctx context.Context, arg UpdatePrincipalParams) (OikumeneaAccountServicePrincipal, error) {
+	row := q.db.QueryRow(ctx, updatePrincipal,
+		arg.Name,
+		arg.Description,
+		arg.ClientID,
+		arg.ID,
+	)
+	var i OikumeneaAccountServicePrincipal
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.Description,
+		&i.Issuer,
+		&i.Subject,
+		&i.ClientID,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
 	return i, err
 }

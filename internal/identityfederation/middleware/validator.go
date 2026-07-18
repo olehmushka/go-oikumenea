@@ -45,6 +45,19 @@ func GuardSymmetricIssuers(issuers []IssuerConfig, environment string) error {
 	return nil
 }
 
+// GuardReservedIssuer refuses a configuration that claims the synthetic issuer the shared-secret
+// fallback principal is registered under (M51 / D-ServiceIdentities). Without this an operator could
+// point a real IdP at that issuer value and have it mint tokens for the importer principal. Fails
+// closed at boot, like GuardSymmetricIssuers.
+func GuardReservedIssuer(issuers []IssuerConfig) error {
+	for _, ic := range issuers {
+		if ic.Issuer == ReservedLocalIssuer {
+			return fmt.Errorf("issuer %q is reserved for the shared-secret service principal and cannot be configured", ic.Issuer)
+		}
+	}
+	return nil
+}
+
 // IssuerConfig describes one accepted issuer (install config — ECV).
 type IssuerConfig struct {
 	Issuer   string // the `iss` value; also the OIDC discovery base URL
@@ -68,6 +81,12 @@ type Claims struct {
 	Subject  string
 	Email    string
 	JITValue string // the configured JIT claim's string value, "" when absent
+	// AuthorizedParty is the client-credentials caller's IdP client id (`azp`, falling back to
+	// `client_id`), "" when absent. DIAGNOSTIC ONLY (M51 / D-ServiceIdentities): it is logged when an
+	// unknown token is rejected so an operator can identify the caller, and stored as a display label
+	// on a registered principal. It is NEVER an authorization input — the identity key is
+	// (issuer, subject), uniformly for people and machines.
+	AuthorizedParty string
 }
 
 // Validator verifies inbound tokens against the configured issuers. OIDC verifiers are built lazily
@@ -171,6 +190,13 @@ func (v *Validator) project(issuer, subject string, claims map[string]any) Claim
 	out := Claims{Issuer: issuer, Subject: subject}
 	if e, ok := claims["email"].(string); ok {
 		out.Email = e
+	}
+	// azp is the OIDC-standard authorized party; client_id is the common fallback (both name the IdP
+	// client behind a client-credentials token).
+	if azp, ok := claims["azp"].(string); ok {
+		out.AuthorizedParty = azp
+	} else if cid, ok := claims["client_id"].(string); ok {
+		out.AuthorizedParty = cid
 	}
 	if v.cfg.JITClaim != "" {
 		if val, ok := claims[v.cfg.JITClaim].(string); ok {

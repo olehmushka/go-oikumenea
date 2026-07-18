@@ -30,7 +30,10 @@ import (
 // so there is no module-level cleanup.
 func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, enforcer *pep.Enforcer, linkingEnabled func() bool, issuers []identityapi.IssuerOption) (*application.Service, error) {
 	repoFor := func(conn db.DBTX) domain.Repository { return adapters.NewRepository(conn) }
-	svc := application.NewService(pool, repoFor, audit, linkingEnabled)
+	// The service-principal registry shares the adapter value (M51 / D-ServiceIdentities): one
+	// Repository satisfies both the account and the principal port, so both bind to the same DBTX.
+	principalRepoFor := func(conn db.DBTX) domain.PrincipalRepository { return adapters.NewRepository(conn) }
+	svc := application.NewService(pool, repoFor, audit, linkingEnabled, principalRepoFor)
 
 	if err := identityapi.RegisterRoutesIdentityFederationService(info.Router, transport.NewService(svc, enforcer, issuers)); err != nil {
 		return nil, werror.Wrap(err, "register identity-federation service routes")

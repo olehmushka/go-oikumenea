@@ -203,3 +203,43 @@ WHERE EXISTS (
                          AND c.ancestor_id = a.target_unit_id
                          AND c.descendant_id = cand.unit_id))))
 );
+
+-- ============================ principal grants (M51) ============================
+-- The machine-subject authority plane (D-ServiceIdentities). A grant is FLAT — no target unit, no
+-- scope, no graph — because a service principal has no unit reach by construction. org_id NULL means
+-- instance-wide; a named organization confines a connector to that org's data.
+--
+-- permission_code is validated in the application against the Go catalog, exactly as
+-- authz_role_permissions is: the permission catalog is CODE, never a table (D-Code).
+
+-- name: InsertPrincipalGrant :one
+-- The two partial unique indexes (instance-wide vs org-scoped) backstop double-granting; the
+-- principal FK backstops existence.
+INSERT INTO oikumenea.authz_principal_grants (principal_id, permission_code, org_id, granted_by)
+VALUES (@principal_id, @permission_code, sqlc.narg('org_id'), sqlc.narg('granted_by'))
+RETURNING *;
+
+-- name: GetPrincipalGrant :one
+SELECT * FROM oikumenea.authz_principal_grants WHERE id = @id;
+
+-- name: RevokePrincipalGrant :one
+-- Revoke-flip, never a delete: the grant's history stays readable (D-Audit). Already-revoked rows are
+-- excluded so a second revoke is a no-op the application maps to not-found.
+UPDATE oikumenea.authz_principal_grants
+SET revoked_at = now(), revoked_by = sqlc.narg('revoked_by')
+WHERE id = @id AND revoked_at IS NULL
+RETURNING *;
+
+-- name: ListPrincipalGrants :many
+SELECT * FROM oikumenea.authz_principal_grants
+WHERE principal_id = @principal_id AND revoked_at IS NULL
+ORDER BY permission_code, id;
+
+-- name: ActiveGrantsForPrincipal :many
+-- The per-request authority fetch for a machine subject — the service-side counterpart of
+-- ActiveGrantsForSubject. Flat rows: the PDP is not involved (a principal decision is a grant match,
+-- not a DAG traversal).
+SELECT permission_code, org_id
+FROM oikumenea.authz_principal_grants
+WHERE principal_id = @principal_id AND revoked_at IS NULL
+ORDER BY permission_code;

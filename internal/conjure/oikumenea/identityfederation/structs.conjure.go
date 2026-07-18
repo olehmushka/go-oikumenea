@@ -180,6 +180,154 @@ func (o *LinkIdentityRequest) UnmarshalYAML(unmarshal func(interface{}) error) e
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+type RegisterServicePrincipalRequest struct {
+	Code        string  `json:"code"`
+	Name        string  `json:"name"`
+	Description *string `json:"description,omitempty"`
+	// The IdP `iss` the machine's tokens carry.
+	Issuer string `json:"issuer"`
+	/*
+	   The IdP `sub` the machine's tokens carry. For Keycloak this is the service-account user
+	   id; a rejected unknown token logs its issuer/subject so it can be copied from there.
+	*/
+	Subject  string  `json:"subject"`
+	ClientId *string `json:"clientId,omitempty"`
+}
+
+func (o RegisterServicePrincipalRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *RegisterServicePrincipalRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+A MACHINE subject (M51 / D-ServiceIdentities) — a facade with standing of its own, or a
+connector. It authenticates through the same external IdP and the same middleware as a
+person, using the OAuth2 client-credentials grant, and is keyed by the same
+(issuer, subject) pair as an ExternalIdentity: a given pair is a person identity XOR a
+principal, never both.
+
+A principal holds NO role assignment and NO unit reach; its authority is the flat
+per-principal grants owned by AuthorizationService. Registering one creates no credential —
+the IdP owns the client secret (L-AuthzOnly holds).
+*/
+type ServicePrincipal struct {
+	// The principal's URN RID (carried as a plain string).
+	Id string `json:"id"`
+	// Stable, locale-agnostic machine name (D-Code) — what audit rows and operators reference.
+	Code        string  `json:"code"`
+	Name        string  `json:"name"`
+	Description *string `json:"description,omitempty"`
+	// The IdP `iss` of the client-credentials token.
+	Issuer string `json:"issuer"`
+	// The IdP `sub` of the client-credentials token. Immutable after registration.
+	Subject string `json:"subject"`
+	/*
+	   Display label from the token's `azp`/`client_id` claim, so an operator can tell which IdP
+	   client this is. NEVER an authorization input — the identity key is (issuer, subject).
+	*/
+	ClientId *string `json:"clientId,omitempty"`
+	// One of active | disabled. A disabled principal fails resolution, so its tokens stop working at once.
+	Status    string            `json:"status"`
+	CreatedAt datetime.DateTime `json:"createdAt"`
+	UpdatedAt datetime.DateTime `json:"updatedAt"`
+}
+
+func (o ServicePrincipal) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ServicePrincipal) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type ServicePrincipalPage struct {
+	Principals    []ServicePrincipal `json:"principals"`
+	NextPageToken *string            `json:"nextPageToken,omitempty"`
+}
+
+func (o ServicePrincipalPage) MarshalJSON() ([]byte, error) {
+	if o.Principals == nil {
+		o.Principals = make([]ServicePrincipal, 0)
+	}
+	type _tmpServicePrincipalPage ServicePrincipalPage
+	return safejson.Marshal(_tmpServicePrincipalPage(o))
+}
+
+func (o *ServicePrincipalPage) UnmarshalJSON(data []byte) error {
+	type _tmpServicePrincipalPage ServicePrincipalPage
+	var rawServicePrincipalPage _tmpServicePrincipalPage
+	if err := safejson.Unmarshal(data, &rawServicePrincipalPage); err != nil {
+		return err
+	}
+	if rawServicePrincipalPage.Principals == nil {
+		rawServicePrincipalPage.Principals = make([]ServicePrincipal, 0)
+	}
+	*o = ServicePrincipalPage(rawServicePrincipalPage)
+	return nil
+}
+
+func (o ServicePrincipalPage) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *ServicePrincipalPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+Mutable display fields only. (issuer, subject) is the identity key the middleware resolves
+on and is immutable — re-pointing it would silently transfer a machine's authority to a
+different IdP client. Register a new principal and disable the old one instead.
+*/
+type UpdateServicePrincipalRequest struct {
+	Name        string  `json:"name"`
+	Description *string `json:"description,omitempty"`
+	ClientId    *string `json:"clientId,omitempty"`
+}
+
+func (o UpdateServicePrincipalRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpdateServicePrincipalRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 /*
 The caller's own resolved PDP context — the person (and optional account) the inbound token
 mapped to. Produced from the request context the validation middleware attached.

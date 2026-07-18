@@ -5,6 +5,7 @@ package identityfederation
 import (
 	"context"
 	"net/http"
+	"strconv"
 
 	"github.com/palantir/conjure-go-runtime/v2/conjure-go-contract/codecs"
 	"github.com/palantir/conjure-go-runtime/v2/conjure-go-contract/errors"
@@ -53,6 +54,29 @@ type IdentityFederationService interface {
 	UnlinkIdentity(ctx context.Context, authHeader bearertoken.Token, accountIdArg string, identityIdArg string) error
 	// Resolve the caller's own PDP context (person + account) from the validated inbound token.
 	Whoami(ctx context.Context, authHeader bearertoken.Token) (Whoami, error)
+	/*
+	   Register a machine subject (M51 / D-ServiceIdentities). Instance-plane act gated on
+	   `service-principal.manage`. Returns ServicePrincipal:ServicePrincipalConflict when the code
+	   or the (issuer, subject) is taken — including when that pair is already a person's external
+	   identity. Creates no credential: the external IdP owns the client secret.
+	*/
+	RegisterServicePrincipal(ctx context.Context, authHeader bearertoken.Token, requestArg RegisterServicePrincipalRequest) (ServicePrincipal, error)
+	// Keyset page over the registry. Gates on `service-principal.read`.
+	ListServicePrincipals(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string) (ServicePrincipalPage, error)
+	// Read one machine subject. Gates on `service-principal.read`.
+	GetServicePrincipal(ctx context.Context, authHeader bearertoken.Token, principalIdArg string) (ServicePrincipal, error)
+	/*
+	   Update the display fields. Gates on `service-principal.manage`. The (issuer, subject) key is
+	   immutable — see UpdateServicePrincipalRequest.
+	*/
+	UpdateServicePrincipal(ctx context.Context, authHeader bearertoken.Token, principalIdArg string, requestArg UpdateServicePrincipalRequest) (ServicePrincipal, error)
+	/*
+	   Reversible kill switch: a disabled principal fails token resolution immediately, while the
+	   audit rows naming it stay intact. Gates on `service-principal.manage`.
+	*/
+	DisableServicePrincipal(ctx context.Context, authHeader bearertoken.Token, principalIdArg string) (ServicePrincipal, error)
+	// Re-enable a disabled machine subject. Gates on `service-principal.manage`.
+	EnableServicePrincipal(ctx context.Context, authHeader bearertoken.Token, principalIdArg string) (ServicePrincipal, error)
 }
 
 // RegisterRoutesIdentityFederationService registers handlers for the IdentityFederationService endpoints with a witchcraft wrouter.
@@ -85,6 +109,24 @@ func RegisterRoutesIdentityFederationService(router wrouter.Router, impl Identit
 	}
 	if err := resource.Get("Whoami", "/identity/v1/whoami", httpserver.NewJSONHandler(handler.HandleWhoami, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add whoami route")
+	}
+	if err := resource.Post("RegisterServicePrincipal", "/identity/v1/service-principals", httpserver.NewJSONHandler(handler.HandleRegisterServicePrincipal, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add registerServicePrincipal route")
+	}
+	if err := resource.Get("ListServicePrincipals", "/identity/v1/service-principals", httpserver.NewJSONHandler(handler.HandleListServicePrincipals, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listServicePrincipals route")
+	}
+	if err := resource.Get("GetServicePrincipal", "/identity/v1/service-principals/{principalId}", httpserver.NewJSONHandler(handler.HandleGetServicePrincipal, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getServicePrincipal route")
+	}
+	if err := resource.Put("UpdateServicePrincipal", "/identity/v1/service-principals/{principalId}", httpserver.NewJSONHandler(handler.HandleUpdateServicePrincipal, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add updateServicePrincipal route")
+	}
+	if err := resource.Post("DisableServicePrincipal", "/identity/v1/service-principals/{principalId}/disable", httpserver.NewJSONHandler(handler.HandleDisableServicePrincipal, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add disableServicePrincipal route")
+	}
+	if err := resource.Post("EnableServicePrincipal", "/identity/v1/service-principals/{principalId}/enable", httpserver.NewJSONHandler(handler.HandleEnableServicePrincipal, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add enableServicePrincipal route")
 	}
 	return nil
 }
@@ -241,6 +283,137 @@ func (i *identityFederationServiceHandler) HandleWhoami(rw http.ResponseWriter, 
 		return errors.WrapWithPermissionDenied(err)
 	}
 	respArg, err := i.impl.Whoami(req.Context(), bearertoken.Token(authHeader))
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (i *identityFederationServiceHandler) HandleRegisterServicePrincipal(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var requestArg RegisterServicePrincipalRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := i.impl.RegisterServicePrincipal(req.Context(), bearertoken.Token(authHeader), requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (i *identityFederationServiceHandler) HandleListServicePrincipals(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var pageSizeArg *int
+	if pageSizeArgStr := req.URL.Query().Get("pageSize"); pageSizeArgStr != "" {
+		pageSizeArgInternal, err := strconv.Atoi(pageSizeArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"pageSize\" as integer")
+		}
+		pageSizeArg = &pageSizeArgInternal
+	}
+	var pageTokenArg *string
+	if pageTokenArgStr := req.URL.Query().Get("pageToken"); pageTokenArgStr != "" {
+		pageTokenArgInternal := pageTokenArgStr
+		pageTokenArg = &pageTokenArgInternal
+	}
+	respArg, err := i.impl.ListServicePrincipals(req.Context(), bearertoken.Token(authHeader), pageSizeArg, pageTokenArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (i *identityFederationServiceHandler) HandleGetServicePrincipal(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	principalIdArg, ok := pathParams["principalId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"principalId\" not present")
+	}
+	respArg, err := i.impl.GetServicePrincipal(req.Context(), bearertoken.Token(authHeader), principalIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (i *identityFederationServiceHandler) HandleUpdateServicePrincipal(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	principalIdArg, ok := pathParams["principalId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"principalId\" not present")
+	}
+	var requestArg UpdateServicePrincipalRequest
+	if err := codecs.JSON.Decode(req.Body, &requestArg); err != nil {
+		return errors.WrapWithInvalidArgument(err)
+	}
+	respArg, err := i.impl.UpdateServicePrincipal(req.Context(), bearertoken.Token(authHeader), principalIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (i *identityFederationServiceHandler) HandleDisableServicePrincipal(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	principalIdArg, ok := pathParams["principalId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"principalId\" not present")
+	}
+	respArg, err := i.impl.DisableServicePrincipal(req.Context(), bearertoken.Token(authHeader), principalIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (i *identityFederationServiceHandler) HandleEnableServicePrincipal(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	principalIdArg, ok := pathParams["principalId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"principalId\" not present")
+	}
+	respArg, err := i.impl.EnableServicePrincipal(req.Context(), bearertoken.Token(authHeader), principalIdArg)
 	if err != nil {
 		return err
 	}

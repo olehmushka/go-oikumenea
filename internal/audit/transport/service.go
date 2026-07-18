@@ -189,19 +189,20 @@ func mapError(ctx context.Context, err error, entryID string) error {
 
 func toAPIEntry(e domain.Entry) auditapi.AuditEntry {
 	return auditapi.AuditEntry{
-		Id:            e.ID,
-		CreatedAt:     datetime.DateTime(e.CreatedAt),
-		ActorType:     toAPIActorType(e.ActorType),
-		ActorPersonId: emptyToNil(e.ActorPersonID),
-		Subsystem:     emptyToNil(e.Subsystem),
-		Action:        e.Action,
-		TargetType:    e.TargetType,
-		TargetId:      emptyToNil(e.TargetID),
-		UnitId:        emptyToNil(e.UnitID),
-		RequestId:     e.RequestID,
-		Before:        toAPIJSON(e.Before),
-		After:         toAPIJSON(e.After),
-		Outcome:       toAPIOutcome(e.Outcome),
+		Id:               e.ID,
+		CreatedAt:        datetime.DateTime(e.CreatedAt),
+		ActorType:        toAPIActorType(e.ActorType),
+		ActorPersonId:    emptyToNil(e.ActorPersonID),
+		Subsystem:        emptyToNil(e.Subsystem),
+		ActorPrincipalId: emptyToNil(e.ActorPrincipalID),
+		Action:           e.Action,
+		TargetType:       e.TargetType,
+		TargetId:         emptyToNil(e.TargetID),
+		UnitId:           emptyToNil(e.UnitID),
+		RequestId:        e.RequestID,
+		Before:           toAPIJSON(e.Before),
+		After:            toAPIJSON(e.After),
+		Outcome:          toAPIOutcome(e.Outcome),
 	}
 }
 

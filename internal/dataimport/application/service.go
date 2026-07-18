@@ -18,6 +18,7 @@ import (
 	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
 	"github.com/olegamysk/go-oikumenea/internal/dataimport/domain"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olegamysk/go-oikumenea/pkg/authn"
 	"github.com/palantir/pkg/metrics"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
@@ -1024,15 +1025,19 @@ func (s *Service) record(ctx context.Context, tx pgx.Tx, action, targetType, tar
 		return err
 	}
 	return s.audit.Record(ctx, tx, auditdomain.Entry{
-		ID:         rid,
-		ActorType:  auditdomain.ActorSystem,
-		Subsystem:  auditSubsystem,
-		Action:     action,
-		TargetType: targetType,
-		TargetID:   targetID,
-		RequestID:  requestID(ctx),
-		After:      toJSON(after),
-		Outcome:    auditdomain.OutcomeSuccess,
+		ID:        rid,
+		ActorType: auditdomain.ActorSystem,
+		Subsystem: auditSubsystem,
+		// Name the machine that imported, when one did (M51 / D-ServiceIdentities). Empty for
+		// in-process callers (the pinax boot autoseeder, the `oikumenea seed` CLI), which carry no
+		// principal — subsystem alone still identifies them.
+		ActorPrincipalID: authn.PrincipalID(ctx),
+		Action:           action,
+		TargetType:       targetType,
+		TargetID:         targetID,
+		RequestID:        requestID(ctx),
+		After:            toJSON(after),
+		Outcome:          auditdomain.OutcomeSuccess,
 	})
 }
 

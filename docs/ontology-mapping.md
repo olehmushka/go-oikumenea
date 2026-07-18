@@ -74,6 +74,7 @@ Real-world entities with identity over time → Objects.
 | `Assignment` | [authorization](modules/authorization.md) | no | revoke-flip + optional `expires_at` | a **reified Link** — see [§2](#2-link-types) |
 | `InstanceAdmin` | [authorization](modules/authorization.md) | no | revoke-flip | the instance-wide authority plane |
 | `Account` / `ExternalIdentity` | [identity-federation](modules/identity-federation.md) | no | account soft-delete; identity append-only | `(issuer, subject)` globally unique; account optional per person |
+| `ServicePrincipal` *(M51)* | [identity-federation](modules/identity-federation.md) | yes (`code`) | `status` (active/disabled) + soft-delete | `account_service_principals` (`9,1,3`): a **machine** subject (facade / connector) authenticated by the IdP's client-credentials grant on the same `(issuer, subject)` key as `ExternalIdentity` — an `(issuer, subject)` is one **or** the other, enforced by symmetric triggers. `client_id` is a display label, never an authz input. Holds no role assignment and **no unit reach**; authority is `PRINCIPAL_GRANT`. D-ServiceIdentities |
 | `Locale` / `Translation` | [localization](modules/localization.md) | locale `code` is ISO 639-3 | locale soft-delete | the translatable-`name` store |
 | `Country` | [location](modules/location.md) | **RID** (location svc); `code` = ISO-3166-1 α2 is a `UNIQUE` lookup key | status | RID-keyed shared registry (F-014); consumers reference by `id`; resolve a code → RID via `GET /geo/countries` (D-Geo) |
 | `AuditEntry` | [audit](modules/audit.md) | no | **append-only** (`reject_mutation()`) | not an endpoint; written in-transaction |
@@ -163,6 +164,7 @@ non-RID / multi-ended / encrypted-end Links (`locale_language`, `has_ethnicity`,
 | `MEMBER_OF` / `FILLS` | `Person` → `Unit` (opt. `Position`) | [membership](modules/membership.md) | `position_id` (nullable), `order_item_id` provenance | **yes — `effective_from`/`effective_to`** + `status` |
 | `HAS_ROLE` @ scope (the **`Assignment`**) | `Person` → `Role`, scoped to `target_unit` | [authorization](modules/authorization.md) | `scope ∈ {unit,subtree}`, `graph_id`, `granted_by`, `expires_at` | grant/revoke + decision-time expiry |
 | `GRANTS` | `Role` → `Permission`(code) | [authorization](modules/authorization.md) | — | code-validated membership |
+| `PRINCIPAL_GRANT` *(M51)* | `ServicePrincipal` → `Permission`(code) | [authorization](modules/authorization.md) | `org_id` (**NULL = instance-wide**, else confines to that organization), `granted_by` | grant/revoke flip; **flat — no unit, no scope, no graph**: a machine has no reach (D-ServiceIdentities) |
 | `HOLDS_RANK` | `Person` → `Rank` (in a `RankSystem`) | [person](modules/person.md) | `system_id` (derived) | **one per rank system** (`person_ranks`, reified); **directory attribute — never an authz input** |
 | `HAS_ACCOUNT` | `Person` → `Account` | [identity-federation](modules/identity-federation.md) | ≤1 active | — |
 | `FEDERATES` | `Account` → `ExternalIdentity` | [identity-federation](modules/identity-federation.md) | `(issuer, subject)` | identity row append-only |
@@ -581,6 +583,12 @@ cannot drift from the contract. Descriptive only (discoverability), not write-ti
 | `role.create` | authz | `role` | `role.create` |
 | `role.delete` | authz | `role` | `role.delete` |
 | `role.update` | authz | `role` | `role.update` |
+| `service-principal.disable` | account | `service_principal` | `service-principal.manage` |
+| `service-principal.enable` | account | `service_principal` | `service-principal.manage` |
+| `service-principal.grant` | authz | `principal_grant` | `service-principal.manage` |
+| `service-principal.register` | account | `service_principal` | `service-principal.manage` |
+| `service-principal.revoke` | authz | `principal_grant` | `service-principal.manage` |
+| `service-principal.update` | account | `service_principal` | `service-principal.manage` |
 | `translation.upsert` | i18n | `languoid` | `translation.manage` |
 | `unit-kind.create` | tenant | `unit` | `unit-kind.manage` |
 | `unit-kind.update` | tenant | `unit` | `unit-kind.manage` |

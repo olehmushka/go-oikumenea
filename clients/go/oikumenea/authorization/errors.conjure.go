@@ -1063,6 +1063,458 @@ func (e *PermissionDenied) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type principalGrantConflict struct {
+	Reason string `json:"reason"`
+}
+
+func (o principalGrantConflict) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *principalGrantConflict) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewPrincipalGrantConflict returns new instance of PrincipalGrantConflict error.
+func NewPrincipalGrantConflict(reasonArg string) *PrincipalGrantConflict {
+	return &PrincipalGrantConflict{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), principalGrantConflict: principalGrantConflict{Reason: reasonArg}}
+}
+
+// WrapWithPrincipalGrantConflict returns new instance of PrincipalGrantConflict error wrapping an existing error.
+func WrapWithPrincipalGrantConflict(err error, reasonArg string) *PrincipalGrantConflict {
+	return &PrincipalGrantConflict{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, principalGrantConflict: principalGrantConflict{Reason: reasonArg}}
+}
+
+// PrincipalGrantConflict is an error type.
+// An identical active grant already exists for this principal.
+type PrincipalGrantConflict struct {
+	errorInstanceID uuid.UUID
+	principalGrantConflict
+	cause error
+	stack werror.StackTrace
+}
+
+// IsPrincipalGrantConflict returns true if err is an instance of PrincipalGrantConflict.
+func IsPrincipalGrantConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*PrincipalGrantConflict)
+	return ok
+}
+
+func (e *PrincipalGrantConflict) Error() string {
+	return fmt.Sprintf("CONFLICT PrincipalGrant:PrincipalGrantConflict (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *PrincipalGrantConflict) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *PrincipalGrantConflict) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *PrincipalGrantConflict) Message() string {
+	return "CONFLICT PrincipalGrant:PrincipalGrantConflict"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *PrincipalGrantConflict) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *PrincipalGrantConflict) Code() errors.ErrorCode {
+	return errors.Conflict
+}
+
+// Name returns an error name identifying error type.
+func (e *PrincipalGrantConflict) Name() string {
+	return "PrincipalGrant:PrincipalGrantConflict"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *PrincipalGrantConflict) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *PrincipalGrantConflict) Parameters() map[string]interface{} {
+	return map[string]interface{}{"reason": e.Reason}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *PrincipalGrantConflict) safeParams() map[string]interface{} {
+	return map[string]interface{}{"reason": e.Reason, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *PrincipalGrantConflict) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *PrincipalGrantConflict) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *PrincipalGrantConflict) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e PrincipalGrantConflict) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.principalGrantConflict)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.Conflict, ErrorName: "PrincipalGrant:PrincipalGrantConflict", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *PrincipalGrantConflict) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters principalGrantConflict
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.principalGrantConflict = parameters
+	return nil
+}
+
+type principalGrantInvalid struct {
+	Reason string `json:"reason"`
+}
+
+func (o principalGrantInvalid) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *principalGrantInvalid) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewPrincipalGrantInvalid returns new instance of PrincipalGrantInvalid error.
+func NewPrincipalGrantInvalid(reasonArg string) *PrincipalGrantInvalid {
+	return &PrincipalGrantInvalid{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), principalGrantInvalid: principalGrantInvalid{Reason: reasonArg}}
+}
+
+// WrapWithPrincipalGrantInvalid returns new instance of PrincipalGrantInvalid error wrapping an existing error.
+func WrapWithPrincipalGrantInvalid(err error, reasonArg string) *PrincipalGrantInvalid {
+	return &PrincipalGrantInvalid{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, principalGrantInvalid: principalGrantInvalid{Reason: reasonArg}}
+}
+
+// PrincipalGrantInvalid is an error type.
+/*
+The request is malformed, names an unknown permission code, or names a principal that does
+not exist or is disabled.
+*/
+type PrincipalGrantInvalid struct {
+	errorInstanceID uuid.UUID
+	principalGrantInvalid
+	cause error
+	stack werror.StackTrace
+}
+
+// IsPrincipalGrantInvalid returns true if err is an instance of PrincipalGrantInvalid.
+func IsPrincipalGrantInvalid(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*PrincipalGrantInvalid)
+	return ok
+}
+
+func (e *PrincipalGrantInvalid) Error() string {
+	return fmt.Sprintf("INVALID_ARGUMENT PrincipalGrant:PrincipalGrantInvalid (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *PrincipalGrantInvalid) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *PrincipalGrantInvalid) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *PrincipalGrantInvalid) Message() string {
+	return "INVALID_ARGUMENT PrincipalGrant:PrincipalGrantInvalid"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *PrincipalGrantInvalid) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *PrincipalGrantInvalid) Code() errors.ErrorCode {
+	return errors.InvalidArgument
+}
+
+// Name returns an error name identifying error type.
+func (e *PrincipalGrantInvalid) Name() string {
+	return "PrincipalGrant:PrincipalGrantInvalid"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *PrincipalGrantInvalid) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *PrincipalGrantInvalid) Parameters() map[string]interface{} {
+	return map[string]interface{}{"reason": e.Reason}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *PrincipalGrantInvalid) safeParams() map[string]interface{} {
+	return map[string]interface{}{"reason": e.Reason, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *PrincipalGrantInvalid) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *PrincipalGrantInvalid) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *PrincipalGrantInvalid) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e PrincipalGrantInvalid) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.principalGrantInvalid)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.InvalidArgument, ErrorName: "PrincipalGrant:PrincipalGrantInvalid", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *PrincipalGrantInvalid) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters principalGrantInvalid
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.principalGrantInvalid = parameters
+	return nil
+}
+
+type principalGrantNotFound struct {
+	GrantId string `json:"grantId"`
+}
+
+func (o principalGrantNotFound) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *principalGrantNotFound) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewPrincipalGrantNotFound returns new instance of PrincipalGrantNotFound error.
+func NewPrincipalGrantNotFound(grantIdArg string) *PrincipalGrantNotFound {
+	return &PrincipalGrantNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), principalGrantNotFound: principalGrantNotFound{GrantId: grantIdArg}}
+}
+
+// WrapWithPrincipalGrantNotFound returns new instance of PrincipalGrantNotFound error wrapping an existing error.
+func WrapWithPrincipalGrantNotFound(err error, grantIdArg string) *PrincipalGrantNotFound {
+	return &PrincipalGrantNotFound{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, principalGrantNotFound: principalGrantNotFound{GrantId: grantIdArg}}
+}
+
+// PrincipalGrantNotFound is an error type.
+type PrincipalGrantNotFound struct {
+	errorInstanceID uuid.UUID
+	principalGrantNotFound
+	cause error
+	stack werror.StackTrace
+}
+
+// IsPrincipalGrantNotFound returns true if err is an instance of PrincipalGrantNotFound.
+func IsPrincipalGrantNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*PrincipalGrantNotFound)
+	return ok
+}
+
+func (e *PrincipalGrantNotFound) Error() string {
+	return fmt.Sprintf("NOT_FOUND PrincipalGrant:PrincipalGrantNotFound (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *PrincipalGrantNotFound) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *PrincipalGrantNotFound) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *PrincipalGrantNotFound) Message() string {
+	return "NOT_FOUND PrincipalGrant:PrincipalGrantNotFound"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *PrincipalGrantNotFound) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *PrincipalGrantNotFound) Code() errors.ErrorCode {
+	return errors.NotFound
+}
+
+// Name returns an error name identifying error type.
+func (e *PrincipalGrantNotFound) Name() string {
+	return "PrincipalGrant:PrincipalGrantNotFound"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *PrincipalGrantNotFound) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *PrincipalGrantNotFound) Parameters() map[string]interface{} {
+	return map[string]interface{}{"grantId": e.GrantId}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *PrincipalGrantNotFound) safeParams() map[string]interface{} {
+	return map[string]interface{}{"grantId": e.GrantId, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *PrincipalGrantNotFound) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *PrincipalGrantNotFound) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *PrincipalGrantNotFound) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e PrincipalGrantNotFound) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.principalGrantNotFound)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.NotFound, ErrorName: "PrincipalGrant:PrincipalGrantNotFound", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *PrincipalGrantNotFound) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters principalGrantNotFound
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.principalGrantNotFound = parameters
+	return nil
+}
+
 type roleConflict struct {
 	Reason string `json:"reason"`
 }
@@ -1970,6 +2422,9 @@ func init() {
 	conjureerrors.RegisterErrorType("Authorization:InstanceAdminNotFound", reflect.TypeOf(InstanceAdminNotFound{}))
 	conjureerrors.RegisterErrorType("Authorization:NonAuthorityBearingGraph", reflect.TypeOf(NonAuthorityBearingGraph{}))
 	conjureerrors.RegisterErrorType("Authorization:PermissionDenied", reflect.TypeOf(PermissionDenied{}))
+	conjureerrors.RegisterErrorType("PrincipalGrant:PrincipalGrantConflict", reflect.TypeOf(PrincipalGrantConflict{}))
+	conjureerrors.RegisterErrorType("PrincipalGrant:PrincipalGrantInvalid", reflect.TypeOf(PrincipalGrantInvalid{}))
+	conjureerrors.RegisterErrorType("PrincipalGrant:PrincipalGrantNotFound", reflect.TypeOf(PrincipalGrantNotFound{}))
 	conjureerrors.RegisterErrorType("Role:RoleConflict", reflect.TypeOf(RoleConflict{}))
 	conjureerrors.RegisterErrorType("Role:RoleImmutable", reflect.TypeOf(RoleImmutable{}))
 	conjureerrors.RegisterErrorType("Role:RoleInUse", reflect.TypeOf(RoleInUse{}))

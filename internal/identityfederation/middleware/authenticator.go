@@ -12,7 +12,14 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation/domain"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/pkg/authn"
+	"github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
+
+// ReservedLocalIssuer is the synthetic issuer the shared-secret fallback principal is registered
+// under (M51 / D-ServiceIdentities). No real token can present it: the validator routes on `iss`
+// against the configured issuer set only, and a boot guard refuses startup if an operator configures
+// this value as a real issuer.
+const ReservedLocalIssuer = "urn:oikumenea:local"
 
 // Resolver maps a verified (issuer, subject) to a PDP subject, and performs the just-in-time
 // link-on-match. The identity-federation application service satisfies it.
@@ -25,6 +32,21 @@ type Resolver interface {
 // The person application service satisfies it.
 type PersonDirectory interface {
 	PersonIDByCode(ctx context.Context, code string) (string, bool, error)
+}
+
+// PrincipalResolver maps a verified (issuer, subject) to a MACHINE subject — a registered service
+// principal (M51 / D-ServiceIdentities). The identity-federation application service satisfies it.
+type PrincipalResolver interface {
+	ResolvePrincipal(ctx context.Context, issuer, subject string) (domain.PrincipalResolution, error)
+}
+
+// PrincipalAuthorityResolver fetches a machine subject's flat grant set once per request, returning a
+// derived context carrying the authorization module's principal snapshot (opaque here). Deliberately
+// separate from AuthorityResolver: it yields NO db.RLSState, because a service request pins no
+// connection and sets no person GUC (the RLS service arm is M53). The authorization application
+// service satisfies it (ContextWithPrincipalAuthority).
+type PrincipalAuthorityResolver interface {
+	ContextWithPrincipalAuthority(ctx context.Context, principalID string) (context.Context, error)
 }
 
 // AuthorityResolver fetches the resolved subject's authority state ONCE per request (review-2026-07
@@ -57,6 +79,9 @@ type bound struct {
 	jitEnabled bool
 	authority  AuthorityResolver
 	pool       *pgxpool.Pool
+	// The machine-subject arm (M51 / D-ServiceIdentities).
+	principals         PrincipalResolver
+	principalAuthority PrincipalAuthorityResolver
 }
 
 // NewUnbound builds an Authenticator whose validator/resolver are wired later via Bind.
@@ -80,10 +105,14 @@ func (a *Authenticator) importServiceToken() string {
 // Bind wires the validator, the (issuer, subject) resolver, the person directory (for JIT), the
 // JIT-enabled flag, the authority resolver (request-scoped authority snapshot + RLS GUC state), and
 // the pool used to pin a per-request RLS-scoped connection (D-RLSDefenseInDepth). Called once at boot.
-func (a *Authenticator) Bind(validator *Validator, resolver Resolver, persons PersonDirectory, jitEnabled bool, authority AuthorityResolver, pool *pgxpool.Pool) {
+func (a *Authenticator) Bind(validator *Validator, resolver Resolver, persons PersonDirectory, jitEnabled bool, authority AuthorityResolver, pool *pgxpool.Pool, principals PrincipalResolver, principalAuthority PrincipalAuthorityResolver) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.bound = &bound{validator: validator, resolver: resolver, persons: persons, jitEnabled: jitEnabled, authority: authority, pool: pool}
+	a.bound = &bound{
+		validator: validator, resolver: resolver, persons: persons, jitEnabled: jitEnabled,
+		authority: authority, pool: pool,
+		principals: principals, principalAuthority: principalAuthority,
+	}
 }
 
 func (a *Authenticator) snapshot() *bound {
@@ -95,8 +124,14 @@ func (a *Authenticator) snapshot() *bound {
 // MustBeBound reports whether Bind has wired the validator/resolver. The composition root calls it at
 // boot (review-2026-07 R-11) so a forgotten Bind fails startup instead of 401-ing every request.
 func (a *Authenticator) MustBeBound() error {
-	if a.snapshot() == nil {
+	b := a.snapshot()
+	if b == nil {
 		return errors.New("identity-federation authenticator not bound: call Bind before serving")
+	}
+	// The machine arm must be wired too, or client-credentials callers would silently 401 and the
+	// shared-secret fallback would lose its grants (M51 / D-ServiceIdentities).
+	if b.principals == nil || b.principalAuthority == nil {
+		return errors.New("identity-federation authenticator: service-principal resolver not bound")
 	}
 	return nil
 }
@@ -121,12 +156,20 @@ func (a *Authenticator) Handle(rw http.ResponseWriter, r *http.Request, next htt
 		return
 	}
 
-	// Service-principal path (D-Hermenea): if the bearer equals the configured import shared secret,
-	// the caller is the hermenea importer — attach the service principal (no person, no JWT, no RLS
-	// pinning; the import endpoint writes only non-unit catalog tables) and proceed. Constant-time
-	// comparison; an empty configured token disables the path.
+	// Shared-secret fallback (D-Hermenea, retained by D-ServiceIdentities for minimal installs): if
+	// the bearer equals the configured import secret, the caller is the hermenea importer. Since M51
+	// it resolves through the SAME registry lookup as a client-credentials caller — the boot seeder
+	// registers it on the reserved local issuer — so it carries a real principal RID, real grants and
+	// real audit attribution instead of being a hard-coded exemption. Constant-time comparison; an
+	// empty configured token disables the path.
 	if tok := a.importServiceToken(); tok != "" && subtle.ConstantTimeCompare([]byte(raw), []byte(tok)) == 1 {
-		ctx := authn.NewContext(r.Context(), authn.Subject{Service: authn.ServiceHermeneaImporter})
+		ctx, ok := b.serviceContext(r.Context(), ReservedLocalIssuer, authn.ServiceHermeneaImporter)
+		if !ok {
+			// Configured secret but no seeded principal: fail closed rather than granting a bare,
+			// grant-less service subject.
+			unauthorized(rw)
+			return
+		}
 		next.ServeHTTP(rw, r.WithContext(ctx))
 		return
 	}
@@ -136,8 +179,25 @@ func (a *Authenticator) Handle(rw http.ResponseWriter, r *http.Request, next htt
 		unauthorized(rw)
 		return
 	}
+
 	res, err := b.resolve(r.Context(), claims)
 	if err != nil {
+		// Not a known person identity. Try the machine arm before rejecting: a client-credentials
+		// token from a registered service principal resolves here (M51 / D-ServiceIdentities). The
+		// person path runs FIRST so the human hot path costs no extra query.
+		if errors.Is(err, errInvalidToken) || errors.Is(err, domain.ErrIdentityNotFound) {
+			if ctx, ok := b.serviceContext(r.Context(), claims.Issuer, claims.Subject); ok {
+				next.ServeHTTP(rw, r.WithContext(ctx))
+				return
+			}
+			// Neither a person nor a principal: log the identifying claims (the subject is a machine
+			// or IdP id, not a person's name) so an operator can copy the pair straight into a
+			// registration call instead of guessing what the IdP sent.
+			svc1log.FromContext(r.Context()).Info("rejected unknown token identity",
+				svc1log.SafeParam("issuer", claims.Issuer),
+				svc1log.SafeParam("authorizedParty", claims.AuthorizedParty),
+				svc1log.UnsafeParam("subject", claims.Subject))
+		}
 		unauthorized(rw)
 		return
 	}
@@ -162,6 +222,32 @@ func (a *Authenticator) Handle(rw http.ResponseWriter, r *http.Request, next htt
 	}
 
 	next.ServeHTTP(rw, r.WithContext(ctx))
+}
+
+// serviceContext resolves (issuer, subject) as a MACHINE subject and returns a context carrying the
+// principal + its grant snapshot, or ok=false when the pair names no active principal.
+//
+// A service request deliberately gets NO authority snapshot and NO lazy RLS connection: the RLS
+// policies compute reach from a person (D-RLSLiveReach) and there is no principal arm until M53, so
+// a principal must not pin a connection whose GUCs describe nobody. The PEP denies every
+// person-shaped path for it, so the absence of reach is enforced, not merely assumed.
+func (b *bound) serviceContext(ctx context.Context, issuer, subject string) (context.Context, bool) {
+	if b.principals == nil {
+		return ctx, false
+	}
+	res, err := b.principals.ResolvePrincipal(ctx, issuer, subject)
+	if err != nil {
+		return ctx, false
+	}
+	sctx := authn.NewContext(ctx, authn.Subject{Service: res.Code, PrincipalID: res.PrincipalID})
+	if b.principalAuthority != nil {
+		actx, err := b.principalAuthority.ContextWithPrincipalAuthority(sctx, res.PrincipalID)
+		if err != nil {
+			return ctx, false
+		}
+		sctx = actx
+	}
+	return sctx, true
 }
 
 // resolve turns verified claims into a PDP subject: first a direct (issuer, subject) lookup; on an

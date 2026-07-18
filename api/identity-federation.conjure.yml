@@ -104,6 +104,69 @@ types:
           identity:
             type: optional<LinkIdentityRequest>
             docs: The first login point to link; omit to create a login-less account shell.
+      ServicePrincipal:
+        docs: |
+          A MACHINE subject (M51 / D-ServiceIdentities) — a facade with standing of its own, or a
+          connector. It authenticates through the same external IdP and the same middleware as a
+          person, using the OAuth2 client-credentials grant, and is keyed by the same
+          (issuer, subject) pair as an ExternalIdentity: a given pair is a person identity XOR a
+          principal, never both.
+
+          A principal holds NO role assignment and NO unit reach; its authority is the flat
+          per-principal grants owned by AuthorizationService. Registering one creates no credential —
+          the IdP owns the client secret (L-AuthzOnly holds).
+        fields:
+          id:
+            type: string
+            docs: The principal's URN RID (carried as a plain string).
+          code:
+            type: string
+            docs: Stable, locale-agnostic machine name (D-Code) — what audit rows and operators reference.
+          name: string
+          description: optional<string>
+          issuer:
+            type: string
+            docs: The IdP `iss` of the client-credentials token.
+          subject:
+            type: string
+            docs: The IdP `sub` of the client-credentials token. Immutable after registration.
+          clientId:
+            type: optional<string>
+            docs: |
+              Display label from the token's `azp`/`client_id` claim, so an operator can tell which IdP
+              client this is. NEVER an authorization input — the identity key is (issuer, subject).
+          status:
+            type: string
+            docs: One of active | disabled. A disabled principal fails resolution, so its tokens stop working at once.
+          createdAt: datetime
+          updatedAt: datetime
+      RegisterServicePrincipalRequest:
+        fields:
+          code: string
+          name: string
+          description: optional<string>
+          issuer:
+            type: string
+            docs: The IdP `iss` the machine's tokens carry.
+          subject:
+            type: string
+            docs: |
+              The IdP `sub` the machine's tokens carry. For Keycloak this is the service-account user
+              id; a rejected unknown token logs its issuer/subject so it can be copied from there.
+          clientId: optional<string>
+      UpdateServicePrincipalRequest:
+        docs: |
+          Mutable display fields only. (issuer, subject) is the identity key the middleware resolves
+          on and is immutable — re-pointing it would silently transfer a machine's authority to a
+          different IdP client. Register a new principal and disable the old one instead.
+        fields:
+          name: string
+          description: optional<string>
+          clientId: optional<string>
+      ServicePrincipalPage:
+        fields:
+          principals: list<ServicePrincipal>
+          nextPageToken: optional<string>
     errors:
       AccountNotFound:
         namespace: Account
@@ -133,6 +196,25 @@ types:
           (account.identity_linking.enabled = false) and the account already has an active identity.
         namespace: Identity
         code: CONFLICT
+        safe-args:
+          reason: string
+      ServicePrincipalNotFound:
+        namespace: ServicePrincipal
+        code: NOT_FOUND
+        safe-args:
+          principalId: string
+      ServicePrincipalConflict:
+        docs: |
+          The code is taken, or the (issuer, subject) already names a principal OR a person external
+          identity — an inbound token must resolve to exactly one subject.
+        namespace: ServicePrincipal
+        code: CONFLICT
+        safe-args:
+          reason: string
+      ServicePrincipalInvalid:
+        docs: The request is malformed, or attempts to change the immutable (issuer, subject) key.
+        namespace: ServicePrincipal
+        code: INVALID_ARGUMENT
         safe-args:
           reason: string
       IdentityInvalid:
@@ -221,3 +303,61 @@ services:
         http: GET /whoami
         docs: Resolve the caller's own PDP context (person + account) from the validated inbound token.
         returns: Whoami
+      registerServicePrincipal:
+        http: POST /service-principals
+        docs: |
+          Register a machine subject (M51 / D-ServiceIdentities). Instance-plane act gated on
+          `service-principal.manage`. Returns ServicePrincipal:ServicePrincipalConflict when the code
+          or the (issuer, subject) is taken — including when that pair is already a person's external
+          identity. Creates no credential: the external IdP owns the client secret.
+        args:
+          request: RegisterServicePrincipalRequest
+        returns: ServicePrincipal
+      listServicePrincipals:
+        http: GET /service-principals
+        docs: Keyset page over the registry. Gates on `service-principal.read`.
+        args:
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: ServicePrincipalPage
+      getServicePrincipal:
+        http: GET /service-principals/{principalId}
+        docs: Read one machine subject. Gates on `service-principal.read`.
+        args:
+          principalId:
+            type: string
+            param-type: path
+        returns: ServicePrincipal
+      updateServicePrincipal:
+        http: PUT /service-principals/{principalId}
+        docs: |
+          Update the display fields. Gates on `service-principal.manage`. The (issuer, subject) key is
+          immutable — see UpdateServicePrincipalRequest.
+        args:
+          principalId:
+            type: string
+            param-type: path
+          request: UpdateServicePrincipalRequest
+        returns: ServicePrincipal
+      disableServicePrincipal:
+        http: POST /service-principals/{principalId}/disable
+        docs: |
+          Reversible kill switch: a disabled principal fails token resolution immediately, while the
+          audit rows naming it stay intact. Gates on `service-principal.manage`.
+        args:
+          principalId:
+            type: string
+            param-type: path
+        returns: ServicePrincipal
+      enableServicePrincipal:
+        http: POST /service-principals/{principalId}/enable
+        docs: Re-enable a disabled machine subject. Gates on `service-principal.manage`.
+        args:
+          principalId:
+            type: string
+            param-type: path
+        returns: ServicePrincipal

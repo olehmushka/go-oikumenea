@@ -67,13 +67,30 @@ type Service struct {
 	pdp     domain.PDP
 	graphs  GraphPort
 	grants  *grantCache // epoch-validated per-process authority cache (D-AuthzGrantCache)
+	// The machine-subject authority plane (M51 / D-ServiceIdentities). newPrincipalRepo is injected
+	// with the other factories; principals is the cross-module port into identity-federation's
+	// registry, LATE-BOUND by main.go because that module registers after this one.
+	newPrincipalRepo PrincipalRepositoryFactory
+	principals       domain.PrincipalDirectory
 }
 
 // NewService wires the service with the pool, the repository factory, the audit service, the PDP
 // engine (built over the tenant closure port), and the graph-resolution port.
-func NewService(pool *pgxpool.Pool, newRepo RepositoryFactory, audit *auditapp.Service, pdp domain.PDP, graphs GraphPort) *Service {
-	return &Service{pool: pool, newRepo: newRepo, audit: audit, pdp: pdp, graphs: graphs, grants: newGrantCache()}
+func NewService(pool *pgxpool.Pool, newRepo RepositoryFactory, audit *auditapp.Service, pdp domain.PDP, graphs GraphPort, newPrincipalRepo PrincipalRepositoryFactory) *Service {
+	return &Service{
+		pool: pool, newRepo: newRepo, audit: audit, pdp: pdp, graphs: graphs, grants: newGrantCache(),
+		newPrincipalRepo: newPrincipalRepo,
+	}
 }
+
+// BindPrincipalDirectory late-binds identity-federation's registry (the established seam pattern —
+// cf. SetLocationLookup / SetWatchlistLookup). main.go calls it after identityfederation.Register
+// and asserts it in the MustBeBound sweep, so a missing binding fails the boot rather than a
+// request.
+func (s *Service) BindPrincipalDirectory(d domain.PrincipalDirectory) { s.principals = d }
+
+// PrincipalDirectoryBound reports whether the seam is wired (boot assertion).
+func (s *Service) PrincipalDirectoryBound() bool { return s.principals != nil }
 
 // RolePage / AssignmentPage are keyset-paginated slices plus the opaque next-page token.
 type RolePage struct {
