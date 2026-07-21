@@ -1,4 +1,4 @@
-h1:reGw875TeiFjxWx0wv6rZ5G8GuMCCQhhVT+CXB2ZKLY=
+h1:vXwMtbRd7HNuvlh6C87GyJ2WwkP7YE1gOtUIERRVmY0=
 20260601000000_schema_bootstrap.sql h1:6sV+mR08nzCE04BwP0m6mCw5S1m0UaNM3QJBSdJPsgw=
 20260601000001_audit_log.sql h1:ZcBZckRBkDJSLC73KJZQbatt7np7KQRJb+ko0XP65LA=
 20260601000002_localization.sql h1:7yHKasuocRLtxyybIdcSnKoVqyt3E+b7tbaNNf8nHQ4=
@@ -43,3 +43,4 @@ h1:reGw875TeiFjxWx0wv6rZ5G8GuMCCQhhVT+CXB2ZKLY=
 20260601000041_datapacks.sql h1:JidP6HwE/5v67wf4F9u/Remv/uuxUACzgHcQVC9rOQ4=
 20260601000042_rls_service_arm.sql h1:cV1Mm93/J/h6t71buccKi8y0maJrwVOGsF9zJ5oJ4eI=
 20260601000043_login_security_log.sql h1:UNHF0R/3i8b/fZTCkDIqCjbHZyeVjcQwFPadVFQ4JUQ=
+20260601000044_login_event_rid_seed.sql h1:MQnTI3U/PK8qbLCRO65jcp7mEqvpv3205EqfIHiXPK4=
