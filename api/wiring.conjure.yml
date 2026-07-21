@@ -1,0 +1,170 @@
+# Wiring API (M53 / D-ConnectorPlane, pull-wiring mode). The narrow, permission-gated READ surface a
+# connector uses to MAP its data before pushing it: resolve natural keys to RIDs, read the reference
+# catalogs it must reference, and fetch its own registry row + sync cursors. Machine-facing — every
+# endpoint is gated on a `wiring.*` code held by a service principal (M51), and each surface is its OWN
+# code, so what a connector may see is a grant, never a default.
+#
+# Reads only. It mutates nothing, holds no unit or organization dimension in M53 (org-confined wiring
+# is M55), and exposes only instance-wide reference data + the caller's own connector record. RIDs are
+# typed `string` (canonical RID text). Generated Go lands in internal/conjure, never hand-edited.
+types:
+  definitions:
+    default-package: oikumenea.wiring
+    objects:
+      # ---- resolve ----
+      ResolveRequest:
+        docs: |
+          Resolve a batch of natural keys to RIDs within one catalog, in a single round trip — the
+          connector's real need (mapping many rows), not one code at a time. `catalog` is one of
+          `country` (ISO-3166-1 alpha-2), `languoid` (glottocode), `writing-system` (ISO-15924). The
+          legal-basis catalog is code-keyed and has no RID, so it is a catalog READ, not a resolve target.
+        fields:
+          catalog: string
+          codes: list<string>
+      ResolveResponse:
+        docs: |
+          `resolved` maps each FOUND code to its RID; `unresolved` lists the codes with no match, so a
+          connector can act on both without a second call.
+        fields:
+          resolved: map<string, string>
+          unresolved: list<string>
+      # ---- catalogs ----
+      CountryEntry:
+        fields:
+          rid: string
+          code:
+            type: string
+            docs: ISO-3166-1 alpha-2.
+          name:
+            type: map<string, string>
+            docs: Default-locale fallback + i18n translations.
+      CountryList:
+        fields:
+          countries: list<CountryEntry>
+      WritingSystemEntry:
+        fields:
+          rid: string
+          code:
+            type: string
+            docs: ISO-15924.
+          name: string
+      WritingSystemList:
+        fields:
+          writingSystems: list<WritingSystemEntry>
+      LanguoidEntry:
+        fields:
+          rid: string
+          code:
+            type: string
+            docs: Glottocode.
+          name: string
+          iso6393:
+            type: optional<string>
+            docs: The ISO 639-3 code, when the languoid has one.
+          level: optional<string>
+          familyCode: optional<string>
+      LanguoidPage:
+        docs: The languoid catalog is ~27k rows; reads are keyset-paginated.
+        fields:
+          languoids: list<LanguoidEntry>
+          nextPageToken: optional<string>
+      LegalBasisEntry:
+        docs: A GDPR lawful-basis kind. Code-keyed — no RID (it is a resolve non-target).
+        fields:
+          code: string
+          name: string
+          article:
+            type: string
+            docs: art6 | art9.
+          status: string
+      LegalBasisList:
+        fields:
+          kinds: list<LegalBasisEntry>
+      # ---- self (cursor.read) ----
+      SelfConnector:
+        docs: The calling connector's own registry row.
+        fields:
+          id: string
+          code: string
+          name: string
+          status: string
+          lastSeenAt: optional<datetime>
+      SelfSource:
+        docs: |
+          One of the connector's sources with its CURSOR — the most recent sync run, if any. A connector
+          reads this to resume: `latestRun.externalRunId` is where it last got to, `state` whether that
+          run finished.
+        fields:
+          id: string
+          code: string
+          objectType: optional<string>
+          enabled: boolean
+          latestRunState: optional<string>
+          latestExternalRunId: optional<string>
+          latestFinishedAt: optional<datetime>
+      WiringSelf:
+        fields:
+          connector: SelfConnector
+          sources: list<SelfSource>
+    errors:
+      WiringInvalid:
+        namespace: Wiring
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
+      ConnectorNotRegistered:
+        docs: The calling principal has no registered connector, so it has no cursors to read.
+        namespace: Wiring
+        code: NOT_FOUND
+        safe-args:
+          principalId: string
+
+services:
+  WiringService:
+    name: Wiring Service
+    package: oikumenea.wiring
+    base-path: /wiring/v1
+    default-auth: header
+    docs: |
+      The pull-wiring read API (M53 / D-ConnectorPlane). Machine-facing: every endpoint is gated on a
+      `wiring.*` code held by a service principal, each surface its own code. Reads only.
+    endpoints:
+      resolveKeys:
+        http: POST /resolve
+        docs: Resolve natural keys to RIDs within one catalog (`wiring.resolve`).
+        args:
+          request: ResolveRequest
+        returns: ResolveResponse
+      listCountries:
+        http: GET /catalogs/countries
+        docs: The country reference catalog (`wiring.catalog.read`).
+        returns: CountryList
+      listWritingSystems:
+        http: GET /catalogs/writing-systems
+        docs: The ISO-15924 writing-system catalog (`wiring.catalog.read`).
+        returns: WritingSystemList
+      listLanguoids:
+        http: GET /catalogs/languoids
+        docs: The Glottolog languoid catalog, keyset-paginated (`wiring.catalog.read`).
+        args:
+          query:
+            type: optional<string>
+            param-type: query
+            docs: Optional name/code substring filter.
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: LanguoidPage
+      listLegalBasisKinds:
+        http: GET /catalogs/legal-basis
+        docs: The GDPR lawful-basis catalog (`wiring.catalog.read`).
+        returns: LegalBasisList
+      readSelf:
+        http: GET /self
+        docs: |
+          The calling connector's own registry row + its sources with cursors (`wiring.cursor.read`).
+          Returns Wiring:ConnectorNotRegistered if the principal has not registered a connector yet.
+        returns: WiringSelf

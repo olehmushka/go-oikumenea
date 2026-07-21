@@ -37,6 +37,28 @@ func (s *Service) ListCountries(ctx context.Context) ([]domain.Country, error) {
 	return s.newRepo(s.pool).ListCountries(ctx)
 }
 
+// ResolveCountries maps ISO-3166-1 alpha-2 codes to their country RIDs (the M53 wiring resolve seam,
+// D-ConnectorPlane): a connector holding a country code gets the RID it must reference, in one round
+// trip. Only found codes appear in the map, so the caller sees which it must handle. Read-only over the
+// pool, matching ListCountries.
+func (s *Service) ResolveCountries(ctx context.Context, codes []string) (map[string]string, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT code, id FROM oikumenea.geo_countries WHERE code = ANY($1)`, codes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]string, len(codes))
+	for rows.Next() {
+		var code, id string
+		if err := rows.Scan(&code, &id); err != nil {
+			return nil, err
+		}
+		out[code] = id
+	}
+	return out, rows.Err()
+}
+
 // ListPlaces returns active geo_places of a placetype (default region) under a country, in name order
 // (D-GeoPlaces) — powers region pickers such as a vehicle plate region.
 func (s *Service) ListPlaces(ctx context.Context, countryID, placetype string) ([]domain.Place, error) {

@@ -1,6 +1,7 @@
 import * as audit from "./audit";
 import * as authorization from "./authorization";
 import * as company from "./company";
+import * as connector from "./connector";
 import * as dataimport from "./dataimport";
 import * as document from "./document";
 import * as education from "./education";
@@ -23,10 +24,12 @@ import * as religion from "./religion";
 import * as search from "./search";
 import * as tenant from "./tenant";
 import * as vehicle from "./vehicle";
+import * as wiring from "./wiring";
 
 export { audit };
 export { authorization };
 export { company };
+export { connector };
 export { dataimport };
 export { document };
 export { education };
@@ -49,3 +52,4 @@ export { religion };
 export { search };
 export { tenant };
 export { vehicle };
+export { wiring };

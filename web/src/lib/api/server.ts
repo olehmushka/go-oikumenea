@@ -12,11 +12,30 @@ import { createOikumeneaClient, type OikumeneaClient } from "oikumenea-client";
  *   const runs = await ok.hermenea.listRuns();        // hermenea, through oikumenea
  *   const page = await ok.request("GET", def.list.path, { query: search }); // generic (registry)
  *
- * The access token is read from the httpOnly session and never reaches the browser. API_BASE_URL
- * points at the service (https://localhost:8443 in dev — self-signed; set NODE_TLS_REJECT_UNAUTHORIZED=0
- * for dev, see web/.env.example).
+ * The access token is read from the httpOnly session and never reaches the browser.
+ *
+ * This module runs inside **console-bff** — the facade (M52 / D-HeadlessTopology). Server Components
+ * reach oikumenea directly from here; the browser reaches it through the BFF proxy route. Both attach
+ * the same session bearer and both originate inside this process, on the internal network — oikumenea
+ * publishes no host port in the packaged topology.
+ *
+ * API_BASE_URL is REQUIRED and has no default: in the compose topology it is the internal address
+ * (https://app:8443), and for host development it is the locally-run binary (https://localhost:8443 —
+ * self-signed, so set NODE_TLS_REJECT_UNAUTHORIZED=0; see web/.env.example). A default would silently
+ * point a misconfigured facade at a host port that no longer exists, so fail fast instead.
  */
-export const API_BASE_URL = process.env.API_BASE_URL ?? "https://localhost:8443";
+function requireApiBaseUrl(): string {
+  const raw = process.env.API_BASE_URL?.trim();
+  if (!raw) {
+    throw new Error(
+      "API_BASE_URL is not set. console-bff must be told where oikumenea listens " +
+        "(compose: https://app:8443 — host dev: https://localhost:8443). See web/.env.example.",
+    );
+  }
+  return raw.replace(/\/+$/, "");
+}
+
+export const API_BASE_URL = requireApiBaseUrl();
 
 export async function oikumenea(): Promise<OikumeneaClient> {
   const session = await auth();

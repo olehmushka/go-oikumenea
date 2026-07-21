@@ -14,6 +14,15 @@ export interface ICanonicalEnvelope {
     'license'?: string | null;
     /** ISO-8601 timestamp the upstream snapshot was generated (lineage only). */
     'generatedAt'?: string | null;
+    /**
+     * The owning organization RID when the target is ORG-OWNED operational data (M55 / the RLS
+     * service arm): the import permission is then checked against this org, so an org-confined
+     * connector imports only its own organization's data and a foreign-org grant is rejected.
+     * Absent = an instance-wide reference catalog (the pre-M55 default), which demands an
+     * instance-wide grant.
+     *
+     */
+    'orgId'?: string | null;
     /** The object-type-specific records to upsert; each is a JSON object. */
     'records': Array<any>;
     /**

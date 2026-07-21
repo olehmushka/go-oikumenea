@@ -77,6 +77,14 @@ const ObjectTypeTranslations = "translations"
 // palettes plus the rank/religion/ethnicity/country palettes the seeded reference catalogs point at.
 const ObjectTypeColors = "colors"
 
+// ObjectTypeLocales is the routing key for supported-locale rows (D-DataPacks + D-i18n, M54) — the
+// import path a LOCALE PACK uses to add a new supported locale (i18n_locales) before its translation
+// overlays. Idempotency is keyed on the ISO-639-3 `code`: insert create-if-absent, NEVER touching an
+// existing locale's enabled/is_default/sort_order (a pack must not flip an operator's locale settings
+// or steal the default). New locales land enabled, non-default. Translations follow via
+// ObjectTypeTranslations, which is why a locale pack's translations preset dependsOn its locale preset.
+const ObjectTypeLocales = "locales"
+
 // ObjectTypeRegulatorySanctions is the routing key for the person regulatory-sanction overlay
 // (D-Watchlists, M34). A person-scoped import target (unusual — most targets are instance-global
 // reference catalogs): each record references a person by RID and carries a regulatory action.
@@ -380,6 +388,13 @@ type Translation struct {
 type TranslationStore interface {
 	Resolve(ctx context.Context, entityType, key string) (entityID string, found bool, err error)
 	Upsert(ctx context.Context, entityType, entityID, field, locale, text string) error
+}
+
+// LocaleStore is the port the locales handler drives (D-DataPacks + D-i18n, M54). Insert adds a
+// supported locale create-if-absent (ON CONFLICT (code) DO NOTHING), returning created=false when the
+// code already exists — so a locale pack never clobbers an operator's enabled/is_default/sort_order.
+type LocaleStore interface {
+	Insert(ctx context.Context, code, name string) (created bool, err error)
 }
 
 // LanguageScriptStore is the port the language-scripts upsert handler drives (D-Languages). A link ties

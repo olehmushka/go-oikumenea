@@ -59,6 +59,7 @@ var temporalTiers = map[[2]int]temporalTier{
 	{rid.SvcMembership, 1}: tierValidity, // member_of (effective_from/to)
 	{rid.SvcAuthz, 1}:      tierValidity, // has_role (granted_at/revoked_at/expires_at)
 	{rid.SvcAuthz, 2}:      tierValidity, // instance_admin (granted_at/revoked_at)
+	{rid.SvcAuthz, 3}:      tierValidity, // principal_grant (granted_at/revoked_at) — M51
 	{rid.SvcEducation, 2}:  tierValidity, // studied_at (effective_from/to)
 	{rid.SvcEducation, 3}:  tierValidity, // resided_in_dormitory (effective_from/to)
 	{rid.SvcEducation, 4}:  tierValidity, // holds_education_position (effective_from/to)
@@ -103,6 +104,7 @@ func linkTables() map[[2]int]string {
 		{rid.SvcPerson, 13}:  "oikumenea.person_lobbying_relationships",
 		{rid.SvcAuthz, 1}:    "oikumenea.authz_role_assignments",
 		{rid.SvcAuthz, 2}:    "oikumenea.authz_instance_admins",
+		{rid.SvcAuthz, 3}:    "oikumenea.authz_principal_grants",
 		{rid.SvcReligion, 3}: "oikumenea.religion_affiliations",
 	} {
 		m[k] = tbl

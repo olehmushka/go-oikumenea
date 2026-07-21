@@ -28,6 +28,9 @@ func (s *Service) GrantPrincipalPermission(ctx context.Context, in domain.Princi
 	if err := in.Validate(); err != nil {
 		return domain.PrincipalGrant{}, err
 	}
+	if err := s.rejectDisabledCode(in.Permission); err != nil {
+		return domain.PrincipalGrant{}, err
+	}
 	if s.principals == nil {
 		// A boot-wiring bug, not a caller error: fail loudly rather than granting unvalidated.
 		return domain.PrincipalGrant{}, domain.ErrUnknownPrincipal

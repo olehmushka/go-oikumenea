@@ -1,6 +1,6 @@
 // Package factbookethnicities implements the ethnicity-scheme PagedMapper (D-PhysicalIdentity amendment,
 // M43) backed by the CIA World Factbook (US-government PUBLIC DOMAIN). It is driven by the `factbook`
-// StreamingConnector, which stages every `<region>/<cc>.json` country file to a temp directory; this
+// StreamingFetcher, which stages every `<region>/<cc>.json` country file to a temp directory; this
 // mapper walks that directory, parses each country's "Ethnic groups" free-text, derives the country's
 // ISO-3166 alpha-2 code from its Internet ccTLD, dedups group names across all countries, and emits
 // canonical ethnicity-scheme records — entirely at runtime, in Go, with NO committed preset.

@@ -48,6 +48,13 @@ type Install struct {
 	// self-seeds its `go:embed`-ed YAML presets on boot. Absent block => default (autoseed on).
 	Pinax Pinax `yaml:"pinax"`
 
+	// Modules gates the enrichment VERTICALS on/off (D-DataPacks, M54): a disabled module's endpoints
+	// are not served (404) and its permission codes are not grantable, but its SCHEMA still migrates —
+	// re-enabling is a config flip, not a migration. Only the standalone verticals are toggleable
+	// (finance/religion/vehicle/externalorg/company/education); core + depended-on reference modules are
+	// always on. Absent (or an absent module key) => enabled. See ModuleEnabled / ToggleableModules.
+	Modules map[string]ModuleFlag `yaml:"modules"`
+
 	// Audit is the audit-ledger operator policy (D-AuditRetention, review-2026-07 R-07). Absent block
 	// => retain forever.
 	Audit Audit `yaml:"audit"`
@@ -108,10 +115,72 @@ type Pinax struct {
 	// not opt-in): a fresh install seeds the world by default; set `pinax.autoseed: false` to skip and
 	// seed manually via `oikumenea seed`.
 	Autoseed *bool `yaml:"autoseed"`
+	// Packs is an optional operator-mounted DATA PACKS directory (D-DataPacks, M54): its `**/*.yaml`
+	// presets are scanned at boot BESIDE the embedded bundle and seeded through the same version-gated,
+	// create-if-absent pipeline. Empty = embedded-only (today's behaviour). A pack preset whose name
+	// collides with an embedded (or another pack's) preset fails boot loudly — packs are additive.
+	Packs string `yaml:"packs"`
 }
 
 // AutoseedEnabled reports whether boot-time autoseed is on, defaulting to true when unset (D-Pinax).
 func (p Pinax) AutoseedEnabled() bool { return p.Autoseed == nil || *p.Autoseed }
+
+// ModuleFlag is one `modules.<name>` entry (D-DataPacks, M54). Enabled is a pointer so an ABSENT flag
+// defaults to ON (opt-out): a deployment that says nothing gets every vertical, exactly as before.
+type ModuleFlag struct {
+	Enabled *bool `yaml:"enabled"`
+}
+
+// ToggleableModules is the closed set of verticals a deployment may switch off (D-DataPacks, M54).
+// Core + depended-on reference modules are deliberately absent: they underpin the PDP, the person
+// directory, wiring, search and cross-module lookups, so disabling them is not a supported deployment,
+// only a broken one. Codes under these module prefixes become non-grantable when the module is off.
+var ToggleableModules = map[string]struct{}{
+	"finance":     {},
+	"religion":    {},
+	"vehicle":     {},
+	"externalorg": {},
+	"company":     {},
+	"education":   {},
+}
+
+// ModuleEnabled reports whether a vertical is enabled (D-DataPacks, M54): a non-toggleable (core)
+// module is ALWAYS enabled regardless of config; a toggleable one defaults to enabled unless its
+// `modules.<name>.enabled` is explicitly false. Panicking is avoided — an unknown name reads as enabled
+// so a config typo fails safe (the module stays on) rather than silently disabling a surface.
+func (i Install) ModuleEnabled(name string) bool {
+	if _, toggleable := ToggleableModules[name]; !toggleable {
+		return true
+	}
+	f, ok := i.Modules[name]
+	if !ok || f.Enabled == nil {
+		return true
+	}
+	return *f.Enabled
+}
+
+// DisabledModulePrefixes returns the permission-code prefixes of every toggleable module that is OFF
+// (D-DataPacks, M54) — e.g. `finance` disabled → "finance." — so the authorization service can reject
+// grants of a disabled module's codes and omit them from the grantable catalog. A module whose codes do
+// not all share its bare name as a prefix lists the extra prefixes here.
+func (i Install) DisabledModulePrefixes() []string {
+	// Most modules own exactly `<name>.*`; religion also owns `religionorg.*`.
+	extra := map[string][]string{
+		"religion": {"religion.", "religionorg."},
+	}
+	var out []string
+	for name := range ToggleableModules {
+		if i.ModuleEnabled(name) {
+			continue
+		}
+		if px, ok := extra[name]; ok {
+			out = append(out, px...)
+		} else {
+			out = append(out, name+".")
+		}
+	}
+	return out
+}
 
 // Postgres holds the operator-supplied connection string.
 type Postgres struct {

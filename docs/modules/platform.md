@@ -39,6 +39,16 @@ layers.
 - **Runtime config** (`var/conf/runtime.yml`): hot-reloadable tunables (default page size,
   log level, grace windows, the `closure_drift.max_age` staleness window for the `closure-drift`
   health reporter — default ~26h; `0` disables the staleness check) read through `refreshable`.
+- **Data packs & module flags** (`pinax.packs`, `modules.*.enabled` — D-DataPacks, M54): `pinax.packs`
+  is an optional operator-mounted directory scanned at boot **beside** the `go:embed`-ed pinax presets
+  (same version-gated, create-if-absent pipeline; a name collision with an embedded or another pack's
+  preset fails boot — packs are additive). `modules.<name>.enabled` (default `true`) switches an
+  **enrichment vertical** off — one of `finance`/`religion`/`vehicle`/`externalorg`/`company`/
+  `education`; core + depended-on reference modules are always on. A disabled module registers **no
+  routes** (→ 404) and its permission codes are **not grantable** (a role/principal grant naming one is
+  rejected as unknown), but its **schema still migrates** — so re-enabling is a config flip, never a
+  migration. See [config.go](../../internal/platform/config/config.go) `ModuleEnabled` /
+  `DisabledModulePrefixes` and the composition-root gating in `main.go`.
 - The operator owns the DB and its credentials; nothing secret lives in the repo or the DB.
 
 ### Database access (pgx + sqlc)
@@ -49,12 +59,25 @@ layers.
   the `pgx.Tx` plumbing, not the queries.
 - **RLS GUC seam (D-RLSDefenseInDepth / D-RLSLiveReach):** per authenticated request the
   authenticator installs a **lazy** RLS-scoped connection holder (`db.WithLazyConn`, R-03): the
-  connection is pinned and the two O(1) GUCs — `app.person_id` + `app.is_instance_admin` — are set
-  in **one** `set_config` round trip only when a handler first touches an RLS-consuming module
-  (`db.RequestQuerier`/`db.RequestDBTX`), and released after the response iff acquired. The RLS
-  policies compute reach live from those GUCs (`oikumenea.authz_unit_in_reach`); no unit-list GUC
-  exists. System paths (`db.RunAsSystem`) still pin eagerly with the admin flag. The application
-  DB role is provisioned **without `BYPASSRLS`**.
+  connection is pinned and the **three** O(1) GUCs — `app.person_id` + `app.is_instance_admin` +
+  `app.principal_id` — are set in **one** `set_config` round trip only when a handler first touches an
+  RLS-consuming module (`db.RequestQuerier`/`db.RequestDBTX`), and released after the response iff
+  acquired. The RLS policies compute reach live from those GUCs (`oikumenea.authz_unit_in_reach`); no
+  unit-list GUC exists. A request subject is **either** a person (`app.person_id`, optionally the admin
+  flag) **or** a machine principal (`app.principal_id`) — never both; the unset one is an empty probe.
+  System paths (`db.RunAsSystem`) still pin eagerly with the admin flag. The application DB role is
+  provisioned **without `BYPASSRLS`**.
+- **Machine reach arm (M55 / D-ServiceIdentities, migration `0042`):** a service principal set no
+  `app.person_id`, so it had no reach. `app.principal_id` + `authz_principal_org_in_reach(org, wr)`
+  (an org-direct check of `authz_principal_grants`, read live → immediate revocation) give an
+  **org-confined** grant reach into that organization's RLS-guarded rows and only that org's. Because
+  the reach predicate may read only RLS-exempt tables, `0042` adds a dedicated **RLS-exempt projection
+  `authz_unit_org(unit_id → org_id)`**, trigger-maintained from `tenant_units` (its `unit_id` FK is
+  `DEFERRABLE INITIALLY DEFERRED` so the BEFORE-INSERT projection write can precede the parent row):
+  the child-table arm resolves a unit → org through the projection, while the `tenant_units` policy
+  checks the row's own `org_id` (the one case the projection can't serve mid-INSERT — this is what
+  lets a connector create a brand-new, edgeless unit). `org_id NULL` (instance-wide) grants confer no
+  operational reach. `db.RLSState` is `{PersonID, IsInstanceAdmin, PrincipalID}`.
 - **Query-count tracer (M46 measurement harness):** every pool built by `db.NewPool` carries a
   `pgx.QueryTracer` that is a no-op unless a test attaches a counter via `db.WithQueryCounter` —
   integration tests assert per-request statement budgets with it (`db.AssertQueryCount`).

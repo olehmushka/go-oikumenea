@@ -1,9 +1,12 @@
-// Package watchlistclient adapts the generated hermenea client to the person module's WatchlistLookup
-// seam (D-Watchlists, M34). It is the oikumenea SIDE of the live screening call: the person service
-// screens an identity by calling out to the hermenea companion (which owns the OFAC/EU/UN/INTERPOL
-// egress + the ≤24h cache) and persists only the returned match metadata. Keeping this adapter out of
-// the person package lets person's domain stay free of the hermenea client (the seam is late-bound in
-// main.go, mirroring the location/color seams).
+// Package watchlistclient is the WATCHLIST lookup KIND of the connector plane's on-demand-lookup seam
+// (D-Watchlists M34; generalized under D-ConnectorPlane M53). It adapts the generated hermenea client
+// to the person module's WatchlistLookup interface: the person service screens an identity by calling
+// out to the hermenea companion (which owns the OFAC/EU/UN/INTERPOL egress + the ≤24h cache) and
+// persists only the returned match metadata. The transport discipline every such call needs — a
+// mandatory deadline (R-12) and a null-object for "not configured" — lives in the shared
+// internal/connectorcall seam; this package is the watchlist-specific mapping over a client that seam
+// dials. Kept out of the person package so person's domain stays free of the hermenea client (the seam
+// is late-bound in main.go, mirroring the location/color seams).
 package watchlistclient
 
 import (
@@ -11,16 +14,15 @@ import (
 	"time"
 
 	hermeneaapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/hermenea"
+	"github.com/olegamysk/go-oikumenea/internal/connectorcall"
 	persondomain "github.com/olegamysk/go-oikumenea/internal/person/domain"
 	"github.com/palantir/pkg/bearertoken"
 )
 
-// HTTPTimeout is the hard deadline main.go puts on the hermenea watchlist HTTP client
-// (httpclient.WithHTTPTimeout — review-2026-07 R-12): hermenea serves cached answers in
-// milliseconds, and a cache miss that needs longer than this must fail into the person module's
-// "screening unavailable" error path rather than couple oikumenea's request latency (and, before
-// R-03, a pooled DB connection) to a third-party sanctions API's tail latency.
-const HTTPTimeout = 10 * time.Second
+// HTTPTimeout is the watchlist call's hard deadline (R-12). It is the shared connector-call deadline —
+// aliased here so existing references and the M34 docs keep resolving; new lookup kinds use
+// connectorcall.Deadline directly.
+const HTTPTimeout = connectorcall.Deadline
 
 // Client screens person identities against hermenea's watchlist endpoint. It holds the OIKUMENEA_HERMENEA
 // trigger secret (the same trust direction as the import-control proxy) so the web tier never reaches the

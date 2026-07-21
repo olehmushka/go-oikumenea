@@ -27,6 +27,7 @@ import {
   audit,
   authorization,
   company,
+  connector,
   dataimport,
   document,
   education,
@@ -118,6 +119,8 @@ export interface OikumeneaClient {
   readonly finance: finance.FinanceService;
   /** The hermenea ingestion/scheduler control + read API, proxied through oikumenea (D-Hermenea). */
   readonly hermenea: hermenea.HermeneaService;
+  /** Connector-plane registry — the fleet of connectors, their sources and reported sync runs (D-ConnectorPlane, M53). */
+  readonly connector: connector.ConnectorService;
   /** The underlying conjure HTTP bridge, for advanced use (custom endpoints, binary bodies). */
   readonly bridge: IHttpApiBridge;
   /**
@@ -232,6 +235,7 @@ export function createOikumeneaClient(
     vehicle: new vehicle.VehicleService(bridge),
     finance: new finance.FinanceService(bridge),
     hermenea: new hermenea.HermeneaService(bridge),
+    connector: new connector.ConnectorService(bridge),
     bridge,
     request,
   };

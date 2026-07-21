@@ -1,7 +1,15 @@
-// Package connector implements the hermenea Connector seam (M16 / D-Hermenea): pluggable fetchers
-// that pull a source's raw payload. Two ship now — HTTP(S) download and the degenerate `file` case
-// (bundled presets / deterministic tests). New source types (DS-44) are new Connector impls.
-package connector
+// Package fetcher implements the hermenea Fetcher seam (M16 / D-Hermenea): pluggable strategies that
+// pull a source's raw payload. Two ship now — HTTP(S) download and the degenerate `file` case
+// (bundled presets / deterministic tests). New source types (DS-44) are new Fetcher impls.
+//
+// NAMING (M53 / D-ConnectorPlane): this seam was called `Connector` through M52. The connector plane
+// gives "connector" a different, higher meaning in the core — a whole deployable agent, of which
+// hermenea is one — so the fetch strategy is a `Fetcher` here to keep the two altitudes distinct.
+// The names AT REST deliberately did not move: the column `hermenea.import_sources.connector_type`,
+// the install-config key `connector-type:`, and the Conjure field `connectorType` are all unchanged,
+// because renaming them would break every deployment's config and need a migration for zero benefit.
+// So a mapping like `ConnectorType: s.FetcherType` in the adapters is correct, not a leftover.
+package fetcher
 
 import (
 	"compress/bzip2"
@@ -25,26 +33,26 @@ import (
 // maxPayload bounds a fetched body (16 MiB) so a runaway source can't exhaust memory.
 const maxPayload = 16 << 20
 
-// ErrStreamingOnly is returned by a StreamingConnector's Fetch: large sources go through Stage + the
+// ErrStreamingOnly is returned by a StreamingFetcher's Fetch: large sources go through Stage + the
 // paged pipeline, never the in-memory Fetch path.
-var ErrStreamingOnly = errors.New("connector is streaming-only; use the paged pipeline")
+var ErrStreamingOnly = errors.New("fetcher is streaming-only; use the paged pipeline")
 
-// Registry maps a connector-type to its Connector.
-type Registry map[string]domain.Connector
+// Registry maps a connector-type (the at-rest discriminator — see the package doc) to its Fetcher.
+type Registry map[string]domain.Fetcher
 
-// Default builds the standard connector registry (http + file + wof-sqlite). The wof-sqlite client has
+// Default builds the standard fetcher registry (http + file + wof-sqlite). The wof-sqlite client has
 // no overall timeout — a planet-scale download is governed by the job timeout / context deadline, not a
 // fixed client deadline (operators raise worker.job-timeout-ms for WOF sources).
 func Default() Registry {
 	return Registry{
-		domain.ConnectorHTTP:      HTTP{client: &http.Client{Timeout: 30 * time.Second}},
-		domain.ConnectorFile:      File{},
-		domain.ConnectorWOFSQLite: WOFSQLite{client: &http.Client{Timeout: 0}},
+		domain.FetcherHTTP:      HTTP{client: &http.Client{Timeout: 30 * time.Second}},
+		domain.FetcherFile:      File{},
+		domain.FetcherWOFSQLite: WOFSQLite{client: &http.Client{Timeout: 0}},
 		// No fixed client deadline: the Glottolog CLDF values.csv is large and the transform runs per
 		// run; bounded by the job-timeout context instead (mirrors WOFSQLite).
-		domain.ConnectorHTTPFiles: HTTPFiles{client: &http.Client{Timeout: 0}},
+		domain.FetcherHTTPFiles: HTTPFiles{client: &http.Client{Timeout: 0}},
 		// Factbook stages ~260 country files; no fixed client deadline (bounded by the job timeout).
-		domain.ConnectorFactbook: Factbook{client: &http.Client{Timeout: 0}},
+		domain.FetcherFactbook: Factbook{client: &http.Client{Timeout: 0}},
 	}
 }
 
@@ -102,15 +110,15 @@ func (File) Fetch(_ context.Context, src domain.Source) (domain.RawBatch, error)
 // edition), falling back to a checksum of the decompressed bytes.
 type WOFSQLite struct{ client *http.Client }
 
-// Fetch is never called for a StreamingConnector (the pipeline routes it through Stage).
+// Fetch is never called for a StreamingFetcher (the pipeline routes it through Stage).
 func (WOFSQLite) Fetch(context.Context, domain.Source) (domain.RawBatch, error) {
 	return domain.RawBatch{}, ErrStreamingOnly
 }
 
-// compile-time assertions: WOFSQLite is both a Connector (registry value) and a StreamingConnector.
+// compile-time assertions: WOFSQLite is both a Connector (registry value) and a StreamingFetcher.
 var (
-	_ domain.Connector          = WOFSQLite{}
-	_ domain.StreamingConnector = WOFSQLite{}
+	_ domain.Fetcher          = WOFSQLite{}
+	_ domain.StreamingFetcher = WOFSQLite{}
 )
 
 func (w WOFSQLite) Stage(ctx context.Context, src domain.Source) (domain.StagedSource, error) {
@@ -157,13 +165,13 @@ func (w WOFSQLite) Stage(ctx context.Context, src domain.Source) (domain.StagedS
 // the per-file content digests (sorted by name) so an unchanged upstream master skips idempotently.
 type HTTPFiles struct{ client *http.Client }
 
-// compile-time assertions: HTTPFiles is both a Connector (registry value) and a StreamingConnector.
+// compile-time assertions: HTTPFiles is both a Connector (registry value) and a StreamingFetcher.
 var (
-	_ domain.Connector          = HTTPFiles{}
-	_ domain.StreamingConnector = HTTPFiles{}
+	_ domain.Fetcher          = HTTPFiles{}
+	_ domain.StreamingFetcher = HTTPFiles{}
 )
 
-// Fetch is never called for a StreamingConnector (the pipeline routes it through Stage).
+// Fetch is never called for a StreamingFetcher (the pipeline routes it through Stage).
 func (HTTPFiles) Fetch(context.Context, domain.Source) (domain.RawBatch, error) {
 	return domain.RawBatch{}, ErrStreamingOnly
 }

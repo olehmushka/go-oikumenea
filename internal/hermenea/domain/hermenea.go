@@ -12,26 +12,28 @@ import (
 	"time"
 )
 
-// Connector types (D-Hermenea; DS-44 parks jdbc-sql/object-store).
+// Fetcher types — the values of the at-rest `connector_type` discriminator (column + install-config
+// key + Conjure field all keep that name; see the fetcher package doc for why the Go names diverge).
+// D-Hermenea; DS-44 parks jdbc-sql/object-store.
 const (
-	ConnectorHTTP = "http"
-	ConnectorFile = "file"
-	// ConnectorWOFSQLite stages a Who's-On-First SQLite distribution (a .db.bz2 over HTTP) to local
-	// disk for the paged geo-places pipeline (D-GeoPlaces). It is a StreamingConnector: the payload is
+	FetcherHTTP = "http"
+	FetcherFile = "file"
+	// FetcherWOFSQLite stages a Who's-On-First SQLite distribution (a .db.bz2 over HTTP) to local
+	// disk for the paged geo-places pipeline (D-GeoPlaces). It is a StreamingFetcher: the payload is
 	// gigabytes of geometry, so it never lands in memory or the raw-batch BYTEA column.
-	ConnectorWOFSQLite = "wof-sqlite"
-	// ConnectorHTTPFiles streams a whitespace-separated LIST of URLs to a temp directory for the paged
+	FetcherWOFSQLite = "wof-sqlite"
+	// FetcherHTTPFiles streams a whitespace-separated LIST of URLs to a temp directory for the paged
 	// language pipeline (D-Languages, M18): the Glottolog CLDF (languages.csv + values.csv) and the CLDR
 	// language→script inputs (supplementalData.xml + iso-639-3.tab) are transformed live in Go on each
-	// run. A StreamingConnector — raw values.csv exceeds the 16 MiB in-memory cap, and an object-type
+	// run. A StreamingFetcher — raw values.csv exceeds the 16 MiB in-memory cap, and an object-type
 	// needs several files, so the set is staged to disk and read by a PagedMapper.
-	ConnectorHTTPFiles = "http-files"
-	// ConnectorFactbook enumerates the CIA World Factbook country files (the `factbook/factbook.json`
+	FetcherHTTPFiles = "http-files"
+	// FetcherFactbook enumerates the CIA World Factbook country files (the `factbook/factbook.json`
 	// GitHub mirror) via one git-tree API call, then streams each `<region>/<cc>.json` to a temp directory
-	// for the paged ethnicity pipeline (D-PhysicalIdentity amendment, M43). A StreamingConnector: ~260
+	// for the paged ethnicity pipeline (D-PhysicalIdentity amendment, M43). A StreamingFetcher: ~260
 	// country files (whole Factbook docs) exceed the 16 MiB in-memory cap, so the set is staged to disk and
 	// parsed by a PagedMapper. The locator is `owner/repo@ref` (default `factbook/factbook.json@master`).
-	ConnectorFactbook = "factbook"
+	FetcherFactbook = "factbook"
 )
 
 // Job types in the queue.
@@ -60,8 +62,8 @@ var (
 	ErrUnknownSource = errors.New("unknown import source")
 	// ErrNoMapper is returned when no mapper is registered for a source's object-type.
 	ErrNoMapper = errors.New("no mapper registered for object-type")
-	// ErrNoConnector is returned when no connector is registered for a source's connector-type.
-	ErrNoConnector = errors.New("no connector for connector-type")
+	// ErrNoFetcher is returned when no fetcher is registered for a source's connector-type.
+	ErrNoFetcher = errors.New("no fetcher for connector-type")
 	// ErrBadSchedule is returned when a schedule's cron/interval spec cannot be parsed.
 	ErrBadSchedule = errors.New("unparsable schedule spec")
 	// ErrNoWatchlist is returned by CheckWatchlist when no screening checker is configured (D-Watchlists).
@@ -73,7 +75,7 @@ type Source struct {
 	ID            string
 	Code          string
 	Name          string
-	ConnectorType string
+	FetcherType string
 	ObjectType    string
 	Locator       string
 	Cron          string // empty = trigger-only
@@ -136,8 +138,8 @@ type ImportSummary struct {
 	Skipped int
 }
 
-// Connector fetches an external source's raw payload (HTTP download / bundled file).
-type Connector interface {
+// Fetcher fetches an external source's raw payload (HTTP download / bundled file).
+type Fetcher interface {
 	Fetch(ctx context.Context, src Source) (RawBatch, error)
 }
 
@@ -156,10 +158,10 @@ type StagedSource struct {
 	Cleanup       func()
 }
 
-// StreamingConnector stages a large source to disk instead of returning its bytes. A connector that
-// implements it is driven by the paged pipeline (its Connector.Fetch is never called). This is how the
+// StreamingFetcher stages a large source to disk instead of returning its bytes. A fetcher that
+// implements it is driven by the paged pipeline (its Fetch is never called). This is how the
 // gigabyte-scale WOF gazetteer is ingested without a 16 MiB in-memory batch (D-GeoPlaces).
-type StreamingConnector interface {
+type StreamingFetcher interface {
 	Stage(ctx context.Context, src Source) (StagedSource, error)
 }
 
@@ -169,7 +171,7 @@ type PageFunc func(records []map[string]any) error
 
 // PagedMapper reads a staged source and emits canonical records in bounded, parent-first pages — the
 // total set never lives in memory at once. Registered per object-type (RegisterPagedMapper) and used
-// only when the source's connector is a StreamingConnector.
+// only when the source's connector is a StreamingFetcher.
 type PagedMapper interface {
 	MapPaged(ctx context.Context, staged StagedSource, emit PageFunc) error
 }
@@ -197,6 +199,16 @@ type LoadRun interface {
 type Loader interface {
 	Load(ctx context.Context, objectType, source, sourceVersion, runID string, startSeq int, records []map[string]any, ack AckFunc) (ImportSummary, error)
 	StartRun(objectType, source, sourceVersion, runID string, startSeq int, ack AckFunc) LoadRun
+}
+
+// RunReporter is the connector-plane REPORTING port (M53 / D-ConnectorPlane): hermenea reports each
+// sync run's open (running) and close (succeeded/failed) into oikumenea's connector registry so an
+// operator sees the fleet from the core. Reporting is best-effort — the application service ignores a
+// returned error (a report failure must not fail the import job: visibility, not orchestration) — and
+// OPTIONAL: a nil reporter (unit tests, a core-less install) makes every ReportRun a clean no-op. The
+// reporter package (an outbound HTTP adapter over the same shared secret the loader uses) implements it.
+type RunReporter interface {
+	ReportRun(ctx context.Context, sourceCode, externalRunID, state string, sum ImportSummary, errMsg string) error
 }
 
 // WatchlistQuery is a person-identity screening request (D-Watchlists, M34). SubjectKey (the person RID)

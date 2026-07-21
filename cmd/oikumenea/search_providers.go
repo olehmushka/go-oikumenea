@@ -177,7 +177,20 @@ func registerSearchProviders(
 		}, vis: catalog},
 	}
 
+	// A disabled vertical (D-DataPacks, M54) passes a nil service; drop its providers so the module falls
+	// out of unified search rather than fanning in against a nil closure. education owns institution /
+	// publication / scholarship; company owns company.
+	skip := map[string]bool{}
+	if educationSvc == nil {
+		skip["institution"], skip["publication"], skip["scholarship"] = true, true, true
+	}
+	if companySvc == nil {
+		skip["company"] = true
+	}
 	for _, r := range regs {
+		if skip[r.p.ObjectType] {
+			continue
+		}
 		if err := searchSvc.Register(r.p, r.vis); err != nil {
 			return err
 		}

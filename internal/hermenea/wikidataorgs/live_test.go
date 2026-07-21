@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/connector"
+	"github.com/olegamysk/go-oikumenea/internal/hermenea/fetcher"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/wikidataorgs"
 )
@@ -26,13 +26,13 @@ func TestLiveWikidataFetch(t *testing.T) {
 		"%3Forg%20wdt%3AP31%20%3Fclass%20.%20%3Forg%20wdt%3AP17%20wd%3AQ212%20.%20" +
 		"SERVICE%20wikibase%3Alabel%20%7B%20bd%3AserviceParam%20wikibase%3Alanguage%20%22en%22.%20%7D%20%7D%20LIMIT%204"
 
-	c, ok := connector.Default()[domain.ConnectorHTTP]
+	c, ok := fetcher.Default()[domain.FetcherHTTP]
 	if !ok {
 		t.Fatal("no http connector")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
-	batch, err := c.Fetch(ctx, domain.Source{ConnectorType: domain.ConnectorHTTP, Locator: locator})
+	batch, err := c.Fetch(ctx, domain.Source{FetcherType: domain.FetcherHTTP, Locator: locator})
 	if err != nil {
 		t.Fatalf("live fetch (likely rate-limit): %v", err)
 	}

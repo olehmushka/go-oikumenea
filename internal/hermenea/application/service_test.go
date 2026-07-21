@@ -41,13 +41,13 @@ func (f *fakeStore) FinishRun(_ context.Context, _, status string, c, u, s int, 
 	return nil
 }
 
-// fakeStreamingConnector stages a no-op source.
-type fakeStreamingConnector struct{ cleaned *bool }
+// fakeStreamingFetcher stages a no-op source.
+type fakeStreamingFetcher struct{ cleaned *bool }
 
-func (fakeStreamingConnector) Fetch(context.Context, domain.Source) (domain.RawBatch, error) {
-	return domain.RawBatch{}, domain.ErrNoConnector
+func (fakeStreamingFetcher) Fetch(context.Context, domain.Source) (domain.RawBatch, error) {
+	return domain.RawBatch{}, domain.ErrNoFetcher
 }
-func (c fakeStreamingConnector) Stage(context.Context, domain.Source) (domain.StagedSource, error) {
+func (c fakeStreamingFetcher) Stage(context.Context, domain.Source) (domain.StagedSource, error) {
 	return domain.StagedSource{Path: "/tmp/x.db", SourceVersion: "v1", Checksum: "abc", Cleanup: func() { *c.cleaned = true }}, nil
 }
 
@@ -104,11 +104,11 @@ func (r *fakeRun) Finalize(context.Context) (domain.ImportSummary, error) { retu
 func TestProcessJob_Streaming(t *testing.T) {
 	cleaned := false
 	store := &fakeStore{src: domain.Source{
-		ID: "s1", Code: "wof-geo-ua", ConnectorType: domain.ConnectorWOFSQLite, ObjectType: "geo-places",
+		ID: "s1", Code: "wof-geo-ua", FetcherType: domain.FetcherWOFSQLite, ObjectType: "geo-places",
 	}}
 	loader := &fakeLoader{}
-	svc := NewService(store, map[string]domain.Connector{
-		domain.ConnectorWOFSQLite: fakeStreamingConnector{cleaned: &cleaned},
+	svc := NewService(store, map[string]domain.Fetcher{
+		domain.FetcherWOFSQLite: fakeStreamingFetcher{cleaned: &cleaned},
 	}, loader)
 	svc.RegisterPagedMapper("geo-places", twoPageMapper{})
 
@@ -151,11 +151,11 @@ func TestResumeSeqChecksumGuard(t *testing.T) {
 func TestProcessJob_StreamingResume(t *testing.T) {
 	cleaned := false
 	store := &fakeStore{src: domain.Source{
-		ID: "s1", Code: "wof-geo-ua", ConnectorType: domain.ConnectorWOFSQLite, ObjectType: "geo-places",
+		ID: "s1", Code: "wof-geo-ua", FetcherType: domain.FetcherWOFSQLite, ObjectType: "geo-places",
 	}}
 	loader := &fakeLoader{}
-	svc := NewService(store, map[string]domain.Connector{
-		domain.ConnectorWOFSQLite: fakeStreamingConnector{cleaned: &cleaned},
+	svc := NewService(store, map[string]domain.Fetcher{
+		domain.FetcherWOFSQLite: fakeStreamingFetcher{cleaned: &cleaned},
 	}, loader)
 	svc.RegisterPagedMapper("geo-places", twoPageMapper{})
 
@@ -177,8 +177,8 @@ func TestProcessJob_StreamingResume(t *testing.T) {
 	// A different cursor checksum (source changed between attempts) resets to a fresh run.
 	store2 := &fakeStore{src: store.src}
 	loader2 := &fakeLoader{}
-	svc2 := NewService(store2, map[string]domain.Connector{
-		domain.ConnectorWOFSQLite: fakeStreamingConnector{cleaned: &cleaned},
+	svc2 := NewService(store2, map[string]domain.Fetcher{
+		domain.FetcherWOFSQLite: fakeStreamingFetcher{cleaned: &cleaned},
 	}, loader2)
 	svc2.RegisterPagedMapper("geo-places", twoPageMapper{})
 	job2 := domain.Job{ID: "job-2", JobType: domain.JobSync, SourceCode: "wof-geo-ua", ResumeSeq: 5, ResumeChecksum: "stale"}

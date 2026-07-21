@@ -37,11 +37,13 @@ type Seeder struct {
 	presets []Preset
 }
 
-// NewSeeder loads + dependency-orders the embedded presets and binds them to the import service plus
-// any native importers (keyed by objectType; nil is fine). A malformed/cyclic bundle, or a preset whose
-// objectType has no importer, fails here (loudly, at composition) rather than half-seeding at boot.
-func NewSeeder(pool *pgxpool.Pool, imp Importer, native map[string]NativeImporter) (*Seeder, error) {
-	presets, err := loadPresets()
+// NewSeeder loads + dependency-orders the embedded presets AND any presets under the operator-mounted
+// packs directory (packsDir "" = embedded-only; D-DataPacks, M54), and binds them to the import service
+// plus any native importers (keyed by objectType; nil is fine). A malformed/cyclic bundle, a preset
+// name collision across the bundle and packs, or a preset whose objectType has no importer, fails here
+// (loudly, at composition) rather than half-seeding at boot.
+func NewSeeder(pool *pgxpool.Pool, imp Importer, native map[string]NativeImporter, packsDir string) (*Seeder, error) {
+	presets, err := loadPresets(packsDir)
 	if err != nil {
 		return nil, err
 	}
@@ -118,11 +120,16 @@ func (s *Seeder) markApplied(ctx context.Context, p Preset, sum domain.Summary) 
 	if err != nil {
 		return err
 	}
+	var pack any
+	if p.Pack != "" {
+		pack = p.Pack
+	}
 	_, err = s.pool.Exec(ctx, `
-		INSERT INTO oikumenea.pinax_seed_state (preset, source_version, applied_at, summary)
-		VALUES ($1, $2, now(), $3)
+		INSERT INTO oikumenea.pinax_seed_state (preset, source_version, applied_at, summary, pack)
+		VALUES ($1, $2, now(), $3, $4)
 		ON CONFLICT (preset) DO UPDATE
-		  SET source_version = EXCLUDED.source_version, applied_at = now(), summary = EXCLUDED.summary`,
-		p.Name, p.SourceVersion, summary)
+		  SET source_version = EXCLUDED.source_version, applied_at = now(), summary = EXCLUDED.summary,
+		      pack = EXCLUDED.pack`,
+		p.Name, p.SourceVersion, summary, pack)
 	return err
 }

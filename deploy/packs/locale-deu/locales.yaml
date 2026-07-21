@@ -1,0 +1,16 @@
+# Data pack — German locale (D-DataPacks, M54). The FIRST packaged kind: a locale pack.
+#
+# This is an OPERATOR-MOUNTED pack, not part of the embedded bundle. Point `pinax.packs` at the parent
+# `deploy/packs` directory (or copy this pack beside it) and the boot autoseeder adds `deu` as a
+# supported locale create-if-absent, then the sibling translations.yaml overlays a few German labels.
+#
+# create-if-absent / never-override: re-seeding is a no-op once applied; an operator who later disables
+# `deu` or edits a translation keeps their change (the seeder never clobbers).
+preset: locale-deu
+objectType: locales
+source: data-pack:locale-deu
+sourceVersion: "1"
+license: CC0-1.0
+records:
+  - code: deu
+    name: Deutsch

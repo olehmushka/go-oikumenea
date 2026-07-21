@@ -13,7 +13,10 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"os"
+	"path/filepath"
 	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -36,35 +39,110 @@ type Preset struct {
 	License       string           `yaml:"license"`       // upstream license (documentation)
 	DependsOn     []string         `yaml:"dependsOn"`     // preset names that must seed first (topo order)
 	Records       []map[string]any `yaml:"records"`       // canonical records for the object-type handler
+
+	// Pack is the ORIGIN of this preset (D-DataPacks, M54): "" for the embedded bundle, else the
+	// operator-mounted pack's directory name. Set by loadPresets, not the YAML; recorded in
+	// pinax_seed_state so an operator can see which pack supplied a seeded slice.
+	Pack string `yaml:"-"`
 }
 
-// loadPresets decodes every embedded preset and returns them in a valid dependency order (a preset's
-// dependsOn entries come first). A missing dependency or a cycle is a build-the-bundle error, surfaced
-// loudly at boot rather than producing a partial seed.
-func loadPresets() ([]Preset, error) {
+// loadPresets decodes every embedded preset PLUS any presets under the operator-mounted packs
+// directory (D-DataPacks, M54; packsDir "" = embedded-only) and returns them in a valid dependency
+// order (a preset's dependsOn entries come first). A missing dependency, a cycle, or a name collision
+// (across the embedded bundle and packs, or between two packs) is a build-the-bundle error, surfaced
+// loudly at boot rather than producing a partial seed — packs are ADDITIVE, never silent overrides.
+func loadPresets(packsDir string) ([]Preset, error) {
+	byName := make(map[string]Preset)
+
+	// Embedded bundle (Pack == "").
 	entries, err := fs.Glob(presetFS, "presets/*.yaml")
 	if err != nil {
 		return nil, err
 	}
-	byName := make(map[string]Preset, len(entries))
 	for _, path := range entries {
 		b, err := presetFS.ReadFile(path)
 		if err != nil {
 			return nil, err
 		}
-		var p Preset
-		if err := yaml.Unmarshal(b, &p); err != nil {
-			return nil, fmt.Errorf("pinax preset %s: %w", path, err)
+		if err := addPreset(byName, path, "", b); err != nil {
+			return nil, err
 		}
-		if p.Name == "" || p.ObjectType == "" {
-			return nil, fmt.Errorf("pinax preset %s: missing preset name or objectType", path)
-		}
-		if _, dup := byName[p.Name]; dup {
-			return nil, fmt.Errorf("pinax preset %s: duplicate preset name %q", path, p.Name)
-		}
-		byName[p.Name] = p
 	}
+
+	// Operator-mounted packs (Pack == the pack's immediate subdir name under packsDir, or the file's
+	// base name for a loose top-level .yaml). Scanned recursively so a pack is a directory of presets.
+	if packsDir != "" {
+		if err := loadPackDir(byName, packsDir); err != nil {
+			return nil, err
+		}
+	}
+
 	return topoSort(byName)
+}
+
+// loadPackDir walks the mounted packs directory and adds every `*.yaml` preset, tagging each with the
+// pack name it belongs to. A missing directory is a hard error (an operator who configured a packs dir
+// expects it to exist), but an EMPTY directory is fine (no packs mounted yet).
+func loadPackDir(byName map[string]Preset, packsDir string) error {
+	root, err := filepath.Abs(packsDir)
+	if err != nil {
+		return fmt.Errorf("pinax packs dir %q: %w", packsDir, err)
+	}
+	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return fmt.Errorf("pinax packs scan %q: %w", path, err)
+		}
+		if d.IsDir() || filepath.Ext(path) != ".yaml" {
+			return nil
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return addPreset(byName, path, packName(root, path), b)
+	})
+}
+
+// packName derives a pack's name from a preset file's path: the first directory segment below the packs
+// root (so `<packs>/locale-deu/locales.yaml` → "locale-deu"), or the file's base name for a preset
+// dropped loose at the top level.
+func packName(root, path string) string {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return filepath.Base(path)
+	}
+	if dir, _ := filepath.Split(rel); dir != "" {
+		return filepath.Clean(strings.SplitN(dir, string(filepath.Separator), 2)[0])
+	}
+	return rel
+}
+
+// addPreset decodes one preset YAML, validates it, and inserts it under its unique name — rejecting a
+// collision so the same catalog slice is never seeded from two sources. `pack` is "" for the embedded
+// bundle.
+func addPreset(byName map[string]Preset, path, pack string, b []byte) error {
+	var p Preset
+	if err := yaml.Unmarshal(b, &p); err != nil {
+		return fmt.Errorf("pinax preset %s: %w", path, err)
+	}
+	if p.Name == "" || p.ObjectType == "" {
+		return fmt.Errorf("pinax preset %s: missing preset name or objectType", path)
+	}
+	if existing, dup := byName[p.Name]; dup {
+		return fmt.Errorf("pinax preset %s: duplicate preset name %q (already provided by %s)",
+			path, p.Name, originLabel(existing))
+	}
+	p.Pack = pack
+	byName[p.Name] = p
+	return nil
+}
+
+// originLabel names where a preset came from, for a readable collision error.
+func originLabel(p Preset) string {
+	if p.Pack == "" {
+		return "the embedded bundle"
+	}
+	return "pack " + p.Pack
 }
 
 // topoSort orders presets so every dependsOn precedes its dependents (Kahn-ish DFS over stable-sorted

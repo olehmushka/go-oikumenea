@@ -137,6 +137,14 @@ stamped from the envelope on each upsert (D-DataIngestion lineage, retained unde
 - **Hermenea calls** oikumenea's **public HTTP API only** — `POST /import/{objectType}` (via the
   **generated oikumenea Conjure client**), authorized by `HERMENEA_OIKUMENEA_TOKEN`. It opens **no**
   oikumenea DB connection.
+- **Connector-plane self-registration (M53 / D-ConnectorPlane).** Hermenea also calls the core's
+  `PUT /connectors/v1/registration` at boot (its row + declared sources) and
+  `POST /connectors/v1/sync-runs` on each run's open/close, so it appears in the core connector
+  registry with completed runs an operator can see. Both reuse the **same base URL and shared secret**
+  as the import loader (`internal/hermenea/reporter`), so there is no second credential. Reporting is
+  **best-effort**: a failure logs and is dropped — the core registry is a read model and never gates
+  hermenea's own execution (*visibility, not orchestration*). Hermenea stays authoritative for
+  execution; the registry mirrors what it reports.
 - **Oikumenea calls** hermenea's `POST /sync/{source}` (push trigger) via a thin HTTP client,
   authorized by `OIKUMENEA_HERMENEA_TOKEN`, from an admin/console action.
 - Hermenea reuses platform-kernel packages where shared (`pkg/rid`, `pkg/crypto` for credential refs,
@@ -146,11 +154,13 @@ stamped from the envelope on each upsert (D-DataIngestion lineage, retained unde
 
 - **`import.manage`** — a new **instance-scope** oikumenea permission gating `POST /import/{objectType}`.
 - **Service principal** — `HERMENEA_OIKUMENEA_TOKEN` (ECV-refreshable runtime secret) authenticates a
-  `hermenea-importer` principal that holds **exactly** `import.manage`; resolved by a shared-secret auth
-  path beside the OIDC `Authenticator`, audited as a **`system`** actor (audit actor-shape CHECK already
-  allows `person | system`). Amends **L-AuthzOnly** ([decisions.md](../architecture/decisions.md)) — no
-  credential is stored; the operator supplies the secret at deploy time, validated by comparison
-  (bootstrap-admin pattern).
+  `hermenea-importer` principal that holds `import.manage` plus the M53 connector-plane self-service
+  codes `connector.register` + `connector.report` (all instance-scope, boot-seeded together — **not**
+  the `wiring.*` read codes, since hermenea pushes and reports but does not pull-wire); resolved by a
+  shared-secret auth path beside the OIDC `Authenticator`, audited as a **`system`** actor (audit
+  actor-shape CHECK already allows `person | system`). Amends **L-AuthzOnly**
+  ([decisions.md](../architecture/decisions.md)) — no credential is stored; the operator supplies the
+  secret at deploy time, validated by comparison (bootstrap-admin pattern).
 - **Two trust directions, two secrets** — `HERMENEA_OIKUMENEA_TOKEN` (import) and
   `OIKUMENEA_HERMENEA_TOKEN` (trigger), each scoped to one direction to bound blast radius. On the
   oikumenea side both flow through install config with directional names —
@@ -162,18 +172,25 @@ stamped from the envelope on each upsert (D-DataIngestion lineage, retained unde
 
 ## Patterns
 
-- **Connector seam** — `Connector.Fetch(ctx, source) → RawBatch`; HTTP(S) + the degenerate `file`
-  connector. New source types (DS-44) are new `Connector` implementations, not new call sites.
-- **Live multi-file transform** (`http-files`, D-Languages M18) — a `StreamingConnector` whose
+- **Fetcher seam** — `Fetcher.Fetch(ctx, source) → RawBatch`; HTTP(S) + the degenerate `file`
+  fetcher. New source types (DS-44) are new `Fetcher` implementations, not new call sites.
+
+  > **Naming (M53 / D-ConnectorPlane).** This seam was `Connector` through M52. The connector plane
+  > gives "connector" a higher meaning in the core — a whole deployable agent, of which hermenea is
+  > one — so hermenea's *fetch strategy* is a **`Fetcher`**. The names **at rest did not move**:
+  > the column `import_sources.connector_type`, the install key `connector-type:`, and the Conjure
+  > field `connectorType` are unchanged (renaming them would break every deployment's config for no
+  > benefit), so `ConnectorType: s.FetcherType` in the adapters is correct, not a leftover.
+- **Live multi-file transform** (`http-files`, D-Languages M18) — a `StreamingFetcher` whose
   `locator` is a whitespace-separated **URL list**, each streamed to a staged temp directory by basename
   (no 16 MiB cap; a descriptive User-Agent avoids upstream 403s). The paired `PagedMapper` transforms
   the raw upstream in Go and emits a **single page** (whole forest) so a multi-file source that needs
   one transaction works. Used for languages: `glottolog` CLDF (`languages.csv` + `values.csv`) and CLDR
   (`supplementalData.xml` + `iso-639-3.tab`) are fetched fresh from upstream master each run — the live
   Go port of `deploy/language-presets/gen-presets.py` (which remains the offline/`file` fallback).
-- **Streaming connector + paged mapper** (D-GeoPlaces) — for sources too large for a single in-memory
-  batch, a `StreamingConnector.Stage(...) → StagedSource` lands the body to disk (the `wof-sqlite`
-  connector fetches a `.db.bz2`, bzip2-decompresses, stages a temp SQLite file), and a
+- **Streaming fetcher + paged mapper** (D-GeoPlaces) — for sources too large for a single in-memory
+  batch, a `StreamingFetcher.Stage(...) → StagedSource` lands the body to disk (the `wof-sqlite`
+  fetcher fetches a `.db.bz2`, bzip2-decompresses, stages a temp SQLite file), and a
   `PagedMapper.MapPaged(staged, emit)` walks it **parent-first** emitting bounded pages, each loaded as
   its own canonical envelope (one `import_runs` row aggregates the page counts). The 16 MiB cap and the
   in-memory `Fetch`/`Map` path are untouched for small http/file sources.

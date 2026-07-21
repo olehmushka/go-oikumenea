@@ -566,7 +566,9 @@ relationships, the PDP) behind unprivileged **facades**, fed by the **connector 
 the admin console behind **console-bff**, a future HR app behind its own facade. Owns the browser
 session and response shaping, speaks the Conjure API via the generated SDKs, and is **unprivileged**:
 it always forwards the **end-user's IdP token** (no on-behalf-of), so the PDP decides against the
-real user and a compromised facade can impersonate nobody.
+real user and a compromised facade can impersonate nobody. A facade is a *constraint*, not a
+particular process boundary: **console-bff** is realized as the admin console's own Next.js server
+tier rather than a separate binary (D-HeadlessTopology, M52 amendment).
 
 **Connector plane.** The generalization of hermenea into a **family of connectors**
 (D-ConnectorPlane, M53): each connector keeps its own storage + scheduler, couples over HTTP only,

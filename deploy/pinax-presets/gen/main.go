@@ -31,7 +31,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/connector"
+	"github.com/olegamysk/go-oikumenea/internal/hermenea/fetcher"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/factbookethnicities"
 )
@@ -407,9 +407,9 @@ func genReligions(root string) error {
 
 func genEthnicities(root string) error {
 	ctx := context.Background()
-	sc, ok := connector.Default()[domain.ConnectorFactbook].(domain.StreamingConnector)
+	sc, ok := fetcher.Default()[domain.FetcherFactbook].(domain.StreamingFetcher)
 	if !ok {
-		return fmt.Errorf("factbook connector is not a StreamingConnector")
+		return fmt.Errorf("factbook connector is not a StreamingFetcher")
 	}
 	fmt.Fprintln(os.Stderr, "ethnicities: staging CIA World Factbook (network)…")
 	staged, err := sc.Stage(ctx, domain.Source{Locator: "factbook/factbook.json@master"})

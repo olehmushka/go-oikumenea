@@ -1,0 +1,238 @@
+# Connector-plane API (M53 / D-ConnectorPlane). oikumenea gains VISIBILITY over the family of
+# connectors that feed it — agents beside the core, each with its own storage and scheduler, coupled
+# to the core over HTTP only (the D-Hermenea boundary, kept). The core does NOT orchestrate: it never
+# schedules, triggers or retries a run; it records what a connector REPORTS and shows it to operators.
+#
+# "Connector" here is a WHOLE DEPLOYABLE AGENT (hermenea is the first). That is a different altitude
+# from hermenea's internal `Fetcher` seam (a fetch strategy — http/file/wof-sqlite), which carried the
+# name `Connector` through M52 and was renamed in M53 so the two never collide.
+#
+# Two audiences, two gates:
+#   * CONNECTORS (machine subjects — M51 service principals) call the self-service surfaces:
+#     `registerConnector` (idempotent self-registration of itself + its sources) and `reportSyncRun`.
+#     A connector NEVER names another principal: the core binds the registry row to the CALLER's own
+#     principal, taken from the request context. That is what makes a report attributable and stops a
+#     compromised connector from reporting as another. Codes: `connector.register`, `connector.report`.
+#   * OPERATORS read the fleet: `connector.read`. Instance-scope, so an instance admin holds it.
+#
+# RID-bearing fields are typed `string` (the canonical RID text): Conjure reserves `rid` as a built-in
+# primitive. Names here are plain strings, NOT i18n maps — a connector code/name is operational
+# infrastructure identity (like a service principal's), not user-facing translatable content. Writes
+# are audited (D-Audit). Generated Go lands in internal/conjure, never hand-edited.
+types:
+  definitions:
+    default-package: oikumenea.connector
+    objects:
+      Connector:
+        docs: |
+          A registered connector — a deployable agent beside the core. `principalId` is the M51 service
+          principal it authenticates as; disabling that principal stops its reports and wiring reads at
+          once, so there is no separate kill switch here.
+        fields:
+          id: string
+          code:
+            type: string
+            docs: Stable, locale-agnostic handle (D-Code) — what operators and audit rows reference.
+          name: string
+          description: optional<string>
+          principalId:
+            type: optional<string>
+            docs: The service principal this agent authenticates as. Bound by the core from the caller.
+          status:
+            type: string
+            docs: active | disabled.
+          lastSeenAt:
+            type: optional<datetime>
+            docs: |
+              When the core last heard from this agent (registration or a run report). A liveness HINT,
+              not a health verdict — the core never probes connectors.
+          createdAt: datetime
+          updatedAt: datetime
+      ConnectorSource:
+        docs: |
+          One dataset a connector syncs, as reported by that connector. A read model: the connector
+          stays authoritative for execution, because scheduling lives in the connector.
+        fields:
+          id: string
+          connectorId: string
+          code: string
+          name: string
+          objectType:
+            type: optional<string>
+            docs: |
+              The core import target for push-mode sources (e.g. geo-places). Absent for sources that
+              only feed the connector's own lookups.
+          schedule:
+            type: optional<string>
+            docs: The connector's own schedule string, verbatim, for display. The core never parses it.
+          enabled: boolean
+      SyncRun:
+        docs: |
+          One reported execution of a source. The counts are the CONNECTOR's account of its work — the
+          core stores what it is told and does not recompute them.
+        fields:
+          id: string
+          sourceId: string
+          externalRunId:
+            type: optional<string>
+            docs: |
+              The connector's own run id (hermenea's import_runs.id — the same value the M49 chunked
+              envelopes carry as `runId`), so a run correlates with the connector's ledger and with
+              per-row import provenance.
+          state:
+            type: string
+            docs: running | succeeded | failed.
+          created: integer
+          updated: integer
+          skipped: integer
+          error: optional<string>
+          startedAt: datetime
+          finishedAt: optional<datetime>
+      # ---- requests ----
+      SourceDeclaration:
+        docs: One source in a registration payload.
+        fields:
+          code: string
+          name: string
+          objectType: optional<string>
+          schedule: optional<string>
+          enabled:
+            type: optional<boolean>
+            docs: Defaults to true when absent.
+      RegisterConnectorRequest:
+        docs: |
+          A connector's idempotent self-description. Carries NO principalId: the core binds the row to
+          the calling principal, so a connector cannot register as another. Re-registering updates the
+          row and REPLACES the declared source set (sources absent from the payload are retired), which
+          makes boot-time registration converge without an operator reconciling drift by hand.
+        fields:
+          code: string
+          name: string
+          description: optional<string>
+          sources: list<SourceDeclaration>
+      ReportSyncRunRequest:
+        docs: |
+          Report a run — opening it (`state: running`) and closing it (`succeeded`/`failed`) are the
+          same call. IDEMPOTENT on (source, externalRunId): a connector retrying its report updates the
+          run rather than duplicating it, which matters because connectors retry with backoff.
+        fields:
+          sourceCode:
+            type: string
+            docs: The source's code within the CALLING connector — not a RID, so a connector needs no prior read.
+          externalRunId: optional<string>
+          state: string
+          created: optional<integer>
+          updated: optional<integer>
+          skipped: optional<integer>
+          error: optional<string>
+          startedAt: optional<datetime>
+          finishedAt: optional<datetime>
+      # ---- pages ----
+      ConnectorPage:
+        fields:
+          connectors: list<Connector>
+          nextPageToken: optional<string>
+      ConnectorSourceList:
+        fields:
+          sources: list<ConnectorSource>
+      SyncRunPage:
+        fields:
+          runs: list<SyncRun>
+          nextPageToken: optional<string>
+    errors:
+      ConnectorNotFound:
+        namespace: Connector
+        code: NOT_FOUND
+        safe-args:
+          connectorId: string
+      ConnectorConflict:
+        docs: The code is registered to a different principal, or the payload collides with a live row.
+        namespace: Connector
+        code: CONFLICT
+        safe-args:
+          reason: string
+      ConnectorInvalid:
+        namespace: Connector
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
+      SourceNotFound:
+        docs: The calling connector declares no source with this code.
+        namespace: Connector
+        code: NOT_FOUND
+        safe-args:
+          sourceCode: string
+
+services:
+  ConnectorService:
+    name: Connector Service
+    package: oikumenea.connector
+    base-path: /connectors/v1
+    default-auth: header
+    docs: |
+      The connector-plane registry. Self-service surfaces (`registerConnector`, `reportSyncRun`) are for
+      MACHINE subjects and bind to the caller's own principal; the read surfaces are for operators.
+      Visibility, not orchestration — there is deliberately no endpoint to trigger, pause or retry a
+      run, because scheduling belongs to the connector (D-ConnectorPlane rejects core-side orchestration).
+    endpoints:
+      registerConnector:
+        http: PUT /registration
+        docs: |
+          Idempotent self-registration (`connector.register`, machine subjects only). The core binds the
+          row to the CALLING service principal; the request cannot name another. Replaces the declared
+          source set. Returns Connector:ConnectorConflict if the code belongs to a different principal.
+        args:
+          request: RegisterConnectorRequest
+        returns: Connector
+      reportSyncRun:
+        http: POST /sync-runs
+        docs: |
+          Report a sync run (`connector.report`, machine subjects only), for a source of the CALLING
+          connector. Idempotent on (source, externalRunId). Returns Connector:SourceNotFound if the
+          calling connector declares no such source.
+        args:
+          request: ReportSyncRunRequest
+        returns: SyncRun
+      listConnectors:
+        http: GET /connectors
+        docs: List registered connectors, token-paginated (`connector.read`).
+        args:
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: ConnectorPage
+      getConnector:
+        http: GET /connectors/{connectorId}
+        docs: Fetch one connector (`connector.read`).
+        args:
+          connectorId:
+            type: string
+            param-type: path
+        returns: Connector
+      listConnectorSources:
+        http: GET /connectors/{connectorId}/sources
+        docs: The sources a connector has declared (`connector.read`).
+        args:
+          connectorId:
+            type: string
+            param-type: path
+        returns: ConnectorSourceList
+      listSyncRuns:
+        http: GET /sync-runs
+        docs: |
+          Recent runs, newest first, token-paginated (`connector.read`). Filter by source when given,
+          otherwise the whole fleet's runs — the operator's "what has been happening" view.
+        args:
+          sourceId:
+            type: optional<string>
+            param-type: query
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: SyncRunPage

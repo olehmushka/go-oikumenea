@@ -41,12 +41,13 @@ type PrincipalResolver interface {
 }
 
 // PrincipalAuthorityResolver fetches a machine subject's flat grant set once per request, returning a
-// derived context carrying the authorization module's principal snapshot (opaque here). Deliberately
-// separate from AuthorityResolver: it yields NO db.RLSState, because a service request pins no
-// connection and sets no person GUC (the RLS service arm is M53). The authorization application
-// service satisfies it (ContextWithPrincipalAuthority).
+// derived context carrying the authorization module's principal snapshot (opaque here) plus the RLS
+// backstop GUC state (D-RLSDefenseInDepth) computed from the same identity. Since M55 (the RLS
+// service arm) it yields a db.RLSState carrying the PrincipalID, so a machine subject pins a lazy
+// RLS-scoped connection like a person does. The authorization application service satisfies it
+// (ContextWithPrincipalAuthority).
 type PrincipalAuthorityResolver interface {
-	ContextWithPrincipalAuthority(ctx context.Context, principalID string) (context.Context, error)
+	ContextWithPrincipalAuthority(ctx context.Context, principalID string) (context.Context, db.RLSState, error)
 }
 
 // AuthorityResolver fetches the resolved subject's authority state ONCE per request (review-2026-07
@@ -163,13 +164,14 @@ func (a *Authenticator) Handle(rw http.ResponseWriter, r *http.Request, next htt
 	// real audit attribution instead of being a hard-coded exemption. Constant-time comparison; an
 	// empty configured token disables the path.
 	if tok := a.importServiceToken(); tok != "" && subtle.ConstantTimeCompare([]byte(raw), []byte(tok)) == 1 {
-		ctx, ok := b.serviceContext(r.Context(), ReservedLocalIssuer, authn.ServiceHermeneaImporter)
+		ctx, release, ok := b.serviceContext(r.Context(), ReservedLocalIssuer, authn.ServiceHermeneaImporter)
 		if !ok {
 			// Configured secret but no seeded principal: fail closed rather than granting a bare,
 			// grant-less service subject.
 			unauthorized(rw)
 			return
 		}
+		defer release()
 		next.ServeHTTP(rw, r.WithContext(ctx))
 		return
 	}
@@ -186,7 +188,8 @@ func (a *Authenticator) Handle(rw http.ResponseWriter, r *http.Request, next htt
 		// token from a registered service principal resolves here (M51 / D-ServiceIdentities). The
 		// person path runs FIRST so the human hot path costs no extra query.
 		if errors.Is(err, errInvalidToken) || errors.Is(err, domain.ErrIdentityNotFound) {
-			if ctx, ok := b.serviceContext(r.Context(), claims.Issuer, claims.Subject); ok {
+			if ctx, release, ok := b.serviceContext(r.Context(), claims.Issuer, claims.Subject); ok {
+				defer release()
 				next.ServeHTTP(rw, r.WithContext(ctx))
 				return
 			}
@@ -225,29 +228,36 @@ func (a *Authenticator) Handle(rw http.ResponseWriter, r *http.Request, next htt
 }
 
 // serviceContext resolves (issuer, subject) as a MACHINE subject and returns a context carrying the
-// principal + its grant snapshot, or ok=false when the pair names no active principal.
+// principal + its grant snapshot, or ok=false when the pair names no active principal. It also
+// returns a release func the caller MUST defer (a no-op unless a lazy RLS connection was installed).
 //
-// A service request deliberately gets NO authority snapshot and NO lazy RLS connection: the RLS
-// policies compute reach from a person (D-RLSLiveReach) and there is no principal arm until M53, so
-// a principal must not pin a connection whose GUCs describe nobody. The PEP denies every
-// person-shaped path for it, so the absence of reach is enforced, not merely assumed.
-func (b *bound) serviceContext(ctx context.Context, issuer, subject string) (context.Context, bool) {
+// Since M55 (the RLS service arm) a service request installs a LAZY RLS-scoped connection just like a
+// person request: the reach predicate's principal arm (migration 0042) authorizes an org-confined
+// grant against that org's RLS-guarded rows, so a principal reaches exactly its organization's data —
+// enforced at the DB, not merely by the PEP. The connection is pinned only when a handler first
+// touches a guarded table; instance-scope surfaces (wiring reads) never pin one.
+func (b *bound) serviceContext(ctx context.Context, issuer, subject string) (context.Context, func(), bool) {
+	noop := func() {}
 	if b.principals == nil {
-		return ctx, false
+		return ctx, noop, false
 	}
 	res, err := b.principals.ResolvePrincipal(ctx, issuer, subject)
 	if err != nil {
-		return ctx, false
+		return ctx, noop, false
 	}
 	sctx := authn.NewContext(ctx, authn.Subject{Service: res.Code, PrincipalID: res.PrincipalID})
 	if b.principalAuthority != nil {
-		actx, err := b.principalAuthority.ContextWithPrincipalAuthority(sctx, res.PrincipalID)
+		actx, state, err := b.principalAuthority.ContextWithPrincipalAuthority(sctx, res.PrincipalID)
 		if err != nil {
-			return ctx, false
+			return ctx, noop, false
 		}
 		sctx = actx
+		if b.pool != nil {
+			lctx, release := db.WithLazyConn(sctx, b.pool, state)
+			return lctx, release, true
+		}
 	}
-	return sctx, true
+	return sctx, noop, true
 }
 
 // resolve turns verified claims into a PDP subject: first a direct (issuer, subject) lookup; on an

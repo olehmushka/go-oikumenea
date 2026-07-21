@@ -30,9 +30,10 @@ import pipeline shared with the hermenea connectors).
 The **north-star topology cluster** (M51–M54, from the [north star](north-star.md) agreed
 2026-07-18): **D-HeadlessTopology** (M52, oikumenea internal-only behind unprivileged
 user-token-passthrough facades) · **D-ServiceIdentities** (M51, machine clients via IdP
-client-credentials → service principals) · **D-ConnectorPlane** (M53, a connector registry + the
-push / pull-wiring / on-demand-lookup contract) · **D-DataPacks** (M54, plugins as versioned data
-packs + per-module enable flags).
+client-credentials → service principals; its RLS reach arm split out to **M55**) · **D-ConnectorPlane**
+(M53, a connector registry + the push / pull-wiring / on-demand-lookup contract — its RLS service arm
+split out to **M55**) · **D-DataPacks** (M54, plugins as versioned data packs + per-module enable
+flags).
 
 The **person-intelligence / OSINT-enrichment cluster** (M29–M37, derived from
 [`draft_superbrain_schema.md`](../draft_superbrain_schema.md)): **D-OverlayFoundation** (M29, the
@@ -1880,12 +1881,27 @@ snapshot/cache keyspace so a principal can never alias a person. The audit `syst
 attributable to a specific principal (`audit_log.actor_principal_id`; no third `actor_type` — D-Audit
 holds). `RequireImport`'s hard-coded `hermenea-importer` branch is deleted in favor of a real grant.
 
-**Boundary.** A service principal gets **no RLS reach**: the request sets no `app.person_id` GUC, so
-every person-shaped PEP path denies it by construction. Machine access to RLS-protected,
-organization-owned data (scraped units, memberships, clergy, university staff) requires an RLS
-service arm and lands with **D-ConnectorPlane / M53**; M51 ships the mechanism plus the instance-wide
-capability that exists today. The `org_id` column and its enforcement ship in M51 so M53 retrofits
-nothing. Prerequisite for M52/M53. Lands as **M51** ([milestones](../milestones.md)). Additive.
+**Boundary.** A service principal got **no RLS reach** in M51: the request set no `app.person_id` GUC,
+so every person-shaped PEP path denied it by construction. Machine access to RLS-protected,
+organization-owned data (scraped units, memberships, clergy, university staff) required an RLS service
+arm, split out of D-ConnectorPlane as **M55**. M51 shipped the mechanism plus the instance-wide
+capability, and the `org_id` grant column, so M55 retrofit nothing. Prerequisite for M52/M53. Lands as
+**M51** ([milestones](../milestones.md)). Additive.
+
+**RLS service arm as built (M55, migration `0042`, 2026-07-21).** A third GUC **`app.principal_id`**
+now pins a machine subject (the authenticator installs a lazy RLS-scoped connection for it, exactly
+as for a person; `db.RLSState` gains `PrincipalID`). An **org-confined** grant (`org_id NOT NULL`)
+authorizes that organization's RLS-guarded rows — reads, writes, and the creation of brand-new
+(edgeless) units — and **only** that org's; `org_id NULL` (instance-wide) grants confer no operational
+reach (blast-radius = the org). Because the reach predicate may read only RLS-exempt tables, `0042`
+adds a dedicated exempt projection `authz_unit_org(unit_id → org_id)` (trigger-maintained, FK
+`DEFERRABLE INITIALLY DEFERRED`) that the child-table arm resolves through, while the `tenant_units`
+policy checks the row's own `org_id` directly (the one case the projection can't serve mid-INSERT).
+`RequireImport` now passes a **real orgID** (optional envelope `orgId`), so an org-scoped import is
+accepted under a matching org grant and rejected under a foreign one. Every person-shaped PEP path
+still denies a machine — the reach is bounded to what its org grant authorizes at the DB. Revocation
+is immediate (grants read live). See D-RLSLiveReach's dated extension and
+[milestones M55](../milestones.md).
 
 ### D-HeadlessTopology — oikumenea is internal-only behind unprivileged user-token-passthrough facades (extends L-AuthzOnly, amends D-WebUI)
 
@@ -1913,11 +1929,37 @@ the single internal path is strictly simpler to reason about. (c) *An API gatewa
 front*: a deployment choice operators may still make; the architecture only requires that the
 thing facing the public is not oikumenea itself.
 
-**Consequence.** A new `console-bff` deployable (thin: session + passthrough + static console
-hosting or proxy); compose topologies stop publishing oikumenea's port; docs/config gain the
+**Consequence.** Compose topologies stop publishing oikumenea's port; docs/config gain the
 internal-network stance. The Conjure contract is unchanged — facades consume it as-is. Requires
 M51 only for facades that also need standing of their own (health probes, cache warmers); pure
 passthrough works with the user token alone. Lands as **M52** ([milestones](../milestones.md)).
+
+**Amendment (M52, 2026-07-19) — `console-bff` is the console's own server tier, not a new deployable.**
+The Consequence above originally called for "a new `console-bff` deployable (thin: session +
+passthrough + static console hosting or proxy)". On implementing M52 that deployable turned out to be
+**already built**: the Next.js console's server tier (`web/src/auth.ts` — Auth.js v5, OIDC
+Authorization-Code exchanged server-side into an httpOnly session; `web/src/app/api/oikumenea/[...path]`
+— the bearer-attaching passthrough proxy) does all three jobs in one process, and does them under
+exactly the constraints this decision requires: the browser never holds a token, the **end-user's**
+bearer is forwarded unchanged, and there is no on-behalf-of seam anywhere. **The console's Next.js
+server tier IS `console-bff`**; M52 introduces **no new binary**, and renames the compose service to
+say so.
+
+*Why not build the separate Go BFF anyway:* it would have to own the browser session, which means
+duplicating or replacing Auth.js, and would then proxy static console traffic to the Next server — new
+moving parts, a second session implementation, and **no security gain**, since the properties the
+decision actually turns on (forwards the user token, holds no widening credential, asserts no
+on-behalf-of) are already satisfied. The decision's substance is a *constraint on facades*, not a
+mandate for a particular process boundary.
+
+*Two paths to the core, both legitimate.* Server Components call oikumenea directly via
+`web/src/lib/api/server.ts`; the browser calls it through the BFF proxy route. These are not two
+exposure paths in the sense (b) above rejects — both attach the same session bearer and both originate
+**inside the facade process** on the internal network. The browser has exactly one path.
+
+*Consequently* the core needed no change at all for M52: it has no trusted-proxy list, no
+`X-Forwarded-*` handling, and treats `azp` as diagnostic-only — the facade is just another
+authenticated caller presenting a user's token.
 
 ### D-ConnectorPlane — A connector registry + a three-mode contract: push, pull-wiring, on-demand lookup (extends D-Hermenea, D-Watchlists)
 
@@ -1953,12 +1995,36 @@ core DB replica*: breaks the HTTP-only boundary and the PDP/visibility gates; re
 (c) *A message broker between core and connectors*: new infrastructure for what HTTP + idempotent
 envelopes already deliver; reconsider only if fan-out demands it.
 
-**Consequence.** New registry tables + Objects (`Connector`, `Source`, sync-run Action) with RID
-types; the wiring API endpoints + per-surface permission codes; the `watchlistclient` seam
-refactored into the generic connector-call seam (M34 behavior unchanged); hermenea registers
-itself as the first connector and its sources migrate into the registry. `import.manage` stays
-the push gate. Requires M51. Lands as **M53** ([milestones](../milestones.md)). Additive /
+**Consequence.** New registry tables + Objects (`Connector`, `Source`, `SyncRun`) with RID types;
+the wiring API endpoints + per-surface permission codes; the `watchlistclient` seam refactored into
+the generic connector-call seam (M34 behavior unchanged); hermenea registers itself as the first
+connector and its sources migrate into the registry; a read-only console fleet view. `import.manage`
+stays the push gate. Requires M51. Lands as **M53** ([milestones](../milestones.md)). Additive /
 expand-only on the core.
+
+**Amendment (2026-07-21) — the RLS service arm moved out to M55.** As built, M53 is the connector
+plane's **reads and reporting**: the registry, the instance-scope wiring API, the generalized lookup
+seam, hermenea self-registration, and the console. It does **not** give a machine reach into
+RLS-protected, organization-owned data — that "RLS service arm" (a principal branch in
+`authz_unit_in_reach`, org-confined writes, `RequireImport`'s real orgID) is now **M55**, not here.
+Two reasons. (1) *Scope honesty:* D-ConnectorPlane's own Delivers list and all four exit criteria
+describe reads over instance-wide reference data — never RLS, writes, or org-owned data — so the arm
+was never really in this decision's body; the M51 code comments that promised it "with
+D-ConnectorPlane" over-reached. (2) *It is the separable hard part:* `authz_unit_in_reach`
+([migrations/20260601000011_rls_backstop.sql](../../migrations/20260601000011_rls_backstop.sql)) may
+read only RLS-exempt tables, because reading a policy-guarded table recurses into its own policy — so
+a principal arm cannot join `tenant_units` to learn a unit's org even though `tenant_units.org_id`
+exists. That is a design problem of its own, tracked as M55 rather than smuggled in here. Everything
+M53 shipped is unaffected; M55 retrofits nothing (the `org_id` column already ships, M51).
+
+**M55 delivered (migration `0042`, 2026-07-21).** The RLS service arm landed: a dedicated RLS-exempt
+projection `authz_unit_org` + the `app.principal_id` GUC give an org-confined principal reach into its
+organization's RLS-guarded rows (incl. creating brand-new units), and `RequireImport` passes a real
+orgID. The machine write path over HTTP is the **import endpoint** (`RequireServiceOrPerson`); direct
+module write APIs stay person-gated (a connector ingests via `/import/{objectType}`, it does not POST
+`/units`). Per-object org-owned import handlers land with the connectors that need them; the DB
+backstop confines whatever they write. See D-ServiceIdentities' and D-RLSLiveReach's dated as-built
+notes and [milestones M55](../milestones.md).
 
 ### D-DataPacks — Plugins are versioned data packs + per-module enable flags, no runtime code loading (extends D-Pinax, D-i18n)
 
@@ -1996,3 +2062,20 @@ check; schema always converges, capability is config.
 config gains the `modules.*.enabled` map consulted at module registration in `main.go`;
 witchcraft route registration + the search/links fan-in registries skip disabled modules. Lands
 as **M54** ([milestones](../milestones.md)). Additive.
+
+**As built (2026-07-21).** The pinax loader gained a `pinax.packs` mounted-dir scanner merged into the
+same topo-sorted, version-gated set (collisions across bundle+packs fail boot; `pinax_seed_state.pack`
+records provenance, migration `0041`). Locale packs ride a **new `locales` import objectType**
+(create-if-absent into `i18n_locales`, never flipping an operator's `enabled`/`is_default`) plus the
+existing `translations` objectType; the sample pack is `deploy/packs/locale-deu`. The **toggleable set
+is the six enrichment verticals** (finance/religion/vehicle/externalorg/company/education); core +
+depended-on reference modules (geo/language/color/…) are always on. Two enforcement refinements worth
+recording: (1) **code non-grantability is prefix-based** — the authz application service holds the
+disabled modules' code prefixes (`finance.`, `religion.`+`religionorg.`, …) and rejects a grant of any
+code under them as `ErrUnknownPermission`, keeping the static domain catalog unchanged (a config flip,
+not a code change, re-enables). (2) The **links fan-in omission is achieved *through* that code-gating,
+not by dropping link descriptors** — the generic traversal is permission-gated per relationship
+(D-LinkPermissions), so a disabled module's per-relationship read codes being ungrantable already makes
+its facets unreachable; the descriptors stay registered so the R-28 boot coverage assertion holds and
+re-enabling needs no descriptor surgery. Search providers ARE skipped directly (a disabled vertical
+passes a nil service). Schema always migrates.

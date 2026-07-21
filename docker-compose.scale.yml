@@ -1,5 +1,6 @@
-# Multi-replica override (R-13 / M49 verification): the base compose file publishes fixed host ports,
-# which caps a service at one replica. This override un-publishes them so the R-13 acceptance run
+# Multi-replica override (R-13 / M49 verification): a service publishing a fixed host port is capped at
+# one replica. Since M52 (D-HeadlessTopology) `app` publishes nothing in the base file and so already
+# scales; `hermenea` still does, and is un-published here. This override lets the R-13 acceptance run
 #
 #   OIKUMENEA_SCALE_E2E=1 scripts/scale-e2e.sh
 #     (which runs: docker compose -f docker-compose.yml -f docker-compose.scale.yml -p oik-scale up -d --scale app=2)
@@ -12,7 +13,7 @@
 # `!reset` needs docker compose v2.24+.
 services:
   app:
-    ports: !reset []
+    # No `ports: !reset []` needed — the base file publishes none (M52 / D-HeadlessTopology).
     # Enable the env-gated outbox self-test seam (review R-13) on BOTH serving replicas so the counting
     # notify handler is registered at boot; scripts/scale-e2e.sh enqueues events and asserts delivery.
     # Inert outside this scale override.

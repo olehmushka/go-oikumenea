@@ -24,9 +24,14 @@ var nonInvocable = map[string]bool{
 	"import.geo-places":                  true, // bulk ingestion plane
 	"import.language-scheme":             true, // bulk ingestion plane
 	"import.language-scripts":            true, // bulk ingestion plane
+	"import.locales":                     true, // bulk ingestion plane (locale packs, M54)
 	"import.person-regulatory-sanctions": true, // bulk ingestion plane
 	"import.religion-scheme":             true, // bulk ingestion plane
 	"import.translations":                true, // bulk ingestion plane
+	"connector.register":                 true, // machine self-service (M53), not a console object action
+	"connector.sync-run.running":         true, // machine self-service (M53), not a console object action
+	"connector.sync-run.succeeded":       true, // machine self-service (M53), not a console object action
+	"connector.sync-run.failed":          true, // machine self-service (M53), not a console object action
 }
 
 var pathParamRe = regexp.MustCompile(`\{([^}]+)\}`)

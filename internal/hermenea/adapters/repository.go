@@ -37,7 +37,7 @@ func (r *Repository) UpsertSource(ctx context.Context, s domain.Source) (domain.
 	row, err := r.q.UpsertSource(ctx, hermeneasql.UpsertSourceParams{
 		Code:          s.Code,
 		Name:          s.Name,
-		ConnectorType: s.ConnectorType,
+		ConnectorType: s.FetcherType,
 		ObjectType:    s.ObjectType,
 		Locator:       s.Locator,
 		Cron:          text(s.Cron),
@@ -228,14 +228,14 @@ func (r *Repository) ListRuns(ctx context.Context, limit int) ([]domain.Run, err
 
 func sourceFrom(row hermeneasql.HermeneaImportSource) domain.Source {
 	return domain.Source{
-		ID:            row.ID,
-		Code:          row.Code,
-		Name:          row.Name,
-		ConnectorType: row.ConnectorType,
-		ObjectType:    row.ObjectType,
-		Locator:       row.Locator,
-		Cron:          row.Cron.String,
-		Enabled:       row.Enabled,
+		ID:          row.ID,
+		Code:        row.Code,
+		Name:        row.Name,
+		FetcherType: row.ConnectorType,
+		ObjectType:  row.ObjectType,
+		Locator:     row.Locator,
+		Cron:        row.Cron.String,
+		Enabled:     row.Enabled,
 	}
 }
 

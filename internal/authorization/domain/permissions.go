@@ -246,6 +246,19 @@ const (
 	// identity-federation AND the principal-grant endpoints on authorization.
 	PermServicePrincipalRead   Permission = "service-principal.read"
 	PermServicePrincipalManage Permission = "service-principal.manage"
+
+	// connector plane (M53 / D-ConnectorPlane). The self-service codes are held by MACHINE subjects as
+	// per-principal grants; `connector.read` is the operator fleet-view code. All instance-scope: a
+	// connector is instance infrastructure with no unit or (in M53) organization dimension.
+	PermConnectorRegister Permission = "connector.register" // a connector self-registers itself + its sources
+	PermConnectorReport   Permission = "connector.report"   // a connector reports its sync runs
+	PermConnectorRead     Permission = "connector.read"     // operators read the fleet (instance admin)
+	// wiring API (M53 / D-ConnectorPlane, pull-wiring mode). Narrow READ surfaces a connector uses to
+	// map its data before pushing. Each is its own code — what a connector may see is a grant, not a
+	// default. Instance-scope: they read instance-wide reference data. Org-confined wiring is M55.
+	PermWiringResolve     Permission = "wiring.resolve"      // resolve natural keys to RIDs
+	PermWiringCatalogRead Permission = "wiring.catalog.read" // read reference catalogs (countries, languoids, …)
+	PermWiringCursorRead  Permission = "wiring.cursor.read"  // read the connector's own registry row + cursors
 )
 
 // instanceScope is the set of permissions only meaningful on the instance-admin plane
@@ -280,6 +293,12 @@ var instanceScope = map[Permission]struct{}{
 	PermImportManage:             {},
 	PermServicePrincipalRead:     {},
 	PermServicePrincipalManage:   {},
+	PermConnectorRegister:        {},
+	PermConnectorReport:          {},
+	PermConnectorRead:            {},
+	PermWiringResolve:            {},
+	PermWiringCatalogRead:        {},
+	PermWiringCursorRead:         {},
 }
 
 // catalog is the closed vocabulary — the union of every permission constant above. It is the
@@ -319,6 +338,8 @@ var catalog = func() map[Permission]struct{} {
 		PermPersonalCodeSchemeManage, PermCountryManage, PermLocationTypesManage, PermEducationCatalogManage, PermCompanyCatalogManage, PermVehicleCatalogManage, PermFinanceCatalogManage, PermReligionCatalogManage, PermInstanceConfig, PermInstanceAdminManage,
 		PermImportManage,
 		PermServicePrincipalRead, PermServicePrincipalManage,
+		PermConnectorRegister, PermConnectorReport, PermConnectorRead,
+		PermWiringResolve, PermWiringCatalogRead, PermWiringCursorRead,
 	}
 	m := make(map[Permission]struct{}, len(all))
 	for _, p := range all {

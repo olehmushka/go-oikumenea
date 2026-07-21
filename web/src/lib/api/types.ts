@@ -5,6 +5,7 @@
 import type {
   audit,
   authorization,
+  connector,
   document,
   hermenea,
   identityfederation,
@@ -23,6 +24,10 @@ export type LocaleMap = Record<string, string>;
 
 // ── identity / whoami ────────────────────────────────────────────────────────
 export type Whoami = identityfederation.IWhoami;
+// service principals — machine subjects (M51, D-ServiceIdentities)
+export type ServicePrincipal = identityfederation.IServicePrincipal;
+export type ServicePrincipalPage = identityfederation.IServicePrincipalPage;
+export type IssuerOption = identityfederation.IIssuerOption;
 
 // ── tenant ───────────────────────────────────────────────────────────────────
 export type Unit = tenant.IUnit;
@@ -115,6 +120,9 @@ export type AssignmentPage = authorization.IAssignmentPage;
 export type Contribution = authorization.IContribution;
 export type Explanation = authorization.IExplanation;
 export type AuthorizeResponse = authorization.IAuthorizeResponse;
+// per-principal grants — flat (permission, orgId?), no unit/scope (M51, D-ServiceIdentities amended)
+export type PrincipalGrant = authorization.IPrincipalGrant;
+export type PrincipalGrantPage = authorization.IPrincipalGrantPage;
 
 // ── document ─────────────────────────────────────────────────────────────────
 export type DocumentType = document.IDocumentType;
@@ -144,3 +152,11 @@ export type ImportSource = hermenea.IImportSource;
 export type ImportRun = hermenea.IImportRun;
 export type WorkerJob = hermenea.IWorkerJob;
 export type JobRef = hermenea.IJobRef;
+
+// ── connector plane (M53, D-ConnectorPlane) ──────────────────────────────────
+export type Connector = connector.IConnector;
+export type ConnectorPage = connector.IConnectorPage;
+export type ConnectorSource = connector.IConnectorSource;
+export type ConnectorSourceList = connector.IConnectorSourceList;
+export type SyncRun = connector.ISyncRun;
+export type SyncRunPage = connector.ISyncRunPage;

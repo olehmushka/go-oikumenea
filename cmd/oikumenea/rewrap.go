@@ -38,6 +38,7 @@ var encTables = []encTable{
 	{"oikumenea.finance_cards", "pan_ciphertext", "pan_wrapped_dek", "key_ref", "pan_blind_index"},
 	{"oikumenea.person_party_memberships", "party_ciphertext", "party_wrapped_dek", "party_key_ref", "party_blind_index"},
 	{"oikumenea.person_political_leaning", "leaning_ciphertext", "leaning_wrapped_dek", "leaning_key_ref", "leaning_blind_index"},
+	{"oikumenea.person_health_records", "detail_ciphertext", "detail_wrapped_dek", "detail_key_ref", "detail_blind_index"},
 }
 
 // runRewrapCLI re-wraps every envelope-encrypted DEK under the ACTIVE KEK (review R-22, key rotation):

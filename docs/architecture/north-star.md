@@ -74,6 +74,11 @@ the PDP against the real user. A facade holds no credential that widens access, 
 facade can impersonate nobody (no confused deputy). There is **no on-behalf-of assertion** — a
 facade cannot tell oikumenea "act as person X" (D-HeadlessTopology).
 
+"Facade" names a set of constraints, not a mandatory extra process. **console-bff** is realized as the
+admin console's own Next.js server tier — it already owned the httpOnly session and already forwarded
+the user's bearer, so M52 recognized it rather than adding a redundant binary (D-HeadlessTopology,
+M52 amendment).
+
 ### 4 · Ingestion plane — connectors
 
 hermenea generalizes into a **family of connectors** — external services that feed or answer for

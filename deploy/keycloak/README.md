@@ -57,7 +57,10 @@ curl -k https://localhost:8443/person/v1/persons      # no token -> 401
 ```
 
 - App API is HTTPS self-signed on **:8443** (`-k`); management/health is on **:8444**
-  (`curl -k https://localhost:8444/status/readiness`).
+  (`curl -k https://localhost:8444/status/readiness`). This works because the walkthrough above runs
+  the binary **directly on the host**. In the packaged `docker-compose.yml` topology oikumenea
+  publishes no host port at all (M52 / D-HeadlessTopology) and is reachable only from inside the
+  compose network — there, go through the console facade instead.
 - Keycloak admin console: <http://localhost:8080> (console login `admin`/`admin`).
 
 ## How the admin login resolves
@@ -85,7 +88,8 @@ also works if you set `idp.jit.enabled: true`, since the client stamps `person_c
 The optional Next.js console (`web/`, port **8445**; see [`docs/web-ui.md`](../../docs/web-ui.md)) logs
 in through this realm via Auth.js (OIDC Authorization-Code). It uses the **confidential**
 `oikumenea-web` client and exchanges the code **server-side**, so the browser never holds a token; the
-Next.js server then proxies API calls to `:8443` with the bearer attached. Because the access token
-carries `aud: oikumenea`, the app validates it with the same `idp.issuers[]` rules as a curl token. Run
-it from `web/` (`npm run dev`, `PORT=8445`) against this dev stack, or as the `ui`-profiled compose
-service — see `web/README.md`.
+Next.js server then proxies API calls to the app with the bearer attached. That Next.js server tier
+*is* the **console-bff** facade (M52 / D-HeadlessTopology) — it forwards the end-user's own token and
+holds no credential of its own. Because the access token carries `aud: oikumenea`, the app validates it
+with the same `idp.issuers[]` rules as a curl token. Run it from `web/` (`npm run dev`, `PORT=8445`)
+against this dev stack, or as the `ui`-profiled `console-bff` compose service — see `web/README.md`.

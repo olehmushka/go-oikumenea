@@ -5,8 +5,17 @@
 # coupled to oikumenea only over HTTP (POST /import/{objectType}).
 #
 #   docker compose up --build
-#   curl -k https://localhost:8444/status/readiness    # oikumenea
-#   curl -k https://localhost:9444/status/readiness    # hermenea
+#   curl -k https://localhost:9444/status/readiness    # hermenea (still published)
+#
+# oikumenea itself is INTERNAL-ONLY (M52 / D-HeadlessTopology): it publishes NO host port, so it can
+# only be probed from inside the compose network. Both `app` and `hermenea` are distroless (no shell,
+# no curl), so attach a throwaway client to the network:
+#
+#   docker compose exec -T postgres \
+#     sh -c 'command -v curl >/dev/null && curl -sk https://app:8444/status/readiness'
+#   # or, image-independent:
+#   docker run --rm --network "$(basename "$PWD")_default" curlimages/curl \
+#     -sk https://app:8444/status/readiness
 #   # trigger the bundled, network-free geo-countries sync (operator push):
 #   curl -k -X POST https://localhost:9443/sync/geo-countries-iso3166 \
 #     -H "Authorization: Bearer dev-oikumenea-trigger-token-change-me"
@@ -84,9 +93,12 @@ services:
       # The trigger secret oikumenea presents OUTBOUND when proxying UI-triggered /hermenea/v1/* calls to
       # the companion's control API (D-Hermenea). Must match hermenea's OIKUMENEA_HERMENEA_TOKEN below.
       OIKUMENEA_HERMENEA_TOKEN: "dev-oikumenea-trigger-token-change-me"
-    ports:
-      - "8443:8443"
-      - "8444:8444"
+    # NO published ports (M52 / D-HeadlessTopology). oikumenea listens on the compose-internal network
+    # only; every human-facing consumer reaches it through a facade (console-bff below). The management
+    # port 8444 is unpublished too, deliberately: /status and /debug bypass authentication entirely
+    # (isBypassPath, internal/identityfederation/middleware/authenticator.go), so publishing it would
+    # leave an unauthenticated host-facing surface — exactly what this milestone removes.
+    # In-network callers (hermenea, console-bff) are unaffected: they use compose DNS (https://app:8443).
 
   # Create hermenea's SEPARATE database (D-Hermenea) on the same Postgres instance. CREATE DATABASE is
   # not IF-NOT-EXISTS, so gate on the catalog. Idempotent; runs once after Postgres is healthy.
@@ -145,15 +157,21 @@ services:
       - "9443:9443"
       - "9444:9444"
 
-  # OPTIONAL admin console (D-WebUI). Opt-in only: it starts only with `--profile ui`, so a
-  # default `docker compose up` is unchanged (no 8445). It is a pure API consumer (BFF) — the
-  # `app` service is untouched. The IdP is external: point AUTH_KEYCLOAK_ISSUER at a Keycloak
-  # reachable from BOTH the browser and this container (this prod compose ships no Keycloak —
-  # for an all-in-one local demo, run the UI from the host: see web/README.md).
+  # The console facade — console-bff (M52 / D-HeadlessTopology). This is the Next.js server tier of
+  # the admin console, and it IS the facade: it owns the browser session (Auth.js, httpOnly), serves
+  # the console, and forwards the END-USER's bearer to oikumenea. It is UNPRIVILEGED — it holds no
+  # credential that widens access and makes no on-behalf-of assertion, so oikumenea re-validates the
+  # user's own token and runs the PDP against the real user. Note the absence of HERMENEA_OIKUMENEA_TOKEN
+  # (or any other service secret) below: that absence is the property, not an oversight.
+  #
+  # Still opt-in (`--profile ui`), so a default `docker compose up` brings up no public port at all.
+  # The IdP is external: point AUTH_KEYCLOAK_ISSUER at a Keycloak reachable from BOTH the browser and
+  # this container (this prod compose ships no Keycloak — for an all-in-one local demo, run the UI
+  # from the host: see web/README.md).
   #
   #   docker compose --profile ui up --build
   #   open http://localhost:8445
-  web:
+  console-bff:
     build:
       # Repo-root context: web consumes the SDK at ../clients/typescript (a file: dep outside web/).
       context: .

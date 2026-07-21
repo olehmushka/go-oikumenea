@@ -33,6 +33,7 @@ var serviceNames = map[int]string{
 	SvcVehicle:     "vehicle",
 	SvcExternalOrg: "external_organization",
 	SvcFinance:     "finance",
+	SvcConnector:   "connector",
 }
 
 type typeKey struct {
@@ -217,6 +218,11 @@ var typeNames = map[typeKey]string{
 	{SvcFinance, int(KindObject), 3}: "account_type",
 	{SvcFinance, int(KindObject), 4}: "card_network",
 	{SvcFinance, int(KindLink), 1}:   "held_by",
+	// connector plane (M53 / D-ConnectorPlane) — the fleet registry: a connector is a deployable agent
+	// beside the core, a source is one dataset it syncs, a sync_run is one reported execution.
+	{SvcConnector, int(KindObject), 1}: "connector",
+	{SvcConnector, int(KindObject), 2}: "connector_source",
+	{SvcConnector, int(KindObject), 3}: "sync_run",
 }
 
 // Bare person link-type names (the dispatch tokens), derived from the registry above.

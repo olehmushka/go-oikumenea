@@ -111,6 +111,9 @@ Real-world entities with identity over time → Objects.
 | `Account` *(M44)* | [finance](modules/finance.md) | RID only | `status` + soft-delete | bank account; **RID service 19, `19,1,1`**; `institution_id` → a `company`-domain `tenant_organizations` row (the bank); **envelope-encrypted IBAN** (`pii:sensitive`, blind index unique among active); `currency` (ISO 4217); D-Finance |
 | `Card` *(M44)* | [finance](modules/finance.md) | RID only | `status` + soft-delete | payment card; `19,1,2`; `account_id` → `Account` (**containment** FK, CASCADE); **envelope-encrypted PAN** + clear `bin`/`last_four`; `card_type` debit\|credit; **no CVV column ever** (PCI Req 3.2); optional named `cardholder_person_id`; D-Finance |
 | `FinanceAccountType` / `FinanceCardNetwork` *(M44)* | [finance](modules/finance.md) | yes (`code`/`name`) | `status` + soft-delete | account-kind (current/savings/…) + card-network (visa/…) catalogs (`19,1,3` / `19,1,4`), instance-extensible; D-Finance |
+| `Connector` *(M53)* | [connector](modules/connector.md) | yes (`code`) | `status` + soft-delete | a deployable agent beside the core (hermenea is the first); **RID service 20, `20,1,1`**; `principal_id` → the M51 service principal it authenticates as; D-ConnectorPlane |
+| `ConnectorSource` *(M53)* | [connector](modules/connector.md) | yes (`code`) | soft-delete | one dataset a connector syncs, as reported (`20,1,2`); `object_type` names the core import target for push-mode sources; a **read model** — the connector stays authoritative for execution; D-ConnectorPlane |
+| `SyncRun` *(M53)* | [connector](modules/connector.md) | RID only | `state` (running/succeeded/failed) | one reported execution (`20,1,3`); connector-supplied counts; `external_run_id` correlates with the connector's ledger + M49 import provenance; D-ConnectorPlane |
 | `ExternalOrgKind` | [external-organizations](modules/external-organizations.md) | yes (`code`/`name`) | seeded | catalog (`party\|government_body\|military\|ngo\|registrant\|other`) |
 | `PhysicalDescription` / `DistinguishingMark` *(planned, M31)* | [person](modules/person.md) | no | effective-dated + soft-delete | `person_physical_descriptions` (height/weight/eye/hair/build/blood_type, `pii:basic`); marks (`pii:special` ceiling); D-PhysicalIdentity |
 | `EthnicityType` *(planned, M31)* | [person](modules/person.md) | yes (`code`/`name`) | catalog | open catalog for declared ethnicity (the value link is `pii:special`, encrypted); D-PhysicalIdentity |
@@ -338,6 +341,10 @@ cannot drift from the contract. Descriptive only (discoverability), not write-ti
 | `company.shareholding.record` | company | `company` | `company.manage` |
 | `company.succession.record` | company | `company` | `company.manage` |
 | `company.update` | company | `company` | `company.manage` |
+| `connector.register` | connector | `connector` | `connector.register` |
+| `connector.sync-run.failed` | connector | `sync_run` | `connector.report` |
+| `connector.sync-run.running` | connector | `sync_run` | `connector.report` |
+| `connector.sync-run.succeeded` | connector | `sync_run` | `connector.report` |
 | `document.create` | document | `document` | `document.create` |
 | `document.delete` | document | `document` | `document.delete` |
 | `document.person.erase` | document | `person` | `person.purge` |
@@ -434,6 +441,7 @@ cannot drift from the contract. Descriptive only (discoverability), not write-ti
 | `import.geo-places` | platform | `geo-places` | `import.manage` |
 | `import.language-scheme` | platform | `language-scheme` | `import.manage` |
 | `import.language-scripts` | platform | `language-scripts` | `import.manage` |
+| `import.locales` | platform | `locales` | `import.manage` |
 | `import.person-regulatory-sanctions` | platform | `person-regulatory-sanctions` | `import.manage` |
 | `import.religion-scheme` | platform | `religion-scheme` | `import.manage` |
 | `import.translations` | platform | `translations` | `import.manage` |

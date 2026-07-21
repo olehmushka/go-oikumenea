@@ -17,6 +17,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -72,6 +73,27 @@ type Service struct {
 	// registry, LATE-BOUND by main.go because that module registers after this one.
 	newPrincipalRepo PrincipalRepositoryFactory
 	principals       domain.PrincipalDirectory
+	// disabledPrefixes are the permission-code prefixes of verticals switched off via modules.*.enabled
+	// (D-DataPacks, M54). A role or principal grant naming a code under one of these is rejected as
+	// effectively unknown — a disabled module's codes are not grantable, though they stay structurally
+	// valid in the closed catalog (so the module re-enables by a config flip, no data change).
+	disabledPrefixes []string
+}
+
+// SetDisabledModulePrefixes records which disabled modules' code prefixes are non-grantable
+// (D-DataPacks, M54). Composition-time, from install config; empty (the default) grants everything the
+// static catalog allows.
+func (s *Service) SetDisabledModulePrefixes(prefixes []string) { s.disabledPrefixes = prefixes }
+
+// rejectDisabledCode returns ErrUnknownPermission when a code belongs to a disabled module (M54), so a
+// grant of it maps to the same "unknown permission" error an unregistered code does.
+func (s *Service) rejectDisabledCode(code domain.Permission) error {
+	for _, px := range s.disabledPrefixes {
+		if strings.HasPrefix(string(code), px) {
+			return errors.Join(domain.ErrUnknownPermission, errors.New(string(code)))
+		}
+	}
+	return nil
 }
 
 // NewService wires the service with the pool, the repository factory, the audit service, the PDP
@@ -243,6 +265,11 @@ func (s *Service) CreateRole(ctx context.Context, role domain.Role) (domain.Role
 	if err := role.Validate(); err != nil {
 		return domain.Role{}, err
 	}
+	for _, p := range role.Permissions {
+		if err := s.rejectDisabledCode(p); err != nil {
+			return domain.Role{}, err
+		}
+	}
 	var out domain.Role
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
 		repo := s.newRepo(tx)
@@ -288,6 +315,11 @@ func (s *Service) UpdateRole(ctx context.Context, id string, patch domain.RolePa
 	if patch.Permissions != nil {
 		if err := domain.ValidatePermissionSet(*patch.Permissions); err != nil {
 			return domain.Role{}, err
+		}
+		for _, p := range *patch.Permissions {
+			if err := s.rejectDisabledCode(p); err != nil {
+				return domain.Role{}, err
+			}
 		}
 	}
 	var out domain.Role

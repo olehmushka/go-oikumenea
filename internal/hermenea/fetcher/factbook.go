@@ -1,4 +1,4 @@
-package connector
+package fetcher
 
 import (
 	"context"
@@ -18,20 +18,20 @@ import (
 
 // Factbook stages the CIA World Factbook country files (D-PhysicalIdentity amendment, M43) for the paged
 // ethnicity pipeline. It enumerates every `<region>/<cc>.json` in the `factbook/factbook.json` GitHub
-// mirror with ONE git-tree API call, then streams each raw file to a temp directory. A StreamingConnector:
+// mirror with ONE git-tree API call, then streams each raw file to a temp directory. A StreamingFetcher:
 // ~260 whole Factbook docs exceed the 16 MiB in-memory cap, so the set is staged to disk and parsed by the
 // factbookethnicities PagedMapper. The Factbook is US-government PUBLIC DOMAIN. Locator is `owner/repo@ref`
 // (default `factbook/factbook.json@master`).
 type Factbook struct{ client *http.Client }
 
-// Fetch is never called for a StreamingConnector (the pipeline routes it through Stage).
+// Fetch is never called for a StreamingFetcher (the pipeline routes it through Stage).
 func (Factbook) Fetch(context.Context, domain.Source) (domain.RawBatch, error) {
 	return domain.RawBatch{}, ErrStreamingOnly
 }
 
 var (
-	_ domain.Connector          = Factbook{}
-	_ domain.StreamingConnector = Factbook{}
+	_ domain.Fetcher          = Factbook{}
+	_ domain.StreamingFetcher = Factbook{}
 )
 
 // regionsSkip are top-level dirs in the mirror that are not per-country ethnicity sources.

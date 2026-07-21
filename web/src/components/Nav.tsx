@@ -8,10 +8,21 @@ import { tg } from "@/lib/messages";
 
 // Tools are surfaces that aren't object-table shaped (PDP check, tree editors, the log). Label/hint
 // are message-catalog keys (translated via useT) so the nav follows the UI locale.
-const TOOLS: { href: string; key: string }[] = [
+//
+// `requires` names a permission code the visitor must hold for the entry to be OFFERED. It is a UX
+// affordance only — the server decides regardless (see lib/api/can.ts). This component is a client
+// component and cannot ask the PDP itself, so the dashboard layout resolves the codes server-side and
+// passes the outcome in via `grants`. An entry with no `requires` is always shown, which is the
+// console's historical behaviour for everything else.
+const TOOLS: { href: string; key: string; requires?: string }[] = [
   { href: "/ontology", key: "nav.ontology" },
   { href: "/authorize", key: "nav.authorize" },
   { href: "/roles", key: "nav.roles" },
+  {
+    href: "/service-principals",
+    key: "nav.servicePrincipals",
+    requires: "service-principal.read",
+  },
   { href: "/organizations", key: "nav.organizations" },
   { href: "/domains", key: "nav.domains" },
   { href: "/graphs", key: "nav.graphs" },
@@ -29,6 +40,11 @@ const TOOLS: { href: string; key: string }[] = [
   { href: "/localization", key: "nav.localization" },
   { href: "/legal-basis", key: "nav.legalBasis" },
   { href: "/imports", key: "nav.imports" },
+  {
+    href: "/connectors",
+    key: "nav.connectors",
+    requires: "connector.read",
+  },
   { href: "/audit", key: "nav.audit" },
 ];
 
@@ -56,9 +72,15 @@ function Item({
   );
 }
 
-export function Nav() {
+/**
+ * `grants` maps a permission code → whether the visitor holds it, resolved server-side by the
+ * dashboard layout. Absent (or an unlisted code) means "not held", so a gated entry stays hidden if
+ * the check could not be made — failing closed on a *display* decision.
+ */
+export function Nav({ grants = {} }: { grants?: Record<string, boolean> }) {
   const pathname = usePathname();
   const tr = useT();
+  const offered = TOOLS.filter((item) => !item.requires || grants[item.requires] === true);
   return (
     <nav className="flex flex-col gap-0.5 p-3">
       <Item href="/" label={tr("nav.overview")} hint={tr("nav.overview.hint")} active={pathname === "/"} />
@@ -81,7 +103,7 @@ export function Nav() {
       <div className="mt-4 mb-1 px-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
         {tr("nav.section.tools")}
       </div>
-      {TOOLS.map((item) => (
+      {offered.map((item) => (
         <Item
           key={item.href}
           href={item.href}

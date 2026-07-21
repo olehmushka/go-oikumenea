@@ -7,6 +7,7 @@ package application
 
 import (
 	"context"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olegamysk/go-oikumenea/internal/language/domain"
@@ -77,4 +78,36 @@ func (s *Service) GetLanguoid(ctx context.Context, id string) (domain.Languoid, 
 // ListWritingSystems returns the ISO-15924 writing systems in code order.
 func (s *Service) ListWritingSystems(ctx context.Context) ([]domain.WritingSystem, error) {
 	return s.newRepo(s.pool).ListWritingSystems(ctx)
+}
+
+// ResolveLanguoids maps glottocodes to languoid RIDs (the M53 wiring resolve seam, D-ConnectorPlane).
+// Only found codes appear. Read-only over the pool.
+func (s *Service) ResolveLanguoids(ctx context.Context, codes []string) (map[string]string, error) {
+	return resolveByCode(ctx, s.pool, "oikumenea.language_languoids", codes)
+}
+
+// ResolveWritingSystems maps ISO-15924 codes to writing-system RIDs (M53 wiring resolve seam).
+func (s *Service) ResolveWritingSystems(ctx context.Context, codes []string) (map[string]string, error) {
+	return resolveByCode(ctx, s.pool, "oikumenea.writing_systems", codes)
+}
+
+// resolveByCode returns code→RID for the rows of `table` whose `code` is in `codes`. `table` is a
+// package-internal constant (never user input), so interpolating it into the query is safe.
+func resolveByCode(ctx context.Context, pool *pgxpool.Pool, table string, codes []string) (map[string]string, error) {
+	rows, err := pool.Query(ctx, `SELECT code, id FROM `+table+` WHERE code = ANY($1)`, codes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]string, len(codes))
+	for rows.Next() {
+		var code, id string
+		if err := rows.Scan(&code, &id); err != nil {
+			return nil, err
+		}
+		// language_languoids.code is char(8) (glottocodes), so scanned values are space-padded; trim
+		// so the map key equals the requested code.
+		out[strings.TrimRight(code, " ")] = id
+	}
+	return out, rows.Err()
 }

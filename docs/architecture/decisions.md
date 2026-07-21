@@ -1759,6 +1759,24 @@ stands). Migrations `0011`/`0023`/`0024`/`0026` edited in place (unreleased-slic
 `atlas.sum` re-hashed); `db.RLSState` is `{PersonID, IsInstanceAdmin}`; the RLS-exempt list gains
 the `authz_*` tables incl. `authz_epoch`. Landed with **M47**.
 
+**Extended by the machine reach arm (M55, migration `0042`).** A **service principal** (D-ServiceIdentities)
+sets no `app.person_id`, so every policy denied it — that was M51's deliberate "no reach." M55 adds a
+third GUC **`app.principal_id`** and a principal arm: an **org-confined** grant
+(`authz_principal_grants`, `org_id NOT NULL`) authorizes that organization's RLS-guarded rows. The
+recursion constraint (read only RLS-exempt tables) forbids joining `tenant_units` to learn a unit's
+org, so `0042` adds a dedicated **RLS-exempt projection `authz_unit_org(unit_id → org_id)`**,
+trigger-maintained from `tenant_units` (the `unit_id` FK is `DEFERRABLE INITIALLY DEFERRED` so the
+BEFORE-INSERT projection write precedes the parent row). `authz_principal_org_in_reach(org, wr)` is the
+org-direct grant primitive (read live → **revocation is immediate**, matching the person arm and the
+M51 no-cache principal design); `authz_unit_in_reach`'s new arm resolves a **child** table's unit → org
+via the projection, while the **`tenant_units`** policy uses the org-direct arm on the row's own
+`org_id` column — the one case the projection can't serve, since a BEFORE-trigger write is invisible to
+the same statement's `WITH CHECK`, and the case that lets a connector create a brand-new (edgeless)
+unit. `org_id IS NULL` (instance-wide) grants confer **no** operational reach (blast-radius = the org).
+`db.RLSState` gains `PrincipalID`; the person + admin arms are unchanged (an empty probe when
+`app.principal_id` is unset — no hot-path regression). The person/document hardening seam noted above
+stays unshipped.
+
 ---
 
 ### D-AuthzRequestContext — Authority state is fetched once per request and snapshotted on the context

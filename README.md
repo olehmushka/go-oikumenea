@@ -164,7 +164,12 @@ A re-trigger over unchanged data is an idempotent no-op (the run reports all-`sk
 bearer is rejected `401`. To exercise the WOF path, trigger `wof-geo-ua` the same way and watch
 `oikumenea.geo_places` populate (`SELECT placetype, count(*) FROM oikumenea.geo_places GROUP BY 1;`).
 
-> Ports at a glance: oikumenea `:8443` API / `:8444` mgmt; hermenea `:9443` API / `:9444` mgmt.
+> Ports at a glance (running from source, as above): oikumenea `:8443` API / `:8444` mgmt;
+> hermenea `:9443` API / `:9444` mgmt.
+>
+> In the packaged `docker-compose.yml` topology this differs: oikumenea publishes **no host port**
+> (M52 / D-HeadlessTopology) and is reachable only from inside the compose network. The console
+> facade `:8445` is the public entry point.
 
 ### 6. Tests
 
@@ -196,8 +201,13 @@ the server.
 ## Web UI (optional)
 
 An optional **Next.js admin console** ([`web/`](web/README.md), [`docs/web-ui.md`](docs/web-ui.md))
-runs on **port 8445** beside the API. It is opt-in and a pure API consumer (a Backend-for-Frontend
-with Keycloak login) — the server is unchanged whether or not it runs.
+runs on **port 8445**. It is opt-in and a pure API consumer (a Backend-for-Frontend with Keycloak
+login) — the server is unchanged whether or not it runs.
+
+Its server tier is **console-bff**, the first facade of the headless topology (M52 /
+D-HeadlessTopology): in the packaged compose topology it is the only public port, forwarding the
+end-user's own token to an oikumenea that is off the public network. It is unprivileged — it holds no
+credential that widens access and makes no on-behalf-of assertion.
 
 ```bash
 # local dev (with the dev Postgres + Keycloak + server already up — see deploy/keycloak/README.md):

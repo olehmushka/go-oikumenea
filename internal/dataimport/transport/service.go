@@ -34,7 +34,7 @@ var _ dataimportapi.ImportService = Service{}
 // non-destructive). It enforces the import permission, checks the envelope's objectType matches the
 // path, decodes the untyped records into JSON objects, and runs the registered handler.
 func (s Service) ImportObjects(ctx context.Context, token bearertoken.Token, objectType string, env dataimportapi.CanonicalEnvelope) (dataimportapi.ImportResult, error) {
-	if err := s.pep.RequireImport(ctx, token); err != nil {
+	if err := s.pep.RequireImport(ctx, token, deref(env.OrgId)); err != nil {
 		return dataimportapi.ImportResult{}, err
 	}
 	if env.ObjectType != objectType {

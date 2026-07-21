@@ -1,15 +1,27 @@
 # go-oikumenea — web admin console (optional)
 
 A standalone **Next.js** admin console for go-oikumenea, served on **port 8445**. It is an
-**optional, opt-in** consumer of the public API — it adds no Go code, no Conjure contract, and
-no schema. See [`docs/web-ui.md`](../docs/web-ui.md) and the binding decision
-[D-WebUI](../docs/architecture/decisions.md).
+**optional, opt-in** consumer of the API — it adds no Go code, no Conjure contract, and no schema.
+See [`docs/web-ui.md`](../docs/web-ui.md) and the binding decisions
+[D-WebUI](../docs/architecture/decisions.md) and
+[D-HeadlessTopology](../docs/architecture/roadmap-decisions.md).
 
-## How it works (BFF)
+## How it works (BFF = console-bff, the facade)
+
+This app's **server tier is `console-bff`** — the first facade of the headless topology (M52 /
+D-HeadlessTopology). In the packaged compose topology oikumenea publishes **no host port**; this
+facade is the only thing on the public network:
 
 ```
-browser ──(httpOnly session)──▶ Next.js (:8445) ──(Bearer)──▶ oikumenea API (:8443)
+browser ──(httpOnly session)──▶ console-bff = Next.js (:8445)
+                                     │  (end-user's Bearer, forwarded unchanged)
+                                     ▼
+                          oikumenea API — internal network only
 ```
+
+The facade is **unprivileged**: it forwards the end-user's own token and makes no on-behalf-of
+assertion, so oikumenea re-validates that token and runs the PDP against the real user. It holds no
+credential that widens access — a compromised facade can impersonate nobody.
 
 - **Keycloak login** via Auth.js (NextAuth v5), OIDC Authorization-Code flow, exchanged
   **server-side**. The browser never holds a token.
@@ -58,14 +70,19 @@ docker compose --profile ui up --build
 open http://localhost:8445
 ```
 
-Set the env in `docker-compose.yml`'s `web` service for your environment — crucially
+In this topology oikumenea is unreachable from the host — `:8443` and `:8444` are unpublished, and
+`:8445` (this facade) is the only public port. `API_BASE_URL` is the compose-internal `https://app:8443`.
+
+Set the env in `docker-compose.yml`'s `console-bff` service for your environment — crucially
 `AUTH_KEYCLOAK_ISSUER` (a Keycloak reachable from **both** the browser and the container, with
 the same URL), `AUTH_SECRET`, and `AUTH_KEYCLOAK_SECRET`. That compose ships no Keycloak (the
 IdP is external); for an all-in-one local demo, prefer the dev path above.
 
 ## Environment
 
-See [`.env.example`](.env.example). Keys: `API_BASE_URL`, `AUTH_SECRET`, `AUTH_URL`,
+See [`.env.example`](.env.example). `API_BASE_URL` is **required** (no default — console-bff throws at
+startup if unset, so a misconfigured facade fails loudly rather than reaching for a port that is not
+there). Keys: `API_BASE_URL`, `AUTH_SECRET`, `AUTH_URL`,
 `AUTH_KEYCLOAK_ID` / `AUTH_KEYCLOAK_SECRET` / `AUTH_KEYCLOAK_ISSUER`, and (dev) `NODE_TLS_REJECT_UNAUTHORIZED`.
 
 ## Notes & caveats

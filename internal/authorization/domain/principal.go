@@ -69,7 +69,10 @@ func (g PrincipalGrantInput) Validate() error {
 		return wrapInvalid(ErrPrincipalGrantInvalid, "principalId is required")
 	}
 	if !IsKnownPermission(string(g.Permission)) {
-		return wrapInvalid(ErrUnknownPermission, "unknown permission code: "+string(g.Permission))
+		// Append only the offending code: wrapInvalid joins onto the sentinel, whose own message is
+		// already "unknown permission code", so restating it here doubled the rendered `reason`.
+		// Same convention as ValidatePermissionSet on the role path.
+		return wrapInvalid(ErrUnknownPermission, string(g.Permission))
 	}
 	return nil
 }

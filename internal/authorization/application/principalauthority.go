@@ -25,6 +25,7 @@ import (
 	"context"
 
 	"github.com/olegamysk/go-oikumenea/internal/authorization/domain"
+	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 )
 
 // PrincipalAuthoritySnapshot is a machine subject's authority state at request start.
@@ -45,18 +46,22 @@ func principalAuthorityFrom(ctx context.Context) (PrincipalAuthoritySnapshot, bo
 }
 
 // ContextWithPrincipalAuthority is the authenticator's per-request entry for a machine subject:
-// resolve the principal's active grants once and attach them to the context.
+// resolve the principal's active grants once, attach them to the context, and return the RLS
+// backstop GUC state derived from the same identity.
 //
-// It returns no db.RLSState: a service request pins no connection and sets no app.person_id GUC,
-// because the RLS policies compute reach from a PERSON (D-RLSLiveReach) and there is no principal
-// arm until M53 / D-ConnectorPlane. The PEP therefore denies a principal every person-shaped path
-// (see pep.go) — the machine can only reach surfaces that explicitly ask for a service grant.
-func (s *Service) ContextWithPrincipalAuthority(ctx context.Context, principalID string) (context.Context, error) {
+// Since M55 (the RLS service arm, split out of D-ConnectorPlane) it returns a db.RLSState carrying
+// the PrincipalID, so the authenticator installs a lazy RLS-scoped connection: the reach predicate's
+// principal arm (migration 0042) authorizes an org-confined grant against THAT org's RLS-guarded
+// rows, and only that org's. A person-shaped path a principal is NOT org-granted for is still denied
+// — at the DB now, not merely at the PEP. Instance-scope surfaces (wiring reads) touch no guarded
+// table, so the lazy connection is never pinned for them.
+func (s *Service) ContextWithPrincipalAuthority(ctx context.Context, principalID string) (context.Context, db.RLSState, error) {
 	grants, err := s.newPrincipalRepo(s.pool).ActiveGrantsForPrincipal(ctx, principalID)
 	if err != nil {
-		return ctx, err
+		return ctx, db.RLSState{}, err
 	}
-	return withPrincipalAuthority(ctx, PrincipalAuthoritySnapshot{PrincipalID: principalID, Grants: grants}), nil
+	ctx = withPrincipalAuthority(ctx, PrincipalAuthoritySnapshot{PrincipalID: principalID, Grants: grants})
+	return ctx, db.RLSState{PrincipalID: principalID}, nil
 }
 
 // HoldsPrincipalPermission answers the machine authorization question: does this principal hold

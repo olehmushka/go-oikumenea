@@ -96,6 +96,13 @@ func NewImportService(pool *pgxpool.Pool, audit *auditapp.Service) *application.
 		func(conn db.DBTX) domain.TranslationStore { return adapters.NewTranslationRepo(conn) },
 	))
 
+	// locales: the supported-locale import target (D-DataPacks + D-i18n, M54) — a LOCALE PACK adds a new
+	// i18n_locales row create-if-absent here, then its translation overlays via `translations` above. New
+	// locales land enabled + non-default; an already-supported code is skipped, never re-flagged.
+	svc.Register(domain.ObjectTypeLocales, application.LocalesHandler(
+		func(conn db.DBTX) domain.LocaleStore { return adapters.NewLocaleRepo(conn) },
+	))
+
 	// person-regulatory-sanctions: the M34 regulatory-exposure overlay (D-Watchlists) — a person-scoped
 	// import target. Records reference a person by RID + carry a regulatory action; idempotent by
 	// (person, externalId), unresolved-person records skipped. Fed by the hermenea `regulatorysanctions`

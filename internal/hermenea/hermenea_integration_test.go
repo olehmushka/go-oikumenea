@@ -33,7 +33,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/adapters"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/application"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/connector"
+	"github.com/olegamysk/go-oikumenea/internal/hermenea/fetcher"
 	hdb "github.com/olegamysk/go-oikumenea/internal/hermenea/db"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/geocountries"
@@ -109,7 +109,7 @@ func presetFile(t *testing.T) string {
 }
 
 func newService(store domain.Store, loader domain.Loader) *application.Service {
-	svc := application.NewService(store, connector.Default(), loader)
+	svc := application.NewService(store, fetcher.Default(), loader)
 	svc.RegisterMapper(geocountries.ObjectType, geocountries.Mapper{})
 	svc.RegisterMapper(wikidataorgs.ObjectType, wikidataorgs.Mapper{})
 	return svc
@@ -152,7 +152,7 @@ func TestExternalOrgsHTTPConnectorPipeline(t *testing.T) {
 	src := domain.Source{
 		Code:          "wikidata-orgs-" + uuid.NewString()[:8],
 		Name:          "test wikidata orgs",
-		ConnectorType: domain.ConnectorHTTP,
+		FetcherType: domain.FetcherHTTP,
 		ObjectType:    wikidataorgs.ObjectType,
 		Locator:       srv.URL + "/sparql?format=json&query=SELECT",
 		Enabled:       true,
@@ -192,7 +192,7 @@ func TestTriggerDedupAndProcess(t *testing.T) {
 	src := domain.Source{
 		Code:          "geo-countries-" + uuid.NewString()[:8],
 		Name:          "test iso-3166",
-		ConnectorType: domain.ConnectorFile,
+		FetcherType: domain.FetcherFile,
 		ObjectType:    geocountries.ObjectType,
 		Locator:       presetFile(t),
 		Enabled:       true,
@@ -253,7 +253,7 @@ func TestProcessLoaderFailureMarksRunFailed(t *testing.T) {
 	src := domain.Source{
 		Code:          "geo-countries-fail-" + uuid.NewString()[:8],
 		Name:          "test iso-3166 failing",
-		ConnectorType: domain.ConnectorFile,
+		FetcherType: domain.FetcherFile,
 		ObjectType:    geocountries.ObjectType,
 		Locator:       presetFile(t),
 		Enabled:       true,
@@ -396,7 +396,7 @@ func TestWorkerConcurrency(t *testing.T) {
 		src := domain.Source{
 			Code:          fmt.Sprintf("conc-%d-%s", i, uuid.NewString()[:8]),
 			Name:          "concurrency probe",
-			ConnectorType: domain.ConnectorFile,
+			FetcherType: domain.FetcherFile,
 			ObjectType:    objectType,
 			Locator:       presetFile(t),
 			Enabled:       true,

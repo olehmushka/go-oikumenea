@@ -21,12 +21,16 @@ import (
 	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
 	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
 	"github.com/olegamysk/go-oikumenea/internal/company"
+	companyapp "github.com/olegamysk/go-oikumenea/internal/company/application"
 	hermeneaapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/hermenea"
 	identityapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/identityfederation"
+	"github.com/olegamysk/go-oikumenea/internal/connector"
+	"github.com/olegamysk/go-oikumenea/internal/connectorcall"
 	"github.com/olegamysk/go-oikumenea/internal/dataimport"
 	importdomain "github.com/olegamysk/go-oikumenea/internal/dataimport/domain"
 	"github.com/olegamysk/go-oikumenea/internal/document"
 	"github.com/olegamysk/go-oikumenea/internal/education"
+	educationapp "github.com/olegamysk/go-oikumenea/internal/education/application"
 	"github.com/olegamysk/go-oikumenea/internal/externalorg"
 	"github.com/olegamysk/go-oikumenea/internal/finance"
 	"github.com/olegamysk/go-oikumenea/internal/geo"
@@ -45,6 +49,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/personsensitive"
 	"github.com/olegamysk/go-oikumenea/internal/pinax"
 	"github.com/olegamysk/go-oikumenea/internal/platform"
+	"github.com/olegamysk/go-oikumenea/internal/platform/catalog"
 	"github.com/olegamysk/go-oikumenea/internal/platform/config"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/internal/platform/outbox"
@@ -62,7 +67,6 @@ import (
 	"github.com/olegamysk/go-oikumenea/pkg/events"
 	"github.com/olegamysk/go-oikumenea/pkg/personalcode"
 	"github.com/olegamysk/go-oikumenea/pkg/rid"
-	"github.com/palantir/conjure-go-runtime/v2/conjure-go-client/httpclient"
 	werror "github.com/palantir/witchcraft-go-error"
 	"github.com/palantir/witchcraft-go-logging/wlog"
 	_ "github.com/palantir/witchcraft-go-logging/wlog-zap" // register the default (zap) logging provider for CLI-constructed loggers
@@ -270,6 +274,10 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 		return nil, err
 	}
 	authzSvc.SubscribePersonEvents(bus)
+	// A disabled vertical's permission codes are not grantable (D-DataPacks, M54): the authz service
+	// rejects a role or principal grant naming a `finance.*` / `religion.*` / … code while that module
+	// is off. The codes stay in the static catalog (so re-enabling is a config flip), just non-grantable.
+	authzSvc.SetDisabledModulePrefixes(install.DisabledModulePrefixes())
 
 	// Document: person-held papers and envelope-encrypted personal codes (D-Documents / D-PersonalCodes).
 	// Reuses the envelope cipher built above (D-CryptoProvider) + the personal-code validator registry;
@@ -317,7 +325,7 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// Serialized across replicas by the boot-seed advisory lock (R-13): a second replica booting the
 	// same fresh DB waits, then finds every preset already applied (version-gated no-op).
 	if install.Pinax.AutoseedEnabled() {
-		seeder, err := pinax.NewSeeder(pool, importSvc, pinaxNativeImporters(rankSvc))
+		seeder, err := pinax.NewSeeder(pool, importSvc, pinaxNativeImporters(rankSvc), install.Pinax.Packs)
 		if err != nil {
 			cleanup()
 			return nil, werror.Wrap(err, "load pinax presets")
@@ -351,18 +359,10 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// error. Reuses the OIKUMENEA_HERMENEA trigger secret + trust direction (the web tier never reaches
 	// the companion directly). Late-bound, mirroring SetLocationLookup.
 	if install.Hermenea.BaseURL != "" {
-		wlParams := []httpclient.ClientParam{
-			httpclient.WithBaseURLs([]string{install.Hermenea.BaseURL}),
-			httpclient.WithMaxRetries(0),
-			// R-12 (review-2026-07): a hard deadline so a hung sanctions upstream cannot couple
-			// oikumenea's request latency to a third-party API. Hermenea answers cache hits in ms;
-			// a miss that needs longer fails into the existing "screening unavailable" error path.
-			httpclient.WithHTTPTimeout(watchlistclient.HTTPTimeout),
-		}
-		if install.Hermenea.InsecureSkipVerify {
-			wlParams = append(wlParams, httpclient.WithTLSInsecureSkipVerify())
-		}
-		wlHTTP, err := httpclient.NewClient(wlParams...)
+		// The connector-call seam (M53) dials a deadline-bounded client — the R-12 deadline + no-retry
+		// policy are enforced inside connectorcall.Dial, so this call site cannot forget them. The
+		// watchlist is the first on-demand-lookup kind over that seam; a second kind dials the same way.
+		wlHTTP, err := connectorcall.Dial(install.Hermenea.BaseURL, install.Hermenea.InsecureSkipVerify)
 		if err != nil {
 			cleanup()
 			return nil, werror.Wrap(err, "build hermenea watchlist client")
@@ -389,56 +389,89 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// buildings (→ M19 location), groups, positions/appointments (mirror membership), and the person
 	// bindings (enrollments, dorm stays). Writes record via the audit service; translatable names
 	// assemble via localization.
-	educationSvc, err := education.Register(info, pool, auditSvc, locSvc, tenantSvc, enforcer)
-	if err != nil {
-		cleanup()
-		return nil, err
+	// M54 (D-DataPacks): the six enrichment verticals below are gated on `modules.<name>.enabled`
+	// (default on). A disabled module registers NO routes (→ 404), skips its event subscriptions, and
+	// leaves its service nil — but its schema still migrated (atlas is independent), so re-enabling is a
+	// config flip. education/company keep a lifted service var because unified search fans them in below.
+	var educationSvc *educationapp.Service
+	if install.ModuleEnabled("education") {
+		educationSvc, err = education.Register(info, pool, auditSvc, locSvc, tenantSvc, enforcer)
+		if err != nil {
+			cleanup()
+			return nil, err
+		}
+		educationSvc.SubscribePersonEvents(bus)
+		educationSvc.SubscribePersonPurge(bus) // erase education person-owned rows on PersonPurged (D-PersonModuleSplit)
 	}
-	educationSvc.SubscribePersonEvents(bus)
-	educationSvc.SubscribePersonPurge(bus) // erase education person-owned rows on PersonPurged (D-PersonModuleSplit)
 
 	// Company (M21 / D-Companies): a legal-entity registry over person + the M19 location foundation —
 	// companies, registrations, industries, locations, positions/appointments, and the ownership/
 	// affiliation graph. Writes record via the audit service; translatable names assemble via localization.
-	companySvc, err := company.Register(info, pool, auditSvc, locSvc, tenantSvc, enforcer)
-	if err != nil {
-		cleanup()
-		return nil, err
+	var companySvc *companyapp.Service
+	if install.ModuleEnabled("company") {
+		companySvc, err = company.Register(info, pool, auditSvc, locSvc, tenantSvc, enforcer)
+		if err != nil {
+			cleanup()
+			return nil, err
+		}
+		companySvc.SubscribePersonEvents(bus)
+		companySvc.SubscribePersonPurge(bus) // erase company person-link rows on PersonPurged (D-PersonModuleSplit)
 	}
-	companySvc.SubscribePersonEvents(bus)
-	companySvc.SubscribePersonPurge(bus) // erase company person-link rows on PersonPurged (D-PersonModuleSplit)
 
 	// Vehicle (M26 / D-Vehicles): a vehicle registry over person + the M21 company registry — brand/
 	// model/type catalogs, the vehicle object (VIN), the brand→manufacturer link, and the ownership+
 	// plate registration record (plate region → the WOF geo_places gazetteer). Writes record via the
 	// audit service; translatable catalog names assemble via localization.
-	vehicleSvc, err := vehicle.Register(info, pool, auditSvc, locSvc, enforcer, colorSvc)
-	if err != nil {
-		cleanup()
-		return nil, err
+	if install.ModuleEnabled("vehicle") {
+		vehicleSvc, err := vehicle.Register(info, pool, auditSvc, locSvc, enforcer, colorSvc)
+		if err != nil {
+			cleanup()
+			return nil, err
+		}
+		vehicleSvc.SubscribePersonEvents(bus)
+		vehicleSvc.SubscribePersonPurge(bus) // erase this module's rows on PersonPurged (D-PersonModuleSplit)
 	}
-	vehicleSvc.SubscribePersonEvents(bus)
-	vehicleSvc.SubscribePersonPurge(bus) // erase this module's rows on PersonPurged (D-PersonModuleSplit)
 
 	// Finance (M44 / D-Finance): bank accounts (envelope-encrypted IBAN) + payment cards (envelope-
 	// encrypted PAN, no CVV) as authoritative first-party directory data. A bank is a `company`-domain
 	// tenant organization (M21/M41); ownership is a polymorphic person|company holder link. Reuses the
 	// shared cipher (D-CryptoProvider) + the personal-code validator registry (D-PersonalCodes: IBAN/PAN)
 	// already built for the document module. A person purge crypto-erases solely-held accounts + cards.
-	financeSvc, err := finance.Register(info, pool, auditSvc, locSvc, enforcer, cipher, personalcode.New())
-	if err != nil {
-		cleanup()
-		return nil, err
+	if install.ModuleEnabled("finance") {
+		financeSvc, err := finance.Register(info, pool, auditSvc, locSvc, enforcer, cipher, personalcode.New())
+		if err != nil {
+			cleanup()
+			return nil, err
+		}
+		financeSvc.SubscribePersonEvents(bus)
+		financeSvc.SubscribePersonPurge(bus) // erase this module's rows on PersonPurged (D-PersonModuleSplit)
 	}
-	financeSvc.SubscribePersonEvents(bus)
-	financeSvc.SubscribePersonPurge(bus) // erase this module's rows on PersonPurged (D-PersonModuleSplit)
 
 	// External organizations (M30 / D-ExternalOrgs): the registry of external orgs a person is tied to
 	// (parties, government bodies, foreign military, NGOs, registrants) — the node-space the M33
 	// institutional-tie edges FK. Instance-global reference data, catalog-typed, provisional/resolved +
 	// attribution; a hermenea import target (the `external-organizations` object-type is registered on the
 	// dataimport side). Writes record via the audit service; translatable names assemble via localization.
-	if _, err := externalorg.Register(info, pool, auditSvc, locSvc, enforcer); err != nil {
+	if install.ModuleEnabled("externalorg") {
+		if _, err := externalorg.Register(info, pool, auditSvc, locSvc, enforcer); err != nil {
+			cleanup()
+			return nil, err
+		}
+	}
+
+	// Connector plane (M53 / D-ConnectorPlane): the fleet registry. Connectors (deployable agents beside
+	// the core — hermenea is the first) self-register and report their sync runs here; operators read the
+	// fleet. Visibility, not orchestration — no endpoint triggers a run. Writes record via the audit
+	// service under the reporting principal (the M51 machine-actor shape).
+	connectorSvc, err := connector.Register(info, pool, auditSvc, enforcer)
+	if err != nil {
+		cleanup()
+		return nil, err
+	}
+	// The pull-wiring read API (M53): resolve natural keys to RIDs, read reference catalogs, and let a
+	// connector read its own cursors. Composed over the connector registry + the geo/language/legal-basis
+	// catalogs (all constructed above) + localization for country names; each surface its own wiring.* code.
+	if err := connector.RegisterWiring(info, connectorSvc, geoSvc, languageSvc, catalog.NewService(pool, auditSvc), locSvc, enforcer); err != nil {
 		cleanup()
 		return nil, err
 	}
@@ -447,13 +480,15 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// catalog-driven level marker + theism classification, the per-faith catalogs, and the per-unit
 	// organization attributes (profile/classifications/policies). Org nodes reuse tenant units; the
 	// canonical/tradition/affiliation graphs are migration-seeded. Reuses tenantSvc for createChildOrg.
-	religionSvc, err := religion.Register(info, pool, auditSvc, locSvc, tenantSvc, enforcer, cipher)
-	if err != nil {
-		cleanup()
-		return nil, err
+	if install.ModuleEnabled("religion") {
+		religionSvc, err := religion.Register(info, pool, auditSvc, locSvc, tenantSvc, enforcer, cipher)
+		if err != nil {
+			cleanup()
+			return nil, err
+		}
+		religionSvc.SubscribePersonEvents(bus)
+		religionSvc.SubscribePersonPurge(bus) // erase this module's rows on PersonPurged (D-PersonModuleSplit)
 	}
-	religionSvc.SubscribePersonEvents(bus)
-	religionSvc.SubscribePersonPurge(bus) // erase this module's rows on PersonPurged (D-PersonModuleSplit)
 
 	// Unified search (review-2026-09 R-26 / D-UnifiedSearch): ONE cross-type endpoint fanning in the
 	// per-module trigram queries. The module owns no tables; providers register here with their
@@ -677,12 +712,17 @@ func buildCipher(install config.Install) (*crypto.Cipher, error) {
 }
 
 // seedSharedSecretPrincipal registers the shared-secret import caller as a REAL service principal
-// (M51 / D-ServiceIdentities) and grants it instance-wide import.manage, both create-if-absent.
+// (M51 / D-ServiceIdentities) and grants it its instance-wide code set, all create-if-absent.
 //
 // This is what lets the D-Hermenea shared-secret path keep working without a hard-coded PEP
 // exemption: the caller resolves through the same registry lookup as a client-credentials caller, so
 // it carries a principal RID, real grants and real audit attribution. Idempotent — a second boot (or
 // a replica that lost the advisory-lock race) re-runs the now-no-op checks.
+//
+// The set is import.manage (the push gate) plus the M53 connector-plane self-service codes
+// connector.register + connector.report, so the same principal that pushes imports can also make
+// hermenea VISIBLE in the connector registry (D-ConnectorPlane). NOT the wiring.* codes — hermenea
+// pushes and reports; it does not pull-wire, so it holds no read grant it never exercises.
 func seedSharedSecretPrincipal(ctx context.Context, identitySvc *identityapp.Service, authzSvc *authzapp.Service) error {
 	principal, err := identitySvc.EnsurePrincipal(ctx, identitydomain.ServicePrincipal{
 		Code:        authn.ServiceHermeneaImporter,
@@ -698,16 +738,28 @@ func seedSharedSecretPrincipal(ctx context.Context, identitySvc *identityapp.Ser
 	if err != nil {
 		return err
 	}
+	held := map[authzdomain.Permission]bool{}
 	for _, g := range grants {
-		if g.Permission == authzdomain.PermImportManage && g.OrgID == "" {
-			return nil // already granted
+		if g.OrgID == "" {
+			held[g.Permission] = true
 		}
 	}
-	_, err = authzSvc.GrantPrincipalPermission(ctx, authzdomain.PrincipalGrantInput{
-		PrincipalID: principal.ID,
-		Permission:  authzdomain.PermImportManage,
-	})
-	return err
+	for _, code := range []authzdomain.Permission{
+		authzdomain.PermImportManage,
+		authzdomain.PermConnectorRegister,
+		authzdomain.PermConnectorReport,
+	} {
+		if held[code] {
+			continue // already granted instance-wide
+		}
+		if _, err := authzSvc.GrantPrincipalPermission(ctx, authzdomain.PrincipalGrantInput{
+			PrincipalID: principal.ID,
+			Permission:  code,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func seedFrom(b config.BootstrapAdmin) bootstrap.AdminSeed {
@@ -848,7 +900,7 @@ func runSeedCLI(args []string) int {
 		func(conn db.DBTX) auditdomain.Repository { return auditadapters.NewRepository(conn) },
 		func() int { return 50 })
 
-	seeder, err := pinax.NewSeeder(pool, dataimport.NewImportService(pool, auditSvc), pinaxNativeImporters(newRankService(pool, auditSvc)))
+	seeder, err := pinax.NewSeeder(pool, dataimport.NewImportService(pool, auditSvc), pinaxNativeImporters(newRankService(pool, auditSvc)), install.Pinax.Packs)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: load pinax presets: %v\n", cmd, err)
 		return 1

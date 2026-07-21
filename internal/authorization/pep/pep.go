@@ -16,7 +16,7 @@
 // person-shaped method here (Require, RequireAny, RequireAnywhere, AllowedAnywhere, SubjectAuthority,
 // FilterVisibleUnits) denies it structurally, and it pins no RLS connection. Machine access goes
 // exclusively through RequireService / RequireServiceOrPerson, which consult the principal's flat
-// grant set. Until the RLS service arm lands (M53) that is the whole story: a principal can reach the
+// grant set. Until the RLS service arm lands (M55) that is the whole story: a principal can reach the
 // import endpoint and nothing that is unit-scoped or RLS-guarded.
 package pep
 
@@ -183,15 +183,18 @@ func (e *Enforcer) RequireServiceOrPerson(ctx context.Context, token bearertoken
 }
 
 // RequireImport gates the generic data-import endpoint (M16 / D-Hermenea). Since M51 the importer is
-// a REGISTERED service principal holding an instance-wide `import.manage` grant like any other — the
-// hard-coded `hermenea-importer` exemption is gone, so a machine's import rights are grantable and
-// revocable. A human instance admin holding `import.manage` may still call it.
+// a REGISTERED service principal holding an `import.manage` grant like any other — the hard-coded
+// `hermenea-importer` exemption is gone, so a machine's import rights are grantable and revocable. A
+// human instance admin holding `import.manage` may still call it.
 //
-// The empty orgID demands an instance-wide grant: every object type this endpoint accepts today is an
-// instance-wide reference catalog, so an org-confined connector must not pass here. Org-owned import
-// targets arrive with the M53 wiring API, which will pass a real orgID.
-func (e *Enforcer) RequireImport(ctx context.Context, token bearertoken.Token) error {
-	return e.RequireServiceOrPerson(ctx, token, string(domain.PermImportManage), "")
+// orgID is the import target's owning organization, or "" for an instance-wide reference catalog
+// (every object type accepted before M55). An empty orgID demands an INSTANCE-WIDE grant, so an
+// org-confined connector cannot smuggle reference data; a non-empty orgID (M55 / the RLS service arm)
+// is satisfied by an instance-wide grant OR one naming that same org, so an org-confined connector
+// imports its own organization's data and a foreign-org grant is rejected. The rows the handler then
+// writes are additionally gated at the DB by the reach predicate's principal arm (migration 0042).
+func (e *Enforcer) RequireImport(ctx context.Context, token bearertoken.Token, orgID string) error {
+	return e.RequireServiceOrPerson(ctx, token, string(domain.PermImportManage), orgID)
 }
 
 // AllowedAnywhere is the non-erroring probe form of RequireAnywhere: whether the request subject

@@ -759,6 +759,37 @@ func TranslationsHandler(newStore TranslationStoreFactory) Handler {
 	}
 }
 
+// LocaleStoreFactory binds the locale store port to the caller's tx (D-DataPacks + D-i18n, M54).
+type LocaleStoreFactory func(conn db.DBTX) domain.LocaleStore
+
+// LocalesHandler builds the supported-locale import handler (D-DataPacks, M54) — the path a LOCALE
+// PACK's `locales` preset uses to add i18n_locales rows before its translation overlays. Each record is
+// {code, name}; the code (ISO 639-3) is lower-cased and added create-if-absent. An already-supported
+// code is counted skipped and left untouched, so a pack never flips an operator's enabled/is_default.
+func LocalesHandler(newStore LocaleStoreFactory) Handler {
+	return func(ctx context.Context, tx pgx.Tx, records []domain.Record, _ domain.Provenance, _ domain.ChunkInfo) (domain.Summary, error) {
+		store := newStore(tx)
+		var sum domain.Summary
+		for _, rec := range records {
+			code := strings.ToLower(strings.TrimSpace(recStr(rec["code"])))
+			name := strings.TrimSpace(recStr(rec["name"]))
+			if code == "" || name == "" {
+				return domain.Summary{}, domain.ErrInvalidRecord
+			}
+			created, err := store.Insert(ctx, code, name)
+			if err != nil {
+				return domain.Summary{}, err
+			}
+			if created {
+				sum.Created++
+			} else {
+				sum.Skipped++
+			}
+		}
+		return sum, nil
+	}
+}
+
 // translationFields decodes a translations record. entityType + key + a non-empty names map are required;
 // field defaults to "name".
 func translationFields(rec domain.Record) (domain.Translation, error) {

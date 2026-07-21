@@ -12,20 +12,38 @@ console** for the directory and the authorization graph, without coupling a UI i
 console is a thin, generated client over the existing HTTP API — it can do nothing the API does not
 already expose, and the API is unaware of it.
 
-## Architecture (Backend-for-Frontend)
+## Architecture (Backend-for-Frontend = `console-bff`, the facade)
+
+The Next.js server tier **is `console-bff`** — the first facade of the headless topology (M52 /
+[D-HeadlessTopology](architecture/roadmap-decisions.md)). In the packaged compose topology oikumenea
+publishes no host port; this facade is the only thing on the public network.
 
 ```
-  browser ──(httpOnly session cookie)──▶ Next.js server (:8445) ──(Bearer)──▶ oikumenea API (:8443)
+  browser ──(httpOnly session cookie)──▶ console-bff = Next.js server (:8445)
      ▲                                         │
      └────────── Keycloak login ◀──────────────┘   (OIDC Authorization-Code flow, server-side)
+                                               │
+                            (end-user's Bearer, forwarded unchanged)
+                                               ▼
+                              oikumenea API — internal network only
 ```
 
+The facade is **unprivileged**: it forwards the end-user's own token and makes no on-behalf-of
+assertion, so oikumenea re-validates that token and runs the PDP against the real user. It holds no
+credential that widens access — its environment carries Keycloak *client* config (which authenticates
+users) and no service token of its own.
+
 - **Standalone Next.js** (App Router, TypeScript, Tailwind), its own Node process. Default
-  deployments do not run it; it is a `ui`-profiled `docker-compose` service / a `web/` dev server.
+  deployments do not run it; it is the `ui`-profiled `console-bff` `docker-compose` service / a
+  `web/` dev server.
 - **BFF, not a SPA-to-API call.** The browser talks **only** to the Next.js server. A single proxy
   route (`/api/oikumenea/[...path]`) reads the server session, attaches `Authorization: Bearer
   <access_token>`, and forwards to `API_BASE_URL`. **The browser never holds a token and never calls
-  `:8443` directly** — so there is **no CORS surface** on the Go app.
+  the API directly** — so there is **no CORS surface** on the Go app.
+- **Two server-side paths to the core, one browser path.** Server Components call oikumenea directly
+  via `oikumenea()`; the browser goes through the proxy route. Both attach the same session bearer and
+  both originate *inside* the facade process on the internal network, so this is not a second exposure
+  path — the browser still has exactly one way in (D-HeadlessTopology, M52 amendment).
 - **Generated, typed client — the single point of contact.** The web console reaches the backend
   **only** through the **TypeScript SDK** `oikumenea-client` (`clients/typescript/`, a `file:`
   dependency) generated from the Conjure contract (**D-ClientSDK** — see the
@@ -71,7 +89,10 @@ lifecycle), [memberships & positions](modules/membership.md), the [rank](modules
 
 ## Dependencies
 
-- The running `oikumenea` API at `API_BASE_URL` (server-to-server from the Next.js process).
+- The running `oikumenea` API at `API_BASE_URL` (server-to-server from the Next.js process; the
+  compose-internal `https://app:8443`, or the host binary in dev). `API_BASE_URL` is **required** —
+  console-bff throws at startup if it is unset rather than defaulting to a host port that the packaged
+  topology no longer publishes.
 - A reachable Keycloak realm with the confidential `oikumenea-web` client (`deploy/keycloak/`).
 - Build-time: the committed [`docs/api/openapi/openapi.json`](api/openapi/openapi.json) (kept fresh
   from Conjure by `scripts/gen-openapi.sh`).

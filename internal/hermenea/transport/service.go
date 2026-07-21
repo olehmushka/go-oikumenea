@@ -49,7 +49,7 @@ func (s Service) ListSources(ctx context.Context, _ bearertoken.Token) ([]hermen
 		out = append(out, hermeneaapi.ImportSource{
 			Code:          src.Code,
 			Name:          src.Name,
-			ConnectorType: src.ConnectorType,
+			ConnectorType: src.FetcherType,
 			ObjectType:    src.ObjectType,
 			Locator:       src.Locator,
 			Cron:          strPtr(src.Cron),

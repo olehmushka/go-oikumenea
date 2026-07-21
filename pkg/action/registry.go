@@ -119,6 +119,7 @@ var actionTypes = []ActionType{
 	{Code: "import.geo-places", Service: rid.SvcPlatform, TargetType: "geo-places", Permission: "import.manage"},
 	{Code: "import.language-scheme", Service: rid.SvcPlatform, TargetType: "language-scheme", Permission: "import.manage"},
 	{Code: "import.language-scripts", Service: rid.SvcPlatform, TargetType: "language-scripts", Permission: "import.manage"},
+	{Code: "import.locales", Service: rid.SvcPlatform, TargetType: "locales", Permission: "import.manage"},
 	{Code: "import.person-regulatory-sanctions", Service: rid.SvcPlatform, TargetType: "person-regulatory-sanctions", Permission: "import.manage"},
 	{Code: "import.religion-scheme", Service: rid.SvcPlatform, TargetType: "religion-scheme", Permission: "import.manage"},
 	{Code: "import.translations", Service: rid.SvcPlatform, TargetType: "translations", Permission: "import.manage"},
@@ -250,6 +251,17 @@ var actionTypes = []ActionType{
 	{Code: "service-principal.enable", Service: rid.SvcAccount, TargetType: "service_principal", Permission: "service-principal.manage"},
 	{Code: "service-principal.grant", Service: rid.SvcAuthz, TargetType: "principal_grant", Permission: "service-principal.manage", RequestType: "oikumenea.authorization.GrantPrincipalPermissionRequest"},
 	{Code: "service-principal.revoke", Service: rid.SvcAuthz, TargetType: "principal_grant", Permission: "service-principal.manage"},
+
+	// Connector plane — machine subjects self-register and report runs (M53 / D-ConnectorPlane). Gated
+	// on the SELF-SERVICE codes a connector holds (the acting subject is the connector itself), so these
+	// are NOT console-invocable object actions — a human is denied by RequireService. They are audited,
+	// hence registered here, but carry no RequestType and are listed in the test's nonInvocable set,
+	// alongside the import ingestion plane they resemble. A sync-run report's code carries the terminal
+	// state so the ledger distinguishes an opened run from a succeeded/failed one.
+	{Code: "connector.register", Service: rid.SvcConnector, TargetType: "connector", Permission: "connector.register"},
+	{Code: "connector.sync-run.running", Service: rid.SvcConnector, TargetType: "sync_run", Permission: "connector.report"},
+	{Code: "connector.sync-run.succeeded", Service: rid.SvcConnector, TargetType: "sync_run", Permission: "connector.report"},
+	{Code: "connector.sync-run.failed", Service: rid.SvcConnector, TargetType: "sync_run", Permission: "connector.report"},
 	{Code: "person.create", Service: rid.SvcAccount, TargetType: "person", Permission: "person.create", RequestType: "oikumenea.person.CreatePersonRequest"},
 	{Code: "document.create", Service: rid.SvcDocument, TargetType: "document", Permission: "document.create", RequestType: "oikumenea.document.CreateDocumentRequest"},
 	{Code: "document.delete", Service: rid.SvcDocument, TargetType: "document", Permission: "document.delete"},

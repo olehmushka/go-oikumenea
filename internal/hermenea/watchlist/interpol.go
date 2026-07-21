@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/connector"
+	"github.com/olegamysk/go-oikumenea/internal/hermenea/fetcher"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
 )
 
@@ -69,7 +69,7 @@ func (i Interpol) Screen(ctx context.Context, q domain.WatchlistQuery) (Hit, err
 	if err != nil {
 		return Hit{}, err
 	}
-	req.Header.Set("User-Agent", connector.UserAgent())
+	req.Header.Set("User-Agent", fetcher.UserAgent())
 	req.Header.Set("Accept", "application/json")
 	resp, err := i.client.Do(req)
 	if err != nil {

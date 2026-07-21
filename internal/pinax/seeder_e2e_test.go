@@ -47,9 +47,15 @@ func newPool(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-// newSeeder wires the Seeder exactly as the composition root does: the flat-handler import service plus
-// the `ranks` native importer (rank.Service.ImportPreset over its own tx).
+// newSeeder wires the Seeder exactly as the composition root does (embedded presets only).
 func newSeeder(t *testing.T, pool *pgxpool.Pool) *pinax.Seeder {
+	return newSeederWithPacks(t, pool, "")
+}
+
+// newSeederWithPacks wires the Seeder as the composition root does — the flat-handler import service plus
+// the `ranks` native importer (rank.Service.ImportPreset over its own tx) — additionally scanning an
+// operator-mounted packs directory (D-DataPacks, M54; "" = embedded-only).
+func newSeederWithPacks(t *testing.T, pool *pgxpool.Pool, packsDir string) *pinax.Seeder {
 	t.Helper()
 	audit := auditapp.NewService(pool, func(conn pdb.DBTX) auditdomain.Repository {
 		return auditadapters.NewRepository(conn)
@@ -75,7 +81,7 @@ func newSeeder(t *testing.T, pool *pgxpool.Pool) *pinax.Seeder {
 			return sum, nil
 		},
 	}
-	seeder, err := pinax.NewSeeder(pool, dataimport.NewImportService(pool, audit), native)
+	seeder, err := pinax.NewSeeder(pool, dataimport.NewImportService(pool, audit), native, packsDir)
 	if err != nil {
 		t.Fatalf("new seeder: %v", err)
 	}

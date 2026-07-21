@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
+	"github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
 // Service orchestrates ingestion over the store (hermenea's DB), the connector registry, the per
@@ -18,24 +19,29 @@ import (
 // also holds the optional live watchlist checker (D-Watchlists, M34), the one synchronous surface.
 type Service struct {
 	store        domain.Store
-	connectors   map[string]domain.Connector
+	fetchers     map[string]domain.Fetcher
 	mappers      map[string]domain.Mapper
 	pagedMappers map[string]domain.PagedMapper
 	loader       domain.Loader
 	watchlist    domain.WatchlistChecker
+	reporter     domain.RunReporter // optional connector-plane run reporter (M53); nil → no-op
 }
 
-// NewService wires the service with its store, connector registry, and loader. Mappers are registered
+// NewService wires the service with its store, fetcher registry, and loader. Mappers are registered
 // per object-type at composition time (RegisterMapper / RegisterPagedMapper).
-func NewService(store domain.Store, connectors map[string]domain.Connector, loader domain.Loader) *Service {
+func NewService(store domain.Store, fetchers map[string]domain.Fetcher, loader domain.Loader) *Service {
 	return &Service{
 		store:        store,
-		connectors:   connectors,
+		fetchers:     fetchers,
 		mappers:      map[string]domain.Mapper{},
 		pagedMappers: map[string]domain.PagedMapper{},
 		loader:       loader,
 	}
 }
+
+// SetReporter binds the optional connector-plane run reporter (M53 / D-ConnectorPlane). Composition-time;
+// a service without one reports nothing (the reporter's methods are no-ops on a nil value).
+func (s *Service) SetReporter(r domain.RunReporter) { s.reporter = r }
 
 // SetWatchlistChecker binds the live screening checker (D-Watchlists, M34). Composition-time.
 func (s *Service) SetWatchlistChecker(w domain.WatchlistChecker) { s.watchlist = w }
@@ -53,7 +59,7 @@ func (s *Service) CheckWatchlist(ctx context.Context, q domain.WatchlistQuery) (
 func (s *Service) RegisterMapper(objectType string, m domain.Mapper) { s.mappers[objectType] = m }
 
 // RegisterPagedMapper registers the paged mapper for an object-type (used when the source's connector
-// is a StreamingConnector — the wof-sqlite / geo-places path, D-GeoPlaces).
+// is a StreamingFetcher — the wof-sqlite / geo-places path, D-GeoPlaces).
 func (s *Service) RegisterPagedMapper(objectType string, m domain.PagedMapper) {
 	s.pagedMappers[objectType] = m
 }
@@ -154,14 +160,14 @@ func (s *Service) ProcessJob(ctx context.Context, job domain.Job) error {
 	if !ok {
 		return domain.ErrUnknownSource
 	}
-	conn, ok := s.connectors[src.ConnectorType]
+	fetcher, ok := s.fetchers[src.FetcherType]
 	if !ok {
-		return fmt.Errorf("%w: %s", domain.ErrNoConnector, src.ConnectorType)
+		return fmt.Errorf("%w: %s", domain.ErrNoFetcher, src.FetcherType)
 	}
 
-	// Streaming connectors (wof-sqlite, D-GeoPlaces) take the paged path: the payload is too large for
+	// Streaming fetchers (wof-sqlite, D-GeoPlaces) take the paged path: the payload is too large for
 	// a single in-memory batch, so the source is staged to disk and loaded one bounded page at a time.
-	if sc, ok := conn.(domain.StreamingConnector); ok {
+	if sc, ok := fetcher.(domain.StreamingFetcher); ok {
 		pm, ok := s.pagedMappers[src.ObjectType]
 		if !ok {
 			return fmt.Errorf("%w: %s (paged)", domain.ErrNoMapper, src.ObjectType)
@@ -174,7 +180,7 @@ func (s *Service) ProcessJob(ctx context.Context, job domain.Job) error {
 		return fmt.Errorf("%w: %s", domain.ErrNoMapper, src.ObjectType)
 	}
 
-	raw, err := conn.Fetch(ctx, src)
+	raw, err := fetcher.Fetch(ctx, src)
 	if err != nil {
 		return fmt.Errorf("fetch %s: %w", src.Code, err)
 	}
@@ -182,23 +188,23 @@ func (s *Service) ProcessJob(ctx context.Context, job domain.Job) error {
 	if err != nil {
 		return err
 	}
-	runID, err := s.store.StartRun(ctx, src.ID, rawID, raw.SourceVersion)
+	runID, err := s.startRun(ctx, src, rawID, raw.SourceVersion)
 	if err != nil {
 		return err
 	}
 
 	records, err := mapper.Map(raw)
 	if err != nil {
-		_ = s.store.FinishRun(ctx, runID, domain.RunFailed, 0, 0, 0, err.Error())
+		_ = s.finishRun(ctx, runID, src, domain.RunFailed, domain.ImportSummary{}, err.Error())
 		return fmt.Errorf("map %s: %w", src.Code, err)
 	}
 	sum, err := s.loader.Load(ctx, src.ObjectType, src.Code, raw.SourceVersion, runID,
 		s.resumeSeq(job, raw.Checksum), records, s.cursorAck(job.ID, raw.Checksum))
 	if err != nil {
-		_ = s.store.FinishRun(ctx, runID, domain.RunFailed, 0, 0, 0, err.Error())
+		_ = s.finishRun(ctx, runID, src, domain.RunFailed, domain.ImportSummary{}, err.Error())
 		return fmt.Errorf("load %s: %w", src.Code, err)
 	}
-	return s.store.FinishRun(ctx, runID, domain.RunSucceeded, sum.Created, sum.Updated, sum.Skipped, "")
+	return s.finishRun(ctx, runID, src, domain.RunSucceeded, sum, "")
 }
 
 // resumeSeq returns the chunk seq to resume a chunked run after (R-05): the job's persisted cursor,
@@ -218,7 +224,7 @@ func (s *Service) cursorAck(jobID, checksum string) domain.AckFunc {
 	}
 }
 
-// processStreaming runs the paged pipeline for a StreamingConnector source (D-GeoPlaces; chunked
+// processStreaming runs the paged pipeline for a StreamingFetcher source (D-GeoPlaces; chunked
 // since R-05): stage the source to disk, record a file-referenced raw batch, then open one chunked
 // run — each parent-first page is re-sliced into ≤chunkSize chunks, each chunk its own canonical
 // envelope / oikumenea transaction, acked into the job's resume cursor. On a retried attempt the run
@@ -227,7 +233,7 @@ func (s *Service) cursorAck(jobID, checksum string) domain.AckFunc {
 // chunk-load error fails the run (the worker retries/backs off); the staged file is always removed.
 // NOTE: a resumed attempt's import_run row aggregates only the chunks this attempt sent — the failed
 // attempt's row holds the earlier counts (the run ledger is per attempt, unchanged).
-func (s *Service) processStreaming(ctx context.Context, job domain.Job, src domain.Source, sc domain.StreamingConnector, pm domain.PagedMapper) error {
+func (s *Service) processStreaming(ctx context.Context, job domain.Job, src domain.Source, sc domain.StreamingFetcher, pm domain.PagedMapper) error {
 	staged, err := sc.Stage(ctx, src)
 	if err != nil {
 		return fmt.Errorf("stage %s: %w", src.Code, err)
@@ -239,7 +245,7 @@ func (s *Service) processStreaming(ctx context.Context, job domain.Job, src doma
 	if err != nil {
 		return err
 	}
-	runID, err := s.store.StartRun(ctx, src.ID, rawID, staged.SourceVersion)
+	runID, err := s.startRun(ctx, src, rawID, staged.SourceVersion)
 	if err != nil {
 		return err
 	}
@@ -257,8 +263,43 @@ func (s *Service) processStreaming(ctx context.Context, job domain.Job, src doma
 		agg, loadErr = run.Finalize(ctx)
 	}
 	if loadErr != nil {
-		_ = s.store.FinishRun(ctx, runID, domain.RunFailed, agg.Created, agg.Updated, agg.Skipped, loadErr.Error())
+		_ = s.finishRun(ctx, runID, src, domain.RunFailed, agg, loadErr.Error())
 		return fmt.Errorf("stream %s: %w", src.Code, loadErr)
 	}
-	return s.store.FinishRun(ctx, runID, domain.RunSucceeded, agg.Created, agg.Updated, agg.Skipped, "")
+	return s.finishRun(ctx, runID, src, domain.RunSucceeded, agg, "")
+}
+
+// startRun opens a run in the store (the connector's own ledger) and reports it as `running` to
+// oikumenea's connector registry (M53). The store write is authoritative; the report is best-effort.
+func (s *Service) startRun(ctx context.Context, src domain.Source, rawID, sourceVersion string) (string, error) {
+	runID, err := s.store.StartRun(ctx, src.ID, rawID, sourceVersion)
+	if err != nil {
+		return "", err
+	}
+	s.reportRun(ctx, src.Code, runID, domain.RunRunning, domain.ImportSummary{}, "")
+	return runID, nil
+}
+
+// finishRun closes a run in the store and reports the terminal state (succeeded/failed) with its counts
+// to the connector registry (best-effort). It returns the store error, if any — the report never does.
+func (s *Service) finishRun(ctx context.Context, runID string, src domain.Source, state string, sum domain.ImportSummary, errMsg string) error {
+	err := s.store.FinishRun(ctx, runID, state, sum.Created, sum.Updated, sum.Skipped, errMsg)
+	s.reportRun(ctx, src.Code, runID, state, sum, errMsg)
+	return err
+}
+
+// reportRun pushes one run state to the connector registry, swallowing any error: reporting is
+// best-effort and must NEVER fail the underlying job (D-ConnectorPlane: visibility, not orchestration).
+// A nil reporter (unit tests, a core-less install) is skipped outright.
+func (s *Service) reportRun(ctx context.Context, sourceCode, runID, state string, sum domain.ImportSummary, errMsg string) {
+	if s.reporter == nil {
+		return
+	}
+	if err := s.reporter.ReportRun(ctx, sourceCode, runID, state, sum, errMsg); err != nil {
+		svc1log.FromContext(ctx).Warn("hermenea: connector-plane run report failed (visibility only)",
+			svc1log.SafeParam("source", sourceCode),
+			svc1log.SafeParam("runId", runID),
+			svc1log.SafeParam("state", state),
+			svc1log.Stacktrace(err))
+	}
 }

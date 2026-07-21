@@ -1,0 +1,38 @@
+# Data pack — German translation overlays (D-DataPacks + D-i18n, M54). Rides the existing `translations`
+# import path: each record resolves an entity's natural key to its read-path entity_id and writes a
+# German (deu) name create-if-absent. Here: a few country endonyms, so an operator can see the new
+# locale populate real data.
+#
+# dependsOn the locale preset: `deu` must be a supported locale before its translations are written, and
+# the country skeleton (migration-seeded alpha-2 codes) must exist to resolve against. The seeder
+# topo-sorts embedded + pack presets together, so `locale-deu` (this pack) and `countries` (embedded)
+# both seed first.
+preset: locale-deu-translations
+objectType: translations
+source: data-pack:locale-deu
+sourceVersion: "1"
+license: CC0-1.0
+dependsOn:
+  - locale-deu
+  - countries
+records:
+  - entityType: country
+    key: DE
+    field: name
+    names:
+      deu: Deutschland
+  - entityType: country
+    key: FR
+    field: name
+    names:
+      deu: Frankreich
+  - entityType: country
+    key: UA
+    field: name
+    names:
+      deu: Ukraine
+  - entityType: country
+    key: US
+    field: name
+    names:
+      deu: Vereinigte Staaten

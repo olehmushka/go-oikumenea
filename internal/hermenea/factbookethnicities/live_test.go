@@ -1,7 +1,7 @@
 package factbookethnicities_test
 
 // Live end-to-end test of the runtime Factbook ethnicity pipeline (D-PhysicalIdentity amendment, M43):
-// the `factbook` StreamingConnector enumerates + downloads the real CIA World Factbook country files from
+// the `factbook` StreamingFetcher enumerates + downloads the real CIA World Factbook country files from
 // GitHub, and the PagedMapper parses them into ethnicity-scheme records — NO committed preset, all at
 // runtime, in Go. Network-dependent, so env-gated (mirrors the WOF / Wikidata live tests):
 //
@@ -12,7 +12,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/connector"
+	"github.com/olegamysk/go-oikumenea/internal/hermenea/fetcher"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/factbookethnicities"
 )
@@ -23,9 +23,9 @@ func TestFactbookLive(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	sc, ok := connector.Default()[domain.ConnectorFactbook].(domain.StreamingConnector)
+	sc, ok := fetcher.Default()[domain.FetcherFactbook].(domain.StreamingFetcher)
 	if !ok {
-		t.Fatal("factbook connector is not a StreamingConnector")
+		t.Fatal("factbook connector is not a StreamingFetcher")
 	}
 	staged, err := sc.Stage(ctx, domain.Source{Locator: "factbook/factbook.json@master"})
 	if err != nil {

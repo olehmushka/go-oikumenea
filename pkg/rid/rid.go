@@ -69,6 +69,11 @@ const (
 	SvcVehicle     = 17
 	SvcExternalOrg = 18
 	SvcFinance     = 19
+	// SvcConnector is the connector plane (M53 / D-ConnectorPlane): the registry of connectors (whole
+	// deployable agents beside the core, of which hermenea is the first), their sources, and the sync
+	// runs they report. Not to be confused with hermenea's internal `Fetcher` seam, which is a fetch
+	// strategy within one connector.
+	SvcConnector = 20
 )
 
 // ActionType is the generic per-service type code for an Action RID (the specific action name lives

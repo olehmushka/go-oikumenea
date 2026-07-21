@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/cldrscripts"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/connector"
+	"github.com/olegamysk/go-oikumenea/internal/hermenea/fetcher"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/glottolog"
 )
@@ -20,9 +20,9 @@ func TestLiveLanguageImport(t *testing.T) {
 		t.Skip("set HERMENEA_LIVE=1 to run the live upstream fetch+transform")
 	}
 	ctx := context.Background()
-	sc, ok := connector.Default()[domain.ConnectorHTTPFiles].(domain.StreamingConnector)
+	sc, ok := fetcher.Default()[domain.FetcherHTTPFiles].(domain.StreamingFetcher)
 	if !ok {
-		t.Fatal("http-files connector is not a StreamingConnector")
+		t.Fatal("http-files connector is not a StreamingFetcher")
 	}
 
 	// Glottolog CLDF → language-scheme records (the whole forest, parent-first).

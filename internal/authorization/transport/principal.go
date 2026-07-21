@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"errors"
 
 	"github.com/olegamysk/go-oikumenea/internal/authorization/domain"
 	"github.com/olegamysk/go-oikumenea/internal/authorization/pep"
@@ -28,7 +29,7 @@ func (s Service) GrantPrincipalPermission(ctx context.Context, token bearertoken
 		GrantedBy:   pep.Subject(ctx),
 	})
 	if err != nil {
-		return authzapi.PrincipalGrant{}, s.mapError(ctx, err)
+		return authzapi.PrincipalGrant{}, s.mapPrincipalError(ctx, err)
 	}
 	return toAPIPrincipalGrant(granted), nil
 }
@@ -39,7 +40,7 @@ func (s Service) RevokePrincipalPermission(ctx context.Context, token bearertoke
 	}
 	revoked, err := s.app.RevokePrincipalPermission(ctx, grantID, pep.Subject(ctx))
 	if err != nil {
-		return authzapi.PrincipalGrant{}, s.mapError(ctx, err)
+		return authzapi.PrincipalGrant{}, s.mapPrincipalError(ctx, err)
 	}
 	return toAPIPrincipalGrant(revoked), nil
 }
@@ -50,13 +51,30 @@ func (s Service) ListPrincipalGrants(ctx context.Context, token bearertoken.Toke
 	}
 	rows, err := s.app.ListPrincipalGrants(ctx, principalID)
 	if err != nil {
-		return authzapi.PrincipalGrantPage{}, s.mapError(ctx, err)
+		return authzapi.PrincipalGrantPage{}, s.mapPrincipalError(ctx, err)
 	}
 	out := make([]authzapi.PrincipalGrant, 0, len(rows))
 	for _, g := range rows {
 		out = append(out, toAPIPrincipalGrant(g))
 	}
 	return authzapi.PrincipalGrantPage{Grants: out}, nil
+}
+
+// mapPrincipalError is the principal-grant endpoints' error mapper. It exists because one sentinel —
+// ErrUnknownPermission — is raised from BOTH the role path (createRole/updateRole with a code outside
+// the closed catalog) and the principal-grant path, and the shared mapError can only pick one Conjure
+// error for it. It picks Role:RoleInvalid, which is right for roles and wrong here: the contract
+// declares PrincipalGrant:PrincipalGrantInvalid for this endpoint (api/authorization.conjure.yml).
+//
+// Disambiguating by CALLER rather than by reordering the shared switch keeps the role path untouched
+// (no regression risk) and stays correct if a future sentinel is shared the same way — an ordering fix
+// would silently rot the moment another endpoint reused a code. Everything not context-sensitive falls
+// through to mapError, so the principal-only sentinels stay declared in one place.
+func (s Service) mapPrincipalError(ctx context.Context, err error) error {
+	if errors.Is(err, domain.ErrUnknownPermission) {
+		return authzapi.NewPrincipalGrantInvalid(err.Error())
+	}
+	return s.mapError(ctx, err)
 }
 
 func toAPIPrincipalGrant(g domain.PrincipalGrant) authzapi.PrincipalGrant {

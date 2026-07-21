@@ -201,11 +201,17 @@ are not race-free at `READ COMMITTED` — acceptable at admin-mutation rate, and
 registered person still costs no extra query. A rejected unknown token logs its `issuer`/`azp`
 (safe) + `subject` (unsafe) so an operator can copy the pair straight into the registration call.
 
-**A principal gets no reach.** The service arm attaches the principal subject but deliberately
-**skips the authority snapshot and the RLS connection pinning** — RLS policies key on `app.person_id`
-and D-RLSLiveReach has no principal arm. Every person-shaped PEP path therefore denies a principal at
-its existing empty-subject guard. Machine access to RLS-protected, organization-owned data is
-**M53 / D-ConnectorPlane**.
+**A principal's reach is its org grants (M55).** The service arm attaches the principal subject and —
+since the **RLS service arm** (M55 / migration `0042`) — installs a **lazy RLS-scoped connection**
+just like a person's, keyed on `app.principal_id` (`ContextWithPrincipalAuthority` returns
+`db.RLSState{PrincipalID}`). The reach predicate's principal arm authorizes an **org-confined** grant
+against that organization's RLS-guarded rows (via the RLS-exempt `authz_unit_org` projection); an
+instance-wide grant (`org_id NULL`) confers no operational reach. A machine still gets **no authority
+snapshot and no person-shaped reach**: every person-shaped PEP path denies it at its empty-subject
+guard, so a principal only reaches surfaces that explicitly ask for a service grant (`RequireService`)
+and, at the DB, the rows its org grant authorizes. Before M55 a principal pinned no connection at all;
+the split-out rationale is in [D-ConnectorPlane](../architecture/roadmap-decisions.md#d-connectorplane--a-connector-registry--a-three-mode-contract-push-pull-wiring-on-demand-lookup-extends-d-hermenea-d-watchlists)
+(see [milestones M55](../milestones.md)).
 
 **Authority** is `authz_principal_grants` — see [authorization](authorization.md). A grant is
 `(principal, permission_code, org_id)`, where `org_id` NULL means instance-wide and a named

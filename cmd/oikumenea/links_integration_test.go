@@ -81,7 +81,8 @@ func newLinkWorld(t *testing.T) linkWorld {
 	}, audit)
 	authzSvc := authzapp.NewService(pool, func(conn pdb.DBTX) authzdomain.Repository {
 		return authzadapters.NewRepository(conn)
-	}, audit, authzdomain.NewPDP(tenantSvc), tenantSvc)
+	}, audit, authzdomain.NewPDP(tenantSvc), tenantSvc,
+		func(conn pdb.DBTX) authzdomain.PrincipalRepository { return authzadapters.NewRepository(conn) })
 	enforcer := pep.New(authzSvc)
 	memSvc := membershipapp.NewService(pool, func(conn pdb.DBTX) membershipdomain.Repository {
 		return membershipadapters.NewRepository(conn)
