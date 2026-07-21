@@ -58,6 +58,35 @@ type Install struct {
 	// Audit is the audit-ledger operator policy (D-AuditRetention, review-2026-07 R-07). Absent block
 	// => retain forever.
 	Audit Audit `yaml:"audit"`
+
+	// LoginSecurity is the login-security-log policy (D-LoginSecurityLog, M37). Absent block => the
+	// core-visible IP is used (RemoteAddr) and events are retained forever.
+	LoginSecurity LoginSecurity `yaml:"login-security"`
+}
+
+// LoginSecurity is the operator policy for the first-party login/IP security log (D-LoginSecurityLog,
+// M37). TrustForwardedFor must be set true ONLY when the core sits behind a facade (console-bff) that
+// sets a single authoritative X-Forwarded-For (D-HeadlessTopology, amended) — otherwise a client could
+// spoof its own logged IP. RetentionDays bounds the retention sweep: 0 (default) = retain forever
+// (the legal-hold-safe posture); a positive value deletes events whose last_seen_at is older, via
+// oikumenea.delete_login_events_before. DedupWindowSeconds collapses repeat (account, context, ip)
+// occurrences into one row within the window (0 => the DefaultLoginDedupWindowSeconds default).
+type LoginSecurity struct {
+	TrustForwardedFor  bool `yaml:"trust-forwarded-for"`
+	RetentionDays      int  `yaml:"retention-days"`
+	DedupWindowSeconds int  `yaml:"dedup-window-seconds"`
+}
+
+// DefaultLoginDedupWindowSeconds is the login-log dedup window when unset (1h): a request from a
+// known (account, context, ip) within the hour bumps the existing row rather than inserting a new one.
+const DefaultLoginDedupWindowSeconds = 3600
+
+// DedupWindow returns the configured dedup window in seconds, or the default when unset.
+func (l LoginSecurity) DedupWindow() int {
+	if l.DedupWindowSeconds <= 0 {
+		return DefaultLoginDedupWindowSeconds
+	}
+	return l.DedupWindowSeconds
 }
 
 // Audit is the append-only audit ledger's operator policy (D-AuditRetention). The ledger is monthly

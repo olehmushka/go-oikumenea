@@ -1631,6 +1631,21 @@ yields useful, lawful security signal.
 middleware emits an event per validated request; retention sweep + purge erasure. New account RID on
 build. Lands as **M37** ([milestones](../milestones.md)).
 
+**As built (M37, migration `0043`, 2026-07-21).** `account_login_events` is account Object `9,1,4`. Two
+build decisions (with the user): **(1) bounded, not a firehose** — the middleware DE-DUPES to one row
+per `(account, context, ip)` per window (`login-security.dedup-window-seconds`, default 1h): a repeat
+within the window bumps `last_seen_at` + `occurrence_count`, else a new row. So the "event per validated
+request" is collapsed at the source; retention is a plain `DELETE` sweep (`delete_login_events_before`,
+`login-security.retention-days`, 0 = forever; best-effort boot sweep, a scheduled enforcer left as a
+seam like D-AuditRetention). **(2) client IP through the facade** — see the D-HeadlessTopology amendment
+below. The emit is **best-effort and off the request's critical path** (a detached goroutine; a failure
+never fails the request); **service principals are excluded** (human accounts only); `registration`
+marks the JIT link-on-match, `login` a validated request. IP-intelligence (`resolved_country`/`_isp`/
+`is_vpn`/`is_tor`) is a **deferred `IPIntel` seam** (no-op default → NULL; a future hermenea connector).
+Read on the instance-scope `account.security-log.read` (`GET /accounts/{id}/login-events`, admin-only);
+purge-erased via `SubscribePersonPurge`. `pkg/crypto` not involved (no envelope encryption — the log is
+`pii:contact`, not `pii:sensitive`).
+
 ### D-Finance — Bank accounts & payment cards, banks as company orgs (extends D-Ontology, D-PersonalCodes, D-UnifiedOrgGraph)
 
 **Decision.** A new **`finance`** module (**RID service 19**, tables `finance_*`) holds **bank
@@ -1960,6 +1975,16 @@ exposure paths in the sense (b) above rejects — both attach the same session b
 *Consequently* the core needed no change at all for M52: it has no trusted-proxy list, no
 `X-Forwarded-*` handling, and treats `azp` as diagnostic-only — the facade is just another
 authenticated caller presenting a user's token.
+
+**Amendment (M37, 2026-07-21) — the facade forwards the client IP (one trusted hop).** The login
+security log (D-LoginSecurityLog) needs the *user's* IP, but with the core behind `console-bff` its
+`RemoteAddr` is the facade's. So the facade now sets a **single authoritative `X-Forwarded-For`** (the
+client IP from the deployment ingress; overwrite, not append), and the core trusts it **only** when
+`login-security.trust-forwarded-for` is on — the one narrow place the core reads a forwarded header.
+The trust boundary is the deployment's ingress (which must set XFF from the real socket, the standard
+reverse-proxy contract); off by default, so a direct (non-facade) caller's `RemoteAddr` is used and a
+client cannot spoof its own logged IP. This is the minimal, opt-in exception to "no `X-Forwarded-*`
+handling" above — it changes no authorization behavior (the token still carries all authority).
 
 ### D-ConnectorPlane — A connector registry + a three-mode contract: push, pull-wiring, on-demand lookup (extends D-Hermenea, D-Watchlists)
 

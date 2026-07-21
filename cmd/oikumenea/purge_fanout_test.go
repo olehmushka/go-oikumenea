@@ -16,7 +16,7 @@ import (
 // move it, which forces (a) bumping this const, (b) updating the width baseline in patterns.md, and
 // (c) a conscious check that the new atomic subscriber is the right call — the decision gate the fan-out
 // had grown past invisibly (M31–M45 each added subscribers with no number moving).
-const expectedPersonFanoutSubscriptions = 18
+const expectedPersonFanoutSubscriptions = 19
 
 // TestPersonFanoutWidthGuard fails when the wired person purge/merge fan-out grows (or shrinks) without
 // the baseline being updated — the automated half of R-24's width tracking (the SQL-cost half is

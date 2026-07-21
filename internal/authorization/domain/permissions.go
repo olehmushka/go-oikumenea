@@ -247,6 +247,10 @@ const (
 	PermServicePrincipalRead   Permission = "service-principal.read"
 	PermServicePrincipalManage Permission = "service-principal.manage"
 
+	// account.security-log — the first-party login/IP security log (M37 / D-LoginSecurityLog).
+	// Instance-scope: reading any account's login history is an admin act (the data is pii:contact).
+	PermAccountSecurityLogRead Permission = "account.security-log.read"
+
 	// connector plane (M53 / D-ConnectorPlane). The self-service codes are held by MACHINE subjects as
 	// per-principal grants; `connector.read` is the operator fleet-view code. All instance-scope: a
 	// connector is instance infrastructure with no unit or (in M53) organization dimension.
@@ -293,6 +297,7 @@ var instanceScope = map[Permission]struct{}{
 	PermImportManage:             {},
 	PermServicePrincipalRead:     {},
 	PermServicePrincipalManage:   {},
+	PermAccountSecurityLogRead:   {},
 	PermConnectorRegister:        {},
 	PermConnectorReport:          {},
 	PermConnectorRead:            {},
@@ -338,6 +343,7 @@ var catalog = func() map[Permission]struct{} {
 		PermPersonalCodeSchemeManage, PermCountryManage, PermLocationTypesManage, PermEducationCatalogManage, PermCompanyCatalogManage, PermVehicleCatalogManage, PermFinanceCatalogManage, PermReligionCatalogManage, PermInstanceConfig, PermInstanceAdminManage,
 		PermImportManage,
 		PermServicePrincipalRead, PermServicePrincipalManage,
+		PermAccountSecurityLogRead,
 		PermConnectorRegister, PermConnectorReport, PermConnectorRead,
 		PermWiringResolve, PermWiringCatalogRead, PermWiringCursorRead,
 	}

@@ -741,9 +741,11 @@ party membership (M33), inferred political leaning (M35), health records (M36) �
 (D-SpecialPII) + `legal_basis` + full audit + (for health) app-layer need-to-know; **never inferred**
 except the explicitly-isolated political-leaning spectrum.
 
-**Login security log.** First-party `account_login_events` (D-LoginSecurityLog, M37) — ip/context/
-resolved-country/vpn/tor emitted by the OIDC/JWKS validation middleware; **not** OSINT enrichment and
-**not** stored credentials (L-AuthzOnly holds).
+**Login security log.** First-party `account_login_events` (D-LoginSecurityLog, M37; account Object
+`9,1,4`, `pii:contact`) — ip/context/resolved-country/vpn/tor recorded by the OIDC/JWKS validation
+middleware per validated human request, **deduped** to one row per `(account, context, ip)` per window
+(a bump, not a firehose). **Not** OSINT enrichment and **not** stored credentials (L-AuthzOnly holds).
+Read on `account.security-log.read`; purge-erased + retention-swept.
 
 **Finance module.** The planned `finance` module (D-Finance, M44 — RID service 19) holding **bank
 accounts and payment cards** as authoritative, encrypted-at-rest directory data. Authoritative

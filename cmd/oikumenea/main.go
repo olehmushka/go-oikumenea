@@ -520,12 +520,16 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 
 	// Identity-federation: the external-IdP seam. Its application service is the (issuer, subject)
 	// resolver the validation middleware binds to.
-	identitySvc, err := identityfederation.Register(info, pool, auditSvc, enforcer, install.IdentityLinkingEnabled, issuerOptions(install))
+	identitySvc, err := identityfederation.Register(info, pool, auditSvc, enforcer, install.IdentityLinkingEnabled, issuerOptions(install),
+		install.LoginSecurity.DedupWindow(), install.LoginSecurity.RetentionDays)
 	if err != nil {
 		cleanup()
 		return nil, err
 	}
 	identitySvc.SubscribePersonEvents(bus)
+	// Erase a purged person's login/IP security-log rows in the purge transaction (M37 /
+	// D-LoginSecurityLog: pii:contact is erased, not retained).
+	identitySvc.SubscribePersonPurge(bus)
 
 	// Bind the inbound-token validation middleware: the configured issuers' validator, the
 	// (issuer, subject) resolver, the person directory (JIT claim -> person.code), and the JIT flag.
@@ -545,6 +549,18 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// after authorization, so the grant writer gets its principal directory here — asserted below.
 	authzSvc.BindPrincipalDirectory(identitySvc)
 	authenticator.Bind(middleware.NewValidator(vcfg), identitySvc, personSvc, install.IDP.JIT.Enabled, authzSvc, pool, identitySvc, authzSvc)
+	// Login security log (M37 / D-LoginSecurityLog): the validation middleware emits a deduped login/IP
+	// occurrence per validated human request via identitySvc. trust-forwarded-for must be on only when a
+	// facade sets an authoritative X-Forwarded-For (D-HeadlessTopology amended).
+	authenticator.SetLoginRecorder(identitySvc, install.LoginSecurity.TrustForwardedFor)
+	// Best-effort retention sweep at boot (retain-forever when retention-days is 0). A scheduled
+	// enforcer is an explicit open seam (mirrors D-AuditRetention); a boot sweep gives retention teeth
+	// without a scheduler.
+	if n, err := identitySvc.SweepLoginEvents(ctx); err != nil {
+		svc1log.FromContext(ctx).Warn("login-event retention sweep", svc1log.Stacktrace(err))
+	} else if n > 0 {
+		svc1log.FromContext(ctx).Info("login-event retention sweep", svc1log.SafeParam("deleted", n))
+	}
 
 	// The hermenea import shared secret (D-Hermenea, retained by D-ServiceIdentities as the
 	// minimal-install fallback): the inbound token from install config (hermenea.inbound-token),

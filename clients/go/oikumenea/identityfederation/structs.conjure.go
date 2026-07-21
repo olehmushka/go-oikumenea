@@ -180,6 +180,88 @@ func (o *LinkIdentityRequest) UnmarshalYAML(unmarshal func(interface{}) error) e
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+/*
+One deduped login/IP occurrence for an account (M37 / D-LoginSecurityLog): first-party
+security telemetry from the token-validation seam, `pii:contact`, retention-bounded. Repeat
+occurrences from the same (context, ip) within the dedup window collapse into one row —
+`occurrenceCount` + `lastSeenAt` carry the recency. The `resolved*` / `isVpn` / `isTor`
+fields are the IP-intelligence overlay and stay absent until a resolver ships.
+*/
+type LoginEvent struct {
+	Id        string `json:"id"`
+	AccountId string `json:"accountId"`
+	// One of login | activity | registration (registration = the JIT link-on-match).
+	Context         string            `json:"context"`
+	Ip              string            `json:"ip"`
+	FirstSeenAt     datetime.DateTime `json:"firstSeenAt"`
+	LastSeenAt      datetime.DateTime `json:"lastSeenAt"`
+	OccurrenceCount int               `json:"occurrenceCount"`
+	// ISO 3166-1 alpha-2 when resolved.
+	ResolvedCountry *string `json:"resolvedCountry,omitempty"`
+	ResolvedIsp     *string `json:"resolvedIsp,omitempty"`
+	IsVpn           *bool   `json:"isVpn,omitempty"`
+	IsTor           *bool   `json:"isTor,omitempty"`
+	UserAgent       *string `json:"userAgent,omitempty"`
+}
+
+func (o LoginEvent) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *LoginEvent) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+type LoginEventPage struct {
+	Events        []LoginEvent `json:"events"`
+	NextPageToken *string      `json:"nextPageToken,omitempty"`
+}
+
+func (o LoginEventPage) MarshalJSON() ([]byte, error) {
+	if o.Events == nil {
+		o.Events = make([]LoginEvent, 0)
+	}
+	type _tmpLoginEventPage LoginEventPage
+	return safejson.Marshal(_tmpLoginEventPage(o))
+}
+
+func (o *LoginEventPage) UnmarshalJSON(data []byte) error {
+	type _tmpLoginEventPage LoginEventPage
+	var rawLoginEventPage _tmpLoginEventPage
+	if err := safejson.Unmarshal(data, &rawLoginEventPage); err != nil {
+		return err
+	}
+	if rawLoginEventPage.Events == nil {
+		rawLoginEventPage.Events = make([]LoginEvent, 0)
+	}
+	*o = LoginEventPage(rawLoginEventPage)
+	return nil
+}
+
+func (o LoginEventPage) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *LoginEventPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 type RegisterServicePrincipalRequest struct {
 	Code        string  `json:"code"`
 	Name        string  `json:"name"`

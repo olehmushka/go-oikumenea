@@ -167,6 +167,34 @@ types:
         fields:
           principals: list<ServicePrincipal>
           nextPageToken: optional<string>
+      LoginEvent:
+        docs: |
+          One deduped login/IP occurrence for an account (M37 / D-LoginSecurityLog): first-party
+          security telemetry from the token-validation seam, `pii:contact`, retention-bounded. Repeat
+          occurrences from the same (context, ip) within the dedup window collapse into one row —
+          `occurrenceCount` + `lastSeenAt` carry the recency. The `resolved*` / `isVpn` / `isTor`
+          fields are the IP-intelligence overlay and stay absent until a resolver ships.
+        fields:
+          id: string
+          accountId: string
+          context:
+            type: string
+            docs: One of login | activity | registration (registration = the JIT link-on-match).
+          ip: string
+          firstSeenAt: datetime
+          lastSeenAt: datetime
+          occurrenceCount: integer
+          resolvedCountry:
+            type: optional<string>
+            docs: ISO 3166-1 alpha-2 when resolved.
+          resolvedIsp: optional<string>
+          isVpn: optional<boolean>
+          isTor: optional<boolean>
+          userAgent: optional<string>
+      LoginEventPage:
+        fields:
+          events: list<LoginEvent>
+          nextPageToken: optional<string>
     errors:
       AccountNotFound:
         namespace: Account
@@ -361,3 +389,20 @@ services:
             type: string
             param-type: path
         returns: ServicePrincipal
+      listAccountLoginEvents:
+        http: GET /accounts/{accountId}/login-events
+        docs: |
+          Page an account's login/IP security history, newest-first (M37 / D-LoginSecurityLog). Gates
+          on the instance-scope `account.security-log.read` (the data is pii:contact). `pageToken` is
+          the opaque keyset cursor from the previous page.
+        args:
+          accountId:
+            type: string
+            param-type: path
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: LoginEventPage

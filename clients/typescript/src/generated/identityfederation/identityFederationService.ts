@@ -3,6 +3,7 @@ import { ICreateAccountRequest } from "./createAccountRequest";
 import { IExternalIdentity } from "./externalIdentity";
 import { IIssuerOption } from "./issuerOption";
 import { ILinkIdentityRequest } from "./linkIdentityRequest";
+import { ILoginEventPage } from "./loginEventPage";
 import { IRegisterServicePrincipalRequest } from "./registerServicePrincipalRequest";
 import { IServicePrincipal } from "./servicePrincipal";
 import { IServicePrincipalPage } from "./servicePrincipalPage";
@@ -82,6 +83,13 @@ export interface IIdentityFederationService {
     disableServicePrincipal(principalId: string): Promise<IServicePrincipal>;
     /** Re-enable a disabled machine subject. Gates on `service-principal.manage`. */
     enableServicePrincipal(principalId: string): Promise<IServicePrincipal>;
+    /**
+     * Page an account's login/IP security history, newest-first (M37 / D-LoginSecurityLog). Gates
+     * on the instance-scope `account.security-log.read` (the data is pii:contact). `pageToken` is
+     * the opaque keyset cursor from the previous page.
+     *
+     */
+    listAccountLoginEvents(accountId: string, pageSize?: number | null, pageToken?: string | null): Promise<ILoginEventPage>;
 }
 
 export class IdentityFederationService implements IIdentityFederationService {
@@ -361,6 +369,32 @@ export class IdentityFederationService implements IIdentityFederationService {
             __undefined,
             [
                 principalId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Page an account's login/IP security history, newest-first (M37 / D-LoginSecurityLog). Gates
+     * on the instance-scope `account.security-log.read` (the data is pii:contact). `pageToken` is
+     * the opaque keyset cursor from the previous page.
+     *
+     */
+    public listAccountLoginEvents(accountId: string, pageSize?: number | null, pageToken?: string | null): Promise<ILoginEventPage> {
+        return this.bridge.call<ILoginEventPage>(
+            "IdentityFederationService",
+            "listAccountLoginEvents",
+            "GET",
+            "/identity/v1/accounts/{accountId}/login-events",
+            __undefined,
+            __undefined,
+            {
+                "pageSize": pageSize,
+                "pageToken": pageToken,
+            },
+            [
+                accountId,
             ],
             __undefined,
             __undefined

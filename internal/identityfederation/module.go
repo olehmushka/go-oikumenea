@@ -17,6 +17,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation/adapters"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation/application"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation/domain"
+	"github.com/olegamysk/go-oikumenea/internal/identityfederation/ipintel"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation/transport"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	werror "github.com/palantir/witchcraft-go-error"
@@ -28,12 +29,18 @@ import (
 // person's `person.*` permissions), and the linking-enabled config accessor. It seeds nothing
 // (accounts are created via the API or the first-admin bootstrap) and owns no resources of its own,
 // so there is no module-level cleanup.
-func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, enforcer *pep.Enforcer, linkingEnabled func() bool, issuers []identityapi.IssuerOption) (*application.Service, error) {
+func Register(info witchcraft.InitInfo, pool *pgxpool.Pool, audit *auditapp.Service, enforcer *pep.Enforcer, linkingEnabled func() bool, issuers []identityapi.IssuerOption, loginDedupWindowSecs, loginRetentionDays int) (*application.Service, error) {
 	repoFor := func(conn db.DBTX) domain.Repository { return adapters.NewRepository(conn) }
 	// The service-principal registry shares the adapter value (M51 / D-ServiceIdentities): one
 	// Repository satisfies both the account and the principal port, so both bind to the same DBTX.
 	principalRepoFor := func(conn db.DBTX) domain.PrincipalRepository { return adapters.NewRepository(conn) }
 	svc := application.NewService(pool, repoFor, audit, linkingEnabled, principalRepoFor)
+
+	// Login security log (M37 / D-LoginSecurityLog): the raw-pgx store + the (deferred) no-op IP-intel
+	// resolver. The middleware's emit recorder + the trust-forwarded-for policy are wired at the
+	// composition root (authenticator.SetLoginRecorder).
+	loginRepoFor := func(conn db.DBTX) domain.LoginEventRepository { return adapters.NewLoginEventRepo(conn) }
+	svc.SetLoginEvents(loginRepoFor, ipintel.NoOp{}, loginDedupWindowSecs, loginRetentionDays)
 
 	if err := identityapi.RegisterRoutesIdentityFederationService(info.Router, transport.NewService(svc, enforcer, issuers)); err != nil {
 		return nil, werror.Wrap(err, "register identity-federation service routes")

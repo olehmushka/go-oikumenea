@@ -49,6 +49,11 @@ layers.
   rejected as unknown), but its **schema still migrates** — so re-enabling is a config flip, never a
   migration. See [config.go](../../internal/platform/config/config.go) `ModuleEnabled` /
   `DisabledModulePrefixes` and the composition-root gating in `main.go`.
+- **Login security log** (`login-security.*` — D-LoginSecurityLog, M37): `trust-forwarded-for` (default
+  off) tells the core to log the facade-set `X-Forwarded-For` as the client IP rather than `RemoteAddr`
+  — set it on **only** behind a facade that sets an authoritative XFF (D-HeadlessTopology amended).
+  `retention-days` (default `0` = retain forever) bounds the retention sweep; `dedup-window-seconds`
+  (default `3600`) collapses repeat `(account, context, ip)` occurrences into one row.
 - The operator owns the DB and its credentials; nothing secret lives in the repo or the DB.
 
 ### Database access (pgx + sqlc)

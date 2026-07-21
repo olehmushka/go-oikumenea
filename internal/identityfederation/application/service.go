@@ -56,6 +56,13 @@ type Service struct {
 	// newPrincipalRepo binds the service-principal registry (M51 / D-ServiceIdentities) — the
 	// machine counterpart of newRepo, injected by module.go alongside it.
 	newPrincipalRepo PrincipalRepositoryFactory
+	// Login security log (M37 / D-LoginSecurityLog), late-bound via SetLoginEvents. nil newLoginRepo =
+	// the log is disabled (out-of-request callers / tests that never call SetLoginEvents), so
+	// RecordLoginSeen no-ops.
+	newLoginRepo    LoginEventRepositoryFactory
+	ipIntel         IPIntelResolver
+	loginWindowSecs int
+	retentionDays   int
 }
 
 // NewService wires the service with the pool, the repository factory, the audit service every write

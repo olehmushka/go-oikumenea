@@ -77,6 +77,12 @@ type IdentityFederationService interface {
 	DisableServicePrincipal(ctx context.Context, authHeader bearertoken.Token, principalIdArg string) (ServicePrincipal, error)
 	// Re-enable a disabled machine subject. Gates on `service-principal.manage`.
 	EnableServicePrincipal(ctx context.Context, authHeader bearertoken.Token, principalIdArg string) (ServicePrincipal, error)
+	/*
+	   Page an account's login/IP security history, newest-first (M37 / D-LoginSecurityLog). Gates
+	   on the instance-scope `account.security-log.read` (the data is pii:contact). `pageToken` is
+	   the opaque keyset cursor from the previous page.
+	*/
+	ListAccountLoginEvents(ctx context.Context, authHeader bearertoken.Token, accountIdArg string, pageSizeArg *int, pageTokenArg *string) (LoginEventPage, error)
 }
 
 // RegisterRoutesIdentityFederationService registers handlers for the IdentityFederationService endpoints with a witchcraft wrouter.
@@ -127,6 +133,9 @@ func RegisterRoutesIdentityFederationService(router wrouter.Router, impl Identit
 	}
 	if err := resource.Post("EnableServicePrincipal", "/identity/v1/service-principals/{principalId}/enable", httpserver.NewJSONHandler(handler.HandleEnableServicePrincipal, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add enableServicePrincipal route")
+	}
+	if err := resource.Get("ListAccountLoginEvents", "/identity/v1/accounts/{accountId}/login-events", httpserver.NewJSONHandler(handler.HandleListAccountLoginEvents, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listAccountLoginEvents route")
 	}
 	return nil
 }
@@ -414,6 +423,40 @@ func (i *identityFederationServiceHandler) HandleEnableServicePrincipal(rw http.
 		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"principalId\" not present")
 	}
 	respArg, err := i.impl.EnableServicePrincipal(req.Context(), bearertoken.Token(authHeader), principalIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (i *identityFederationServiceHandler) HandleListAccountLoginEvents(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	pathParams := wrouter.PathParams(req)
+	if pathParams == nil {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInternal(), "path params not found on request: ensure this endpoint is registered with wrouter")
+	}
+	accountIdArg, ok := pathParams["accountId"]
+	if !ok {
+		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"accountId\" not present")
+	}
+	var pageSizeArg *int
+	if pageSizeArgStr := req.URL.Query().Get("pageSize"); pageSizeArgStr != "" {
+		pageSizeArgInternal, err := strconv.Atoi(pageSizeArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"pageSize\" as integer")
+		}
+		pageSizeArg = &pageSizeArgInternal
+	}
+	var pageTokenArg *string
+	if pageTokenArgStr := req.URL.Query().Get("pageToken"); pageTokenArgStr != "" {
+		pageTokenArgInternal := pageTokenArgStr
+		pageTokenArg = &pageTokenArgInternal
+	}
+	respArg, err := i.impl.ListAccountLoginEvents(req.Context(), bearertoken.Token(authHeader), accountIdArg, pageSizeArg, pageTokenArg)
 	if err != nil {
 		return err
 	}

@@ -112,6 +112,7 @@ var typeNames = map[typeKey]string{
 	{SvcAccount, int(KindObject), 1}: "account",
 	{SvcAccount, int(KindObject), 2}: "external_identity",
 	{SvcAccount, int(KindObject), 3}: "service_principal",
+	{SvcAccount, int(KindObject), 4}: "login_event",
 	// document
 	{SvcDocument, int(KindObject), 1}: "document_type",
 	{SvcDocument, int(KindObject), 2}: "document",

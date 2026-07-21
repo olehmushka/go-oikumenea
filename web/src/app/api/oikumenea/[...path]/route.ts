@@ -19,6 +19,16 @@ async function handle(req: Request, ctx: { params: Promise<{ path: string[] }> }
   const ct = req.headers.get("content-type");
   if (ct) headers["Content-Type"] = ct;
 
+  // Login security log (M37 / D-LoginSecurityLog): forward the real client IP as a SINGLE authoritative
+  // X-Forwarded-For so the core (behind this facade in the headless topology — D-HeadlessTopology) logs
+  // the user's IP, not the facade's. The value comes from the deployment ingress (x-forwarded-for /
+  // x-real-ip), whose trusted-proxy config is the security boundary; the core trusts it only when
+  // login-security.trust-forwarded-for is on. Overwrite, not append — the core reads one value.
+  const clientIp =
+    req.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
+    req.headers.get("x-real-ip")?.trim();
+  if (clientIp) headers["X-Forwarded-For"] = clientIp;
+
   const res = await apiForward(target, {
     method,
     search: url.search,

@@ -74,6 +74,12 @@ type IdentityFederationServiceClient interface {
 	DisableServicePrincipal(ctx context.Context, authHeader bearertoken.Token, principalIdArg string) (ServicePrincipal, error)
 	// Re-enable a disabled machine subject. Gates on `service-principal.manage`.
 	EnableServicePrincipal(ctx context.Context, authHeader bearertoken.Token, principalIdArg string) (ServicePrincipal, error)
+	/*
+	   Page an account's login/IP security history, newest-first (M37 / D-LoginSecurityLog). Gates
+	   on the instance-scope `account.security-log.read` (the data is pii:contact). `pageToken` is
+	   the opaque keyset cursor from the previous page.
+	*/
+	ListAccountLoginEvents(ctx context.Context, authHeader bearertoken.Token, accountIdArg string, pageSizeArg *int, pageTokenArg *string) (LoginEventPage, error)
 }
 
 type identityFederationServiceClient struct {
@@ -329,6 +335,31 @@ func (c *identityFederationServiceClient) EnableServicePrincipal(ctx context.Con
 	return *returnVal, nil
 }
 
+func (c *identityFederationServiceClient) ListAccountLoginEvents(ctx context.Context, authHeader bearertoken.Token, accountIdArg string, pageSizeArg *int, pageTokenArg *string) (LoginEventPage, error) {
+	var returnVal *LoginEventPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListAccountLoginEvents"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/identity/v1/accounts/%s/login-events", url.PathEscape(fmt.Sprint(accountIdArg))))
+	queryParams := make(url.Values)
+	if pageSizeArg != nil {
+		queryParams.Set("pageSize", fmt.Sprint(*pageSizeArg))
+	}
+	if pageTokenArg != nil {
+		queryParams.Set("pageToken", fmt.Sprint(*pageTokenArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(LoginEventPage), werror.WrapWithContextParams(ctx, err, "listAccountLoginEvents failed")
+	}
+	if returnVal == nil {
+		return *new(LoginEventPage), werror.ErrorWithContextParams(ctx, "listAccountLoginEvents response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 /*
 Optional login accounts + the external identities that federate to them. Account/identity
 management gates on the `person.*` permissions of the linked person; /whoami is
@@ -390,6 +421,12 @@ type IdentityFederationServiceClientWithAuth interface {
 	DisableServicePrincipal(ctx context.Context, principalIdArg string) (ServicePrincipal, error)
 	// Re-enable a disabled machine subject. Gates on `service-principal.manage`.
 	EnableServicePrincipal(ctx context.Context, principalIdArg string) (ServicePrincipal, error)
+	/*
+	   Page an account's login/IP security history, newest-first (M37 / D-LoginSecurityLog). Gates
+	   on the instance-scope `account.security-log.read` (the data is pii:contact). `pageToken` is
+	   the opaque keyset cursor from the previous page.
+	*/
+	ListAccountLoginEvents(ctx context.Context, accountIdArg string, pageSizeArg *int, pageTokenArg *string) (LoginEventPage, error)
 }
 
 func NewIdentityFederationServiceClientWithAuth(client IdentityFederationServiceClient, authHeader bearertoken.Token) IdentityFederationServiceClientWithAuth {
@@ -455,6 +492,10 @@ func (c *identityFederationServiceClientWithAuth) DisableServicePrincipal(ctx co
 
 func (c *identityFederationServiceClientWithAuth) EnableServicePrincipal(ctx context.Context, principalIdArg string) (ServicePrincipal, error) {
 	return c.client.EnableServicePrincipal(ctx, c.authHeader, principalIdArg)
+}
+
+func (c *identityFederationServiceClientWithAuth) ListAccountLoginEvents(ctx context.Context, accountIdArg string, pageSizeArg *int, pageTokenArg *string) (LoginEventPage, error) {
+	return c.client.ListAccountLoginEvents(ctx, c.authHeader, accountIdArg, pageSizeArg, pageTokenArg)
 }
 
 func NewIdentityFederationServiceClientWithTokenProvider(client IdentityFederationServiceClient, tokenProvider httpclient.TokenProvider) IdentityFederationServiceClientWithAuth {
@@ -576,4 +617,12 @@ func (c *identityFederationServiceClientWithTokenProvider) EnableServicePrincipa
 		return *new(ServicePrincipal), err
 	}
 	return c.client.EnableServicePrincipal(ctx, bearertoken.Token(token), principalIdArg)
+}
+
+func (c *identityFederationServiceClientWithTokenProvider) ListAccountLoginEvents(ctx context.Context, accountIdArg string, pageSizeArg *int, pageTokenArg *string) (LoginEventPage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(LoginEventPage), err
+	}
+	return c.client.ListAccountLoginEvents(ctx, bearertoken.Token(token), accountIdArg, pageSizeArg, pageTokenArg)
 }

@@ -172,9 +172,10 @@ There are **two classes**, and choosing the wrong one is a correctness/scale bug
   `Subscribe` afterwards **panics** (review-2026-07 R-10) — subscribers are wired once, before serving.
 
   **Purge/merge fan-out width baseline (review R-24).** The person purge/merge fan-out is the widest
-  `atomic` transaction: **18 subscriptions across 12 modules** (`cmd/oikumenea/main.go` —
+  `atomic` transaction: **19 subscriptions across 13 modules** (`cmd/oikumenea/main.go` —
   `SubscribePersonPurge` erases a module's person-owned rows in the purge tx; `SubscribePersonEvents`
-  re-homes rows on a merge). Two signals keep this from growing invisibly (the M31–M45 pattern of
+  re-homes rows on a merge; the M37 addition is identity-federation's `SubscribePersonPurge`, erasing a
+  purged person's login-security-log rows). Two signals keep this from growing invisibly (the M31–M45 pattern of
   subscribers accruing with no number moving): (1) `TestPersonFanoutWidthGuard`
   (`cmd/oikumenea`) pins the subscription count — a module joining the fan-out fails it, forcing a
   conscious decision + a baseline bump; (2) `TestPurgeWidthBudget` (`internal/person`) records the

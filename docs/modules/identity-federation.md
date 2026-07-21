@@ -228,17 +228,32 @@ refuses startup if an operator configures the reserved issuer.
 **Audit.** A principal is a `system` actor that names itself: `audit_log.actor_principal_id`. No
 third `actor_type` — D-Audit's two-kind CHECK holds.
 
-## Planned: login security log (M37 / D-LoginSecurityLog)
+## Login security log (M37 / D-LoginSecurityLog)
 
-> **Status: planned (designed).** Binding via **D-LoginSecurityLog** in
-> [roadmap-decisions.md](../architecture/roadmap-decisions.md); draft macro-category 2.5.
+> **Status: built (M37).** Binding via **D-LoginSecurityLog** (+ its as-built note) in
+> [roadmap-decisions.md](../architecture/roadmap-decisions.md).
 
-A **first-party login/IP security log** — `account_login_events` (`account_id`, `ip`, `occurred_at`,
-`context ∈ {login, activity, registration}`, `resolved_country`, `resolved_isp`, `is_vpn`, `is_tor`,
-`user_agent`; `pii:contact`, retention-bounded, purge-erased) — emitted by the **existing OIDC/JWKS
-validation middleware** on the `/whoami` / token-validation path. It is **first-party security
-telemetry**, *not* OSINT breach enrichment, and it does **not** make the service an authenticator:
-**L-AuthzOnly holds** (no stored credentials, no issued tokens). Split into its own milestone because,
-with delegated auth, its value and shape are independent of the M32 person-address work. A retention
-sweep prunes old events; person purge erases the subject's events. RID = `account` object (allocated on
-build).
+A **first-party login/IP security log** — `account_login_events` (account Object `9,1,4`: `account_id`,
+`context ∈ {login, activity, registration}`, `ip`, `first_seen_at`/`last_seen_at`, `occurrence_count`,
+and the deferred `resolved_country`/`resolved_isp`/`is_vpn`/`is_tor` intel overlay + `user_agent`;
+`pii:contact`, retention-bounded, purge-erased). It is **first-party security telemetry**, *not* OSINT
+enrichment, and does **not** make the service an authenticator (**L-AuthzOnly holds**).
+
+- **Emit.** The validation middleware records a login/IP occurrence per validated **human** request
+  (`registration` on the JIT link-on-match, else `login`), **off the critical path** (a detached
+  goroutine) and best-effort — a logging failure never fails the request. Service principals are
+  excluded. The write is **de-duped**: one row per `(account, context, ip)` per
+  `login-security.dedup-window-seconds` (default 1h) — a repeat bumps `last_seen_at`/`occurrence_count`,
+  else inserts. So the log is bounded, not a per-request firehose.
+- **Client IP.** `RemoteAddr` by default; the facade-set `X-Forwarded-For` when
+  `login-security.trust-forwarded-for` is on (the core is behind `console-bff` — see the
+  D-HeadlessTopology M37 amendment). Never trusted from a direct caller, so no self-spoofing.
+- **IP intelligence** (`resolved_*`/`is_vpn`/`is_tor`) is a **deferred `IPIntel` seam** (`internal/
+  identityfederation/ipintel`): a no-op default leaves the columns NULL; a real GeoIP/VPN/Tor resolver
+  (a future hermenea connector) fills them without a schema change.
+- **Read.** `GET /accounts/{accountId}/login-events` (keyset, newest-first), gated on the instance-scope
+  **`account.security-log.read`** (the data is pii:contact). No console surface yet (`UI ➖`).
+- **Erasure & retention.** `SubscribePersonPurge` hard-deletes a purged person's events in the purge
+  transaction (pii:contact is erased, not retained); `delete_login_events_before` +
+  `login-security.retention-days` (0 = retain forever) sweep old events (best-effort boot sweep; a
+  scheduled enforcer is an open seam, as with D-AuditRetention).

@@ -10,6 +10,8 @@ export * from "./identityInvalid";
 export * from "./identityNotFound";
 export * from "./issuerOption";
 export * from "./linkIdentityRequest";
+export * from "./loginEvent";
+export * from "./loginEventPage";
 export * from "./registerServicePrincipalRequest";
 export * from "./servicePrincipal";
 export * from "./servicePrincipalConflict";

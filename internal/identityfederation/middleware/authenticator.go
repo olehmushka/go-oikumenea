@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"errors"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -14,6 +15,13 @@ import (
 	"github.com/olegamysk/go-oikumenea/pkg/authn"
 	"github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
+
+// LoginRecorder records a deduped login/IP occurrence on the validation seam (M37 / D-LoginSecurityLog).
+// The identity-federation application service satisfies it (RecordLoginSeen). Best-effort by contract:
+// the method never returns an error and the middleware calls it off the request's critical path.
+type LoginRecorder interface {
+	RecordLoginSeen(ctx context.Context, accountID string, c domain.LoginContext, ip, userAgent string)
+}
 
 // ReservedLocalIssuer is the synthetic issuer the shared-secret fallback principal is registered
 // under (M51 / D-ServiceIdentities). No real token can present it: the validator routes on `iss`
@@ -71,6 +79,10 @@ type Authenticator struct {
 	// It is validated by constant-time comparison — go-oikumenea stores no credential; the operator
 	// supplies it at deploy time (mirrors the bootstrap-admin pattern).
 	importToken string
+	// Login security log (M37 / D-LoginSecurityLog), set once at boot via SetLoginRecorder. A nil
+	// recorder disables emission. trustForwardedFor governs client-IP extraction — see clientIP.
+	loginRecorder     LoginRecorder
+	trustForwardedFor bool
 }
 
 type bound struct {
@@ -101,6 +113,43 @@ func (a *Authenticator) importServiceToken() string {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.importToken
+}
+
+// SetLoginRecorder wires the login-security-log recorder (M37 / D-LoginSecurityLog) and the
+// client-IP trust policy. Called once at boot; a nil recorder leaves emission off. trustForwardedFor
+// must be true ONLY when the core sits behind a facade that sets an authoritative X-Forwarded-For
+// (D-HeadlessTopology, amended) — otherwise the client could spoof its own logged IP.
+func (a *Authenticator) SetLoginRecorder(rec LoginRecorder, trustForwardedFor bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.loginRecorder = rec
+	a.trustForwardedFor = trustForwardedFor
+}
+
+// loginConfig returns the login recorder + trust policy under the lock.
+func (a *Authenticator) loginConfig() (LoginRecorder, bool) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.loginRecorder, a.trustForwardedFor
+}
+
+// clientIP extracts the request's client IP. When trustForwardedFor is on (the core is behind a
+// facade that sets a single authoritative X-Forwarded-For — D-HeadlessTopology amended), it takes the
+// first XFF entry; otherwise the connection's RemoteAddr host. Returns "" when neither yields an IP.
+func clientIP(r *http.Request, trustForwardedFor bool) string {
+	if trustForwardedFor {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			if i := strings.IndexByte(xff, ','); i >= 0 {
+				xff = xff[:i]
+			}
+			return strings.TrimSpace(xff)
+		}
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return strings.TrimSpace(r.RemoteAddr)
+	}
+	return host
 }
 
 // Bind wires the validator, the (issuer, subject) resolver, the person directory (for JIT), the
@@ -182,7 +231,7 @@ func (a *Authenticator) Handle(rw http.ResponseWriter, r *http.Request, next htt
 		return
 	}
 
-	res, err := b.resolve(r.Context(), claims)
+	res, jitLinked, err := b.resolve(r.Context(), claims)
 	if err != nil {
 		// Not a known person identity. Try the machine arm before rejecting: a client-credentials
 		// token from a registered service principal resolves here (M51 / D-ServiceIdentities). The
@@ -205,6 +254,19 @@ func (a *Authenticator) Handle(rw http.ResponseWriter, r *http.Request, next htt
 		return
 	}
 	ctx := authn.NewContext(r.Context(), authn.Subject{PersonID: res.PersonID, AccountID: res.AccountID, Email: res.Email})
+
+	// Login security log (M37 / D-LoginSecurityLog): record a deduped login/IP occurrence for the
+	// resolved human account, OFF the critical path (a detached, non-cancelable context so the write
+	// survives the response) and best-effort (RecordLoginSeen never errors upward). registration marks
+	// the JIT link-on-match; login marks a validated request. Machine principals never reach here.
+	if rec, trustXFF := a.loginConfig(); rec != nil && res.AccountID != "" {
+		lc := domain.LoginContextLogin
+		if jitLinked {
+			lc = domain.LoginContextRegistration
+		}
+		ip, ua, acct := clientIP(r, trustXFF), r.Header.Get("User-Agent"), res.AccountID
+		go rec.RecordLoginSeen(context.WithoutCancel(ctx), acct, lc, ip, ua)
+	}
 
 	// Authority snapshot + RLS backstop (R-01.1 / R-03 / D-RLSDefenseInDepth): resolve the subject's
 	// authority state once — the returned context carries the snapshot every later PDP call reuses —
@@ -262,26 +324,31 @@ func (b *bound) serviceContext(ctx context.Context, issuer, subject string) (con
 
 // resolve turns verified claims into a PDP subject: first a direct (issuer, subject) lookup; on an
 // unknown identity, just-in-time link-on-match (D-JIT) when enabled — match the configured claim to
-// an EXISTING person.code and link; otherwise reject. JIT never creates a person.
-func (b *bound) resolve(ctx context.Context, claims Claims) (domain.Resolution, error) {
+// an EXISTING person.code and link; otherwise reject. JIT never creates a person. The bool return is
+// jitLinked: true when the subject was linked via JIT this request (the login-log registration signal).
+func (b *bound) resolve(ctx context.Context, claims Claims) (domain.Resolution, bool, error) {
 	res, err := b.resolver.Resolve(ctx, claims.Issuer, claims.Subject)
 	if err == nil {
-		return res, nil
+		return res, false, nil
 	}
 	if !errors.Is(err, domain.ErrIdentityNotFound) {
-		return domain.Resolution{}, err
+		return domain.Resolution{}, false, err
 	}
 	if !b.jitEnabled || claims.JITValue == "" {
-		return domain.Resolution{}, errInvalidToken
+		return domain.Resolution{}, false, errInvalidToken
 	}
 	personID, ok, err := b.persons.PersonIDByCode(ctx, claims.JITValue)
 	if err != nil {
-		return domain.Resolution{}, err
+		return domain.Resolution{}, false, err
 	}
 	if !ok {
-		return domain.Resolution{}, errInvalidToken // no match -> reject
+		return domain.Resolution{}, false, errInvalidToken // no match -> reject
 	}
-	return b.resolver.LinkOnMatch(ctx, personID, claims.Issuer, claims.Subject, claims.Email)
+	linked, err := b.resolver.LinkOnMatch(ctx, personID, claims.Issuer, claims.Subject, claims.Email)
+	if err != nil {
+		return domain.Resolution{}, false, err
+	}
+	return linked, true, nil
 }
 
 // bearerToken extracts the token from the Authorization header (case-insensitive "Bearer " scheme).
