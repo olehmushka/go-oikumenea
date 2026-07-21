@@ -1,5 +1,5 @@
 export interface IChildCreationExcluded {
-    'errorCode': "FAILED_PRECONDITION";
+    'errorCode': "CONFLICT";
     'errorInstanceId': string;
     'errorName': "Religion:ChildCreationExcluded";
     'parameters': {

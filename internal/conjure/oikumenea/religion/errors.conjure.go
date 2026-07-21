@@ -511,7 +511,7 @@ func IsChildCreationExcluded(err error) bool {
 }
 
 func (e *ChildCreationExcluded) Error() string {
-	return fmt.Sprintf("FAILED_PRECONDITION Religion:ChildCreationExcluded (%s)", e.errorInstanceID)
+	return fmt.Sprintf("CONFLICT Religion:ChildCreationExcluded (%s)", e.errorInstanceID)
 }
 
 // Cause returns the underlying cause of the error, or nil if none.
@@ -528,7 +528,7 @@ func (e *ChildCreationExcluded) StackTrace() werror.StackTrace {
 
 // Message returns the message body for the error.
 func (e *ChildCreationExcluded) Message() string {
-	return "FAILED_PRECONDITION Religion:ChildCreationExcluded"
+	return "CONFLICT Religion:ChildCreationExcluded"
 }
 
 // Format implements fmt.Formatter, a requirement of werror.Werror.
@@ -538,7 +538,7 @@ func (e *ChildCreationExcluded) Format(state fmt.State, verb rune) {
 
 // Code returns an enum describing error category.
 func (e *ChildCreationExcluded) Code() errors.ErrorCode {
-	return errors.FailedPrecondition
+	return errors.Conflict
 }
 
 // Name returns an error name identifying error type.
@@ -595,7 +595,7 @@ func (e ChildCreationExcluded) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.FailedPrecondition, ErrorName: "Religion:ChildCreationExcluded", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.Conflict, ErrorName: "Religion:ChildCreationExcluded", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
 }
 
 func (e *ChildCreationExcluded) UnmarshalJSON(data []byte) error {
@@ -1258,7 +1258,7 @@ func IsInUse(err error) bool {
 }
 
 func (e *InUse) Error() string {
-	return fmt.Sprintf("FAILED_PRECONDITION Religion:InUse (%s)", e.errorInstanceID)
+	return fmt.Sprintf("CONFLICT Religion:InUse (%s)", e.errorInstanceID)
 }
 
 // Cause returns the underlying cause of the error, or nil if none.
@@ -1275,7 +1275,7 @@ func (e *InUse) StackTrace() werror.StackTrace {
 
 // Message returns the message body for the error.
 func (e *InUse) Message() string {
-	return "FAILED_PRECONDITION Religion:InUse"
+	return "CONFLICT Religion:InUse"
 }
 
 // Format implements fmt.Formatter, a requirement of werror.Werror.
@@ -1285,7 +1285,7 @@ func (e *InUse) Format(state fmt.State, verb rune) {
 
 // Code returns an enum describing error category.
 func (e *InUse) Code() errors.ErrorCode {
-	return errors.FailedPrecondition
+	return errors.Conflict
 }
 
 // Name returns an error name identifying error type.
@@ -1342,7 +1342,7 @@ func (e InUse) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.FailedPrecondition, ErrorName: "Religion:InUse", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.Conflict, ErrorName: "Religion:InUse", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
 }
 
 func (e *InUse) UnmarshalJSON(data []byte) error {
@@ -2750,7 +2750,7 @@ func IsTaxonCycleDetected(err error) bool {
 }
 
 func (e *TaxonCycleDetected) Error() string {
-	return fmt.Sprintf("FAILED_PRECONDITION Religion:TaxonCycleDetected (%s)", e.errorInstanceID)
+	return fmt.Sprintf("CONFLICT Religion:TaxonCycleDetected (%s)", e.errorInstanceID)
 }
 
 // Cause returns the underlying cause of the error, or nil if none.
@@ -2767,7 +2767,7 @@ func (e *TaxonCycleDetected) StackTrace() werror.StackTrace {
 
 // Message returns the message body for the error.
 func (e *TaxonCycleDetected) Message() string {
-	return "FAILED_PRECONDITION Religion:TaxonCycleDetected"
+	return "CONFLICT Religion:TaxonCycleDetected"
 }
 
 // Format implements fmt.Formatter, a requirement of werror.Werror.
@@ -2777,7 +2777,7 @@ func (e *TaxonCycleDetected) Format(state fmt.State, verb rune) {
 
 // Code returns an enum describing error category.
 func (e *TaxonCycleDetected) Code() errors.ErrorCode {
-	return errors.FailedPrecondition
+	return errors.Conflict
 }
 
 // Name returns an error name identifying error type.
@@ -2834,7 +2834,7 @@ func (e TaxonCycleDetected) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.FailedPrecondition, ErrorName: "Religion:TaxonCycleDetected", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.Conflict, ErrorName: "Religion:TaxonCycleDetected", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
 }
 
 func (e *TaxonCycleDetected) UnmarshalJSON(data []byte) error {
