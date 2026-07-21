@@ -1,5 +1,5 @@
 export interface ITaxonCycleDetected {
-    'errorCode': "FAILED_PRECONDITION";
+    'errorCode': "CONFLICT";
     'errorInstanceId': string;
     'errorName': "Religion:TaxonCycleDetected";
     'parameters': {

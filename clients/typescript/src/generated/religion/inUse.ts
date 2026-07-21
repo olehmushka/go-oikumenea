@@ -1,5 +1,5 @@
 export interface IInUse {
-    'errorCode': "FAILED_PRECONDITION";
+    'errorCode': "CONFLICT";
     'errorInstanceId': string;
     'errorName': "Religion:InUse";
     'parameters': {

@@ -645,19 +645,19 @@ types:
       TaxonCycleDetected:
         docs: Reparenting would create a cycle in the taxonomy tree.
         namespace: Religion
-        code: FAILED_PRECONDITION
+        code: CONFLICT
         safe-args:
           taxonId: string
       InUse:
         docs: The entity is still referenced (e.g. a taxon with children or classified units).
         namespace: Religion
-        code: FAILED_PRECONDITION
+        code: CONFLICT
         safe-args:
           reason: string
       ChildCreationExcluded:
         docs: The parent unit carries an active excludes_child_creation policy.
         namespace: Religion
-        code: FAILED_PRECONDITION
+        code: CONFLICT
         safe-args:
           unitId: string
       GradeNotFound:
