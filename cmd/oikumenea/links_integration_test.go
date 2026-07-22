@@ -26,6 +26,7 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -67,6 +68,11 @@ func newLinkWorld(t *testing.T) linkWorld {
 	if dsn == "" {
 		dsn = linksTestDSN
 	}
+	return newLinkWorldDSN(t, dsn)
+}
+
+func newLinkWorldDSN(t *testing.T, dsn string) linkWorld {
+	t.Helper()
 	pool, err := pdb.NewPool(context.Background(), dsn, "local")
 	if err != nil {
 		t.Fatalf("connect test db: %v", err)
@@ -456,6 +462,304 @@ func TestPolymorphicHolder(t *testing.T) {
 	}
 	if !contains(idx["held_by"]["organization"], org) {
 		t.Errorf("held_by should include company/org holder %s; got %v", org, idx["held_by"])
+	}
+}
+
+// hop2edge identifies one depth-2 result row as the edge it represents.
+type hop2edge struct{ via, target string }
+
+// walkDepth2 pages searchAround(depth=2) to exhaustion, returning the distinct hop-1 neighbor set and
+// the list of hop-2 edges, asserting no duplicate edge is ever emitted across pages.
+func walkDepth2(t *testing.T, w linkWorld, ctx context.Context, rid, linkTypes string, pageSize int) (map[string]bool, []hop2edge) {
+	t.Helper()
+	hop1 := map[string]bool{}
+	var hop2 []hop2edge
+	seenEdge := map[hop2edge]bool{}
+	token := ""
+	for pages := 0; pages < 200; pages++ {
+		res, err := w.engine.SearchAroundDepth(ctx, rid, linkTypes, 2, pageSize, token)
+		if err != nil {
+			t.Fatalf("SearchAroundDepth page %d: %v", pages, err)
+		}
+		for _, n := range res.Neighbors {
+			switch n.Hop {
+			case 2:
+				e := hop2edge{via: n.ViaRID, target: n.TargetRID}
+				if seenEdge[e] {
+					t.Errorf("duplicate hop-2 edge %+v across pages", e)
+				}
+				seenEdge[e] = true
+				hop2 = append(hop2, e)
+				if n.ViaRID == "" {
+					t.Errorf("hop-2 row %s missing viaRid", n.TargetRID)
+				}
+			default: // hop 1 (0 or 1)
+				hop1[n.TargetRID] = true
+			}
+		}
+		if res.NextPageToken == "" {
+			return hop1, hop2
+		}
+		token = res.NextPageToken
+	}
+	t.Fatalf("depth-2 walk did not terminate")
+	return nil, nil
+}
+
+func hasEdge(edges []hop2edge, via, target string) bool {
+	for _, e := range edges {
+		if e.via == via && e.target == target {
+			return true
+		}
+	}
+	return false
+}
+
+// TestSearchAroundDepth2FrontierWalk: a two-generation kin graph expanded at depth 2 with a small page
+// size returns every hop-1 child and every hop-2 grandchild edge, exhaustively, with no dup/skip —
+// the "full keyset frontier" walk across a multi-node frontier.
+func TestSearchAroundDepth2FrontierWalk(t *testing.T) {
+	w := newLinkWorld(t)
+	admin := w.seedPerson(t, "D2 Admin", "")
+	w.makeAdmin(t, admin)
+
+	root := w.seedPerson(t, "D2 Root", "")
+	c1 := w.seedPerson(t, "D2 C1", "")
+	c2 := w.seedPerson(t, "D2 C2", "")
+	c3 := w.seedPerson(t, "D2 C3", "") // no grandchildren
+	w.seedKinship(t, root, c1)
+	w.seedKinship(t, root, c2)
+	w.seedKinship(t, root, c3)
+	g1a := w.seedPerson(t, "D2 G1a", "")
+	g1b := w.seedPerson(t, "D2 G1b", "")
+	g2a := w.seedPerson(t, "D2 G2a", "")
+	w.seedKinship(t, c1, g1a)
+	w.seedKinship(t, c1, g1b)
+	w.seedKinship(t, c2, g2a)
+
+	hop1, hop2 := walkDepth2(t, w, linksSubjectCtx(admin), root, "kin_parent_of", 2)
+
+	for _, c := range []string{c1, c2, c3} {
+		if !hop1[c] {
+			t.Errorf("hop-1 child %s missing", c)
+		}
+	}
+	for _, want := range []hop2edge{{c1, g1a}, {c1, g1b}, {c2, g2a}} {
+		if !hasEdge(hop2, want.via, want.target) {
+			t.Errorf("hop-2 edge %+v missing; got %v", want, hop2)
+		}
+	}
+	// c3 has no children ⇒ contributes no hop-2 edge.
+	if hasEdge(hop2, c3, "") || len(hop2) != 3 {
+		t.Errorf("expected exactly 3 hop-2 edges, got %v", hop2)
+	}
+}
+
+// TestSearchAroundDepth2Backtrack: the trivial backtrack edge to the origin is excluded, but a genuine
+// alternate 2-path is kept — a grandchild that is ALSO a direct child appears both as a hop-1 neighbor
+// and as a hop-2 edge through the intermediate node (each row is an edge, not a deduped node).
+func TestSearchAroundDepth2Backtrack(t *testing.T) {
+	w := newLinkWorld(t)
+	admin := w.seedPerson(t, "BT Admin", "")
+	w.makeAdmin(t, admin)
+
+	root := w.seedPerson(t, "BT Root", "")
+	c1 := w.seedPerson(t, "BT C1", "")
+	c2 := w.seedPerson(t, "BT C2", "")
+	w.seedKinship(t, root, c1)
+	w.seedKinship(t, root, c2)
+	w.seedKinship(t, c1, c2) // c2 is a child of both root (direct) and c1 (via c1)
+
+	hop1, hop2 := walkDepth2(t, w, linksSubjectCtx(admin), root, "kin_parent_of", 50)
+
+	if !hop1[c1] || !hop1[c2] {
+		t.Errorf("both direct children expected at hop-1; got %v", hop1)
+	}
+	if !hasEdge(hop2, c1, c2) {
+		t.Errorf("alternate 2-path (c1→c2) must be kept as a hop-2 edge; got %v", hop2)
+	}
+	// The origin must never appear as a hop-2 neighbor (c1/c2 point back at root via the in-arm).
+	if hasEdge(hop2, c1, root) || hasEdge(hop2, c2, root) {
+		t.Errorf("origin %s must be excluded from hop-2 (backtrack); got %v", root, hop2)
+	}
+}
+
+// TestSearchAroundDepth2PerHopGate: restricted to the kin arm, a subject without the kinship read code
+// sees NOTHING at either hop (the arm is gated off, so the hop-1 child is never a frontier node and its
+// grandchild is never reached); a kinship reader sees both. The arm gate is applied at every hop.
+func TestSearchAroundDepth2PerHopGate(t *testing.T) {
+	w := newLinkWorld(t)
+	unit := w.seedUnit(t)
+	root := w.seedPerson(t, "Gate2 Root", unit)
+	c := w.seedPerson(t, "Gate2 Child", unit)
+	g := w.seedPerson(t, "Gate2 Grandchild", unit)
+	w.seedKinship(t, root, c)
+	w.seedKinship(t, c, g)
+
+	// membership.read only ⇒ the kin arm is gated off at both hops.
+	gated := w.seedPerson(t, "Gate2 Gated", unit)
+	w.seedGrant(t, gated, unit, string(authzdomain.PermMembershipRead))
+	hop1, hop2 := walkDepth2(t, w, linksSubjectCtx(gated), root, "kin_parent_of", 50)
+	if len(hop1) != 0 || len(hop2) != 0 {
+		t.Errorf("kin arm must be fully gated without kinship.read; got hop1=%v hop2=%v", hop1, hop2)
+	}
+
+	// A kinship reader: the child (hop-1) and grandchild (hop-2 via child) both appear — the positive
+	// control that the graph is non-empty and the gate, not the topology, produced the empty result.
+	reader := w.seedPerson(t, "Gate2 Reader", unit)
+	w.seedGrant(t, reader, unit, string(authzdomain.PermPersonRead), string(authzdomain.PermPersonKinshipRead))
+	hop1, hop2 = walkDepth2(t, w, linksSubjectCtx(reader), root, "kin_parent_of", 50)
+	if !hop1[c] {
+		t.Errorf("kinship reader should see hop-1 child %s; got %v", c, hop1)
+	}
+	if !hasEdge(hop2, c, g) {
+		t.Errorf("kinship reader should see hop-2 edge (child→grandchild); got %v", hop2)
+	}
+}
+
+// TestSearchAroundDepth2Trim: a hop-1 kin child in an UNREACHABLE unit is trimmed from the frontier
+// (D-VisibilityScope, R-30), so it is never expanded and its own grandchild never surfaces; the
+// reachable child and its grandchild do.
+func TestSearchAroundDepth2Trim(t *testing.T) {
+	w := newLinkWorld(t)
+	reachUnit := w.seedUnit(t)
+	farUnit := w.seedUnit(t)
+	root := w.seedPerson(t, "Trim2 Root", reachUnit)
+	near := w.seedPerson(t, "Trim2 Near", reachUnit)
+	far := w.seedPerson(t, "Trim2 Far", farUnit)
+	w.seedKinship(t, root, near)
+	w.seedKinship(t, root, far)
+	gNear := w.seedPerson(t, "Trim2 GNear", reachUnit)
+	gFar := w.seedPerson(t, "Trim2 GFar", reachUnit)
+	w.seedKinship(t, near, gNear)
+	w.seedKinship(t, far, gFar)
+
+	subject := w.seedPerson(t, "Trim2 Viewer", reachUnit)
+	w.seedGrant(t, subject, reachUnit, string(authzdomain.PermPersonRead), string(authzdomain.PermPersonKinshipRead))
+
+	hop1, hop2 := walkDepth2(t, w, linksSubjectCtx(subject), root, "kin_parent_of", 50)
+
+	if !hop1[near] {
+		t.Errorf("reachable hop-1 child %s should be present; got %v", near, hop1)
+	}
+	if hop1[far] {
+		t.Errorf("unreachable hop-1 child %s must be trimmed; got %v", far, hop1)
+	}
+	if !hasEdge(hop2, near, gNear) {
+		t.Errorf("reachable grandchild edge (near→gNear) expected; got %v", hop2)
+	}
+	if hasEdge(hop2, far, gFar) {
+		t.Errorf("trimmed hop-1 node %s must not be expanded to its grandchild; got %v", far, hop2)
+	}
+}
+
+// TestSearchAroundDepth2InvalidToken: a depth-1 (v1) token is rejected on a depth-2 request — depth
+// crossings never share a page token.
+func TestSearchAroundDepth2InvalidToken(t *testing.T) {
+	w := newLinkWorld(t)
+	admin := w.seedPerson(t, "Tok Admin", "")
+	w.makeAdmin(t, admin)
+	root := w.seedPerson(t, "Tok Root", "")
+	for i := 0; i < 3; i++ {
+		w.seedKinship(t, root, w.seedPerson(t, "Tok Kin", ""))
+	}
+	// A depth-1 page with a small size yields a v1 continuation token.
+	d1, err := w.engine.SearchAroundDepth(linksSubjectCtx(admin), root, "kin_parent_of", 1, 1, "")
+	if err != nil {
+		t.Fatalf("depth-1 page: %v", err)
+	}
+	if d1.NextPageToken == "" {
+		t.Fatalf("expected a v1 continuation token from the depth-1 page")
+	}
+	if _, err := w.engine.SearchAroundDepth(linksSubjectCtx(admin), root, "kin_parent_of", 2, 50, d1.NextPageToken); err == nil {
+		t.Errorf("a v1 token must be rejected on a depth-2 request")
+	}
+}
+
+// TestSearchAroundDepth2Scale is the review-2026-09 gate measurement (the "< 1 s, 50-neighbor node,
+// 2-hop, M49-scale dataset" acceptance, review-2026-09.md §R-27). It is SKIPPED unless
+// OIKUMENEA_SCALE_DSN points at a seed-scale database (scripts/seed-scale: 100k units / 1M persons /
+// 1M memberships). Because that harness seeds a shallow star (~1 membership/person, ≤27 members/unit),
+// it attaches one probe person to 50 existing units so the origin has a genuine 50-node hop-1 frontier,
+// each expanded one more hop into its members — the case depth-2 exists to serve. Measured with an
+// admin viewer so the numbers isolate the NEW depth-2 machinery (hop-1 collect + distinct-neighbor
+// frontier enumeration + one inner collect per frontier node); the per-hop visibility trim it
+// short-circuits for admins is the identical bounded semi-join depth-1 already runs (R-30).
+//
+//	OIKUMENEA_SCALE_DSN="postgres://postgres:dev@localhost:5432/oikumenea_scale?sslmode=disable" \
+//	go test -tags integration ./cmd/oikumenea/ -run TestSearchAroundDepth2Scale -v
+func TestSearchAroundDepth2Scale(t *testing.T) {
+	dsn := os.Getenv("OIKUMENEA_SCALE_DSN")
+	if dsn == "" {
+		t.Skip("set OIKUMENEA_SCALE_DSN to a seed-scale database to run the depth-2 gate measurement")
+	}
+	w := newLinkWorldDSN(t, dsn)
+	ctx := context.Background()
+
+	// Probe person + admin viewer, both cleaned up so the scale DB stays pristine.
+	var probe, admin string
+	if err := w.pool.QueryRow(ctx,
+		`INSERT INTO oikumenea.person_persons (code, display_name) VALUES ('d2-scale-probe','D2 Scale Probe') RETURNING id::text`).Scan(&probe); err != nil {
+		t.Fatalf("seed probe: %v", err)
+	}
+	if err := w.pool.QueryRow(ctx,
+		`INSERT INTO oikumenea.person_persons (code, display_name) VALUES ('d2-scale-admin','D2 Scale Admin') RETURNING id::text`).Scan(&admin); err != nil {
+		t.Fatalf("seed admin: %v", err)
+	}
+	w.makeAdmin(t, admin)
+	t.Cleanup(func() {
+		_, _ = w.pool.Exec(ctx, `DELETE FROM oikumenea.membership_memberships WHERE person_id=$1`, probe)
+		_, _ = w.pool.Exec(ctx, `DELETE FROM oikumenea.authz_instance_admins WHERE person_id=$1`, admin)
+		_, _ = w.pool.Exec(ctx, `DELETE FROM oikumenea.person_persons WHERE id = ANY($1)`, []string{probe, admin})
+	})
+
+	// Attach the probe to 50 existing units that already carry members (so hop-2 does real work).
+	var attached int
+	if err := w.pool.QueryRow(ctx, `
+		WITH targets AS (
+			SELECT unit_id FROM oikumenea.membership_memberships
+			GROUP BY unit_id HAVING count(*) >= 10 LIMIT 50)
+		INSERT INTO oikumenea.membership_memberships (person_id, unit_id)
+		SELECT $1, unit_id FROM targets
+		RETURNING (SELECT count(*) FROM targets)`, probe).Scan(&attached); err != nil {
+		t.Fatalf("attach probe memberships: %v", err)
+	}
+	if attached < 50 {
+		t.Fatalf("expected 50 probe memberships, attached %d", attached)
+	}
+
+	// Walk depth-2 to exhaustion, timing the whole walk and counting DB statements.
+	cctx, counter := pdb.WithQueryCounter(linksSubjectCtx(admin))
+	start := time.Now()
+	hop1, hop2, pages := 0, 0, 0
+	token := ""
+	for {
+		res, err := w.engine.SearchAroundDepth(cctx, probe, "", 2, 200, token)
+		if err != nil {
+			t.Fatalf("SearchAroundDepth: %v", err)
+		}
+		pages++
+		for _, n := range res.Neighbors {
+			if n.Hop == 2 {
+				hop2++
+			} else {
+				hop1++
+			}
+		}
+		if res.NextPageToken == "" {
+			break
+		}
+		token = res.NextPageToken
+	}
+	elapsed := time.Since(start)
+
+	t.Logf("depth-2 @ M49 scale: hop1=%d hop2=%d total=%d pages=%d db_queries=%d elapsed=%s",
+		hop1, hop2, hop1+hop2, pages, counter.Count(), elapsed)
+	if hop1 == 0 || hop2 == 0 {
+		t.Fatalf("probe produced no 2-hop neighborhood (hop1=%d hop2=%d)", hop1, hop2)
+	}
+	if elapsed >= time.Second {
+		t.Fatalf("depth-2 gate NOT cleared: 50-node 2-hop walk took %s (>= 1s)", elapsed)
 	}
 }
 

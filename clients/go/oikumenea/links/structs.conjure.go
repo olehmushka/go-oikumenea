@@ -68,6 +68,10 @@ type LinkRow struct {
 	Direction string `json:"direction"`
 	// Optional link attributes chosen by the descriptor (status, role, effective dates, …).
 	Attrs *map[string]string `json:"attrs,omitempty"`
+	// Distance from the queried object: 1 (direct neighbor) or 2 (second hop, reached via viaRid). Only depth-2 search-around ever sets it; absent ⇒ a direct link.
+	Hop *int `json:"hop,omitempty"`
+	// For a hop-2 row, the hop-1 neighbor RID this row was reached through (canonical UUID text) — the intermediate node on the path. Absent for direct (hop-1) rows.
+	ViaRid *string `json:"viaRid,omitempty"`
 }
 
 func (o LinkRow) MarshalYAML() (interface{}, error) {
@@ -87,8 +91,10 @@ func (o *LinkRow) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 /*
-The queried object's depth-1 neighborhood as a flat neighbor list — the graph-explorer
-shape (search-around). Depth>1 is a deliberate non-goal for this endpoint (review-2026-09).
+The queried object's neighborhood as a flat neighbor list — the graph-explorer shape
+(search-around). depth=1 (default) is the direct neighborhood; depth=2 additionally returns
+each direct neighbor's own neighbors (rows tagged hop=2, carrying viaRid). Depth is capped
+at 2 (D-LinkTraversal depth-2, "full keyset frontier").
 */
 type Neighborhood struct {
 	Rid           string    `json:"rid"`

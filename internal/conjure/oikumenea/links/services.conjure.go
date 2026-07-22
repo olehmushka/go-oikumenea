@@ -24,10 +24,14 @@ type LinkServiceClient interface {
 	*/
 	GetObjectLinks(ctx context.Context, authHeader bearertoken.Token, ridArg string, linkTypesArg *string, pageSizeArg *int, pageTokenArg *string) (ObjectLinks, error)
 	/*
-	   Depth-1 neighborhood of `rid` as a flat neighbor list (the graph-explorer shape). Same
-	   engine as getObjectLinks, flattened; depth>1 is out of scope (review-2026-09 Phase 15).
+	   Neighborhood of `rid` as a flat neighbor list (the graph-explorer shape). Same engine as
+	   getObjectLinks, flattened. depth=1 (default) returns direct neighbors; depth=2 additionally
+	   expands each direct neighbor one more hop (rows tagged hop=2, carrying viaRid), walked
+	   exhaustively via a keyset frontier. Per-hop authorization is identical to depth-1 (arm gate
+	   + neighbor visibility trim at every hop); a neighbor the subject cannot read is neither
+	   returned nor expanded.
 	*/
-	SearchAround(ctx context.Context, authHeader bearertoken.Token, ridArg string, linkTypesArg *string, pageSizeArg *int, pageTokenArg *string) (Neighborhood, error)
+	SearchAround(ctx context.Context, authHeader bearertoken.Token, ridArg string, depthArg *int, linkTypesArg *string, pageSizeArg *int, pageTokenArg *string) (Neighborhood, error)
 }
 
 type linkServiceClient struct {
@@ -66,13 +70,16 @@ func (c *linkServiceClient) GetObjectLinks(ctx context.Context, authHeader beare
 	return *returnVal, nil
 }
 
-func (c *linkServiceClient) SearchAround(ctx context.Context, authHeader bearertoken.Token, ridArg string, linkTypesArg *string, pageSizeArg *int, pageTokenArg *string) (Neighborhood, error) {
+func (c *linkServiceClient) SearchAround(ctx context.Context, authHeader bearertoken.Token, ridArg string, depthArg *int, linkTypesArg *string, pageSizeArg *int, pageTokenArg *string) (Neighborhood, error) {
 	var returnVal *Neighborhood
 	var requestParams []httpclient.RequestParam
 	requestParams = append(requestParams, httpclient.WithRPCMethodName("SearchAround"))
 	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
 	requestParams = append(requestParams, httpclient.WithPathf("/links/v1/objects/%s/search-around", url.PathEscape(fmt.Sprint(ridArg))))
 	queryParams := make(url.Values)
+	if depthArg != nil {
+		queryParams.Set("depth", fmt.Sprint(*depthArg))
+	}
 	if linkTypesArg != nil {
 		queryParams.Set("linkTypes", fmt.Sprint(*linkTypesArg))
 	}
@@ -105,10 +112,14 @@ type LinkServiceClientWithAuth interface {
 	*/
 	GetObjectLinks(ctx context.Context, ridArg string, linkTypesArg *string, pageSizeArg *int, pageTokenArg *string) (ObjectLinks, error)
 	/*
-	   Depth-1 neighborhood of `rid` as a flat neighbor list (the graph-explorer shape). Same
-	   engine as getObjectLinks, flattened; depth>1 is out of scope (review-2026-09 Phase 15).
+	   Neighborhood of `rid` as a flat neighbor list (the graph-explorer shape). Same engine as
+	   getObjectLinks, flattened. depth=1 (default) returns direct neighbors; depth=2 additionally
+	   expands each direct neighbor one more hop (rows tagged hop=2, carrying viaRid), walked
+	   exhaustively via a keyset frontier. Per-hop authorization is identical to depth-1 (arm gate
+	   + neighbor visibility trim at every hop); a neighbor the subject cannot read is neither
+	   returned nor expanded.
 	*/
-	SearchAround(ctx context.Context, ridArg string, linkTypesArg *string, pageSizeArg *int, pageTokenArg *string) (Neighborhood, error)
+	SearchAround(ctx context.Context, ridArg string, depthArg *int, linkTypesArg *string, pageSizeArg *int, pageTokenArg *string) (Neighborhood, error)
 }
 
 func NewLinkServiceClientWithAuth(client LinkServiceClient, authHeader bearertoken.Token) LinkServiceClientWithAuth {
@@ -124,8 +135,8 @@ func (c *linkServiceClientWithAuth) GetObjectLinks(ctx context.Context, ridArg s
 	return c.client.GetObjectLinks(ctx, c.authHeader, ridArg, linkTypesArg, pageSizeArg, pageTokenArg)
 }
 
-func (c *linkServiceClientWithAuth) SearchAround(ctx context.Context, ridArg string, linkTypesArg *string, pageSizeArg *int, pageTokenArg *string) (Neighborhood, error) {
-	return c.client.SearchAround(ctx, c.authHeader, ridArg, linkTypesArg, pageSizeArg, pageTokenArg)
+func (c *linkServiceClientWithAuth) SearchAround(ctx context.Context, ridArg string, depthArg *int, linkTypesArg *string, pageSizeArg *int, pageTokenArg *string) (Neighborhood, error) {
+	return c.client.SearchAround(ctx, c.authHeader, ridArg, depthArg, linkTypesArg, pageSizeArg, pageTokenArg)
 }
 
 func NewLinkServiceClientWithTokenProvider(client LinkServiceClient, tokenProvider httpclient.TokenProvider) LinkServiceClientWithAuth {
@@ -145,10 +156,10 @@ func (c *linkServiceClientWithTokenProvider) GetObjectLinks(ctx context.Context,
 	return c.client.GetObjectLinks(ctx, bearertoken.Token(token), ridArg, linkTypesArg, pageSizeArg, pageTokenArg)
 }
 
-func (c *linkServiceClientWithTokenProvider) SearchAround(ctx context.Context, ridArg string, linkTypesArg *string, pageSizeArg *int, pageTokenArg *string) (Neighborhood, error) {
+func (c *linkServiceClientWithTokenProvider) SearchAround(ctx context.Context, ridArg string, depthArg *int, linkTypesArg *string, pageSizeArg *int, pageTokenArg *string) (Neighborhood, error) {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
 		return *new(Neighborhood), err
 	}
-	return c.client.SearchAround(ctx, bearertoken.Token(token), ridArg, linkTypesArg, pageSizeArg, pageTokenArg)
+	return c.client.SearchAround(ctx, bearertoken.Token(token), ridArg, depthArg, linkTypesArg, pageSizeArg, pageTokenArg)
 }

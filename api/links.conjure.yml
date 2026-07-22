@@ -44,6 +44,16 @@ types:
           attrs:
             type: optional<map<string, string>>
             docs: Optional link attributes chosen by the descriptor (status, role, effective dates, …).
+          hop:
+            type: optional<integer>
+            docs: >-
+              Distance from the queried object: 1 (direct neighbor) or 2 (second hop, reached via
+              viaRid). Only depth-2 search-around ever sets it; absent ⇒ a direct link.
+          viaRid:
+            type: optional<string>
+            docs: >-
+              For a hop-2 row, the hop-1 neighbor RID this row was reached through (canonical UUID
+              text) — the intermediate node on the path. Absent for direct (hop-1) rows.
       LinkGroup:
         docs: All links of one type + direction incident to the queried object.
         fields:
@@ -67,8 +77,10 @@ types:
             docs: Opaque composite keyset token; absent when every selected link arm is exhausted.
       Neighborhood:
         docs: |
-          The queried object's depth-1 neighborhood as a flat neighbor list — the graph-explorer
-          shape (search-around). Depth>1 is a deliberate non-goal for this endpoint (review-2026-09).
+          The queried object's neighborhood as a flat neighbor list — the graph-explorer shape
+          (search-around). depth=1 (default) is the direct neighborhood; depth=2 additionally returns
+          each direct neighbor's own neighbors (rows tagged hop=2, carrying viaRid). Depth is capped
+          at 2 (D-LinkTraversal depth-2, "full keyset frontier").
         fields:
           rid: string
           neighbors: list<LinkRow>
@@ -121,13 +133,21 @@ services:
       searchAround:
         http: GET /objects/{rid}/search-around
         docs: |
-          Depth-1 neighborhood of `rid` as a flat neighbor list (the graph-explorer shape). Same
-          engine as getObjectLinks, flattened; depth>1 is out of scope (review-2026-09 Phase 15).
+          Neighborhood of `rid` as a flat neighbor list (the graph-explorer shape). Same engine as
+          getObjectLinks, flattened. depth=1 (default) returns direct neighbors; depth=2 additionally
+          expands each direct neighbor one more hop (rows tagged hop=2, carrying viaRid), walked
+          exhaustively via a keyset frontier. Per-hop authorization is identical to depth-1 (arm gate
+          + neighbor visibility trim at every hop); a neighbor the subject cannot read is neither
+          returned nor expanded.
         args:
           rid:
             type: string
             param-type: path
             docs: The object RID whose neighbors to fetch.
+          depth:
+            type: optional<integer>
+            param-type: query
+            docs: Traversal depth, 1 (default) or 2; values > 2 are clamped to 2.
           linkTypes:
             type: optional<string>
             param-type: query
@@ -139,5 +159,5 @@ services:
           pageToken:
             type: optional<string>
             param-type: query
-            docs: Opaque composite keyset token from a previous page.
+            docs: Opaque keyset token from a previous page (depth-1 and depth-2 tokens are distinct).
         returns: Neighborhood

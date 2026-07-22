@@ -27,10 +27,14 @@ type LinkService interface {
 	*/
 	GetObjectLinks(ctx context.Context, authHeader bearertoken.Token, ridArg string, linkTypesArg *string, pageSizeArg *int, pageTokenArg *string) (ObjectLinks, error)
 	/*
-	   Depth-1 neighborhood of `rid` as a flat neighbor list (the graph-explorer shape). Same
-	   engine as getObjectLinks, flattened; depth>1 is out of scope (review-2026-09 Phase 15).
+	   Neighborhood of `rid` as a flat neighbor list (the graph-explorer shape). Same engine as
+	   getObjectLinks, flattened. depth=1 (default) returns direct neighbors; depth=2 additionally
+	   expands each direct neighbor one more hop (rows tagged hop=2, carrying viaRid), walked
+	   exhaustively via a keyset frontier. Per-hop authorization is identical to depth-1 (arm gate
+	   + neighbor visibility trim at every hop); a neighbor the subject cannot read is neither
+	   returned nor expanded.
 	*/
-	SearchAround(ctx context.Context, authHeader bearertoken.Token, ridArg string, linkTypesArg *string, pageSizeArg *int, pageTokenArg *string) (Neighborhood, error)
+	SearchAround(ctx context.Context, authHeader bearertoken.Token, ridArg string, depthArg *int, linkTypesArg *string, pageSizeArg *int, pageTokenArg *string) (Neighborhood, error)
 }
 
 // RegisterRoutesLinkService registers handlers for the LinkService endpoints with a witchcraft wrouter.
@@ -105,6 +109,14 @@ func (l *linkServiceHandler) HandleSearchAround(rw http.ResponseWriter, req *htt
 	if !ok {
 		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"rid\" not present")
 	}
+	var depthArg *int
+	if depthArgStr := req.URL.Query().Get("depth"); depthArgStr != "" {
+		depthArgInternal, err := strconv.Atoi(depthArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"depth\" as integer")
+		}
+		depthArg = &depthArgInternal
+	}
 	var linkTypesArg *string
 	if linkTypesArgStr := req.URL.Query().Get("linkTypes"); linkTypesArgStr != "" {
 		linkTypesArgInternal := linkTypesArgStr
@@ -123,7 +135,7 @@ func (l *linkServiceHandler) HandleSearchAround(rw http.ResponseWriter, req *htt
 		pageTokenArgInternal := pageTokenArgStr
 		pageTokenArg = &pageTokenArgInternal
 	}
-	respArg, err := l.impl.SearchAround(req.Context(), bearertoken.Token(authHeader), ridArg, linkTypesArg, pageSizeArg, pageTokenArg)
+	respArg, err := l.impl.SearchAround(req.Context(), bearertoken.Token(authHeader), ridArg, depthArg, linkTypesArg, pageSizeArg, pageTokenArg)
 	if err != nil {
 		return err
 	}
