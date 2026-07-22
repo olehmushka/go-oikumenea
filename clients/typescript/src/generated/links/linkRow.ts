@@ -12,4 +12,8 @@ export interface ILinkRow {
     'direction': string;
     /** Optional link attributes chosen by the descriptor (status, role, effective dates, …). */
     'attrs'?: { [key: string]: string } | null;
+    /** Distance from the queried object: 1 (direct neighbor) or 2 (second hop, reached via viaRid). Only depth-2 search-around ever sets it; absent ⇒ a direct link. */
+    'hop'?: number | null;
+    /** For a hop-2 row, the hop-1 neighbor RID this row was reached through (canonical UUID text) — the intermediate node on the path. Absent for direct (hop-1) rows. */
+    'viaRid'?: string | null;
 }

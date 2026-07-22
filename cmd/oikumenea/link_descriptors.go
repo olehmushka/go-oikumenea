@@ -247,12 +247,12 @@ func descriptors() []linksdomain.Descriptor {
 	return []linksdomain.Descriptor{
 		// tenant
 		{Service: rid.SvcTenant, Code: 1, LinkName: "parent_of", Table: "oikumenea.tenant_unit_edges",
-			A: plain("parent_id", "unit"), B: plain("child_id", "unit"), Permission: string(authzdomain.PermUnitRead)},
+			A: plain("parent_id", "unit"), B: plain("child_id", "unit"), Permission: string(authzdomain.PermUnitRead), NoSoftDelete: true},
 		{Service: rid.SvcTenant, Code: 2, LinkName: "unit_language", Table: "oikumenea.tenant_unit_languages",
 			A: plain("unit_id", "unit"), B: plain("language_id", "languoid"), Permission: string(authzdomain.PermUnitRead)},
 		// language
 		{Service: rid.SvcLanguage, Code: 1, LinkName: "written_in", Table: "oikumenea.language_writing_systems",
-			A: plain("languoid_id", "languoid"), B: plain("writing_system_id", "writing_system"), Permission: string(authzdomain.PermLanguageRead), AttrCols: []string{"is_primary"}},
+			A: plain("languoid_id", "languoid"), B: plain("writing_system_id", "writing_system"), Permission: string(authzdomain.PermLanguageRead), AttrCols: []string{"is_primary"}, NoSoftDelete: true},
 		// person links. holds_rank/speaks keep the coarse person.read: they are directory attributes
 		// returned INSIDE the person aggregate (getPerson), so a separate arm code would hide them in the
 		// graph while the person page still shows them — incoherent (D-LinkPermissions). The relationship
@@ -276,8 +276,12 @@ func descriptors() []linksdomain.Descriptor {
 		{Service: rid.SvcPerson, Code: 10, LinkName: "lives_at", Table: "oikumenea.person_addresses",
 			A: plain("person_id", "person"), B: plain("location_id", "location"), Permission: string(authzdomain.PermPersonAddressRead), AttrCols: []string{"role"}},
 		// membership
+		// FilterCol status='active' both restricts the graph to CURRENT memberships and matches the
+		// membership_memberships partial indexes (…WHERE status='active' AND deleted_at IS NULL), so
+		// traversal — including a unit's members at M49 scale — stays index-backed instead of seq-scanning.
 		{Service: rid.SvcMembership, Code: 1, LinkName: "member_of", Table: "oikumenea.membership_memberships",
-			A: plain("person_id", "person"), B: plain("unit_id", "unit"), Permission: string(authzdomain.PermMembershipRead), AttrCols: []string{"status"}},
+			A: plain("person_id", "person"), B: plain("unit_id", "unit"), Permission: string(authzdomain.PermMembershipRead),
+			AttrCols: []string{"status"}, FilterCol: "status", FilterVal: "active"},
 		// education
 		{Service: rid.SvcEducation, Code: 2, LinkName: "studied_at", Table: "oikumenea.person_education_enrollments",
 			A: plain("person_id", "person"), B: plain("institution_id", "organization"), Permission: string(authzdomain.PermEducationRead)},

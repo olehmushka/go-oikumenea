@@ -45,9 +45,11 @@ and the limit are bound value params.
   a `LinkRow` is `{linkRid, targetRid, targetType, targetLabel?, direction, attrs?}`. `linkTypes` is
   a CSV of bare pkg/rid link-type names (default all incident); `pageSize` default 50, clamped
   `[1,200]`. `rid` that decodes to no registered object type → `Links:UnknownObjectType`.
-- `searchAround(rid, linkTypes?, pageSize?, pageToken?) → Neighborhood` — `GET
+- `searchAround(rid, depth?, linkTypes?, pageSize?, pageToken?) → Neighborhood` — `GET
   /objects/{rid}/search-around`. The same engine flattened to a neighbor list (the graph shape).
-  **Depth-1 only** — depth>1 is a deliberate non-goal for this endpoint (revisit with measurements).
+  `depth` is 1 (default) or 2 (clamped); at **depth 2** each direct neighbor's own neighbors are also
+  returned, each such `LinkRow` tagged `hop:2` and carrying `viaRid` (the intermediate node) — so "any
+  path between these two objects?" is one request. Per-hop authorization is identical to depth-1.
 - **Pagination** is a composite keyset token (`Links:InvalidPageToken`): base64url JSON
   `{"v":1,"c":{"<linkName>/<side>":"<lastLinkRID>"}}` — one cursor per non-exhausted arm, keysetting
   over the link table's RID PK. Cursors advance over **raw** pre-trim rows, so a visibility-trimmed
@@ -96,6 +98,13 @@ authorization is entirely per-arm gate + per-row trim —
   registered_to, company founded/owns_stake) ends declare one target per discriminator (person
   `(6,1,1)` / company = tenant org `(4,1,6)`), so generic traversal — which cannot discover a
   no-FK text edge from the schema — includes them (closes R‑32 item 2).
+- **Descriptor `NoSoftDelete` / `FilterCol`:** a descriptor over an **append-only** table (no
+  `deleted_at`) sets `NoSoftDelete` so the arm query omits the `deleted_at IS NULL` clause
+  (`parent_of`→`tenant_unit_edges`, `written_in`→`language_writing_systems`); a descriptor may also set
+  an equality `FilterCol`/`FilterVal` (bound param) both to scope the graph to *current* edges and to
+  **match a partial index**. `member_of` sets `status='active'`, matching the membership partial indexes
+  (`…WHERE status='active' AND deleted_at IS NULL`) so a unit's members are read from the index rather
+  than a seq scan of the 1M-row table — the depth-2 gate measurement made this load-bearing.
 
 ## Invariants
 
@@ -109,8 +118,18 @@ authorization is entirely per-arm gate + per-row trim —
 
 ## Open seams / future
 
-- **Depth-2 search-around** ("any path between these two people?"): the depth-1 primitive is here;
-  depth-2 lands only with M49-scale measurements (review-2026-09 explicitly gates it on numbers).
+- **Depth-2 search-around — delivered.** `searchAround(rid, depth=2, …)` walks the two-hop
+  neighborhood exhaustively, staying Postgres-over-the-link-tables (no graph DB). Two sequential keyset
+  phases share the page budget: (1) drain the origin's hop-1 arms (the depth-1 engine, unchanged); (2)
+  enumerate the trimmed hop-1 neighbors as a **frontier in neighbor-RID order** (a distinct-neighbor
+  keyset query per origin arm, fetched a **batch** at a time so a wide frontier is not re-scanned per
+  node) and expand each with an inner hop-2 `collect`. The arm gate + neighbor trim run at **every
+  hop** (reusing depth-1's primitives), so an unreadable node is neither returned nor expanded; the
+  backtrack edge to the origin is dropped, genuine alternate 2-paths kept (rows are *edges*, not deduped
+  nodes). A distinct **v2** keyset token (origin cursors + scalar frontier high-water mark + current
+  node cursors) makes the walk resumable; v1/v2 tokens never cross. The review gate ("< 1 s, 50-neighbor
+  node, 2-hop, M49 scale") is met — ~0.4–0.5 s for 767 neighbors on the 1M-person seed-scale dataset
+  (`TestSearchAroundDepth2Scale`). Clearing it hardened the shared descriptor layer (see Patterns).
 - **Server-side neighbor labelers — delivered.** Each neighbor object type registers a batch labeler
   (`RegisterLabeler`) that resolves its RIDs to a `targetLabel` **locale→text map** (D-i18n: all
   locales, no negotiation): person from `display_name` + per-locale name variants, everything else via

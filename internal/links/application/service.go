@@ -29,6 +29,9 @@ import (
 const (
 	defaultPageSize = 50
 	maxPageSize     = 200
+	// frontierBatchSize is how many hop-1 frontier nodes depth-2 enumerates per round of arm queries
+	// (one distinct-neighbor keyset query per origin arm). Larger ⇒ fewer enumeration rounds per page.
+	frontierBatchSize = 256
 )
 
 // Querier is the minimal pgx surface the engine needs (satisfied by *pgxpool.Pool).
@@ -254,6 +257,258 @@ func (s *Service) SearchAround(ctx context.Context, ridStr, linkTypesCSV string,
 		flat = append(flat, g.Rows...)
 	}
 	return domain.Neighborhood{RID: ridStr, Neighbors: flat, NextPageToken: next}, nil
+}
+
+// SearchAroundDepth is the depth-parameterised search-around: depth<=1 is the flat depth-1
+// neighborhood (v1 token, unchanged); depth>=2 is the exhaustive two-hop walk (D-LinkTraversal
+// depth-2, "full keyset frontier"). depth>2 is clamped to 2.
+func (s *Service) SearchAroundDepth(ctx context.Context, ridStr, linkTypesCSV string, depth, pageSize int, pageToken string) (domain.Neighborhood, error) {
+	if depth <= 1 {
+		return s.SearchAround(ctx, ridStr, linkTypesCSV, pageSize, pageToken)
+	}
+	return s.searchAround2(ctx, ridStr, linkTypesCSV, pageSize, pageToken)
+}
+
+// searchAround2 runs one page of the exhaustive depth-2 walk. Two sequential keyset phases share the
+// page's row budget: (1) drain the origin's hop-1 arms (reusing collect, tagging rows hop=1); (2)
+// enumerate the trimmed+gated hop-1 neighbors as a frontier in neighbor-RID order and expand each
+// with an inner hop-2 collect (rows tagged hop=2, viaRid=<frontier node>), excluding the trivial
+// backtrack edge to the origin. Progress is serialized into a small fixed-size Depth2Token.
+func (s *Service) searchAround2(ctx context.Context, ridStr, linkTypesCSV string, pageSize int, pageToken string) (domain.Neighborhood, error) {
+	subject, isAdmin, r, err := s.resolve(ctx, ridStr)
+	if err != nil {
+		return domain.Neighborhood{}, err
+	}
+	tok, err := domain.DecodeDepth2Token(pageToken)
+	if err != nil {
+		return domain.Neighborhood{}, err
+	}
+	budget := clamp(pageSize, defaultPageSize, maxPageSize)
+	originUUID := r.UUID()
+	rows := make([]domain.RawLink, 0, budget)
+
+	// PHASE 1 — hop-1: reuse collect (its own per-arm gate + trim + v1 keyset).
+	if !tok.H1Done {
+		_, _, groups, next, err := s.collect(ctx, ridStr, linkTypesCSV, budget, domain.EncodePageToken(tok.Origin))
+		if err != nil {
+			return domain.Neighborhood{}, err
+		}
+		rows = appendHop(rows, groups, 1, "", originUUID)
+		if next != "" { // hop-1 has more — stay in phase 1
+			cursors, _ := domain.DecodePageToken(next)
+			return domain.Neighborhood{RID: ridStr, Neighbors: rows,
+				NextPageToken: domain.EncodeDepth2Token(domain.Depth2Token{Origin: cursors})}, nil
+		}
+		tok.H1Done = true // hop-1 exhausted; fall through with the remaining budget
+	}
+
+	// PHASE 2 — frontier expansion. Need the gated+filtered origin arms for enumeration.
+	arms, err := s.gatedArms(ctx, r.TypeName(), linkTypesCSV)
+	if err != nil {
+		return domain.Neighborhood{}, err
+	}
+
+	// Resume a frontier node left mid-expansion by the previous page.
+	if tok.Node != "" {
+		if len(rows) >= budget {
+			return domain.Neighborhood{RID: ridStr, Neighbors: rows, NextPageToken: domain.EncodeDepth2Token(tok)}, nil
+		}
+		_, _, groups, next, err := s.collect(ctx, tok.Node, linkTypesCSV, budget-len(rows), domain.EncodePageToken(tok.NodeCur))
+		if err != nil {
+			return domain.Neighborhood{}, err
+		}
+		rows = appendHop(rows, groups, 2, tok.Node, originUUID)
+		if next != "" { // node still not exhausted
+			cursors, _ := domain.DecodePageToken(next)
+			tok.NodeCur = cursors
+			return domain.Neighborhood{RID: ridStr, Neighbors: rows, NextPageToken: domain.EncodeDepth2Token(tok)}, nil
+		}
+		tok.Front = tok.Node // node fully expanded
+		tok.Node, tok.NodeCur = "", nil
+	}
+
+	// Walk the remaining frontier in neighbor-RID order, enumerating it a BATCH at a time (one round
+	// of arm queries per batch, not per node) so a wide frontier does not re-scan the origin's arms
+	// once per neighbor.
+	for {
+		if len(rows) >= budget {
+			return domain.Neighborhood{RID: ridStr, Neighbors: rows,
+				NextPageToken: domain.EncodeDepth2Token(domain.Depth2Token{H1Done: true, Front: tok.Front})}, nil
+		}
+		batch, err := s.frontierNodes(ctx, subject, isAdmin, arms, originUUID, tok.Front, frontierBatchSize)
+		if err != nil {
+			return domain.Neighborhood{}, err
+		}
+		if len(batch) == 0 {
+			break // frontier exhausted — the walk is complete
+		}
+		for _, fn := range batch {
+			fnode := fn.TargetRID
+			if len(rows) >= budget {
+				return domain.Neighborhood{RID: ridStr, Neighbors: rows,
+					NextPageToken: domain.EncodeDepth2Token(domain.Depth2Token{H1Done: true, Front: tok.Front})}, nil
+			}
+			_, _, groups, next, err := s.collect(ctx, fnode, linkTypesCSV, budget-len(rows), "")
+			if err != nil {
+				return domain.Neighborhood{}, err
+			}
+			rows = appendHop(rows, groups, 2, fnode, originUUID)
+			if next != "" { // this node did not fit the remaining budget
+				cursors, _ := domain.DecodePageToken(next)
+				return domain.Neighborhood{RID: ridStr, Neighbors: rows,
+					NextPageToken: domain.EncodeDepth2Token(domain.Depth2Token{H1Done: true, Front: tok.Front, Node: fnode, NodeCur: cursors})}, nil
+			}
+			tok.Front = fnode // node done; advance the frontier high-water mark
+		}
+	}
+	return domain.Neighborhood{RID: ridStr, Neighbors: rows, NextPageToken: ""}, nil
+}
+
+// resolve validates the RID as a known object and resolves the request subject once (shared by the
+// depth-2 phases). Mirrors collect's front matter.
+func (s *Service) resolve(ctx context.Context, ridStr string) (string, bool, rid.RID, error) {
+	r, err := rid.Parse(ridStr)
+	if err != nil {
+		return "", false, rid.RID{}, domain.UnknownObjectTypeError{RID: ridStr}
+	}
+	if r.TypeName() == "" || r.Kind() != rid.KindObject {
+		return "", false, rid.RID{}, domain.UnknownObjectTypeError{RID: ridStr}
+	}
+	subject, isAdmin, err := s.authority(ctx)
+	if err != nil {
+		return "", false, rid.RID{}, err
+	}
+	if subject == "" {
+		return "", false, rid.RID{}, domain.ErrNoSubject
+	}
+	return subject, isAdmin, r, nil
+}
+
+// gatedArms is the origin's incident arms restricted by the linkTypes filter and the per-arm read
+// gate — the arms frontier enumeration draws hop-1 neighbors from (matching collect's own gating).
+func (s *Service) gatedArms(ctx context.Context, objectType, linkTypesCSV string) ([]arm, error) {
+	filter, err := s.linkTypeFilter(linkTypesCSV)
+	if err != nil {
+		return nil, err
+	}
+	var out []arm
+	for _, a := range s.armsFor(objectType) {
+		if filter != nil {
+			if _, ok := filter[a.desc.LinkName]; !ok {
+				continue
+			}
+		}
+		ok, err := s.allowed(ctx, a.desc.Permission)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
+
+// frontierNodes returns up to `size` trimmed (readable) hop-1 neighbor RIDs strictly greater than
+// `after`, in neighbor-RID order, skipping raw batches that trim away entirely; nil ⇒ the frontier is
+// exhausted. One round of arm queries yields a whole batch of frontier nodes, so a wide frontier is
+// enumerated per-batch rather than per-node.
+func (s *Service) frontierNodes(ctx context.Context, subject string, isAdmin bool, arms []arm, srcUUID, after string, size int) ([]domain.RawLink, error) {
+	cursor := after
+	for {
+		raws, rawNext, err := s.frontierBatch(ctx, arms, srcUUID, cursor, size)
+		if err != nil {
+			return nil, err
+		}
+		if len(raws) == 0 {
+			return nil, nil
+		}
+		kept, err := s.trim(ctx, subject, isAdmin, raws)
+		if err != nil {
+			return nil, err
+		}
+		if len(kept) > 0 {
+			return kept, nil
+		}
+		if rawNext == "" {
+			return nil, nil
+		}
+		cursor = rawNext
+	}
+}
+
+// frontierBatch fetches up to `limit` distinct hop-1 neighbor RIDs > `after` across the given arms,
+// in neighbor-RID order. Rows carry only TargetRID + TargetType (for trim); rawNext is the keyset
+// high-water mark ("" ⇒ the arms hold no more). Global-top-`limit` correctness: the smallest `limit`
+// distinct neighbors are a subset of the union of each arm's smallest `limit`, so a per-arm LIMIT is
+// sufficient and any un-returned neighbor is strictly greater than rawNext (caught next round).
+func (s *Service) frontierBatch(ctx context.Context, arms []arm, srcUUID, after string, limit int) ([]domain.RawLink, string, error) {
+	seen := map[string]string{} // neighbor rid -> type (dedup across arms)
+	var ids []string
+	for _, a := range arms {
+		sql, args := buildFrontierQuery(a, srcUUID, after, limit)
+		rows, err := s.pool.Query(ctx, sql, args...)
+		if err != nil {
+			return nil, "", err
+		}
+		polyNeighbor := a.other.KindCol != ""
+		for rows.Next() {
+			var nrid string
+			var nkind *string
+			dest := []any{&nrid}
+			if polyNeighbor {
+				dest = append(dest, &nkind)
+			}
+			if err := rows.Scan(dest...); err != nil {
+				rows.Close()
+				return nil, "", err
+			}
+			typ := a.other.Targets[0].Type
+			if polyNeighbor {
+				t, ok := neighborTypeFor(a.other, nkind)
+				if !ok {
+					continue
+				}
+				typ = t
+			}
+			if _, dup := seen[nrid]; !dup {
+				seen[nrid] = typ
+				ids = append(ids, nrid)
+			}
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, "", err
+		}
+		rows.Close()
+	}
+	sort.Strings(ids)
+	rawNext := ""
+	if len(ids) > limit {
+		ids = ids[:limit]
+		rawNext = ids[len(ids)-1]
+	}
+	out := make([]domain.RawLink, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, domain.RawLink{TargetRID: id, TargetType: seen[id]})
+	}
+	return out, rawNext, nil
+}
+
+// appendHop flattens a collect result's groups onto rows, tagging each with hop (+ viaRid for hop 2)
+// and dropping the trivial backtrack edge to the origin at hop 2.
+func appendHop(rows []domain.RawLink, groups []domain.Group, hop int, via, originUUID string) []domain.RawLink {
+	for _, g := range groups {
+		for _, rl := range g.Rows {
+			if hop == 2 && strings.EqualFold(rl.TargetRID, originUUID) {
+				continue
+			}
+			rl.Hop = hop
+			rl.ViaRID = via
+			rows = append(rows, rl)
+		}
+	}
+	return rows
 }
 
 func (s *Service) collect(ctx context.Context, ridStr, linkTypesCSV string, pageSize int, pageToken string) (string, bool, []domain.Group, string, error) {
