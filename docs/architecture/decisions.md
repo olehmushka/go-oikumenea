@@ -2243,8 +2243,33 @@ ends, `has_role`'s three-way assignment, `instance_admin`'s absent neighbor). Th
 neighbor **labelers** are now delivered: each neighbor type registers a batch labeler that resolves a
 `targetLabel` **locale→text map** (D-i18n) — person from its name variants, everything else via an
 overlay over the base name + `i18n_translations` (`localization.NamesByID`) — so link/graph rows show a
-real name, not the RID tail. Depth-2 search-around and per-link-type (vs per-module) permission codes
-remain named open seams in [modules/links.md](../modules/links.md).
+real name, not the RID tail. Per-link-type (vs per-module) permission codes are delivered for the
+person/ownership graphs (D-LinkPermissions) and remain a per-module rollout seam in
+[modules/links.md](../modules/links.md).
+
+**Depth-2 search-around — delivered (review-2026-09 follow-on, gated on measurements).** `searchAround`
+takes an optional `depth` (1 default, clamped to 2); depth-2 returns each direct neighbor's own
+neighbors as a flat list, each hop-2 `LinkRow` tagged `hop:2` and carrying `viaRid` (the intermediate
+node), so "any path between these two objects?" is answered with one request. It stays **Postgres over
+the existing link tables** (no graph DB): the walk is two sequential keyset phases sharing the page
+budget — (1) drain the origin's hop-1 arms (the depth-1 engine, unchanged); (2) enumerate the trimmed
+hop-1 neighbors as a **frontier in neighbor-RID order** (a distinct-neighbor keyset query per origin
+arm, enumerated a **batch** at a time so a wide frontier does not re-scan the arms per node) and expand
+each with an inner hop-2 `collect`. **Per-hop authorization is identical to depth-1** — the arm gate
+and D-VisibilityScope trim run at *every* hop, reusing the same primitives, so a neighbor the subject
+cannot read is neither returned nor expanded (no depth-2 bypass). The trivial backtrack edge to the
+origin is excluded; genuine alternate 2-paths are kept (each row is an *edge* `via→neighbor`, not a
+deduped node). Pagination is a distinct **v2** keyset token (origin cursors + a scalar frontier
+high-water mark + the current node's cursors); v1 and v2 tokens never decode as each other. The
+gate ("< 1 s for a 50-neighbor node, 2-hop, M49-scale") is met — ~0.4–0.5 s for a 50-node frontier
+fanning into 767 neighbors on the 1M-person seed-scale dataset. Clearing it required two fixes to the
+shared descriptor layer: (a) `parent_of`/`written_in` mark `NoSoftDelete` (their append-only tables
+have no `deleted_at` — a latent depth-1 500 on unit/language expansion); (b) a new optional descriptor
+equality **filter** (`FilterCol`/`FilterVal`, a bound param) applied to `member_of` as `status='active'`
+so traversal matches the membership **partial** indexes (`…WHERE status='active' AND deleted_at IS
+NULL`) and stays index-backed instead of seq-scanning 1M rows — it also scopes the graph to *current*
+memberships. Verified by `cmd/oikumenea/links_integration_test.go` (`TestSearchAroundDepth2*`, incl.
+the env-gated `TestSearchAroundDepth2Scale` gate measurement) and the domain token tests.
 
 ---
 

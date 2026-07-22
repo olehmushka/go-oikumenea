@@ -47,8 +47,8 @@ func (s *Service) GetObjectLinks(ctx context.Context, _ bearertoken.Token, ridAr
 	return out, nil
 }
 
-func (s *Service) SearchAround(ctx context.Context, _ bearertoken.Token, ridArg string, linkTypes *string, pageSize *int, pageToken *string) (linksapi.Neighborhood, error) {
-	res, err := s.app.SearchAround(ctx, ridArg, deref(linkTypes), derefInt(pageSize), deref(pageToken))
+func (s *Service) SearchAround(ctx context.Context, _ bearertoken.Token, ridArg string, depth *int, linkTypes *string, pageSize *int, pageToken *string) (linksapi.Neighborhood, error) {
+	res, err := s.app.SearchAroundDepth(ctx, ridArg, deref(linkTypes), derefIntDefault(depth, 1), derefInt(pageSize), deref(pageToken))
 	if err != nil {
 		return mapErr(linksapi.Neighborhood{}, err)
 	}
@@ -78,6 +78,14 @@ func toRow(r domain.RawLink) linksapi.LinkRow {
 		a := r.Attrs
 		row.Attrs = &a
 	}
+	if r.Hop != 0 {
+		h := r.Hop
+		row.Hop = &h
+	}
+	if r.ViaRID != "" {
+		v := r.ViaRID
+		row.ViaRid = &v
+	}
 	return row
 }
 
@@ -104,6 +112,13 @@ func deref(s *string) string {
 func derefInt(i *int) int {
 	if i == nil {
 		return 0
+	}
+	return *i
+}
+
+func derefIntDefault(i *int, def int) int {
+	if i == nil {
+		return def
 	}
 	return *i
 }

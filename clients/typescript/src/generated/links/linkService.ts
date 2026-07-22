@@ -18,11 +18,15 @@ export interface ILinkService {
      */
     getObjectLinks(rid: string, linkTypes?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IObjectLinks>;
     /**
-     * Depth-1 neighborhood of `rid` as a flat neighbor list (the graph-explorer shape). Same
-     * engine as getObjectLinks, flattened; depth>1 is out of scope (review-2026-09 Phase 15).
+     * Neighborhood of `rid` as a flat neighbor list (the graph-explorer shape). Same engine as
+     * getObjectLinks, flattened. depth=1 (default) returns direct neighbors; depth=2 additionally
+     * expands each direct neighbor one more hop (rows tagged hop=2, carrying viaRid), walked
+     * exhaustively via a keyset frontier. Per-hop authorization is identical to depth-1 (arm gate
+     * + neighbor visibility trim at every hop); a neighbor the subject cannot read is neither
+     * returned nor expanded.
      *
      */
-    searchAround(rid: string, linkTypes?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<INeighborhood>;
+    searchAround(rid: string, depth?: number | null, linkTypes?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<INeighborhood>;
 }
 
 export class LinkService implements ILinkService {
@@ -56,11 +60,15 @@ export class LinkService implements ILinkService {
     }
 
     /**
-     * Depth-1 neighborhood of `rid` as a flat neighbor list (the graph-explorer shape). Same
-     * engine as getObjectLinks, flattened; depth>1 is out of scope (review-2026-09 Phase 15).
+     * Neighborhood of `rid` as a flat neighbor list (the graph-explorer shape). Same engine as
+     * getObjectLinks, flattened. depth=1 (default) returns direct neighbors; depth=2 additionally
+     * expands each direct neighbor one more hop (rows tagged hop=2, carrying viaRid), walked
+     * exhaustively via a keyset frontier. Per-hop authorization is identical to depth-1 (arm gate
+     * + neighbor visibility trim at every hop); a neighbor the subject cannot read is neither
+     * returned nor expanded.
      *
      */
-    public searchAround(rid: string, linkTypes?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<INeighborhood> {
+    public searchAround(rid: string, depth?: number | null, linkTypes?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<INeighborhood> {
         return this.bridge.call<INeighborhood>(
             "LinkService",
             "searchAround",
@@ -69,6 +77,7 @@ export class LinkService implements ILinkService {
             __undefined,
             __undefined,
             {
+                "depth": depth,
                 "linkTypes": linkTypes,
                 "pageSize": pageSize,
                 "pageToken": pageToken,

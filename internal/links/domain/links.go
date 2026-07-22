@@ -45,6 +45,12 @@ type Descriptor struct {
 	Permission   string
 	AttrCols     []string
 	NoSoftDelete bool // true for the rare link table without a deleted_at column
+	// FilterCol/FilterVal, when set, add `<FilterCol> = <FilterVal>` (bound param) to every arm query.
+	// Its purpose is twofold: keep the traversed graph to current edges (e.g. status='active'), and —
+	// critically at scale — MATCH the owning module's PARTIAL index predicate so generic traversal
+	// stays index-backed rather than seq-scanning (e.g. membership's status='active' partial indexes).
+	FilterCol string
+	FilterVal string
 }
 
 // Direction of a link row relative to the queried object.
@@ -56,7 +62,9 @@ const (
 
 // RawLink is one traversed link. Labels is the best-effort neighbor display name as a locale→text
 // map (D-i18n: all locales in every response, no negotiation), filled by the engine's registered
-// labelers; empty ⇒ the client falls back to the RID tail.
+// labelers; empty ⇒ the client falls back to the RID tail. Hop is the neighbor's distance from the
+// queried object (1 = direct, 2 = second-hop reached via ViaRID); depth-1 rows leave both zero-valued
+// so their wire shape is unchanged.
 type RawLink struct {
 	LinkRID    string
 	TargetRID  string
@@ -64,6 +72,8 @@ type RawLink struct {
 	Direction  string
 	Labels     map[string]string
 	Attrs      map[string]string
+	Hop        int    // 0 (==1, direct) or 2; only depth-2 responses ever set it
+	ViaRID     string // the hop-1 neighbor a hop-2 row was reached through ("" for direct rows)
 }
 
 // Group is all links of one (link type, direction) incident to the queried object.
@@ -132,4 +142,66 @@ func DecodePageToken(s string) (map[string]string, error) {
 		return nil, ErrInvalidPageToken
 	}
 	return t.Cursors, nil
+}
+
+// Depth2Token is the resumable state of an exhaustive depth-2 search-around walk (D-LinkTraversal
+// depth-2, "full keyset frontier"). The walk is two sequential keyset phases: (1) drain the origin's
+// hop-1 arms — Origin carries one cursor per non-exhausted origin arm, exactly like the v1 token;
+// (2) once H1Done, enumerate the trimmed/gated hop-1 neighbors as a frontier in NEIGHBOR-RID order
+// (Front is the last neighbor RID already expanded) and expand each with an inner hop-2 collect (Node
+// is the frontier node currently mid-walk, NodeCur its per-arm cursors). A small, fixed-size token:
+// two scalar cursors plus two per-arm maps, never the frontier set itself.
+type Depth2Token struct {
+	Origin  map[string]string // hop-1 origin arm cursors; empty once hop-1 drained
+	H1Done  bool              // hop-1 fully drained — the walk is in the frontier phase
+	Front   string            // last frontier neighbor RID fully expanded (keyset high-water mark)
+	Node    string            // frontier node currently mid-expansion ("" between nodes)
+	NodeCur map[string]string // that node's inner hop-2 arm cursors
+}
+
+// depth2Wire is the on-the-wire shape (short JSON keys; omitempty keeps depth-1-drained tokens small).
+type depth2Wire struct {
+	V       int               `json:"v"`
+	Origin  map[string]string `json:"o,omitempty"`
+	H1Done  bool              `json:"h1d,omitempty"`
+	Front   string            `json:"ff,omitempty"`
+	Node    string            `json:"fn,omitempty"`
+	NodeCur map[string]string `json:"fc,omitempty"`
+}
+
+// EncodeDepth2Token serializes a depth-2 walk position. The engine calls it only when the walk has
+// more to yield, so unlike the v1 encoder it always produces a token.
+func EncodeDepth2Token(t Depth2Token) string {
+	b, _ := json.Marshal(depth2Wire{
+		V:       2,
+		Origin:  t.Origin,
+		H1Done:  t.H1Done,
+		Front:   t.Front,
+		Node:    t.Node,
+		NodeCur: t.NodeCur,
+	})
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+// DecodeDepth2Token parses a depth-2 token. "" means first page (a zero Depth2Token: hop-1 from the
+// start). A v1 token (or any non-v2 payload) is rejected — depth crossings never share a token.
+func DecodeDepth2Token(s string) (Depth2Token, error) {
+	if s == "" {
+		return Depth2Token{}, nil
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		return Depth2Token{}, ErrInvalidPageToken
+	}
+	var w depth2Wire
+	if err := json.Unmarshal(raw, &w); err != nil || w.V != 2 {
+		return Depth2Token{}, ErrInvalidPageToken
+	}
+	return Depth2Token{
+		Origin:  w.Origin,
+		H1Done:  w.H1Done,
+		Front:   w.Front,
+		Node:    w.Node,
+		NodeCur: w.NodeCur,
+	}, nil
 }
