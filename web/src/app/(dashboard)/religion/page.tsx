@@ -611,7 +611,7 @@ function UnitSitesPanel() {
               </Table>
             )}
             <form onSubmit={addSite} className="mt-3 grid grid-cols-1 gap-2">
-              <input required className="input" placeholder="location RID" value={locationId} onChange={(e) => setLocationId(e.target.value)} />
+              <input required className="input" placeholder={tr("location RID")} value={locationId} onChange={(e) => setLocationId(e.target.value)} />
               <select required className="input" value={siteTypeId} onChange={(e) => setSiteTypeId(e.target.value)}>
                 <option value="">{tr("— site type —")}</option>
                 {siteTypes.map((t) => <option key={t.id} value={t.id}>{pickLabel(t.name)} ({t.code})</option>)}

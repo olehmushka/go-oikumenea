@@ -14,6 +14,7 @@ import { isConjureError } from "oikumenea-client";
 import { ErrorBox } from "@/components/ErrorBox";
 import { Pill } from "@/components/ui";
 import { T } from "@/components/T";
+import { useTg } from "@/lib/locale";
 
 type ExternalIdentity = { id: string; accountId: string; issuer: string; subject: string; createdAt?: string };
 type Account = { id: string; personId: string; email?: string; status: string; identities?: ExternalIdentity[] };
@@ -24,13 +25,14 @@ const tail = (id: string) => id.slice(-8);
 // IssuerField renders a dropdown of the instance's configured issuers when any are known, and falls
 // back to a free-text input otherwise (e.g. before config loads, or an instance with no issuers).
 function IssuerField({ issuers, required }: { issuers: IssuerOption[]; required?: boolean }) {
+  const tr = useTg();
   if (issuers.length === 0) {
     return (
       <input
         name="issuer"
         required={required}
         className="input w-full"
-        placeholder="issuer — realm URL (token `iss`)"
+        placeholder={tr("issuer — realm URL (token `iss`)")}
       />
     );
   }
@@ -194,6 +196,7 @@ function CreateAccount({
   busy: boolean;
   run: (fn: () => Promise<unknown>, after?: () => void) => Promise<void>;
 }) {
+  const tr = useTg();
   return (
     <div className="space-y-2 text-sm">
       <p className="text-slate-400"><T>This person has no login account yet.</T></p>
@@ -212,9 +215,9 @@ function CreateAccount({
           run(() => api.identityFederation.createAccount(body), () => form.reset());
         }}
       >
-        <input name="email" type="email" className="input w-full" placeholder="email@example.com (optional)" />
+        <input name="email" type="email" className="input w-full" placeholder={tr("email@example.com (optional)")} />
         <IssuerField issuers={issuers} />
-        <input name="subject" className="input w-full" placeholder="subject — Keycloak user `sub` UUID" />
+        <input name="subject" className="input w-full" placeholder={tr("subject — Keycloak user `sub` UUID")} />
         <button className="btn-primary" disabled={busy}>
           <T>Create login account</T>
         </button>
@@ -235,6 +238,7 @@ function IdentityForm({
   busy: boolean;
   onSubmit: (issuer: string, subject: string, reset: () => void) => void;
 }) {
+  const tr = useTg();
   return (
     <form
       className="space-y-2 border-t border-slate-100 pt-3"
@@ -250,7 +254,7 @@ function IdentityForm({
     >
       <div className="text-xs font-medium uppercase tracking-wide text-slate-400"><T>Link Keycloak identity</T></div>
       <IssuerField issuers={issuers} required />
-      <input name="subject" required className="input w-full" placeholder="subject — Keycloak user `sub` UUID" />
+      <input name="subject" required className="input w-full" placeholder={tr("subject — Keycloak user `sub` UUID")} />
       <button className="btn-ghost" disabled={busy}>
         <T>Link identity</T>
       </button>

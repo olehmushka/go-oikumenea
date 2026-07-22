@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api } from "@/lib/api/client";
 import { ErrorBox } from "@/components/ErrorBox";
+import { useTg } from "@/lib/locale";
 import type { IssuerOption, ServicePrincipal } from "@/lib/api/types";
 
 function useSubmit() {
@@ -35,6 +36,7 @@ function useSubmit() {
  */
 export function PrincipalRegister({ issuers }: { issuers: IssuerOption[] }) {
   const { err, busy, run } = useSubmit();
+  const tr = useTg();
   return (
     <form
       className="card space-y-3 p-5"
@@ -55,17 +57,17 @@ export function PrincipalRegister({ issuers }: { issuers: IssuerOption[] }) {
         });
       }}
     >
-      <h3 className="text-sm font-semibold text-slate-900">Register service principal</h3>
+      <h3 className="text-sm font-semibold text-slate-900">{tr("Register service principal")}</h3>
       {err ? <ErrorBox error={err} /> : null}
       <div className="grid grid-cols-2 gap-3">
-        <input name="code" required className="input" placeholder="code (e.g. hr-connector)" />
-        <input name="name" required className="input" placeholder="name" />
+        <input name="code" required className="input" placeholder={tr("code (e.g. hr-connector)")} />
+        <input name="name" required className="input" placeholder={tr("name")} />
       </div>
-      <input name="description" className="input" placeholder="description (optional)" />
+      <input name="description" className="input" placeholder={tr("description (optional)")} />
       {issuers.length > 0 ? (
         <select name="issuer" required className="input" defaultValue="">
           <option value="" disabled>
-            issuer (the token&rsquo;s `iss`)
+            {tr("issuer (the token's `iss`)")}
           </option>
           {issuers.map((i) => (
             <option key={i.issuer} value={i.issuer}>
@@ -74,23 +76,24 @@ export function PrincipalRegister({ issuers }: { issuers: IssuerOption[] }) {
           ))}
         </select>
       ) : (
-        <input name="issuer" required className="input font-mono" placeholder="issuer (the token's `iss`)" />
+        <input name="issuer" required className="input font-mono" placeholder={tr("issuer (the token's `iss`)")} />
       )}
       <div className="grid grid-cols-2 gap-3">
         <input
           name="subject"
           required
           className="input font-mono"
-          placeholder="subject (the token's `sub`) — immutable"
+          placeholder={tr("subject (the token's `sub`) — immutable")}
         />
-        <input name="clientId" className="input font-mono" placeholder="clientId / azp (display only)" />
+        <input name="clientId" className="input font-mono" placeholder={tr("clientId / azp (display only)")} />
       </div>
       <button type="submit" className="btn-primary" disabled={busy}>
-        {busy ? "Registering…" : "Register principal"}
+        {busy ? tr("Registering…") : tr("Register principal")}
       </button>
       <p className="text-xs text-slate-400">
-        Creates no credential — the IdP owns the client secret. (issuer, subject) is the identity key
-        and is immutable; to re-point a machine, register a new principal and disable this one.
+        {tr(
+          "Creates no credential — the IdP owns the client secret. (issuer, subject) is the identity key and is immutable; to re-point a machine, register a new principal and disable this one.",
+        )}
       </p>
     </form>
   );
@@ -99,6 +102,7 @@ export function PrincipalRegister({ issuers }: { issuers: IssuerOption[] }) {
 /** Edit the display fields only — (issuer, subject) is immutable by contract. */
 export function EditPrincipal({ principal }: { principal: ServicePrincipal }) {
   const { err, busy, run } = useSubmit();
+  const tr = useTg();
   const [open, setOpen] = useState(false);
   if (!open) {
     return (
@@ -107,7 +111,7 @@ export function EditPrincipal({ principal }: { principal: ServicePrincipal }) {
         className="text-xs font-medium text-indigo-600 hover:underline"
         onClick={() => setOpen(true)}
       >
-        Edit
+        {tr("Edit")}
       </button>
     );
   }
@@ -128,25 +132,25 @@ export function EditPrincipal({ principal }: { principal: ServicePrincipal }) {
       }}
     >
       {err ? <ErrorBox error={err} /> : null}
-      <input name="name" required defaultValue={principal.name} className="input" placeholder="name" />
+      <input name="name" required defaultValue={principal.name} className="input" placeholder={tr("name")} />
       <input
         name="description"
         defaultValue={principal.description ?? ""}
         className="input"
-        placeholder="description (optional)"
+        placeholder={tr("description (optional)")}
       />
       <input
         name="clientId"
         defaultValue={principal.clientId ?? ""}
         className="input font-mono"
-        placeholder="clientId (display only)"
+        placeholder={tr("clientId (display only)")}
       />
       <div className="flex gap-2">
         <button type="submit" className="btn-primary" disabled={busy}>
-          {busy ? "Saving…" : "Save"}
+          {busy ? tr("Saving…") : tr("Save")}
         </button>
         <button type="button" className="btn-ghost" onClick={() => setOpen(false)}>
-          Cancel
+          {tr("Cancel")}
         </button>
       </div>
     </form>
@@ -159,6 +163,7 @@ export function EditPrincipal({ principal }: { principal: ServicePrincipal }) {
  */
 export function PrincipalStatusToggle({ principal }: { principal: ServicePrincipal }) {
   const { err, busy, run } = useSubmit();
+  const tr = useTg();
   const disabled = principal.status === "disabled";
   return (
     <span className="inline-flex items-center gap-2">
@@ -171,7 +176,7 @@ export function PrincipalStatusToggle({ principal }: { principal: ServicePrincip
           if (
             !disabled &&
             !window.confirm(
-              `Disable ${principal.code}? Its tokens stop working immediately.`,
+              `${tr("Disable")} ${principal.code}? ${tr("Its tokens stop working immediately.")}`,
             )
           ) {
             return;
@@ -183,7 +188,7 @@ export function PrincipalStatusToggle({ principal }: { principal: ServicePrincip
           );
         }}
       >
-        {busy ? "…" : disabled ? "Enable" : "Disable"}
+        {busy ? "…" : disabled ? tr("Enable") : tr("Disable")}
       </button>
     </span>
   );
@@ -196,6 +201,7 @@ export function PrincipalStatusToggle({ principal }: { principal: ServicePrincip
  */
 export function GrantPermission({ principalId }: { principalId: string }) {
   const { err, busy, run } = useSubmit();
+  const tr = useTg();
   return (
     <form
       className="card space-y-3 p-5"
@@ -213,23 +219,23 @@ export function GrantPermission({ principalId }: { principalId: string }) {
         });
       }}
     >
-      <h3 className="text-sm font-semibold text-slate-900">Grant permission</h3>
+      <h3 className="text-sm font-semibold text-slate-900">{tr("Grant permission")}</h3>
       {err ? <ErrorBox error={err} /> : null}
       <div className="grid grid-cols-2 gap-3">
         <input
           name="permission"
           required
           className="input font-mono"
-          placeholder="permission code (e.g. import.manage)"
+          placeholder={tr("permission code (e.g. import.manage)")}
         />
         <input
           name="orgId"
           className="input font-mono"
-          placeholder="organization RID (blank = instance-wide)"
+          placeholder={tr("organization RID (blank = instance-wide)")}
         />
       </div>
       <button type="submit" className="btn-primary" disabled={busy}>
-        {busy ? "Granting…" : "Grant"}
+        {busy ? tr("Granting…") : tr("Grant permission")}
       </button>
     </form>
   );
@@ -238,6 +244,7 @@ export function GrantPermission({ principalId }: { principalId: string }) {
 /** Revoke a grant. A flip, not a delete — the row survives with `revokedAt` set. */
 export function RevokeGrant({ grantId, permission }: { grantId: string; permission: string }) {
   const { err, busy, run } = useSubmit();
+  const tr = useTg();
   return (
     <span className="inline-flex items-center gap-2">
       {err ? <ErrorBox error={err} /> : null}
@@ -246,11 +253,11 @@ export function RevokeGrant({ grantId, permission }: { grantId: string; permissi
         className="text-xs font-medium text-rose-600 hover:underline disabled:opacity-50"
         disabled={busy}
         onClick={() => {
-          if (!window.confirm(`Revoke ${permission}?`)) return;
+          if (!window.confirm(`${tr("Revoke")} ${permission}?`)) return;
           run(() => api.authorization.revokePrincipalPermission(grantId));
         }}
       >
-        {busy ? "…" : "Revoke"}
+        {busy ? "…" : tr("Revoke")}
       </button>
     </span>
   );
