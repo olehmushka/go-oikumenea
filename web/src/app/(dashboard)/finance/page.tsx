@@ -135,6 +135,7 @@ function CreateAccount({ accountTypes, onCreated, setErr }: { accountTypes: Cata
 }
 
 function CatalogsCard({ onChanged, setErr }: { onChanged: () => void; setErr: (e: unknown) => void }) {
+  const tr = useTg();
   const [typeName, setTypeName] = useState("");
   const [networkName, setNetworkName] = useState("");
 
@@ -154,12 +155,12 @@ function CatalogsCard({ onChanged, setErr }: { onChanged: () => void; setErr: (e
       <h2 className="mb-2 text-sm font-semibold text-slate-900"><T>Catalogs</T></h2>
       <form onSubmit={addType} className="mb-3 space-y-2 text-sm">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-400"><T>New account type</T></p>
-        <input className="input" placeholder="Account type name" value={typeName} onChange={(e) => setTypeName(e.target.value)} />
+        <input className="input" placeholder={tr("Account type name")} value={typeName} onChange={(e) => setTypeName(e.target.value)} />
         <button className="btn-secondary" type="submit"><T>Add account type</T></button>
       </form>
       <form onSubmit={addNetwork} className="space-y-2 text-sm">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-400"><T>New card network</T></p>
-        <input className="input" placeholder="Card network name" value={networkName} onChange={(e) => setNetworkName(e.target.value)} />
+        <input className="input" placeholder={tr("Card network name")} value={networkName} onChange={(e) => setNetworkName(e.target.value)} />
         <button className="btn-secondary" type="submit"><T>Add card network</T></button>
       </form>
     </Card>

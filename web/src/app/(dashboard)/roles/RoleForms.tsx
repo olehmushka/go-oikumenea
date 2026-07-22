@@ -6,6 +6,7 @@ import { api } from "@/lib/api/client";
 import { ErrorBox } from "@/components/ErrorBox";
 import { EntitySelect } from "@/components/EntitySelect";
 import { GraphSelect } from "@/components/GraphSelect";
+import { useTg } from "@/lib/locale";
 import type { Role } from "@/lib/api/types";
 
 function useSubmit() {
@@ -29,6 +30,7 @@ function useSubmit() {
 
 export function RoleCreate() {
   const { err, busy, run } = useSubmit();
+  const tr = useTg();
   return (
     <form
       className="card space-y-3 p-5"
@@ -50,21 +52,21 @@ export function RoleCreate() {
         });
       }}
     >
-      <h3 className="text-sm font-semibold text-slate-900">Create role</h3>
+      <h3 className="text-sm font-semibold text-slate-900">{tr("Create role")}</h3>
       {err ? <ErrorBox error={err} /> : null}
       <div className="grid grid-cols-2 gap-3">
-        <input name="code" required className="input" placeholder="code (e.g. unit-reader)" />
-        <input name="name" required className="input" placeholder="name" />
+        <input name="code" required className="input" placeholder={tr("code (e.g. unit-reader)")} />
+        <input name="name" required className="input" placeholder={tr("name")} />
       </div>
-      <input name="description" className="input" placeholder="description (optional)" />
+      <input name="description" className="input" placeholder={tr("description (optional)")} />
       <textarea
         name="permissions"
         className="input font-mono"
         rows={2}
-        placeholder="permissions, space- or comma-separated (e.g. person.read unit.read)"
+        placeholder={tr("permissions, space- or comma-separated (e.g. person.read unit.read)")}
       />
       <button type="submit" className="btn-primary" disabled={busy}>
-        {busy ? "Creating…" : "Create role"}
+        {busy ? tr("Creating…") : tr("Create role")}
       </button>
     </form>
   );
@@ -73,6 +75,7 @@ export function RoleCreate() {
 /** Inline edit of a custom role's name / description / permissions. PUT /authorization/v1/roles/{id}. */
 export function EditRole({ role }: { role: Role }) {
   const { err, busy, run } = useSubmit();
+  const tr = useTg();
   const [open, setOpen] = useState(false);
   if (!open) {
     return (
@@ -81,7 +84,7 @@ export function EditRole({ role }: { role: Role }) {
         className="text-xs font-medium text-indigo-600 hover:underline"
         onClick={() => setOpen(true)}
       >
-        Edit
+        {tr("Edit")}
       </button>
     );
   }
@@ -106,8 +109,8 @@ export function EditRole({ role }: { role: Role }) {
       }}
     >
       {err ? <ErrorBox error={err} /> : null}
-      <input name="name" className="input" placeholder="name" defaultValue={role.code} />
-      <input name="description" className="input" placeholder="description" />
+      <input name="name" className="input" placeholder={tr("name")} defaultValue={role.code} />
+      <input name="description" className="input" placeholder={tr("description")} />
       <textarea
         name="permissions"
         rows={3}
@@ -116,10 +119,10 @@ export function EditRole({ role }: { role: Role }) {
       />
       <div className="flex gap-2">
         <button className="btn-primary" disabled={busy}>
-          Save
+          {tr("Save")}
         </button>
         <button type="button" className="btn-ghost" onClick={() => setOpen(false)}>
-          Cancel
+          {tr("Cancel")}
         </button>
       </div>
     </form>
@@ -128,6 +131,7 @@ export function EditRole({ role }: { role: Role }) {
 
 export function AssignmentGrant({ roles }: { roles: Role[] }) {
   const { err, busy, run } = useSubmit();
+  const tr = useTg();
   return (
     <form
       className="card space-y-3 p-5"
@@ -148,20 +152,20 @@ export function AssignmentGrant({ roles }: { roles: Role[] }) {
         });
       }}
     >
-      <h3 className="text-sm font-semibold text-slate-900">Grant assignment</h3>
+      <h3 className="text-sm font-semibold text-slate-900">{tr("Grant assignment")}</h3>
       <p className="text-xs text-slate-500">
-        An assignment is (person, role, target unit, scope). <code>subtree</code> cascades to
-        descendants; <code>unit</code> grants nothing below — not even read.
+        {tr("An assignment is (person, role, target unit, scope).")} <code>subtree</code>{" "}
+        {tr("cascades to descendants;")} <code>unit</code> {tr("grants nothing below — not even read.")}
       </p>
       {err ? <ErrorBox error={err} /> : null}
       <div>
-        <label className="label">Subject person</label>
-        <EntitySelect name="subjectPersonId" kind="person" required placeholder="Search a person…" />
+        <label className="label">{tr("Subject person")}</label>
+        <EntitySelect name="subjectPersonId" kind="person" required placeholder={tr("Search a person…")} />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <select name="roleId" required className="input" defaultValue="">
           <option value="" disabled>
-            role…
+            {tr("role…")}
           </option>
           {roles.map((r) => (
             <option key={r.id} value={r.id}>
@@ -175,15 +179,15 @@ export function AssignmentGrant({ roles }: { roles: Role[] }) {
         </select>
       </div>
       <div>
-        <label className="label">Target unit</label>
-        <EntitySelect name="targetUnitId" kind="unit" required placeholder="Search a unit…" />
+        <label className="label">{tr("Target unit")}</label>
+        <EntitySelect name="targetUnitId" kind="unit" required placeholder={tr("Search a unit…")} />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <GraphSelect name="graph" />
         <input name="expiresAt" type="datetime-local" className="input" />
       </div>
       <button type="submit" className="btn-primary" disabled={busy}>
-        {busy ? "Granting…" : "Grant"}
+        {busy ? tr("Granting…") : tr("Grant assignment")}
       </button>
     </form>
   );
@@ -191,6 +195,7 @@ export function AssignmentGrant({ roles }: { roles: Role[] }) {
 
 export function InstanceAdminGrant() {
   const { err, busy, run } = useSubmit();
+  const tr = useTg();
   return (
     <form
       className="card space-y-3 p-5"
@@ -206,17 +211,17 @@ export function InstanceAdminGrant() {
         });
       }}
     >
-      <h3 className="text-sm font-semibold text-slate-900">Grant instance-admin</h3>
+      <h3 className="text-sm font-semibold text-slate-900">{tr("Grant instance-admin")}</h3>
       <p className="text-xs text-slate-500">
-        The instance-admin plane is separate from unit roles — it grants the whole instance.
+        {tr("The instance-admin plane is separate from unit roles — it grants the whole instance.")}
       </p>
       {err ? <ErrorBox error={err} /> : null}
       <div className="flex items-start gap-2">
         <div className="flex-1">
-          <EntitySelect name="personId" kind="person" required placeholder="Search a person…" />
+          <EntitySelect name="personId" kind="person" required placeholder={tr("Search a person…")} />
         </div>
         <button type="submit" className="btn-primary" disabled={busy}>
-          {busy ? "…" : "Grant"}
+          {busy ? "…" : tr("Grant instance-admin")}
         </button>
       </div>
     </form>

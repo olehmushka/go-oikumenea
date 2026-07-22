@@ -20,6 +20,7 @@ import type { UnitRef } from "@/lib/api/types";
  */
 export function EdgeManager({ unitId }: { unitId: string }) {
   const router = useRouter();
+  const tr = useTg();
   const [graph, setGraph] = useState("");
   const [parents, setParents] = useState<UnitRef[]>([]);
   const [children, setChildren] = useState<UnitRef[]>([]);
@@ -75,7 +76,7 @@ export function EdgeManager({ unitId }: { unitId: string }) {
     run(() => api.tenant.addEdge(childId, { parentId: unitId, graph: graph || undefined }));
 
   const removeEdge = (childUnit: string, parentUnit: string) => {
-    if (!window.confirm("Remove this edge?")) return;
+    if (!window.confirm(tr("Remove this edge?"))) return;
     run(() => api.tenant.removeEdge(childUnit, parentUnit, graph || undefined));
   };
 

@@ -246,10 +246,10 @@ function EnrollmentSection({ personId }: { personId: string }) {
         ))}
       </ul>
       <form key={formKey} className={formCls} onSubmit={submit}>
-        <EntitySelect kind="institution" defaultValue={inst} onChange={setInst} placeholder="Institution *" />
-        <ScopedSelect path={inst ? `${EDU}/institutions/${inst}/units` : ""} listKey="units" value={unit} onChange={(v) => { setUnit(v); setGroup(""); }} placeholder="Unit" />
-        <ScopedSelect path={unit ? `${EDU}/units/${unit}/groups` : ""} listKey="groups" value={group} onChange={setGroup} placeholder="Group" />
-        <ScopedSelect path={inst ? `${EDU}/institutions/${inst}/programs` : ""} listKey="programs" value={program} onChange={setProgram} placeholder="Program" />
+        <EntitySelect kind="institution" defaultValue={inst} onChange={setInst} placeholder={tr("Institution *")} />
+        <ScopedSelect path={inst ? `${EDU}/institutions/${inst}/units` : ""} listKey="units" value={unit} onChange={(v) => { setUnit(v); setGroup(""); }} placeholder={tr("Unit")} />
+        <ScopedSelect path={unit ? `${EDU}/units/${unit}/groups` : ""} listKey="groups" value={group} onChange={setGroup} placeholder={tr("Group")} />
+        <ScopedSelect path={inst ? `${EDU}/institutions/${inst}/programs` : ""} listKey="programs" value={program} onChange={setProgram} placeholder={tr("Program")} />
         <select className="input" value={degree} onChange={(e) => setDegree(e.target.value)}>
           <option value="">{tr("Degree level…")}</option>
           {degrees.map((d) => (
@@ -319,9 +319,9 @@ function DormitorySection({ personId }: { personId: string }) {
         ))}
       </ul>
       <form key={formKey} className={formCls} onSubmit={submit}>
-        <EntitySelect kind="institution" defaultValue={inst} onChange={(v) => { setInst(v); setBuilding(""); }} placeholder="Institution" />
+        <EntitySelect kind="institution" defaultValue={inst} onChange={(v) => { setInst(v); setBuilding(""); }} placeholder={tr("Institution")} />
         <ScopedSelect path={inst ? `${EDU}/institutions/${inst}/buildings` : ""} listKey="buildings" value={building} onChange={setBuilding}
-          placeholder="Dormitory" required filter={(o) => o.kind === "dormitory"} />
+          placeholder={tr("Dormitory")} required filter={(o) => o.kind === "dormitory"} />
         <input className="input" placeholder={tr("Room")} value={room} onChange={(e) => setRoom(e.target.value)} />
         <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="">{tr("Status…")}</option>
@@ -385,7 +385,7 @@ function PublicationSection({ personId }: { personId: string }) {
         ))}
       </ul>
       <form key={formKey} className={formCls} onSubmit={submit}>
-        <EntitySelect kind="publication" defaultValue={pub} onChange={setPub} placeholder="Publication *" />
+        <EntitySelect kind="publication" defaultValue={pub} onChange={setPub} placeholder={tr("Publication *")} />
         <input className="input" type="number" placeholder={tr("Author order")} value={order} onChange={(e) => setOrder(e.target.value)} />
         <label className="flex items-center gap-2 text-sm text-slate-600">
           <input type="checkbox" checked={corresponding} onChange={(e) => setCorresponding(e.target.checked)} /> {tr("corresponding author")}
@@ -465,7 +465,7 @@ function RoleLinkSection({
         ))}
       </ul>
       <form key={formKey} className={formCls} onSubmit={submit}>
-        <EntitySelect kind="institution" defaultValue={inst} onChange={(v) => { setInst(v); setTarget(""); }} placeholder="Institution" />
+        <EntitySelect kind="institution" defaultValue={inst} onChange={(v) => { setInst(v); setTarget(""); }} placeholder={tr("Institution")} />
         <ScopedSelect path={inst ? `${EDU}/institutions/${inst}/${childPath}` : ""} listKey={childKey} value={target} onChange={setTarget} placeholder={pickPlaceholder} required />
         {roleOptions ? (
           <select className="input" value={role} onChange={(e) => setRole(e.target.value)}>
@@ -546,8 +546,8 @@ function QualificationSection({ personId }: { personId: string }) {
         ))}
       </ul>
       <form key={formKey} className={formCls} onSubmit={submit}>
-        <EntitySelect kind="institution" defaultValue={inst} onChange={(v) => { setInst(v); setQualId(""); }} placeholder="Institution" />
-        <ScopedSelect path={inst ? `${EDU}/institutions/${inst}/qualifications` : ""} listKey="qualifications" value={qualId} onChange={setQualId} placeholder="Qualification" required />
+        <EntitySelect kind="institution" defaultValue={inst} onChange={(v) => { setInst(v); setQualId(""); }} placeholder={tr("Institution")} />
+        <ScopedSelect path={inst ? `${EDU}/institutions/${inst}/qualifications` : ""} listKey="qualifications" value={qualId} onChange={setQualId} placeholder={tr("Qualification")} required />
         <select className="input" value={enrollment} onChange={(e) => setEnrollment(e.target.value)}>
           <option value="">{tr("Link enrollment…")}</option>
           {enrollments.map((e) => <option key={e.id} value={e.id}>{e.fieldOfStudy || tail(e.institutionId)}</option>)}
@@ -610,7 +610,7 @@ function ScholarshipSection({ personId }: { personId: string }) {
         ))}
       </ul>
       <form key={formKey} className={formCls} onSubmit={submit}>
-        <EntitySelect kind="scholarship" defaultValue={scholarship} onChange={setScholarship} placeholder="Scholarship *" />
+        <EntitySelect kind="scholarship" defaultValue={scholarship} onChange={setScholarship} placeholder={tr("Scholarship *")} />
         <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="">{tr("Status…")}</option>
           {["active", "suspended", "terminated", "completed"].map((s) => <option key={s} value={s}>{s}</option>)}

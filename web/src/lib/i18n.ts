@@ -9,13 +9,15 @@
 
 export type LocaleMap = Record<string, string> | null | undefined;
 
-export const UI_LOCALES = ["eng", "ukr"] as const;
+export const UI_LOCALES = ["eng", "ukr", "spa", "por"] as const;
 export type UiLocale = (typeof UI_LOCALES)[number];
 export const DEFAULT_LOCALE: UiLocale = "eng";
 
 export const LOCALE_LABELS: Record<string, string> = {
   eng: "English",
   ukr: "Українська",
+  spa: "Español (Latinoamérica)",
+  por: "Português (Brasil)",
 };
 
 /**

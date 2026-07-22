@@ -96,7 +96,7 @@ export function TranslationEditor({ locales }: { locales: { code: string; name: 
             id="tr-type"
             className="input"
             list="tr-entity-types"
-            placeholder="country"
+            placeholder={tr("country")}
             value={entityType}
             onChange={(e) => setEntityType(e.target.value)}
           />
@@ -158,7 +158,7 @@ export function TranslationEditor({ locales }: { locales: { code: string; name: 
               <input
                 id="tr-newfield"
                 className="input"
-                placeholder="name"
+                placeholder={tr("name")}
                 value={newField}
                 onChange={(e) => setNewField(e.target.value)}
               />

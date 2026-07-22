@@ -85,6 +85,7 @@ export default function VehiclesPage() {
 }
 
 function CreateVehicle({ types, brands, onCreated, setErr }: { types: Catalog[]; brands: Brand[]; onCreated: () => void; setErr: (e: unknown) => void }) {
+  const tr = useTg();
   const [typeId, setTypeId] = useState("");
   const [brandId, setBrandId] = useState("");
   const [models, setModels] = useState<Model[]>([]);
@@ -124,8 +125,8 @@ function CreateVehicle({ types, brands, onCreated, setErr }: { types: Catalog[];
             {models.map((m) => <option key={m.id} value={m.id}>{label(m.name, m.code)}</option>)}
           </select>
         ) : null}
-        <input className="input" placeholder="VIN (optional)" value={vin} onChange={(e) => setVin(e.target.value)} />
-        <ColorPicker domain="vehicle" value={colorId} onChange={setColorId} placeholder="Color (optional)" />
+        <input className="input" placeholder={tr("VIN (optional)")} value={vin} onChange={(e) => setVin(e.target.value)} />
+        <ColorPicker domain="vehicle" value={colorId} onChange={setColorId} placeholder={tr("Color (optional)")} />
         <button className="btn-primary" type="submit"><T>Create</T></button>
       </form>
     </Card>
@@ -133,6 +134,7 @@ function CreateVehicle({ types, brands, onCreated, setErr }: { types: Catalog[];
 }
 
 function CatalogsCard({ brands, onChanged, setErr }: { brands: Brand[]; onChanged: () => void; setErr: (e: unknown) => void }) {
+  const tr = useTg();
   const [brandName, setBrandName] = useState("");
   const [brandCountry, setBrandCountry] = useState("");
   const [modelBrand, setModelBrand] = useState("");
@@ -160,7 +162,7 @@ function CatalogsCard({ brands, onChanged, setErr }: { brands: Brand[]; onChange
       <h2 className="mb-2 text-sm font-semibold text-slate-900"><T>Catalogs</T></h2>
       <form onSubmit={addBrand} className="mb-3 space-y-2 text-sm">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-400"><T>New brand</T></p>
-        <input className="input" placeholder="Brand name" value={brandName} onChange={(e) => setBrandName(e.target.value)} />
+        <input className="input" placeholder={tr("Brand name")} value={brandName} onChange={(e) => setBrandName(e.target.value)} />
         <CountrySelectControlled value={brandCountry} onChange={setBrandCountry} />
         <button className="btn-secondary" type="submit"><T>Add brand</T></button>
       </form>
@@ -170,7 +172,7 @@ function CatalogsCard({ brands, onChanged, setErr }: { brands: Brand[]; onChange
           <option value="">— brand —</option>
           {brands.map((b) => <option key={b.id} value={b.id}>{label(b.name, b.code)}</option>)}
         </select>
-        <input className="input" placeholder="Model name" value={modelName} onChange={(e) => setModelName(e.target.value)} />
+        <input className="input" placeholder={tr("Model name")} value={modelName} onChange={(e) => setModelName(e.target.value)} />
         <button className="btn-secondary" type="submit"><T>Add model</T></button>
       </form>
     </Card>

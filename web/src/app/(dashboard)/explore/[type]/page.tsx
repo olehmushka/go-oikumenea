@@ -8,6 +8,7 @@ import { TypeBadge } from "@/components/ontology/TypeBadge";
 import { OBJECT_TYPES, type Row } from "@/lib/ontology/registry";
 import { T } from "@/components/T";
 import { UnitCreateMenu } from "@/components/UnitCreateMenu";
+import { tg } from "@/lib/messages";
 
 // For org-scoped lists (units; D-TenantOrganizations, M40), fetch the organizations to populate the
 // picker. Returns {id, label} options; label prefers the stable code, falling back to the RID tail.
@@ -142,7 +143,7 @@ export default async function ExplorePage({
             type="search"
             name="q"
             defaultValue={query}
-            placeholder="Search by name or code…"
+            placeholder={tg("Search by name or code…")}
             className="input max-w-xs"
             autoComplete="off"
           />

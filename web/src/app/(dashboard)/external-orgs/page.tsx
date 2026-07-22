@@ -12,6 +12,7 @@ import { api } from "@/lib/api/client";
 import { PageHeader, Card, Table, Mono } from "@/components/ui";
 import { ErrorBox } from "@/components/ErrorBox";
 import { T } from "@/components/T";
+import { useTg } from "@/lib/locale";
 import { pickLabel, type LocaleMap } from "@/lib/i18n";
 
 type Kind = { id: string; code: string; name: LocaleMap; status: string; sortOrder?: number };
@@ -94,6 +95,7 @@ export default function ExternalOrgsPage() {
 }
 
 function CreateOrg({ kinds, onCreated, setErr }: { kinds: Kind[]; onCreated: () => void; setErr: (e: unknown) => void }) {
+  const tr = useTg();
   const [kindId, setKindId] = useState("");
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
@@ -125,9 +127,9 @@ function CreateOrg({ kinds, onCreated, setErr }: { kinds: Kind[]; onCreated: () 
           <option value="">— kind —</option>
           {kinds.map((k) => <option key={k.id} value={k.id}>{label(k.name, k.code)}</option>)}
         </select>
-        <input className="input" placeholder="name" value={name} onChange={(e) => setName(e.target.value)} required />
-        <input className="input" placeholder="code (optional)" value={code} onChange={(e) => setCode(e.target.value)} />
-        <input className="input" placeholder="Wikidata Q-id (optional)" value={wikidataId} onChange={(e) => setWikidataId(e.target.value)} />
+        <input className="input" placeholder={tr("name")} value={name} onChange={(e) => setName(e.target.value)} required />
+        <input className="input" placeholder={tr("code (optional)")} value={code} onChange={(e) => setCode(e.target.value)} />
+        <input className="input" placeholder={tr("Wikidata Q-id (optional)")} value={wikidataId} onChange={(e) => setWikidataId(e.target.value)} />
         <select className="input" value={countryId} onChange={(e) => setCountryId(e.target.value)}>
           <CountryOptions />
         </select>
@@ -142,6 +144,7 @@ function CreateOrg({ kinds, onCreated, setErr }: { kinds: Kind[]; onCreated: () 
 }
 
 function KindsCard({ kinds, onChanged, setErr }: { kinds: Kind[]; onChanged: () => void; setErr: (e: unknown) => void }) {
+  const tr = useTg();
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
 
@@ -165,8 +168,8 @@ function KindsCard({ kinds, onChanged, setErr }: { kinds: Kind[]; onChanged: () 
         ))}
       </ul>
       <form onSubmit={submit} className="flex gap-2 text-sm">
-        <input className="input" placeholder="code" value={code} onChange={(e) => setCode(e.target.value)} />
-        <input className="input" placeholder="name" value={name} onChange={(e) => setName(e.target.value)} />
+        <input className="input" placeholder={tr("code")} value={code} onChange={(e) => setCode(e.target.value)} />
+        <input className="input" placeholder={tr("name")} value={name} onChange={(e) => setName(e.target.value)} />
         <button className="btn-secondary" type="submit"><T>Upsert</T></button>
       </form>
     </Card>
@@ -199,6 +202,7 @@ function Merge({ org, orgs, onDone, setErr }: { org: Org; orgs: Org[]; onDone: (
 
 // EditOrg edits name/code/kind/wikidata inline (updateExternalOrg; omitted fields unchanged).
 function EditOrg({ org, kinds, onDone, setErr }: { org: Org; kinds: Kind[]; onDone: () => void; setErr: (e: unknown) => void }) {
+  const tr = useTg();
   const [open, setOpen] = useState(false);
   const [kindId, setKindId] = useState(org.kindId);
   const [name, setName] = useState(label(org.name, ""));
@@ -224,9 +228,9 @@ function EditOrg({ org, kinds, onDone, setErr }: { org: Org; kinds: Kind[]; onDo
       <select className="input w-auto text-xs" value={kindId} onChange={(e) => setKindId(e.target.value)}>
         {kinds.map((k) => <option key={k.id} value={k.id}>{label(k.name, k.code)}</option>)}
       </select>
-      <input className="input w-28 text-xs" value={name} onChange={(e) => setName(e.target.value)} placeholder="name" />
-      <input className="input w-20 text-xs" value={code} onChange={(e) => setCode(e.target.value)} placeholder="code" />
-      <input className="input w-24 text-xs" value={wikidataId} onChange={(e) => setWikidataId(e.target.value)} placeholder="Q-id" />
+      <input className="input w-28 text-xs" value={name} onChange={(e) => setName(e.target.value)} placeholder={tr("name")} />
+      <input className="input w-20 text-xs" value={code} onChange={(e) => setCode(e.target.value)} placeholder={tr("code")} />
+      <input className="input w-24 text-xs" value={wikidataId} onChange={(e) => setWikidataId(e.target.value)} placeholder={tr("Q-id")} />
       <button className="text-xs text-indigo-600 hover:underline" onClick={submit}><T>Save</T></button>
       <button className="text-xs text-slate-400 hover:underline" onClick={() => setOpen(false)}><T>Cancel</T></button>
     </span>
