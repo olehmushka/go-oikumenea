@@ -148,7 +148,11 @@ of an already-authorized — or explicitly denied — action); reading the log i
 - **Atomic with the change** for in-transaction recording — the audit row and the mutation share
   a fate.
 - **No secrets, minimal PII** in `before`/`after`; person references are by id (the
-  [person](person.md) purge tombstone keeps ids resolvable-or-redacted after erasure).
+  [person](person.md) purge tombstone keeps ids resolvable-or-redacted after erasure). In practice
+  `before` is unused (always NULL) and `after` is a small curated **identifier map** (e.g. `{"id": …}`
+  plus a changed status), **not** a full row snapshot or a field-level diff — the ledger records
+  *who changed what-kind-of-thing, when*, not each field's value. This is why full-object as-of
+  reconstruction is not derivable from the ledger (see *Open seams*).
 - `request_id` ties every entry to the full request across logs/metrics/traces.
 
 ## Open seams / future
@@ -159,9 +163,15 @@ of an already-authorized — or explicitly denied — action); reading the log i
   that reads `audit.retention-months` and detaches/archives without an operator command.
 - **Object history (D-Temporal, review-2026-09 R-31): delivered.** `getObjectHistory` reads the
   ledger back as a per-object timeline (tier b of the three-tier history classification); tier-a Links
-  carry native `valid_from`/`valid_to` instead. Open seams: **as-of reconstruction** (folding
-  `before/after` into a point-in-time object view) and full **bitemporality** (a transaction-time
-  axis) are deliberately *not* built — recorded as seams, not implied.
+  carry native `valid_from`/`valid_to` instead. Open seams (both deliberately *not* built —
+  recorded, not implied): **as-of reconstruction** and full **bitemporality** (a transaction-time
+  axis). **Re-scope note (2026-07-23):** the earlier phrasing "as-of by folding `before/after` into a
+  point-in-time object view" is **infeasible** — `before` is never written and `after` is a sparse
+  non-PII identifier map (see *Invariants*), so there is no state to fold, and real attribute values
+  are barred from the ledger by the `pii:special` ceiling (until DS-29). The genuinely reconstructable
+  axis is the **tier-(a) relationship graph** via its `valid_from`/`valid_to` intervals — a buildable
+  `asOf T` read over D-LinkTraversal, still unbuilt; full-object *attribute* as-of would need versioned
+  primary tables or full-snapshot audit. See **D-Temporal** in decisions.md for the scoped seam.
 - **PII envelope** (encrypt attributed free-text with per-row keys, erase by key deletion) is a
   reserved enhancement if richer PII ever lands in audit payloads.
 - A streaming/export sink (SIEM) sits naturally behind `audit2log`.
