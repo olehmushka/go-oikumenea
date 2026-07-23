@@ -2439,7 +2439,12 @@ range CHECK) to the **thirteen** previously-undated relationship Links — `pare
 table's original `CREATE TABLE`** in its existing migration and the dev/test DBs rebuilt, per the
 unreleased-build-out convention (edit in place, not an ALTER migration — the same way R-32's shape
 CHECKs were folded in). Existing dated Links keep their grandfathered column names (no churny rename);
-the canonical `valid_from`/`valid_to` pair applies to these newly-dated Links. On a real post-release
+the canonical `valid_from`/`valid_to` pair applies to these newly-dated Links. (Note: "thirteen" is
+the count *newly folded in-place* here. In total **~17** Links carry the canonical `valid_from`/
+`valid_to` pair — these thirteen plus four already dated from their original migrations: `lives_at`
+(M32) and `party_membership`/`government_position`/`lobbying_rel` (M33). The authoritative,
+build-enforced set of validity-bearing Links is `cmd/oikumenea/temporal_tiers_test.go`'s
+`tierValidity` classification, not this prose list — an as-of reader must use all of them.) On a real post-release
 upgrade the equivalent change would instead ship as an expand ALTER (`valid_from := created_at`,
 `valid_to := deleted_at`); pre-release, the migrations are the source and are edited in place.
 
@@ -2462,11 +2467,30 @@ some got nothing) and the divergence grew monotonically. For a registry whose id
 watchlists and sanctions, *when we knew something* is the line between an intelligence platform and a
 CRUD directory — and it is unrecoverable for any table that overwrote state before dating was added.
 
-**Consequence.** As-of *reconstruction* (folding `before/after` into a point-in-time view of a whole
-object) and full **bitemporality** (a second, transaction-time axis) remain named seams — **not** shipped
-(and blanket bitemporality is explicitly *not* the plan; R-31 exists to *scope* history). Per-Link
-**parameter/attribute schemas** on the history events are also a seam (the events carry the audit
-payload as opaque JSON today). The console consumes `getObjectHistory` for object timelines.
+**Consequence.** As-of *reconstruction* and full **bitemporality** (a second, transaction-time axis)
+remain named seams — **not** shipped (and blanket bitemporality is explicitly *not* the plan; R-31
+exists to *scope* history). The console consumes `getObjectHistory` for object timelines.
+
+**As-of reconstruction — re-scoped (2026-07-23), because the original framing was infeasible.** The
+seam was described as "folding `before`/`after` into a point-in-time view of a whole object." That is
+**not achievable from the audit ledger** and never was: `before` is populated by **no** module (always
+NULL), and `after` is a small hand-built **non-PII identifier map** (typically `{"id": …}`, sometimes
+one changed status field) — updates frequently record only the id, not the changed values. The
+`before/after` columns sit under the **`pii:special` ceiling** (D-DataScope), so real attribute values
+cannot land there until the **DS-29** envelope seam ships. The ledger therefore answers "who changed
+what-kind-of-thing, when" — **not** "what did each field equal at time T"; there is no snapshot and no
+diff to fold. The seam is re-scoped to two honest, independent futures:
+- **(i) Tier-(a) relationship-graph as-of — buildable, not built.** The ~17 validity-bearing Links
+  (above; `temporal_tiers_test.go`'s `tierValidity` set) already store half-open `valid_from`/`valid_to`
+  intervals, but **no query reads them as-of**
+  today (only "active now", `valid_to IS NULL`, or for ordering). A point-in-time view of the
+  *relationship graph* is a bounded future: an `asOf T` filter (`valid_from ≤ T AND (valid_to IS NULL
+  OR valid_to > T)`) over those Links, naturally layered onto **D-LinkTraversal**
+  (`getObjectLinks`/`searchAround`). This is the only axis with the data to reconstruct today.
+- **(ii) Full-object *attribute* as-of — out of scope.** Reconstructing an object's scalar attribute
+  state at T requires either **versioned/temporal primary tables** (which do not exist for most object
+  types) or **full-snapshot audit** (blocked on DS-29 and a cross-cutting write-path change). Neither
+  is planned here; recording it as a named seam is the point.
 
 ---
 
