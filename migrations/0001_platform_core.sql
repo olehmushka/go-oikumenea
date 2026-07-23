@@ -1,3 +1,6 @@
+-- 0001_platform_core — merged domain migration (refactor: consolidated from 0000_schema_bootstrap, 0001_audit_log, 0002_localization).
+
+-- ===== merged from 0000_schema_bootstrap =====
 -- 0000 schema bootstrap (M0 walking skeleton).
 --
 -- Creates the shared `oikumenea` SQL objects every module depends on, BEFORE any module
@@ -105,7 +108,7 @@ CREATE TABLE oikumenea.schema_version (
   revision   text NOT NULL,
   applied_at timestamptz NOT NULL DEFAULT now()
 );
-INSERT INTO oikumenea.schema_version (singleton, revision) VALUES (true, '0000_schema_bootstrap');
+
 
 -- pinax_seed_state: per-preset applied-version marker the boot autoseeder reads (D-Pinax, M45). The
 -- `pinax` reference plane's bundled YAML presets are `go:embed`-ed into oikumenea and self-seeded on
@@ -547,3 +550,272 @@ COMMENT ON COLUMN oikumenea.geo_places.bbox IS 'pii:none';
 COMMENT ON COLUMN oikumenea.geo_places.source IS 'pii:none';
 COMMENT ON COLUMN oikumenea.geo_places.source_version IS 'pii:none';
 COMMENT ON COLUMN oikumenea.geo_places.imported_at IS 'pii:none';
+
+-- ===== merged from 0001_audit_log =====
+-- 0001 audit log (M1).
+--
+-- The append-only Action ledger every later write commits into (D-Audit / docs/modules/audit.md).
+-- Each row records one Action and is keyed by that Action's RID (action__<type>; D-Ontology):
+-- the audit log IS the action ledger. Append-only — guarded by oikumenea.reject_mutation().
+-- Expand-only (L-UpgradeSafe / D-Migrations); depends on the 0001 schema bootstrap objects.
+--
+-- Physical layout (review-2026-07 R-07): the ledger is the largest, hottest, ever-growing table, so
+-- it is DECLARATIVELY RANGE-PARTITIONED BY MONTH on created_at. This bounds index/vacuum/backup cost
+-- to the live months and makes retention a partition detach (D-AuditRetention), not a mass DELETE.
+-- The D-Audit SEMANTICS are unchanged — same-transaction insert, append-only, one row per Action;
+-- only the storage shape and the index set (trimmed to what the read API serves) change here.
+
+CREATE TABLE oikumenea.audit_log (
+  -- PK = the Action RID of the write this row records (D-ResourceIdentifiers / D-Audit):
+  -- self-describing and chronologically ordered via its uuid_v7() component. Supplied by the
+  -- producing module's application service, not defaulted here. Declarative partitioning requires
+  -- the partition key in every unique/PK constraint, so the PK is (id, created_at); id leads so
+  -- GetAuditEntry (WHERE id = …) stays a PK lookup. id is globally unique by construction (uuid_v7).
+  id              uuid NOT NULL,
+
+  created_at      timestamptz NOT NULL DEFAULT now(),
+
+  -- The two actor kinds (D-Audit). There is no super_admin kind — an instance admin is a person.
+  actor_type      text NOT NULL CHECK (actor_type IN ('person','system')),
+  -- The person who acted (person RID); NOT NULL for person actions, NULL for system (CHECK below).
+  actor_person_id uuid,
+  -- For system actions, the originating source (bootstrap, recover-admin, purge-worker,
+  -- closure-rebuild, event-subscriber, …); NOT NULL for system actions, NULL otherwise (CHECK below).
+  subsystem       text,
+
+  action          text NOT NULL,  -- e.g. assignment.grant, unit.transition, rank.scheme.update
+  target_type     text NOT NULL,  -- e.g. unit, person, role_assignment, account, graph
+  -- target_id is POLYMORPHIC: a RID uuid for RID-keyed entities OR a natural code (locale, country,
+  -- scheme) for catalog entities — so it is TEXT, not uuid (D-ResourceIdentifiers carve-out).
+  target_id       text,           -- the acted-on entity's id (RID uuid text or a natural code)
+  unit_id         uuid,           -- unit context where applicable (for scoped audit reads)
+
+  request_id      text NOT NULL,  -- correlation key shared with logs/metrics/traces
+
+  -- State snapshot / change payload. No secrets; PII minimized. pii:special CEILING (D-PIITiers):
+  -- special-category data must NOT land here until the envelope seam (DS-29) ships.
+  before          jsonb,
+  after           jsonb,
+
+  outcome         text NOT NULL DEFAULT 'success' CHECK (outcome IN ('success','denied','error')),
+
+  PRIMARY KEY (id, created_at),
+
+  -- The Action RID shape: every audit key is an Action RID (rid_kind = 3; D-Ontology / conventions).
+  CONSTRAINT audit_log_action_rid_shape CHECK (oikumenea.rid_kind(id) = 3),
+
+  -- Actor-shape CHECK — the two kinds, mutually exclusive (D-Audit).
+  CONSTRAINT audit_log_actor_shape CHECK (
+    (actor_type = 'person' AND actor_person_id IS NOT NULL AND subsystem IS NULL)
+    OR
+    (actor_type = 'system' AND actor_person_id IS NULL AND subsystem IS NOT NULL)
+  )
+) PARTITION BY RANGE (created_at);
+
+-- Append-only: no UPDATE/DELETE from application code; corrections are new entries (D-Audit). A
+-- BEFORE ROW trigger on the partitioned parent cascades to every current and future partition
+-- (PG 13+; the deployment runs PG 16).
+CREATE TRIGGER audit_log_reject_mutation
+  BEFORE UPDATE OR DELETE ON oikumenea.audit_log
+  FOR EACH ROW EXECUTE FUNCTION oikumenea.reject_mutation();
+
+-- Filter/correlation indexes (docs/modules/audit.md), trimmed to what the read API serves
+-- (review-2026-07 R-07 index diet): keyset cursor, target lookup, actor lookup, and the unit_id the
+-- RLS read policy probes. The former actor_type single (2 distinct values) and request_id single are
+-- dropped — a request-id correlation rides the time-range + created_at index; re-add if it goes hot.
+-- Indexes declared on the parent auto-propagate to every partition.
+CREATE INDEX audit_log_created_at_id_idx ON oikumenea.audit_log (created_at DESC, id DESC);
+CREATE INDEX audit_log_actor_person_idx  ON oikumenea.audit_log (actor_person_id);
+CREATE INDEX audit_log_target_idx        ON oikumenea.audit_log (target_type, target_id);
+CREATE INDEX audit_log_unit_idx          ON oikumenea.audit_log (unit_id);
+
+-- ensure_audit_partition: idempotently create the monthly partition covering month_start's month,
+-- with UTC-aligned [m_start, m_end) bounds (created_at is UTC). Called at migration time for the
+-- current + next month and re-called at every oikumenea boot (advisory-locked) to roll the window
+-- forward. CREATE TABLE IF NOT EXISTS makes it a no-op once the partition exists.
+-- SECURITY DEFINER so the boot-time roll-forward can run as this function's owner (the schema owner,
+-- which holds CREATE on schema oikumenea). The application role (oikumenea_app) only holds USAGE, so an
+-- INVOKER-mode CREATE TABLE would fail 42501; the pinned search_path keeps the definer-rights body safe.
+CREATE OR REPLACE FUNCTION oikumenea.ensure_audit_partition(month_start date)
+RETURNS void LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = pg_catalog, oikumenea AS $$
+DECLARE
+  m_start date := date_trunc('month', month_start)::date;
+  m_end   date := (date_trunc('month', month_start) + interval '1 month')::date;
+  part    text := 'audit_log_y' || to_char(m_start, 'YYYY') || 'm' || to_char(m_start, 'MM');
+BEGIN
+  EXECUTE format(
+    'CREATE TABLE IF NOT EXISTS oikumenea.%I PARTITION OF oikumenea.audit_log FOR VALUES FROM (%L) TO (%L)',
+    part,
+    (m_start::timestamp AT TIME ZONE 'UTC'),
+    (m_end::timestamp   AT TIME ZONE 'UTC'));
+END;
+$$;
+
+-- detach_audit_partitions_before: operator retention helper (D-AuditRetention). Detaches every fully
+-- past monthly partition whose upper bound is <= cutoff so the operator can dump + drop it under
+-- their own legal-hold policy. It DETACHES only (never drops) — data loss is an explicit operator
+-- act. The DEFAULT partition and any partition still covering >= cutoff are left attached. Returns
+-- the detached partition names.
+CREATE OR REPLACE FUNCTION oikumenea.detach_audit_partitions_before(cutoff date)
+RETURNS SETOF text LANGUAGE plpgsql AS $$
+DECLARE
+  rec record;
+BEGIN
+  FOR rec IN
+    SELECT c.relname
+    FROM pg_inherits i
+    JOIN pg_class c   ON c.oid = i.inhrelid
+    JOIN pg_class p   ON p.oid = i.inhparent
+    JOIN pg_namespace n ON n.oid = p.relnamespace
+    WHERE n.nspname = 'oikumenea' AND p.relname = 'audit_log'
+      AND pg_get_expr(c.relpartbound, c.oid) <> 'DEFAULT'
+      -- upper bound of a monthly RANGE partition, parsed back to a date, strictly at/below cutoff
+      AND (substring(pg_get_expr(c.relpartbound, c.oid) FROM 'TO \(''([0-9-]+)')::date) <= cutoff
+  LOOP
+    EXECUTE format('ALTER TABLE oikumenea.audit_log DETACH PARTITION oikumenea.%I', rec.relname);
+    RETURN NEXT rec.relname;
+  END LOOP;
+END;
+$$;
+
+-- Safety-net catch-all so an insert never fails for a not-yet-created month; boot-time roll-forward
+-- keeps live writes in their own monthly partitions, so DEFAULT should stay empty in practice.
+CREATE TABLE oikumenea.audit_log_default PARTITION OF oikumenea.audit_log DEFAULT;
+
+-- Seed the current and next month at migration time (whenever the migration runs).
+SELECT oikumenea.ensure_audit_partition(CURRENT_DATE);
+SELECT oikumenea.ensure_audit_partition((date_trunc('month', CURRENT_DATE) + interval '1 month')::date);
+
+COMMENT ON COLUMN oikumenea.audit_log.id IS 'pii:none';
+COMMENT ON COLUMN oikumenea.audit_log.created_at IS 'pii:none';
+COMMENT ON COLUMN oikumenea.audit_log.actor_type IS 'pii:none';
+COMMENT ON COLUMN oikumenea.audit_log.actor_person_id IS 'pii:basic';
+COMMENT ON COLUMN oikumenea.audit_log.subsystem IS 'pii:none';
+COMMENT ON COLUMN oikumenea.audit_log.action IS 'pii:none';
+COMMENT ON COLUMN oikumenea.audit_log.target_type IS 'pii:none';
+COMMENT ON COLUMN oikumenea.audit_log.target_id IS 'pii:none';
+COMMENT ON COLUMN oikumenea.audit_log.unit_id IS 'pii:none';
+COMMENT ON COLUMN oikumenea.audit_log.request_id IS 'pii:none';
+COMMENT ON COLUMN oikumenea.audit_log.before IS 'pii:special';
+COMMENT ON COLUMN oikumenea.audit_log.after IS 'pii:special';
+COMMENT ON COLUMN oikumenea.audit_log.outcome IS 'pii:none';
+
+-- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
+
+-- ===== merged from 0002_localization =====
+-- 0002 localization (M2).
+--
+-- The i18n module (D-i18n / docs/modules/localization.md): the instance-admin-managed supported-
+-- locale registry + the polymorphic translation store. Translatable `name`/title/description of
+-- other modules' structural entities live here as (entity_type, entity_id, field, locale) -> text
+-- rows; every response returns all enabled locales as a locale->text map (no Accept-Language
+-- negotiation). Both tables are Objects (D-Ontology), keyed by an i18n RID. Expand-only
+-- (L-UpgradeSafe / D-Migrations); depends on the 0001 schema bootstrap objects.
+
+-- i18n_locales: the supported-language registry. Seeded ukr + eng; instance-admin-extensible.
+-- `code` is the stable, locale-agnostic ISO 639-3 identifier (D-Code) and serves as the natural
+-- PRIMARY KEY — a D-ResourceIdentifiers carve-out matching geo_countries: a seeded shared reference
+-- registry FK'd by code (i18n_translations.locale references it), not an RID-keyed runtime entity.
+-- (Seeding an RID PK would also require app.environment at migration time, which atlas does not set.)
+CREATE TABLE oikumenea.i18n_locales (
+  code       text PRIMARY KEY,                 -- ISO 639-3 (e.g. ukr, eng); locale-agnostic natural key
+  name       text NOT NULL,                    -- endonym/display name (e.g. "Українська", "English")
+  enabled    boolean NOT NULL DEFAULT true,
+  is_default boolean NOT NULL DEFAULT false,   -- exactly one default among enabled locales (trigger)
+  sort_order integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz
+);
+
+CREATE TRIGGER i18n_locales_set_updated_at
+  BEFORE UPDATE ON oikumenea.i18n_locales
+  FOR EACH ROW EXECUTE FUNCTION oikumenea.set_updated_at();
+
+COMMENT ON COLUMN oikumenea.i18n_locales.code IS 'pii:none';
+COMMENT ON COLUMN oikumenea.i18n_locales.name IS 'pii:none';
+COMMENT ON COLUMN oikumenea.i18n_locales.enabled IS 'pii:none';
+COMMENT ON COLUMN oikumenea.i18n_locales.is_default IS 'pii:none';
+COMMENT ON COLUMN oikumenea.i18n_locales.sort_order IS 'pii:none';
+
+-- i18n_enforce_default(): the locale-registry invariant (docs/modules/localization.md). Among the
+-- enabled, non-deleted locales there must be at least one and exactly one default. Run as a
+-- DEFERRABLE INITIALLY DEFERRED constraint trigger so it is checked once at COMMIT — this lets a
+-- multi-row seed and a "switch the default" update pass through an intermediate state. The
+-- application is the primary guard; this is the backstop.
+CREATE OR REPLACE FUNCTION oikumenea.i18n_enforce_default() RETURNS trigger
+  LANGUAGE plpgsql AS $$
+DECLARE
+  enabled_count integer;
+  default_count integer;
+BEGIN
+  SELECT count(*) FILTER (WHERE enabled),
+         count(*) FILTER (WHERE enabled AND is_default)
+    INTO enabled_count, default_count
+    FROM oikumenea.i18n_locales
+   WHERE deleted_at IS NULL;
+
+  IF enabled_count < 1 THEN
+    RAISE EXCEPTION 'at least one locale must be enabled'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  IF default_count <> 1 THEN
+    RAISE EXCEPTION 'exactly one enabled locale must be the default (found %)', default_count
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
+CREATE CONSTRAINT TRIGGER i18n_locales_enforce_default
+  AFTER INSERT OR UPDATE OR DELETE ON oikumenea.i18n_locales
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW EXECUTE FUNCTION oikumenea.i18n_enforce_default();
+
+-- i18n_translations: the shared, polymorphic translation store. `entity_id` is polymorphic and
+-- carries NO foreign key (it spans every translatable module); orphans are purged via the owning
+-- module's delete/retire event once those producers + the events bus land (open seam). `locale`
+-- references the registry by code.
+CREATE TABLE oikumenea.i18n_translations (
+  id          uuid PRIMARY KEY DEFAULT oikumenea.new_id(2,1,1),  -- i18n / object / translation
+  entity_type text NOT NULL,   -- e.g. unit, graph, rank_category, rank, position, role, country
+  -- entity_id is POLYMORPHIC over RID-keyed (uuid) AND natural-key (country code, etc.) entities, so
+  -- it is TEXT (a RID uuid text or a natural code); no FK — see localization.md.
+  entity_id   text NOT NULL,   -- the owning entity's id (polymorphic; no FK — see localization.md)
+  field       text NOT NULL,   -- the translatable field key: name, title, description
+  locale      text NOT NULL REFERENCES oikumenea.i18n_locales(code) ON UPDATE RESTRICT,
+  text        text NOT NULL,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT i18n_translations_rid_shape
+    CHECK (oikumenea.rid_service(id)=2 AND oikumenea.rid_kind(id)=1 AND oikumenea.rid_type(id)=1),
+  CONSTRAINT i18n_translations_unique UNIQUE (entity_type, entity_id, field, locale)
+);
+
+CREATE TRIGGER i18n_translations_set_updated_at
+  BEFORE UPDATE ON oikumenea.i18n_translations
+  FOR EACH ROW EXECUTE FUNCTION oikumenea.set_updated_at();
+
+-- Hot read: fetch all translations of one entity. Plus a locale index for cleanup-by-locale.
+CREATE INDEX i18n_translations_entity_idx ON oikumenea.i18n_translations (entity_type, entity_id);
+CREATE INDEX i18n_translations_locale_idx ON oikumenea.i18n_translations (locale);
+
+COMMENT ON COLUMN oikumenea.i18n_translations.id IS 'pii:none';
+COMMENT ON COLUMN oikumenea.i18n_translations.entity_type IS 'pii:none';
+COMMENT ON COLUMN oikumenea.i18n_translations.entity_id IS 'pii:none';
+COMMENT ON COLUMN oikumenea.i18n_translations.field IS 'pii:none';
+COMMENT ON COLUMN oikumenea.i18n_translations.locale IS 'pii:none';
+-- Translatable labels of structural/catalog entities (unit/rank/role names) are not personal data.
+COMMENT ON COLUMN oikumenea.i18n_translations.text IS 'pii:none';
+
+-- Seed the out-of-the-box locales (D-i18n): ukr (default) + eng, plus the two roadmap locales
+-- spa (Spanish — LATAM/es-419) and por (Portuguese — Brazil/pt-BR); all ISO 639-3, all enabled. The
+-- pinax reference presets carry translations for these locales (D-Pinax, M45); the regional variant is
+-- just which CLDR source the translation text is drawn from, stored under the ISO-639-3 macro-code.
+
+
+-- Advance the single-row schema-version marker the boot-time readiness gate reads (upgrade-safety.md).
+
+INSERT INTO oikumenea.schema_version (singleton, revision) VALUES (true, '0001_platform_core');

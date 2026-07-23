@@ -1865,7 +1865,7 @@ trigram) — acceptable for the rare short-prefix case. The membership→`person
 scoped search is a sanctioned cross-module read (like the existing authz/tenant reads in that query).
 
 **Generalized (review-2026-08 R-21).** This is now the **standard** pattern for **every** typeahead /
-substring-list surface, not just persons. Migration `0037` extends it to language languoids, geo
+substring-list surface, not just persons. Migration `0011_infra` extends it to language languoids, geo
 locations, education institutions, education publications/scholarships, and companies; the same rules
 apply everywhere:
 - **The filtered list splits into an unfiltered `List<X>` query and a trigram `Search<X>` query**, the
@@ -2032,7 +2032,7 @@ Domain events split into two classes. **`atomic`** (the existing `events.Bus`) d
 **inside the publisher's transaction** — all-or-nothing with the originating write; this stays the
 default and every event today is `atomic`. **`notify`** is a new class delivered **after commit, at
 least once, out of process** via a **transactional outbox**: the producer enqueues one row on its own
-write transaction (`events.OutboxWriter.PublishNotify` → `oikumenea.platform_outbox`, migration `0036`),
+write transaction (`events.OutboxWriter.PublishNotify` → `oikumenea.platform_outbox`, migration `0011_infra`),
 so the event commits atomically with the write, and a dispatcher (`internal/platform/outbox`) drains the
 queue after commit — claiming rows `FOR UPDATE SKIP LOCKED` (replica-safe, mirrors the hermenea worker,
 D-Hermenea/R-13), retrying with exponential backoff, dead-lettering past `max_attempts`. Handlers are

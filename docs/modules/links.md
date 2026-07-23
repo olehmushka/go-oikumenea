@@ -30,7 +30,7 @@ register in [ontology-mapping.md](../ontology-mapping.md).
 ## Data model
 
 None. No migration; the reified link tables and their endpoint indexes already exist (per module,
-migrations `0003`–`0034`). The engine runs one **keyset query per incident link arm** over those
+migrations `0002`–`0010`). The engine runs one **keyset query per incident link arm** over those
 tables — the one place raw dynamic SQL is justified (a union over a runtime-registered set of tables
 is not expressible in sqlc): identifiers come from the compile-time descriptor registry and pass
 through `pgx.Identifier.Sanitize`; the queried RID, the polymorphic discriminator, the keyset cursor

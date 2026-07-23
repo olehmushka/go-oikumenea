@@ -2036,7 +2036,7 @@ Two reasons. (1) *Scope honesty:* D-ConnectorPlane's own Delivers list and all f
 describe reads over instance-wide reference data — never RLS, writes, or org-owned data — so the arm
 was never really in this decision's body; the M51 code comments that promised it "with
 D-ConnectorPlane" over-reached. (2) *It is the separable hard part:* `authz_unit_in_reach`
-([migrations/20260601000011_rls_backstop.sql](../../migrations/20260601000011_rls_backstop.sql)) may
+([migrations/0005_document_order_rls.sql](../../migrations/0005_document_order_rls.sql)) may
 read only RLS-exempt tables, because reading a policy-guarded table recurses into its own policy — so
 a principal arm cannot join `tenant_units` to learn a unit's org even though `tenant_units.org_id`
 exists. That is a design problem of its own, tracked as M55 rather than smuggled in here. Everything
