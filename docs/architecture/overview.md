@@ -23,7 +23,7 @@ choice of `uber/fx` + generic OpenAPI; see [`decisions.md`](decisions.md) D-Stac
 | Tracing | **witchcraft-go-tracing** | Zipkin-style spans; `X-B3-*` propagation. |
 | Metrics | **pkg/metrics** (`witchcraft-go-metrics`) | Tagged metric registry; RED discipline. |
 | Errors | **werror** | Structured errors with safe/unsafe params; surfaced as Conjure `SerializableError`. |
-| Config | **encrypted-config-value (ECV)** + **pkg/refreshable** | `var/conf/install.yml` + `runtime.yml`; live reload; operator-supplied DB DSN + IdP config. |
+| Config | **encrypted-config-value (ECV)** + **pkg/refreshable** + **env overlay** (`pkg/config/envoverlay`, D-EnvConfig) | `var/conf/install.yml` + `runtime.yml` (both **optional**); live reload; **env vars override YAML** (schema-derived names, `OIKUMENEA_`/`HERMENEA_` prefix), env-only boot; operator-supplied DB DSN + IdP config. |
 | Health | **witchcraft-go-health** | Readiness-gating reporters (DB reachability, schema-version) + diagnostic-only reporters (closure-drift, which never gates readiness). |
 | DB driver | **pgx** | No ORM (witchcraft prescribes none). Operator-owned credentials. |
 | Typed queries | **sqlc** | Compile-time-checked SQL; generates Go from `.sql` against the schema. |

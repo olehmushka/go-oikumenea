@@ -9,18 +9,65 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
+	"reflect"
 
 	"github.com/olegamysk/go-oikumenea/internal/hermenea"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/config"
 	hdb "github.com/olegamysk/go-oikumenea/internal/hermenea/db"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/transport"
+	"github.com/olegamysk/go-oikumenea/pkg/config/envoverlay"
+	"github.com/palantir/pkg/refreshable"
 	werror "github.com/palantir/witchcraft-go-error"
 	wconfig "github.com/palantir/witchcraft-go-server/v2/config"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
+	refreshablefile "github.com/palantir/witchcraft-go-server/v2/witchcraft/refreshable"
 )
 
-func main() { os.Exit(serve()) }
+const (
+	installConfigPath = "var/conf/hermenea-install.yml"
+	runtimeConfigPath = "var/conf/hermenea-runtime.yml"
+	envPrefix         = "HERMENEA"
+)
+
+// cfgBytesFn adapts a func to witchcraft's ConfigBytesProvider (LoadBytes).
+type cfgBytesFn func() ([]byte, error)
+
+func (f cfgBytesFn) LoadBytes() ([]byte, error) { return f() }
+
+func main() {
+	// Load ./.env (if present) before reading the shared-secret tokens or config. Real env wins.
+	if err := envoverlay.LoadDotEnv(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: reading .env: %v\n", err)
+	}
+	os.Exit(serve())
+}
+
+// runtimeConfigProvider live-reloads the runtime YAML (when present) with the environment overlaid,
+// or is a static env-only refreshable when the file is absent (D-EnvConfig).
+func runtimeConfigProvider(ctx context.Context) (refreshable.Refreshable, error) {
+	rt := reflect.TypeOf(wconfig.Runtime{})
+	if _, err := os.Stat(runtimeConfigPath); errors.Is(err, os.ErrNotExist) {
+		b, aerr := envoverlay.Apply(nil, rt, envPrefix, envoverlay.OSEnviron())
+		if aerr != nil {
+			return nil, aerr
+		}
+		return refreshable.NewDefaultRefreshable(b), nil
+	}
+	base, err := refreshablefile.NewFileRefreshable(ctx, runtimeConfigPath)
+	if err != nil {
+		return nil, err
+	}
+	return base.Map(func(v any) any {
+		out, aerr := envoverlay.Apply(v.([]byte), rt, envPrefix, envoverlay.OSEnviron())
+		if aerr != nil {
+			return v.([]byte)
+		}
+		return out
+	}), nil
+}
 
 func serve() int {
 	// Runtime shared secrets (env, not install config).
@@ -32,8 +79,11 @@ func serve() int {
 	server := witchcraft.NewServer().
 		WithInstallConfigType(config.Install{}).
 		WithRuntimeConfigType(wconfig.Runtime{}).
-		WithInstallConfigFromFile("var/conf/hermenea-install.yml").
-		WithRuntimeConfigFromFile("var/conf/hermenea-runtime.yml").
+		// Optional YAML + environment overlay (D-EnvConfig); witchcraft still ECV-decrypts + unmarshals.
+		WithInstallConfigProvider(cfgBytesFn(func() ([]byte, error) {
+			return envoverlay.LoadFileOverlay(installConfigPath, reflect.TypeOf(config.Install{}), envPrefix)
+		})).
+		WithRuntimeConfigProviderFunc(runtimeConfigProvider).
 		WithSelfSignedCertificate().
 		WithMiddleware(auth.Handle).
 		WithInitFunc(func(ctx context.Context, info witchcraft.InitInfo) (func(), error) {

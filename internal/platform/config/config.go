@@ -4,8 +4,6 @@
 package config
 
 import (
-	"os"
-
 	wconfig "github.com/palantir/witchcraft-go-server/v2/config"
 )
 
@@ -102,8 +100,11 @@ type Audit struct {
 
 // Hermenea is the import-control proxy target: oikumenea forwards UI-triggered sync/list calls to the
 // hermenea companion's control API (D-Hermenea). The two shared secrets are ECV-encryptable install
-// fields; for backward compatibility each still honours a documented env override, read in exactly one
-// place — the Resolve* accessors below (architecture review R-16).
+// fields; each also honours a documented env override — OIKUMENEA_HERMENEA_TOKEN (outbound) and
+// HERMENEA_OIKUMENEA_TOKEN (inbound). Those overrides are now applied by the generic env overlay
+// (D-EnvConfig, registered as aliases in cmd/oikumenea) BEFORE unmarshal, so by the time this struct
+// exists the env value is already in the field. The Resolve* accessors below remain the single read
+// site (architecture review R-16) for call-site stability.
 type Hermenea struct {
 	// BaseURL is the hermenea companion's HTTPS base (e.g. https://hermenea:9443). Empty disables the proxy.
 	BaseURL string `yaml:"base-url"`
@@ -118,22 +119,17 @@ type Hermenea struct {
 	InboundToken string `yaml:"inbound-token"`
 }
 
-// ResolveOutboundToken returns the oikumenea -> hermenea secret: the OIKUMENEA_HERMENEA_TOKEN env
-// override when set, otherwise the install-config OutboundToken. This is the single read site for the
-// override (architecture review R-16).
+// ResolveOutboundToken returns the oikumenea -> hermenea secret. The OIKUMENEA_HERMENEA_TOKEN env
+// override (and the canonical OIKUMENEA_HERMENEA_OUTBOUND_TOKEN) is folded into OutboundToken by the
+// env overlay at load time (D-EnvConfig); this is the single read site for the value (R-16).
 func (h Hermenea) ResolveOutboundToken() string {
-	if v := os.Getenv("OIKUMENEA_HERMENEA_TOKEN"); v != "" {
-		return v
-	}
 	return h.OutboundToken
 }
 
-// ResolveInboundToken returns the hermenea -> oikumenea secret: the HERMENEA_OIKUMENEA_TOKEN env
-// override when set, otherwise the install-config InboundToken. Single read site for the override.
+// ResolveInboundToken returns the hermenea -> oikumenea secret. The HERMENEA_OIKUMENEA_TOKEN env
+// override (and the canonical OIKUMENEA_HERMENEA_INBOUND_TOKEN) is folded into InboundToken by the env
+// overlay at load time (D-EnvConfig); single read site (R-16).
 func (h Hermenea) ResolveInboundToken() string {
-	if v := os.Getenv("HERMENEA_OIKUMENEA_TOKEN"); v != "" {
-		return v
-	}
 	return h.InboundToken
 }
 

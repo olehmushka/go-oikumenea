@@ -6,9 +6,11 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"reflect"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -63,19 +65,75 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/vehicle"
 	"github.com/olegamysk/go-oikumenea/internal/watchlistclient"
 	"github.com/olegamysk/go-oikumenea/pkg/authn"
+	"github.com/olegamysk/go-oikumenea/pkg/config/envoverlay"
 	"github.com/olegamysk/go-oikumenea/pkg/crypto"
 	"github.com/olegamysk/go-oikumenea/pkg/events"
 	"github.com/olegamysk/go-oikumenea/pkg/personalcode"
 	"github.com/olegamysk/go-oikumenea/pkg/rid"
+	"github.com/palantir/pkg/refreshable"
 	werror "github.com/palantir/witchcraft-go-error"
 	"github.com/palantir/witchcraft-go-logging/wlog"
 	_ "github.com/palantir/witchcraft-go-logging/wlog-zap" // register the default (zap) logging provider for CLI-constructed loggers
 	"github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft"
+	refreshablefile "github.com/palantir/witchcraft-go-server/v2/witchcraft/refreshable"
 	"gopkg.in/yaml.v3"
 )
 
+// installConfigPath / runtimeConfigPath are the default YAML locations. Both are OPTIONAL — an absent
+// file plus environment variables is a valid env-only boot (D-EnvConfig).
+const (
+	installConfigPath = "var/conf/install.yml"
+	runtimeConfigPath = "var/conf/runtime.yml"
+	envPrefix         = "OIKUMENEA"
+)
+
+// envAliases preserves the R-16 documented env names on top of the schema-derived overlay: the two
+// hermenea shared-secret tokens (OIKUMENEA_HERMENEA_TOKEN -> hermenea.outbound-token,
+// HERMENEA_OIKUMENEA_TOKEN -> hermenea.inbound-token). The canonical path-derived names
+// (…_OUTBOUND_TOKEN / …_INBOUND_TOKEN) win when both are set.
+var envAliases = map[string]envoverlay.Path{
+	"OIKUMENEA_HERMENEA_TOKEN": {"hermenea", "outbound-token"},
+	"HERMENEA_OIKUMENEA_TOKEN": {"hermenea", "inbound-token"},
+}
+
+// cfgBytesFn adapts a func to witchcraft's ConfigBytesProvider (LoadBytes).
+type cfgBytesFn func() ([]byte, error)
+
+func (f cfgBytesFn) LoadBytes() ([]byte, error) { return f() }
+
+// runtimeConfigProvider builds the runtime-config refreshable: it live-reloads var/conf/runtime.yml
+// (when present) and overlays the environment on each tick; when the file is absent it is a static,
+// env-only refreshable. Env is static — env changes require a restart.
+func runtimeConfigProvider(ctx context.Context) (refreshable.Refreshable, error) {
+	rt := reflect.TypeOf(config.Runtime{})
+	if _, err := os.Stat(runtimeConfigPath); errors.Is(err, os.ErrNotExist) {
+		b, aerr := envoverlay.Apply(nil, rt, envPrefix, envoverlay.OSEnviron())
+		if aerr != nil {
+			return nil, aerr
+		}
+		return refreshable.NewDefaultRefreshable(b), nil
+	}
+	base, err := refreshablefile.NewFileRefreshable(ctx, runtimeConfigPath)
+	if err != nil {
+		return nil, err
+	}
+	return base.Map(func(v any) any {
+		out, aerr := envoverlay.Apply(v.([]byte), rt, envPrefix, envoverlay.OSEnviron())
+		if aerr != nil {
+			return v.([]byte) // fail-open on a mid-flight bad reload; boot already validated once
+		}
+		return out
+	}), nil
+}
+
 func main() {
+	// Load ./.env (if present) into the process environment before anything reads config — for serve
+	// AND every CLI subcommand. Real env vars always win over .env (D-EnvConfig).
+	if err := envoverlay.LoadDotEnv(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: reading .env: %v\n", err)
+	}
+
 	cmd := "serve"
 	if len(os.Args) > 1 {
 		cmd = os.Args[1]
@@ -116,8 +174,12 @@ func serve() int {
 	server := witchcraft.NewServer().
 		WithInstallConfigType(config.Install{}).
 		WithRuntimeConfigType(config.Runtime{}).
-		WithInstallConfigFromFile("var/conf/install.yml").
-		WithRuntimeConfigFromFile("var/conf/runtime.yml").
+		// Install/runtime config = the YAML file (optional) with the environment overlaid on top; the
+		// bytes we return are still ECV-decrypted + unmarshaled by witchcraft (D-EnvConfig).
+		WithInstallConfigProvider(cfgBytesFn(func() ([]byte, error) {
+			return envoverlay.LoadFileOverlayWithAliases(installConfigPath, reflect.TypeOf(config.Install{}), envPrefix, envAliases)
+		})).
+		WithRuntimeConfigProviderFunc(runtimeConfigProvider).
 		WithSelfSignedCertificate().
 		WithMiddleware(authenticator.Handle).
 		WithInitFunc(func(ctx context.Context, info witchcraft.InitInfo) (func(), error) {
@@ -972,15 +1034,17 @@ func newRankService(pool *pgxpool.Pool, auditSvc *auditapp.Service) *rankapp.Ser
 		func(conn db.DBTX) rankdomain.Repository { return rankadapters.NewRepository(conn) }, auditSvc)
 }
 
-// loadInstall reads and parses the install config (plaintext for local-dev; ECV-decryption of secret
-// values is a deployment concern handled by the operator host).
+// loadInstall reads and parses the install config for the CLI subcommands, applying the SAME env
+// overlay as serve (D-EnvConfig): a missing file is tolerated (env-only), and env vars override the
+// YAML. Plaintext for local-dev; ECV-decryption of secret values is a deployment concern handled by
+// the operator host (the CLI path does not decrypt ECV — env secrets here are plaintext).
 func loadInstall(path string) (config.Install, error) {
-	raw, err := os.ReadFile(path)
+	overlaid, err := envoverlay.LoadFileOverlayWithAliases(path, reflect.TypeOf(config.Install{}), envPrefix, envAliases)
 	if err != nil {
 		return config.Install{}, err
 	}
 	var install config.Install
-	if err := yaml.Unmarshal(raw, &install); err != nil {
+	if err := yaml.Unmarshal(overlaid, &install); err != nil {
 		return config.Install{}, err
 	}
 	return install, nil

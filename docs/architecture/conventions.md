@@ -257,10 +257,15 @@ See [decisions.md](decisions.md) D-NoRLS + D-RLSDefenseInDepth + D-RLSLiveReach.
   unknown/newer schema — see [upgrade-safety.md](upgrade-safety.md)) — and **diagnostic-only**, e.g.
   the `closure-drift` reporter (D-ClosureDriftHealth), which surfaces a problem in `/status/health`
   **without** failing `/status/readiness` (it must not take the pod out of rotation).
-- **Config — ECV + `pkg/refreshable`.** Static install config in `var/conf/install.yml`
-  (DB DSN, IdP issuer/JWKS URLs); runtime-tunable values in `var/conf/runtime.yml` read
-  through `refreshable` so they hot-reload. Secrets are ECV-encrypted. Operator supplies the
-  DB DSN and IdP config; **no credentials are stored in the DB or in the repo**.
+- **Config — ECV + `pkg/refreshable` + env overlay (D-EnvConfig).** Static install config in
+  `var/conf/install.yml` (DB DSN, IdP issuer/JWKS URLs); runtime-tunable values in
+  `var/conf/runtime.yml` read through `refreshable` so they hot-reload. Secrets are ECV-encrypted.
+  On top of that, **every field is overridable by an environment variable** whose name is derived
+  from its YAML path (`crypto.local-dev.kek` → `OIKUMENEA_CRYPTO_LOCAL_DEV_KEK`; prefix
+  `OIKUMENEA_`/`HERMENEA_`), and the **YAML file is optional** — env-only boot works. Precedence:
+  real env > `.env` > YAML. The overlay (`pkg/config/envoverlay`) runs *before* witchcraft, so ECV
+  still decrypts the result. Operator supplies the DB DSN and IdP config; **no credentials are stored
+  in the DB or in the repo**. Full env-var surface: [`reference/env-vars.md`](../reference/env-vars.md).
 - **DB access — pgx + sqlc.** Queries are authored as `.sql` and compiled by sqlc into typed
   Go in each module's `adapters/`. Repositories accept a `pgx.Tx`/pool so the application
   layer controls transaction boundaries. No ORM.

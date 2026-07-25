@@ -25,8 +25,19 @@ layers.
 - Hosts the operator **CLI subcommands** (`serve` is the default; `bootstrap-admin` /
   `recover-admin` are the break-glass admin-recovery commands — see *First-admin bootstrap* below).
 
-### Configuration (ECV + `pkg/refreshable`)
+### Configuration (ECV + `pkg/refreshable` + env overlay)
 
+- **Environment-variable overlay** (D-EnvConfig, `pkg/config/envoverlay`): **every** install/runtime
+  field is overridable by an env var whose name is derived from its YAML path — dashes → `_`,
+  upper-cased, joined with `_`, under the `OIKUMENEA_` (server) / `HERMENEA_` (companion) prefix (e.g.
+  `postgres.dsn` → `OIKUMENEA_POSTGRES_DSN`, `crypto.local-dev.kek` → `OIKUMENEA_CRYPTO_LOCAL_DEV_KEK`).
+  The **YAML files are optional** — env-only boot works, so an operator can `docker run` with just env
+  vars. Precedence: real env > `.env` (auto-loaded at boot, gitignored) > YAML. Slices are indexed
+  (`OIKUMENEA_IDP_ISSUERS_0_HMAC_KEY`, per-index merge), the `modules` map is keyed
+  (`OIKUMENEA_MODULES_FINANCE_ENABLED`), and the **DB may be assembled from discrete parts**
+  (`OIKUMENEA_DB_HOST/PORT/USER/PASSWORD/NAME/SSLMODE`) when `OIKUMENEA_POSTGRES_DSN` is unset. The
+  overlay runs *before* witchcraft, so ECV still decrypts the result (env values are plaintext and pass
+  ECV through). The full generated surface is [`reference/env-vars.md`](../reference/env-vars.md).
 - **Install config** (`var/conf/install.yml`): operator-supplied **Postgres DSN**, IdP
   issuer/JWKS/audience, server ports/TLS, the **`bootstrap_admin`** block
   (`{ issuer, subject | email, display_name, person_code? }`) consumed by the first-admin
