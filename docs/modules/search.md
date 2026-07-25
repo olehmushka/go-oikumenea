@@ -26,7 +26,7 @@ is a projection, not an ontology entity — nothing to register in
 ## Data model
 
 None. No migration; the per-type trigram indexes already exist (person migration `0005`, the rest
-migration `0037`).
+migration `0011_infra`).
 
 ## Conjure endpoint sketch
 

@@ -234,7 +234,7 @@ Cross-cutting primitives with **no domain logic**:
   atomic vs. notify*): **`atomic`** (`Bus`) subscribers run **synchronously within the originating
   transaction** (so e.g. order auto-apply effects share the issue txn — D-OrderApply), the default and
   the only class in use today; **`notify`** (`OutboxWriter` → the `oikumenea.platform_outbox` table,
-  migration `0036`) enqueues on the write txn and is delivered **after commit, at least once** by the
+  migration `0011_infra`) enqueues on the write txn and is delivered **after commit, at least once** by the
   `internal/platform/outbox` dispatcher (below). The `Bus` is **sealed** after boot — a later `Subscribe`
   panics (R-10),
 - `internal/platform/outbox` — the outbox **dispatcher**: polls `platform_outbox`, claims rows

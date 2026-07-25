@@ -186,7 +186,7 @@ There are **two classes**, and choosing the wrong one is a correctness/scale bug
   (the whole-fan-out cross-module SQL width isn't measured — it would need most of the composition
   root): use the count guard + this rule when adding a subscriber.
 - **`notify`** — after-commit, at-least-once, out of process, via the **transactional outbox**
-  (`oikumenea.platform_outbox`, migration 0036; D-EventOutbox). The producer enqueues on its own write
+  (`oikumenea.platform_outbox`, migration 0011_infra; D-EventOutbox). The producer enqueues on its own write
   tx (`events.OutboxWriter.PublishNotify`) so the event commits atomically with the write; the dispatcher
   (`internal/platform/outbox`) drains the queue after commit — claiming rows `FOR UPDATE SKIP LOCKED`
   (replica-safe, like the hermenea worker), retrying with backoff, dead-lettering past max attempts.
