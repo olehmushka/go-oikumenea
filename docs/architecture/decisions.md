@@ -80,6 +80,7 @@ planned-tier (M16–M45) decisions live in [`roadmap-decisions.md`](roadmap-deci
 | [D-ActionInvocation](#d-actioninvocation--an-ir-derived-endpoint-binding-per-action-driving-a-generic-console-action-runner) | An IR-derived endpoint binding per action, driving a generic console action runner |
 | [D-LinkPermissions](#d-linkpermissions--per-relationship-read-codes-gating-the-module-endpoint-and-the-traversal-arm-alike) | Per-relationship read codes gating the module endpoint and the traversal arm alike |
 | [D-Temporal](#d-temporal--a-three-tier-link-history-classification-native-validity-by-default-plus-getobjecthistory-over-the-audit-ledger) | A three-tier link-history classification (native validity by default) plus getObjectHistory over the audit ledger |
+| [D-EnvConfig](#d-envconfig--environment-variables-override-the-yaml-config-and-the-yaml-file-is-optional) | Environment variables override the YAML config, and the YAML file is optional |
 | L-\* locks | [Carried-over locks](#carried-over-locks-settled-earlier-restated-for-self-containment): L-AuthzOnly, L-AccountOptional, L-SingleDomain, L-UnitIsTenant, L-OneRankScheme, L-Visibility, L-OperatorDB, L-UpgradeSafe, L-Conventions |
 
 ---
@@ -2491,6 +2492,48 @@ diff to fold. The seam is re-scoped to two honest, independent futures:
   state at T requires either **versioned/temporal primary tables** (which do not exist for most object
   types) or **full-snapshot audit** (blocked on DS-29 and a cross-cutting write-path change). Neither
   is planned here; recording it as a named seam is the point.
+
+---
+
+### D-EnvConfig — Environment variables override the YAML config, and the YAML file is optional
+
+**Decision.** go-oikumenea boots 12-factor style: **every** install/runtime config field is overridable
+by an **environment variable**, and the YAML file is **optional** — an absent file plus env vars is a
+valid, fully env-only boot. This makes the open-source "clone, set a few env vars, run" path work
+without authoring YAML. Applies to **both** binaries and the oikumenea **CLI** subcommands.
+
+**Precedence** (highest wins): real process env → `.env` file (loaded at boot, only for keys not
+already set) → YAML file → Go zero-value/defaults.
+
+**Mechanism.** `pkg/config/envoverlay` (framework-free: stdlib + `gopkg.in/yaml.v3` only) derives the
+env-var name from each field's **YAML path**, schema-driven via reflection over the config struct tags:
+each path segment is upper-cased with dashes → `_` and joined with `_`, under a binary prefix
+(`OIKUMENEA_` / `HERMENEA_`). Schema-derivation is what disambiguates dashed keys —
+`crypto.local-dev.kek` → `OIKUMENEA_CRYPTO_LOCAL_DEV_KEK` (never `crypto/local/dev/kek`). The overlay
+parses the file (or an empty mapping) into a `yaml.Node` tree, sets nodes for the env vars that are
+present (type-preserving: strings quoted, numbers/bools tagged; a bad numeric/bool value fails boot
+naming the var), and re-marshals. The bytes are handed to witchcraft via `WithInstallConfigProvider` /
+`WithRuntimeConfigProviderFunc`, so **ECV decryption + unmarshal still run** on the result — env values
+are plaintext and never match `enc:`, so they pass through ECV untouched. Runtime env overrides are
+applied on each file-reload tick; env is static (a change needs a restart).
+
+- **Slices** (`idp.issuers[]`, `crypto.local-dev.previous-keks[]`, hermenea `sources[]`) use indexed
+  names (`OIKUMENEA_IDP_ISSUERS_0_HMAC_KEY`) with **per-index merge** — env overrides one element's
+  field while YAML supplies the rest. Shrinking an array requires editing YAML; sparse indices
+  materialize empty preceding elements, so keep indices contiguous.
+- **Maps** (`modules`): `OIKUMENEA_MODULES_FINANCE_ENABLED=false`.
+- **Database** may be set as a whole (`OIKUMENEA_POSTGRES_DSN`, which wins) **or** assembled from
+  discrete parts (`OIKUMENEA_DB_HOST/PORT/USER/PASSWORD/NAME/SSLMODE`) into a libpq keyword string.
+- **R-16 aliases retained:** the documented `OIKUMENEA_HERMENEA_TOKEN` / `HERMENEA_OIKUMENEA_TOKEN`
+  names still work (registered as aliases → `hermenea.outbound-token` / `hermenea.inbound-token`); the
+  canonical path-derived `…_OUTBOUND_TOKEN` / `…_INBOUND_TOKEN` win when both are set. The `Resolve*`
+  accessors are now single struct-field reads (the env value is folded in at load).
+
+**Tradeoff.** Env/`.env` secrets (KEK, blind-index key, HMAC keys, tokens) are **plaintext** in the
+process environment — this is the standard 12-factor lane; ECV remains available for YAML-at-rest
+secrets. `.env` is gitignored. The full generated env-var surface is
+[`docs/reference/env-vars.md`](../reference/env-vars.md) (regenerated from the schema by a golden test —
+a new config field cannot silently miss the doc).
 
 ---
 
