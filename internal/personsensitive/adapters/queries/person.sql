@@ -454,6 +454,66 @@ ORDER BY created_at DESC, id;
 -- name: DeleteAllInsurance :exec
 DELETE FROM oikumenea.person_insurance WHERE person_id = @person_id;
 
+-- ============================================================================================
+-- Criminal / arrest / court records (D-LegalRecords, M38)
+-- ============================================================================================
+
+-- ---- legal records (object legal_record, pii:special, ENCRYPTED; many per person) ----
+
+-- name: GetCountryIDByCode :one
+-- Resolve an ISO-3166-1 country code to its geo_countries RID (jurisdiction is stored by RID; the API
+-- speaks codes). Missing → ErrNoRows, mapped to ErrUnknownCountry app-side.
+SELECT id FROM oikumenea.geo_countries WHERE code = @code;
+
+-- name: InsertLegalRecord :one
+-- The category-level offence detail is supplied as the envelope (ciphertext/wrapped_dek/key_ref/
+-- blind_index) sealed in the application; legal_basis FK validates the lawful basis (Art. 10).
+INSERT INTO oikumenea.person_legal_records (
+  person_id, kind, disposition, detail_ciphertext, detail_wrapped_dek, detail_key_ref,
+  detail_blind_index, jurisdiction_country_id, occurred_at, disposition_date, is_suppressed,
+  suppressed_reason, legal_basis, source, confidence
+) VALUES (
+  @person_id, @kind, @disposition, @detail_ciphertext, @detail_wrapped_dek, @detail_key_ref,
+  @detail_blind_index, sqlc.narg('jurisdiction_country_id')::uuid, sqlc.narg('occurred_at')::date,
+  sqlc.narg('disposition_date')::date, @is_suppressed, sqlc.narg('suppressed_reason'),
+  @legal_basis, @source, @confidence
+)
+RETURNING *;
+
+-- name: UpdateLegalRecord :one
+-- Re-seal the detail and/or flip the attributes of a person's named legal record.
+UPDATE oikumenea.person_legal_records SET
+  kind = @kind, disposition = @disposition,
+  detail_ciphertext = @detail_ciphertext, detail_wrapped_dek = @detail_wrapped_dek,
+  detail_key_ref = @detail_key_ref, detail_blind_index = @detail_blind_index,
+  jurisdiction_country_id = sqlc.narg('jurisdiction_country_id')::uuid,
+  occurred_at = sqlc.narg('occurred_at')::date, disposition_date = sqlc.narg('disposition_date')::date,
+  is_suppressed = @is_suppressed, suppressed_reason = sqlc.narg('suppressed_reason'),
+  legal_basis = @legal_basis, source = @source, confidence = @confidence
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING *;
+
+-- name: DeleteLegalRecord :one
+UPDATE oikumenea.person_legal_records SET deleted_at = now()
+WHERE id = @id AND person_id = @person_id AND deleted_at IS NULL
+RETURNING id;
+
+-- name: ListLegalRecords :many
+-- Suppressed (sealed/expunged) rows are withheld unless @include_suppressed (the caller holds
+-- person.legal-record.read-suppressed, resolved in transport).
+SELECT lr.*, COALESCE(c.code, '')::text AS jurisdiction_code
+FROM oikumenea.person_legal_records lr
+LEFT JOIN oikumenea.geo_countries c ON c.id = lr.jurisdiction_country_id
+WHERE lr.person_id = @person_id AND lr.deleted_at IS NULL
+  AND (@include_suppressed::boolean OR lr.is_suppressed = false)
+ORDER BY lr.occurred_at DESC NULLS LAST, lr.created_at DESC, lr.id;
+
+-- name: CryptoEraseLegalRecords :execrows
+-- Crypto-erase a person's legal records on purge (drop the envelope, keep the row tombstones).
+UPDATE oikumenea.person_legal_records
+SET detail_ciphertext = NULL, detail_wrapped_dek = NULL, detail_key_ref = NULL, detail_blind_index = NULL
+WHERE person_id = @person_id AND deleted_at IS NULL AND detail_ciphertext IS NOT NULL;
+
 -- ============================ person existence / identity (parent guard) ============================
 
 -- name: PersonExists :one

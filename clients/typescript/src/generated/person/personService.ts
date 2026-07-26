@@ -19,6 +19,7 @@ import { IGuardianship } from "./guardianship";
 import { IHealthRecord } from "./healthRecord";
 import { IInsurance } from "./insurance";
 import { IKinship } from "./kinship";
+import { ILegalRecord } from "./legalRecord";
 import { ILobbyingRelationship } from "./lobbyingRelationship";
 import { IMergePersonRequest } from "./mergePersonRequest";
 import { IMessengerLink } from "./messengerLink";
@@ -58,6 +59,7 @@ import { IUpsertGuardianshipRequest } from "./upsertGuardianshipRequest";
 import { IUpsertHealthRecordRequest } from "./upsertHealthRecordRequest";
 import { IUpsertInsuranceRequest } from "./upsertInsuranceRequest";
 import { IUpsertKinshipRequest } from "./upsertKinshipRequest";
+import { IUpsertLegalRecordRequest } from "./upsertLegalRecordRequest";
 import { IUpsertLobbyingRelationshipRequest } from "./upsertLobbyingRelationshipRequest";
 import { IUpsertMessengerLinkRequest } from "./upsertMessengerLinkRequest";
 import { IUpsertNameVariantRequest } from "./upsertNameVariantRequest";
@@ -233,6 +235,21 @@ export interface IPersonService {
     upsertInsurance(personId: string, request: IUpsertInsuranceRequest): Promise<IInsurance>;
     /** Remove an insurance row by id. */
     deleteInsurance(personId: string, insuranceId: string): Promise<void>;
+    /**
+     * List a person's category-level criminal / arrest / court records (D-LegalRecords, M38;
+     * pii:special, decrypted). Requires the person.legal-record.read need-to-know code. Sealed/expunged
+     * records are withheld unless the caller also holds person.legal-record.read-suppressed.
+     *
+     */
+    listLegalRecords(personId: string): Promise<Array<ILegalRecord>>;
+    /**
+     * Add a legal record, or replace one when id is supplied. Requires disposition (arrest ≠ guilt) and
+     * legalBasis (Art. 10). Category-level only — never a full charge sheet.
+     *
+     */
+    upsertLegalRecord(personId: string, request: IUpsertLegalRecordRequest): Promise<ILegalRecord>;
+    /** Remove a legal record by id. */
+    deleteLegalRecord(personId: string, recordId: string): Promise<void>;
     /**
      * List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
      * the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
@@ -1397,6 +1414,70 @@ export class PersonService implements IPersonService {
             [
                 personId,
                 insuranceId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * List a person's category-level criminal / arrest / court records (D-LegalRecords, M38;
+     * pii:special, decrypted). Requires the person.legal-record.read need-to-know code. Sealed/expunged
+     * records are withheld unless the caller also holds person.legal-record.read-suppressed.
+     *
+     */
+    public listLegalRecords(personId: string): Promise<Array<ILegalRecord>> {
+        return this.bridge.call<Array<ILegalRecord>>(
+            "PersonService",
+            "listLegalRecords",
+            "GET",
+            "/person/v1/persons/{personId}/legal-records",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Add a legal record, or replace one when id is supplied. Requires disposition (arrest ≠ guilt) and
+     * legalBasis (Art. 10). Category-level only — never a full charge sheet.
+     *
+     */
+    public upsertLegalRecord(personId: string, request: IUpsertLegalRecordRequest): Promise<ILegalRecord> {
+        return this.bridge.call<ILegalRecord>(
+            "PersonService",
+            "upsertLegalRecord",
+            "PUT",
+            "/person/v1/persons/{personId}/legal-records",
+            request,
+            __undefined,
+            __undefined,
+            [
+                personId,
+            ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /** Remove a legal record by id. */
+    public deleteLegalRecord(personId: string, recordId: string): Promise<void> {
+        return this.bridge.call<void>(
+            "PersonService",
+            "deleteLegalRecord",
+            "DELETE",
+            "/person/v1/persons/{personId}/legal-records/{recordId}",
+            __undefined,
+            __undefined,
+            __undefined,
+            [
+                personId,
+                recordId,
             ],
             __undefined,
             __undefined

@@ -34,6 +34,7 @@ import type {
   GovernmentPosition,
   HealthRecord,
   Insurance,
+  LegalRecord,
   Personality,
   PoliticalLeaning,
   LobbyingRelationship,
@@ -1337,6 +1338,10 @@ const PERSONALITY_FRAMEWORKS = ["mbti", "big_five", "disc", "enneagram", "other"
 const PERSONALITY_METHODS = ["self_declared_survey", "hr_assessment"] as const;
 const HEALTH_KINDS = ["hospitalization", "mental_health", "disability"] as const;
 const INSURANCE_TYPES = ["health", "life", "disability", "ltc"] as const;
+// D-LegalRecords (M38)
+const LEGAL_KINDS = ["criminal_conviction", "arrest", "court_judgment"] as const;
+const LEGAL_DISPOSITIONS = ["convicted", "acquitted", "dismissed", "pending", "sealed", "expunged", "no_charges"] as const;
+const LEGAL_SUPPRESS = ["", "sealed", "expunged"] as const;
 
 // OverlaysManager owns the M35 panels (D-PersonOverlays): crypto wallets + personality profiles
 // (pii:sensitive) and the inferred political leaning (pii:special, encrypted, single-active-per-person —
@@ -1670,6 +1675,110 @@ export function HealthManager({ personId }: { personId: string }) {
         </form>
       </ChannelBlock>
     </>
+  );
+}
+
+// LegalRecordsManager owns the M38 panel (D-LegalRecords): category-level criminal / arrest / court
+// records (pii:special, GDPR Art. 10, envelope-encrypted offence detail, mandatory disposition). Reads
+// need the person.legal-record.read code; a viewer lacking it sees the panel error. Sealed/expunged
+// records are withheld unless the viewer also holds person.legal-record.read-suppressed.
+export function LegalRecordsManager({ personId }: { personId: string }) {
+  const [records, setRecords] = useState<LegalRecord[] | null>(null);
+  const [bases, setBases] = useState<{ code: string; name: string }[]>([]);
+  const [recErr, setRecErr] = useState<unknown>(null);
+  const [err, setErr] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = () => {
+    api.person.listLegalRecords(personId).then(setRecords).catch(setRecErr);
+  };
+  useEffect(() => {
+    load();
+    // Art. 10 criminal data rides an Art. 6 lawful basis (+ Member-State authorization) — offer art6.
+    api.platformCatalog.listLegalBasisKinds()
+      .then((r) => setBases((r?.kinds ?? []).filter((k) => k.article === "art6").map((k) => ({ code: k.code, name: k.name }))))
+      .catch(setErr);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personId]);
+
+  const run = async (fn: () => Promise<unknown>, after?: () => void) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await fn();
+      after?.();
+      load();
+    } catch (e) {
+      setErr(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <ChannelBlock title="Criminal & court records" err={recErr ?? err}>
+      <p className="mt-1 text-xs text-amber-600"><T>Category-level special-category data (GDPR Art. 10) — encrypted at rest; NO full charge sheet; never inferred. Sealed/expunged records are hidden unless you hold the read-suppressed grant.</T></p>
+      <ItemList
+        items={records ?? undefined}
+        render={(r) => (
+          <span className="inline-flex flex-wrap items-center gap-x-1">
+            <span className="text-xs font-medium text-slate-500">{r.kind}</span>
+            <span className="mx-1 text-slate-300">·</span>
+            <span className="font-medium">{r.detail || "—"}</span>
+            <span className="ml-1 text-xs text-slate-400">· {r.disposition}</span>
+            {r.jurisdiction ? <span className="ml-1 text-xs text-slate-400">· {r.jurisdiction}</span> : null}
+            {r.occurredAt ? <span className="ml-1 text-xs text-slate-400">· {r.occurredAt}</span> : null}
+            {r.isSuppressed ? <span className="ml-1 rounded bg-amber-100 px-1 text-xs text-amber-700">{r.suppressedReason}</span> : null}
+            <span className="ml-1 text-xs text-slate-400">· {r.legalBasis}</span>
+          </span>
+        )}
+        del={(r) => `/person/v1/persons/${personId}/legal-records/${r.id}`}
+        delConfirm="Remove this legal record?"
+      />
+      <form
+        className="mt-2 grid grid-cols-[10rem_10rem_1fr_auto] gap-2"
+        onSubmit={(ev) => {
+          ev.preventDefault();
+          const f = new FormData(ev.currentTarget);
+          const detail = s(f, "detail");
+          const legalBasis = s(f, "legalBasis");
+          if (!detail || !legalBasis) return;
+          const reason = s(f, "suppressedReason");
+          const form = ev.currentTarget;
+          run(
+            () => api.person.upsertLegalRecord(personId, {
+              kind: s(f, "kind") ?? "criminal_conviction",
+              disposition: s(f, "disposition") ?? "pending",
+              detail,
+              jurisdiction: s(f, "jurisdiction"),
+              occurredAt: s(f, "occurredAt"),
+              isSuppressed: !!reason,
+              suppressedReason: reason,
+              legalBasis,
+            }),
+            () => form.reset(),
+          );
+        }}
+      >
+        <select name="kind" className="input" defaultValue="criminal_conviction">
+          {LEGAL_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+        </select>
+        <select name="disposition" className="input" defaultValue="pending">
+          {LEGAL_DISPOSITIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <input name="detail" className="input" placeholder="category-level offence (no charge sheet)…" required />
+        <select name="legalBasis" className="input" defaultValue="" required>
+          <option value="">legal basis…</option>
+          {bases.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
+        </select>
+        <input name="jurisdiction" className="input" placeholder="jurisdiction (ISO country)…" />
+        <input name="occurredAt" type="date" className="input" />
+        <select name="suppressedReason" className="input" defaultValue="">
+          {LEGAL_SUPPRESS.map((r) => <option key={r} value={r}>{r === "" ? "not suppressed" : r}</option>)}
+        </select>
+        <button className="btn-ghost" disabled={busy}><T>Add</T></button>
+      </form>
+    </ChannelBlock>
   );
 }
 

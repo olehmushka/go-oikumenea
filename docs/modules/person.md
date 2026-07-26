@@ -464,6 +464,12 @@ through the holder.
 - **M36 · Health & vulnerability (D-HealthVulnerability) — designed.** `person_health_records`
   (category-level only, never inferred, `pii:special` + envelope + need-to-know) + `person_insurance`;
   will land in [personsensitive.md](personsensitive.md).
+- **M38 · Criminal / arrest / court records (D-LegalRecords) — DELIVERED (migration `0016`).**
+  `person_legal_records` (object `6,1,22`; category-level only, never inferred, `pii:special` GDPR
+  Art. 10, envelope-encrypted offence detail; **mandatory `disposition`**; **sealed/expunged records
+  suppressed** behind `person.legal-record.read-suppressed`; jurisdiction → `geo_countries`). Endpoints
+  `GET/PUT /persons/{id}/legal-records` + `DELETE …/{recordId}` on the single `PersonService`, read-gated
+  by `person.legal-record.read`. Owned by [personsensitive.md](personsensitive.md#data-model).
 
 All cluster tables extend the person **purge** erasure list (`pii:contact`/`pii:basic` NULLed;
 `pii:sensitive`/`pii:special` crypto-erased), per [D-PIITiers](../architecture/decisions.md). Reads on

@@ -12,6 +12,7 @@ import {
   MergeProvisional,
   EmailManager,
   HealthManager,
+  LegalRecordsManager,
   InstitutionalTiesManager,
   OverlaysManager,
   WatchlistManager,
@@ -196,6 +197,11 @@ export default async function PersonDetailPage({
         <Card className="lg:col-span-2">
           <h2 className="text-sm font-semibold text-slate-900"><T>Health &amp; vulnerability</T></h2>
           <HealthManager personId={person.id} />
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <h2 className="text-sm font-semibold text-slate-900"><T>Criminal &amp; court records</T></h2>
+          <LegalRecordsManager personId={person.id} />
         </Card>
 
         <ObjectActionsCard targetType="person" rid={person.id} className="lg:col-span-2" />

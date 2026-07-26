@@ -84,6 +84,7 @@ export type Personality = person.IPersonality;
 export type PoliticalLeaning = person.IPoliticalLeaning;
 export type HealthRecord = person.IHealthRecord;
 export type Insurance = person.IInsurance;
+export type LegalRecord = person.ILegalRecord;
 
 // ── localization / language ──────────────────────────────────────────────────
 export type LocaleLanguage = localization.ILocaleLanguage;

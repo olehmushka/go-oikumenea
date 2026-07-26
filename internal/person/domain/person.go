@@ -1305,4 +1305,20 @@ type SensitiveRepository interface {
 	UpsertInsurance(ctx context.Context, i Insurance) (Insurance, error) // ErrInsuranceNotFound
 	DeleteInsurance(ctx context.Context, personID, id string) error      // ErrInsuranceNotFound
 	ListInsurance(ctx context.Context, personID string) ([]Insurance, error)
+
+	// legal records (D-LegalRecords, M38)
+
+	// ResolveCountryID resolves a jurisdiction ISO code to its geo_countries RID (D-Geo hard FK);
+	// ErrUnknownCountry when the code is not registered.
+	ResolveCountryID(ctx context.Context, code string) (string, error)
+	// legal records — the encrypted object legal_record (many per person; the category-level offence
+	// detail envelope is sealed upstream). r.ID == "" => insert; else replace that row in place.
+	InsertLegalRecord(ctx context.Context, r StoredLegalRecord) (StoredLegalRecord, error)
+	UpdateLegalRecord(ctx context.Context, r StoredLegalRecord) (StoredLegalRecord, error) // ErrLegalRecordNotFound
+	DeleteLegalRecord(ctx context.Context, personID, id string) error                      // ErrLegalRecordNotFound
+	// ListLegalRecords returns a person's records; suppressed (sealed/expunged) rows are included only
+	// when includeSuppressed (the caller holds person.legal-record.read-suppressed).
+	ListLegalRecords(ctx context.Context, personID string, includeSuppressed bool) ([]StoredLegalRecord, error)
+	// CryptoEraseLegalRecords drops the envelope on all of a person's legal records (purge path).
+	CryptoEraseLegalRecords(ctx context.Context, personID string) (int64, error)
 }

@@ -55,6 +55,11 @@ const (
 	PermPersonPoliticalLeaningRead Permission = "person.political_leaning.read"
 	PermPersonPartyMembershipRead  Permission = "person.party_membership.read"
 	PermPersonHealthRead           Permission = "person.health.read" // category-level health/vulnerability (M36)
+	// Criminal / arrest / court records (D-LegalRecords, M38; GDPR Art. 10). Two codes: the base
+	// need-to-know read (in sensitive-reader), and read-suppressed, which additionally reveals
+	// sealed/expunged records — the strictest gate, deliberately in NO base role (grant it explicitly).
+	PermPersonLegalRecordRead           Permission = "person.legal-record.read"
+	PermPersonLegalRecordReadSuppressed Permission = "person.legal-record.read-suppressed"
 
 	// person relationship graph (D-LinkPermissions) — the person↔person social/family links and the
 	// person's home address. Each reified relationship gets its OWN read code, gating BOTH its dedicated
@@ -316,6 +321,7 @@ var catalog = func() map[Permission]struct{} {
 		PermDomainManage, PermUnitKindManage,
 		PermPersonRead, PermPersonCreate, PermPersonUpdate, PermPersonRankAssign, PermPersonLifecycle, PermPersonPurge, PermPersonMerge,
 		PermPersonEthnicityRead, PermPersonPoliticalLeaningRead, PermPersonPartyMembershipRead, PermPersonHealthRead,
+		PermPersonLegalRecordRead, PermPersonLegalRecordReadSuppressed,
 		PermPersonPartnershipRead, PermPersonKinshipRead, PermPersonGuardianshipRead, PermPersonSponsorshipRead,
 		PermPersonNextOfKinRead, PermPersonAssociationRead, PermPersonAddressRead,
 		PermMembershipRead, PermMembershipCreate, PermMembershipUpdate,
@@ -433,6 +439,9 @@ var managerOnlyPerms = []Permission{
 // grant, on top of unit-reader for the surrounding directory context (D-DataScope, review R-14).
 var sensitiveReaderPerms = []Permission{
 	PermPersonEthnicityRead, PermPersonPoliticalLeaningRead, PermPersonPartyMembershipRead, PermPersonHealthRead,
+	// The base legal-record read (D-LegalRecords, M38). read-suppressed is deliberately NOT here —
+	// sealed/expunged records require an explicit, separately granted capability (the strictest gate).
+	PermPersonLegalRecordRead,
 }
 
 // personRelationshipReaderPerms is the additive base role for the person relationship graph
@@ -475,7 +484,7 @@ func BaseRoles() []BaseRole {
 		{Code: BaseRoleUnitManager, Name: "Unit Manager", Description: "Create/update people, memberships, positions, units, and orders within scope.", Permissions: manager},
 		{Code: BaseRoleUnitAdmin, Name: "Unit Admin", Description: "Full unit administration within scope: edges, lifecycle, purge, order issue/revoke, and granting assignments.", Permissions: admin},
 		{Code: BaseRoleAuditor, Name: "Auditor", Description: "Read the audit log only (separation of duties; pair with unit-reader to resolve referenced entities).", Permissions: []Permission{PermAuditRead}},
-		{Code: BaseRoleSensitiveReader, Name: "Sensitive Reader", Description: "Read a person's pii:special Art.9 data (ethnicity, inferred political leaning, party membership, category-level health & vulnerability). Additive and explicit — pair with unit-reader; deliberately not implied by unit-admin (D-DataScope, R-14).", Permissions: sensitiveReaderPerms},
+		{Code: BaseRoleSensitiveReader, Name: "Sensitive Reader", Description: "Read a person's pii:special Art.9/Art.10 data (ethnicity, inferred political leaning, party membership, category-level health & vulnerability, and criminal/arrest/court records — excluding sealed/expunged records, which need person.legal-record.read-suppressed). Additive and explicit — pair with unit-reader; deliberately not implied by unit-admin (D-DataScope, R-14).", Permissions: sensitiveReaderPerms},
 		{Code: BaseRolePersonRelationshipReader, Name: "Person Relationship Reader", Description: "Read a person's relationship graph (partnerships, kinships, guardianships, sponsorships, next of kin, associations) and home addresses — on the person page and in the object graph alike. Additive and explicit — pair with unit-reader; deliberately not implied by unit-admin (D-LinkPermissions).", Permissions: personRelationshipReaderPerms},
 		{Code: BaseRoleFinanceGraphReader, Name: "Finance Graph Reader", Description: "Read who holds a bank account (the account↔holder ownership link), on the account/person pages and in the object graph alike. Additive — pair with finance.read, which lists the accounts themselves (D-LinkPermissions).", Permissions: financeGraphReaderPerms},
 		{Code: BaseRoleVehicleGraphReader, Name: "Vehicle Graph Reader", Description: "Read who a vehicle is registered to (the vehicle↔owner link), on the vehicle/person pages and in the object graph alike. Additive — pair with vehicle.read, which lists the vehicles themselves (D-LinkPermissions).", Permissions: vehicleGraphReaderPerms},

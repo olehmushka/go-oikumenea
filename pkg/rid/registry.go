@@ -86,6 +86,7 @@ var typeNames = map[typeKey]string{
 	{SvcPerson, int(KindObject), 19}: "political_leaning",
 	{SvcPerson, int(KindObject), 20}: "health_record",
 	{SvcPerson, int(KindObject), 21}: "insurance",
+	{SvcPerson, int(KindObject), 22}: "legal_record",
 	// person links
 	{SvcPerson, int(KindLink), 1}:  "holds_rank",
 	{SvcPerson, int(KindLink), 2}:  "partnered_with",

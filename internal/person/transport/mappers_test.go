@@ -73,6 +73,7 @@ var mapErrorContract = []struct {
 	{"ErrPoliticalLeaningNotFound", domain.ErrPoliticalLeaningNotFound, personapi.IsPersonNotFound},
 	{"ErrHealthRecordNotFound", domain.ErrHealthRecordNotFound, personapi.IsPersonNotFound},
 	{"ErrInsuranceNotFound", domain.ErrInsuranceNotFound, personapi.IsPersonNotFound},
+	{"ErrLegalRecordNotFound", domain.ErrLegalRecordNotFound, personapi.IsPersonNotFound},
 	// ---- uniqueness -> 409 PersonConflict ----
 	{"ErrCodeConflict", domain.ErrCodeConflict, personapi.IsPersonConflict},
 	{"ErrCitizenshipConflict", domain.ErrCitizenshipConflict, personapi.IsPersonConflict},

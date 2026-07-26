@@ -98,6 +98,11 @@ var exempt = map[string]string{
 	"import.person-regulatory-sanctions": "bulk ingestion (hermenea import plane), not a per-object console action",
 	"import.religion-scheme":             "bulk ingestion (hermenea import plane), not a per-object console action",
 	"import.translations":                "bulk ingestion (hermenea import plane), not a per-object console action",
+	"import.locales":                     "bulk ingestion (locale packs, M54), not a per-object console action",
+	"connector.register":                 "machine self-service (M53 connector plane), not a console object action",
+	"connector.sync-run.running":         "machine self-service (M53 connector plane), not a console object action",
+	"connector.sync-run.succeeded":       "machine self-service (M53 connector plane), not a console object action",
+	"connector.sync-run.failed":          "machine self-service (M53 connector plane), not a console object action",
 }
 
 // sharedEndpoints are (method path) templates legitimately bound by more than one action — a single

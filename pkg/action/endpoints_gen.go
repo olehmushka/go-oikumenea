@@ -172,6 +172,8 @@ var actionEndpoints = map[string]Endpoint{
 	"person.kinship.upsert":                   {Method: "PUT", Path: "/person/v1/persons/{personId}/kinships", PathParams: []string{"personId"}},
 	"person.language.delete":                  {Method: "DELETE", Path: "/person/v1/persons/{personId}/languages/{languageId}", PathParams: []string{"personId", "languageId"}},
 	"person.language.upsert":                  {Method: "PUT", Path: "/person/v1/persons/{personId}/languages", PathParams: []string{"personId"}},
+	"person.legal_record.delete":              {Method: "DELETE", Path: "/person/v1/persons/{personId}/legal-records/{recordId}", PathParams: []string{"personId", "recordId"}},
+	"person.legal_record.upsert":              {Method: "PUT", Path: "/person/v1/persons/{personId}/legal-records", PathParams: []string{"personId"}},
 	"person.lobbying.delete":                  {Method: "DELETE", Path: "/person/v1/persons/{personId}/lobbying-relationships/{relationshipId}", PathParams: []string{"personId", "relationshipId"}},
 	"person.lobbying.upsert":                  {Method: "PUT", Path: "/person/v1/persons/{personId}/lobbying-relationships", PathParams: []string{"personId"}},
 	"person.merge":                            {Method: "POST", Path: "/person/v1/persons/{personId}/merge", PathParams: []string{"personId"}},

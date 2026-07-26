@@ -150,16 +150,18 @@ draft reconciles the two under three locked decisions from the review session:
 
 | # | Field | Verdict | Tier | Notes |
 |---|-------|---------|------|-------|
-| 6.1 | Criminal record | `DEFERRED` | sensitive | Important; design later session. |
-| 6.2 | Arrest history | `DEFERRED` | sensitive | Disposition mandatory. |
-| 6.3 | Court judgments | `DEFERRED` | sensitive | Civil/family/bankruptcy. |
+| 6.1 | Criminal record | `BUILT` (M38) | **special** | `person_legal_records` kind=criminal_conviction; envelope-encrypted (Art. 10). |
+| 6.2 | Arrest history | `BUILT` (M38) | **special** | kind=arrest; disposition mandatory (arrest ≠ guilt). |
+| 6.3 | Court judgments | `BUILT` (M38) | **special** | kind=court_judgment; sealed/expunged suppression. |
 | 6.4 | Regulatory sanctions | `OVERLAY` | sensitive | Distinct, API-ingestible. |
 | 6.5 | OFAC/EU/UN/INTERPOL + PEP | `LIVE-LOOKUP` | sensitive | Never stored statically. |
 
-- **6.1–6.3** are **in scope and important**, but their design is **deferred to a dedicated
-  session**. Hard requirements to carry into it: mandatory `disposition` (arrest ≠ guilt),
-  expungement/sealing **suppression**, jurisdiction-specific storage/display rules (Ban-the-Box,
-  FCRA), `pii:sensitive` + gated + audited. Distinct from internal `discipline-incentive` orders.
+- **6.1–6.3** are **BUILT as M38** (D-LegalRecords): one `person_legal_records` Object with
+  `kind ∈ {criminal_conviction, arrest, court_judgment}` + a mandatory `disposition` (arrest ≠ guilt),
+  expungement/sealing **suppression** (behind `person.legal-record.read-suppressed`), a jurisdiction FK
+  to `geo_countries`, envelope-encrypted offence detail. **Tier raised to `pii:special`** (GDPR Art. 10)
+  from the original `sensitive` tag. Jurisdiction-specific display rules (Ban-the-Box, FCRA) are an open
+  seam. Distinct from internal `discipline-incentive` orders.
 - **6.4 Regulatory sanctions.** `person_regulatory_sanctions` (regulator, action_type, amount,
   status, date, source_url, `source`+`confidence`). Tied to a licensed professional role; many
   regulators expose structured APIs → good **hermenea** ingestion target.
@@ -230,8 +232,8 @@ or a provisional stub.
 
 ## Open threads for milestone sessions
 
-- **6.1–6.3 legal records** — deferred but important; needs its own session (disposition,
-  expungement suppression, jurisdiction rules).
+- **6.1–6.3 legal records** — **BUILT as M38** (D-LegalRecords: disposition, expungement suppression,
+  jurisdiction FK). Remaining seam: jurisdiction-specific display rules (Ban-the-Box, FCRA).
 - **Biometrics (1.5) and GPS history (2.4)** — excluded; revisit only with a hard lawful
   requirement + legal review, and (for biometrics) token/reference-only.
 - **Org-entity space** — reconcile party / government body / lobbying client / foreign military

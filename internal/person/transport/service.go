@@ -46,6 +46,11 @@ const (
 	permPoliticalLeaningRead = string(authzdomain.PermPersonPoliticalLeaningRead)
 	permPartyMembershipRead  = string(authzdomain.PermPersonPartyMembershipRead)
 	permHealthRead           = string(authzdomain.PermPersonHealthRead)
+	// Criminal / arrest / court records (D-LegalRecords, M38). The base read is a need-to-know code in
+	// sensitive-reader; the read-suppressed code (NOT in any base role) additionally reveals
+	// sealed/expunged records — the strictest gate.
+	permLegalRecordRead           = string(authzdomain.PermPersonLegalRecordRead)
+	permLegalRecordReadSuppressed = string(authzdomain.PermPersonLegalRecordReadSuppressed)
 	// Relationship-graph reads — one code per reified relationship (D-LinkPermissions). The SAME code
 	// gates the dedicated list endpoint here and the link-traversal arm in cmd/oikumenea/link_descriptors.go,
 	// so the person page and the object graph disclose exactly the same set. Composed into the additive
