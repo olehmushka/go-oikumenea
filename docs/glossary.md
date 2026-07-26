@@ -736,10 +736,17 @@ ethnicity) which are first-party.
 are **never stored**, queried at request time **through hermenea** (≤24h cache). **PEP** status derives
 from a held **government position** (M33).
 
-**Special-category overlay.** A `pii:special` (GDPR Art. 9) person store — declared ethnicity (M31),
-party membership (M33), inferred political leaning (M35), health records (M36) — **envelope-encrypted**
-(D-SpecialPII) + `legal_basis` + full audit + (for health) app-layer need-to-know; **never inferred**
-except the explicitly-isolated political-leaning spectrum.
+**Special-category overlay.** A `pii:special` (GDPR Art. 9/Art. 10) person store — declared ethnicity
+(M31), party membership (M33), inferred political leaning (M35), health records (M36), criminal/arrest/
+court records (M38) — **envelope-encrypted** (D-SpecialPII) + `legal_basis` + full audit + (for health
+and legal records) app-layer need-to-know; **never inferred** except the explicitly-isolated
+political-leaning spectrum.
+
+**Legal record.** A category-level criminal/arrest/court record (D-LegalRecords, M38, GDPR Art. 10):
+`kind` (criminal_conviction/arrest/court_judgment) + a **mandatory `disposition`** (arrest ≠ guilt) +
+envelope-encrypted coarse offence detail (no full charge sheet). Sealed/expunged records are
+**suppressed** — retained but hidden behind `person.legal-record.read-suppressed`. Distinct from the
+order module's internal `discipline-incentive` items (external judicial facts, not org discipline).
 
 **Login security log.** First-party `account_login_events` (D-LoginSecurityLog, M37; account Object
 `9,1,4`, `pii:contact`) — ip/context/resolved-country/vpn/tor recorded by the OIDC/JWKS validation

@@ -123,10 +123,21 @@ sanctioned-wallet synergy. Plaintext; hard-deleted on purge.
 person**, crypto-erased on purge. It is in a **separate** table that is **never merged** with the declared
 M33 party membership — the partial-unique `person_id` is **dropped** on merge, not re-homed.
 
+### Legal records (D-LegalRecords, M38; migration `0016`)
+
+**`person_legal_records`** (object `6,1,22`, `pii:special`, GDPR **Art. 10**) — a category-level
+criminal/arrest/court record. `kind ∈ {criminal_conviction, arrest, court_judgment}` and a **mandatory
+`disposition`** (arrest ≠ guilt) stay plaintext but are marked `pii:special`; the category-level offence
+`detail` (a coarse category — **NO full charge sheet**) is **envelope-encrypted**, NOT-NULL
+`legal_basis` (Art. 10), `source`+`confidence`. **Many rows per person** (no one-active-per-kind
+uniqueness). **Jurisdiction** is a hard FK to `geo_countries` (D-Geo). **Never inferred**;
+crypto-erased on purge. **Suppression:** `is_suppressed` + `suppressed_reason ∈ {sealed, expunged}`
+mark a record that is **retained** but withheld from the normal read gate — see Authorization below.
+
 ## Conjure endpoint sketch
 
 No separate service. The sensitive operations are the physical-identity / ethnicity / overlay /
-watchlist / sanctions / party-membership rows of the single `PersonService` in
+watchlist / sanctions / party-membership / legal-record rows of the single `PersonService` in
 [person.md § Conjure API surface](person.md#conjure-api-surface); the one `person/transport.Service`
 delegates each of those handlers to this module.
 
@@ -150,6 +161,16 @@ rule** as core (D-PersonReadScope), with **audit on every write** (D-Audit) — 
 only non-PII identifiers, never the plaintext of an encrypted field. This module **never** decides
 access; it calls the PDP via the shared transport.
 
+The `pii:special` Art. 9/Art. 10 reads each carry **their own need-to-know code**, composed into the
+additive **sensitive-reader** base role and deliberately NOT implied by unit-admin (D-DataScope, R-14):
+`person.ethnicity.read`, `person.political_leaning.read`, `person.party_membership.read`,
+`person.health.read`, and `person.legal-record.read` (D-LegalRecords, M38). Legal records add a
+**second, stricter** gate: **sealed/expunged (suppressed)** rows are withheld from
+`person.legal-record.read` and revealed only to a caller who **also** holds
+`person.legal-record.read-suppressed` (in **no** base role — granted explicitly) or is an instance
+admin. Transport probes it with a non-erroring `AllowedAnywhere` and passes `includeSuppressed` down
+(the R-31 sensitive-reader redaction pattern).
+
 ## Patterns
 
 - **Envelope encryption** for every `pii:special` datum (D-CryptoProvider / D-SpecialPII): seal +
@@ -170,10 +191,16 @@ access; it calls the PDP via the shared transport.
   enforces it). Biometrics are **excluded**.
 - The transient watchlist match is one active row per person, refreshed in place; the lists themselves
   are never stored locally (≤24h cache lives in hermenea).
+- Legal records are **category-level only** (no full charge sheet), **never inferred**, carry a
+  **mandatory `disposition`** (arrest ≠ guilt) and a NOT-NULL Art. 10 `legal_basis`; **sealed/expunged
+  records are suppressed** (retained but hidden behind `person.legal-record.read-suppressed`), never
+  hard-deleted for suppression.
 
 ## Open seams / future
 
-- **M36** (health & vulnerability, `pii:special` + need-to-know) and **M38** (criminal/legal records)
-  are the next sensitive overlays and will land here (designed; see
-  [roadmap-decisions.md](../architecture/roadmap-decisions.md) and
-  [draft_superbrain_schema.md](../draft_superbrain_schema.md)).
+- **Jurisdiction-specific display / storage rules** for legal records (Ban-the-Box hiring windows,
+  FCRA lookback limits) — D-LegalRecords lands the **data hook** (jurisdiction FK + suppression) but
+  **not** the rule engine; that is a future milestone. The jurisdiction subnational subdivision (a
+  finer FK than `geo_countries`) is a related seam.
+- **First-class discipline / incentive records** (order module DS-36) remain distinct from these
+  external judicial facts — reprimand/gratitude/bonus are still record-only order items.

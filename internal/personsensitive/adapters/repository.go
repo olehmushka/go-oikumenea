@@ -1026,7 +1026,146 @@ func toInsurance(r personsensitivesql.OikumeneaPersonInsurance) domain.Insurance
 	}
 }
 
-// nonNilStrs returns s, or an empty (non-nil) slice so a NULL never reaches a NOT NULL text[] column.
+// ---------------------------------------------------------------- criminal / arrest / court records (M38, D-LegalRecords)
+
+// ResolveCountryID resolves a jurisdiction ISO code to its geo_countries RID (D-Geo hard FK).
+func (r *Repository) ResolveCountryID(ctx context.Context, code string) (string, error) {
+	id, err := r.q.GetCountryIDByCode(ctx, code)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", domain.ErrUnknownCountry
+		}
+		return "", err
+	}
+	return id, nil
+}
+
+// InsertLegalRecord stores a new encrypted category-level record (the detail envelope is sealed
+// upstream); UpdateLegalRecord re-seals / re-attributes a person's named record.
+func (r *Repository) InsertLegalRecord(ctx context.Context, l domain.StoredLegalRecord) (domain.StoredLegalRecord, error) {
+	row, err := r.q.InsertLegalRecord(ctx, personsensitivesql.InsertLegalRecordParams{
+		PersonID:              l.PersonID,
+		Kind:                  l.Kind,
+		Disposition:           l.Disposition,
+		DetailCiphertext:      l.DetailCiphertext,
+		DetailWrappedDek:      l.DetailWrappedDEK,
+		DetailKeyRef:          text(l.DetailKeyRef),
+		DetailBlindIndex:      l.DetailBlindIndex,
+		JurisdictionCountryID: text(l.JurisdictionCountryID),
+		OccurredAt:            dateText(l.OccurredAt),
+		DispositionDate:       dateText(l.DispositionDate),
+		IsSuppressed:          l.IsSuppressed,
+		SuppressedReason:      text(l.SuppressedReason),
+		LegalBasis:            l.LegalBasis,
+		Source:                l.Source,
+		Confidence:            l.Confidence,
+	})
+	if err != nil {
+		return domain.StoredLegalRecord{}, mapWriteErr(err)
+	}
+	return toStoredLegalRecord(row), nil
+}
+
+func (r *Repository) UpdateLegalRecord(ctx context.Context, l domain.StoredLegalRecord) (domain.StoredLegalRecord, error) {
+	row, err := r.q.UpdateLegalRecord(ctx, personsensitivesql.UpdateLegalRecordParams{
+		Kind:                  l.Kind,
+		Disposition:           l.Disposition,
+		DetailCiphertext:      l.DetailCiphertext,
+		DetailWrappedDek:      l.DetailWrappedDEK,
+		DetailKeyRef:          text(l.DetailKeyRef),
+		DetailBlindIndex:      l.DetailBlindIndex,
+		JurisdictionCountryID: text(l.JurisdictionCountryID),
+		OccurredAt:            dateText(l.OccurredAt),
+		DispositionDate:       dateText(l.DispositionDate),
+		IsSuppressed:          l.IsSuppressed,
+		SuppressedReason:      text(l.SuppressedReason),
+		LegalBasis:            l.LegalBasis,
+		Source:                l.Source,
+		Confidence:            l.Confidence,
+		ID:                    l.ID,
+		PersonID:              l.PersonID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.StoredLegalRecord{}, domain.ErrLegalRecordNotFound
+		}
+		return domain.StoredLegalRecord{}, mapWriteErr(err)
+	}
+	return toStoredLegalRecord(row), nil
+}
+
+func (r *Repository) DeleteLegalRecord(ctx context.Context, personID, id string) error {
+	if _, err := r.q.DeleteLegalRecord(ctx, personsensitivesql.DeleteLegalRecordParams{ID: id, PersonID: personID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrLegalRecordNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) ListLegalRecords(ctx context.Context, personID string, includeSuppressed bool) ([]domain.StoredLegalRecord, error) {
+	rows, err := r.q.ListLegalRecords(ctx, personsensitivesql.ListLegalRecordsParams{PersonID: personID, IncludeSuppressed: includeSuppressed})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.StoredLegalRecord, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toStoredLegalRecordRow(row))
+	}
+	return out, nil
+}
+
+func (r *Repository) CryptoEraseLegalRecords(ctx context.Context, personID string) (int64, error) {
+	return r.q.CryptoEraseLegalRecords(ctx, personID)
+}
+
+func toStoredLegalRecord(r personsensitivesql.OikumeneaPersonLegalRecord) domain.StoredLegalRecord {
+	return domain.StoredLegalRecord{
+		ID:                    r.ID,
+		PersonID:              r.PersonID,
+		Kind:                  r.Kind,
+		Disposition:           r.Disposition,
+		DetailCiphertext:      r.DetailCiphertext,
+		DetailWrappedDEK:      r.DetailWrappedDek,
+		DetailKeyRef:          strText(r.DetailKeyRef),
+		DetailBlindIndex:      r.DetailBlindIndex,
+		JurisdictionCountryID: strText(r.JurisdictionCountryID),
+		OccurredAt:            dateStr(r.OccurredAt),
+		DispositionDate:       dateStr(r.DispositionDate),
+		IsSuppressed:          r.IsSuppressed,
+		SuppressedReason:      strText(r.SuppressedReason),
+		LegalBasis:            r.LegalBasis,
+		Source:                r.Source,
+		Confidence:            r.Confidence,
+		CreatedAt:             r.CreatedAt.Time,
+		UpdatedAt:             r.UpdatedAt.Time,
+	}
+}
+
+func toStoredLegalRecordRow(r personsensitivesql.ListLegalRecordsRow) domain.StoredLegalRecord {
+	return domain.StoredLegalRecord{
+		ID:                    r.ID,
+		PersonID:              r.PersonID,
+		Kind:                  r.Kind,
+		Disposition:           r.Disposition,
+		DetailCiphertext:      r.DetailCiphertext,
+		DetailWrappedDEK:      r.DetailWrappedDek,
+		DetailKeyRef:          strText(r.DetailKeyRef),
+		DetailBlindIndex:      r.DetailBlindIndex,
+		JurisdictionCountryID: strText(r.JurisdictionCountryID),
+		Jurisdiction:          r.JurisdictionCode,
+		OccurredAt:            dateStr(r.OccurredAt),
+		DispositionDate:       dateStr(r.DispositionDate),
+		IsSuppressed:          r.IsSuppressed,
+		SuppressedReason:      strText(r.SuppressedReason),
+		LegalBasis:            r.LegalBasis,
+		Source:                r.Source,
+		Confidence:            r.Confidence,
+		CreatedAt:             r.CreatedAt.Time,
+		UpdatedAt:             r.UpdatedAt.Time,
+	}
+}
 
 // relDelete maps a person-scoped soft-delete-by-id (RETURNING id) to ErrRelationshipNotFound when no
 // row matched (wrong id, already deleted, or the person is not an endpoint).
@@ -1343,6 +1482,7 @@ func (r *Repository) ErasePerson(ctx context.Context, personID string) error {
 		r.q.CryptoErasePartyMemberships, // D-InstitutionalTies, M33
 		r.q.CryptoErasePoliticalLeaning, // D-PersonOverlays, M35
 		r.q.CryptoEraseHealthRecords,    // D-HealthVulnerability, M36
+		r.q.CryptoEraseLegalRecords,     // D-LegalRecords, M38
 	}
 	for _, step := range cryptoErases {
 		if _, err := step(ctx, personID); err != nil {

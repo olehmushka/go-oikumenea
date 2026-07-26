@@ -430,7 +430,8 @@ func (s Service) mapError(ctx context.Context, err error, personID string) error
 		errors.Is(err, domain.ErrPersonalityNotFound),
 		errors.Is(err, domain.ErrPoliticalLeaningNotFound),
 		errors.Is(err, domain.ErrHealthRecordNotFound),
-		errors.Is(err, domain.ErrInsuranceNotFound):
+		errors.Is(err, domain.ErrInsuranceNotFound),
+		errors.Is(err, domain.ErrLegalRecordNotFound):
 		return personapi.NewPersonNotFound(personID)
 	case errors.Is(err, domain.ErrCodeConflict):
 		return personapi.NewPersonConflict("a person with this code already exists")

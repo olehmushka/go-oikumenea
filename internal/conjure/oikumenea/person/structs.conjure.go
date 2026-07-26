@@ -774,6 +774,55 @@ func (o *Kinship) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 /*
+A category-level criminal / arrest / court record (D-LegalRecords, M38) — an Object. Criminal
+data is GDPR Art. 10, so the category-level offence `detail` is envelope-encrypted at rest; the
+value here is decrypted ("" for a crypto-erased tombstone). CATEGORY-LEVEL ONLY — never a full
+charge sheet. `disposition` is mandatory (arrest ≠ guilt). legalBasis is required and reads need
+the person.legal-record.read code. Sealed/expunged records (isSuppressed) are withheld unless the
+caller also holds person.legal-record.read-suppressed. pii:special.
+*/
+type LegalRecord struct {
+	Id       string `json:"id"`
+	PersonId string `json:"personId"`
+	// One of criminal_conviction | arrest | court_judgment.
+	Kind string `json:"kind"`
+	// Mandatory outcome — one of convicted | acquitted | dismissed | pending | sealed | expunged | no_charges.
+	Disposition string `json:"disposition"`
+	// The decrypted category-level offence/charge (coarse, NO full charge sheet); "" when crypto-erased.
+	Detail string `json:"detail"`
+	// ISO-3166-1 country code of the issuing jurisdiction (D-Geo).
+	Jurisdiction *string `json:"jurisdiction,omitempty"`
+	// ISO date of the offence / arrest.
+	OccurredAt *string `json:"occurredAt,omitempty"`
+	// ISO date the disposition was reached.
+	DispositionDate *string `json:"dispositionDate,omitempty"`
+	// True when the record is sealed or expunged (withheld from the normal read gate).
+	IsSuppressed bool `json:"isSuppressed"`
+	// One of sealed | expunged — present iff isSuppressed.
+	SuppressedReason *string `json:"suppressedReason,omitempty"`
+	// The platform_legal_basis_kinds code authorizing this Art. 10 record.
+	LegalBasis string  `json:"legalBasis"`
+	Source     *string `json:"source,omitempty"`
+	Confidence *string `json:"confidence,omitempty"`
+}
+
+func (o LegalRecord) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *LegalRecord) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
 A public lobbying filing (D-InstitutionalTies, M33) — a reified link: the person as registrant
 lobbying for a client before a legislative body on a set of issues. pii:basic.
 */
@@ -2280,6 +2329,42 @@ func (o UpsertKinshipRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *UpsertKinshipRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+Add a legal record, or replace one when id is supplied (D-LegalRecords, M38). Requires
+`disposition` (arrest ≠ guilt) and legalBasis (Art. 10). Category-level only — never a full
+charge sheet.
+*/
+type UpsertLegalRecordRequest struct {
+	Id               *string `json:"id,omitempty"`
+	Kind             string  `json:"kind"`
+	Disposition      string  `json:"disposition"`
+	Detail           string  `json:"detail"`
+	Jurisdiction     *string `json:"jurisdiction,omitempty"`
+	OccurredAt       *string `json:"occurredAt,omitempty"`
+	DispositionDate  *string `json:"dispositionDate,omitempty"`
+	IsSuppressed     *bool   `json:"isSuppressed,omitempty"`
+	SuppressedReason *string `json:"suppressedReason,omitempty"`
+	LegalBasis       string  `json:"legalBasis"`
+	Source           *string `json:"source,omitempty"`
+	Confidence       *string `json:"confidence,omitempty"`
+}
+
+func (o UpsertLegalRecordRequest) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UpsertLegalRecordRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

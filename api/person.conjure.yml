@@ -700,6 +700,64 @@ types:
           validTo: optional<string>
           source: optional<string>
           confidence: optional<string>
+      LegalRecord:
+        docs: |
+          A category-level criminal / arrest / court record (D-LegalRecords, M38) — an Object. Criminal
+          data is GDPR Art. 10, so the category-level offence `detail` is envelope-encrypted at rest; the
+          value here is decrypted ("" for a crypto-erased tombstone). CATEGORY-LEVEL ONLY — never a full
+          charge sheet. `disposition` is mandatory (arrest ≠ guilt). legalBasis is required and reads need
+          the person.legal-record.read code. Sealed/expunged records (isSuppressed) are withheld unless the
+          caller also holds person.legal-record.read-suppressed. pii:special.
+        fields:
+          id: string
+          personId: string
+          kind:
+            type: string
+            docs: One of criminal_conviction | arrest | court_judgment.
+          disposition:
+            type: string
+            docs: Mandatory outcome — one of convicted | acquitted | dismissed | pending | sealed | expunged | no_charges.
+          detail:
+            type: string
+            docs: The decrypted category-level offence/charge (coarse, NO full charge sheet); "" when crypto-erased.
+          jurisdiction:
+            type: optional<string>
+            docs: ISO-3166-1 country code of the issuing jurisdiction (D-Geo).
+          occurredAt:
+            type: optional<string>
+            docs: ISO date of the offence / arrest.
+          dispositionDate:
+            type: optional<string>
+            docs: ISO date the disposition was reached.
+          isSuppressed:
+            type: boolean
+            docs: True when the record is sealed or expunged (withheld from the normal read gate).
+          suppressedReason:
+            type: optional<string>
+            docs: One of sealed | expunged — present iff isSuppressed.
+          legalBasis:
+            type: string
+            docs: The platform_legal_basis_kinds code authorizing this Art. 10 record.
+          source: optional<string>
+          confidence: optional<string>
+      UpsertLegalRecordRequest:
+        docs: |
+          Add a legal record, or replace one when id is supplied (D-LegalRecords, M38). Requires
+          `disposition` (arrest ≠ guilt) and legalBasis (Art. 10). Category-level only — never a full
+          charge sheet.
+        fields:
+          id: optional<string>
+          kind: string
+          disposition: string
+          detail: string
+          jurisdiction: optional<string>
+          occurredAt: optional<string>
+          dispositionDate: optional<string>
+          isSuppressed: optional<boolean>
+          suppressedReason: optional<string>
+          legalBasis: string
+          source: optional<string>
+          confidence: optional<string>
       Email:
         docs: A person's contact email (D-PersonContactChannels). pii:contact; distinct from the login email.
         fields:
@@ -1955,6 +2013,38 @@ services:
             type: string
             param-type: path
           insuranceId:
+            type: string
+            param-type: path
+      listLegalRecords:
+        http: GET /persons/{personId}/legal-records
+        docs: |
+          List a person's category-level criminal / arrest / court records (D-LegalRecords, M38;
+          pii:special, decrypted). Requires the person.legal-record.read need-to-know code. Sealed/expunged
+          records are withheld unless the caller also holds person.legal-record.read-suppressed.
+        args:
+          personId:
+            type: string
+            param-type: path
+        returns: list<LegalRecord>
+      upsertLegalRecord:
+        http: PUT /persons/{personId}/legal-records
+        docs: |
+          Add a legal record, or replace one when id is supplied. Requires disposition (arrest ≠ guilt) and
+          legalBasis (Art. 10). Category-level only — never a full charge sheet.
+        args:
+          personId:
+            type: string
+            param-type: path
+          request: UpsertLegalRecordRequest
+        returns: LegalRecord
+      deleteLegalRecord:
+        http: DELETE /persons/{personId}/legal-records/{recordId}
+        docs: Remove a legal record by id.
+        args:
+          personId:
+            type: string
+            param-type: path
+          recordId:
             type: string
             param-type: path
       listEthnicityTypes:

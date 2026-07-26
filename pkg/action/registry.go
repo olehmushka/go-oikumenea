@@ -191,6 +191,8 @@ var actionTypes = []ActionType{
 	{Code: "person.kinship.upsert", Service: rid.SvcPerson, TargetType: "person", Permission: "person.update", RequestType: "oikumenea.person.UpsertKinshipRequest"},
 	{Code: "person.language.delete", Service: rid.SvcPerson, TargetType: "person", Permission: "person.update"},
 	{Code: "person.language.upsert", Service: rid.SvcPerson, TargetType: "person", Permission: "person.update", RequestType: "oikumenea.person.UpsertPersonLanguageRequest"},
+	{Code: "person.legal_record.delete", Service: rid.SvcPerson, TargetType: "person", Permission: "person.update"},
+	{Code: "person.legal_record.upsert", Service: rid.SvcPerson, TargetType: "person", Permission: "person.update", RequestType: "oikumenea.person.UpsertLegalRecordRequest"},
 	{Code: "person.lobbying.delete", Service: rid.SvcPerson, TargetType: "person", Permission: "person.update"},
 	{Code: "person.lobbying.upsert", Service: rid.SvcPerson, TargetType: "person", Permission: "person.update", RequestType: "oikumenea.person.UpsertLobbyingRelationshipRequest"},
 	{Code: "person.merge", Service: rid.SvcPerson, TargetType: "person", Permission: "person.merge", RequestType: "oikumenea.person.MergePersonRequest"},

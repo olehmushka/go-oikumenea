@@ -5,6 +5,8 @@
 package personsensitivesql
 
 import (
+	"net/netip"
+
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -37,6 +39,33 @@ type OikumeneaAccountExternalIdentity struct {
 	Subject string
 	// pii:none
 	CreatedAt pgtype.Timestamptz
+}
+
+type OikumeneaAccountLoginEvent struct {
+	// pii:none
+	ID string
+	// pii:none
+	AccountID string
+	// pii:none
+	Context string
+	// pii:contact
+	Ip netip.Addr
+	// pii:none
+	FirstSeenAt pgtype.Timestamptz
+	// pii:none
+	LastSeenAt pgtype.Timestamptz
+	// pii:none
+	OccurrenceCount int32
+	// pii:contact
+	ResolvedCountry pgtype.Text
+	// pii:contact
+	ResolvedIsp pgtype.Text
+	// pii:none
+	IsVpn pgtype.Bool
+	// pii:none
+	IsTor pgtype.Bool
+	// pii:contact
+	UserAgent pgtype.Text
 }
 
 type OikumeneaAccountServicePrincipal struct {
@@ -209,6 +238,14 @@ type OikumeneaAuthzRolePermission struct {
 	RoleID string
 	// pii:none
 	PermissionCode string
+}
+
+// RLS-exempt unit->org projection for the machine reach arm (M55); trigger-maintained from tenant_units. No RID (derived projection).
+type OikumeneaAuthzUnitOrg struct {
+	// pii:none
+	UnitID string
+	// pii:none
+	OrgID string
 }
 
 type OikumeneaCompanyAppointment struct {
@@ -440,6 +477,71 @@ type OikumeneaCompanySuccession struct {
 	CreatedAt   pgtype.Timestamptz
 	UpdatedAt   pgtype.Timestamptz
 	DeletedAt   pgtype.Timestamptz
+}
+
+type OikumeneaConnectorConnector struct {
+	// pii:none
+	ID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	Description pgtype.Text
+	// pii:none
+	PrincipalID pgtype.Text
+	// pii:none
+	Status string
+	// pii:none
+	LastSeenAt pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
+}
+
+type OikumeneaConnectorSource struct {
+	// pii:none
+	ID string
+	// pii:none
+	ConnectorID string
+	// pii:none
+	Code string
+	// pii:none
+	Name string
+	// pii:none
+	ObjectType pgtype.Text
+	// pii:none
+	Schedule pgtype.Text
+	// pii:none
+	Enabled   bool
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+type OikumeneaConnectorSyncRun struct {
+	// pii:none
+	ID string
+	// pii:none
+	SourceID string
+	// pii:none
+	ExternalRunID pgtype.Text
+	// pii:none
+	State string
+	// pii:none
+	CreatedCount int64
+	// pii:none
+	UpdatedCount int64
+	// pii:none
+	SkippedCount int64
+	// pii:none
+	Error pgtype.Text
+	// pii:none
+	StartedAt pgtype.Timestamptz
+	// pii:none
+	FinishedAt pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
 }
 
 type OikumeneaDocumentDocument struct {
@@ -1879,6 +1981,44 @@ type OikumeneaPersonLanguage struct {
 	DeletedAt pgtype.Timestamptz
 }
 
+type OikumeneaPersonLegalRecord struct {
+	// pii:none
+	ID string
+	// pii:none
+	PersonID string
+	// pii:special
+	Kind string
+	// pii:special
+	Disposition string
+	// pii:special
+	DetailCiphertext []byte
+	// pii:special
+	DetailWrappedDek []byte
+	// pii:none
+	DetailKeyRef pgtype.Text
+	// pii:special
+	DetailBlindIndex []byte
+	// pii:basic
+	JurisdictionCountryID pgtype.Text
+	// pii:basic
+	OccurredAt pgtype.Date
+	// pii:basic
+	DispositionDate pgtype.Date
+	// pii:basic
+	IsSuppressed bool
+	// pii:basic
+	SuppressedReason pgtype.Text
+	// pii:none
+	LegalBasis string
+	// pii:none
+	Source string
+	// pii:none
+	Confidence string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
+}
+
 type OikumeneaPersonLobbyingRelationship struct {
 	// pii:none
 	ID string
@@ -2448,6 +2588,8 @@ type OikumeneaPinaxSeedState struct {
 	SourceVersion string
 	AppliedAt     pgtype.Timestamptz
 	Summary       []byte
+	// pii:none
+	Pack pgtype.Text
 }
 
 type OikumeneaPlatformColor struct {

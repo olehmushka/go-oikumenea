@@ -14,6 +14,7 @@ func TestSensitivePersonReadsGatedByOwnCodes(t *testing.T) {
 		PermPersonPoliticalLeaningRead,
 		PermPersonPartyMembershipRead,
 		PermPersonHealthRead,
+		PermPersonLegalRecordRead, // D-LegalRecords, M38 (base read; read-suppressed is stricter, checked below)
 	}
 
 	// (a) each is a known, unit-scope permission.
@@ -63,6 +64,22 @@ func TestSensitivePersonReadsGatedByOwnCodes(t *testing.T) {
 	for _, p := range special {
 		if !sr[p] {
 			t.Fatalf("sensitive-reader must grant %q", p)
+		}
+	}
+
+	// (d) person.legal-record.read-suppressed is the strictest gate (D-LegalRecords, M38): in the closed
+	// catalog + unit-scope, but reachable through NO base role at all — not even sensitive-reader — so
+	// sealed/expunged records require an explicit, separately granted capability.
+	suppressed := PermPersonLegalRecordReadSuppressed
+	if !IsKnownPermission(string(suppressed)) {
+		t.Fatalf("%q must be in the closed permission catalog", suppressed)
+	}
+	if IsInstanceScope(string(suppressed)) {
+		t.Fatalf("%q must be unit-scope (assignable), not instance-plane", suppressed)
+	}
+	for _, br := range BaseRoles() {
+		if roles[br.Code][suppressed] {
+			t.Fatalf("base role %q must NOT grant %q (the strictest gate is granted explicitly only)", br.Code, suppressed)
 		}
 	}
 }

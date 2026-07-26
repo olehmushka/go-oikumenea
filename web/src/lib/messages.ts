@@ -645,6 +645,8 @@ const glossaryUkr: Record<string, string> = {
   "counterpart person…": "особа-контрагент…", "CEFR…": "CEFR…", "native": "рідна",
   "conferring org unit…": "оргпідрозділ, що надає…", "Reinstate": "Поновити",
   "Special-category data (GDPR Art. 9) — encrypted at rest.": "Дані особливої категорії (GDPR ст. 9) — шифруються в спокої.",
+  "Criminal & court records": "Кримінальні та судові записи",
+  "Category-level special-category data (GDPR Art. 10) — encrypted at rest; NO full charge sheet; never inferred. Sealed/expunged records are hidden unless you hold the read-suppressed grant.": "Дані особливої категорії на рівні категорій (GDPR ст. 10) — шифруються в спокої; БЕЗ повного обвинувального акта; ніколи не виводяться. Закриті/погашені записи приховані, якщо ви не маєте дозволу read-suppressed.",
   "detail (optional)": "деталь (необов.)", "faith (optional)…": "віра (необов.)…",
   "relation…": "відносини…", "relation (optional)": "відносини (необов.)",
   "Pick a subject person or a target unit (exactly one) to list assignments.":
@@ -1078,6 +1080,8 @@ const glossarySpa: Record<string, string> = {
   "counterpart person…": "persona contraparte…", "CEFR…": "MCER…", "native": "nativo",
   "conferring org unit…": "unidad organizativa que confiere…", "Reinstate": "Restablecer",
   "Special-category data (GDPR Art. 9) — encrypted at rest.": "Datos de categoría especial (RGPD art. 9): cifrados en reposo.",
+  "Criminal & court records": "Registros penales y judiciales",
+  "Category-level special-category data (GDPR Art. 10) — encrypted at rest; NO full charge sheet; never inferred. Sealed/expunged records are hidden unless you hold the read-suppressed grant.": "Datos de categoría especial a nivel de categoría (RGPD art. 10): cifrados en reposo; SIN pliego de cargos completo; nunca inferidos. Los registros sellados/cancelados se ocultan salvo que tenga la autorización read-suppressed.",
   "detail (optional)": "detalle (opcional)", "faith (optional)…": "religión (opcional)…",
   "relation…": "relación…", "relation (optional)": "relación (opcional)",
   "Pick a subject person or a target unit (exactly one) to list assignments.":
@@ -1511,6 +1515,8 @@ const glossaryPor: Record<string, string> = {
   "counterpart person…": "pessoa contraparte…", "CEFR…": "QECR…", "native": "nativo",
   "conferring org unit…": "unidade organizacional que confere…", "Reinstate": "Reintegrar",
   "Special-category data (GDPR Art. 9) — encrypted at rest.": "Dados de categoria especial (RGPD art. 9) — criptografados em repouso.",
+  "Criminal & court records": "Registros criminais e judiciais",
+  "Category-level special-category data (GDPR Art. 10) — encrypted at rest; NO full charge sheet; never inferred. Sealed/expunged records are hidden unless you hold the read-suppressed grant.": "Dados de categoria especial em nível de categoria (RGPD art. 10) — criptografados em repouso; SEM ficha de acusação completa; nunca inferidos. Registros selados/expurgados ficam ocultos a menos que você tenha a permissão read-suppressed.",
   "detail (optional)": "detalhe (opcional)", "faith (optional)…": "religião (opcional)…",
   "relation…": "relação…", "relation (optional)": "relação (opcional)",
   "Pick a subject person or a target unit (exactly one) to list assignments.":

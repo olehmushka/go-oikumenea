@@ -41,8 +41,10 @@ provisional-entity + attribution + `legal_basis` substrate every overlay rides) 
 (M30, a registry of external organizations) · **D-PhysicalIdentity** (M31) · **D-PersonAddresses**
 (M32) · **D-InstitutionalTies** (M33) · **D-Watchlists** (M34, live-lookup via hermenea) ·
 **D-PersonOverlays** (M35, financial/behavioral/psychological) · **D-HealthVulnerability** (M36,
-`pii:special`) · **D-LoginSecurityLog** (M37). The two **deferred stubs** (M38 criminal/legal records,
-M39 compensation/payroll) carry **no** decision yet — they are designed in their own later session.
+`pii:special`) · **D-LoginSecurityLog** (M37) · **D-LegalRecords** (M38, criminal/arrest/court,
+`pii:special` Art. 10). The one remaining **deferred stub** (M39 compensation/payroll) carries **no**
+decision yet — it is a separate operational-HR module, out of OSINT-dossier scope, designed in its own
+later session.
 
 > Cross-references into the **core** decisions (D-CryptoProvider, D-WebUI, D-Geo, D-Rank, D-Ontology,
 > D-PersonReadScope, …) point at [`decisions.md`](decisions.md); references among the planned-tier
@@ -85,6 +87,7 @@ index in [`decisions.md`](decisions.md).
 | [D-PersonOverlays](#d-personoverlays--financial-behavioral--psychological-overlays-extends-d-overlayfoundation-d-specialpii) | Financial, behavioral & psychological overlays |
 | [D-HealthVulnerability](#d-healthvulnerability--category-level-health--vulnerability-records-piispecial-extends-d-specialpii) | Category-level health & vulnerability records (pii:special) |
 | [D-LoginSecurityLog](#d-loginsecuritylog--a-first-party-loginip-security-log-on-the-federation-seam-extends-l-authzonly) | A first-party login/IP security log on the federation seam |
+| [D-LegalRecords](#d-legalrecords--category-level-criminal--arrest--court-records-piispecial-gdpr-art-10-extends-d-specialpii-d-overlayfoundation-d-geo) | Category-level criminal / arrest / court records (pii:special, Art. 10) |
 | [D-Finance](#d-finance--bank-accounts--payment-cards-banks-as-company-orgs-extends-d-ontology-d-personalcodes-d-unifiedorggraph) | Bank accounts & payment cards, banks as company orgs |
 | [D-Pinax](#d-pinax--the-reference-plane-a-named-world-model-plane-with-an-origin-marker--bundled-yaml-seed-presets-self-seeded-at-boot-extends-d-ontology-d-i18n-d-hermenea-d-dataingestion-amends-d-languages-d-geo-d-rank-d-religion-d-physicalidentitym43-d-color) | The reference plane: origin marker + bundled YAML seed presets |
 | [D-HeadlessTopology](#d-headlesstopology--oikumenea-is-internal-only-behind-unprivileged-user-token-passthrough-facades-extends-l-authzonly-amends-d-webui) | oikumenea internal-only behind unprivileged passthrough facades |
@@ -1645,6 +1648,47 @@ marks the JIT link-on-match, `login` a validated request. IP-intelligence (`reso
 Read on the instance-scope `account.security-log.read` (`GET /accounts/{id}/login-events`, admin-only);
 purge-erased via `SubscribePersonPurge`. `pkg/crypto` not involved (no envelope encryption — the log is
 `pii:contact`, not `pii:sensitive`).
+
+### D-LegalRecords — Category-level criminal / arrest / court records (`pii:special`, GDPR Art. 10) (extends D-SpecialPII, D-OverlayFoundation, D-Geo)
+
+**Decision.** Add the draft's macro-category 6.1–6.3 (criminal record / arrest history / court
+judgments) as **one** `person_legal_records` Object in [personsensitive](../modules/personsensitive.md):
+
+- `kind ∈ {criminal_conviction, arrest, court_judgment}` + a **mandatory `disposition` ∈ {convicted,
+  acquitted, dismissed, pending, sealed, expunged, no_charges}** (arrest ≠ guilt) — both plaintext but
+  `pii:special`, validated app-side.
+- the category-level offence `detail` (a coarse offence/charge category — **NO full charge sheet**) is
+  **envelope-encrypted** (D-SpecialPII: ciphertext/wrapped_dek/key_ref/blind_index) with a NOT-NULL
+  `legal_basis` (Art. 10), `source`+`confidence` (D-OverlayFoundation). **Never inferred.**
+- **jurisdiction** is a hard FK to `geo_countries` (D-Geo).
+- **expungement / sealing SUPPRESSION**: `is_suppressed` + `suppressed_reason ∈ {sealed, expunged}`
+  — a suppressed row is **retained** (legal + audit basis) but withheld from the normal
+  `person.legal-record.read` gate; only a caller who **also** holds `person.legal-record.read-suppressed`
+  (or an instance admin) sees suppressed rows. Enforced in the read path (the R-31 sensitive-reader
+  redaction pattern), not in SQL policy.
+
+Two read codes: `person.legal-record.read` (need-to-know, composed into the **sensitive-reader** base
+role) and `person.legal-record.read-suppressed` (the strictest gate, in **no** base role — granted
+explicitly). Writes ride `person.update`. Full audit; crypto-erased on purge.
+
+**Why.** Criminal-conviction/offence data is **GDPR Art. 10** — arguably the strictest class — so,
+**amending the draft's `pii:sensitive` tag**, it rides the same proven M31/M33/M35/M36 special-PII
+envelope + the M29 `legal_basis`/audit substrate. Category-level-only storage minimizes risk while
+keeping `kind`/`disposition` queryable. Building it last (M38) lets it reuse everything.
+
+**Why not** (a) *Store full charge sheets / inferred criminality*: forbidden — category-level,
+declared/public-record only, never inferred. (b) *Per-kind tables*: one table + `kind` enum mirrors
+`person_health_records` and keeps the migration/backend/UI surface small. (c) *A plain `pii:sensitive`
+field (as the draft tagged it)*: Art. 10 demands the envelope + need-to-know + full audit. (d) *Fold
+into the [order](../modules/order.md) `discipline-incentive` category*: those are the org's **own**
+internal reprimand/gratitude record-only order items (DS-36); these are **external judicial facts** —
+a distinct concern. (e) *Build the Ban-the-Box / FCRA jurisdiction display-rule engine now*: out of
+scope — the **data hook** (jurisdiction FK + suppression) lands here; the rule engine is an **open
+seam**.
+
+**Consequence.** New `person_legal_records` (encrypted, RID `6,1,22`); two new read codes; need-to-know
++ suppression read gates, full audit, crypto-erase on purge. Migration `0016_legalrecords`. Lands as
+**M38** ([milestones](../milestones.md)).
 
 ### D-Finance — Bank accounts & payment cards, banks as company orgs (extends D-Ontology, D-PersonalCodes, D-UnifiedOrgGraph)
 

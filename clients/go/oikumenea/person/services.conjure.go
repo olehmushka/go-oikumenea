@@ -160,6 +160,19 @@ type PersonServiceClient interface {
 	// Remove an insurance row by id.
 	DeleteInsurance(ctx context.Context, authHeader bearertoken.Token, personIdArg string, insuranceIdArg string) error
 	/*
+	   List a person's category-level criminal / arrest / court records (D-LegalRecords, M38;
+	   pii:special, decrypted). Requires the person.legal-record.read need-to-know code. Sealed/expunged
+	   records are withheld unless the caller also holds person.legal-record.read-suppressed.
+	*/
+	ListLegalRecords(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]LegalRecord, error)
+	/*
+	   Add a legal record, or replace one when id is supplied. Requires disposition (arrest ≠ guilt) and
+	   legalBasis (Art. 10). Category-level only — never a full charge sheet.
+	*/
+	UpsertLegalRecord(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertLegalRecordRequest) (LegalRecord, error)
+	// Remove a legal record by id.
+	DeleteLegalRecord(ctx context.Context, authHeader bearertoken.Token, personIdArg string, recordIdArg string) error
+	/*
 	   List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
 	   the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
 	   expansion), or a name/code substring (query). `hasChildren` is set on each entry.
@@ -1175,6 +1188,53 @@ func (c *personServiceClient) DeleteInsurance(ctx context.Context, authHeader be
 	return nil
 }
 
+func (c *personServiceClient) ListLegalRecords(ctx context.Context, authHeader bearertoken.Token, personIdArg string) ([]LegalRecord, error) {
+	var returnVal []LegalRecord
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListLegalRecords"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/legal-records", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return nil, werror.WrapWithContextParams(ctx, err, "listLegalRecords failed")
+	}
+	if returnVal == nil {
+		return nil, werror.ErrorWithContextParams(ctx, "listLegalRecords response cannot be nil")
+	}
+	return returnVal, nil
+}
+
+func (c *personServiceClient) UpsertLegalRecord(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpsertLegalRecordRequest) (LegalRecord, error) {
+	var returnVal *LegalRecord
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UpsertLegalRecord"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/legal-records", url.PathEscape(fmt.Sprint(personIdArg))))
+	requestParams = append(requestParams, httpclient.WithJSONRequest(requestArg))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Put(ctx, requestParams...); err != nil {
+		return *new(LegalRecord), werror.WrapWithContextParams(ctx, err, "upsertLegalRecord failed")
+	}
+	if returnVal == nil {
+		return *new(LegalRecord), werror.ErrorWithContextParams(ctx, "upsertLegalRecord response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) DeleteLegalRecord(ctx context.Context, authHeader bearertoken.Token, personIdArg string, recordIdArg string) error {
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DeleteLegalRecord"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/persons/%s/legal-records/%s", url.PathEscape(fmt.Sprint(personIdArg)), url.PathEscape(fmt.Sprint(recordIdArg))))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Delete(ctx, requestParams...); err != nil {
+		return werror.WrapWithContextParams(ctx, err, "deleteLegalRecord failed")
+	}
+	return nil
+}
+
 func (c *personServiceClient) ListEthnicityTypes(ctx context.Context, authHeader bearertoken.Token, topLevelArg *bool, parentArg *string, queryArg *string, limitArg *int) ([]EthnicityType, error) {
 	var returnVal []EthnicityType
 	var requestParams []httpclient.RequestParam
@@ -2136,6 +2196,19 @@ type PersonServiceClientWithAuth interface {
 	// Remove an insurance row by id.
 	DeleteInsurance(ctx context.Context, personIdArg string, insuranceIdArg string) error
 	/*
+	   List a person's category-level criminal / arrest / court records (D-LegalRecords, M38;
+	   pii:special, decrypted). Requires the person.legal-record.read need-to-know code. Sealed/expunged
+	   records are withheld unless the caller also holds person.legal-record.read-suppressed.
+	*/
+	ListLegalRecords(ctx context.Context, personIdArg string) ([]LegalRecord, error)
+	/*
+	   Add a legal record, or replace one when id is supplied. Requires disposition (arrest ≠ guilt) and
+	   legalBasis (Art. 10). Category-level only — never a full charge sheet.
+	*/
+	UpsertLegalRecord(ctx context.Context, personIdArg string, requestArg UpsertLegalRecordRequest) (LegalRecord, error)
+	// Remove a legal record by id.
+	DeleteLegalRecord(ctx context.Context, personIdArg string, recordIdArg string) error
+	/*
 	   List the declared-ethnicity taxonomy (D-PhysicalIdentity amendment, M43). Optionally filter to
 	   the forest roots (topLevel), the immediate children of a parent RID (parent, for lazy tree
 	   expansion), or a name/code substring (query). `hasChildren` is set on each entry.
@@ -2484,6 +2557,18 @@ func (c *personServiceClientWithAuth) UpsertInsurance(ctx context.Context, perso
 
 func (c *personServiceClientWithAuth) DeleteInsurance(ctx context.Context, personIdArg string, insuranceIdArg string) error {
 	return c.client.DeleteInsurance(ctx, c.authHeader, personIdArg, insuranceIdArg)
+}
+
+func (c *personServiceClientWithAuth) ListLegalRecords(ctx context.Context, personIdArg string) ([]LegalRecord, error) {
+	return c.client.ListLegalRecords(ctx, c.authHeader, personIdArg)
+}
+
+func (c *personServiceClientWithAuth) UpsertLegalRecord(ctx context.Context, personIdArg string, requestArg UpsertLegalRecordRequest) (LegalRecord, error) {
+	return c.client.UpsertLegalRecord(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithAuth) DeleteLegalRecord(ctx context.Context, personIdArg string, recordIdArg string) error {
+	return c.client.DeleteLegalRecord(ctx, c.authHeader, personIdArg, recordIdArg)
 }
 
 func (c *personServiceClientWithAuth) ListEthnicityTypes(ctx context.Context, topLevelArg *bool, parentArg *string, queryArg *string, limitArg *int) ([]EthnicityType, error) {
@@ -3129,6 +3214,30 @@ func (c *personServiceClientWithTokenProvider) DeleteInsurance(ctx context.Conte
 		return err
 	}
 	return c.client.DeleteInsurance(ctx, bearertoken.Token(token), personIdArg, insuranceIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) ListLegalRecords(ctx context.Context, personIdArg string) ([]LegalRecord, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.ListLegalRecords(ctx, bearertoken.Token(token), personIdArg)
+}
+
+func (c *personServiceClientWithTokenProvider) UpsertLegalRecord(ctx context.Context, personIdArg string, requestArg UpsertLegalRecordRequest) (LegalRecord, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(LegalRecord), err
+	}
+	return c.client.UpsertLegalRecord(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *personServiceClientWithTokenProvider) DeleteLegalRecord(ctx context.Context, personIdArg string, recordIdArg string) error {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	return c.client.DeleteLegalRecord(ctx, bearertoken.Token(token), personIdArg, recordIdArg)
 }
 
 func (c *personServiceClientWithTokenProvider) ListEthnicityTypes(ctx context.Context, topLevelArg *bool, parentArg *string, queryArg *string, limitArg *int) ([]EthnicityType, error) {

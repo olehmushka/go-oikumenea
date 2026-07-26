@@ -123,6 +123,7 @@ Real-world entities with identity over time → Objects.
 | `RegulatorySanction` (M34) | [person](modules/person.md) | no | soft-delete | `person_regulatory_sanctions` (`6,1,16`, `pii:sensitive`, idempotent by `(person, externalId)`; hermenea import target); D-Watchlists |
 | `CryptoWallet` / `Personality` / `PoliticalLeaning` *(planned, M35)* | [person](modules/person.md) | no | soft-delete | wallet attribution + declared personality (`pii:sensitive`); **inferred** political-leaning (`pii:special`, never merged with declared); D-PersonOverlays |
 | `HealthRecord` / `Insurance` *(planned, M36)* | [person](modules/person.md) | no | soft-delete | category-level health (`pii:special`, no diagnosis, never inferred) + insurance (`pii:sensitive`); D-HealthVulnerability |
+| `LegalRecord` (M38) | [person](modules/person.md) | no | soft-delete; **crypto-erase on purge** | `person_legal_records` (`6,1,22`); category-level criminal/arrest/court record (`pii:special`, GDPR Art. 10, envelope-encrypted offence detail, no full charge sheet, never inferred); mandatory `disposition`; sealed/expunged rows **suppressed** behind `person.legal-record.read-suppressed`; jurisdiction → `geo_countries`; D-LegalRecords |
 | `AccountLoginEvent` *(planned, M37)* | [identity-federation](modules/identity-federation.md) | no | retention-bounded + purge-erased | first-party login/IP security log on the account seam (`pii:contact`); D-LoginSecurityLog |
 | `BankAccount` *(planned, M44)* | [finance](modules/finance.md) | no | `status` + soft-delete; **crypto-erase on purge** | `finance_accounts` (**RID service 19**, `19,1,1`); `institution_id` → a `company`-domain `tenant_organizations` (the bank, M41); **envelope-encrypted IBAN** + blind index (unique among active), `currency` (ISO 4217), `account_type_id`; `pii:sensitive` value; D-Finance |
 | `PaymentCard` *(planned, M44)* | [finance](modules/finance.md) | no | soft-delete; **crypto-erase on purge** | `finance_cards` (`19,1,2`); `account_id` → `finance_accounts` (containment FK); **envelope-encrypted PAN** + display `bin`/`last_four`, `card_type ∈ {debit,credit}`, `network_id`, optional expiry + `cardholder_person_id`; **no CVV column** (PCI-DSS Req 3.2); `pii:sensitive`; D-Finance |
@@ -277,7 +278,8 @@ ledger ([Identifier scheme](#identifier-scheme-rids)).
   `RecordForeignService`/`AddExternalReference` (M33); `CheckWatchlists` (**M34** — the live-lookup that
   persists only match-metadata) + `RecordRegulatorySanction` (M34); `RecordCryptoWallet`/
   `RecordPersonality`/`RecordPoliticalLeaning` (M35); `RecordHealthRecord`/`RecordInsurance` (M36);
-  `RecordLoginEvent` (M37, `system`-actor). Every special-category write carries a `legal_basis` and is
+  `RecordLoginEvent` (M37, `system`-actor); `RecordLegalRecord` (M38, criminal/arrest/court).
+  Every special-category write carries a `legal_basis` and is
   fully audited (D-OverlayFoundation / D-SpecialPII).
 - **Order-driven effects (the strongest ontology fit):** `IssueOrder` is one Action whose effects are
   **emitted as domain events** (`AppointmentOrdered`, `RemovalOrdered`, `RankChangeOrdered`) that
@@ -495,6 +497,8 @@ cannot drift from the contract. Descriptive only (discoverability), not write-ti
 | `person.health_record.upsert` | person | `person` | `person.update` |
 | `person.insurance.delete` | person | `person` | `person.update` |
 | `person.insurance.upsert` | person | `person` | `person.update` |
+| `person.legal_record.delete` | person | `person` | `person.update` |
+| `person.legal_record.upsert` | person | `person` | `person.update` |
 | `person.kinship.upsert` | person | `person` | `person.update` |
 | `person.language.delete` | person | `person` | `person.update` |
 | `person.language.upsert` | person | `person` | `person.update` |

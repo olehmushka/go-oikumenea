@@ -42,6 +42,21 @@ func (q *Queries) CryptoEraseHealthRecords(ctx context.Context, personID string)
 	return result.RowsAffected(), nil
 }
 
+const cryptoEraseLegalRecords = `-- name: CryptoEraseLegalRecords :execrows
+UPDATE oikumenea.person_legal_records
+SET detail_ciphertext = NULL, detail_wrapped_dek = NULL, detail_key_ref = NULL, detail_blind_index = NULL
+WHERE person_id = $1 AND deleted_at IS NULL AND detail_ciphertext IS NOT NULL
+`
+
+// Crypto-erase a person's legal records on purge (drop the envelope, keep the row tombstones).
+func (q *Queries) CryptoEraseLegalRecords(ctx context.Context, personID string) (int64, error) {
+	result, err := q.db.Exec(ctx, cryptoEraseLegalRecords, personID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const cryptoErasePartyMemberships = `-- name: CryptoErasePartyMemberships :execrows
 UPDATE oikumenea.person_party_memberships
 SET party_ciphertext = NULL, party_wrapped_dek = NULL, party_key_ref = NULL, party_blind_index = NULL
@@ -226,6 +241,24 @@ func (q *Queries) DeleteInsurance(ctx context.Context, arg DeleteInsuranceParams
 	return id, err
 }
 
+const deleteLegalRecord = `-- name: DeleteLegalRecord :one
+UPDATE oikumenea.person_legal_records SET deleted_at = now()
+WHERE id = $1 AND person_id = $2 AND deleted_at IS NULL
+RETURNING id
+`
+
+type DeleteLegalRecordParams struct {
+	ID       string
+	PersonID string
+}
+
+func (q *Queries) DeleteLegalRecord(ctx context.Context, arg DeleteLegalRecordParams) (string, error) {
+	row := q.db.QueryRow(ctx, deleteLegalRecord, arg.ID, arg.PersonID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const deletePartyMembership = `-- name: DeletePartyMembership :one
 UPDATE oikumenea.person_party_memberships SET deleted_at = now()
 WHERE id = $1 AND person_id = $2 AND deleted_at IS NULL
@@ -306,6 +339,25 @@ type DeleteRegulatorySanctionParams struct {
 
 func (q *Queries) DeleteRegulatorySanction(ctx context.Context, arg DeleteRegulatorySanctionParams) (string, error) {
 	row := q.db.QueryRow(ctx, deleteRegulatorySanction, arg.ID, arg.PersonID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
+const getCountryIDByCode = `-- name: GetCountryIDByCode :one
+
+
+SELECT id FROM oikumenea.geo_countries WHERE code = $1
+`
+
+// ============================================================================================
+// Criminal / arrest / court records (D-LegalRecords, M38)
+// ============================================================================================
+// ---- legal records (object legal_record, pii:special, ENCRYPTED; many per person) ----
+// Resolve an ISO-3166-1 country code to its geo_countries RID (jurisdiction is stored by RID; the API
+// speaks codes). Missing → ErrNoRows, mapped to ErrUnknownCountry app-side.
+func (q *Queries) GetCountryIDByCode(ctx context.Context, code string) (string, error) {
+	row := q.db.QueryRow(ctx, getCountryIDByCode, code)
 	var id string
 	err := row.Scan(&id)
 	return id, err
@@ -738,6 +790,83 @@ func (q *Queries) InsertInsurance(ctx context.Context, arg InsertInsuranceParams
 		&i.EmployerSponsored,
 		&i.ValidFrom,
 		&i.ValidTo,
+		&i.Source,
+		&i.Confidence,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const insertLegalRecord = `-- name: InsertLegalRecord :one
+INSERT INTO oikumenea.person_legal_records (
+  person_id, kind, disposition, detail_ciphertext, detail_wrapped_dek, detail_key_ref,
+  detail_blind_index, jurisdiction_country_id, occurred_at, disposition_date, is_suppressed,
+  suppressed_reason, legal_basis, source, confidence
+) VALUES (
+  $1, $2, $3, $4, $5, $6,
+  $7, $8::uuid, $9::date,
+  $10::date, $11, $12,
+  $13, $14, $15
+)
+RETURNING id, person_id, kind, disposition, detail_ciphertext, detail_wrapped_dek, detail_key_ref, detail_blind_index, jurisdiction_country_id, occurred_at, disposition_date, is_suppressed, suppressed_reason, legal_basis, source, confidence, created_at, updated_at, deleted_at
+`
+
+type InsertLegalRecordParams struct {
+	PersonID              string
+	Kind                  string
+	Disposition           string
+	DetailCiphertext      []byte
+	DetailWrappedDek      []byte
+	DetailKeyRef          pgtype.Text
+	DetailBlindIndex      []byte
+	JurisdictionCountryID pgtype.Text
+	OccurredAt            pgtype.Date
+	DispositionDate       pgtype.Date
+	IsSuppressed          bool
+	SuppressedReason      pgtype.Text
+	LegalBasis            string
+	Source                string
+	Confidence            string
+}
+
+// The category-level offence detail is supplied as the envelope (ciphertext/wrapped_dek/key_ref/
+// blind_index) sealed in the application; legal_basis FK validates the lawful basis (Art. 10).
+func (q *Queries) InsertLegalRecord(ctx context.Context, arg InsertLegalRecordParams) (OikumeneaPersonLegalRecord, error) {
+	row := q.db.QueryRow(ctx, insertLegalRecord,
+		arg.PersonID,
+		arg.Kind,
+		arg.Disposition,
+		arg.DetailCiphertext,
+		arg.DetailWrappedDek,
+		arg.DetailKeyRef,
+		arg.DetailBlindIndex,
+		arg.JurisdictionCountryID,
+		arg.OccurredAt,
+		arg.DispositionDate,
+		arg.IsSuppressed,
+		arg.SuppressedReason,
+		arg.LegalBasis,
+		arg.Source,
+		arg.Confidence,
+	)
+	var i OikumeneaPersonLegalRecord
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.Kind,
+		&i.Disposition,
+		&i.DetailCiphertext,
+		&i.DetailWrappedDek,
+		&i.DetailKeyRef,
+		&i.DetailBlindIndex,
+		&i.JurisdictionCountryID,
+		&i.OccurredAt,
+		&i.DispositionDate,
+		&i.IsSuppressed,
+		&i.SuppressedReason,
+		&i.LegalBasis,
 		&i.Source,
 		&i.Confidence,
 		&i.CreatedAt,
@@ -1321,6 +1450,86 @@ func (q *Queries) ListInsurance(ctx context.Context, personID string) ([]Oikumen
 	return items, nil
 }
 
+const listLegalRecords = `-- name: ListLegalRecords :many
+SELECT lr.id, lr.person_id, lr.kind, lr.disposition, lr.detail_ciphertext, lr.detail_wrapped_dek, lr.detail_key_ref, lr.detail_blind_index, lr.jurisdiction_country_id, lr.occurred_at, lr.disposition_date, lr.is_suppressed, lr.suppressed_reason, lr.legal_basis, lr.source, lr.confidence, lr.created_at, lr.updated_at, lr.deleted_at, COALESCE(c.code, '')::text AS jurisdiction_code
+FROM oikumenea.person_legal_records lr
+LEFT JOIN oikumenea.geo_countries c ON c.id = lr.jurisdiction_country_id
+WHERE lr.person_id = $1 AND lr.deleted_at IS NULL
+  AND ($2::boolean OR lr.is_suppressed = false)
+ORDER BY lr.occurred_at DESC NULLS LAST, lr.created_at DESC, lr.id
+`
+
+type ListLegalRecordsParams struct {
+	PersonID          string
+	IncludeSuppressed bool
+}
+
+type ListLegalRecordsRow struct {
+	ID                    string
+	PersonID              string
+	Kind                  string
+	Disposition           string
+	DetailCiphertext      []byte
+	DetailWrappedDek      []byte
+	DetailKeyRef          pgtype.Text
+	DetailBlindIndex      []byte
+	JurisdictionCountryID pgtype.Text
+	OccurredAt            pgtype.Date
+	DispositionDate       pgtype.Date
+	IsSuppressed          bool
+	SuppressedReason      pgtype.Text
+	LegalBasis            string
+	Source                string
+	Confidence            string
+	CreatedAt             pgtype.Timestamptz
+	UpdatedAt             pgtype.Timestamptz
+	DeletedAt             pgtype.Timestamptz
+	JurisdictionCode      string
+}
+
+// Suppressed (sealed/expunged) rows are withheld unless @include_suppressed (the caller holds
+// person.legal-record.read-suppressed, resolved in transport).
+func (q *Queries) ListLegalRecords(ctx context.Context, arg ListLegalRecordsParams) ([]ListLegalRecordsRow, error) {
+	rows, err := q.db.Query(ctx, listLegalRecords, arg.PersonID, arg.IncludeSuppressed)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLegalRecordsRow
+	for rows.Next() {
+		var i ListLegalRecordsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.Kind,
+			&i.Disposition,
+			&i.DetailCiphertext,
+			&i.DetailWrappedDek,
+			&i.DetailKeyRef,
+			&i.DetailBlindIndex,
+			&i.JurisdictionCountryID,
+			&i.OccurredAt,
+			&i.DispositionDate,
+			&i.IsSuppressed,
+			&i.SuppressedReason,
+			&i.LegalBasis,
+			&i.Source,
+			&i.Confidence,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.JurisdictionCode,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPartyMemberships = `-- name: ListPartyMemberships :many
 SELECT id, person_id, party_ciphertext, party_wrapped_dek, party_key_ref, party_blind_index, role, valid_from, valid_to, legal_basis, status, source, confidence, created_at, updated_at, deleted_at FROM oikumenea.person_party_memberships
 WHERE person_id = $1 AND deleted_at IS NULL
@@ -1763,6 +1972,83 @@ func (q *Queries) UpdateInsurance(ctx context.Context, arg UpdateInsuranceParams
 		&i.EmployerSponsored,
 		&i.ValidFrom,
 		&i.ValidTo,
+		&i.Source,
+		&i.Confidence,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const updateLegalRecord = `-- name: UpdateLegalRecord :one
+UPDATE oikumenea.person_legal_records SET
+  kind = $1, disposition = $2,
+  detail_ciphertext = $3, detail_wrapped_dek = $4,
+  detail_key_ref = $5, detail_blind_index = $6,
+  jurisdiction_country_id = $7::uuid,
+  occurred_at = $8::date, disposition_date = $9::date,
+  is_suppressed = $10, suppressed_reason = $11,
+  legal_basis = $12, source = $13, confidence = $14
+WHERE id = $15 AND person_id = $16 AND deleted_at IS NULL
+RETURNING id, person_id, kind, disposition, detail_ciphertext, detail_wrapped_dek, detail_key_ref, detail_blind_index, jurisdiction_country_id, occurred_at, disposition_date, is_suppressed, suppressed_reason, legal_basis, source, confidence, created_at, updated_at, deleted_at
+`
+
+type UpdateLegalRecordParams struct {
+	Kind                  string
+	Disposition           string
+	DetailCiphertext      []byte
+	DetailWrappedDek      []byte
+	DetailKeyRef          pgtype.Text
+	DetailBlindIndex      []byte
+	JurisdictionCountryID pgtype.Text
+	OccurredAt            pgtype.Date
+	DispositionDate       pgtype.Date
+	IsSuppressed          bool
+	SuppressedReason      pgtype.Text
+	LegalBasis            string
+	Source                string
+	Confidence            string
+	ID                    string
+	PersonID              string
+}
+
+// Re-seal the detail and/or flip the attributes of a person's named legal record.
+func (q *Queries) UpdateLegalRecord(ctx context.Context, arg UpdateLegalRecordParams) (OikumeneaPersonLegalRecord, error) {
+	row := q.db.QueryRow(ctx, updateLegalRecord,
+		arg.Kind,
+		arg.Disposition,
+		arg.DetailCiphertext,
+		arg.DetailWrappedDek,
+		arg.DetailKeyRef,
+		arg.DetailBlindIndex,
+		arg.JurisdictionCountryID,
+		arg.OccurredAt,
+		arg.DispositionDate,
+		arg.IsSuppressed,
+		arg.SuppressedReason,
+		arg.LegalBasis,
+		arg.Source,
+		arg.Confidence,
+		arg.ID,
+		arg.PersonID,
+	)
+	var i OikumeneaPersonLegalRecord
+	err := row.Scan(
+		&i.ID,
+		&i.PersonID,
+		&i.Kind,
+		&i.Disposition,
+		&i.DetailCiphertext,
+		&i.DetailWrappedDek,
+		&i.DetailKeyRef,
+		&i.DetailBlindIndex,
+		&i.JurisdictionCountryID,
+		&i.OccurredAt,
+		&i.DispositionDate,
+		&i.IsSuppressed,
+		&i.SuppressedReason,
+		&i.LegalBasis,
 		&i.Source,
 		&i.Confidence,
 		&i.CreatedAt,
