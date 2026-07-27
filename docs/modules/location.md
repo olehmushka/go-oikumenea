@@ -129,6 +129,10 @@ Type-catalog writes are instance-scope (`location.types.manage`).
 
 ## Open seams / future
 
+- **Facets & dashboards (M58).** [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope) lands filters + a stats endpoint + a console dashboard
+  for this module's listable types: `GET /locations/stats` over `countryId`, `typeId` and a `hasCoordinate` bool. The existing radius/bbox window args stay traversal modes, not facets.
+  Facets and proposed charts are catalogued in [facets.md](../architecture/facets.md).
+
 - **Address-only / geocoding pipeline** (accept an address, geocode to a coordinate) is out of scope —
   callers geocode first; an additive seam if a geocoder is wired in.
 - **More input formats** are additive — register another converter in `coordinate.go` (the СК-42

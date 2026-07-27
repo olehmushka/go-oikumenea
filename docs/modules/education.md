@@ -186,6 +186,10 @@ on the education tables. Nothing here is ever an authorization input (D-Rank par
 
 ## Open seams / future
 
+- **Facets & dashboards (M58).** [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope) lands filters + a stats endpoint + a console dashboard
+  for this module's listable types: `GET /institutions/stats` and enrollment stats over `kindId`/`countryId`/`foundedOn`/`state` and `institutionId`/`programId`/`degreeLevelId`/`status`/`startedOn`; the degree-level bar orders by **ISCED level, not count**. Plus the module's first ontology-registry entry.
+  Facets and proposed charts are catalogued in [facets.md](../architecture/facets.md).
+
 - **Operational SIS** (academic terms/calendars, course sections, section-level enrollment with grades,
   assessments, GPA) is **deliberately out of scope** — the module stays external-reference (D-Education
   *Extension*). It could become a separate operational module later if ever needed.

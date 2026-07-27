@@ -82,6 +82,8 @@ planned-tier (M16–M45) decisions live in [`roadmap-decisions.md`](roadmap-deci
 | [D-LinkPermissions](#d-linkpermissions--per-relationship-read-codes-gating-the-module-endpoint-and-the-traversal-arm-alike) | Per-relationship read codes gating the module endpoint and the traversal arm alike |
 | [D-Temporal](#d-temporal--a-three-tier-link-history-classification-native-validity-by-default-plus-getobjecthistory-over-the-audit-ledger) | A three-tier link-history classification (native validity by default) plus getObjectHistory over the audit ledger |
 | [D-EnvConfig](#d-envconfig--environment-variables-override-the-yaml-config-and-the-yaml-file-is-optional) | Environment variables override the YAML config, and the YAML file is optional |
+| [D-ObjectFacets](#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope) | One per-object-type facet vocabulary driving both list filters and per-module stats endpoints |
+| [D-ConsoleDashboards](#d-consoledashboards--every-listable-type-gets-a-list-view-and-a-dashboard-view-over-one-url-borne-filter-set-amends-d-webui) | Every listable type gets a list view and a dashboard view over one URL-borne filter set |
 | L-\* locks | [Carried-over locks](#carried-over-locks-settled-earlier-restated-for-self-containment): L-AuthzOnly, L-AccountOptional, L-SingleDomain, L-UnitIsTenant, L-OneRankScheme, L-Visibility, L-OperatorDB, L-UpgradeSafe, L-Conventions |
 
 ---
@@ -1490,6 +1492,14 @@ special-category data lands there without the envelope seam (DS-29); a typed fie
 
 ### D-WebUI — An optional standalone Next.js admin UI (reverses the "API-only, no UI" drop)
 
+> **Amended by [D-ConsoleDashboards](#d-consoledashboards--every-listable-type-gets-a-list-view-and-a-dashboard-view-over-one-url-borne-filter-set-amends-d-webui) (M56–M57).**
+> The "no broader component-library lock" stance below stands, but the count of small, focused
+> libraries goes from **two** (`cmdk`, `@xyflow/react`) to **three**: `@visx/*` joins them for chart
+> scales and shapes, with the chart markup still hand-rolled on Tailwind. Every listable type also
+> gains a second view (`?view=dashboard`) over one URL-borne filter set. Nothing else here changes —
+> the console remains an optional, unprivileged BFF consumer of the public API that makes no
+> authorization decision of its own.
+
 **Decision.** Ship an **optional, separately-run web admin console** as a standalone **Next.js**
 application living in `web/`, served on **port 8445**. It is a **consumer** of the existing public
 HTTP API, not a backend module: it adds **no Go code, no Conjure contract, no schema change, and no
@@ -2558,6 +2568,121 @@ process environment — this is the standard 12-factor lane; ECV remains availab
 secrets. `.env` is gitignored. The full generated env-var surface is
 [`docs/reference/env-vars.md`](../reference/env-vars.md) (regenerated from the schema by a golden test —
 a new config field cannot silently miss the doc).
+
+---
+
+### D-ObjectFacets — One per-object-type facet vocabulary driving both list filters and per-module stats endpoints (extends D-VisibilityScope, D-PersonReadScope; constrained by D-DataScope)
+
+**Decision.** Each listable object type declares a **facet set** — one vocabulary, two consumers.
+A `Facet` is `{key, kind ∈ enum|ref|date-range|bool|numeric-range, column, readPermission, buckets}`,
+declared by the module that owns the table (the `internal/links` `Descriptor` shape: each module
+describes its own table once). From that one declaration come:
+
+1. **List filters** — **explicit, typed Conjure query args** on the owning module's list endpoint,
+   one per facet, in the shape `listUnits(org, domain, unitKind, level, graph, parent, rootsOnly)`
+   and `listExternalOrgs(query, kind, country, status)` already use. Not a generic filter DSL, not an
+   opaque encoded `filter=` param: the args are typed in the generated SDKs and visible in OpenAPI.
+2. **A per-module stats endpoint** — `GET /<module>/v1/<collection>/stats`, taking **exactly the same
+   filter args** as the list endpoint plus an optional `facets` CSV, returning `totalCount` plus a
+   `list<FacetDistribution>` (`facet`, `buckets[{key, label, count}]`). One endpoint per module, so a
+   whole dashboard is one round-trip; backed by **static sqlc `GROUP BY` queries**, one per
+   (module, facet).
+
+Parity between a declared facet and its query arg is a **build-time drift guard** derived from the
+Conjure IR, the way `tools/genactionparams` derives per-action parameter schemas (R-29): a facet
+without its arg, or an arg without its facet, fails the build.
+
+**Four rules make aggregation safe:**
+
+- **Counts are computed inside the visibility predicate**, never over a post-paged set. Person-scoped
+  counts fold in the reach semi-join already proven at scale (`VisiblePersonIDsForSubjectSparse`/
+  `Dense`, with `CountReadableUnitsCapped` picking the plan shape); unit-scoped counts must fold the
+  shadow gate **into SQL** — `gateUnits` trims *after* the keyset page is cut, which is correct for a
+  list (a short page, never a skipped row) and wrong for a count.
+- **A facet exists only over a plaintext column.** Every envelope-encrypted `pii:special` value —
+  ethnicity, party membership, inferred political leaning, religious affiliation, health detail,
+  legal-record offence detail — has **no facet**. This is an invariant asserted at build time, not an
+  accident of storage: there is no plaintext to `GROUP BY`, and [D-DataScope](#d-datascope--what-a-deployment-may-hold-the-product-is-a-personnel-directory--registry-platform-owns-the-pci-dss-posture)'s
+  aggregation rule forbids the surface regardless.
+- **A facet above `pii:basic` inherits its field's own read code**, and a subject lacking it gets that
+  facet **omitted** from the response — never a zeroed bucket, never a 403. This is the search
+  engine's "skip the provider, don't fail the request" behaviour (D-UnifiedSearch).
+- **No bucket-size suppression.** Every counted row is a row the subject may already read and page
+  through the same list endpoint under the same filters, so a k-anonymity floor would protect nothing
+  it does not already protect. Stated explicitly so it is not re-litigated as an oversight.
+
+**Why.** The console shows every module as a flat list and nothing else: an operator cannot see age
+structure, sex structure, status mix or rank distribution, and cannot narrow a list by anything
+structural. The contract made that unavoidable — of ~90 list/search endpoints only five carry a real
+filter set, there is no sort param anywhere, and **no page envelope carries a `totalCount`**. Counting
+cannot be pushed to the console facade either: a facade would have to page the whole table to count
+it, and the north star grants facades response shaping, not database reach. One vocabulary shared by
+both consumers is what makes a chart click and a list filter the same act.
+
+**Why not a generic cross-type analytics service** (the D-UnifiedSearch / D-LinkTraversal fan-in
+shape, which this repo otherwise favours): (a) it needs a dynamic `GROUP BY` builder, a **second**
+raw-dynamic-SQL engine after the links union — a cost that engine justified by a genuine union over a
+runtime-registered table set, which aggregation does not need; (b) static per-facet sqlc queries stay
+readable, `EXPLAIN`-able and index-tunable per module, which matters because the R-21 lesson is that
+filter predicates decide plan shape; (c) each module already owns its visibility story, and
+`scope.Visibility.ReadableIDs` — an id-list trim — is the wrong instrument for a count over 10⁶ rows.
+
+**Consequence.** No new Go module, **no new tables, no RID service number, no minted RIDs, no audit
+rows** — stats endpoints are reads (the `search` / `links` precedent). A new shared `pkg/listing`
+kernel lands with the filters, retiring the 14+ copies of `encodeCursor`/`decodeCursor`, the 7+ copies
+of `resolvePageSize`/`clampPageSize`, the 5+ redeclarations of `DefaultPageSize`/`MaxPageSize` (only
+`audit` reads the runtime tunable today) and the lone `base64.StdEncoding` cursor in
+`internal/religion`. Structural filters use the `sqlc.narg('x')::type IS NULL OR col = …` style proven
+in `audit`/`tenant`, **not** the `sqlc.arg(x)::text = ''` sentinel — and never the
+`(@query = '' OR <ilike>)` shape D-PersonSearch's R-21 generalization bans. Every filtered path is
+`EXPLAIN`-checked against the M46 scale harness before its milestone is verified. The catalog of
+facets and their charts lives in [`facets.md`](facets.md). Lands as **M56** (filters) and **M57**
+(stats endpoints), rolled out across the remaining types in **M58**
+([milestones](../milestones.md)). Additive / expand-only.
+
+---
+
+### D-ConsoleDashboards — Every listable type gets a list view and a dashboard view over one URL-borne filter set (amends D-WebUI)
+
+**Decision.** The console's generic explorer (`/explore/[type]`) gains a second view. **List** and
+**dashboard** are two renderings of *one* request state, and that state lives **entirely in the URL**
+— generalizing the `?view=tree` toggle units already have to `?view=dashboard`, and moving today's
+`useState` quick-filter/sort out of `DataTable` into `searchParams`. Both are driven from the existing
+ontology registry (`web/src/lib/ontology/registry.ts`): `ObjectTypeDef` gains `filters?: FilterDef[]`
+and `dashboard?: ChartDef[]`, siblings of the `ColumnDef`/`PropertyDef`/`LinkDef`/`ActionDef` arrays
+already there — so a type joins both surfaces by a registry entry, not new pages.
+
+Because the filter set is the URL, three things fall out rather than being built: toggling
+list↔dashboard **preserves the filters**; a dashboard segment is an `<a>` to the same URL with one
+more filter applied, so **click-to-filter is ordinary navigation**; and a filtered view is
+shareable and bookmarkable.
+
+Charts are **composed by hand over `@visx/scale` + `@visx/shape`** — a third focused library, joining
+`cmdk` and `@xyflow/react`. `web/src/components/charts/` holds `BarChart`, `DonutChart`, `Histogram`,
+`StatTile`, `Sparkline`, rendered as SVG server-side where the data allows.
+
+**Why.** The dashboards must be *the same query* as the list or they mislead: a chart computed from
+the first page of a keyset-paginated list is wrong past page 1, and a filter that does not survive the
+toggle makes the two views separate tools rather than two lenses. URL-borne state is the smallest
+mechanism that gets correctness, click-through and shareability at once, and it fits a
+Server-Component console that already reads `searchParams`.
+
+**Why visx** rather than hand-rolled SVG or a chart component library: buckets arrive
+pre-aggregated from the stats endpoint, so what is actually needed is scales and shapes, not a chart
+framework — visx supplies exactly that and leaves the markup ours, keeping the charts consistent with
+the hand-rolled Tailwind primitives and with `GraphExplorer`'s per-type colour convention. A full
+component library (recharts) would force every tile into a client island and pull in a layout engine
+this does not need.
+
+**Consequence.** **Amends [D-WebUI](#d-webui--an-optional-standalone-nextjs-admin-ui-reverses-the-api-only-no-ui-drop)**,
+whose "no broader component-library lock" stance stands but whose count of focused libraries goes from
+two to three. Six modules with no registry entry today — company, vehicle, finance, religion,
+education, external-org — get one, so they stop being bespoke `"use client"` pages that fetch a single
+page of 100 and drop `nextPageToken`. Every new chrome string needs its four-locale entry in
+`messages.ts` and must render through `<T>`/`tg()` (D-i18n). The UI still performs **no** authorization
+decision and **no** visibility filtering locally: a facet the caller may not read simply does not come
+back from the stats endpoint. Lands as **M56** (filters, list view) and **M57** (dashboards)
+([milestones](../milestones.md)); no schema, no contract beyond D-ObjectFacets'.
 
 ---
 

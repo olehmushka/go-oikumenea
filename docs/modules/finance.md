@@ -97,6 +97,10 @@ grants authority (parallel to rank/position — directory data). All writes are 
 
 ## Open seams / future
 
+- **Facets & dashboards (M58).** [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope) lands filters + a stats endpoint + a console dashboard
+  for this module's listable types: `GET /accounts/stats` and `GET /cards/stats` over `institutionId`/`currency`/`accountTypeId`/`status` and `networkId`/`cardType`/`status`. **No facet touches the IBAN or PAN** — both are envelope-encrypted and in PCI-DSS CDE scope (D-ObjectFacets rule 1). Plus the module's first ontology-registry entry.
+  Facets and proposed charts are catalogued in [facets.md](../architecture/facets.md).
+
 - **DS-54** — a **BIN+last-4-only** mode (never persist the full PAN) so a deployment stays **out of
   PCI-DSS scope**, for operators who don't need the full number.
 - **DS-55** — account **balances / transactions** (a real financial ledger) — explicitly out of scope

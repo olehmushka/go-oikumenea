@@ -163,6 +163,8 @@ resolvable — the same discipline as the person tombstone. This erasure write i
 | `POST /persons/{personId}/documents` | Attach a document (paper) to a person | `document.create` |
 | `GET /persons/{personId}/documents` | List a person's documents (token-paginated) | `document.read` + shadow gate |
 | `GET /documents/{id}` | Read one document | `document.read` + shadow gate |
+| `GET /documents` | **New (M56).** Top-level document list, token-paginated; filtered by the declared facets — `typeId`, `status`, `issuingCountryId`, `issuedOnFrom`/`issuedOnTo`, `expiresOnFrom`/`expiresOnTo` ([D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope)) | `document.read` + shadow gate |
+| `GET /documents/stats` | Facet distributions over the **same** filter args + an optional `facets` CSV — expiring-soon, type mix, status, issuing country; counted **through the holder's** read scope (M57; [facets catalog](../architecture/facets.md)) | `document.read` + shadow gate |
 | `PUT /documents/{id}` | Update number/issuer/issuing-country/validity/attributes/**status** | `document.update` |
 | `DELETE /documents/{id}` | Soft-delete (reversible) a document | `document.delete` |
 | `GET /document-types` | List the paper-type catalog | `document.type.read` |

@@ -157,6 +157,10 @@ of an already-authorized — or explicitly denied — action); reading the log i
 
 ## Open seams / future
 
+- **Facets & dashboards (M58).** [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope) lands filters + a stats endpoint + a console dashboard
+  for this module's listable types: `GET /audit/stats`. The nine existing filter args on `GET /audit` become the declared facet set unchanged (`actorType`, `action`, `targetType`, `outcome`, `unitId`, `since`/`until`), so this module is the **cheapest first M58 target** — a stats endpoint and a dashboard with no contract churn, and the "audit analytics" the R-29 action-type catalog was partly built for.
+  Facets and proposed charts are catalogued in [facets.md](../architecture/facets.md).
+
 - **Retention via partitioning:** **delivered** (D-AuditRetention / review-2026-07 R-07) — monthly
   range partitions + `ensure_audit_partition` roll-forward + `detach_audit_partitions_before`
   operator helper (see *Data model* above). The remaining seam is an **automated scheduled enforcer**

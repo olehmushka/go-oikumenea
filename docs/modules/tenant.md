@@ -209,7 +209,8 @@ not audited — D-ClosureDriftHealth)
 | `GET /units/{id}` | Read one unit | `unit.read` at the unit (per-unit decision; reach required even for a `public` unit) |
 | `PUT /units/{id}` | Update name/kind/level/metadata/visibility (**`code` excluded** — see recode) | `unit.update` |
 | `PUT /units/{id}/code` | Set / correct / clear the unit `code` (body: `code?`, `reason?`); audited, appends `tenant_unit_code_events`; `409 Tenant:UnitCodeConflict` on collision (D-UnitCodeLifecycle) | `unit.recode` |
-| `GET /units` | List/search units (token-paginated; filterable by `level`) | `unit.read` + shadow gate |
+| `GET /units` | List/search units (token-paginated); filtered by the declared facets — `org` (required), `domain`, `unitKind`, `level`, `visibility`, `state`, `graph`, `pdpScoped`, plus the `parent`/`rootsOnly` traversal modes (M56, [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope)) | `unit.read` + shadow gate |
+| `GET /units/stats` | Facet distributions over the **same** filter args + an optional `facets` CSV (M57; [facets catalog](../architecture/facets.md)). The shadow gate is folded **into the SQL** — the list's post-page `gateUnits` trim is correct for a page and wrong for a count | `unit.read` + shadow gate |
 | `POST /units/{id}/edges` | Add a parent in a graph (body: `parentId`, `graph`) | `unit.edges.<graph>.manage` OR `unit.edges.manage` (D-EdgePerms) |
 | `DELETE /units/{id}/edges?graph={g}&parentId={p}` | Detach from a parent in a graph | `unit.edges.<graph>.manage` OR `unit.edges.manage` (D-EdgePerms) |
 | `GET /units/{id}/ancestors?graph={g}` | Ancestors in graph `g` (closure; default `command`) | `unit.read` + shadow gate |

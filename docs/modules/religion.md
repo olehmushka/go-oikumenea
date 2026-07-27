@@ -379,6 +379,10 @@ assignments.
 
 ## Open seams / future
 
+- **Facets & dashboards (M58).** [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope) lands filters + a stats endpoint + a console dashboard
+  for this module's listable types: `GET /taxa/stats` over `rankId`, `parent`, `religionId` and theism `classification`. **Lay affiliation has no facet** — the belief value is envelope-encrypted `pii:special` (D-ReligiousAffiliation / D-SpecialPII), which D-ObjectFacets rule 1 excludes outright. Plus the module's first ontology-registry entry.
+  Facets and proposed charts are catalogued in [facets.md](../architecture/facets.md).
+
 - **Rite-of-passage / life-cycle records** (baptism, bar/bat-mitzvah, marriage rites, funerals) as a
   generic catalog-typed `pii:special` observance — reserved as **DS-49**.
 - **Location-scoped role assignments** (a consuming app's per-site "campus admin") — today an assignment's

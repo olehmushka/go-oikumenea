@@ -182,6 +182,10 @@ company tables. Nothing here is ever an authorization input (D-Rank parallel).
 
 ## Open seams / future
 
+- **Facets & dashboards (M58).** [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope) lands filters + a stats endpoint + a console dashboard
+  for this module's listable types: `GET /companies/stats` over the facets `legalForm`, `ownershipCategory`, `countryId`, `industryClass`, `foundedOn`, `state`; plus the module's first **ontology-registry entry**, retiring the bespoke `"use client"` page that fetches one page of 100 and drops `nextPageToken`.
+  Facets and proposed charts are catalogued in [facets.md](../architecture/facets.md).
+
 - **Volatile registry intelligence** — financials, court cases, tax debt, sanctions/PEP flags (**DS-45**,
   connector-fed); company web-domain/contact channels (**DS-46**) — deliberately out of scope.
 - **Ownership-graph closure + computed-UBO traversal** (**DS-47**): only one-hop neighbourhoods and

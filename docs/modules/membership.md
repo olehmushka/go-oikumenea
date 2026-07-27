@@ -90,6 +90,8 @@ referencing it. `GET /units/{id}/positions?state=vacant` is the closure of this 
 | `POST /memberships/{id}/end` | End a membership → vacates its position | `membership.update` |
 | `GET /units/{unitId}/members` | Roster of a unit (token-paginated) | `membership.read` + shadow gate |
 | `GET /persons/{personId}/memberships` | A person's memberships | `membership.read` + shadow gate |
+| `GET /memberships` | **New (M56).** Top-level membership list, token-paginated; filtered by the declared facets — `unitId`, `personId`, `positionId`, `status`, `effectiveFromFrom`/`effectiveFromTo` ([D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope)) | `membership.read` + shadow gate |
+| `GET /memberships/stats` | Facet distributions over the **same** filter args + an optional `facets` CSV — active-vs-ended, joins per month, tenure bands, vacant-vs-filled positions (M57; [facets catalog](../architecture/facets.md)) | `membership.read` + shadow gate |
 
 `title` is returned as a `locale → text` map. Filling an already-filled position →
 `Membership:PositionAlreadyFilled`. Roster/by-unit reads enforce the **shadow-visibility gate**.
