@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // Translations preset generator (D-Pinax + D-i18n, M45). Produces internal/pinax/presets/translations.yaml

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package adapters is the religion module's pgx-backed persistence adapter (M22). It uses raw pgx over
 // a single command surface (pool for reads, tx for writes) rather than sqlc, because the taxonomy is
 // closure- and resolution-heavy (recursive CTEs, nearest-declared-wins walks) — the same raw-SQL style

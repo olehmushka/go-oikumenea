@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build integration
 
 // Integration test for the RID registry drift guard (review-2026-09 R-28). AssertMatches is wired into

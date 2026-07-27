@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Unit tests for the epoch-validated grant cache protocol (D-AuthzGrantCache / review R-01.2):
 // fresh-within-TTL hits read nothing; stale entries revalidate with one epoch read; an epoch bump
 // forces a refetch; concurrent misses collapse into one fetch (singleflight).

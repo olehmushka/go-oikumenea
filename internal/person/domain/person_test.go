@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Unit tests for the person domain: validation of the aggregate, name variants, citizenship and
 // residence links, and the reversible deactivate -> purge lifecycle gates (D-PersonNamesCLDR /
 // D-PersonBio / D-Geo / D-PersonReadScope). Pure logic — no database.

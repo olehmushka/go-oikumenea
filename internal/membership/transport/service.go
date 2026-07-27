@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package transport implements the membership module's generated Conjure MembershipService
 // interface: it translates the wire contract to/from the application service, assembles localized
 // position `title` maps via the localization service (cross-module query — overview.md), and maps

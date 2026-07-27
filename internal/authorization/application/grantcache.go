@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Cross-request grant cache (review-2026-07 R-01.2 / D-AuthzGrantCache). Caches a subject's
 // (isAdmin, grants) per process, validated against the single-row authz_epoch counter that every
 // authority-mutating transaction bumps:

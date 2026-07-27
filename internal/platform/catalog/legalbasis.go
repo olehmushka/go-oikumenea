@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package catalog holds the platform module's cross-cutting reference catalogs (D-OverlayFoundation,
 // M29). Today: the GDPR lawful-basis catalog (platform_legal_basis_kinds), referenced by FK from every
 // future pii:special overlay store (M31+). It is a thin raw-pgx repository + an audited write path —

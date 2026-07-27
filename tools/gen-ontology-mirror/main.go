@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Command gen-ontology-mirror generates the web console's RID decode tables from pkg/rid — the
 // single source of truth for the ontology type registry (R-28, review-2026-09).
 //

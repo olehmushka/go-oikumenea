@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package transport adapts the generated SearchService Conjure interface onto the fan-in engine
 // (D-UnifiedSearch). There is no endpoint-level Require here BY DESIGN: authorization is entirely
 // per-provider (read-permission gate) + per-row (D-VisibilityScope trim) inside the engine — an

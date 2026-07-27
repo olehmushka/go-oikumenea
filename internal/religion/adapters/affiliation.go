@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Lay-affiliation persistence (D-ReligiousAffiliation / D-SpecialPII, M24): the affiliation-type catalog
 // + the pii:special affiliation Link. The repository handles only ciphertext (StoredAffiliation); the
 // application seals/opens the belief value. Crypto-erase NULLs the envelope, keeping rows as tombstones.

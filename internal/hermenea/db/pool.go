@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package db builds hermenea's own pgx connection pool (M16 / D-Hermenea). Hermenea's database is
 // separate from oikumenea's and has none of oikumenea's RID/RLS machinery, so this is a plain pool
 // (no per-connection GUC wiring).

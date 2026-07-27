@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package domain holds the language module's pure logic: the Languoid + WritingSystem registry entries
 // and the Repository port it needs (overview.md layering). No I/O, no framework imports — only the
 // standard library. Language owns the READ side of the Glottolog languoid forest + ISO-15924 writing

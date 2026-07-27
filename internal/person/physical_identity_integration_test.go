@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build integration
 
 // Integration tests for the M31 physical-identity slice (D-PhysicalIdentity / D-SpecialPII) against a

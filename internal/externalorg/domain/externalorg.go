@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package domain holds the external-organizations module's entities, ports, and invariants
 // (docs/modules/external-organizations.md / D-ExternalOrgs, M30) — a registry of external organizations
 // a person is tied to but which the deploying org neither owns nor commands (parties, government bodies,

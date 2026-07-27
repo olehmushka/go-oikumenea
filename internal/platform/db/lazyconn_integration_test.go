@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build integration
 
 // Integration tests for lazy RLS connection pinning (review-2026-07 R-03). The R-03 acceptance in

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package application is the vehicle module's orchestrator (D-Vehicles, M26): audited writes over the
 // brand/model/type catalogs, the vehicle object, the brand→manufacturer link, and the ownership+plate
 // registration record. Every write runs in a transaction that also records the audit Action (D-Audit);

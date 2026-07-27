@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package crypto is the envelope-encryption seam for pii:sensitive data (D-CryptoProvider): today the
 // national-identifier values held by the document module (docs/modules/platform.md). The model is
 // fixed — ciphertext lives in Postgres; a per-record data-encryption key (DEK) encrypts the value and

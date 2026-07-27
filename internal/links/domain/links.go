@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package domain holds the generic link-traversal model (D-LinkTraversal, review-2026-09 R-27): the
 // Descriptor each module registers for one reified link table at composition time, the type-erased
 // link row, and the composite keyset page token that federates the per-arm cursors. Like the search

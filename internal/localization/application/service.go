@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package application holds the localization module's application service — the orchestrator the
 // transport layer calls to read the locale registry / translation store and to perform the
 // instance-admin writes, and that other modules call in-process to assemble localized responses

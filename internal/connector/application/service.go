@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package application is the connector-plane orchestrator (M53 / D-ConnectorPlane): audited
 // self-registration and sync-run reporting by machine subjects, plus the operator read surfaces.
 // Every write runs in a transaction that also records the audit Action (D-Audit); reads run on the pool.

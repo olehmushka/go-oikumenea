@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build integration
 
 // Scale-world measurement harness (review-2026-07 Phase 0 / M46). Runs the authorization request

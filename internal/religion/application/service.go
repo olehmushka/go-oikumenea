@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package application is the religion module's orchestrator (D-Religion, M22): audited writes, the
 // recursive taxonomy + maintained closure (rebuilt on every taxon insert/reparent/delete, mirroring
 // tenant/education), the nearest-declared-wins theism resolution, and the per-unit organization

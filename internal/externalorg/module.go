@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package externalorg is the composition seam for the external-organizations module
 // (docs/modules/external-organizations.md / D-ExternalOrgs, M30): it wires the pgx repository, the
 // audited application service, and the transport, then registers the ExternalOrganizationService Conjure

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Clergy transport (D-ClergyCredential, M23): catalog reads on religion.read, catalog writes on
 // religion.catalog.manage (instance), credential writes on clergy.manage against the conferring org unit
 // over the canonical graph. Translatable names assembled as locale->text maps.

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package transport adapts the generated LinkService Conjure interface onto the traversal engine
 // (D-LinkTraversal). Like the search module there is no endpoint-level Require BY DESIGN:
 // authorization is entirely per-link-arm (read-permission gate) + per-row (neighbor visibility

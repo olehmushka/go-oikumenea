@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Watchlists & regulatory exposure transport (D-Watchlists, M34): the live screening check
 // (CheckWatchlists — a write, since it persists a match), the single screening result read, and the
 // regulatory-sanction overlay CRUD. Reads require person.read; writes require person.update — the same

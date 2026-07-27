@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package domain holds the localization module's pure logic: the Locale registry entry and the
 // polymorphic Translation it stores, their invariants, and the Repository port it needs from the
 // outside world (overview.md layering). No I/O, no framework imports — only the standard library.

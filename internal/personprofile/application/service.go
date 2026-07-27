@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package application holds the personprofile module's application service — the orchestrator for the
 // person directory's non-encrypted, person-owned directory data (R-09 split): citizenships, residences,
 // addresses, the contact channels (email/phone/call-sign/messenger/social), the SPEAKS languages, the

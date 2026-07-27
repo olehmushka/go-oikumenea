@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package adapters is the external-organizations module's pgx-backed persistence adapter (M30,
 // D-ExternalOrgs). It uses raw pgx over a single command surface (the pool for reads, a tx for writes) —
 // the vehicle/religion raw-SQL style — because of the cross-module country label lookups and the

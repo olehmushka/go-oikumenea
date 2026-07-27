@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Discovery transport (D-Religion discovery surface, M25): site/service-type catalog reads on
 // religion.read and writes on religion.catalog.manage (instance); per-unit site/alias writes on
 // site.manage and schedule writes on schedule.manage (both checked against the organization unit over

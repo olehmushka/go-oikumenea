@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Pure unit tests for the tenant domain logic (no DB): lifecycle transition legality and the
 // unit/graph validation guards. The DB constraints enforce the same shapes as a backstop.
 package domain

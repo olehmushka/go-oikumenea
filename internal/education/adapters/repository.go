@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package adapters is the education module's pgx/sqlc-backed persistence adapter (implements
 // domain.Repository). It maps domain values to the generated educationsql params/rows and translates
 // Postgres constraint violations (23505 unique / 23503 FK) into domain sentinels.

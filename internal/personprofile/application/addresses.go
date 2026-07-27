@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Address orchestration (D-PersonAddresses, M32): a person's precise, effective-dated addresses over the
 // shared M19 Location entity. Writes verify the location exists (the late-bound LocationLookup seam),
 // enforce a single active primary per person (demote-then-set in one transaction), and record an audit

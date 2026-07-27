@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package adapters implements the data-import domain ports against infrastructure: the pgx/sqlc
 // upsert over oikumenea.geo_countries (M16 first catalog). It depends on the database, never the
 // reverse. Generated sqlc code lives in the dataimportsql subpackage and is never hand-edited.

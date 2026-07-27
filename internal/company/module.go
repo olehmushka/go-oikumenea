@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package company is the composition seam for the company module (docs/modules/company.md /
 // D-Companies): it wires the pgx/sqlc repository, the audited application service, and the transport,
 // then registers the CompanyService Conjure routes. The reference catalogs (legal forms, registration

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Command hermenea is the companion ingestion + scheduler service (M16 / D-Hermenea): a witchcraft
 // server with its OWN PostgreSQL that fetches → stages → maps external reference data and loads it
 // into oikumenea over HTTP (POST /import/{objectType}) — it never touches oikumenea's database.

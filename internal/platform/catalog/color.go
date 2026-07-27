@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // The per-domain color catalog (D-Color): platform's first RID-bearing reference Object, sitting next
 // to the lawful-basis catalog. A thin raw-pgx repository + an audited write path (the platform module
 // owns infrastructure + cross-cutting reference data, not a domain aggregate — overview.md). Colors are

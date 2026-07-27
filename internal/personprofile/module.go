@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package personprofile is the composition seam for the person directory's non-encrypted, person-owned
 // directory data (R-09 split): citizenships, residences, addresses, contact channels, SPEAKS languages,
 // person↔person relationships, and the non-encrypted institutional ties.

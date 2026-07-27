@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build integration
 
 // Integration test for the ETHNICITY pipeline (D-PhysicalIdentity amendment, M43) against a real

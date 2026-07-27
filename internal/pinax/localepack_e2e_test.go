@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build integration
 
 // End-to-end verification of a mounted DATA PACK (D-DataPacks, M54) through the REAL Seeder against a

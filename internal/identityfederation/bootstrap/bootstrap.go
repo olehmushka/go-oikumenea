@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package bootstrap seeds the first instance admin (D-Bootstrap). Authentication is delegated
 // (L-AuthzOnly) and no-self-escalation means the first admin cannot be granted from inside the API,
 // so it is seeded out-of-band from operator config: in ONE transaction it creates (or reuses) a

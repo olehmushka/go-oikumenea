@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package domain holds the education module's entities, ports, and invariants (docs/modules/education.md
 // / D-Education) — external reference institutions, their recursive structure tree, buildings, groups,
 // positions/appointments (mirrors membership), and the person bindings (enrollments, dorm stays). The

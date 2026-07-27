@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Clergy orchestration (D-ClergyCredential, M23): audited catalog + credential writes. A clergy
 // credential is a public directory fact (no encryption); revocation is a status flip, never a delete.
 package application

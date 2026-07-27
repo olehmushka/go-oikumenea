@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package envoverlay layers process environment variables on top of a YAML config file so
 // go-oikumenea can boot 12-factor style: env variables OVERRIDE the YAML, and the YAML file is
 // OPTIONAL (an absent file plus env vars is a valid, fully env-only boot). It is framework-free —

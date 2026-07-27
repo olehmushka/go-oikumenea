@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build integration
 
 // Integration test for the watchlist screening deadline (review-2026-07 R-12): a hung hermenea /

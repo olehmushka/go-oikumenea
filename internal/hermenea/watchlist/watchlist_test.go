@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Unit tests for the M34 live watchlist screening (D-Watchlists): the Interpol provider against a fake
 // Red Notices server, and the Service's cache-first fan-out + aggregation. No DB — the cache is a fake.
 package watchlist

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package transport implements the language module's generated Conjure LanguageService interface: it
 // translates the wire contract to/from the application service (overview.md; D-Conjure). Generated
 // code in internal/conjure is never hand-edited.

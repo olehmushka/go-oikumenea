@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Criminal / arrest / court records (D-LegalRecords, M38) — the last in-scope person-intelligence
 // vertical. A LegalRecord is a category-level (NO full charge sheet) record whose `Detail` is
 // envelope-encrypted (sealed on write, decrypted on read, crypto-erased on purge — exactly like the

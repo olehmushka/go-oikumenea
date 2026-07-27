@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Request-scoped authority context (review-2026-07 R-01.1). The subject's authority state —
 // instance-admin flag + active grants — is fetched ONCE per request by the identity-federation
 // authenticator (ContextWithAuthority) and stashed on the context; every PDP-consuming method on

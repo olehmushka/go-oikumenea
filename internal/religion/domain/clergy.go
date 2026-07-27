@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Clergy domain (D-ClergyCredential, M23): per-tradition grade catalogs + the reified, public
 // clergy-credential Link (Person → ClergyGrade within an organization unit). A credential is never an
 // authorization input (parallel to D-Rank); it is indelible where sacramental (status flip, not delete).

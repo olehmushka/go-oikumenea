@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package audit is the composition seam for the audit module (docs/modules/audit.md): it wires the
 // pgx/sqlc repository, the application service, and the transport, then registers the AuditService
 // Conjure routes. Register returns the application service so later milestones' modules can call

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Command ir2openapi converts the go-oikumenea Conjure IR into an OpenAPI 3.0 document.
 //
 // Conjure has no official OpenAPI generator, so this is the repo's own emitter. It needs the Conjure

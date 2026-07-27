@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package application holds the geo module's application service — the read-only orchestrator the
 // transport layer calls to list the country registry, and that other modules could call in-process
 // to resolve a country. It depends on the domain port and the platform DB surface; it never imports

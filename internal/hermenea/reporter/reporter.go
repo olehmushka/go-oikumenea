@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package reporter is hermenea's connector-plane REPORTING seam (M53 / D-ConnectorPlane): the thin
 // outbound adapter by which hermenea makes itself VISIBLE in oikumenea's connector registry. It posts
 // hermenea's registry row + declared sources at boot (idempotent self-registration) and reports each

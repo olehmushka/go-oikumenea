@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package adapters — the person regulatory-sanction import store (D-Watchlists, M34; set-based per
 // chunk since R-05). Raw pgx (no sqlc): a person-scoped import target (unusual — most targets are
 // instance-global catalogs). One parallel-array merge statement resolves persons inline (an

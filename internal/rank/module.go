@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package rank is the composition seam for the rank module (docs/modules/rank.md): it wires the
 // pgx/sqlc repository, the application service, and the transport, then registers the RankService
 // Conjure routes. Register returns the application service so a later milestone's module (person, M5,

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package application holds the personsensitive module's application service — the orchestrator for the
 // person directory's most sensitive, envelope-encrypted or pii:special data (R-09 split): physical
 // identity (descriptions, distinguishing marks), the self-declared encrypted ethnicity, the financial /

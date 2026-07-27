@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Non-encrypted institutional ties orchestration (D-InstitutionalTies, M33): per-type person↔organization
 // affiliation edges — government positions / lobbying relationships / external references, all plaintext
 // pii:basic. (The envelope-encrypted declared party membership moved to the personsensitive module under

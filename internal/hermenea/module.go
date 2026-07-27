@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package hermenea is the composition seam for the hermenea companion service (M16 / D-Hermenea): it
 // wires the store (its own DB), the connector registry, the loader (oikumenea's import endpoint), the
 // application service, and the background runtime, then registers the HermeneaService routes. The

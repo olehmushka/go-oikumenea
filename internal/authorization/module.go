@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package authorization is the composition seam for the authorization module
 // (docs/modules/authorization.md) — the centerpiece: RBAC + the PDP. Register builds the PDP over
 // the tenant graph closure (cross-module query), wires the pgx/sqlc repository, the application

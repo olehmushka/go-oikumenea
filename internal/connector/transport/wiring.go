@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // The pull-wiring read API (M53 / D-ConnectorPlane), implementing the generated wiringapi.WiringService.
 // It is a COMPOSITION layer: it reads other modules' reference catalogs (geo, language, platform's
 // legal-basis) and the connector registry (for a connector's own cursors), and returns them to a

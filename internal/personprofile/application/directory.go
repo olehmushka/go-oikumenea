@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Person-owned directory data orchestration (R-09 split from the person core): citizenships, residences,
 // contact channels (email/phone/call-sign/messenger/social), SPEAKS languages, person↔person
 // relationships, and the profile catalog reads. All writes record an audit row in the same transaction

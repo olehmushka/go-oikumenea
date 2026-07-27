@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package action is the action-type registry (review-2026-09 R-29 / D-ActionTypes): the machine
 // catalog of every named write the system audits. Foundry's ontology has typed Action types with a
 // parameter schema and required permission; this repo's Actions were, until this registry, free-text

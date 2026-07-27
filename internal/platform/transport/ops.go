@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package transport implements the platform module's generated Conjure server interface
 // (docs/architecture/overview.md: transport implements the contract; D-Conjure). Generated code in
 // internal/conjure is never hand-edited.

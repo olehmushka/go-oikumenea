@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package domain holds the authorization module's pure logic: the code-defined permission catalog,
 // the seeded base-role definitions, the RBAC entities (Role, Assignment, InstanceAdmin), and the PDP
 // engine (overview.md layering). No I/O, no framework imports — only the standard library.

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Person↔person relationships orchestration (D-PersonRelationships, R-09 split): the reified typed links
 // (partnership/kinship/guardianship/sponsorship/next-of-kin/association) plus the relation-type catalog.
 // All writes record an audit row in the same transaction (D-Audit) with only non-PII identifiers.

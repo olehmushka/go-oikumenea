@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Financial / behavioural / psychological overlays transport (D-PersonOverlays, M35): crypto wallets and
 // personality profiles (pii:sensitive) and the inferred political leaning (pii:special). Wallet/personality
 // reads require person.read; the pii:special political-leaning read requires its own

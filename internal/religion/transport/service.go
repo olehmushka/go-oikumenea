@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package transport implements the generated religionapi.ReligionService (D-Religion, M22). It PEP-gates
 // each op (taxonomy/catalog reads on religion.read and writes on religion.catalog.manage — instance
 // reference data, satisfied anywhere; per-unit org ops on religionorg.manage, checked against the unit

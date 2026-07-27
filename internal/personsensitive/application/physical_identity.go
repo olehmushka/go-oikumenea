@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Physical-identity orchestration (D-PhysicalIdentity, M31): physical descriptions, distinguishing marks
 // and the self-declared, envelope-encrypted ethnicity. All writes record an audit row in the same
 // transaction (D-Audit); the audit payloads carry only non-PII identifiers. The declared ethnicity is

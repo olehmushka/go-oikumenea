@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // gen-wof-synthetic writes a synthetic Who's-On-First SQLite distribution for the R-05 / M49
 // acceptance run: a national-scale geo-places dataset (default 1,000,000 places — 1 country +
 // regions + counties + localities, parent-first via wof:hierarchy) in exactly the shape the

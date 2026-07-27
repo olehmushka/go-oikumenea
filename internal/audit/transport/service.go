@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package transport implements the audit module's generated Conjure AuditService interface: it
 // translates the wire contract to/from the application service and maps domain errors to Conjure
 // SerializableErrors (overview.md; D-Conjure). Generated code in internal/conjure is never

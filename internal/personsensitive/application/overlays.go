@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Financial / behavioural / psychological overlays orchestration (D-PersonOverlays, M35). Crypto wallets
 // and personality profiles are plaintext pii:sensitive; the inferred political leaning is envelope-encrypted
 // (political opinion is GDPR Art. 9 — sealed on write, decrypted on read, crypto-erased on purge, exactly

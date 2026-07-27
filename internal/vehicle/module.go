@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package vehicle is the composition seam for the vehicle module (docs/modules/vehicle.md /
 // D-Vehicles): it wires the pgx repository, the audited application service, and the transport, then
 // registers the VehicleService Conjure routes. The type/number-type reference catalogs are

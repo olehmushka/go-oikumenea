@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package adapters — the external-organizations import store (D-ExternalOrgs, M30; set-based per
 // chunk since R-05). Raw pgx (no sqlc): one parallel-array merge statement resolves the kind catalog
 // + the country registry inline and keys idempotency on the Wikidata id, mirroring the geo-places

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package transport implements the generated Conjure ImportService interface (M16 / D-Hermenea): it
 // gates on the import service principal / import.manage (PEP), validates the envelope against the path
 // object-type, maps the wire envelope onto the application type, and maps domain errors to Conjure

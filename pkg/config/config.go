@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package config holds framework-free helpers for reading hot-reloadable runtime configuration
 // (docs/architecture/conventions.md: ECV + refreshable). It depends only on the generic
 // refreshable library, never on witchcraft, so it stays usable from any layer.

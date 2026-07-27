@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package adapters implements the audit domain ports against infrastructure: the pgx/sqlc
 // repository over oikumenea.audit_log. It depends on the database, never the reverse
 // (overview.md). Generated sqlc code lives in the auditsql subpackage and is never hand-edited.

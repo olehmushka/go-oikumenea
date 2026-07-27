@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Financial / behavioural / psychological overlays (D-PersonOverlays, M35): three provenance-tagged
 // person overlays. CryptoWallet + Personality are plaintext pii:sensitive (hard-erased on purge);
 // PoliticalLeaning is an INFERRED pii:special overlay whose spectrum is envelope-encrypted (sealed on

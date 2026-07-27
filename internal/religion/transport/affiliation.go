@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Lay-affiliation transport (D-ReligiousAffiliation / D-SpecialPII, M24): catalog reads on religion.read,
 // catalog writes on religion.catalog.manage; affiliation reads + writes on affiliation.manage (the value
 // is GDPR Art. 9 pii:special — decrypted only for authorized readers).

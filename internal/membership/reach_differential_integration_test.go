@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build integration
 
 // Randomized differential test for the SQL reach semi-joins (review-2026-07 R-02.1 parity risk

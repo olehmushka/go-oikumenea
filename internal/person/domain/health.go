@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Health & vulnerability records (D-HealthVulnerability, M36) — the strictest gate. HealthRecord is a
 // category-level (NO diagnosis) record whose `Detail` is envelope-encrypted (sealed on write, decrypted on
 // read, crypto-erased on purge — exactly like the M31 ethnicity / M33 party / M35 political leaning) with a

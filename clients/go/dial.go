@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package client is the published Go SDK for the go-oikumenea API.
 //
 // The per-service typed clients live in the generated subpackages under

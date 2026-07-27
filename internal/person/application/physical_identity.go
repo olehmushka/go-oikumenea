@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Name-alias orchestration (D-PhysicalIdentity, M31): alias name forms (aka/former_legal/maiden/
 // pseudonym/cover) held in person_name_variants. Aliases are still names, so they stay with the person
 // core aggregate (the whole person_name_variants table is core-owned — R-09). The physical descriptions,

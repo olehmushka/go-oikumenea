@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package application holds the data-import module's application service (M16 / D-Hermenea): the
 // generic POST /import/{objectType} orchestrator the transport calls. It runs the registered upsert
 // handler in ONE transaction and records ONE audited Action as a `system` actor (the bulk-ingest !=

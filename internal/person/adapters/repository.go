@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package adapters is the person core module's pgx/sqlc-backed persistence adapter (D-PersonModuleSplit,
 // review-2026-07 R-09). It owns the person aggregate root's core tables only — person_persons, the
 // person_ranks link, and the person_name_variants (names incl. aliases) — plus the reversible

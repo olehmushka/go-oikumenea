@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package education is the composition seam for the education module (docs/modules/education.md /
 // D-Education): it wires the pgx/sqlc repository, the audited application service, and the transport,
 // then registers the EducationService Conjure routes. The reference catalogs (institution/unit kinds,

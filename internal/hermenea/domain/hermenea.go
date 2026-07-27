@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package domain holds the hermenea companion service's framework-free core (M16 / D-Hermenea): the
 // ingestion + job-runtime types, the Connector / Mapper / Loader seams, the repository port, the
 // backoff policy, and the (dependency-free) schedule-interval parser. Hermenea fetches → stages →

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // CLDFMapper is the LIVE language-scheme path (D-Languages, M18): it transforms the raw Glottolog CLDF
 // snapshot (languages.csv + values.csv, fetched fresh from upstream master by the http-files streaming
 // connector) into the same canonical language-scheme records the bundled-JSON Mapper produces — a Go

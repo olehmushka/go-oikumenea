@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package domain holds the data-import module's framework-free core (M16 / D-Hermenea): the canonical
 // record/provenance/summary types and the per-object-type upsert ports. oikumenea is the OWNER of the
 // import endpoint; the connectors/mappers/scheduler live out of process in the hermenea companion

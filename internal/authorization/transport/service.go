@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package transport implements the generated Conjure AuthorizationService interface: it translates
 // the wire contract to/from the application service, assembles localized role name/description maps
 // via the localization service (cross-module query — overview.md), enforces the endpoints' own

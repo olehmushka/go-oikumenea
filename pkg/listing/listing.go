@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package listing is the shared kernel for token-paginated list endpoints (M56 / D-ObjectFacets):
 // one keyset-cursor codec and one page-size clamp, replacing the per-module copies that had drifted
 // into three incompatible shapes.

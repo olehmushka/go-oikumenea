@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package transport (R-09 file split): physical identity, ethnicity, name-alias + address handlers for the one PersonService Conjure surface.
 package transport
 

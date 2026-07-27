@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // seed-scale: synthetic national-scale world generator (review-2026-07 Phase 0 / M46).
 //
 // Seeds ONE authority-bearing graph with -units tenant units (multi-parent DAG), -persons persons

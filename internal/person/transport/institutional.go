@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Institutional & political ties transport (D-InstitutionalTies, M33): party memberships (pii:special),
 // government positions / lobbying relationships (pii:basic) and external references (pii:basic). Reads
 // require person.read; writes require person.update — the same PEP gating as the other person sub-resources.

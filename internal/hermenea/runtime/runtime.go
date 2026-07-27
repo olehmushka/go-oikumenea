@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package runtime is hermenea's background-job engine (M16 / D-Hermenea; N-worker since R-13): a
 // configurable number of worker goroutines claim jobs from the queue (FOR UPDATE SKIP LOCKED,
 // at-least-once — the claim is already safe under any number of claimers, in-process or across

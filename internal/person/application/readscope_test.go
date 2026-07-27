@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Unit tests for the person read-scope projection seam (D-PersonReadScope). Since review-2026-07
 // R-02.1 the intersection logic lives in SQL (membership's SubjectCanReadPerson /
 // VisiblePersonIDsForSubject, verified by the reach differential integration test); what remains

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package scope is the D-VisibilityScope adapter (review-2026-09 R-30): ONE interface answering
 // "which of these objects may the subject read", with exactly three canonical implementations
 // matching the three row-visibility policies that actually exist in the system — person scope

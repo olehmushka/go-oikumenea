@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package cldrscripts implements the CLDR language-scripts Mapper (D-Languages, M18). It reads a CLDR /
 // Unicode language→script dataset (a JSON array of {iso639_3, writingSystem, isPrimary}, fetched by the
 // `file` or `http` connector) and emits canonical language-scripts records for oikumenea's

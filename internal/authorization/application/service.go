@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package application holds the authorization module's application service — the orchestrator the
 // transport layer and (in-process) every other module's PEP call to decide and to mutate roles,
 // assignments, and instance-admin grants, recording an audit row in the same transaction as each

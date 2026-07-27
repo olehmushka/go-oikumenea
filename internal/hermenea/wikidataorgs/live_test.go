@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 package wikidataorgs_test
 
 // An opt-in LIVE test that drives the REAL http connector against the public Wikidata SPARQL endpoint

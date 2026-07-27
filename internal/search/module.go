@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package search is the composition seam for the unified cross-type search module
 // (docs/modules/search.md / D-UnifiedSearch, review-2026-09 R-26). The module owns no tables and
 // no RIDs — it is a fan-in over the other modules' trigram search queries. Register builds the

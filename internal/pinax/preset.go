@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package pinax is the reference-plane boot autoseeder (D-Pinax, M45). It embeds the bundled YAML seed
 // presets — the instance-global world-model catalogs (languages, writing-systems, countries, religions,
 // ethnicities, ranks, colors) — and self-seeds them into oikumenea's own DB on boot via the SAME

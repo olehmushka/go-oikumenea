@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package application holds the rank module's application service — the orchestrator the transport
 // layer calls to read/mutate the single system-wide rank scheme, recording an audit row in the same
 // transaction as each write (D-Audit). It depends on the domain port, the platform DB surface, and

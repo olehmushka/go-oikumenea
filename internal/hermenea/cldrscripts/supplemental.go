@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // SupplementalMapper is the LIVE language-scripts path (D-Languages, M18): it transforms the raw CLDR
 // supplementalData.xml + SIL iso-639-3.tab (fetched fresh from upstream by the http-files streaming
 // connector) into the same canonical language-scripts records the bundled-JSON Mapper produces — a Go

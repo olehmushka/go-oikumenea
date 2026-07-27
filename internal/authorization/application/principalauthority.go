@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Request-scoped authority for MACHINE subjects (M51 / D-ServiceIdentities) — the service-side
 // counterpart of authority.go.
 //

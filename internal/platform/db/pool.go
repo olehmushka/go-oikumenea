@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package db owns the pgx connection pool and the boot-time schema-version check
 // (docs/modules/platform.md). Domain modules receive the pool / a pgx.Tx and control their own
 // transaction boundaries; platform provides the plumbing, not the queries.

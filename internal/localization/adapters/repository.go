@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package adapters implements the localization domain ports against infrastructure: the pgx/sqlc
 // repository over oikumenea.i18n_locales and oikumenea.i18n_translations. It depends on the
 // database, never the reverse (overview.md). Generated sqlc code lives in the localizationsql

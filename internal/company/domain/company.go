@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package domain holds the company module's entities, ports, and invariants (docs/modules/company.md /
 // D-Companies) — a generic legal-entity registry: companies, registrations, industry classification,
 // locations, positions/appointments (mirrors membership), and the ownership/affiliation graph

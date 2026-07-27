@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build integration
 
 // Integration proof for the R-22 key-rotation rewrap CLI against a real Postgres. It exercises the

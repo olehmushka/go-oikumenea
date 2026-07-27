@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package watchlistclient is the WATCHLIST lookup KIND of the connector plane's on-demand-lookup seam
 // (D-Watchlists M34; generalized under D-ConnectorPlane M53). It adapts the generated hermenea client
 // to the person module's WatchlistLookup interface: the person service screens an identity by calling

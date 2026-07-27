@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package links is the composition seam for the generic link-traversal module (docs/modules/links.md
 // / D-LinkTraversal, review-2026-09 R-27). The module owns no tables and no RIDs — it is a fan-in
 // over the other modules' reified link tables. Register builds the engine over the PEP's authority +

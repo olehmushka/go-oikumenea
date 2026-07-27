@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Login security log (M37 / D-LoginSecurityLog) — the application-layer surface over
 // domain.LoginEventRepository. The validation middleware records a deduped login/IP occurrence per
 // validated request (best-effort, off the request's critical path); an operator reads an account's

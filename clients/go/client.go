@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 package client
 
 // client.go is the unified façade over the generated per-service clients (D-ClientSDK) — the Go

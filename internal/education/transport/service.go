@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package transport implements the generated educationapi.EducationService (D-Education, M20). It
 // PEP-gates each op (education entities are instance-global external reference data, so reads/writes are
 // satisfied anywhere), assembles translatable labels (institution/unit/group/building names, position

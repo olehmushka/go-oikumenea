@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Advisory-lock helper (R-13 / M49): cross-process mutual exclusion for the boot-time seeding paths
 // (pinax autoseed + first-admin bootstrap). Those paths are idempotent but not race-free — two fresh
 // replicas booting the same empty database would both run the full seed (wasted duplicate work, lock

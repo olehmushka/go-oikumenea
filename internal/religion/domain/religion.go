@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package domain holds the religion module's pure values, inputs, and sentinel errors (D-Religion,
 // M22). No I/O, no framework imports. The taxonomy is a recursive tree (Taxon + closure) with a
 // catalog-driven level marker (TaxonRank); organization attributes attach to reused tenant Units.
