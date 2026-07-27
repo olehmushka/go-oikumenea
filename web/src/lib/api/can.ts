@@ -2,33 +2,38 @@ import "server-only";
 import { cache } from "react";
 import { oikumenea } from "@/lib/api/server";
 import { errorInfo } from "@/lib/api/errors";
+import { holdsCode } from "@/lib/api/capabilities";
 
 /**
  * Best-effort UI gating: "may the signed-in user do <action>?"
  *
- * THIS IS NOT AN ENFORCEMENT POINT. It exists so instance-admin-only surfaces (the service-principal
- * console, M52) don't render a page of buttons that every non-admin sees 403 on. The server remains the
- * only authority — every endpoint re-decides through the PDP regardless of what the UI chose to draw,
- * and D-HeadlessTopology turns on exactly that (facades gain no authority). Never use `can()` to
- * *permit* anything; use it only to hide what would fail.
+ * THIS IS NOT AN ENFORCEMENT POINT. It exists so surfaces the caller can't use don't render a page of
+ * buttons that 403. The server remains the only authority — every endpoint re-decides through the PDP
+ * regardless of what the UI drew (D-HeadlessTopology). Never use `can()` to *permit* anything; use it
+ * only to hide what would fail.
  *
- * How it decides, and why a thrown error means `false`:
+ * Two paths:
  *
- * `Whoami` carries only the resolved subject id — no permission list — so there is nothing to read
- * locally and the question must go to the PDP. But `POST /authorize` is itself gated on
- * `assignment.read` with **no self-exemption** (OQ-5, api/authorization.conjure.yml): a user without it
- * is denied *the question*, not just the answer. That is the desired outcome anyway — if you cannot ask
- * whether you may manage service principals, you are certainly not an instance admin — so any failure
- * (denied, unreachable, malformed) collapses to `false`. The cost of a wrong `false` is a hidden menu
- * entry; the cost of a wrong `true` is a button that 403s, which is the status quo everywhere else in
- * the console.
+ * - **Instance-scope / "holds anywhere" checks** (no `unitId`): answered from the caller's own
+ *   effective permissions via GET /me/capabilities (D-SelfCapabilities) — a single unprivileged read.
+ *   This replaced the old per-code `POST /authorize` probe, which needed `assignment.read` and so
+ *   failed closed for every non-admin. This is what all current call sites use.
  *
- * Longer term the clean answer is for the contract to expose the caller's own effective permissions
- * (an extension of `Whoami`), which would make this a single unprivileged read with no self-referential
- * gating. That is a contract change and deliberately out of M52's scope.
+ * - **Unit-scoped checks** (`unitId` given): a specific `(action, unit)` question the flat capability
+ *   set can't answer, so it still goes to `POST /authorize`. That endpoint is gated on
+ *   `assignment.read` with no self-exemption, so this path only yields `true` for callers holding it;
+ *   any failure (denied, unreachable) collapses to `false`. No console surface uses this path today —
+ *   it is kept for completeness.
  */
+export const can = cache(async (action: string, unitId?: string): Promise<boolean> => {
+  if (unitId === undefined) {
+    // Module / instance-scope gating — the common case.
+    return holdsCode(action);
+  }
+  return canAtUnit(action, unitId);
+});
 
-/** Per-request memo (React `cache`): several gated surfaces on one page share a single whoami call. */
+/** Per-request memo of the caller's subject id, for the unit-scoped PDP path only. */
 const subjectPersonId = cache(async (): Promise<string | null> => {
   try {
     const ok = await oikumenea();
@@ -39,30 +44,23 @@ const subjectPersonId = cache(async (): Promise<string | null> => {
   }
 });
 
-/**
- * `unitId` is omitted for instance-scope actions (`service-principal.read`, `role.create`, …) and
- * supplied for unit-scoped ones, matching AuthorizeRequest.
- */
-export const can = cache(async (action: string, unitId?: string): Promise<boolean> => {
+async function canAtUnit(action: string, unitId: string): Promise<boolean> {
   const personId = await subjectPersonId();
   if (!personId) return false;
-
   try {
     const ok = await oikumenea();
     const decision = await ok.authorization.authorize({
       subjectPersonId: personId,
       action,
-      unitId: unitId ?? null,
+      unitId,
       explain: false,
     });
     return decision.allow === true;
   } catch (e) {
-    // 403 = the caller lacks assignment.read, i.e. is no instance admin (see above). Anything else is
-    // a transport/contract fault; both mean "don't offer the surface".
     const { status } = errorInfo(e);
     if (status !== undefined && status !== 403 && status !== 401) {
-      console.warn(`can(${action}): unexpected failure, treating as denied`, status);
+      console.warn(`can(${action}, ${unitId}): unexpected failure, treating as denied`, status);
     }
     return false;
   }
-});
+}

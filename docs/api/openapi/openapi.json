@@ -1219,6 +1219,10 @@
             "description": "The person who acted; present iff actorType is PERSON.",
             "type": "string"
           },
+          "actorPrincipalId": {
+            "description": "The SERVICE PRINCIPAL that acted (M51 / D-ServiceIdentities) — a machine subject naming\nitself. Only ever present on SYSTEM entries: a principal is a `system` actor, not a third\nactor kind (D-Audit's two kinds are binding). Absent for system actions with no machine\ncaller (bootstrap, event subscribers).\n",
+            "type": "string"
+          },
           "actorType": {
             "$ref": "#/components/schemas/AuditActorType"
           },
@@ -1618,6 +1622,10 @@
           },
           "objectType": {
             "description": "The importable object-type key (e.g. geo-countries); must match the path parameter.",
+            "type": "string"
+          },
+          "orgId": {
+            "description": "The owning organization RID when the target is ORG-OWNED operational data (M55 / the RLS\nservice arm): the import permission is then checked against this org, so an org-confined\nconnector imports only its own organization's data and a foreign-org grant is rejected.\nAbsent = an instance-wide reference catalog (the pre-M55 default), which demands an\ninstance-wide grant.\n",
             "type": "string"
           },
           "records": {
@@ -2297,6 +2305,121 @@
         ],
         "type": "object"
       },
+      "Connector": {
+        "description": "A registered connector — a deployable agent beside the core. `principalId` is the M51 service\nprincipal it authenticates as; disabling that principal stops its reports and wiring reads at\nonce, so there is no separate kill switch here.\n",
+        "properties": {
+          "code": {
+            "description": "Stable, locale-agnostic handle (D-Code) — what operators and audit rows reference.",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastSeenAt": {
+            "description": "When the core last heard from this agent (registration or a run report). A liveness HINT,\nnot a health verdict — the core never probes connectors.\n",
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "principalId": {
+            "description": "The service principal this agent authenticates as. Bound by the core from the caller.",
+            "type": "string"
+          },
+          "status": {
+            "description": "active | disabled.",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "createdAt",
+          "id",
+          "name",
+          "status",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "ConnectorPage": {
+        "properties": {
+          "connectors": {
+            "items": {
+              "$ref": "#/components/schemas/Connector"
+            },
+            "type": "array"
+          },
+          "nextPageToken": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "connectors"
+        ],
+        "type": "object"
+      },
+      "ConnectorSource": {
+        "description": "One dataset a connector syncs, as reported by that connector. A read model: the connector\nstays authoritative for execution, because scheduling lives in the connector.\n",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "connectorId": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "objectType": {
+            "description": "The core import target for push-mode sources (e.g. geo-places). Absent for sources that\nonly feed the connector's own lookups.\n",
+            "type": "string"
+          },
+          "schedule": {
+            "description": "The connector's own schedule string, verbatim, for display. The core never parses it.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "connectorId",
+          "enabled",
+          "id",
+          "name"
+        ],
+        "type": "object"
+      },
+      "ConnectorSourceList": {
+        "properties": {
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectorSource"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sources"
+        ],
+        "type": "object"
+      },
       "Contribution": {
         "description": "One reason an ALLOW was reached. instanceAdmin true means the instance plane; otherwise the assignment is named.",
         "properties": {
@@ -2427,12 +2550,35 @@
         ],
         "type": "object"
       },
+      "CountryEntry": {
+        "properties": {
+          "code": {
+            "description": "ISO-3166-1 alpha-2.",
+            "type": "string"
+          },
+          "name": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Default-locale fallback + i18n translations.",
+            "type": "object"
+          },
+          "rid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "rid"
+        ],
+        "type": "object"
+      },
       "CountryList": {
-        "description": "The countries, in display order.",
         "properties": {
           "countries": {
             "items": {
-              "$ref": "#/components/schemas/Country"
+              "$ref": "#/components/schemas/CountryEntry"
             },
             "type": "array"
           }
@@ -5040,6 +5186,25 @@
         ],
         "type": "object"
       },
+      "GrantPrincipalPermissionRequest": {
+        "properties": {
+          "orgId": {
+            "description": "Omit for an instance-wide grant; set to confine the machine to one organization.",
+            "type": "string"
+          },
+          "permission": {
+            "type": "string"
+          },
+          "principalId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "permission",
+          "principalId"
+        ],
+        "type": "object"
+      },
       "Graph": {
         "description": "A named hierarchy over the units (D-Graphs), per organization (M40). Each graph is independently a DAG.",
         "properties": {
@@ -5189,6 +5354,51 @@
           "id",
           "status",
           "wardId"
+        ],
+        "type": "object"
+      },
+      "HealthRecord": {
+        "description": "A category-level health \u0026 vulnerability record (D-HealthVulnerability, M36) — an Object. Health is\na GDPR Art. 9 special category, so the category-level `detail` is envelope-encrypted at rest; the\nvalue here is decrypted (\"\" for a crypto-erased tombstone). CATEGORY-LEVEL ONLY — never a diagnosis,\nnever inferred. legalBasis is required and reads need the person.health.read code. pii:special.\n",
+        "properties": {
+          "assessedAt": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string"
+          },
+          "detail": {
+            "description": "The decrypted category-level note (coarse, NO diagnosis); \"\" when crypto-erased.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isPublicRecord": {
+            "description": "True when derived from a public record.",
+            "type": "boolean"
+          },
+          "kind": {
+            "description": "One of hospitalization | mental_health | disability.",
+            "type": "string"
+          },
+          "legalBasis": {
+            "description": "The platform_legal_basis_kinds code authorizing this Art. 9 record.",
+            "type": "string"
+          },
+          "personId": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail",
+          "id",
+          "isPublicRecord",
+          "kind",
+          "legalBasis",
+          "personId"
         ],
         "type": "object"
       },
@@ -5707,6 +5917,50 @@
         ],
         "type": "object"
       },
+      "Insurance": {
+        "description": "A person's insurance coverage (D-HealthVulnerability, M36) — an Object. pii:sensitive; gated on\nperson.read. Hard-erased on purge.\n",
+        "properties": {
+          "confidence": {
+            "type": "string"
+          },
+          "employerSponsored": {
+            "description": "True when the coverage is employer-sponsored.",
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "personId": {
+            "type": "string"
+          },
+          "policyReference": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "type": {
+            "description": "One of health | life | disability | ltc.",
+            "type": "string"
+          },
+          "validFrom": {
+            "type": "string"
+          },
+          "validTo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "employerSponsored",
+          "id",
+          "personId",
+          "type"
+        ],
+        "type": "object"
+      },
       "IssuerOption": {
         "description": "One IdP issuer accepted by this instance (from install config), offered to binding UIs so an\noperator picks an issuer rather than typing it. PUBLIC fields only — verification secrets\n(HS256 keys) are never exposed. An external identity's `issuer` must match one of these for a\ntoken from it to ever validate.\n",
         "properties": {
@@ -5829,6 +6083,36 @@
         ],
         "type": "object"
       },
+      "LanguoidEntry": {
+        "properties": {
+          "code": {
+            "description": "Glottocode.",
+            "type": "string"
+          },
+          "familyCode": {
+            "type": "string"
+          },
+          "iso6393": {
+            "description": "The ISO 639-3 code, when the languoid has one.",
+            "type": "string"
+          },
+          "level": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "rid"
+        ],
+        "type": "object"
+      },
       "LanguoidList": {
         "description": "A page of languoids in code order.",
         "properties": {
@@ -5845,6 +6129,49 @@
         },
         "required": [
           "languoids"
+        ],
+        "type": "object"
+      },
+      "LanguoidPage": {
+        "description": "The languoid catalog is ~27k rows; reads are keyset-paginated.",
+        "properties": {
+          "languoids": {
+            "items": {
+              "$ref": "#/components/schemas/LanguoidEntry"
+            },
+            "type": "array"
+          },
+          "nextPageToken": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "languoids"
+        ],
+        "type": "object"
+      },
+      "LegalBasisEntry": {
+        "description": "A GDPR lawful-basis kind. Code-keyed — no RID (it is a resolve non-target).",
+        "properties": {
+          "article": {
+            "description": "art6 | art9.",
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "article",
+          "code",
+          "name",
+          "status"
         ],
         "type": "object"
       },
@@ -5883,6 +6210,20 @@
           "kinds": {
             "items": {
               "$ref": "#/components/schemas/LegalBasisKind"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "kinds"
+        ],
+        "type": "object"
+      },
+      "LegalBasisList": {
+        "properties": {
+          "kinds": {
+            "items": {
+              "$ref": "#/components/schemas/LegalBasisEntry"
             },
             "type": "array"
           }
@@ -5941,6 +6282,69 @@
         },
         "required": [
           "legalForms"
+        ],
+        "type": "object"
+      },
+      "LegalRecord": {
+        "description": "A category-level criminal / arrest / court record (D-LegalRecords, M38) — an Object. Criminal\ndata is GDPR Art. 10, so the category-level offence `detail` is envelope-encrypted at rest; the\nvalue here is decrypted (\"\" for a crypto-erased tombstone). CATEGORY-LEVEL ONLY — never a full\ncharge sheet. `disposition` is mandatory (arrest ≠ guilt). legalBasis is required and reads need\nthe person.legal-record.read code. Sealed/expunged records (isSuppressed) are withheld unless the\ncaller also holds person.legal-record.read-suppressed. pii:special.\n",
+        "properties": {
+          "confidence": {
+            "type": "string"
+          },
+          "detail": {
+            "description": "The decrypted category-level offence/charge (coarse, NO full charge sheet); \"\" when crypto-erased.",
+            "type": "string"
+          },
+          "disposition": {
+            "description": "Mandatory outcome — one of convicted | acquitted | dismissed | pending | sealed | expunged | no_charges.",
+            "type": "string"
+          },
+          "dispositionDate": {
+            "description": "ISO date the disposition was reached.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isSuppressed": {
+            "description": "True when the record is sealed or expunged (withheld from the normal read gate).",
+            "type": "boolean"
+          },
+          "jurisdiction": {
+            "description": "ISO-3166-1 country code of the issuing jurisdiction (D-Geo).",
+            "type": "string"
+          },
+          "kind": {
+            "description": "One of criminal_conviction | arrest | court_judgment.",
+            "type": "string"
+          },
+          "legalBasis": {
+            "description": "The platform_legal_basis_kinds code authorizing this Art. 10 record.",
+            "type": "string"
+          },
+          "occurredAt": {
+            "description": "ISO date of the offence / arrest.",
+            "type": "string"
+          },
+          "personId": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "suppressedReason": {
+            "description": "One of sealed | expunged — present iff isSuppressed.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail",
+          "disposition",
+          "id",
+          "isSuppressed",
+          "kind",
+          "legalBasis",
+          "personId"
         ],
         "type": "object"
       },
@@ -6003,6 +6407,11 @@
             "description": "out (queried object is the source end), in (the target end), or peer (symmetric link).",
             "type": "string"
           },
+          "hop": {
+            "description": "Distance from the queried object: 1 (direct neighbor) or 2 (second hop, reached via viaRid). Only depth-2 search-around ever sets it; absent ⇒ a direct link.",
+            "format": "int32",
+            "type": "integer"
+          },
           "linkRid": {
             "description": "The reified link's own RID (kind=link; self-describes which link type this is).",
             "type": "string"
@@ -6020,6 +6429,10 @@
           },
           "targetType": {
             "description": "The ontology registry token for the neighbor's type (person, unit, organization, …).",
+            "type": "string"
+          },
+          "viaRid": {
+            "description": "For a hop-2 row, the hop-1 neighbor RID this row was reached through (canonical UUID text) — the intermediate node on the path. Absent for direct (hop-1) rows.",
             "type": "string"
           }
         },
@@ -6361,6 +6774,79 @@
         ],
         "type": "object"
       },
+      "LoginEvent": {
+        "description": "One deduped login/IP occurrence for an account (M37 / D-LoginSecurityLog): first-party\nsecurity telemetry from the token-validation seam, `pii:contact`, retention-bounded. Repeat\noccurrences from the same (context, ip) within the dedup window collapse into one row —\n`occurrenceCount` + `lastSeenAt` carry the recency. The `resolved*` / `isVpn` / `isTor`\nfields are the IP-intelligence overlay and stay absent until a resolver ships.\n",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "context": {
+            "description": "One of login | activity | registration (registration = the JIT link-on-match).",
+            "type": "string"
+          },
+          "firstSeenAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "ip": {
+            "type": "string"
+          },
+          "isTor": {
+            "type": "boolean"
+          },
+          "isVpn": {
+            "type": "boolean"
+          },
+          "lastSeenAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "occurrenceCount": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "resolvedCountry": {
+            "description": "ISO 3166-1 alpha-2 when resolved.",
+            "type": "string"
+          },
+          "resolvedIsp": {
+            "type": "string"
+          },
+          "userAgent": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "context",
+          "firstSeenAt",
+          "id",
+          "ip",
+          "lastSeenAt",
+          "occurrenceCount"
+        ],
+        "type": "object"
+      },
+      "LoginEventPage": {
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/LoginEvent"
+            },
+            "type": "array"
+          },
+          "nextPageToken": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "events"
+        ],
+        "type": "object"
+      },
       "Manufacturer": {
         "description": "A brand is MANUFACTURED_BY a company (link__manufactured_by); temporal (changes with acquisitions).",
         "properties": {
@@ -6614,6 +7100,25 @@
         ],
         "type": "object"
       },
+      "MyCapabilities": {
+        "description": "The CALLER's own effective authorization state (D-SelfCapabilities). `permissions` is the\nflat, deduped, sorted union of the caller's active-grant permission codes; `isInstanceAdmin`\ntrue means they hold everything and `permissions` is left empty (treat as show-all). A\nmachine/service subject receives an empty set with isInstanceAdmin false. Cosmetic UI gating\nonly — the PDP still re-decides every request.\n",
+        "properties": {
+          "isInstanceAdmin": {
+            "type": "boolean"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "isInstanceAdmin",
+          "permissions"
+        ],
+        "type": "object"
+      },
       "NameVariant": {
         "description": "A full transliterated name form for one locale (e.g. ukr native, eng Latin). Person-managed, NOT the localization store.",
         "properties": {
@@ -6717,7 +7222,7 @@
         "type": "object"
       },
       "Neighborhood": {
-        "description": "The queried object's depth-1 neighborhood as a flat neighbor list — the graph-explorer\nshape (search-around). Depth\u003e1 is a deliberate non-goal for this endpoint (review-2026-09).\n",
+        "description": "The queried object's neighborhood as a flat neighbor list — the graph-explorer shape\n(search-around). depth=1 (default) is the direct neighborhood; depth=2 additionally returns\neach direct neighbor's own neighbors (rows tagged hop=2, carrying viaRid). Depth is capped\nat 2 (D-LinkTraversal depth-2, \"full keyset frontier\").\n",
         "properties": {
           "neighbors": {
             "items": {
@@ -8672,6 +9177,58 @@
         ],
         "type": "object"
       },
+      "PrincipalGrant": {
+        "description": "One permission code held by a MACHINE subject (M51 / D-ServiceIdentities) — the reified\nPRINCIPAL_GRANT link. FLAT by construction: no target unit, no scope, no graph, because a\nservice principal has no unit reach.\n\n`orgId` absent means INSTANCE-WIDE (reference-catalog imports, the M53 wiring codes); a named\norganization confines the principal to that organization's data — the blast-radius boundary\nfor a connector is the organization, not the unit.\n",
+        "properties": {
+          "grantedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "grantedBy": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "orgId": {
+            "description": "Absent = instance-wide; present = confined to that organization.",
+            "type": "string"
+          },
+          "permission": {
+            "description": "A code from the closed permission catalog.",
+            "type": "string"
+          },
+          "principalId": {
+            "description": "The service principal's URN RID (registered on IdentityFederationService).",
+            "type": "string"
+          },
+          "revokedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "grantedAt",
+          "id",
+          "permission",
+          "principalId"
+        ],
+        "type": "object"
+      },
+      "PrincipalGrantPage": {
+        "properties": {
+          "grants": {
+            "items": {
+              "$ref": "#/components/schemas/PrincipalGrant"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "grants"
+        ],
+        "type": "object"
+      },
       "Program": {
         "description": "A degree/diploma/certificate program of an institution (optionally a unit).",
         "properties": {
@@ -9332,6 +9889,63 @@
         ],
         "type": "object"
       },
+      "RegisterConnectorRequest": {
+        "description": "A connector's idempotent self-description. Carries NO principalId: the core binds the row to\nthe calling principal, so a connector cannot register as another. Re-registering updates the\nrow and REPLACES the declared source set (sources absent from the payload are retired), which\nmakes boot-time registration converge without an operator reconciling drift by hand.\n",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceDeclaration"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "sources"
+        ],
+        "type": "object"
+      },
+      "RegisterServicePrincipalRequest": {
+        "properties": {
+          "clientId": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "issuer": {
+            "description": "The IdP `iss` the machine's tokens carry.",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "subject": {
+            "description": "The IdP `sub` the machine's tokens carry. For Keycloak this is the service-account user\nid; a rejected unknown token logs its issuer/subject so it can be copied from there.\n",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "issuer",
+          "name",
+          "subject"
+        ],
+        "type": "object"
+      },
       "RegisterVehicleRequest": {
         "description": "Register the vehicle to a new owner (person or company). Any currently-active registration for\nthe vehicle is closed first (registration is the ownership history), so this also performs a\ntransfer. subdivisionId (the plate region) must be a geo_places region when supplied.\n",
         "properties": {
@@ -9661,6 +10275,49 @@
         },
         "type": "object"
       },
+      "ReportSyncRunRequest": {
+        "description": "Report a run — opening it (`state: running`) and closing it (`succeeded`/`failed`) are the\nsame call. IDEMPOTENT on (source, externalRunId): a connector retrying its report updates the\nrun rather than duplicating it, which matters because connectors retry with backoff.\n",
+        "properties": {
+          "created": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "error": {
+            "type": "string"
+          },
+          "externalRunId": {
+            "type": "string"
+          },
+          "finishedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "skipped": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "sourceCode": {
+            "description": "The source's code within the CALLING connector — not a RID, so a connector needs no prior read.",
+            "type": "string"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "updated": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sourceCode",
+          "state"
+        ],
+        "type": "object"
+      },
       "ResearchCentre": {
         "description": "A research centre / institute / lab of an institution.",
         "properties": {
@@ -9875,6 +10532,47 @@
           "id",
           "personId",
           "validFrom"
+        ],
+        "type": "object"
+      },
+      "ResolveRequest": {
+        "description": "Resolve a batch of natural keys to RIDs within one catalog, in a single round trip — the\nconnector's real need (mapping many rows), not one code at a time. `catalog` is one of\n`country` (ISO-3166-1 alpha-2), `languoid` (glottocode), `writing-system` (ISO-15924). The\nlegal-basis catalog is code-keyed and has no RID, so it is a catalog READ, not a resolve target.\n",
+        "properties": {
+          "catalog": {
+            "type": "string"
+          },
+          "codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "catalog",
+          "codes"
+        ],
+        "type": "object"
+      },
+      "ResolveResponse": {
+        "description": "`resolved` maps each FOUND code to its RID; `unresolved` lists the codes with no match, so a\nconnector can act on both without a second call.\n",
+        "properties": {
+          "resolved": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "unresolved": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "resolved",
+          "unresolved"
         ],
         "type": "object"
       },
@@ -10140,6 +10838,67 @@
         ],
         "type": "object"
       },
+      "SelfConnector": {
+        "description": "The calling connector's own registry row.",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastSeenAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "id",
+          "name",
+          "status"
+        ],
+        "type": "object"
+      },
+      "SelfSource": {
+        "description": "One of the connector's sources with its CURSOR — the most recent sync run, if any. A connector\nreads this to resume: `latestRun.externalRunId` is where it last got to, `state` whether that\nrun finished.\n",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "latestExternalRunId": {
+            "type": "string"
+          },
+          "latestFinishedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "latestRunState": {
+            "type": "string"
+          },
+          "objectType": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "enabled",
+          "id"
+        ],
+        "type": "object"
+      },
       "SerializableError": {
         "description": "The Conjure error envelope returned on any non-2xx response.",
         "properties": {
@@ -10164,6 +10923,77 @@
           "errorCode",
           "errorName",
           "errorInstanceId"
+        ],
+        "type": "object"
+      },
+      "ServicePrincipal": {
+        "description": "A MACHINE subject (M51 / D-ServiceIdentities) — a facade with standing of its own, or a\nconnector. It authenticates through the same external IdP and the same middleware as a\nperson, using the OAuth2 client-credentials grant, and is keyed by the same\n(issuer, subject) pair as an ExternalIdentity: a given pair is a person identity XOR a\nprincipal, never both.\n\nA principal holds NO role assignment and NO unit reach; its authority is the flat\nper-principal grants owned by AuthorizationService. Registering one creates no credential —\nthe IdP owns the client secret (L-AuthzOnly holds).\n",
+        "properties": {
+          "clientId": {
+            "description": "Display label from the token's `azp`/`client_id` claim, so an operator can tell which IdP\nclient this is. NEVER an authorization input — the identity key is (issuer, subject).\n",
+            "type": "string"
+          },
+          "code": {
+            "description": "Stable, locale-agnostic machine name (D-Code) — what audit rows and operators reference.",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "description": "The principal's URN RID (carried as a plain string).",
+            "type": "string"
+          },
+          "issuer": {
+            "description": "The IdP `iss` of the client-credentials token.",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "description": "One of active | disabled. A disabled principal fails resolution, so its tokens stop working at once.",
+            "type": "string"
+          },
+          "subject": {
+            "description": "The IdP `sub` of the client-credentials token. Immutable after registration.",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "createdAt",
+          "id",
+          "issuer",
+          "name",
+          "status",
+          "subject",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "ServicePrincipalPage": {
+        "properties": {
+          "nextPageToken": {
+            "type": "string"
+          },
+          "principals": {
+            "items": {
+              "$ref": "#/components/schemas/ServicePrincipal"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "principals"
         ],
         "type": "object"
       },
@@ -10637,6 +11467,32 @@
         ],
         "type": "object"
       },
+      "SourceDeclaration": {
+        "description": "One source in a registration payload.",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "enabled": {
+            "description": "Defaults to true when absent.",
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "objectType": {
+            "type": "string"
+          },
+          "schedule": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "type": "object"
+      },
       "Sponsorship": {
         "description": "A sponsor→sponsored link — godparent / academic advisor / military mentor (D-PersonRelationships; Link link__sponsor_of).",
         "properties": {
@@ -10725,6 +11581,75 @@
           "predecessorId",
           "successorId",
           "updatedAt"
+        ],
+        "type": "object"
+      },
+      "SyncRun": {
+        "description": "One reported execution of a source. The counts are the CONNECTOR's account of its work — the\ncore stores what it is told and does not recompute them.\n",
+        "properties": {
+          "created": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "error": {
+            "type": "string"
+          },
+          "externalRunId": {
+            "description": "The connector's own run id (hermenea's import_runs.id — the same value the M49 chunked\nenvelopes carry as `runId`), so a run correlates with the connector's ledger and with\nper-row import provenance.\n",
+            "type": "string"
+          },
+          "finishedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "skipped": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "state": {
+            "description": "running | succeeded | failed.",
+            "type": "string"
+          },
+          "updated": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created",
+          "id",
+          "skipped",
+          "sourceId",
+          "startedAt",
+          "state",
+          "updated"
+        ],
+        "type": "object"
+      },
+      "SyncRunPage": {
+        "properties": {
+          "nextPageToken": {
+            "type": "string"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/SyncRun"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "runs"
         ],
         "type": "object"
       },
@@ -11707,6 +12632,24 @@
             "type": "array"
           }
         },
+        "type": "object"
+      },
+      "UpdateServicePrincipalRequest": {
+        "description": "Mutable display fields only. (issuer, subject) is the identity key the middleware resolves\non and is immutable — re-pointing it would silently transfer a machine's authority to a\ndifferent IdP client. Register a new principal and disable the old one instead.\n",
+        "properties": {
+          "clientId": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
         "type": "object"
       },
       "UpdateSiteRequest": {
@@ -12719,6 +13662,38 @@
         ],
         "type": "object"
       },
+      "UpsertHealthRecordRequest": {
+        "description": "Add or replace the person's category-level health record for a kind (one active row per kind,\nreplaced in place). Requires legalBasis (Art. 9). Category-level only — never a diagnosis\n(D-HealthVulnerability, M36).\n",
+        "properties": {
+          "assessedAt": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "isPublicRecord": {
+            "type": "boolean"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "legalBasis": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail",
+          "kind",
+          "legalBasis"
+        ],
+        "type": "object"
+      },
       "UpsertIndustryClassRequest": {
         "description": "Create/update (by code) an industry-class catalog entry.",
         "properties": {
@@ -12739,6 +13714,42 @@
         "required": [
           "code",
           "name"
+        ],
+        "type": "object"
+      },
+      "UpsertInsuranceRequest": {
+        "description": "Add an insurance row, or replace one when id is supplied (D-HealthVulnerability, M36).",
+        "properties": {
+          "confidence": {
+            "type": "string"
+          },
+          "employerSponsored": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "policyReference": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "validFrom": {
+            "type": "string"
+          },
+          "validTo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
         ],
         "type": "object"
       },
@@ -12815,6 +13826,54 @@
         "required": [
           "code",
           "name"
+        ],
+        "type": "object"
+      },
+      "UpsertLegalRecordRequest": {
+        "description": "Add a legal record, or replace one when id is supplied (D-LegalRecords, M38). Requires\n`disposition` (arrest ≠ guilt) and legalBasis (Art. 10). Category-level only — never a full\ncharge sheet.\n",
+        "properties": {
+          "confidence": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "disposition": {
+            "type": "string"
+          },
+          "dispositionDate": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isSuppressed": {
+            "type": "boolean"
+          },
+          "jurisdiction": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "legalBasis": {
+            "type": "string"
+          },
+          "occurredAt": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "suppressedReason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail",
+          "disposition",
+          "kind",
+          "legalBasis"
         ],
         "type": "object"
       },
@@ -14237,6 +15296,24 @@
         ],
         "type": "object"
       },
+      "WiringSelf": {
+        "properties": {
+          "connector": {
+            "$ref": "#/components/schemas/SelfConnector"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SelfSource"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "connector",
+          "sources"
+        ],
+        "type": "object"
+      },
       "WorkerJob": {
         "description": "One unit of queued work in hermenea's runtime.",
         "properties": {
@@ -14308,12 +15385,31 @@
         ],
         "type": "object"
       },
+      "WritingSystemEntry": {
+        "properties": {
+          "code": {
+            "description": "ISO-15924.",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "rid"
+        ],
+        "type": "object"
+      },
       "WritingSystemList": {
-        "description": "The writing systems, in code order.",
         "properties": {
           "writingSystems": {
             "items": {
-              "$ref": "#/components/schemas/WritingSystem"
+              "$ref": "#/components/schemas/WritingSystemEntry"
             },
             "type": "array"
           }
@@ -14912,6 +16008,162 @@
           }
         },
         "summary": "Revoke instance-admin (instance.admin.manage; reversible flip).",
+        "tags": [
+          "AuthorizationService"
+        ]
+      }
+    },
+    "/authorization/v1/me/capabilities": {
+      "get": {
+        "description": "The caller's OWN effective permission codes + instance-admin flag (D-SelfCapabilities).\nSelf-only: subject taken from the request context, NOT gated on assignment.read. Machine\nsubjects get an empty set. Lets an unprivileged console hide modules it cannot read in one\nround-trip; cosmetic only.\n",
+        "operationId": "AuthorizationService_myCapabilities",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyCapabilities"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "The caller's OWN effective permission codes + instance-admin flag (D-SelfCapabilities).",
+        "tags": [
+          "AuthorizationService"
+        ]
+      }
+    },
+    "/authorization/v1/principal-grants": {
+      "get": {
+        "description": "List a machine subject's active grants. Gates on `service-principal.read`.",
+        "operationId": "AuthorizationService_listPrincipalGrants",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "principalId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrincipalGrantPage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List a machine subject's active grants. Gates on `service-principal.read`.",
+        "tags": [
+          "AuthorizationService"
+        ]
+      },
+      "post": {
+        "description": "Grant a permission code to a machine subject (M51 / D-ServiceIdentities), optionally confined\nto one organization. Instance-plane act gated on `service-principal.manage`.\n\nA principal never holds a ROLE: instance-scope codes such as `import.manage` are satisfiable\nonly on the instance plane, so a role could not carry them (see the PDP). Audited.\n",
+        "operationId": "AuthorizationService_grantPrincipalPermission",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantPrincipalPermissionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrincipalGrant"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Grant a permission code to a machine subject (M51 / D-ServiceIdentities), optionally confined",
+        "tags": [
+          "AuthorizationService"
+        ]
+      }
+    },
+    "/authorization/v1/principal-grants/{grantId}": {
+      "delete": {
+        "description": "Revoke-flip a principal grant (the row survives; the history stays readable). Takes effect\nimmediately — principal grants are read per request, not cached. Gates on\n`service-principal.manage`. Audited.\n",
+        "operationId": "AuthorizationService_revokePrincipalPermission",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grantId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrincipalGrant"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Revoke-flip a principal grant (the row survives; the history stays readable). Takes effect",
         "tags": [
           "AuthorizationService"
         ]
@@ -16801,6 +18053,282 @@
         },
         "tags": [
           "CompanyService"
+        ]
+      }
+    },
+    "/connectors/v1/connectors": {
+      "get": {
+        "description": "List registered connectors, token-paginated (`connector.read`).",
+        "operationId": "ConnectorService_listConnectors",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorPage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List registered connectors, token-paginated (`connector.read`).",
+        "tags": [
+          "ConnectorService"
+        ]
+      }
+    },
+    "/connectors/v1/connectors/{connectorId}": {
+      "get": {
+        "description": "Fetch one connector (`connector.read`).",
+        "operationId": "ConnectorService_getConnector",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connectorId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connector"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Fetch one connector (`connector.read`).",
+        "tags": [
+          "ConnectorService"
+        ]
+      }
+    },
+    "/connectors/v1/connectors/{connectorId}/sources": {
+      "get": {
+        "description": "The sources a connector has declared (`connector.read`).",
+        "operationId": "ConnectorService_listConnectorSources",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connectorId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorSourceList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "The sources a connector has declared (`connector.read`).",
+        "tags": [
+          "ConnectorService"
+        ]
+      }
+    },
+    "/connectors/v1/registration": {
+      "put": {
+        "description": "Idempotent self-registration (`connector.register`, machine subjects only). The core binds the\nrow to the CALLING service principal; the request cannot name another. Replaces the declared\nsource set. Returns Connector:ConnectorConflict if the code belongs to a different principal.\n",
+        "operationId": "ConnectorService_registerConnector",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterConnectorRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connector"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Idempotent self-registration (`connector.register`, machine subjects only). The core binds the",
+        "tags": [
+          "ConnectorService"
+        ]
+      }
+    },
+    "/connectors/v1/sync-runs": {
+      "get": {
+        "description": "Recent runs, newest first, token-paginated (`connector.read`). Filter by source when given,\notherwise the whole fleet's runs — the operator's \"what has been happening\" view.\n",
+        "operationId": "ConnectorService_listSyncRuns",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sourceId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncRunPage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Recent runs, newest first, token-paginated (`connector.read`). Filter by source when given,",
+        "tags": [
+          "ConnectorService"
+        ]
+      },
+      "post": {
+        "description": "Report a sync run (`connector.report`, machine subjects only), for a source of the CALLING\nconnector. Idempotent on (source, externalRunId). Returns Connector:SourceNotFound if the\ncalling connector declares no such source.\n",
+        "operationId": "ConnectorService_reportSyncRun",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportSyncRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncRun"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Report a sync run (`connector.report`, machine subjects only), for a source of the CALLING",
+        "tags": [
+          "ConnectorService"
         ]
       }
     },
@@ -24777,6 +26305,65 @@
         ]
       }
     },
+    "/identity/v1/accounts/{accountId}/login-events": {
+      "get": {
+        "description": "Page an account's login/IP security history, newest-first (M37 / D-LoginSecurityLog). Gates\non the instance-scope `account.security-log.read` (the data is pii:contact). `pageToken` is\nthe opaque keyset cursor from the previous page.\n",
+        "operationId": "IdentityFederationService_listAccountLoginEvents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginEventPage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Page an account's login/IP security history, newest-first (M37 / D-LoginSecurityLog). Gates",
+        "tags": [
+          "IdentityFederationService"
+        ]
+      }
+    },
     "/identity/v1/issuers": {
       "get": {
         "description": "List the IdP issuers configured for this instance (public fields only — no secrets), for\nbinding UIs to offer as a choice when linking an external identity. Gates on `person.read`.\n",
@@ -24849,6 +26436,273 @@
           }
         },
         "summary": "Read the person's single active account (with its linked identities), or",
+        "tags": [
+          "IdentityFederationService"
+        ]
+      }
+    },
+    "/identity/v1/service-principals": {
+      "get": {
+        "description": "Keyset page over the registry. Gates on `service-principal.read`.",
+        "operationId": "IdentityFederationService_listServicePrincipals",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServicePrincipalPage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Keyset page over the registry. Gates on `service-principal.read`.",
+        "tags": [
+          "IdentityFederationService"
+        ]
+      },
+      "post": {
+        "description": "Register a machine subject (M51 / D-ServiceIdentities). Instance-plane act gated on\n`service-principal.manage`. Returns ServicePrincipal:ServicePrincipalConflict when the code\nor the (issuer, subject) is taken — including when that pair is already a person's external\nidentity. Creates no credential: the external IdP owns the client secret.\n",
+        "operationId": "IdentityFederationService_registerServicePrincipal",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterServicePrincipalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServicePrincipal"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Register a machine subject (M51 / D-ServiceIdentities). Instance-plane act gated on",
+        "tags": [
+          "IdentityFederationService"
+        ]
+      }
+    },
+    "/identity/v1/service-principals/{principalId}": {
+      "get": {
+        "description": "Read one machine subject. Gates on `service-principal.read`.",
+        "operationId": "IdentityFederationService_getServicePrincipal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "principalId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServicePrincipal"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Read one machine subject. Gates on `service-principal.read`.",
+        "tags": [
+          "IdentityFederationService"
+        ]
+      },
+      "put": {
+        "description": "Update the display fields. Gates on `service-principal.manage`. The (issuer, subject) key is\nimmutable — see UpdateServicePrincipalRequest.\n",
+        "operationId": "IdentityFederationService_updateServicePrincipal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "principalId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateServicePrincipalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServicePrincipal"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Update the display fields. Gates on `service-principal.manage`. The (issuer, subject) key is",
+        "tags": [
+          "IdentityFederationService"
+        ]
+      }
+    },
+    "/identity/v1/service-principals/{principalId}/disable": {
+      "post": {
+        "description": "Reversible kill switch: a disabled principal fails token resolution immediately, while the\naudit rows naming it stay intact. Gates on `service-principal.manage`.\n",
+        "operationId": "IdentityFederationService_disableServicePrincipal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "principalId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServicePrincipal"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Reversible kill switch: a disabled principal fails token resolution immediately, while the",
+        "tags": [
+          "IdentityFederationService"
+        ]
+      }
+    },
+    "/identity/v1/service-principals/{principalId}/enable": {
+      "post": {
+        "description": "Re-enable a disabled machine subject. Gates on `service-principal.manage`.",
+        "operationId": "IdentityFederationService_enableServicePrincipal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "principalId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServicePrincipal"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Re-enable a disabled machine subject. Gates on `service-principal.manage`.",
         "tags": [
           "IdentityFederationService"
         ]
@@ -25185,7 +27039,7 @@
     },
     "/links/v1/objects/{rid}/search-around": {
       "get": {
-        "description": "Depth-1 neighborhood of `rid` as a flat neighbor list (the graph-explorer shape). Same\nengine as getObjectLinks, flattened; depth\u003e1 is out of scope (review-2026-09 Phase 15).\n",
+        "description": "Neighborhood of `rid` as a flat neighbor list (the graph-explorer shape). Same engine as\ngetObjectLinks, flattened. depth=1 (default) returns direct neighbors; depth=2 additionally\nexpands each direct neighbor one more hop (rows tagged hop=2, carrying viaRid), walked\nexhaustively via a keyset frontier. Per-hop authorization is identical to depth-1 (arm gate\n+ neighbor visibility trim at every hop); a neighbor the subject cannot read is neither\nreturned nor expanded.\n",
         "operationId": "LinkService_searchAround",
         "parameters": [
           {
@@ -25195,6 +27049,16 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "description": "Traversal depth, 1 (default) or 2; values \u003e 2 are clamped to 2.",
+            "in": "query",
+            "name": "depth",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
             }
           },
           {
@@ -25217,7 +27081,7 @@
             }
           },
           {
-            "description": "Opaque composite keyset token from a previous page.",
+            "description": "Opaque keyset token from a previous page (depth-1 and depth-2 tokens are distinct).",
             "in": "query",
             "name": "pageToken",
             "required": false,
@@ -25248,7 +27112,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
-        "summary": "Depth-1 neighborhood of `rid` as a flat neighbor list (the graph-explorer shape). Same",
+        "summary": "Neighborhood of `rid` as a flat neighbor list (the graph-explorer shape). Same engine as",
         "tags": [
           "LinkService"
         ]
@@ -28884,6 +30748,282 @@
         ]
       }
     },
+    "/person/v1/persons/{personId}/health-records": {
+      "get": {
+        "description": "List a person's category-level health \u0026 vulnerability records (D-HealthVulnerability, M36;\npii:special, decrypted). Requires the person.health.read need-to-know code.\n",
+        "operationId": "PersonService_listHealthRecords",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/HealthRecord"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List a person's category-level health \u0026 vulnerability records (D-HealthVulnerability, M36;",
+        "tags": [
+          "PersonService"
+        ]
+      },
+      "put": {
+        "description": "Add or replace the person's category-level health record for a kind (one active row per kind).\nRequires legalBasis (Art. 9). Category-level only — never a diagnosis.\n",
+        "operationId": "PersonService_upsertHealthRecord",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertHealthRecordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthRecord"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Add or replace the person's category-level health record for a kind (one active row per kind).",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/health-records/{recordId}": {
+      "delete": {
+        "description": "Remove a health record by id.",
+        "operationId": "PersonService_deleteHealthRecord",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "recordId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Remove a health record by id.",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/insurance": {
+      "get": {
+        "description": "List a person's insurance coverage (D-HealthVulnerability, M36; pii:sensitive).",
+        "operationId": "PersonService_listInsurance",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Insurance"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List a person's insurance coverage (D-HealthVulnerability, M36; pii:sensitive).",
+        "tags": [
+          "PersonService"
+        ]
+      },
+      "put": {
+        "description": "Add an insurance row, or replace one when id is supplied.",
+        "operationId": "PersonService_upsertInsurance",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertInsuranceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Insurance"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Add an insurance row, or replace one when id is supplied.",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/insurance/{insuranceId}": {
+      "delete": {
+        "description": "Remove an insurance row by id.",
+        "operationId": "PersonService_deleteInsurance",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "insuranceId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Remove an insurance row by id.",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
     "/person/v1/persons/{personId}/kinships": {
       "get": {
         "description": "List parent/child kinships touching the person.",
@@ -29112,6 +31252,144 @@
           }
         },
         "summary": "Remove a language the person speaks, by languoid id. Idempotent within the active set.",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/legal-records": {
+      "get": {
+        "description": "List a person's category-level criminal / arrest / court records (D-LegalRecords, M38;\npii:special, decrypted). Requires the person.legal-record.read need-to-know code. Sealed/expunged\nrecords are withheld unless the caller also holds person.legal-record.read-suppressed.\n",
+        "operationId": "PersonService_listLegalRecords",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LegalRecord"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List a person's category-level criminal / arrest / court records (D-LegalRecords, M38;",
+        "tags": [
+          "PersonService"
+        ]
+      },
+      "put": {
+        "description": "Add a legal record, or replace one when id is supplied. Requires disposition (arrest ≠ guilt) and\nlegalBasis (Art. 10). Category-level only — never a full charge sheet.\n",
+        "operationId": "PersonService_upsertLegalRecord",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertLegalRecordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegalRecord"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Add a legal record, or replace one when id is supplied. Requires disposition (arrest ≠ guilt) and",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
+    "/person/v1/persons/{personId}/legal-records/{recordId}": {
+      "delete": {
+        "description": "Remove a legal record by id.",
+        "operationId": "PersonService_deleteLegalRecord",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "personId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "recordId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Remove a legal record by id.",
         "tags": [
           "PersonService"
         ]
@@ -37102,6 +39380,236 @@
         "summary": "Register (or transfer) the vehicle to a new owner; closes any active registration first.",
         "tags": [
           "VehicleService"
+        ]
+      }
+    },
+    "/wiring/v1/catalogs/countries": {
+      "get": {
+        "description": "The country reference catalog (`wiring.catalog.read`).",
+        "operationId": "WiringService_listCountries",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CountryList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "The country reference catalog (`wiring.catalog.read`).",
+        "tags": [
+          "WiringService"
+        ]
+      }
+    },
+    "/wiring/v1/catalogs/languoids": {
+      "get": {
+        "description": "The Glottolog languoid catalog, keyset-paginated (`wiring.catalog.read`).",
+        "operationId": "WiringService_listLanguoids",
+        "parameters": [
+          {
+            "description": "Optional name/code substring filter.",
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LanguoidPage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "The Glottolog languoid catalog, keyset-paginated (`wiring.catalog.read`).",
+        "tags": [
+          "WiringService"
+        ]
+      }
+    },
+    "/wiring/v1/catalogs/legal-basis": {
+      "get": {
+        "description": "The GDPR lawful-basis catalog (`wiring.catalog.read`).",
+        "operationId": "WiringService_listLegalBasisKinds",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegalBasisList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "The GDPR lawful-basis catalog (`wiring.catalog.read`).",
+        "tags": [
+          "WiringService"
+        ]
+      }
+    },
+    "/wiring/v1/catalogs/writing-systems": {
+      "get": {
+        "description": "The ISO-15924 writing-system catalog (`wiring.catalog.read`).",
+        "operationId": "WiringService_listWritingSystems",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WritingSystemList"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "The ISO-15924 writing-system catalog (`wiring.catalog.read`).",
+        "tags": [
+          "WiringService"
+        ]
+      }
+    },
+    "/wiring/v1/resolve": {
+      "post": {
+        "description": "Resolve natural keys to RIDs within one catalog (`wiring.resolve`).",
+        "operationId": "WiringService_resolveKeys",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolveResponse"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Resolve natural keys to RIDs within one catalog (`wiring.resolve`).",
+        "tags": [
+          "WiringService"
+        ]
+      }
+    },
+    "/wiring/v1/self": {
+      "get": {
+        "description": "The calling connector's own registry row + its sources with cursors (`wiring.cursor.read`).\nReturns Wiring:ConnectorNotRegistered if the principal has not registered a connector yet.\n",
+        "operationId": "WiringService_readSelf",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WiringSelf"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "The calling connector's own registry row + its sources with cursors (`wiring.cursor.read`).",
+        "tags": [
+          "WiringService"
         ]
       }
     }

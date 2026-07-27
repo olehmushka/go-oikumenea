@@ -25,6 +25,13 @@ type AuthorizationServiceClient interface {
 	Authorize(ctx context.Context, authHeader bearertoken.Token, requestArg AuthorizeRequest) (AuthorizeResponse, error)
 	// Batch decisions for one subject, with optional decision-explain (DS-16).
 	AuthorizeBatch(ctx context.Context, authHeader bearertoken.Token, requestArg BatchAuthorizeRequest) (BatchAuthorizeResponse, error)
+	/*
+	   The caller's OWN effective permission codes + instance-admin flag (D-SelfCapabilities).
+	   Self-only: subject taken from the request context, NOT gated on assignment.read. Machine
+	   subjects get an empty set. Lets an unprivileged console hide modules it cannot read in one
+	   round-trip; cosmetic only.
+	*/
+	MyCapabilities(ctx context.Context, authHeader bearertoken.Token) (MyCapabilities, error)
 	// Create a custom role (instance-scope role.create). Returns Role:RoleConflict if the code is taken.
 	CreateRole(ctx context.Context, authHeader bearertoken.Token, requestArg CreateRoleRequest) (Role, error)
 	// List roles, token-paginated (role.read).
@@ -103,6 +110,23 @@ func (c *authorizationServiceClient) AuthorizeBatch(ctx context.Context, authHea
 	}
 	if returnVal == nil {
 		return *new(BatchAuthorizeResponse), werror.ErrorWithContextParams(ctx, "authorizeBatch response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *authorizationServiceClient) MyCapabilities(ctx context.Context, authHeader bearertoken.Token) (MyCapabilities, error) {
+	var returnVal *MyCapabilities
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("MyCapabilities"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/authorization/v1/me/capabilities"))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(MyCapabilities), werror.WrapWithContextParams(ctx, err, "myCapabilities failed")
+	}
+	if returnVal == nil {
+		return *new(MyCapabilities), werror.ErrorWithContextParams(ctx, "myCapabilities response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -365,6 +389,13 @@ type AuthorizationServiceClientWithAuth interface {
 	Authorize(ctx context.Context, requestArg AuthorizeRequest) (AuthorizeResponse, error)
 	// Batch decisions for one subject, with optional decision-explain (DS-16).
 	AuthorizeBatch(ctx context.Context, requestArg BatchAuthorizeRequest) (BatchAuthorizeResponse, error)
+	/*
+	   The caller's OWN effective permission codes + instance-admin flag (D-SelfCapabilities).
+	   Self-only: subject taken from the request context, NOT gated on assignment.read. Machine
+	   subjects get an empty set. Lets an unprivileged console hide modules it cannot read in one
+	   round-trip; cosmetic only.
+	*/
+	MyCapabilities(ctx context.Context) (MyCapabilities, error)
 	// Create a custom role (instance-scope role.create). Returns Role:RoleConflict if the code is taken.
 	CreateRole(ctx context.Context, requestArg CreateRoleRequest) (Role, error)
 	// List roles, token-paginated (role.read).
@@ -418,6 +449,10 @@ func (c *authorizationServiceClientWithAuth) Authorize(ctx context.Context, requ
 
 func (c *authorizationServiceClientWithAuth) AuthorizeBatch(ctx context.Context, requestArg BatchAuthorizeRequest) (BatchAuthorizeResponse, error) {
 	return c.client.AuthorizeBatch(ctx, c.authHeader, requestArg)
+}
+
+func (c *authorizationServiceClientWithAuth) MyCapabilities(ctx context.Context) (MyCapabilities, error) {
+	return c.client.MyCapabilities(ctx, c.authHeader)
 }
 
 func (c *authorizationServiceClientWithAuth) CreateRole(ctx context.Context, requestArg CreateRoleRequest) (Role, error) {
@@ -495,6 +530,14 @@ func (c *authorizationServiceClientWithTokenProvider) AuthorizeBatch(ctx context
 		return *new(BatchAuthorizeResponse), err
 	}
 	return c.client.AuthorizeBatch(ctx, bearertoken.Token(token), requestArg)
+}
+
+func (c *authorizationServiceClientWithTokenProvider) MyCapabilities(ctx context.Context) (MyCapabilities, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(MyCapabilities), err
+	}
+	return c.client.MyCapabilities(ctx, bearertoken.Token(token))
 }
 
 func (c *authorizationServiceClientWithTokenProvider) CreateRole(ctx context.Context, requestArg CreateRoleRequest) (Role, error) {

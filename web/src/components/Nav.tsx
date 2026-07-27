@@ -2,50 +2,51 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { EXPLORABLE_TYPES } from "@/lib/ontology/registry";
+import { EXPLORABLE_TYPES, readCodeFor } from "@/lib/ontology/registry";
+import { type Capabilities, NO_CAPS, holds } from "@/lib/ontology/caps";
 import { useT } from "@/lib/locale";
 import { tg } from "@/lib/messages";
 
 // Tools are surfaces that aren't object-table shaped (PDP check, tree editors, the log). Label/hint
 // are message-catalog keys (translated via useT) so the nav follows the UI locale.
 //
-// `requires` names a permission code the visitor must hold for the entry to be OFFERED. It is a UX
-// affordance only — the server decides regardless (see lib/api/can.ts). This component is a client
-// component and cannot ask the PDP itself, so the dashboard layout resolves the codes server-side and
-// passes the outcome in via `grants`. An entry with no `requires` is always shown, which is the
-// console's historical behaviour for everything else.
+// `requires` names the `<module>.read` code the visitor must hold for the entry to be OFFERED. It is a
+// UX affordance only — the server decides regardless (see lib/api/can.ts). This is a client component
+// and cannot ask the API itself, so the dashboard layout fetches the caller's capabilities server-side
+// (D-SelfCapabilities) and passes them in via `caps`; we filter locally with `holds()`. An entry with
+// no `requires` is always shown (e.g. the ontology browser, which gates its own cards).
 const TOOLS: { href: string; key: string; requires?: string }[] = [
   { href: "/ontology", key: "nav.ontology" },
-  { href: "/authorize", key: "nav.authorize" },
-  { href: "/roles", key: "nav.roles" },
+  { href: "/authorize", key: "nav.authorize", requires: "assignment.read" },
+  { href: "/roles", key: "nav.roles", requires: "role.read" },
   {
     href: "/service-principals",
     key: "nav.servicePrincipals",
     requires: "service-principal.read",
   },
-  { href: "/organizations", key: "nav.organizations" },
-  { href: "/domains", key: "nav.domains" },
-  { href: "/graphs", key: "nav.graphs" },
-  { href: "/memberships", key: "nav.memberships" },
-  { href: "/orders", key: "nav.orders" },
-  { href: "/documents", key: "nav.documents" },
-  { href: "/ranks", key: "nav.ranks" },
-  { href: "/locations", key: "nav.locations" },
-  { href: "/education", key: "nav.education" },
-  { href: "/companies", key: "nav.companies" },
-  { href: "/vehicles", key: "nav.vehicles" },
-  { href: "/finance", key: "nav.finance" },
-  { href: "/external-orgs", key: "nav.externalOrgs" },
-  { href: "/religion", key: "nav.religion" },
-  { href: "/localization", key: "nav.localization" },
-  { href: "/legal-basis", key: "nav.legalBasis" },
+  { href: "/organizations", key: "nav.organizations", requires: "organization.read" },
+  { href: "/domains", key: "nav.domains", requires: "domain.read" },
+  { href: "/graphs", key: "nav.graphs", requires: "graph.read" },
+  { href: "/memberships", key: "nav.memberships", requires: "membership.read" },
+  { href: "/orders", key: "nav.orders", requires: "order.read" },
+  { href: "/documents", key: "nav.documents", requires: "document.read" },
+  { href: "/ranks", key: "nav.ranks", requires: "rank.scheme.read" },
+  { href: "/locations", key: "nav.locations", requires: "location.read" },
+  { href: "/education", key: "nav.education", requires: "education.read" },
+  { href: "/companies", key: "nav.companies", requires: "company.read" },
+  { href: "/vehicles", key: "nav.vehicles", requires: "vehicle.read" },
+  { href: "/finance", key: "nav.finance", requires: "finance.read" },
+  { href: "/external-orgs", key: "nav.externalOrgs", requires: "externalorg.read" },
+  { href: "/religion", key: "nav.religion", requires: "religion.read" },
+  { href: "/localization", key: "nav.localization", requires: "locale.read" },
+  { href: "/legal-basis", key: "nav.legalBasis", requires: "legal-basis.read" },
   { href: "/imports", key: "nav.imports" },
   {
     href: "/connectors",
     key: "nav.connectors",
     requires: "connector.read",
   },
-  { href: "/audit", key: "nav.audit" },
+  { href: "/audit", key: "nav.audit", requires: "audit.read" },
 ];
 
 function Item({
@@ -73,14 +74,15 @@ function Item({
 }
 
 /**
- * `grants` maps a permission code → whether the visitor holds it, resolved server-side by the
- * dashboard layout. Absent (or an unlisted code) means "not held", so a gated entry stays hidden if
- * the check could not be made — failing closed on a *display* decision.
+ * `caps` is the caller's own effective permissions, fetched server-side by the dashboard layout
+ * (D-SelfCapabilities). A gated entry (nav tool or explore type) is drawn only when `holds()` says so;
+ * failure to fetch defaults to NO_CAPS, hiding gated entries — failing closed on a *display* decision.
  */
-export function Nav({ grants = {} }: { grants?: Record<string, boolean> }) {
+export function Nav({ caps = NO_CAPS }: { caps?: Capabilities }) {
   const pathname = usePathname();
   const tr = useT();
-  const offered = TOOLS.filter((item) => !item.requires || grants[item.requires] === true);
+  const offered = TOOLS.filter((item) => holds(caps, item.requires));
+  const explorable = EXPLORABLE_TYPES.filter((type) => holds(caps, readCodeFor(type)));
   return (
     <nav className="flex flex-col gap-0.5 p-3">
       <Item href="/" label={tr("nav.overview")} hint={tr("nav.overview.hint")} active={pathname === "/"} />
@@ -88,7 +90,7 @@ export function Nav({ grants = {} }: { grants?: Record<string, boolean> }) {
       <div className="mt-4 mb-1 px-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
         {tr("nav.section.explore")}
       </div>
-      {EXPLORABLE_TYPES.map((type) => {
+      {explorable.map((type) => {
         const href = `/explore/${type.type}`;
         return (
           <Item

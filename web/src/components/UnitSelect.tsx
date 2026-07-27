@@ -2,8 +2,12 @@
 
 // Org-scoped unit picker (D-WebUI UX). The tenant listUnits endpoint REQUIRES an org RID and has no
 // server-side text search (M40), so this cascades: pick an organization, then type-to-filter its units
-// (client-side over one page of ≤200). Emits the selected unit RID via onChange — a drop-in replacement
-// for the raw "org unit RID" text inputs. Controlled by the parent through onChange only.
+// (client-side over one page of ≤200). It is the correct picker for units everywhere a flat list would
+// 400 (a fully-unscoped `/tenant/v1/units` is rejected) — EntitySelect delegates kind="unit" here.
+//
+// Integration modes (mirrors EntitySelect):
+//  - `name`     → renders a hidden <input name=…> holding the RID, so FormData-based forms work.
+//  - `onChange` → controlled callback with the selected RID (lookup filters / EdgeManager).
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api/client";
@@ -15,9 +19,17 @@ type Unit = { id: string; code?: string; name: LocaleMap };
 
 export function UnitSelect({
   onChange,
+  name,
+  defaultValue = "",
+  required = false,
+  allowEmpty = false,
   placeholder = "search a unit…",
 }: {
-  onChange: (unitId: string) => void;
+  onChange?: (unitId: string) => void;
+  name?: string;
+  defaultValue?: string;
+  required?: boolean;
+  allowEmpty?: boolean;
   placeholder?: string;
 }) {
   const { locale } = useLocale();
@@ -28,8 +40,16 @@ export function UnitSelect({
   const [loadingUnits, setLoadingUnits] = useState(false);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Unit | null>(null);
+  // The emitted RID. Seeded from defaultValue so a pre-set value (e.g. an active filter) survives mount.
+  const [value, setValue] = useState(defaultValue);
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
+  const orgTouched = useRef(false);
+
+  const emit = (id: string) => {
+    setValue(id);
+    onChange?.(id);
+  };
 
   useEffect(() => {
     api.tenant
@@ -46,11 +66,13 @@ export function UnitSelect({
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
 
-  // Reload the org's units (and reset the current pick) whenever the organization changes.
+  // Reload the org's units (and reset the current pick) whenever the user changes the organization.
+  // Skip the initial mount so a controlled defaultValue isn't clobbered by an onChange("").
   useEffect(() => {
+    if (!orgTouched.current) return;
     setSelected(null);
     setQuery("");
-    onChange("");
+    emit("");
     if (!orgId) {
       setUnits([]);
       return;
@@ -80,17 +102,29 @@ export function UnitSelect({
     setSelected(u);
     setOpen(false);
     setQuery("");
-    onChange(u.id);
+    emit(u.id);
   }
   function clear() {
     setSelected(null);
     setQuery("");
-    onChange("");
+    emit("");
   }
+
+  // A value with no loaded Unit object (a preselected defaultValue) still shows a clearable chip.
+  const hasChip = selected || (value && !orgTouched.current);
+  const chipLabel = selected ? pickLabel(selected.name, locale) || selected.code : value;
 
   return (
     <div className="flex gap-2">
-      <select className="input w-40 shrink-0" value={orgId} onChange={(e) => setOrgId(e.target.value)}>
+      {name ? <input type="hidden" name={name} value={value} /> : null}
+      <select
+        className="input w-40 shrink-0"
+        value={orgId}
+        onChange={(e) => {
+          orgTouched.current = true;
+          setOrgId(e.target.value);
+        }}
+      >
         <option value="">{tr("— organization —")}</option>
         {orgs.map((o) => (
           <option key={o.id} value={o.id}>
@@ -99,15 +133,17 @@ export function UnitSelect({
         ))}
       </select>
       <div className="relative flex-1" ref={boxRef}>
-        {selected ? (
+        {hasChip ? (
           <div className="flex items-center gap-2">
-            <span className="input flex-1 truncate bg-slate-50" title={pickLabel(selected.name, locale)}>
-              {pickLabel(selected.name, locale) || selected.code}
-              {selected.code ? <span className="ml-2 font-mono text-xs text-slate-400">{selected.code}</span> : null}
+            <span className="input flex-1 truncate bg-slate-50" title={chipLabel}>
+              {chipLabel}
+              {selected?.code ? <span className="ml-2 font-mono text-xs text-slate-400">{selected.code}</span> : null}
             </span>
-            <button type="button" className="text-xs text-red-600 hover:underline" onClick={clear}>
-              {tr("clear")}
-            </button>
+            {(allowEmpty || selected) && (
+              <button type="button" className="text-xs text-red-600 hover:underline" onClick={clear}>
+                {tr("clear")}
+              </button>
+            )}
           </div>
         ) : (
           <input
@@ -115,6 +151,7 @@ export function UnitSelect({
             placeholder={!orgId ? tr("pick an organization first") : loadingUnits ? tr("Loading…") : tr(placeholder)}
             value={query}
             disabled={!orgId}
+            required={required && !value}
             autoComplete="off"
             onFocus={() => setOpen(true)}
             onChange={(e) => {
@@ -123,7 +160,7 @@ export function UnitSelect({
             }}
           />
         )}
-        {open && orgId && !selected ? (
+        {open && orgId && !hasChip ? (
           <div className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md border border-slate-200 bg-white shadow-lg">
             {loadingUnits ? (
               <div className="px-3 py-2 text-sm text-slate-400">{tr("Loading…")}</div>

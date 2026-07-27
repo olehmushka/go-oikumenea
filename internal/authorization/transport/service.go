@@ -87,6 +87,26 @@ func (s Service) AuthorizeBatch(ctx context.Context, token bearertoken.Token, re
 	return authzapi.BatchAuthorizeResponse{Decisions: out}, nil
 }
 
+// MyCapabilities returns the CALLER's own effective permission codes + instance-admin flag
+// (D-SelfCapabilities). Deliberately NOT gated on assignment.read (contrast Authorize above): it is a
+// self-only read — the subject is taken from the request context, never a parameter, and it exposes no
+// other subject's access nor any assignment structure. A machine/service subject (no person RID) gets
+// an empty set. Cosmetic UI gating only; the PDP still re-decides every guarded operation.
+func (s Service) MyCapabilities(ctx context.Context, token bearertoken.Token) (authzapi.MyCapabilities, error) {
+	subject := pep.Subject(ctx)
+	if subject == "" {
+		return authzapi.MyCapabilities{Permissions: []string{}, IsInstanceAdmin: false}, nil
+	}
+	perms, isAdmin, err := s.app.EffectivePermissions(ctx, subject)
+	if err != nil {
+		return authzapi.MyCapabilities{}, s.mapError(ctx, err)
+	}
+	if perms == nil {
+		perms = []string{}
+	}
+	return authzapi.MyCapabilities{Permissions: perms, IsInstanceAdmin: isAdmin}, nil
+}
+
 // ---------------------------------------------------------------- roles
 
 func (s Service) CreateRole(ctx context.Context, token bearertoken.Token, req authzapi.CreateRoleRequest) (authzapi.Role, error) {

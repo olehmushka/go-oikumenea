@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Command } from "cmdk";
-import { EXPLORABLE_TYPES, typeDef } from "@/lib/ontology/registry";
+import { EXPLORABLE_TYPES, typeDef, readCodeFor } from "@/lib/ontology/registry";
+import { type Capabilities, holds } from "@/lib/ontology/caps";
 import { parseRid, ridType } from "@/lib/ontology/rid";
 import { api } from "@/lib/api/client";
 import { pushRecent } from "@/lib/ontology/recents";
@@ -47,7 +48,7 @@ function hitKind(hit: searchapi.ISearchHit): string {
   return typeDef(token)?.label ?? hit.objectType;
 }
 
-export function CommandPalette() {
+export function CommandPalette({ caps }: { caps: Capabilities }) {
   const router = useRouter();
   // Subscribe to the UI locale so navigation/action labels re-render on switch (object hit labels
   // come from the server in the default locale).
@@ -124,17 +125,23 @@ export function CommandPalette() {
   const ridKnown = ridHit && typeDef(ridHit.type);
 
   const q = query.trim().toLowerCase();
+  // Only offer navigation the caller can actually use (D-SelfCapabilities). `requires: undefined`
+  // means ungated (Overview, Ontology browser). Cosmetic only — the server re-decides on navigation.
   const navMatches = [
-    ...EXPLORABLE_TYPES.map((t) => ({ label: tg(t.labelPlural), href: `/explore/${t.type}` })),
-    { label: tg("Overview"), href: "/" },
-    { label: tg("Ontology"), href: "/ontology" },
-    { label: tg("Authorize"), href: "/authorize" },
-    { label: tg("Memberships"), href: "/memberships" },
-    { label: tg("Orders"), href: "/orders" },
-    { label: tg("Ranks"), href: "/ranks" },
-    { label: tg("Localization"), href: "/localization" },
-    { label: tg("Audit"), href: "/audit" },
-  ].filter((n) => !q || n.label.toLowerCase().includes(q));
+    ...EXPLORABLE_TYPES.map((t) => ({
+      label: tg(t.labelPlural),
+      href: `/explore/${t.type}`,
+      requires: readCodeFor(t),
+    })),
+    { label: tg("Overview"), href: "/", requires: undefined },
+    { label: tg("Ontology"), href: "/ontology", requires: undefined },
+    { label: tg("Authorize"), href: "/authorize", requires: "assignment.read" },
+    { label: tg("Memberships"), href: "/memberships", requires: "membership.read" },
+    { label: tg("Orders"), href: "/orders", requires: "order.read" },
+    { label: tg("Ranks"), href: "/ranks", requires: "rank.scheme.read" },
+    { label: tg("Localization"), href: "/localization", requires: "locale.read" },
+    { label: tg("Audit"), href: "/audit", requires: "audit.read" },
+  ].filter((n) => holds(caps, n.requires) && (!q || n.label.toLowerCase().includes(q)));
 
   const actionMatches = QUICK_ACTIONS.filter((a) => !q || a.label.toLowerCase().includes(q));
 

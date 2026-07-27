@@ -39,6 +39,7 @@ planned-tier (M16–M45) decisions live in [`roadmap-decisions.md`](roadmap-deci
 | [D-Audit](#d-audit--every-write-is-audited-audit-reads-are-permission-scoped) | Every write is audited; audit reads are permission-scoped |
 | [D-Bootstrap](#d-bootstrap--install-time-bootstrap-of-the-first-instance-admin) | Install-time bootstrap of the first instance admin |
 | [D-BaseRoles](#d-baseroles--seeded-base-roles-reads-are-explicit-grants) | Seeded base roles; reads are explicit grants |
+| [D-SelfCapabilities](#d-selfcapabilities--self-only-capability-introspection-get-mecapabilities-resolves-oq-5) | Self-only capability introspection (`GET /me/capabilities`) |
 | [D-JIT](#d-jit--just-in-time-provisioning-is-link-on-match-only) | Just-in-time provisioning is link-on-match only |
 | [D-DirectoryGraphs](#d-directorygraphs--graphs-may-be-directory-only-pdp-enforced-flag) | Graphs may be directory-only (PDP-enforced flag) |
 | [D-EdgePerms](#d-edgeperms--edge-management-is-per-graph-code-defined-permissions--broad-fallback) | Edge management is per-graph (code-defined permissions + broad fallback) |
@@ -491,7 +492,8 @@ Instance-only permissions (`role.create/update/delete`, `rank.scheme.manage`, `g
 **Read access is an explicit grant** — there is no implicit "any authenticated caller may read"
 exemption; broad read is achieved by assigning `unit-reader` at a root with `subtree` scope. For the
 same reason, `POST /authorize` and `/authorize/batch` require **`assignment.read`** with **no "self"
-exemption** (OQ-5).
+exemption** for arbitrary `(subject, action, unit)` questions (the narrow self-only carve-out is
+**D-SelfCapabilities**, below).
 
 **Why.** Mirrors the graduated, namespace-scoped Kubernetes defaults (`view`/`edit`/`admin`, with
 `cluster-admin` ≡ the instance plane) — a natural fit for `unit`/`subtree` scoping. Explicit reads +
@@ -502,6 +504,28 @@ reference reads breaks no normal rendering.
 **Consequence.** See [authorization](../modules/authorization.md) (base-role enumeration, the
 `rank.scheme.read` catalog addition, the `/authorize` permission). Base roles are immutable by
 instance admins (`is_base`).
+
+### D-SelfCapabilities — Self-only capability introspection (`GET /me/capabilities`, resolves OQ-5)
+
+**Decision.** Add one narrow, authenticated-but-**ungated** endpoint, `GET
+/authorization/v1/me/capabilities`, returning `MyCapabilities { permissions: list<string>,
+isInstanceAdmin: boolean }` — the flat, deduped union of the **caller's own** active-grant permission
+codes plus whether they are an instance admin. The subject is taken from the request context (never a
+parameter); machine/service-principal subjects receive an empty set. This is distinct from `POST
+/authorize`, which stays gated on `assignment.read`: `/me/capabilities` answers only "what do *I*
+hold?", never a `(subject, action, unit)` question, and exposes no assignment structure or other
+subject.
+
+**Why.** The console must hide modules a user cannot read. The prior path — one `POST /authorize`
+probe per module code — fails closed for every non-admin (the probe itself needs `assignment.read`),
+so it could only ever hide the two admin tools. A user learning their *own* effective permission
+codes is standard, low-sensitivity self-introspection; the general-question sensitivity that motivated
+"no self-exemption" (D-BaseRoles) does not apply. Resolves the OQ-5 deferral.
+
+**Consequence.** UI gating built on this is **cosmetic only** — every endpoint still re-decides
+through the PDP (D-NoRLS, D-RLSDefenseInDepth); the capability list permits nothing. The frontend
+maps each object-type/tool to its `<module>.read` code and filters nav/palette/explorer/ontology by
+the returned set (see [authorization](../modules/authorization.md); [D-WebUI](#d-webui--an-optional-standalone-nextjs-admin-ui-reverses-the-api-only-no-ui-drop)).
 
 ### D-JIT — Just-in-time provisioning is link-on-match only
 
