@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { api } from "@/lib/api/client";
 import { useLocale, useTg } from "@/lib/locale";
 import { pickLabel } from "@/lib/i18n";
+import { UnitSelect } from "@/components/UnitSelect";
 
 /**
  * Searchable entity picker (D-WebUI UX): replaces free-text RID inputs with a type-to-filter
@@ -107,15 +108,7 @@ const REGISTRY: Record<EntityKind, KindConfig> = {
   },
 };
 
-export function EntitySelect({
-  kind,
-  name,
-  defaultValue = "",
-  required = false,
-  placeholder = "Search…",
-  allowEmpty = false,
-  onChange,
-}: {
+type EntitySelectProps = {
   kind: EntityKind;
   name?: string;
   defaultValue?: string;
@@ -123,7 +116,39 @@ export function EntitySelect({
   placeholder?: string;
   allowEmpty?: boolean;
   onChange?: (id: string) => void;
-}) {
+};
+
+/**
+ * Units are org-scoped: the API rejects a flat `/tenant/v1/units` listing (D-TenantOrganizations,
+ * M40), so unit pickers delegate to the org→units cascade in UnitSelect. Every other kind is a flat
+ * global list and uses the searchable dropdown below. Branching in a wrapper (not an early return)
+ * keeps each component's hooks unconditional.
+ */
+export function EntitySelect(props: EntitySelectProps) {
+  if (props.kind === "unit") {
+    return (
+      <UnitSelect
+        name={props.name}
+        defaultValue={props.defaultValue}
+        required={props.required}
+        allowEmpty={props.allowEmpty}
+        placeholder={props.placeholder}
+        onChange={props.onChange}
+      />
+    );
+  }
+  return <FlatEntitySelect {...props} />;
+}
+
+function FlatEntitySelect({
+  kind,
+  name,
+  defaultValue = "",
+  required = false,
+  placeholder = "Search…",
+  allowEmpty = false,
+  onChange,
+}: EntitySelectProps) {
   const { locale } = useLocale();
   const tr = useTg();
   const cfg = REGISTRY[kind];

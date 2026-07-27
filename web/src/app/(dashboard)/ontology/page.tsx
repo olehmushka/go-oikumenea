@@ -1,13 +1,17 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/ui";
 import { TypeBadge } from "@/components/ontology/TypeBadge";
-import { OBJECT_TYPES, type ObjectTypeDef } from "@/lib/ontology/registry";
+import { OBJECT_TYPES, readCodeFor, type ObjectTypeDef } from "@/lib/ontology/registry";
+import { holds } from "@/lib/ontology/caps";
+import { capabilities } from "@/lib/api/capabilities";
 import { T } from "@/components/T";
 
 // The human-facing mirror of D-Ontology (docs/ontology-mapping.md): the Object/Link type registry the
-// whole console is built on. Each type links to its explorer (when globally listable).
-export default function OntologyPage() {
-  const defs = Object.values(OBJECT_TYPES);
+// whole console is built on. Each type links to its explorer (when globally listable). Types the
+// caller cannot read are hidden (D-SelfCapabilities) — cosmetic; the server re-decides on every fetch.
+export default async function OntologyPage() {
+  const caps = await capabilities();
+  const defs = Object.values(OBJECT_TYPES).filter((d) => holds(caps, readCodeFor(d)));
   const objects = defs.filter((d) => d.kind === "object");
   const links = defs.filter((d) => d.kind === "link");
 

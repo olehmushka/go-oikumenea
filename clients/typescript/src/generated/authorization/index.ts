@@ -18,6 +18,7 @@ export * from "./grantPrincipalPermissionRequest";
 export * from "./instanceAdmin";
 export * from "./instanceAdminConflict";
 export * from "./instanceAdminNotFound";
+export * from "./myCapabilities";
 export * from "./nonAuthorityBearingGraph";
 export * from "./permissionDenied";
 export * from "./principalGrant";

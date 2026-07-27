@@ -13,6 +13,7 @@ import type { ActionType } from "@/lib/api/types";
 import { OBJECT_TYPES, type Row } from "@/lib/ontology/registry";
 import { toLinkGroups } from "@/lib/ontology/links";
 import { parseRid } from "@/lib/ontology/rid";
+import { errorInfo } from "@/lib/api/errors";
 import { T } from "@/components/T";
 
 // Types that already have a richer bespoke editor page — land traversal there; the generic view below
@@ -66,6 +67,32 @@ export default async function ObjectPage({ params }: { params: Promise<{ rid: st
   }
 
   if (error || !obj) {
+    // Direct navigation to an object the caller can't see: the backend PDP / shadow gate returns 403
+    // (denied) or 404 (trimmed to invisible). Render a friendly state instead of a raw error — list
+    // views never surface these because the backend already trims them (D-VisibilityScope).
+    const { status } = errorInfo(error);
+    if (status === 403 || status === 404) {
+      return (
+        <div>
+          <PageHeader title={<T>{def.label}</T>} />
+          <Card>
+            <h2 className="mb-1 text-sm font-semibold text-slate-900">
+              {status === 403 ? <T>You don&apos;t have access to this object</T> : <T>Object not found</T>}
+            </h2>
+            <p className="text-sm text-slate-500">
+              {status === 403 ? (
+                <T>Your permissions don&apos;t let you view this record. If you think this is a mistake, ask an administrator for the relevant access.</T>
+              ) : (
+                <T>This object doesn&apos;t exist, or it isn&apos;t visible to you.</T>
+              )}
+            </p>
+            <Link href={`/explore/${def.type}`} className="mt-3 inline-block text-sm text-indigo-600 hover:underline">
+              ← <T>All</T> <span className="lowercase"><T>{def.labelPlural}</T></span>
+            </Link>
+          </Card>
+        </div>
+      );
+    }
     return (
       <div>
         <PageHeader title={<T>{def.label}</T>} />

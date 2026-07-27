@@ -465,6 +465,55 @@ func (o *InstanceAdmin) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 /*
+The CALLER's own effective authorization state (D-SelfCapabilities). `permissions` is the
+flat, deduped, sorted union of the caller's active-grant permission codes; `isInstanceAdmin`
+true means they hold everything and `permissions` is left empty (treat as show-all). A
+machine/service subject receives an empty set with isInstanceAdmin false. Cosmetic UI gating
+only — the PDP still re-decides every request.
+*/
+type MyCapabilities struct {
+	Permissions     []string `json:"permissions"`
+	IsInstanceAdmin bool     `json:"isInstanceAdmin"`
+}
+
+func (o MyCapabilities) MarshalJSON() ([]byte, error) {
+	if o.Permissions == nil {
+		o.Permissions = make([]string, 0)
+	}
+	type _tmpMyCapabilities MyCapabilities
+	return safejson.Marshal(_tmpMyCapabilities(o))
+}
+
+func (o *MyCapabilities) UnmarshalJSON(data []byte) error {
+	type _tmpMyCapabilities MyCapabilities
+	var rawMyCapabilities _tmpMyCapabilities
+	if err := safejson.Unmarshal(data, &rawMyCapabilities); err != nil {
+		return err
+	}
+	if rawMyCapabilities.Permissions == nil {
+		rawMyCapabilities.Permissions = make([]string, 0)
+	}
+	*o = MyCapabilities(rawMyCapabilities)
+	return nil
+}
+
+func (o MyCapabilities) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *MyCapabilities) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
 One permission code held by a MACHINE subject (M51 / D-ServiceIdentities) — the reified
 PRINCIPAL_GRANT link. FLAT by construction: no target unit, no scope, no graph, because a
 service principal has no unit reach.

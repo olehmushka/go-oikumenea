@@ -17,6 +17,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"sort"
 	"strings"
 
 	"github.com/google/uuid"
@@ -201,6 +202,33 @@ func (s *Service) HoldsPermissionAnywhere(ctx context.Context, subjectPersonID, 
 		}
 	}
 	return false, nil
+}
+
+// EffectivePermissions returns the flat, deduped, sorted union of the subject's active-grant
+// permission codes plus whether they are an instance admin. It is the self-serve introspection
+// primitive behind GET /me/capabilities (D-SelfCapabilities): a caller learning their OWN effective
+// codes, never a (subject, action, unit) question. For an instance admin the union is not
+// enumerated — the flag says "holds everything" and the caller (UI) treats it as show-all.
+func (s *Service) EffectivePermissions(ctx context.Context, subjectPersonID string) ([]string, bool, error) {
+	isAdmin, grants, err := s.authorityFor(ctx, subjectPersonID)
+	if err != nil {
+		return nil, false, err
+	}
+	if isAdmin {
+		return nil, true, nil
+	}
+	set := map[domain.Permission]struct{}{}
+	for _, g := range grants {
+		for p := range g.Perms {
+			set[p] = struct{}{}
+		}
+	}
+	perms := make([]string, 0, len(set))
+	for p := range set {
+		perms = append(perms, string(p))
+	}
+	sort.Strings(perms)
+	return perms, false, nil
 }
 
 // NOTE (review-2026-07 R-02): EffectiveReach and RLSStateFor are GONE. Nothing on the request path

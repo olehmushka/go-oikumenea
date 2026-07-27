@@ -173,6 +173,16 @@ types:
       BatchAuthorizeResponse:
         fields:
           decisions: list<AuthorizeResponse>
+      MyCapabilities:
+        docs: |
+          The CALLER's own effective authorization state (D-SelfCapabilities). `permissions` is the
+          flat, deduped, sorted union of the caller's active-grant permission codes; `isInstanceAdmin`
+          true means they hold everything and `permissions` is left empty (treat as show-all). A
+          machine/service subject receives an empty set with isInstanceAdmin false. Cosmetic UI gating
+          only — the PDP still re-decides every request.
+        fields:
+          permissions: list<string>
+          isInstanceAdmin: boolean
       PrincipalGrant:
         docs: |
           One permission code held by a MACHINE subject (M51 / D-ServiceIdentities) — the reified
@@ -327,6 +337,14 @@ services:
         args:
           request: BatchAuthorizeRequest
         returns: BatchAuthorizeResponse
+      myCapabilities:
+        http: GET /me/capabilities
+        docs: |
+          The caller's OWN effective permission codes + instance-admin flag (D-SelfCapabilities).
+          Self-only: subject taken from the request context, NOT gated on assignment.read. Machine
+          subjects get an empty set. Lets an unprivileged console hide modules it cannot read in one
+          round-trip; cosmetic only.
+        returns: MyCapabilities
       createRole:
         http: POST /roles
         docs: Create a custom role (instance-scope role.create). Returns Role:RoleConflict if the code is taken.

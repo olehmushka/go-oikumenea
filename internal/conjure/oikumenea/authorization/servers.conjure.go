@@ -28,6 +28,13 @@ type AuthorizationService interface {
 	Authorize(ctx context.Context, authHeader bearertoken.Token, requestArg AuthorizeRequest) (AuthorizeResponse, error)
 	// Batch decisions for one subject, with optional decision-explain (DS-16).
 	AuthorizeBatch(ctx context.Context, authHeader bearertoken.Token, requestArg BatchAuthorizeRequest) (BatchAuthorizeResponse, error)
+	/*
+	   The caller's OWN effective permission codes + instance-admin flag (D-SelfCapabilities).
+	   Self-only: subject taken from the request context, NOT gated on assignment.read. Machine
+	   subjects get an empty set. Lets an unprivileged console hide modules it cannot read in one
+	   round-trip; cosmetic only.
+	*/
+	MyCapabilities(ctx context.Context, authHeader bearertoken.Token) (MyCapabilities, error)
 	// Create a custom role (instance-scope role.create). Returns Role:RoleConflict if the code is taken.
 	CreateRole(ctx context.Context, authHeader bearertoken.Token, requestArg CreateRoleRequest) (Role, error)
 	// List roles, token-paginated (role.read).
@@ -78,6 +85,9 @@ func RegisterRoutesAuthorizationService(router wrouter.Router, impl Authorizatio
 	}
 	if err := resource.Post("AuthorizeBatch", "/authorization/v1/authorize/batch", httpserver.NewJSONHandler(handler.HandleAuthorizeBatch, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add authorizeBatch route")
+	}
+	if err := resource.Get("MyCapabilities", "/authorization/v1/me/capabilities", httpserver.NewJSONHandler(handler.HandleMyCapabilities, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add myCapabilities route")
 	}
 	if err := resource.Post("CreateRole", "/authorization/v1/roles", httpserver.NewJSONHandler(handler.HandleCreateRole, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add createRole route")
@@ -152,6 +162,19 @@ func (a *authorizationServiceHandler) HandleAuthorizeBatch(rw http.ResponseWrite
 		return errors.WrapWithInvalidArgument(err)
 	}
 	respArg, err := a.impl.AuthorizeBatch(req.Context(), bearertoken.Token(authHeader), requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (a *authorizationServiceHandler) HandleMyCapabilities(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	respArg, err := a.impl.MyCapabilities(req.Context(), bearertoken.Token(authHeader))
 	if err != nil {
 		return err
 	}

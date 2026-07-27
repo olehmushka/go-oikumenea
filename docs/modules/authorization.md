@@ -364,11 +364,20 @@ effective set. Gated by the endpoint's existing `assignment.read` — explain ex
 structure, so it sits behind the same permission, not a "self" exemption.
 
 The HTTP `/authorize` endpoints require **`assignment.read`** — there is **no "self" exemption** for
-asking about one's own access (D-BaseRoles, OQ-5). Consequence: authorization self-introspection is
-not an end-user capability; a "what can I do here?" UI is driven by a PEP/service holding
-`assignment.read`. In-process module→PDP calls before guarded ops are internal and unaffected (not
-over this HTTP permission boundary); `/whoami` ([identity-federation](identity-federation.md)) still
-returns identity, just not authorization decisions.
+asking about *arbitrary* access (any `(subject, action, unit)` question), because that exposes the
+assignment structure of the unit graph (D-BaseRoles). In-process module→PDP calls before guarded ops
+are internal and unaffected (not over this HTTP permission boundary); `/whoami`
+([identity-federation](identity-federation.md)) still returns identity, just not authorization
+decisions.
+
+**Self-capabilities (D-SelfCapabilities, resolves OQ-5).** A single narrow carve-out: `GET
+/me/capabilities` returns **only the caller's own** effective permission codes (the flat union of
+their active grants) plus an `isInstanceAdmin` flag — no unit-graph question, no other subject, no
+assignment structure. It is authenticated but **ungated** (subject taken from the request context;
+machine/service subjects get an empty set). This lets an unprivileged console hide modules a user
+cannot read in one round-trip, instead of the older per-code `POST /authorize` probes that failed
+closed for anyone lacking `assignment.read`. It is **cosmetic only** — every endpoint still
+re-decides through the PDP regardless of what the UI drew; the capability list permits nothing.
 
 ## Dependencies
 

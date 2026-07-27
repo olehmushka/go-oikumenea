@@ -9,6 +9,7 @@ import { IGrantAssignmentRequest } from "./grantAssignmentRequest";
 import { IGrantInstanceAdminRequest } from "./grantInstanceAdminRequest";
 import { IGrantPrincipalPermissionRequest } from "./grantPrincipalPermissionRequest";
 import { IInstanceAdmin } from "./instanceAdmin";
+import { IMyCapabilities } from "./myCapabilities";
 import { IPrincipalGrant } from "./principalGrant";
 import { IPrincipalGrantPage } from "./principalGrantPage";
 import { IRole } from "./role";
@@ -32,6 +33,14 @@ export interface IAuthorizationService {
     authorize(request: IAuthorizeRequest): Promise<IAuthorizeResponse>;
     /** Batch decisions for one subject, with optional decision-explain (DS-16). */
     authorizeBatch(request: IBatchAuthorizeRequest): Promise<IBatchAuthorizeResponse>;
+    /**
+     * The caller's OWN effective permission codes + instance-admin flag (D-SelfCapabilities).
+     * Self-only: subject taken from the request context, NOT gated on assignment.read. Machine
+     * subjects get an empty set. Lets an unprivileged console hide modules it cannot read in one
+     * round-trip; cosmetic only.
+     *
+     */
+    myCapabilities(): Promise<IMyCapabilities>;
     /** Create a custom role (instance-scope role.create). Returns Role:RoleConflict if the code is taken. */
     createRole(request: ICreateRoleRequest): Promise<IRole>;
     /** List roles, token-paginated (role.read). */
@@ -100,6 +109,28 @@ export class AuthorizationService implements IAuthorizationService {
             "POST",
             "/authorization/v1/authorize/batch",
             request,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * The caller's OWN effective permission codes + instance-admin flag (D-SelfCapabilities).
+     * Self-only: subject taken from the request context, NOT gated on assignment.read. Machine
+     * subjects get an empty set. Lets an unprivileged console hide modules it cannot read in one
+     * round-trip; cosmetic only.
+     *
+     */
+    public myCapabilities(): Promise<IMyCapabilities> {
+        return this.bridge.call<IMyCapabilities>(
+            "AuthorizationService",
+            "myCapabilities",
+            "GET",
+            "/authorization/v1/me/capabilities",
+            __undefined,
             __undefined,
             __undefined,
             __undefined,

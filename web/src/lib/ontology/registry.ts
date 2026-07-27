@@ -89,6 +89,13 @@ export interface ObjectTypeDef {
   labelPlural: string;
   /** module the type belongs to (for the ontology browser grouping) */
   module: string;
+  /**
+   * The `<module>.read` permission code that gates VIEWING this type, for cosmetic UI hiding
+   * (D-SelfCapabilities). Usually derived from `module` via readCodeFor(); set this only to override
+   * the module default (e.g. graph → graph.read, link__has_role → assignment.read). The server still
+   * re-decides every request regardless of what the UI drew.
+   */
+  requires?: string;
   /** one-line description for the ontology browser */
   blurb?: string;
   /** present only for types with an unconditional top-level list (explorable + searchable) */
@@ -392,6 +399,7 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
     label: "Assignment",
     labelPlural: "Assignments",
     module: "authorization",
+    requires: "assignment.read", // not role.read — assignments are gated separately from role definitions
     blurb: "Reified (person, role, target_unit, scope) link — the PDP's grant. scope∈{unit|subtree}.",
     // NOTE: listAssignments requires exactly one of subjectPersonId/targetUnitId (scoped, like orders &
     // memberships) — so no unconditional global list. Browse them scoped on the Roles & access page,
@@ -422,6 +430,7 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
     label: "Graph",
     labelPlural: "Graphs",
     module: "tenant",
+    requires: "graph.read", // not unit.read — graph definitions have their own read code
     blurb: "Named hierarchy over units; is_authority_bearing gates the PDP cascade.",
     list: { path: "/tenant/v1/graphs", parse: pageParse("graphs") },
     title: (g) => s(g.code) || ridTail(g.id),
@@ -1228,6 +1237,35 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
     ],
   },
 };
+
+/**
+ * Read permission code per module (D-SelfCapabilities). Most types are gated by their module's
+ * `*.read`; the few types whose read code differs from the module default carry an explicit
+ * `requires` on the type def and win over this map (see readCodeFor). Codes mirror
+ * internal/authorization/domain/permissions.go — keep in sync.
+ */
+const READ_CODE_BY_MODULE: Record<string, string> = {
+  person: "person.read",
+  tenant: "unit.read",
+  order: "order.read",
+  authorization: "role.read",
+  document: "document.read",
+  localization: "locale.read",
+  membership: "membership.read",
+  rank: "rank.scheme.read",
+  language: "language.read",
+  location: "location.read",
+  education: "education.read",
+};
+
+/**
+ * The permission code a caller must hold (anywhere) to see this type in the console. Explicit
+ * `def.requires` wins; otherwise the module default. Undefined means "no code known" — treated as
+ * always-shown by the gating helpers, matching the console's historical open-by-default behaviour.
+ */
+export function readCodeFor(def: ObjectTypeDef): string | undefined {
+  return def.requires ?? READ_CODE_BY_MODULE[def.module];
+}
 
 /** Object types that can be browsed as a global table (and fanned out in search). */
 export const EXPLORABLE_TYPES = Object.values(OBJECT_TYPES).filter((t) => t.list);
