@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Institutional & political ties (D-InstitutionalTies, M33): per-type person↔organization affiliation
 // edges — party memberships (pii:special, envelope-encrypted party), government positions (pii:basic,
 // PEP-triggering), lobbying relationships (pii:basic), and external references (pii:basic objects). Each

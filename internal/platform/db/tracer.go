@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Query-count tracing (review-2026-07 Phase 0 measurement harness). A pgx.QueryTracer is installed
 // on every pool NewPool constructs; it is a no-op (one context lookup) unless a *QueryCounter has
 // been attached to the context with WithQueryCounter. Integration tests use it to assert per-request

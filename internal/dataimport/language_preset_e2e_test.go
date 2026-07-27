@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build integration
 
 // Full-preset end-to-end re-verification of the M18 language pipeline (D-Languages): loads the REAL

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Lay-affiliation domain (D-ReligiousAffiliation / D-SpecialPII, M24): the per-tradition affiliation-type
 // catalog + the reified, GDPR Art. 9 pii:special affiliation Link (Person → a faith/tradition/community +
 // type). The optional belief value is envelope-encrypted at rest; the application layer seals/opens it

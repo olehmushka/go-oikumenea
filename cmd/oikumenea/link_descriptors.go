@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Link-descriptor wiring (review-2026-09 R-27 / D-LinkTraversal): composition glue registering every
 // traversable reified link table's Descriptor on the generic link-traversal engine, plus the
 // per-neighbor-type D-VisibilityScope adapter (R-30) each neighbor is trimmed through. Lives beside

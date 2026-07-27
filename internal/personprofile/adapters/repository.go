@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package adapters is the personprofile module's pgx/sqlc-backed persistence adapter (D-PersonModuleSplit,
 // review-2026-07 R-09). It owns the person directory's non-encrypted, person-owned tables: citizenships,
 // residences, addresses, the contact channels (email/phone/call-sign/messenger/social), the SPEAKS

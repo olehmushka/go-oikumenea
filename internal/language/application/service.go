@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package application holds the language module's application service — the read-only orchestrator the
 // transport layer calls to browse the Glottolog languoid forest + ISO-15924 writing systems, and that
 // other modules could call in-process to resolve a language. It depends on the domain port and the

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package application holds the audit module's application service — the flat orchestrator other
 // modules call to record writes (in their transaction) and the transport layer calls to read the
 // log (overview.md). It depends on the domain port and the platform DB surface, never on the

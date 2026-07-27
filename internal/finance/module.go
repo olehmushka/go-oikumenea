@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package finance is the composition seam for the finance module (docs/modules/finance.md / D-Finance,
 // M44): it wires the pgx repository, the audited application service (envelope-encrypting IBAN/PAN), and
 // the transport, then registers the FinanceService Conjure routes. The account-type / card-network

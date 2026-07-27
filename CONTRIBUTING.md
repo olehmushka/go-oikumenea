@@ -186,3 +186,21 @@ Who's-On-First Ukraine gazetteer → PostGIS `geo_places`) downloads ~62 MB on i
    when a milestone advances a gate).
 3. Run `make verify` (and `make test-integration` if you touched DB-backed code) — it must be green.
 4. Open a PR with a clear description; reference the relevant `D-<Name>` decision or milestone.
+
+## Licensing
+
+The software is **Apache-2.0** ([`LICENSE`](LICENSE)). By submitting a contribution you agree it is
+licensed under those terms — this is the inbound-equals-outbound rule of Apache-2.0 §5; there is no
+separate CLA.
+
+- **New source files need the SPDX header.** Run `./godelw license` and it stamps them; `make verify`
+  fails without it. Generated trees (`internal/conjure`, sqlc output, `clients/go/oikumenea`,
+  `clients/typescript`) are excluded in
+  [`godel/config/license-plugin.yml`](godel/config/license-plugin.yml) — never hand-stamp them, the
+  next regeneration would strip the header and break the build.
+- **Adding a `pinax` preset carries obligations.** The presets are `go:embed`-ed, so their upstream
+  license ships with every binary. Set the `license:` front-matter field, add the row to
+  [`docs/reference/data-licenses.md`](docs/reference/data-licenses.md), and put any required
+  attribution in [`NOTICE`](NOTICE). `TestPresetLicensesAreDocumented` fails the build if the doc
+  falls out of step. **Do not add a dataset whose terms you have not read** — two of the current
+  presets are share-alike, and that reaches downstream redistributors.

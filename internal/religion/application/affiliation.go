@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Lay-affiliation orchestration (D-ReligiousAffiliation / D-SpecialPII, M24): audited writes with the
 // belief value envelope-encrypted (Seal) on write and decrypted (Open) on read; crypto-erased on purge.
 package application

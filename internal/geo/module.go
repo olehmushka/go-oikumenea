@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package geo is the composition seam for the geo module (docs/modules/location.md): it wires the
 // pgx/sqlc repository, the read-only application service, and the transport, then registers the
 // GeoService Conjure routes. Register returns the application service so later milestones' modules

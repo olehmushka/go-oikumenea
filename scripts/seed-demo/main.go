@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // seed-demo: realistic "used system" demo data generator.
 //
 // Fills a MIGRATED oikumenea database with a believable, fully-interrelated world so the console and

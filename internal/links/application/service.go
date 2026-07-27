@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package application is the generic link-traversal engine (D-LinkTraversal, review-2026-09 R-27).
 // It owns the composition-time descriptor registry — each reified link table registers a Descriptor
 // together with (per neighbor object type) a D-VisibilityScope adapter (R-30) — and answers "what

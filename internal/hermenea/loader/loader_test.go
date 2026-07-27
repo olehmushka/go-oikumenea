@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // White-box tests for the chunked loader (R-05): chunk slicing, seq numbering, the trailing finalize
 // chunk, single-shot passthrough for small sets, resume skip-ahead, and per-chunk acks — against a
 // fake ImportService client (no HTTP).

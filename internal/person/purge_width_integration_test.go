@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build integration
 
 // Purge fan-out width baseline (review R-24). A person purge runs an `atomic` fan-out across many

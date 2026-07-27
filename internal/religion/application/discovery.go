@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Discovery orchestration (D-Religion discovery surface, M25): audited writes for the site/service-type
 // catalogs, the sites (with the one-primary-per-unit invariant), per-site schedules and search-only
 // aliases, plus the closure-aware PostGIS discovery search whose results are coarsened per the site's

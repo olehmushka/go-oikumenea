@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package outbox is the after-commit half of the transactional outbox (review-2026-07 R-10 /
 // D-EventOutbox): it drains oikumenea.platform_outbox (migration 0036) and delivers each `notify`-class
 // event to its registered handlers OUT OF PROCESS, after the producing transaction has committed. The

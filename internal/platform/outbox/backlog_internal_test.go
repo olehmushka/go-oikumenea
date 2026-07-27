@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build integration
 
 // White-box test for the R-20 backlog gauges (recordBacklog is unexported). It asserts that the

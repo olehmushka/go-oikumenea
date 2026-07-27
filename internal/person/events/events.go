@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package personevents holds the person module's domain events (D-OverlayFoundation, M29). Today the
 // only event is PersonMerged: when a provisional stub person is merged into a canonical person, the
 // person module re-homes its OWN edges and then publishes PersonMerged so every other module that

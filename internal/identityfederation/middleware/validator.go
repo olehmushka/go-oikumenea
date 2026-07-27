@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package middleware is the identity-federation inbound-token validation seam (identity-federation.md
 // "Inbound token validation"): it verifies a bearer JWT against the configured issuer(s) — OIDC
 // discovery + JWKS for production RS256, or a symmetric HS256 key for local-dev — maps the verified

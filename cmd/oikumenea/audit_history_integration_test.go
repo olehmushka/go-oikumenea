@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build integration
 
 // Integration tests for AuditService.getObjectHistory (review-2026-09 R-31 / D-Temporal tier b)

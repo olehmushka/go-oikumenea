@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Reference-layer transport (M20 extension): implements the generated educationrefapi
 // .EducationReferenceService. PEP-gates each op (instance-global reference data — satisfied anywhere),
 // maps requests↔domain, and translates domain sentinels to the educationref Conjure errors. Unlike the

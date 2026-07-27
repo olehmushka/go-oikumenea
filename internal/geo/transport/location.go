@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Location transport (D-Location, M19): implements the generated locationapi.LocationService — audited
 // CRUD + spatial queries over the shared place entity. It PEP-gates each op (a location has no unit
 // scope, so reads/writes are satisfied anywhere), assembles the place-type `name` as a locale->text map

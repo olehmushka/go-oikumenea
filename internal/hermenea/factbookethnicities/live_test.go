@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 package factbookethnicities_test
 
 // Live end-to-end test of the runtime Factbook ethnicity pipeline (D-PhysicalIdentity amendment, M43):

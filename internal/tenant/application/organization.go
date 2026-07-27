@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Domains (org-kind catalog), unit kinds (domain-scoped catalog), and organizations (the realm) —
 // the two-tier model above the unit graph (D-TenantOrganizations, M40). Organizations seed their own
 // command + operational graphs at creation, in the same transaction. All writes are audited and the

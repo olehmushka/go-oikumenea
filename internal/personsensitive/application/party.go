@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Encrypted declared party membership orchestration (D-InstitutionalTies, M33). The party membership is
 // envelope-encrypted (political opinion is GDPR Art. 9 special category — sealed on write, decrypted on
 // read, crypto-erased on purge, exactly like the M31 ethnicity), so it lives in personsensitive alongside

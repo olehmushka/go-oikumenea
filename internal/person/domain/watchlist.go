@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Watchlists & regulatory exposure (D-Watchlists, M34): the persisted residue of a live screening check
 // (person_watchlist_matches — match METADATA only, never the lists) plus the durable regulatory-sanction
 // overlay (person_regulatory_sanctions). Screening never stores the lists statically — the live check

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Location application logic (D-Location, M19): audited CRUD + spatial reads over the shared place
 // entity. Writes run in a transaction that also records the audit Action (D-Audit); reads run on the
 // pool. Mirrors the rank module's write orchestration. A location is instance-global (no unit scope),

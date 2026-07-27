@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package adapters implements the hermenea domain ports against its OWN PostgreSQL (M16 / D-Hermenea).
 // Generated sqlc code lives in the hermeneasql subpackage and is never hand-edited. The worker-job
 // payload carries the source code (JSON) so the worker resolves the source without a join.

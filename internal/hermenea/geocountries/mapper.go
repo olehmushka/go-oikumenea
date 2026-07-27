@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package geocountries implements the ISO-3166 geo-countries Mapper (M16 / D-Hermenea) — hermenea's
 // simplest, network-free proving consumer (the milestone's named "first consumer"). It reads a raw
 // ISO-3166 source payload (a JSON array of countries, fetched by the `file` or `http` connector) and

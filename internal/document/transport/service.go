@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package transport implements the document module's generated Conjure DocumentService interface: it
 // translates the wire contract to/from the application service, assembles localized type/scheme `name`
 // maps via the localization service (cross-module query — overview.md), and maps domain errors to

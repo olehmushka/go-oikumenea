@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package fetcher implements the hermenea Fetcher seam (M16 / D-Hermenea): pluggable strategies that
 // pull a source's raw payload. Two ship now — HTTP(S) download and the degenerate `file` case
 // (bundled presets / deterministic tests). New source types (DS-44) are new Fetcher impls.

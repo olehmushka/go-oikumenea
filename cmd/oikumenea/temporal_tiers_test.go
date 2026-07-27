@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // Drift guard for D-Temporal (review-2026-09 R-31): every reified Link type (kind=2 in pkg/rid) must

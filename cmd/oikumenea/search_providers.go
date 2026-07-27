@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Search-provider wiring (review-2026-09 R-26 / D-UnifiedSearch): composition glue registering each
 // searchable object type's SearchProvider TOGETHER with its D-VisibilityScope adapter (R-30) on the
 // unified-search engine. Lives beside main.go because it is pure wiring — closures over the module

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package application is the external-organizations module's orchestrator (D-ExternalOrgs, M30): audited
 // writes over the kind catalog + the external-organization node-space, with provisional/resolved
 // resolution. Every write runs in a transaction that also records the audit Action (D-Audit); reads run

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package language is the composition seam for the language module (docs/modules/language.md;
 // D-Languages, M18): it wires the pgx/sqlc repository, the read-only application service, and the
 // transport, then registers the LanguageService Conjure routes. Register returns the application

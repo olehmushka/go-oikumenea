@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package document is the composition seam for the document module (docs/modules/document.md): it wires
 // the pgx/sqlc repository, the application service (over the envelope cipher + personal-code validator
 // registry), and the transport, then registers the DocumentService Conjure routes. Register returns the

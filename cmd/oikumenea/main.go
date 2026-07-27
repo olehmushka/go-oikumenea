@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Command oikumenea is the composition root (docs/modules/platform.md). `serve` (the default) boots
 // the witchcraft server; bootstrap-admin / recover-admin are the break-glass admin-recovery
 // subcommands (D-Bootstrap) that reuse the same idempotent first-admin seed transaction.

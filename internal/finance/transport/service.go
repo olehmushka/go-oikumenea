@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package transport implements the generated financeapi.FinanceService (D-Finance, M44). It PEP-gates
 // each op (finance entities are authoritative first-party directory data, not tenant-unit scoped, so
 // reads/writes are satisfied anywhere; person-held rows are additionally holder-scoped), assembles

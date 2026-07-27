@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package orderevents holds the order module's intent events (order.md / D-OrderApply): the
 // effect-typed events order.issue publishes, one per order item, that membership/person subscribers
 // apply IN THE ISSUE TRANSACTION. They are named *Ordered (intent) to stay distinct from each

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build integration
 
 // Integration tests for the document module against a real Postgres (M9 exit criteria, D-Documents /

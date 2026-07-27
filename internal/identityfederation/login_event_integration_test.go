@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build integration
 
 // Integration tests for the login security log (M37 / D-LoginSecurityLog) against a real Postgres:

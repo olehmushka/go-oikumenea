@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package personalcode is the national-identifier validator registry (D-PersonalCodes): a compiled,
 // reviewable set of scheme validators (UA RNOKPP checksum, US SSN format, PL PESEL checksum, …) keyed
 // on the scheme code, plus the documented validation precedence the document module applies on

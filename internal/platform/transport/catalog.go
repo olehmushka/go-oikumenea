@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // The platform catalog transport implements the generated PlatformCatalogService (D-OverlayFoundation,
 // M29): the GDPR lawful-basis reference catalog. Reads require `legal-basis.read`; writes the
 // instance-plane `legal-basis.manage` (both satisfied anywhere via the PEP — the catalog is

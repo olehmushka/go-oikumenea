@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package loader implements the hermenea Loader seam (M16 / D-Hermenea; chunked since R-05): it
 // pushes canonical envelopes to oikumenea's public POST /import/{objectType} endpoint over HTTP —
 // the ONLY oikumenea coupling (never the DB). It authenticates with the HERMENEA_OIKUMENEA_TOKEN

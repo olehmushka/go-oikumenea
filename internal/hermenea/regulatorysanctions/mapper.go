@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package regulatorysanctions implements the person regulatory-sanction Mapper (M34 / D-Watchlists).
 // Unlike the reference-catalog connectors, regulatory-sanction data has no single well-known free bulk
 // source; an operator registers a source (http/file) whose payload is ALREADY a canonical JSON array of

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Command genactionparams derives the per-action parameter schemas (review-2026-09 R-29 seam) from the
 // Conjure IR and writes pkg/action/params_gen.go. It is the single-sourcing step: an action's argument
 // shape comes from the Conjure request type that carries its inputs, NOT hand-authored, so it cannot

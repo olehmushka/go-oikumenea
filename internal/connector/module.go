@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package connector is the composition seam for the connector-plane module (M53 / D-ConnectorPlane):
 // it wires the pgx repository, the audited application service, and the transport, then registers the
 // ConnectorService Conjure routes. The registry has no boot-time seeding — connectors self-register at

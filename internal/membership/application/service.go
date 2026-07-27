@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package application holds the membership module's application service — the orchestrator the
 // transport layer calls to read/mutate positions (unit-owned billets) and memberships (people
 // belonging to / filling them), recording an audit row in the same transaction as each write

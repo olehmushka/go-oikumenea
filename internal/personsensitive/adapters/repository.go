@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package adapters is the personsensitive module's pgx/sqlc-backed persistence adapter (D-PersonModuleSplit,
 // review-2026-07 R-09). It owns the person directory's sensitive / envelope-encrypted tables: physical
 // descriptions & distinguishing marks, ethnicity (crypto-erasable), encrypted declared party memberships,

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package adapters implements the tenant domain ports against infrastructure: the pgx/sqlc
 // repository over the oikumenea.tenant_* tables. It depends on the database, never the reverse
 // (overview.md). Generated sqlc code lives in the tenantsql subpackage and is never hand-edited.

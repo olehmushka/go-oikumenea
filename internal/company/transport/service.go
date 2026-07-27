@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package transport implements the generated companyapi.CompanyService (D-Companies, M21). It PEP-gates
 // each op (company entities are instance-global external reference data, so reads/writes are satisfied
 // anywhere), assembles translatable labels (company legal names, legal-form/scheme/industry names,

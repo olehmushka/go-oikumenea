@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 package domain
 
 // Coordinate input conversion (D-Location, M19). A location's coordinate can be supplied in several

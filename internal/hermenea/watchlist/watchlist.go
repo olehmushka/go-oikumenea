@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package watchlist implements hermenea's live watchlist screening (D-Watchlists, M34): the first
 // SYNCHRONOUS oikumenea→hermenea surface. hermenea owns the outbound egress to the screening providers
 // (OFAC/EU/UN/INTERPOL) and a short-TTL (≤24h) cache; only per-person MATCH METADATA is returned —

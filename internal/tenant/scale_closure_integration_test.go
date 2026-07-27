@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build integration
 
 // Scale-world measurement for the incremental closure maintenance (review-2026-07 Phase 2 / M48).

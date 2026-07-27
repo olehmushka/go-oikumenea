@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package domain holds the person module's pure logic: the directory aggregate (Person), its
 // per-person Name variants, temporal Citizenship/Residence links, the reversible deactivate -> purge
 // lifecycle, and the Repository port it needs from the outside world (overview.md layering). No I/O,

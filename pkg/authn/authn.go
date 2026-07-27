@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package authn holds the request-scoped PDP subject: the (person, account) an inbound IdP token
 // resolved to (docs/modules/identity-federation.md step 4). It is the neutral seam between the
 // PRODUCER — the identity-federation validation middleware, which validates the token and attaches

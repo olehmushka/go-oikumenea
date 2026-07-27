@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build integration
 
 // Integration test for the live-reach RLS backstop (D-RLSDefenseInDepth as reshaped by

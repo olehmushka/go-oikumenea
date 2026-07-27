@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Criminal / arrest / court records orchestration (D-LegalRecords, M38). Legal records are
 // envelope-encrypted pii:special: the category-level offence detail is sealed on write, decrypted on
 // read and crypto-erased on purge (exactly like the M36 health detail), with a required legal_basis

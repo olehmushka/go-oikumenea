@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package transport implements the generated externalorgapi.ExternalOrganizationService (D-ExternalOrgs,
 // M30). It PEP-gates each op (external orgs are instance-global external reference data, so reads gate on
 // `externalorg.read` and writes on the instance-scope `externalorg.manage`, both satisfied anywhere via

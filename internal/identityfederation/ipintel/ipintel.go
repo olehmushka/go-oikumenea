@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package ipintel is the IP-intelligence seam for the login security log (M37 / D-LoginSecurityLog):
 // given a client IP, resolve country / ISP / VPN / Tor. A real resolver needs an offline data source
 // (a GeoIP database, a Tor exit-node list, a VPN-range set) and is DEFERRED — the natural future shape

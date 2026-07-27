@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package application is the unified-search fan-in engine (D-UnifiedSearch, review-2026-09 R-26).
 // It owns the composition-time provider registry — each searchable object type registers its
 // SearchProvider TOGETHER with its D-VisibilityScope adapter (one registry, two facets today; the

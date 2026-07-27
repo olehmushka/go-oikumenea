@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Unit tests for EffectivePermissions — the self-serve introspection primitive behind
 // GET /me/capabilities (D-SelfCapabilities): a caller learns their OWN effective permission codes.
 package application

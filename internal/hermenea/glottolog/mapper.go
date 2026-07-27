@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package glottolog implements the Glottolog language-scheme Mapper (D-Languages, M18) — hermenea's
 // first NEW import consumer beyond geo. It reads a Glottolog CLDF snapshot (a JSON array of languoids,
 // fetched by the `file` or `http` connector) and emits canonical language-scheme records for

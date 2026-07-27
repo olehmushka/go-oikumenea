@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package adapters is the vehicle module's pgx-backed persistence adapter (M26, D-Vehicles). It uses
 // raw pgx over a single command surface (the pool for reads, a tx for writes) — the religion/tenant
 // raw-SQL style — because of the polymorphic owner, the derived model→brand join, and the cross-module

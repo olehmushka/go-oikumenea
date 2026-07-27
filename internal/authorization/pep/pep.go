@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package pep is the Policy Enforcement Point seam every module's transport calls before a guarded
 // operation. It resolves the acting subject from the request CONTEXT, asks the authorization PDP
 // (in-process), and returns the shared Conjure Authorization:PermissionDenied on denial. Putting the

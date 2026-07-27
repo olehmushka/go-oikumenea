@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package id holds UUIDv7 helpers that mirror the SQL oikumenea.uuid_v7() generator
 // (docs/modules/platform.md). UUIDv7 is the time-ordered crypto component inside every RID
 // (D-ResourceIdentifiers); having a Go-side generator lets application code mint ids without a DB

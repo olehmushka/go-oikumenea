@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package hermeneamigrations embeds hermenea's versioned Atlas migration files so the hermenea
 // binary can derive its expected schema revision from the migrations themselves rather than a
 // hand-bumped constant (architecture review R-25, mirroring oikumenea's migrations.FS / R-15).

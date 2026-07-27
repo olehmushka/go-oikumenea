@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package migrations embeds the repo-root Atlas migration files so binaries can derive their
 // expected schema revision from the migrations themselves rather than a hand-bumped constant
 // (architecture review R-15). Only the oikumenea migrations are embedded (migrations/*.sql);

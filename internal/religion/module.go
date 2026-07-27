@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package religion is the composition seam for the religion module (docs/modules/religion.md /
 // D-Religion, M22): it wires the raw-pgx repository, the audited application service (which reuses the
 // tenant service to build canonical-graph governance trees), and the transport, then registers the

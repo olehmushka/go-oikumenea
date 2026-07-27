@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Discovery domain (D-Religion discovery surface, M25): the per-tradition site/service-type catalogs,
 // the reified site Link (worship-community Unit ↔ a shared Location), per-site service schedules, and
 // search-only aliases — the substrate that makes religious organizations findable (where/when/under

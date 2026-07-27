@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package domain holds the connector-plane module's entities, ports and invariants (M53 /
 // D-ConnectorPlane) — the registry of connectors (deployable agents beside the core, of which
 // hermenea is the first), the sources they sync, and the sync runs they report. The domain owns its

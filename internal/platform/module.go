@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package platform is the composition seam for the platform module: it wires the shared services
 // (DB pool, readiness gate) and registers the operational Conjure routes onto the witchcraft
 // router. Domain modules will expose an analogous Register entrypoint (overview.md).

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package transport implements the generated connectorapi.ConnectorService (M53 / D-ConnectorPlane).
 // Two audiences, two gate families:
 //

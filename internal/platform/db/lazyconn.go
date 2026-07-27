@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Lazy RLS connection pinning (review-2026-07 R-03). Before this, the authenticator pinned a
 // pooled connection for EVERY authenticated request for its full duration — including requests
 // that never touch an RLS-guarded table and across external egress — so in-flight requests were

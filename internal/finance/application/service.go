@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package application is the finance module's orchestrator (D-Finance, M44): audited writes over the
 // account-type / card-network catalogs, bank accounts (envelope-encrypted IBAN), the polymorphic holder
 // link, and payment cards (envelope-encrypted PAN + clear BIN/last-4). The sensitive IBAN/PAN are

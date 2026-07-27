@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package application holds the document module's application service — the orchestrator the transport
 // layer calls to read/mutate documents (papers), personal codes (encrypted national identifiers), and
 // their catalogs, recording an audit row in the same transaction as each write (D-Audit). It owns the

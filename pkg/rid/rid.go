@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package rid decodes go-oikumenea Resource Identifiers (D-ResourceIdentifiers).
 //
 // A RID is a native UUIDv8 (RFC 9562 §5.8) whose bits pack a decomposable, self-describing key:

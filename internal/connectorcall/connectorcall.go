@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package connectorcall is the ON-DEMAND-LOOKUP seam of the connector plane (M53 / D-ConnectorPlane):
 // the one place oikumenea makes SYNCHRONOUS calls OUT to a connector. It owns the two invariants every
 // such call must have, so no individual call site can forget them:

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package adapters is the connector-plane module's pgx-backed persistence adapter (M53 /
 // D-ConnectorPlane). Raw pgx over a single command surface (the pool for reads, a tx for audited
 // writes) — the externalorg/vehicle style. Postgres constraint violations (23505 unique) map to

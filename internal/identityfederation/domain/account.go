@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package domain holds the identity-federation module's pure logic: the optional login Account (an
 // attachment to a person), the verified (issuer, subject) ExternalIdentity that federates to it, and
 // the Repository port it needs from the outside world (overview.md layering). No I/O, no framework

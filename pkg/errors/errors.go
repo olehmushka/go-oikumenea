@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package errors holds the werror conventions shared across modules (docs/architecture/conventions.md):
 // wrap with safe/unsafe params, where safe params may appear in logs/responses and unsafe params
 // (PII, secrets) are logged redacted and never returned. Module-specific Conjure error types are

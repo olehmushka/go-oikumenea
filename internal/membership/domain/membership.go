@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package domain holds the membership module's pure logic: the unit-owned billet (Position), the
 // reified person->unit belonging/filling Link (Membership), and the Repository port it needs from
 // the outside world (overview.md layering). No I/O, no framework imports — only the standard library.

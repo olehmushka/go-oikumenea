@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Criminal / arrest / court records transport (D-LegalRecords, M38): category-level records
 // (pii:special, GDPR Art. 10). Reads require the person.legal-record.read need-to-know code; writes
 // require person.update. Sealed/expunged (suppressed) records are withheld unless the caller ALSO

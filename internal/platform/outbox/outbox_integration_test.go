@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build integration
 
 // Integration tests for the transactional outbox (review-2026-07 R-10 / D-EventOutbox). They prove the

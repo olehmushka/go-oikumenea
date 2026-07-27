@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build integration
 
 // Integration tests for the person directory SEARCH (review-2026-07 R-06) against a real Postgres:

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Command gen is the reproducible generator for the pinax reference-plane preset bundle (D-Pinax, M45).
 // It (re)writes the FULL bundled YAML presets under internal/pinax/presets/ from the committed upstream
 // payloads (no network for most; the CIA World Factbook ethnicity set is fetched live, with cache),

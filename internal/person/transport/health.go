@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Health & vulnerability transport (D-HealthVulnerability, M36): category-level health records
 // (pii:special) and insurance coverage (pii:sensitive). Health reads require their own need-to-know code
 // person.health.read (D-DataScope); insurance reads require person.read. Writes require person.update.

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package transport implements the person module's generated Conjure PersonService interface: it
 // translates the wire contract to/from the application service and maps domain errors to Conjure
 // SerializableErrors (D-Conjure). Generated code in internal/conjure is never hand-edited.

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package config defines hermenea's install configuration (M16 / D-Hermenea). It embeds the witchcraft
 // base install config and adds hermenea's own Postgres DSN, the oikumenea import endpoint coordinates,
 // the declarative source registry, and the worker tunables. Shared secrets are NOT here — they are

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package domain holds the vehicle module's entities, ports, and invariants (docs/modules/vehicle.md /
 // D-Vehicles) — a generic vehicle registry: a brand/model/type taxonomy, the physical vehicle (VIN),
 // the brand→manufacturer link (to a M21 company), and the ownership+plate registration record. The

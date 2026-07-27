@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Clergy persistence (D-ClergyCredential, M23): per-tradition grade catalogs + the credential Link.
 // Raw pgx over the shared command surface, mirroring repository.go; constraint violations map to domain
 // sentinels via mapPGError.

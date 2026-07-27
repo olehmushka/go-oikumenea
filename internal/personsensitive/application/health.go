@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Health & vulnerability orchestration (D-HealthVulnerability, M36). Insurance is plaintext pii:sensitive
 // (hard-erased on purge). Health records are envelope-encrypted pii:special: the category-level detail is
 // sealed on write, decrypted on read and crypto-erased on purge (exactly like the M33 party / M35 leaning),

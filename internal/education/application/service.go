@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package application is the education module's orchestrator (D-Education): audited writes, the unit
 // structure tree + maintained closure (mirrors tenant), and the positions/appointments one-holder rule
 // (mirrors membership). Every write runs in a transaction that also records the audit Action (D-Audit);

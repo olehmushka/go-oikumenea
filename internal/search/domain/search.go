@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package domain holds the search module's core model (D-UnifiedSearch, review-2026-09 R-26): the
 // SearchProvider contract each searchable module registers at composition time, the type-erased hit,
 // and the composite keyset page token that federates the per-provider cursors. The module owns no

@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Command genactionendpoints derives the per-action HTTP endpoint binding (review-2026-09 R-33 seam,
 // the action-invocation backbone) from the Conjure IR and pkg/action's catalog, writing
 // pkg/action/endpoints_gen.go. It is the invocation counterpart of genactionparams: where that single-

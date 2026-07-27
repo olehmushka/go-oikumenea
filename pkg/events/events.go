@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package events is the in-process domain-event bus (platform.md). It dispatches domain events to
 // registered subscribers SYNCHRONOUSLY, within the publisher's transaction: a handler receives the
 // active pgx.Tx and does its work on it, so the publisher's write and every effect share one fate

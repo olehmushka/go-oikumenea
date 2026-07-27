@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package order is the composition seam for the order module (docs/modules/order.md): it seeds the
 // order-type catalog, wires the pgx/sqlc repository, the application service (over the event bus), and
 // the transport, then registers the OrderService Conjure routes. Register returns the application

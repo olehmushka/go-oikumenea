@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package transport implements hermenea's generated Conjure HermeneaService (M16 / D-Hermenea): the
 // push-trigger endpoint + the source/run/job read endpoints over hermenea's own DB. Inbound auth (the
 // OIKUMENEA_HERMENEA_TOKEN shared secret) is enforced by the Authenticator middleware, so handlers

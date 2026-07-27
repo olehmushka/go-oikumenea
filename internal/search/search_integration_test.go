@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build integration
 
 // Integration tests for the unified cross-type search (review-2026-09 R-26 / D-UnifiedSearch) with

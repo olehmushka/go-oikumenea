@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package wikidataorgs implements the external-organizations Mapper (M30 / D-ExternalOrgs) — hermenea's
 // first registry consumer beyond geo/language. It reads a Wikidata SPARQL JSON result set (fetched by
 // the `http` connector against https://query.wikidata.org/sparql?format=json&query=…) and emits

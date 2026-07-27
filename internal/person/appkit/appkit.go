@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package appkit holds the small transaction + audit plumbing shared by the person-family application
 // services (person core, personprofile, personsensitive) after the R-09 split. It exists so the split
 // modules reuse one copy of the "open a tx, do work, record an audit row in the same tx" pattern

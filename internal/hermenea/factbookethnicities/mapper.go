@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package factbookethnicities implements the ethnicity-scheme PagedMapper (D-PhysicalIdentity amendment,
 // M43) backed by the CIA World Factbook (US-government PUBLIC DOMAIN). It is driven by the `factbook`
 // StreamingFetcher, which stages every `<region>/<cc>.json` country file to a temp directory; this

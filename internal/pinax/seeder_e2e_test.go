@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build integration
 
 // End-to-end verification of the pinax reference-plane autoseeder (D-Pinax, M45) against a real

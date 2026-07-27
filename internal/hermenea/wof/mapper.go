@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package wof implements the Who's-On-First geo-places PagedMapper (D-GeoPlaces, M16) — hermenea's
 // first real connector mapper. It reads a staged WOF SQLite distribution (the `wof-sqlite` connector
 // stages it to disk), walks the four administrative placetypes parent-first (country → region →

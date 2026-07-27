@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Discovery persistence (D-Religion discovery surface, M25): the site/service-type catalogs, the reified
 // site Link (joined to the shared location_locations for coordinates), per-site service schedules, the
 // search-only aliases, and the closure-aware PostGIS discovery search. Raw pgx, same style as the rest

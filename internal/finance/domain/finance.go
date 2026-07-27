@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package domain holds the finance module's entities, ports, and invariants (docs/modules/finance.md /
 // D-Finance, M44): bank accounts (envelope-encrypted IBAN), payment cards (envelope-encrypted PAN, no
 // CVV), a polymorphic temporal holder link (person|company), and two reference catalogs. A bank is not

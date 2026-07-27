@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package adapters is the finance module's pgx-backed persistence adapter (M44, D-Finance). Raw pgx over
 // a single command surface (pool for reads, tx for writes) — the vehicle/religion raw-SQL style — because
 // of the polymorphic holder, the envelope columns, and the cross-module org/person lookups. Postgres

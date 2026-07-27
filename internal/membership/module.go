@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package membership is the composition seam for the membership module
 // (docs/modules/membership.md): it wires the pgx/sqlc repository, the application service, and the
 // transport, then registers the MembershipService Conjure routes. Register returns the application

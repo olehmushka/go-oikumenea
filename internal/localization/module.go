@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package localization is the composition seam for the localization module
 // (docs/modules/localization.md): it wires the pgx/sqlc repository, the application service, and the
 // transport, then registers the LocalizationService Conjure routes. Register returns the application

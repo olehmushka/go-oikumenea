@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Package application is the company module's orchestrator (D-Companies): audited writes, the
 // positions/appointments one-holder rule (mirrors membership), registration-identifier validation, and
 // the ownership/affiliation graph assembly. Every write runs in a transaction that also records the

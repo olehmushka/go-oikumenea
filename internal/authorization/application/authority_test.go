@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Unit tests for the request-scoped authority context (review-2026-07 R-01.1): once the
 // authenticator attaches the snapshot via ContextWithAuthority, PDP-consuming calls must not
 // re-fetch authority state — and a call about a DIFFERENT subject must not reuse it.

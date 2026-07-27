@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Watchlists & regulatory exposure orchestration (D-Watchlists, M34). CheckWatchlists runs a live
 // screening check OUT to the hermenea companion via the late-bound WatchlistLookup seam (the PDP core
 // makes no egress call itself), combines the returned match metadata with the locally-derived PEP flag

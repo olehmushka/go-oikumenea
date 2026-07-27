@@ -1,3 +1,6 @@
+// Copyright 2026 Oleh Mushka
+// SPDX-License-Identifier: Apache-2.0
+
 // Outbox multi-replica self-test seam (architecture review R-13, Phase 8). The transactional outbox
 // (D-EventOutbox) is a live-but-empty seam — every domain event is `atomic`, so there are no notify
 // producers/handlers to exercise it across replicas. This file adds a tiny, ENV-GATED notify producer
