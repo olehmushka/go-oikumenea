@@ -166,5 +166,19 @@ recorded decision disagree, the code is wrong.
 
 ## License
 
-No license file is present yet; add one before publishing. Until a `LICENSE` is added, all rights are
-reserved by the copyright holders.
+The **software** is licensed under the **Apache License 2.0** — see [`LICENSE`](LICENSE). Source
+files carry an SPDX header (`./godelw license` applies them; `make verify` enforces them).
+
+The **bundled reference data** is not. The `pinax` presets
+([`internal/pinax/presets/`](internal/pinax/presets/)) are `go:embed`-ed into the binary and are
+derived from third-party datasets under their own terms — **two of them are share-alike**
+(`countries.yaml` is ODbL-1.0, `religions.yaml` is CC-BY-SA-4.0). Redistributing this software, a
+build of it, or a database derived from it means complying with those terms as well as Apache-2.0.
+
+- Required attribution: [`NOTICE`](NOTICE)
+- Per-dataset obligations, and how to build without the share-alike data:
+  [`docs/reference/data-licenses.md`](docs/reference/data-licenses.md)
+
+Data fetched at runtime by [hermenea](docs/modules/hermenea.md) connectors (Who's On First,
+Wikidata, INTERPOL, sanctions lists) is never compiled in and is the **operator's** licensing
+decision — the INTERPOL and sanctions feeds in particular carry restrictions no license here grants.

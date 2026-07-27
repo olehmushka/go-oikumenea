@@ -94,5 +94,16 @@ the `/import` boundary is preserved, the plane remains an **extraction seam** �
 extraction-ready posture as the modular monolith — if a real force (a shared multi-deployment
 gazetteer, a public dataset) ever appears. Earn the split; don't pre-pay it.
 
+## Licensing — the presets are not Apache-2.0
+
+The bundled presets are `go:embed`-ed, so **shipping oikumenea ships their data under their upstream
+terms**, which the repository's Apache-2.0 [`LICENSE`](../../LICENSE) does not cover. Each preset
+declares its own `license:` front-matter field; two are **share-alike** (`countries.yaml` is
+ODbL-1.0, `religions.yaml` is CC-BY-SA-4.0) and therefore bind downstream redistributors.
+Per-dataset obligations, the required attribution, and how to build without the share-alike presets:
+**[data-licenses.md](../reference/data-licenses.md)**. Adding a preset means updating that document —
+`TestPresetLicensesAreDocumented` fails the build otherwise.
+
 See also: [hermenea](../modules/hermenea.md) (the ingestion companion), [conventions](conventions.md)
-(schema/RID/i18n rules), [upgrade-safety](upgrade-safety.md) (non-destructive migrations).
+(schema/RID/i18n rules), [upgrade-safety](upgrade-safety.md) (non-destructive migrations),
+[data-licenses](../reference/data-licenses.md) (what the bundled data obliges you to do).

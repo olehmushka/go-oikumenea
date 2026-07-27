@@ -1,0 +1,75 @@
+go-oikumenea
+Copyright 2026 Oleh Mushka
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+================================================================================
+SCOPE: SOFTWARE vs. BUNDLED REFERENCE DATA
+================================================================================
+
+The Apache License 2.0 in LICENSE covers the SOFTWARE in this repository — the
+Go modules under internal/, pkg/, cmd/ and tools/, the Conjure contracts under
+api/, the migrations under migrations/, the generated SDKs under clients/, and
+the optional Next.js console under web/.
+
+It does NOT cover the bundled REFERENCE DATA. The pinax reference-plane presets
+(internal/pinax/presets/*.yaml), which are compiled into the oikumenea binary
+via go:embed, are derived from third-party datasets under their own terms. Two
+of them are share-alike. Anyone redistributing this software, a build of it, or
+a database derived from it must comply with those terms in addition to the
+Apache License.
+
+Full detail, per dataset: docs/reference/data-licenses.md
+
+================================================================================
+BUNDLED REFERENCE DATA — REQUIRED ATTRIBUTION
+================================================================================
+
+Glottolog (internal/pinax/presets/languages.yaml)
+  Hammarström, Harald & Forkel, Robert & Haspelmath, Martin & Bank, Sebastian.
+  Glottolog 5.3. Leipzig: Max Planck Institute for Evolutionary Anthropology.
+  https://glottolog.org — Licensed under CC BY 4.0.
+
+Unicode CLDR (internal/pinax/presets/writing-systems.yaml, translations.yaml)
+  Unicode Common Locale Data Repository, © Unicode, Inc.
+  https://cldr.unicode.org — Licensed under the Unicode License v3.
+  The curated additions layered onto translations.yaml are © 2026 Oleh Mushka,
+  released under CC BY 4.0 to match the upstream terms.
+
+mledoze/countries (internal/pinax/presets/countries.yaml)
+  https://github.com/mledoze/countries — Licensed under ODbL-1.0.
+  ODbL is SHARE-ALIKE: a publicly distributed database derived from it must be
+  offered under ODbL, and any Produced Work must credit the source.
+
+Natural Earth 110m (internal/pinax/presets/countries.yaml, border geometry)
+  https://www.naturalearthdata.com — Public domain, no attribution required.
+  Credited here voluntarily.
+
+Religion taxonomy presets (internal/pinax/presets/religions.yaml)
+  Curated from public sources including Wikidata (CC0) and published religious
+  taxonomies. Licensed under CC BY-SA 4.0.
+  CC BY-SA is SHARE-ALIKE: adaptations must be distributed under CC BY-SA 4.0.
+
+CIA World Factbook (internal/pinax/presets/ethnicities.yaml)
+  https://www.cia.gov/the-world-factbook/ — U.S. Government work, public domain.
+
+Curated presets (internal/pinax/presets/colors.yaml, ranks.yaml)
+  © 2026 Oleh Mushka — dedicated to the public domain under CC0 1.0.
+
+================================================================================
+THIRD-PARTY SOFTWARE
+================================================================================
+
+This product includes software developed at Palantir Technologies, Inc.
+(witchcraft-go-server, conjure-go-runtime, godel and the palantir/pkg
+libraries), licensed under the Apache License 2.0 and the BSD 3-Clause License.
+
+Other dependencies are licensed under the Apache License 2.0, the MIT License,
+the BSD 2-/3-Clause Licenses, the ISC License and the Mozilla Public License
+2.0. Their license texts ship with the respective modules; run `go list -m all`
+and inspect the module cache for the authoritative set.
+
+PostgreSQL and PostGIS are NOT distributed with this product. oikumenea
+connects to an operator-provided PostgreSQL server over the network; PostGIS
+(GPL-2.0) runs inside that server as an extension and is not linked into any
+binary produced from this repository.
