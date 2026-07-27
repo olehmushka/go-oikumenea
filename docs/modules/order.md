@@ -181,6 +181,8 @@ enforcing its own invariants in its own write path. Effects land **at issue**;
 | `GET /units/{unitId}/orders` | List a unit's orders (token-paginated) | `order.read` + shadow gate |
 | `GET /orders/{id}` | Read one order (+ items) | `order.read` + shadow gate |
 | `GET /persons/{personId}/orders` | Orders affecting a person (via items) | `order.read` + shadow gate |
+| `GET /orders` | **New (M56).** Top-level order list, token-paginated; filtered by the declared facets — `issuingUnitId`, `orderTypeId`, `status`, `issuedOnFrom`/`issuedOnTo` ([D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope)) | `order.read` + shadow gate |
+| `GET /orders/stats` | Facet distributions over the **same** filter args + an optional `facets` CSV — orders per month, type mix, draft/issued/revoked, revocation rate (M57; [facets catalog](../architecture/facets.md)) | `order.read` + shadow gate |
 | `GET /order-types` | List the type catalog | `order.type.read` |
 | `POST /order-types` | Add an order type | `order.type.manage` |
 | `PUT /order-types/{id}` | Edit an order type (code immutable by convention) | `order.type.manage` |

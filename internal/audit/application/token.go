@@ -1,43 +1,38 @@
 package application
 
 import (
-	"encoding/base64"
 	"errors"
-	"strings"
+	"fmt"
 	"time"
 
 	"github.com/olegamysk/go-oikumenea/internal/audit/domain"
+	"github.com/olegamysk/go-oikumenea/pkg/listing"
 )
 
 // The page token is the opaque encoding of the keyset cursor (created_at, id) of the last entry on
-// the previous page (API conventions: token-based pagination, no offset). It is base64url over
-// "<RFC3339Nano>\x1f<actionRID>" — purely positional, carrying no privileged data.
-const tokenSep = "\x1f"
+// the previous page (API conventions: token-based pagination, no offset) — a COMPOSITE cursor, so it
+// rides pkg/listing's tuple codec rather than the single-column one. It is purely positional,
+// carrying no privileged data.
 
 // ErrInvalidPageToken is returned when a supplied pageToken cannot be decoded (mapped to
-// INVALID_ARGUMENT by transport).
-var ErrInvalidPageToken = errors.New("invalid page token")
+// INVALID_ARGUMENT by transport). It wraps listing.ErrInvalidPageToken so callers may match either.
+var ErrInvalidPageToken = fmt.Errorf("audit: %w", listing.ErrInvalidPageToken)
 
 func encodeToken(c domain.Cursor) string {
-	raw := c.CreatedAt.UTC().Format(time.RFC3339Nano) + tokenSep + c.ID
-	return base64.RawURLEncoding.EncodeToString([]byte(raw))
+	return listing.EncodeTuple(c.CreatedAt.UTC().Format(time.RFC3339Nano), c.ID)
 }
 
 func decodeToken(token string) (*domain.Cursor, error) {
-	if token == "" {
+	parts, err := listing.DecodeTuple(token, 2)
+	if err != nil {
+		return nil, errors.Join(ErrInvalidPageToken, err)
+	}
+	if parts == nil { // empty token = first page
 		return nil, nil
 	}
-	raw, err := base64.RawURLEncoding.DecodeString(token)
+	createdAt, err := time.Parse(time.RFC3339Nano, parts[0])
 	if err != nil {
 		return nil, errors.Join(ErrInvalidPageToken, err)
 	}
-	ts, id, ok := strings.Cut(string(raw), tokenSep)
-	if !ok || id == "" {
-		return nil, ErrInvalidPageToken
-	}
-	createdAt, err := time.Parse(time.RFC3339Nano, ts)
-	if err != nil {
-		return nil, errors.Join(ErrInvalidPageToken, err)
-	}
-	return &domain.Cursor{CreatedAt: createdAt, ID: id}, nil
+	return &domain.Cursor{CreatedAt: createdAt, ID: parts[1]}, nil
 }

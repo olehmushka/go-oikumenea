@@ -306,7 +306,14 @@ See [decisions.md](decisions.md) D-NoRLS + D-RLSDefenseInDepth + D-RLSLiveReach.
   `errorInstanceId`.
 - **Pagination = token-based.** List endpoints take `pageSize` + opaque `pageToken` and
   return `nextPageToken` (empty when exhausted). No offset pagination. Default page size is a
-  runtime tunable.
+  runtime tunable. **Both sides come from `pkg/listing`** (M56): `EncodeCursor`/`DecodeCursor` for a
+  single-column keyset, `EncodeTuple`/`DecodeTuple` for a composite one, and `PageSize{Default, Max}`
+  for the clamp — a module supplies its own bounds, never its own codec (three AST drift guards in
+  `pkg/listing/drift_test.go` enforce this). A page token is **always URL-safe base64** (RawURL,
+  unpadded): it travels in a query parameter, where StdEncoding's `+` decodes to a space and silently
+  corrupts the cursor. Decode stays tolerant of the other alphabets so tokens issued before a
+  deployment upgrade keep paging. No list envelope carries a total — a count comes from the type's
+  `/stats` endpoint (D-ObjectFacets).
 - **Authentication header → PDP context.** Endpoints take a bearer token
   (`Authorization: Bearer <jwt>`). The federation middleware validates it (OIDC/JWKS) and
   resolves the PDP context *before* the handler runs; handlers receive

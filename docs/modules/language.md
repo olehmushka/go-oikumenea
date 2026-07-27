@@ -131,6 +131,10 @@ by their services and exposed there (each `name` is the languoid's `locale→tex
 
 ## Open seams / future
 
+- **Facets & dashboards (M58).** [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope) lands filters + a stats endpoint + a console dashboard
+  for this module's listable types: `GET /languages/stats`; the existing `level`/`family`/`parent`/`topLevel` args become the declared facet set, extended with `macroarea` and endangerment `status` — the status bar orders by **severity, not count**.
+  Facets and proposed charts are catalogued in [facets.md](../architecture/facets.md).
+
 - **Richer script sourcing**: `language_writing_systems` currently comes from CLDR `languageData`;
   finer orthography data (ScriptSource) could extend it via another `language-scripts` source.
 - **Languoid name picker scale**: the web language picker queries the server `query` filter as you

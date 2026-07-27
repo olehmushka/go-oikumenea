@@ -266,6 +266,46 @@ Owner: [upgrade-safety.md](upgrade-safety.md); every module's migrations comply.
 
 ---
 
+## Declared facet: one dimension, two consumers
+
+A **facet** is one filterable, groupable dimension of an object type — `{key, kind, column,
+readPermission, buckets}` — declared **once** by the module that owns the table and consumed
+**twice**: as a typed optional query arg on that module's list endpoint, and as a `groupBy` key on
+its `GET /<module>/v1/<collection>/stats` endpoint. Both take the same names and the same values, so
+a chart segment and a list filter are the same act; the console keeps the whole set in the URL, so
+toggling list↔dashboard carries the filters across and clicking a chart is navigation that adds one.
+Parity between a facet and its query arg is a build-time drift guard derived from the Conjure IR.
+
+Owners: every module with a listable collection. Binding rationale:
+[D-ObjectFacets](decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope);
+per-type catalog: [facets.md](facets.md).
+
+---
+
+## Visibility-safe aggregation
+
+A count must be computed **inside** the same predicate that decides which rows the caller may read —
+never as a tally over an already-paged result. The distinction is easy to miss because both shapes
+look correct on a list: the shadow gate (`FilterVisibleUnits`, applied *after* the keyset page is
+cut) legitimately returns a **short page** and never a skipped row, which is right for pagination and
+wrong for a count. Person-scoped aggregates therefore fold in the reach semi-join
+(`VisiblePersonIDsForSubject*`), unit-scoped aggregates fold the shadow gate into SQL, and
+catalog-scoped aggregates need only the endpoint's read gate — the three shapes of
+[D-VisibilityScope](decisions.md#d-visibilityscope--one-read-visibility-interface-three-canonical-scope-shapes-registered-per-object-type),
+whose `ReadableIDs` id-list trim is the wrong instrument at aggregate scale. The correctness contract
+is **differential**, as it is for the trim itself: for a fixed subject and filter set the aggregate's
+`totalCount` equals the number of rows exhaustively paged from the owning module's own list endpoint.
+
+Two data-protection rules ride along: a facet may name only a **plaintext** column (envelope-encrypted
+`pii:special` values have no facet — nothing to group, and D-DataScope's aggregation rule forbids the
+surface), and a facet above `pii:basic` inherits its field's own read code, being **omitted** from the
+response for a caller without it rather than zeroed or refused.
+
+Owners: [authorization](../modules/authorization.md), [person](../modules/person.md),
+[tenant](../modules/tenant.md), and every module with a `/stats` endpoint.
+
+---
+
 ## Maintenance rule
 
 Add a pattern here when it appears in ≥2 modules, its name is self-explanatory, and the

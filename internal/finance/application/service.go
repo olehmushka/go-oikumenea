@@ -21,6 +21,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/finance/domain"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/pkg/crypto"
+	"github.com/olegamysk/go-oikumenea/pkg/listing"
 	"github.com/olegamysk/go-oikumenea/pkg/personalcode"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
@@ -490,15 +491,11 @@ func toCard(c domain.StoredCard, pan string) domain.Card {
 
 // ============================ infra ============================
 
-func clampPageSize(n int) int {
-	if n <= 0 {
-		return defaultPageSize
-	}
-	if n > maxPageSize {
-		return maxPageSize
-	}
-	return n
-}
+// pageSizePolicy is this module's page-size policy, clamped through the shared kernel (M56 /
+// pkg/listing) instead of a local copy.
+var pageSizePolicy = listing.PageSize{Default: defaultPageSize, Max: maxPageSize}
+
+func clampPageSize(n int) int { return pageSizePolicy.Resolve(n) }
 
 func (s *Service) querier(ctx context.Context) db.Querier {
 	return db.RequestQuerier(ctx, s.pool)

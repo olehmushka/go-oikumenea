@@ -13,7 +13,6 @@ package application
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,6 +27,7 @@ import (
 	orderevents "github.com/olegamysk/go-oikumenea/internal/order/events"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/pkg/events"
+	"github.com/olegamysk/go-oikumenea/pkg/listing"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 
@@ -36,6 +36,10 @@ const (
 	DefaultPageSize = 50
 	MaxPageSize     = 500
 )
+
+// pageSize is this module's page-size policy (M56 / pkg/listing): the shared clamp bound to the
+// module's own Default/Max, replacing the per-module resolvePageSize copy.
+var pageSizePolicy = listing.PageSize{Default: DefaultPageSize, Max: MaxPageSize}
 
 // isoDate is the calendar-date wire format used for the effective-date legal metadata on items.
 const isoDate = "2006-01-02"
@@ -374,8 +378,8 @@ func parseDate(s string) time.Time {
 }
 
 func (s *Service) listOrders(ctx context.Context, pageSize int, pageToken string, fetch func(after string, limit int) ([]domain.Order, error)) (OrderPage, error) {
-	size := resolvePageSize(pageSize)
-	after, err := decodeCursor(pageToken)
+	size := pageSizePolicy.Resolve(pageSize)
+	after, err := listing.DecodeCursor(pageToken)
 	if err != nil {
 		return OrderPage{}, err
 	}
@@ -384,7 +388,7 @@ func (s *Service) listOrders(ctx context.Context, pageSize int, pageToken string
 		return OrderPage{}, err
 	}
 	if len(orders) > size {
-		return OrderPage{Orders: orders[:size], NextPageToken: encodeCursor(orders[size-1].ID)}, nil
+		return OrderPage{Orders: orders[:size], NextPageToken: listing.EncodeCursor(orders[size-1].ID)}, nil
 	}
 	return OrderPage{Orders: orders}, nil
 }
@@ -464,29 +468,4 @@ func toJSON(v any) json.RawMessage {
 		return nil
 	}
 	return raw
-}
-
-func resolvePageSize(requested int) int {
-	if requested <= 0 {
-		return DefaultPageSize
-	}
-	if requested > MaxPageSize {
-		return MaxPageSize
-	}
-	return requested
-}
-
-func encodeCursor(id string) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(id))
-}
-
-func decodeCursor(token string) (string, error) {
-	if token == "" {
-		return "", nil
-	}
-	raw, err := base64.RawURLEncoding.DecodeString(token)
-	if err != nil {
-		return "", err
-	}
-	return string(raw), nil
 }

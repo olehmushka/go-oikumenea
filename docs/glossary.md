@@ -496,6 +496,29 @@ idea]`. It is not on the stage board; once promoted to a milestone it is marked 
 then deleted. `todo.md` may legitimately not exist when nothing is pending. The parked-seam
 counterpart for *known* future seams is **DS-N** in [open-questions.md](open-questions.md).
 
+**Facet.** One declared filterable-and-groupable dimension of an object type — `{key, kind ∈
+enum|ref|date-range|bool|numeric-range, column, readPermission, buckets}` — declared **once** by the
+module that owns the table and consumed **twice**: as a typed query arg on that module's list
+endpoint and as a `groupBy` key on its *stats endpoint* (D-ObjectFacets, M56). A facet may name only
+a **plaintext** column: envelope-encrypted `pii:special` values have none. The per-type catalog is
+[architecture/facets.md](architecture/facets.md).
+
+**Bucket.** One `{key, label, count}` row of a facet's distribution. `label` is a `locale → text`
+map for `ref` facets (D-i18n). Enum facets return a bucket per allowed value including zero-count
+ones, so a chart's shape does not change as data arrives.
+
+**Stats endpoint.** `GET /<module>/v1/<collection>/stats` — the per-module aggregation surface
+(D-ObjectFacets, M57). Takes **exactly the same filter args** as its list endpoint plus an optional
+`facets` CSV; returns `totalCount` + one bucket set per facet. Every count is computed **inside** the
+caller's visibility predicate (see *Visibility-safe aggregation* in
+[patterns.md](architecture/patterns.md)); a facet whose read code the caller lacks is **omitted**
+rather than zeroed. Mints no RIDs, writes no audit rows.
+
+**Dashboard (console).** The chart rendering of a listable type at `/explore/<type>?view=dashboard`
+— the second of two views over **one URL-borne filter set**, so toggling to the list preserves the
+filters and clicking a chart segment adds one (D-ConsoleDashboards, M57). Not to be confused with
+`web/src/app/(dashboard)/`, the Next.js route-group folder name.
+
 ## Planned domains (M16–M54)
 
 > Vocabulary for the [milestones.md](milestones.md) M16–M45 planned cluster (derived from the

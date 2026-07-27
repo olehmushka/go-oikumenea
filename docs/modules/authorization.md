@@ -422,6 +422,10 @@ instance-scope only. Guards against privilege escalation: granting an assignment
 
 ## Open seams / future
 
+- **Facets & dashboards (M58).** [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope) lands filters + a stats endpoint + a console dashboard
+  for this module's listable types: `GET /assignments/stats` over `roleId`, `targetUnitId`, `scope`, `graphId`, active-vs-revoked and `expiresAt` — the expiring-soon tile is the governance number D-TimeBoundGrants implies but nothing surfaces today.
+  Facets and proposed charts are catalogued in [facets.md](../architecture/facets.md).
+
 - **Time-bound grants are live** (`expires_at`, D-TimeBoundGrants) — see the data model. **Decision-
   explain** is live on `/authorize/batch` (DS-16) — see the API surface. The **RLS backstop**
   (D-RLSDefenseInDepth) is shipped — see *RLS backstop (defense-in-depth)* above.

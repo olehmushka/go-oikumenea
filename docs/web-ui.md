@@ -109,14 +109,25 @@ adding a type is a registry entry, not new pages.
   encodes its kind (`parseRid` in `web/src/lib/ontology/rid.ts`). So *any* RID resolves to its type
   with no server lookup — the basis for paste-a-RID navigation and the universal object view.
 - **Command palette (⌘K).** A global omnibox (`cmdk`) that navigates, runs quick actions, resolves a
-  pasted RID directly, and **searches objects**. Because the API exposes **no server-side free-text
-  search** (list endpoints take only `pageSize`/`pageToken`), search is a **client-side fan-out**:
-  one page per listable type is fetched through the BFF, cached per session, and filtered in the
-  browser. *Caveat:* this sees only the first page per type — adequate for small/medium instances; a
-  real search endpoint is a future backend decision, not a UI workaround.
+  pasted RID directly, and **searches objects** through the server-side unified search endpoint
+  (`SearchService.searchObjects`, [D-UnifiedSearch](architecture/decisions.md) / [search](modules/search.md)) —
+  debounced, permission-gated and visibility-trimmed by the backend. *(This supersedes the earlier
+  client-side fan-out that filtered the first page of each listable type in the browser.)*
 - **Object explorer** (`/explore/[type]`). A dense, filterable, sortable, **multi-selectable** table
   with a **detail drawer** (click a row → properties + links + inline actions on the right, without
   leaving the list) and **bulk actions** that loop existing single-entity mutations.
+- **Two views per type: list and dashboard** (M56–M58,
+  [D-ConsoleDashboards](architecture/decisions.md)). `/explore/[type]` renders either a table or a
+  **dashboard** of charts (`?view=dashboard`, generalizing the `?view=tree` toggle units already
+  have). Both are renderings of **one request state, and that state lives entirely in the URL** — so
+  toggling between them preserves the filter set, a chart segment is an `<a>` that adds one more
+  filter (**click-to-filter is ordinary navigation**), and a filtered view is shareable. The
+  registry carries both halves: `filters?: FilterDef[]` and `dashboard?: ChartDef[]` on
+  `ObjectTypeDef`, so a type joins both surfaces by a registry entry. Buckets arrive pre-aggregated
+  from the owning module's `/stats` endpoint ([D-ObjectFacets](architecture/decisions.md); the
+  per-type facet and chart catalog is [architecture/facets.md](architecture/facets.md)) — the console
+  never aggregates a page of rows itself, because a chart computed from page 1 of a keyset list is
+  wrong.
 - **Universal object view** (`/o/[rid]`). One page for any object: header (type/RID/title), property
   list, and a grouped, traversable **Links panel**. It redirects to the richer bespoke editors
   (`/persons/[id]`, `/units/[id]`, `/orders/[id]`) where those exist, and renders generically for
@@ -125,8 +136,10 @@ adding a type is a registry entry, not new pages.
   the registry as a human-facing type catalog, and a lazily-expanded node/edge graph for traversing
   the unit DAG and a person's/​unit's links.
 
-Two small, focused libraries back this: `cmdk` (palette) and `@xyflow/react` (graph). The table,
-drawer, and object primitives are hand-rolled on the existing Tailwind classes.
+Three small, focused libraries back this: `cmdk` (palette), `@xyflow/react` (graph) and `@visx/*`
+(chart **scales and shapes only** — the chart markup in `web/src/components/charts/` is ours:
+`BarChart`, `DonutChart`, `Histogram`, `StatTile`, `Sparkline`). The table, drawer, and object
+primitives are hand-rolled on the existing Tailwind classes.
 
 ## Patterns
 
@@ -137,7 +150,11 @@ drawer, and object primitives are hand-rolled on the existing Tailwind classes.
 - **Conjure error envelope.** API failures are relayed as the `SerializableError` JSON
   (`{errorCode, errorName, parameters}`) and surfaced via a shared error toaster.
 - **Token-paginated lists** ([D-Conjure](architecture/decisions.md)) — list views thread the
-  page token, not offsets.
+  page token, not offsets. No list envelope carries a total; a count comes from the type's `/stats`
+  endpoint, never from counting a page.
+- **URL-borne view state** ([D-ConsoleDashboards](architecture/decisions.md)). Filters, the
+  list/dashboard toggle, sort and the page token all live in `searchParams`, not component state —
+  which is what makes a view shareable, refresh-safe, and identical across the two renderings.
 
 ## Invariants
 
@@ -155,9 +172,14 @@ drawer, and object primitives are hand-rolled on the existing Tailwind classes.
   from both browser and server (documented in `web/README.md`).
 - **Non-admin account provisioning.** The dev `admin` user resolves via the fixed-`sub` bootstrap
   binding; broader login requires provisioned accounts or enabling JIT ([D-JIT](architecture/decisions.md)).
-- **Client-side fan-out search.** The palette/object search filters the **first page** of each
-  listable type in the browser (the API has no search endpoint). Fine for small/medium instances;
-  scaling it (or exact filtering) wants a server-side search endpoint — a backend decision logged in
-  [decisions.md](architecture/decisions.md), not a UI change.
-- **Design system.** Tailwind + hand-rolled primitives, plus two focused libraries — `cmdk` (command
-  palette) and `@xyflow/react` (relationship graph). No broader component-library lock.
+- **Bespoke module pages.** Six modules — company, vehicle, finance, religion, education,
+  external-org — are still large `"use client"` pages with no ontology-registry entry: they fetch a
+  single page of 100 and drop `nextPageToken`, so they get neither the filter bar nor a dashboard.
+  **M58** gives each a registry entry and routes them through the generic explorer.
+- **Sort.** The contract has **no sort param anywhere**, so column sorting stays client-side over the
+  current page. Server-side ordering is additive on top of the facet vocabulary, not part of it.
+- **Cross-type dashboards.** Every dashboard is single-type by construction (per-module `/stats`
+  endpoints, D-ObjectFacets) — no cross-tab, and no roll-up spanning types.
+- **Design system.** Tailwind + hand-rolled primitives, plus three focused libraries — `cmdk` (command
+  palette), `@xyflow/react` (relationship graph) and `@visx/*` (chart scales/shapes). No broader
+  component-library lock.

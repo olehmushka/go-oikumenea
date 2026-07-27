@@ -12,7 +12,6 @@ package application
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 
@@ -24,6 +23,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/document/domain"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/pkg/crypto"
+	"github.com/olegamysk/go-oikumenea/pkg/listing"
 	"github.com/olegamysk/go-oikumenea/pkg/personalcode"
 	"github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
@@ -34,6 +34,10 @@ const (
 	DefaultPageSize = 50
 	MaxPageSize     = 500
 )
+
+// pageSize is this module's page-size policy (M56 / pkg/listing): the shared clamp bound to the
+// module's own Default/Max, replacing the per-module resolvePageSize copy.
+var pageSizePolicy = listing.PageSize{Default: DefaultPageSize, Max: MaxPageSize}
 
 // auditSubsystem labels the interim system actor for document admin writes; eraseSubsystem labels the
 // purge/crypto-erase path run on a person's records. Until the acting person is threaded through (the
@@ -195,8 +199,8 @@ func (s *Service) DeleteDocument(ctx context.Context, id string) error {
 }
 
 func (s *Service) ListPersonDocuments(ctx context.Context, personID string, pageSize int, pageToken string) (DocumentPage, error) {
-	size := resolvePageSize(pageSize)
-	after, err := decodeCursor(pageToken)
+	size := pageSizePolicy.Resolve(pageSize)
+	after, err := listing.DecodeCursor(pageToken)
 	if err != nil {
 		return DocumentPage{}, err
 	}
@@ -205,7 +209,7 @@ func (s *Service) ListPersonDocuments(ctx context.Context, personID string, page
 		return DocumentPage{}, err
 	}
 	if len(docs) > size {
-		return DocumentPage{Documents: docs[:size], NextPageToken: encodeCursor(docs[size-1].ID)}, nil
+		return DocumentPage{Documents: docs[:size], NextPageToken: listing.EncodeCursor(docs[size-1].ID)}, nil
 	}
 	return DocumentPage{Documents: docs}, nil
 }
@@ -563,29 +567,4 @@ func toJSON(v any) json.RawMessage {
 		return nil
 	}
 	return raw
-}
-
-func resolvePageSize(requested int) int {
-	if requested <= 0 {
-		return DefaultPageSize
-	}
-	if requested > MaxPageSize {
-		return MaxPageSize
-	}
-	return requested
-}
-
-func encodeCursor(id string) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(id))
-}
-
-func decodeCursor(token string) (string, error) {
-	if token == "" {
-		return "", nil
-	}
-	raw, err := base64.RawURLEncoding.DecodeString(token)
-	if err != nil {
-		return "", err
-	}
-	return string(raw), nil
 }

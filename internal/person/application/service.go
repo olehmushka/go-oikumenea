@@ -10,7 +10,6 @@ package application
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -26,6 +25,7 @@ import (
 	personevents "github.com/olegamysk/go-oikumenea/internal/person/events"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/pkg/events"
+	"github.com/olegamysk/go-oikumenea/pkg/listing"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 
@@ -34,6 +34,10 @@ const (
 	DefaultPageSize = 50
 	MaxPageSize     = 500
 )
+
+// pageSize is this module's page-size policy (M56 / pkg/listing): the shared clamp bound to the
+// module's own Default/Max, replacing the per-module resolvePageSize copy.
+var pageSizePolicy = listing.PageSize{Default: DefaultPageSize, Max: MaxPageSize}
 
 // auditSubsystem labels the interim system actor for person's admin writes. Until authorization (M7)
 // + identity-federation (M8) resolve the acting person, these writes are recorded as a `system`
@@ -270,8 +274,8 @@ func (s *Service) UpdatePerson(ctx context.Context, id string, patch domain.Pers
 // ListPersons returns a keyset-paginated page of the directory (by time-ordered RID), optionally
 // narrowed by a case-insensitive name/code substring (server-side, keeps the keyset cursor correct).
 func (s *Service) ListPersons(ctx context.Context, pageSize int, pageToken, query string) (Page, error) {
-	size := resolvePageSize(pageSize)
-	after, err := decodeCursor(pageToken)
+	size := pageSizePolicy.Resolve(pageSize)
+	after, err := listing.DecodeCursor(pageToken)
 	if err != nil {
 		return Page{}, err
 	}
@@ -280,7 +284,7 @@ func (s *Service) ListPersons(ctx context.Context, pageSize int, pageToken, quer
 		return Page{}, err
 	}
 	if len(persons) > size {
-		return Page{Persons: persons[:size], NextPageToken: encodeCursor(persons[size-1].ID)}, nil
+		return Page{Persons: persons[:size], NextPageToken: listing.EncodeCursor(persons[size-1].ID)}, nil
 	}
 	return Page{Persons: persons}, nil
 }
@@ -307,8 +311,8 @@ func (s *Service) ReadablePerson(ctx context.Context, subjectPersonID, personID 
 // ListPersons and is handled by the caller. Pagination keys on the person RID, matching the
 // membership union's ordering, so the returned rows are already in token order.
 func (s *Service) ListVisiblePersons(ctx context.Context, subjectPersonID string, pageSize int, pageToken, query string) (Page, error) {
-	size := resolvePageSize(pageSize)
-	after, err := decodeCursor(pageToken)
+	size := pageSizePolicy.Resolve(pageSize)
+	after, err := listing.DecodeCursor(pageToken)
 	if err != nil {
 		return Page{}, err
 	}
@@ -333,7 +337,7 @@ func (s *Service) ListVisiblePersons(ctx context.Context, subjectPersonID string
 		return Page{}, err
 	}
 	if hasMore && len(ids) > 0 {
-		return Page{Persons: persons, NextPageToken: encodeCursor(ids[len(ids)-1])}, nil
+		return Page{Persons: persons, NextPageToken: listing.EncodeCursor(ids[len(ids)-1])}, nil
 	}
 	return Page{Persons: persons}, nil
 }
@@ -605,31 +609,4 @@ func toJSON(v any) json.RawMessage {
 		return nil
 	}
 	return raw
-}
-
-func resolvePageSize(requested int) int {
-	if requested <= 0 {
-		return DefaultPageSize
-	}
-	if requested > MaxPageSize {
-		return MaxPageSize
-	}
-	return requested
-}
-
-// encodeCursor/decodeCursor make the keyset position (the last row's RID) into an opaque, URL-safe
-// page token (API conventions: token pagination, no offsets).
-func encodeCursor(id string) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(id))
-}
-
-func decodeCursor(token string) (string, error) {
-	if token == "" {
-		return "", nil
-	}
-	raw, err := base64.RawURLEncoding.DecodeString(token)
-	if err != nil {
-		return "", err
-	}
-	return string(raw), nil
 }

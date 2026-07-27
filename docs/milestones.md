@@ -82,6 +82,9 @@ migrates, and demos** on its own, so the service is runnable at every step.
 | **M53** | Connector plane | Connector registry (`Connector`/`Source` Objects + audited sync-run reporting), the narrow permission-gated **wiring API** (RID resolution, reference catalogs, sync cursors), and the M34 `watchlistclient` generalized into one typed **connector-call seam**; hermenea registers as the first connector — push / pull-wiring / on-demand-lookup contract (D-ConnectorPlane) | M51, M16, M34, M49 |
 | **M54** | Data packs & enable flags | The plugin system as **data, not code**: operator-mounted versioned **data packs** through the generalized D-Pinax autoseeder (first pack: a **locale pack**) + per-module `modules.*.enabled` install flags (endpoints hidden, schema still migrates) (D-DataPacks) | M45 |
 | **M55** | RLS service arm | The deferred half of D-ServiceIdentities/D-ConnectorPlane: machine **reach** into RLS-protected, organization-owned data — a principal branch in `authz_unit_in_reach` (constrained to RLS-exempt tables, the central design problem), org-owned operational writes, and `RequireImport`'s real orgID. Split out of D-ConnectorPlane (M53 built the connector plane's reads only) | M51, M53 |
+| **M56** | List filters & the facet vocabulary | The shared `Facet` declaration per object type (key / kind / column / inherited read code / bucket strategy) → **typed Conjure query args** on every listable collection, with an IR-derived build-time drift guard; the missing top-level `listOrders`/`listDocuments`/`listMemberships`; a new `pkg/listing` kernel retiring the 14+ duplicated cursor codecs and page-size clamps; console `FilterDef[]` + a filter bar with **all state in the URL** (D-ObjectFacets, D-ConsoleDashboards) | M7, M50 |
+| **M57** | Module dashboards | `GET /<module>/v1/<collection>/stats` per module — the **same** filter args as the list endpoint plus a `facets` CSV, returning `totalCount` + per-facet buckets from static sqlc `GROUP BY` queries with the visibility predicate **folded into SQL**; `@visx/*` chart primitives (`BarChart`/`DonutChart`/`Histogram`/`StatTile`/`Sparkline`); `?view=dashboard` on `/explore/[type]`, each segment a link that adds one filter. Person / unit / membership / order / document (D-ObjectFacets, D-ConsoleDashboards) | M56 |
+| **M58** | Dashboard & filter coverage rollout | The remaining listable object types — audit, organization, company, vehicle, finance, education, religion, external-org, location, language, assignments — plus ontology-registry entries for the six modules that have none. Each is a facet declaration + query args + stats queries + a registry entry; **no new infrastructure** ([facets catalog](architecture/facets.md)) | M57 |
 
 M1/M2 and M3/M4 are independent and may be built in parallel. Everything after M2 assumes audit + i18n exist.
 M12 is **verified** — see its section below (D-PersonContactChannels, D-DocumentAttrSchema, expanded D-PersonalCodes, D-PersonBio amendment); additive person/document enrichments, proven end-to-end (integration suites + a live HTTP demo on the running server).
@@ -161,6 +164,9 @@ Legend: `✅` done · `🚧` in progress · `⬜` not started · `➖` not appli
 | **M53** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | verified — connector plane ([D-ConnectorPlane](architecture/roadmap-decisions.md#d-connectorplane--a-connector-registry--a-three-mode-contract-push-pull-wiring-on-demand-lookup-extends-d-hermenea-d-watchlists), **amended 2026-07-21** — RLS arm split to M55; [north star](architecture/north-star.md) plane 4). **Backend/Migrated:** new `connector` module (RID service **20**; migration `0040_connector_plane` — `connector_connectors`/`connector_sources`/`connector_sync_runs`), `api/connectors.conjure.yml` + `api/wiring.conjure.yml`, the pull-wiring read API (`wiring.resolve`/`.catalog.read`/`.cursor.read`, instance-scope), and `internal/connectorcall` (the M34 `watchlistclient` generalized into a deadline-bounded per-kind lookup seam, behaviour unchanged). hermenea self-registers + reports runs over its existing shared secret (the `hermenea-importer` principal gains `connector.register`/`.report`). **UI:** read-only console fleet view (`/connectors` — connectors→sources→runs, gated on `connector.read`, no trigger/edit controls); TS SDK regenerated. **Scope:** reads + reporting only — the RLS service arm is **M55**. Verified: unit (connector repo/service integration on `oikumenea_test` — self-registration bound to the calling principal, anti-impersonation CONFLICT, idempotent run report on `(source, externalRunId)`, declared-away source retirement, operator reads; reporter mapping incl. the finishedAt regression guard; connectorcall deadline) + **live e2e on the docker stack** (real HTTPS, shared-secret→`hermenea-importer` principal): hermenea self-registered its row + 6 sources bound to the principal; a triggered `geo-countries` sync produced a **`succeeded`** run visible from the core with `finished_at`, audited `connector.register` + `connector.sync-run.running`/`.succeeded` as a `system` actor; wiring gate ladder — **401** unauth, **403** machine-without-grant, **200** with `wiring.resolve` (real `UA/US→RID`, `ZZ` unresolved), **403** for a human on the machine-only surface, **403 within 2 s** after revoke (D-AuthzGrantCache); a fixture wiring read worked with only a granted code (zero core rebuild). The live e2e **caught a real bug** — the reporter omitted `finishedAt`, so terminal reports 400'd and runs stuck at `running`; fixed (stamp `finishedAt` on terminal states) + regression-tested. Watchlist unchanged (M34 seam behaviour-preserving, suites green); console gate reuses the M52 live-proven `can()` path |
 | **M54** | ✅ | ✅ | ✅ | ✅ | ➖ | ✅ | verified — data packs & enable flags ([D-DataPacks](architecture/roadmap-decisions.md#d-datapacks--plugins-are-versioned-data-packs--per-module-enable-flags-no-runtime-code-loading-extends-d-pinax-d-i18n) + its 2026-07-21 as-built note; [north star](architecture/north-star.md) plane 5). **Pack scanner:** the D-Pinax loader scans an operator-mounted `pinax.packs` dir beside the `go:embed` bundle — one topo-sorted, version-gated set; a name collision fails boot (packs are additive); `pinax_seed_state.pack` records provenance (migration `0041`). **Locale packs:** a new `locales` import objectType (create-if-absent into `i18n_locales`, never flipping an operator's flags) + the existing `translations`; sample `deploy/packs/locale-deu`. **Enable flags:** `modules.<name>.enabled` (default on) for the six enrichment verticals (finance/religion/vehicle/externalorg/company/education); a disabled module registers no routes (404) and its prefix-scoped codes are non-grantable, yet its schema migrates (re-enable = config flip). Codes gated at the authz application layer (static catalog unchanged); search providers skip a nil disabled service; the links fan-in omission falls out of code-gating (per-relationship read codes ungrantable) so the R-28 coverage assertion is untouched. UI `➖` (no console surface — install-config + boot-seed behaviour). Verified: unit (pack scanner additive/collision/tagging; ModuleEnabled defaults + core-always-on + DisabledModulePrefixes incl. religionorg; authz disabled-code rejection) + integration on Postgres (`locales` create-if-absent + operator-edit survival; **full Seeder e2e with the pack mounted** — deu seeded, DE→Deutschland, `pinax_seed_state.pack=locale-deu`, second-seed no-op) + **live boot e2e** (finance disabled + pack mounted): app boots clean (no nil-service panic), `deu` present, `GET /finance/v1/*` → **404**, a role with `finance.read` → **400 RoleInvalid "unknown permission code"** while `religion.read` (enabled) → **200**, `finance_*` tables present (schema migrated). Closes the north-star M51–M54 cluster |
 | **M55** | ✅ | ✅ | ✅ | ✅ | ➖ | ✅ | verified — RLS service arm ([D-ServiceIdentities](architecture/roadmap-decisions.md#d-serviceidentities--machine-clients-authenticate-via-idp-client-credentials-and-resolve-to-service-principals-extends-d-hermenea-l-authzonly) + [D-ConnectorPlane](architecture/roadmap-decisions.md#d-connectorplane--a-connector-registry--a-three-mode-contract-push-pull-wiring-on-demand-lookup-extends-d-hermenea-d-watchlists)'s deferred RLS arm; split out 2026-07-21). **The recursion-safe principal branch:** the RLS backstop may read only RLS-exempt tables, so the arm cannot join `tenant_units` to learn a unit's org. Resolution (migration `0042`): a dedicated **RLS-exempt projection `authz_unit_org(unit_id→org_id)`**, trigger-maintained from `tenant_units` (FK `DEFERRABLE INITIALLY DEFERRED` so the BEFORE-INSERT projection write precedes the parent row). A third GUC **`app.principal_id`** + `authz_principal_org_in_reach(org, wr)` (org-direct grant check, read live → revocation immediate) feed a principal arm in `authz_unit_in_reach` for the unit-keyed child tables, while the `tenant_units` policy gets the org-direct arm **on the row's own `org_id`** — the one case the projection can't serve mid-INSERT (a BEFORE-trigger write is invisible to the same-statement `WITH CHECK`), which is what lets a connector CREATE a brand-new (edgeless, not-yet-in-closure) unit. `org_id IS NULL` (instance-wide) grants confer **no** operational reach (blast-radius boundary). `RequireImport` now passes a **real orgID** (optional envelope `orgId`). Principals now pin a lazy RLS conn (authenticator + `ContextWithPrincipalAuthority` return `RLSState{PrincipalID}`). UI `➖` (backstop/PEP, no console). Verified: **DB integration** (`rls_service_arm_integration_test.go`, restricted role — org-confined read sees only its org, read-only rejected on write / read+write passes, **brand-new unit created in-org via the projection + cross-org create denied at the DB**, org-NULL no reach, live revocation; trigger-maintained + exempt-readable projection) + **person-arm regression** (`TestRLSBackstop` + membership reach-differential green — the person arm is byte-identical, the new arm an empty probe when `app.principal_id` unset) + drift guards (`authz_unit_org` no-RID, guards green) + **live e2e** (host binary on the restricted role, throwaway DB, HS256 principal token): clean boot on `0042`, org-confined import `orgId=O` **200** / foreign `orgId=P` **403** (real orgID gate), person surface **403** (M51 denial preserved though the principal now pins a conn), revoke → **403 immediately** (no principal cache). Discovery: a connector needs BOTH a read and a write grant (the read/write-split mirrors the person arm — write-only can pass `WITH CHECK` but not read the row back) |
+| **M56** | ✅ | ✅ | 🚧 | ⬜ | ⬜ | ⬜ | backend (in progress) — list filters & the facet vocabulary ([D-ObjectFacets](architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope) + [D-ConsoleDashboards](architecture/decisions.md#d-consoledashboards--every-listable-type-gets-a-list-view-and-a-dashboard-view-over-one-url-borne-filter-set-amends-d-webui); catalog in [facets.md](architecture/facets.md)). **Decided/Designed:** one `Facet` declaration per object type, consumed twice — typed Conjure query args on the list endpoint and a `groupBy` key on M57's stats endpoint. **Ticket 1 of 4 done — `pkg/listing`:** the shared cursor codec (single-column + tuple) and `PageSize` clamp, with 3 AST drift guards; 13 modules migrated, retiring 14 cursor-helper pairs and 15 clamp copies. **Fixed en route:** six transports (company/education/externalorg/finance/religion/vehicle) emitted base64 **StdEncoding** page tokens, whose `+` decodes to a space in a query parameter — now RawURL, with a tolerant decoder so pre-upgrade tokens still page. **Remaining:** the facet declaration + typed query args + IR-derived contract drift guard; `listOrders`/`listDocuments`/`listMemberships`; console `FilterDef[]` + URL-borne filter state. Migrated is expected `➖` unless the M46 scale measurement demands an index |
+| **M57** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | designed — module dashboards ([D-ObjectFacets](architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope) + [D-ConsoleDashboards](architecture/decisions.md#d-consoledashboards--every-listable-type-gets-a-list-view-and-a-dashboard-view-over-one-url-borne-filter-set-amends-d-webui)). **Decided/Designed:** per-module `GET /<module>/v1/<collection>/stats` over the M56 facets, counts computed **inside** the visibility predicate; `@visx/*` chart primitives; `?view=dashboard`. **Not started.** Depends on M56 |
+| **M58** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | designed — dashboard & filter coverage rollout across the remaining listable object types ([facets.md](architecture/facets.md) catalog, M58 tranche) + ontology-registry entries for company/vehicle/finance/religion/education/external-org. **Not started;** splittable per module — no new infrastructure beyond M56/M57. Depends on M57 |
 
 Notes on the planned tier (M16–M37): all have a landed `D-<Name>` decision (in
 [roadmap-decisions.md](architecture/roadmap-decisions.md)), so all are at least
@@ -1581,3 +1587,139 @@ Dependency order **M51 → M52 → M53 → M54**; each leaves the system deploya
   (`RequireServiceOrPerson`); direct module write APIs stay person-gated (a connector ingests, it does
   not POST `/units`). The DB backstop confines whatever an org-owned import handler writes; per-object
   org-owned import handlers land with the connectors that need them.
+
+---
+
+# Object-facets cluster (M56–M58)
+
+The three milestones that give every module a **second view**. Today each module is a flat list and
+nothing else: an operator cannot see age structure, sex structure, status mix or rank distribution,
+and cannot narrow a list by anything structural. The contract made that unavoidable — of ~90
+list/search endpoints only five carry a real filter set, there is **no sort param anywhere**, and **no
+page envelope carries a `totalCount`**. Decisions:
+**[D-ObjectFacets](architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope)**
+(the shared vocabulary + the per-module stats endpoints) and
+**[D-ConsoleDashboards](architecture/decisions.md#d-consoledashboards--every-listable-type-gets-a-list-view-and-a-dashboard-view-over-one-url-borne-filter-set-amends-d-webui)**
+(the console's list|dashboard duality); the per-object-type facet and chart catalog is
+[architecture/facets.md](architecture/facets.md). Dependency order **M56 → M57 → M58**.
+
+**The one idea:** a facet is declared **once** by the module that owns the table and consumed
+**twice** — as a typed list-filter query arg and as a `groupBy` key on that module's stats endpoint.
+Because both take the same names and values, and because the console keeps the whole filter set in
+the URL, toggling list↔dashboard preserves the filters and clicking a chart segment is just
+navigation that adds one filter.
+
+## M56 — List filters & the facet vocabulary
+
+**Goal.** The shared filter vocabulary and the **list half** of the duality. No charts.
+
+- **Delivers:**
+  - **`pkg/listing`** — ✅ **landed (ticket 1).** The shared kernel the filter work needs anyway:
+    `EncodeCursor`/`DecodeCursor` for a single-column keyset, `EncodeTuple`/`DecodeTuple` for a
+    composite one (audit's `(created_at, id)`, geo's `(distance, id)`), and a `PageSize{Default, Max}`
+    clamp each module parameterizes with its own bounds (the M0–M11 core caps at 500, the M18+
+    verticals at 200; `audit` alone takes its Default from runtime config). A stdlib-only leaf, so
+    both the application and transport layers can use it. **Retired** 14 `encodeCursor`/`decodeCursor`
+    pairs and 15 `resolvePageSize`/`clampPageSize`/`pageSizeOr` copies across 13 modules. Three
+    **AST drift guards** (`pkg/listing/drift_test.go`) fail the build if a module reintroduces a local
+    codec, a local clamp, or a non-URL-safe alphabet — they parse the AST, so a doc comment naming the
+    old shape does not trip them.
+  - **A latent bug fixed en route.** Six transports (company, education, externalorg, finance,
+    religion, vehicle) emitted page tokens as base64 **StdEncoding**, whose `+`, `/` and `=` are not
+    URL-safe — and a `+` in a query parameter decodes to a **space**, corrupting the cursor for any
+    RID whose base64 happened to contain one. All six now emit RawURL; `DecodeCursor` accepts all four
+    base64 alphabets, so tokens a client was holding across the upgrade keep paging.
+  - **The `Facet` declaration** per object type — `{key, kind ∈ enum|ref|date-range|bool|
+    numeric-range, column, readPermission, buckets}` — owned by the module that owns the table, in the
+    shape `internal/links`'s `Descriptor` established.
+  - **Typed Conjure query args** on every listable collection, one per facet, copying the
+    `listUnits(org, domain, unitKind, level, graph, parent, rootsOnly)` and
+    `listExternalOrgs(query, kind, country, status)` precedents. **Not** a generic filter DSL.
+  - **An IR-derived drift guard** — a facet without its query arg (or an arg without its facet) fails
+    the build, the way `tools/genactionparams` derives per-action parameter schemas (R-29).
+  - **The missing top-level list endpoints** `listOrders`, `listDocuments`, `listMemberships` (today
+    only per-unit / per-person paths exist).
+  - **Console:** `filters?: FilterDef[]` on `ObjectTypeDef` (sibling to the existing `ColumnDef`/
+    `PropertyDef`/`LinkDef`/`ActionDef`); a filter bar on `/explore/[type]`; **all filter state in the
+    URL**, replacing the hand-concatenated query strings and `DataTable`'s `useState` quick-filter.
+- **Implements:** D-ObjectFacets (filters half), D-ConsoleDashboards (list half). Requires M7 (the
+  PDP) and M50 (the R-21 List/Search split the filters must not break). Additive / expand-only.
+- **The performance constraint** (why this is not a mechanical change): D-PersonSearch's R-21
+  generalization **bans** the `(@query = '' OR <ilike>)` guard — the planner cannot prove `@query`
+  non-empty under a generic prepared plan and seq-scans. Structural filters therefore use the
+  `sqlc.narg('x')::type IS NULL OR col = …` style proven in `audit`/`tenant`, **not** the
+  `sqlc.arg(x)::text = ''` sentinel used in `language`/`geo`, and the List/Search split stays intact.
+  The depth-2 search-around work showed the failure mode exactly: a filter column that did not match a
+  partial-index predicate seq-scanned 1M rows (cost 23660 → 48 once it did).
+- **Exit (verified when):** every declared facet round-trips as a list filter; the drift guard fails
+  the build on a facet without its arg; `EXPLAIN` against the M46 `scripts/seed-scale` dataset shows
+  every filtered person / unit / membership path index-backed (an env-gated scale test in the style of
+  `TestSearchAroundDepth2Scale`); the console filter bar's state survives a refresh and a shared link;
+  `tsc` + `next build` clean.
+
+---
+
+## M57 — Module dashboards
+
+**Goal.** The **dashboard half**: per-module aggregation the console renders as charts, over the M56
+facets, with click-to-filter that carries back to the list.
+
+- **Delivers:**
+  - **`GET /<module>/v1/<collection>/stats`** — one endpoint per module, taking **exactly the same
+    filter args** as its list endpoint plus an optional `facets` CSV, returning `totalCount` plus a
+    `list<FacetDistribution>` (`facet`, `buckets[{key, label, count}]`). One round-trip per dashboard.
+    Backed by **static sqlc `GROUP BY` queries**, one per (module, facet) — no dynamic SQL.
+  - **Visibility folded into the count.** Person-scoped counts reuse the reach semi-join already
+    proven at scale (`VisiblePersonIDsForSubjectSparse`/`Dense`, with `CountReadableUnitsCapped`
+    picking the plan shape); unit-scoped counts fold the shadow gate **into SQL** — `gateUnits` trims
+    *after* the keyset page is cut, which is correct for a list and wrong for a count.
+  - **Chart primitives** in `web/src/components/charts/` composed over `@visx/scale` + `@visx/shape`
+    (the third focused library, joining `cmdk` and `@xyflow/react`): `BarChart`, `DonutChart`,
+    `Histogram`, `StatTile`, `Sparkline`. Each segment is an `<a>` to the same URL with one more
+    filter applied — click-to-filter is navigation, which is what makes the filter set survive the
+    toggle back to the list for free.
+  - **`?view=dashboard`** on `/explore/[type]`, generalizing the `?view=tree` toggle units already
+    have, plus `dashboard?: ChartDef[]` on `ObjectTypeDef`.
+  - **Dashboards for the operational core:** person, unit, membership, order, document — the facet and
+    component catalog is [architecture/facets.md](architecture/facets.md).
+- **Implements:** D-ObjectFacets (stats half), D-ConsoleDashboards (dashboard half). Requires M56.
+  Additive; no schema beyond any index the measurement demands.
+- **The compliance constraint.** A stats endpoint that counted persons by ethnicity or religion is
+  exactly what **D-DataScope**'s aggregation rule guards, so three rules are load-bearing, not
+  hygiene: a facet may name only a **plaintext** column (every envelope-encrypted `pii:special` value
+  has no facet — asserted at build time, and there is no plaintext to `GROUP BY` anyway); a facet above
+  `pii:basic` **inherits its field's own read code** and is **omitted** from the response for a caller
+  without it (never a zeroed bucket, never a 403); and there is **no bucket-size suppression** —
+  every counted row is one the caller may already read and page under the same filters, so a
+  k-anonymity floor would protect nothing it does not already protect.
+- **Exit (verified when):** for a fixed non-admin subject and a fixed filter set, `stats.totalCount`
+  equals the row count obtained by exhaustively paging the same list endpoint with the same filters —
+  one differential test per registered facet, the contract shape R-30 used for `scope.Visibility`; a
+  subject lacking a facet's read code gets that facet **absent** and still a 200; a build-time
+  assertion rejects a facet naming an envelope-encrypted column; `/stats` latency is measured against
+  the M46 scale dataset with a recorded budget; and a **live end-to-end** run (`oik serve` on the
+  `scripts/seed-demo` dev DB with a `scripts/keycloak-token.sh` token) filters a person list, toggles
+  to the dashboard, clicks an age band, and toggles back with both filters intact.
+
+---
+
+## M58 — Dashboard & filter coverage rollout
+
+**Goal.** Bring the remaining listable object types onto the same two surfaces. **No new
+infrastructure** — each type is a facet declaration + query args + stats queries + a registry entry,
+so this is splittable across as many sessions as it takes.
+
+- **Delivers:** facets, filters and dashboards for audit, organization, company, vehicle,
+  finance (accounts + cards), education (institutions + enrollments), religion taxa, external-orgs,
+  location, languoids and authorization assignments — per the M58 tranche of
+  [architecture/facets.md](architecture/facets.md) — plus **ontology-registry entries for the six
+  modules that have none** (company, vehicle, finance, religion, education, external-org), which today
+  are bespoke `"use client"` pages that fetch a single page of 100 and drop `nextPageToken`.
+- **Start with `audit`.** Its nine filter args already exist, so it becomes a stats endpoint and a
+  dashboard with no contract churn — the "audit analytics" the R-29 action-type catalog was partly
+  built for, and the cheapest proof that the M56/M57 seam generalizes.
+- **Implements:** D-ObjectFacets, D-ConsoleDashboards. Requires M57.
+- **Exit (verified when):** every object type with a `list` in the ontology registry also has a facet
+  set and a dashboard, or an explicit recorded reason it does not; the M57 differential and
+  permission-omission tests pass for each newly registered facet; the six bespoke module pages route
+  through the generic explorer.

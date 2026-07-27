@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/olegamysk/go-oikumenea/internal/tenant/domain"
+	"github.com/olegamysk/go-oikumenea/pkg/listing"
 )
 
 // noExclude is the zero UUID used as the "exclude nothing" argument to the code-conflict counts on a
@@ -132,8 +133,8 @@ type OrgPage struct {
 
 // ListOrganizations returns a keyset-paginated page of organizations, optionally filtered by domain.
 func (s *Service) ListOrganizations(ctx context.Context, domainID *string, pageSize int, pageToken string) (OrgPage, error) {
-	size := resolvePageSize(pageSize)
-	after, err := decodeCursor(pageToken)
+	size := pageSizePolicy.Resolve(pageSize)
+	after, err := listing.DecodeCursor(pageToken)
 	if err != nil {
 		return OrgPage{}, err
 	}
@@ -143,7 +144,7 @@ func (s *Service) ListOrganizations(ctx context.Context, domainID *string, pageS
 	}
 	if len(orgs) > size {
 		last := orgs[size-1]
-		return OrgPage{Orgs: orgs[:size], NextPageToken: encodeCursor(last.ID)}, nil
+		return OrgPage{Orgs: orgs[:size], NextPageToken: listing.EncodeCursor(last.ID)}, nil
 	}
 	return OrgPage{Orgs: orgs}, nil
 }

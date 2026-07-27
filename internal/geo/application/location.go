@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
 	"github.com/olegamysk/go-oikumenea/internal/geo/domain"
+	"github.com/olegamysk/go-oikumenea/pkg/listing"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 
@@ -143,15 +144,11 @@ func (s *Service) DeleteLocation(ctx context.Context, id string) error {
 
 // ---------------------------------------------------------------- helpers
 
-func clampPageSize(n int) int {
-	if n <= 0 {
-		return defaultPageSize
-	}
-	if n > maxPageSize {
-		return maxPageSize
-	}
-	return n
-}
+// pageSizePolicy is this module's page-size policy, clamped through the shared kernel (M56 /
+// pkg/listing) instead of a local copy.
+var pageSizePolicy = listing.PageSize{Default: defaultPageSize, Max: maxPageSize}
+
+func clampPageSize(n int) int { return pageSizePolicy.Resolve(n) }
 
 // trimPage drops the sentinel (limit+1) row used to detect a next page and reports whether one exists.
 func trimPage(rows []domain.Location, limit int) ([]domain.Location, bool, error) {

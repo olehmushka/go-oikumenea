@@ -100,6 +100,10 @@ grants authority (parallel to rank/position). Writes are audited Actions under a
 
 ## Open seams / future
 
+- **Facets & dashboards (M58).** [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope) lands filters + a stats endpoint + a console dashboard
+  for this module's listable types: `GET /vehicles/stats` over the facets `typeId`, `brandId`, `modelId`, `color`, `status`, `manufactureDate`, `registrationCountry` — the colour bar is the one chart whose bars are coloured **from the data** (`platform_colors.hex`, D-Color). Plus the module's first ontology-registry entry.
+  Facets and proposed charts are catalogued in [facets.md](../architecture/facets.md).
+
 - **DS-52** — vehicle lifecycle/intelligence feeds (insurance/MTPL, inspection, accidents, theft/wanted,
   odometer, telematics), connector-fed via hermenea (mirrors DS-45 for companies).
 - **DS-53** — column-ize stabilized vehicle specs out of `attributes` (the DS-6 pattern).

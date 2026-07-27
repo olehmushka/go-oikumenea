@@ -8,7 +8,6 @@ package transport
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"time"
 
@@ -18,6 +17,7 @@ import (
 	locapp "github.com/olegamysk/go-oikumenea/internal/localization/application"
 	"github.com/olegamysk/go-oikumenea/internal/vehicle/application"
 	"github.com/olegamysk/go-oikumenea/internal/vehicle/domain"
+	"github.com/olegamysk/go-oikumenea/pkg/listing"
 	"github.com/palantir/pkg/bearertoken"
 	"github.com/palantir/pkg/datetime"
 	werror "github.com/palantir/witchcraft-go-error"
@@ -646,27 +646,24 @@ func emptyToNil(s string) *string {
 
 // ---- pagination tokens (opaque base64 of the last id) ----
 
-func pageSizeOr(p *int) int {
-	if p == nil || *p <= 0 {
-		return 50
-	}
-	if *p > 200 {
-		return 200
-	}
-	return *p
-}
+// pageSizePolicy mirrors the owning application service's clamp, applied at the wire edge over the
+// optional Conjure arg (M56 / pkg/listing).
+var pageSizePolicy = listing.PageSize{Default: 50, Max: 200}
 
+func pageSizeOr(p *int) int { return pageSizePolicy.ResolvePtr(p) }
+
+// decodeToken/encodeToken are the opaque keyset cursor over the last row's RID, delegated to the
+// shared pkg/listing codec (M56). These endpoints previously emitted base64 StdEncoding, whose
+// `+`, `/` and `=` are NOT URL-safe in a query parameter (a `+` decodes to a space, corrupting the
+// cursor); listing.EncodeCursor emits RawURL, and its decode stays tolerant of the old alphabet so
+// tokens issued before the upgrade keep working. An undecodable token still yields "" — restarting
+// at the first page — preserving this transport's existing behaviour.
 func decodeToken(p *string) string {
-	if p == nil || *p == "" {
-		return ""
-	}
-	raw, err := base64.StdEncoding.DecodeString(*p)
+	id, err := listing.DecodeCursorPtr(p)
 	if err != nil {
 		return ""
 	}
-	return string(raw)
+	return id
 }
 
-func encodeToken(id string) string {
-	return base64.StdEncoding.EncodeToString([]byte(id))
-}
+func encodeToken(id string) string { return listing.EncodeCursor(id) }

@@ -131,6 +131,9 @@ A **consumer** of the above (not a backend module), documented alongside them:
    (D-Ontology): the authoritative catalog of the typed Objects, Links, and Actions the modules
    define. Module docs conform to it.
 7. [`architecture/patterns.md`](architecture/patterns.md) — recurring cross-cutting patterns.
+   [`architecture/facets.md`](architecture/facets.md) is the companion catalog for one of them: the
+   per-object-type **facet** vocabulary (list filters + `/stats` buckets) and the dashboard components
+   each type gets (D-ObjectFacets / D-ConsoleDashboards, M56–M58).
 8. The relevant [`modules/*.md`](modules/) for the work at hand. Foundational order:
    **tenant → person → rank → membership → authorization → identity-federation**, with
    **document** and **order** (person-held papers / administrative acts) layered on

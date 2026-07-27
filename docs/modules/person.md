@@ -243,7 +243,8 @@ DATA-GOVERNANCE:
 | `POST /persons` | Create a person (no account, no unit needed) | `person.create` |
 | `GET /persons/{id}` | Read one | `person.read` |
 | `PUT /persons/{id}` | Update names (canonical + CLDR parts), `birthdate`, `date_of_death`, `sex`, `country_of_birth`, attributes | `person.update` |
-| `GET /persons` | Search/list the directory (token-paginated) | `person.read` |
+| `GET /persons` | Search/list the directory (token-paginated); **filtered by the declared facets** — `sex`, `status`, `unitId`, `rankId`, `birthdateFrom`/`birthdateTo`, `countryOfBirth`, `hasAccount` (M56, [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope)) | `person.read` |
+| `GET /persons/stats` | Facet distributions over the **same** filter args + an optional `facets` CSV: `totalCount` + `buckets[{key,label,count}]` per facet, counted **inside** the D-PersonReadScope predicate (M57; [facets catalog](../architecture/facets.md)) | `person.read` |
 | `PUT /persons/{id}/rank` | Set/clear the person's rank | `person.rank.assign` |
 | `POST /persons/{id}/deactivate` | Begin reversible deactivation (grace window) | `person.lifecycle` |
 | `POST /persons/{id}/reactivate` | Cancel deactivation within grace | `person.lifecycle` |
@@ -359,6 +360,16 @@ with the **shadow-visibility gate** applied to that join. A **membership-less** 
 unit, so the intersection is empty and they are readable **only on the instance plane** (see
 *Invariants*). There is **no "self" read exemption**. [document](document.md) reads inherit this rule
 through the holder.
+
+**Facet rule (M56/M57, [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope)).**
+`GET /persons/stats` computes every count **inside** the read-scope predicate above — the same SQL
+semi-join the list uses, never a post-paged tally. **No facet exists over an envelope-encrypted
+`pii:special` value** (ethnicity, party membership, political leaning, health, legal records): there
+is no plaintext to group, and grouping them is exactly the join **D-DataScope**'s aggregation rule
+forbids. The plaintext discriminators beside them (`person_health_records.kind`,
+`person_legal_records.kind`/`disposition`) may be faceted only under their own read codes
+(`person.health.read`, `person.legal-record.read`) and are **omitted** from the response for a caller
+without them — never a zeroed bucket, never a 403.
 
 ## Invariants & safety
 

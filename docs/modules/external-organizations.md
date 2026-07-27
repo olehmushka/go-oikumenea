@@ -83,6 +83,10 @@ affiliation edge pointing at one coherent node-space (D-ExternalOrgs).
 
 ## Open seams / future
 
+- **Facets & dashboards (M58).** [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope) lands filters + a stats endpoint + a console dashboard
+  for this module's listable types: `GET /external-orgs/stats`; the four existing filter args (`query`, `kind`, `country`, `status`) become the declared facet set, extended with the M29 attribution columns `source`, `confidence`, `asOf` — the confidence x source view is the OSINT data-quality chart (D-OverlayFoundation). Plus the module's first ontology-registry entry.
+  Facets and proposed charts are catalogued in [facets.md](../architecture/facets.md).
+
 - Org↔org structure (a party's regional branches, a ministry's agencies) — deferred; add a reified
   `parent_of` link + closure only if a consumer needs hierarchy.
 - Reconciling an external org that later becomes a tenant unit or an M21 company (promotion across

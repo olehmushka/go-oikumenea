@@ -7,7 +7,6 @@ package application
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"time"
@@ -19,6 +18,7 @@ import (
 	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/internal/tenant/domain"
+	"github.com/olegamysk/go-oikumenea/pkg/listing"
 	"github.com/palantir/pkg/metrics"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
@@ -28,6 +28,10 @@ const (
 	DefaultPageSize = 50
 	MaxPageSize     = 500
 )
+
+// pageSize is this module's page-size policy (M56 / pkg/listing): the shared clamp bound to the
+// module's own Default/Max, replacing the per-module resolvePageSize copy.
+var pageSizePolicy = listing.PageSize{Default: DefaultPageSize, Max: MaxPageSize}
 
 // metricClosureEditSeconds times an incremental closure edit, tagged op=add|remove (architecture
 // review R-20). The M48 property is "cost ∝ affected slice, not graph size"; this latency is the
@@ -213,8 +217,8 @@ func (s *Service) ListUnits(ctx context.Context, orgID string, domainID, kindID 
 	if parent != nil && rootsOnly {
 		return UnitPage{}, domain.ErrInvalidUnit
 	}
-	size := resolvePageSize(pageSize)
-	after, err := decodeCursor(pageToken)
+	size := pageSizePolicy.Resolve(pageSize)
+	after, err := listing.DecodeCursor(pageToken)
 	if err != nil {
 		return UnitPage{}, err
 	}
@@ -254,7 +258,7 @@ func (s *Service) ListUnits(ctx context.Context, orgID string, domainID, kindID 
 
 	if len(units) > size {
 		last := units[size-1]
-		return UnitPage{Units: units[:size], NextPageToken: encodeCursor(last.ID)}, nil
+		return UnitPage{Units: units[:size], NextPageToken: listing.EncodeCursor(last.ID)}, nil
 	}
 	return UnitPage{Units: units}, nil
 }
@@ -456,8 +460,8 @@ func (s *Service) Ancestors(ctx context.Context, unitID, graphCode string) ([]do
 // Descendants returns a keyset-paginated page of the unit's subtree in graph graphCode (default
 // command).
 func (s *Service) Descendants(ctx context.Context, unitID, graphCode string, pageSize int, pageToken string) (UnitRefPage, error) {
-	size := resolvePageSize(pageSize)
-	after, err := decodeCursor(pageToken)
+	size := pageSizePolicy.Resolve(pageSize)
+	after, err := listing.DecodeCursor(pageToken)
 	if err != nil {
 		return UnitRefPage{}, err
 	}
@@ -476,7 +480,7 @@ func (s *Service) Descendants(ctx context.Context, unitID, graphCode string, pag
 	}
 	if len(refs) > size {
 		last := refs[size-1]
-		return UnitRefPage{Refs: refs[:size], NextPageToken: encodeCursor(last.ID)}, nil
+		return UnitRefPage{Refs: refs[:size], NextPageToken: listing.EncodeCursor(last.ID)}, nil
 	}
 	return UnitRefPage{Refs: refs}, nil
 }
@@ -691,33 +695,6 @@ func defaultGraph(code string) string {
 		return domain.CommandGraphCode
 	}
 	return code
-}
-
-func resolvePageSize(requested int) int {
-	if requested <= 0 {
-		return DefaultPageSize
-	}
-	if requested > MaxPageSize {
-		return MaxPageSize
-	}
-	return requested
-}
-
-// encodeCursor/decodeCursor make the keyset position (the last row's RID) into an opaque,
-// URL-safe page token (API conventions: token pagination, no offsets).
-func encodeCursor(id string) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(id))
-}
-
-func decodeCursor(token string) (string, error) {
-	if token == "" {
-		return "", nil
-	}
-	raw, err := base64.RawURLEncoding.DecodeString(token)
-	if err != nil {
-		return "", err
-	}
-	return string(raw), nil
 }
 
 // querier returns the request-pinned RLS connection if one is in context (every authenticated request
