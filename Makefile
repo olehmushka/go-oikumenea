@@ -16,6 +16,7 @@ COMPOSE        ?= docker compose
 DEV_COMPOSE    ?= docker-compose.dev.yml
 OIKU_IMAGE     ?= oikumenea:local
 HERMENEA_IMAGE ?= hermenea:local
+DEMO_DSN       ?= $(if $(DATABASE_URL),$(DATABASE_URL),postgres://postgres:dev@localhost:5432/postgres?sslmode=disable)
 
 .DEFAULT_GOAL := help
 
@@ -141,6 +142,10 @@ db-reset: ## Reset the dev DB to a clean, migrated state + re-seed the admin
 .PHONY: test-db
 test-db: ## Create + migrate the dedicated integration-test databases (idempotent)
 	./scripts/setup-test-db.sh
+
+.PHONY: seed-demo
+seed-demo: ## Seed the dev DB with realistic demo data (unit trees, ranked persons, families, all modules). Needs a migrated DB + pinax seeded (run the server once or `oikumenea seed`).
+	go run ./scripts/seed-demo -dsn "$(DEMO_DSN)" -reset
 
 # ---------------------------------------------------------------------------------------------------
 ##@ Docker
