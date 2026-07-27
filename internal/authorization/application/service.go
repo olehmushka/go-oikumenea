@@ -14,7 +14,6 @@ package application
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"sort"
@@ -27,6 +26,7 @@ import (
 	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
 	"github.com/olegamysk/go-oikumenea/internal/authorization/domain"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
+	"github.com/olegamysk/go-oikumenea/pkg/listing"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 
@@ -35,6 +35,10 @@ const (
 	DefaultPageSize = 50
 	MaxPageSize     = 500
 )
+
+// pageSize is this module's page-size policy (M56 / pkg/listing): the shared clamp bound to the
+// module's own Default/Max, replacing the per-module resolvePageSize copy.
+var pageSizePolicy = listing.PageSize{Default: DefaultPageSize, Max: MaxPageSize}
 
 // auditSubsystem labels the interim system actor for authz admin writes. Until identity-federation
 // (M8) resolves the acting person from the validated token, writes whose grantor is not supplied are
@@ -322,8 +326,8 @@ func (s *Service) GetRole(ctx context.Context, id string) (domain.Role, error) {
 
 // ListRoles returns a keyset-paginated page of roles (each with its permission set).
 func (s *Service) ListRoles(ctx context.Context, pageSize int, pageToken string) (RolePage, error) {
-	size := resolvePageSize(pageSize)
-	after, err := decodeCursor(pageToken)
+	size := pageSizePolicy.Resolve(pageSize)
+	after, err := listing.DecodeCursor(pageToken)
 	if err != nil {
 		return RolePage{}, err
 	}
@@ -332,7 +336,7 @@ func (s *Service) ListRoles(ctx context.Context, pageSize int, pageToken string)
 		return RolePage{}, err
 	}
 	if len(roles) > size {
-		return RolePage{Roles: roles[:size], NextPageToken: encodeCursor(roles[size-1].ID)}, nil
+		return RolePage{Roles: roles[:size], NextPageToken: listing.EncodeCursor(roles[size-1].ID)}, nil
 	}
 	return RolePage{Roles: roles}, nil
 }
@@ -607,8 +611,8 @@ func (s *Service) SeedBaseRoles(ctx context.Context) error {
 // ============================ helpers ============================
 
 func (s *Service) listAssignments(ctx context.Context, pageSize int, pageToken string, fetch func(after string, limit int) ([]domain.Assignment, error)) (AssignmentPage, error) {
-	size := resolvePageSize(pageSize)
-	after, err := decodeCursor(pageToken)
+	size := pageSizePolicy.Resolve(pageSize)
+	after, err := listing.DecodeCursor(pageToken)
 	if err != nil {
 		return AssignmentPage{}, err
 	}
@@ -617,7 +621,7 @@ func (s *Service) listAssignments(ctx context.Context, pageSize int, pageToken s
 		return AssignmentPage{}, err
 	}
 	if len(as) > size {
-		return AssignmentPage{Assignments: as[:size], NextPageToken: encodeCursor(as[size-1].ID)}, nil
+		return AssignmentPage{Assignments: as[:size], NextPageToken: listing.EncodeCursor(as[size-1].ID)}, nil
 	}
 	return AssignmentPage{Assignments: as}, nil
 }
@@ -682,29 +686,4 @@ func toJSON(v any) json.RawMessage {
 		return nil
 	}
 	return raw
-}
-
-func resolvePageSize(requested int) int {
-	if requested <= 0 {
-		return DefaultPageSize
-	}
-	if requested > MaxPageSize {
-		return MaxPageSize
-	}
-	return requested
-}
-
-func encodeCursor(id string) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(id))
-}
-
-func decodeCursor(token string) (string, error) {
-	if token == "" {
-		return "", nil
-	}
-	raw, err := base64.RawURLEncoding.DecodeString(token)
-	if err != nil {
-		return "", err
-	}
-	return string(raw), nil
 }

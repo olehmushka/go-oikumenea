@@ -12,7 +12,6 @@ package transport
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"time"
 
@@ -22,6 +21,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/connector/application"
 	"github.com/olegamysk/go-oikumenea/internal/connector/domain"
 	"github.com/olegamysk/go-oikumenea/pkg/authn"
+	"github.com/olegamysk/go-oikumenea/pkg/listing"
 	"github.com/palantir/pkg/bearertoken"
 	"github.com/palantir/pkg/datetime"
 	werror "github.com/palantir/witchcraft-go-error"
@@ -274,20 +274,19 @@ func strPtr(s string) *string {
 	return &s
 }
 
-// decodeToken/encodeToken are opaque base64 keyset cursors over the RID, matching the externalorg style.
+// decodeToken/encodeToken are opaque keyset cursors over the RID, delegated to the shared codec
+// (M56). Unlike the other transports this one REJECTS an undecodable token rather than silently
+// restarting at page 1 — the stricter behaviour, kept as-is.
 func decodeToken(tok *string) (string, error) {
-	if tok == nil || *tok == "" {
-		return "", nil
-	}
-	b, err := base64.RawURLEncoding.DecodeString(*tok)
+	id, err := listing.DecodeCursorPtr(tok)
 	if err != nil {
 		return "", connectorapi.NewConnectorInvalid("invalid page token")
 	}
-	return string(b), nil
+	return id, nil
 }
 
 func encodeToken(id string) *string {
-	t := base64.RawURLEncoding.EncodeToString([]byte(id))
+	t := listing.EncodeCursor(id)
 	return &t
 }
 

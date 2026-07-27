@@ -6,7 +6,6 @@ package transport
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"strconv"
@@ -18,6 +17,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/geo/application"
 	"github.com/olegamysk/go-oikumenea/internal/geo/domain"
 	locapp "github.com/olegamysk/go-oikumenea/internal/localization/application"
+	"github.com/olegamysk/go-oikumenea/pkg/listing"
 	"github.com/palantir/pkg/bearertoken"
 	"github.com/palantir/pkg/datetime"
 	werror "github.com/palantir/witchcraft-go-error"
@@ -294,44 +294,37 @@ func (s LocationService) mapError(ctx context.Context, err error, locationID str
 // review R-21: OFFSET pagination is gone. Search/Bbox key on the location id; Near keys on the
 // (distance, id) sort pair. Tokens are opaque base64 to the client, so the format switch is internal.
 
-func encodeIDCursor(id string) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(id))
-}
+// Both shapes ride the shared pkg/listing codec (M56): the single-column one for Search/Bbox, the
+// tuple one for Near. Both stay LENIENT — an absent or unparseable token restarts from the beginning
+// rather than erroring, preserving this transport's existing behaviour.
 
-// decodeIDCursor is lenient: an absent or unparseable token starts from the beginning.
+func encodeIDCursor(id string) string { return listing.EncodeCursor(id) }
+
 func decodeIDCursor(token *string) string {
-	if token == nil || *token == "" {
-		return ""
-	}
-	raw, err := base64.RawURLEncoding.DecodeString(*token)
+	id, err := listing.DecodeCursorPtr(token)
 	if err != nil {
 		return ""
 	}
-	return string(raw)
+	return id
 }
 
-// encodeNearCursor / decodeNearCursor carry the (distance_m, id) pair — the Near sort key — as
-// "<dist>\x1f<id>". The distance is the resume point along the nearest-first order.
+// encodeNearCursor / decodeNearCursor carry the (distance_m, id) pair — the Near sort key. The
+// distance is the resume point along the nearest-first order.
 func encodeNearCursor(dist float64, id string) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(strconv.FormatFloat(dist, 'g', -1, 64) + "\x1f" + id))
+	return listing.EncodeTuple(strconv.FormatFloat(dist, 'g', -1, 64), id)
 }
 
-// decodeNearCursor is lenient: an absent or unparseable token starts at the nearest (0, "").
 func decodeNearCursor(token *string) (float64, string) {
-	if token == nil || *token == "" {
+	if token == nil {
 		return 0, ""
 	}
-	raw, err := base64.RawURLEncoding.DecodeString(*token)
+	parts, err := listing.DecodeTuple(*token, 2)
+	if err != nil || parts == nil {
+		return 0, ""
+	}
+	d, err := strconv.ParseFloat(parts[0], 64)
 	if err != nil {
 		return 0, ""
 	}
-	dist, id, ok := strings.Cut(string(raw), "\x1f")
-	if !ok {
-		return 0, ""
-	}
-	d, err := strconv.ParseFloat(dist, 64)
-	if err != nil {
-		return 0, ""
-	}
-	return d, id
+	return d, parts[1]
 }

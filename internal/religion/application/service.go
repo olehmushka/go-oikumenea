@@ -22,6 +22,7 @@ import (
 	tenantapp "github.com/olegamysk/go-oikumenea/internal/tenant/application"
 	tenantdomain "github.com/olegamysk/go-oikumenea/internal/tenant/domain"
 	"github.com/olegamysk/go-oikumenea/pkg/crypto"
+	"github.com/olegamysk/go-oikumenea/pkg/listing"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 
@@ -572,15 +573,11 @@ func (s *Service) CreateChildOrg(ctx context.Context, parentUnitID, code, name, 
 
 // ============================ helpers ============================
 
-func clampPageSize(n int) int {
-	if n <= 0 {
-		return defaultPageSize
-	}
-	if n > maxPageSize {
-		return maxPageSize
-	}
-	return n
-}
+// pageSizePolicy is this module's page-size policy, clamped through the shared kernel (M56 /
+// pkg/listing) instead of a local copy.
+var pageSizePolicy = listing.PageSize{Default: defaultPageSize, Max: maxPageSize}
+
+func clampPageSize(n int) int { return pageSizePolicy.Resolve(n) }
 
 // querier returns the request-pinned RLS connection if one is in context (db.AcquireScoped/WithConn),
 // else the bare pool. Reads/writes on the unit-scoped religion tables (org profiles/classifications/

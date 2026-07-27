@@ -11,6 +11,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/audit/domain"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/pkg/action"
+	"github.com/olegamysk/go-oikumenea/pkg/listing"
 )
 
 // MaxPageSize caps a client-requested page size (API conventions: token pagination, bounded pages).
@@ -130,15 +131,13 @@ func (s *Service) Query(ctx context.Context, p QueryParams) (Page, error) {
 	return Page{Entries: entries}, nil
 }
 
+// resolvePageSize clamps through the shared policy (M56 / pkg/listing). Audit is the one module whose
+// Default comes from RUNTIME config (`audit.default-page-size`) rather than a constant, so the policy
+// is built per call from the refreshable value; the fallback guards a configured non-positive value.
 func (s *Service) resolvePageSize(requested int) int {
-	if requested <= 0 {
-		requested = s.defaultSize()
+	def := s.defaultSize()
+	if def <= 0 {
+		def = 50
 	}
-	if requested <= 0 {
-		requested = 50
-	}
-	if requested > MaxPageSize {
-		requested = MaxPageSize
-	}
-	return requested
+	return listing.PageSize{Default: def, Max: MaxPageSize}.Resolve(requested)
 }

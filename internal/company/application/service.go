@@ -20,6 +20,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	tenantapp "github.com/olegamysk/go-oikumenea/internal/tenant/application"
 	tenantdomain "github.com/olegamysk/go-oikumenea/internal/tenant/domain"
+	"github.com/olegamysk/go-oikumenea/pkg/listing"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 
@@ -789,15 +790,11 @@ func keys(m map[string]struct{}) []string {
 	return out
 }
 
-func clampPageSize(n int) int {
-	if n <= 0 {
-		return defaultPageSize
-	}
-	if n > maxPageSize {
-		return maxPageSize
-	}
-	return n
-}
+// pageSizePolicy is this module's page-size policy, clamped through the shared kernel (M56 /
+// pkg/listing) instead of a local copy.
+var pageSizePolicy = listing.PageSize{Default: defaultPageSize, Max: maxPageSize}
+
+func clampPageSize(n int) int { return pageSizePolicy.Resolve(n) }
 
 func (s *Service) inTx(ctx context.Context, fn func(pgx.Tx) error) error {
 	tx, err := s.pool.Begin(ctx)

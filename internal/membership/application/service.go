@@ -12,7 +12,6 @@ package application
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"time"
@@ -26,6 +25,7 @@ import (
 	orderevents "github.com/olegamysk/go-oikumenea/internal/order/events"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/pkg/events"
+	"github.com/olegamysk/go-oikumenea/pkg/listing"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 
@@ -34,6 +34,10 @@ const (
 	DefaultPageSize = 50
 	MaxPageSize     = 500
 )
+
+// pageSize is this module's page-size policy (M56 / pkg/listing): the shared clamp bound to the
+// module's own Default/Max, replacing the per-module resolvePageSize copy.
+var pageSizePolicy = listing.PageSize{Default: DefaultPageSize, Max: MaxPageSize}
 
 // auditSubsystem labels the interim system actor for membership's admin writes. Until authorization
 // (M7) + identity-federation (M8) resolve the acting person, these writes are recorded as a `system`
@@ -171,8 +175,8 @@ func (s *Service) AbolishPosition(ctx context.Context, id string) (domain.Positi
 // ListPositions returns a keyset-paginated page of a unit's positions, optionally filtered to
 // vacant / filled (D-Position: a vacancy is an active, unfilled position).
 func (s *Service) ListPositions(ctx context.Context, unitID string, filter domain.PositionFilter, pageSize int, pageToken string) (PositionPage, error) {
-	size := resolvePageSize(pageSize)
-	after, err := decodeCursor(pageToken)
+	size := pageSizePolicy.Resolve(pageSize)
+	after, err := listing.DecodeCursor(pageToken)
 	if err != nil {
 		return PositionPage{}, err
 	}
@@ -185,7 +189,7 @@ func (s *Service) ListPositions(ctx context.Context, unitID string, filter domai
 	var next string
 	if len(positions) > size {
 		page = positions[:size]
-		next = encodeCursor(positions[size-1].ID)
+		next = listing.EncodeCursor(positions[size-1].ID)
 	}
 	// Attach the current holder to each billet so callers (e.g. the unit page) can show and link the
 	// person filling it, not just a vacant/filled flag. The page is unit-scoped and admin-sized, so a
@@ -439,8 +443,8 @@ func (s *Service) checkPositionForFill(ctx context.Context, repo domain.Reposito
 
 // listMemberships is the shared keyset-pagination wrapper for the two membership listings.
 func (s *Service) listMemberships(ctx context.Context, pageSize int, pageToken string, fetch func(after string, limit int) ([]domain.Membership, error)) (MembershipPage, error) {
-	size := resolvePageSize(pageSize)
-	after, err := decodeCursor(pageToken)
+	size := pageSizePolicy.Resolve(pageSize)
+	after, err := listing.DecodeCursor(pageToken)
 	if err != nil {
 		return MembershipPage{}, err
 	}
@@ -449,7 +453,7 @@ func (s *Service) listMemberships(ctx context.Context, pageSize int, pageToken s
 		return MembershipPage{}, err
 	}
 	if len(ms) > size {
-		return MembershipPage{Memberships: ms[:size], NextPageToken: encodeCursor(ms[size-1].ID)}, nil
+		return MembershipPage{Memberships: ms[:size], NextPageToken: listing.EncodeCursor(ms[size-1].ID)}, nil
 	}
 	return MembershipPage{Memberships: ms}, nil
 }
@@ -543,31 +547,4 @@ func toJSON(v any) json.RawMessage {
 		return nil
 	}
 	return raw
-}
-
-func resolvePageSize(requested int) int {
-	if requested <= 0 {
-		return DefaultPageSize
-	}
-	if requested > MaxPageSize {
-		return MaxPageSize
-	}
-	return requested
-}
-
-// encodeCursor/decodeCursor make the keyset position (the last row's RID) into an opaque, URL-safe
-// page token (API conventions: token pagination, no offsets).
-func encodeCursor(id string) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(id))
-}
-
-func decodeCursor(token string) (string, error) {
-	if token == "" {
-		return "", nil
-	}
-	raw, err := base64.RawURLEncoding.DecodeString(token)
-	if err != nil {
-		return "", err
-	}
-	return string(raw), nil
 }
