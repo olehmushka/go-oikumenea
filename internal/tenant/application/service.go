@@ -24,6 +24,8 @@ import (
 	"github.com/olegamysk/go-oikumenea/pkg/listing"
 	"github.com/palantir/pkg/metrics"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
+
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
 
 // Page-size policy (API conventions: token pagination, bounded pages).
@@ -60,7 +62,15 @@ type Service struct {
 	pool    *pgxpool.Pool
 	newRepo RepositoryFactory
 	audit   *auditapp.Service
+	// labeler resolves a dashboard's ref-bucket RIDs to locale->text names (M57 / D-ObjectFacets).
+	// Optional: unset, a chart segment carries its RID and the client falls back to the RID tail.
+	labeler stats.Labeler
 }
+
+// SetBucketLabeler binds the optional dashboard label resolver, wired at the composition root from
+// the same per-type labelers the links service uses — so a unit is named identically in a graph row
+// and in a chart segment.
+func (s *Service) SetBucketLabeler(l stats.Labeler) { s.labeler = l }
 
 // NewService wires the service with the pool, the repository factory, and the audit service every
 // write records into.
@@ -208,14 +218,36 @@ func (s *Service) ListUnitLanguages(ctx context.Context, unitID string) ([]domai
 	return repo.ListUnitLanguages(ctx, unitID)
 }
 
-// ListUnits returns a keyset-paginated page of units within an organization (REQUIRED orgID;
-// D-TenantOrganizations, M40). For the flat listing it is optionally filtered by domain/kind/level.
-// For hierarchical browsing in graph graphCode (default command) it returns either the org's root
-// units (rootsOnly) or one unit's DIRECT children (parent); those two are mutually exclusive and
-// ignore the domain/kind/level filters.
-func (s *Service) ListUnits(ctx context.Context, orgID string, domainID, kindID *string, level *int, graphCode string, parent *string, rootsOnly bool, pageSize int, pageToken string) (UnitPage, error) {
-	if orgID == "" {
-		return UnitPage{}, domain.ErrInvalidUnit
+// UnitStats is the unit dashboard (M57 / D-ObjectFacets): every selected facet's distribution plus
+// the total, over EXACTLY the set ListUnits' FLAT listing would page under the same filters.
+//
+// subjectPersonID is empty for an instance admin and the subject's RID otherwise; the visibility
+// predicate is chosen on that, in SQL. The filter is validated here, once, so the admin and scoped
+// arms reject an ill-formed facet value identically — the same discipline the list path follows.
+func (s *Service) UnitStats(ctx context.Context, subjectPersonID string, f domain.UnitFilter, sel stats.Selection) (stats.Result, error) {
+	if err := f.Validate(); err != nil {
+		return stats.Result{}, err
+	}
+	groups, err := s.newRepo(s.querier(ctx)).UnitStats(ctx, subjectPersonID, f, sel)
+	if err != nil {
+		return stats.Result{}, err
+	}
+	res := stats.Assemble(sel, groups)
+	if err := stats.Label(ctx, s.labeler, sel, &res); err != nil {
+		return stats.Result{}, err
+	}
+	return res, nil
+}
+
+// ListUnits returns a keyset-paginated page of units within an organization (REQUIRED f.OrgID;
+// D-TenantOrganizations, M40). For the flat listing it is narrowed by the unit facet set
+// (M56 / D-ObjectFacets: domain, kind, level, visibility, state, pdpScoped). For hierarchical
+// browsing in graph graphCode (default command) it returns either the org's root units (rootsOnly)
+// or one unit's DIRECT children (parent); those two are mutually exclusive and ignore the facets.
+func (s *Service) ListUnits(ctx context.Context, f domain.UnitFilter, graphCode string, parent *string, rootsOnly bool, pageSize int, pageToken string) (UnitPage, error) {
+	// Validated once, here, so the flat and traversal paths reject an ill-formed filter identically.
+	if err := f.Validate(); err != nil {
+		return UnitPage{}, err
 	}
 	if parent != nil && rootsOnly {
 		return UnitPage{}, domain.ErrInvalidUnit
@@ -244,16 +276,16 @@ func (s *Service) ListUnits(ctx context.Context, orgID string, domainID, kindID 
 			return UnitPage{}, err
 		}
 	case rootsOnly:
-		g, err := repo.GetGraphForOrgByCode(ctx, &orgID, defaultGraph(graphCode))
+		g, err := repo.GetGraphForOrgByCode(ctx, &f.OrgID, defaultGraph(graphCode))
 		if err != nil {
 			return UnitPage{}, err
 		}
-		units, err = repo.ListRootUnits(ctx, orgID, g.ID, after, size+1)
+		units, err = repo.ListRootUnits(ctx, f.OrgID, g.ID, after, size+1)
 		if err != nil {
 			return UnitPage{}, err
 		}
 	default:
-		units, err = repo.ListUnits(ctx, orgID, domainID, kindID, level, after, size+1)
+		units, err = repo.ListUnits(ctx, f, after, size+1)
 		if err != nil {
 			return UnitPage{}, err
 		}

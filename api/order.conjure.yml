@@ -266,6 +266,45 @@ services:
             param-type: path
           request: RevokeOrderRequest
         returns: Order
+      listOrders:
+        http: GET /orders
+        docs: |
+          List orders (headers only) across every issuing unit the caller may read, token-paginated,
+          narrowed by the order facet set (D-ObjectFacets, M56). A non-instance-admin caller sees
+          only orders whose issuing unit falls in their effective readable reach; every filter below
+          is applied INSIDE that reach, before the page is cut, so a filtered page is never short and
+          its cursor is never wrong.
+
+          The facet filters combine with AND. They are ordinary structural predicates and do NOT
+          widen what the caller may see: filtering can only narrow the visible set.
+        args:
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+          issuingUnitId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — issuing-unit RID. Matches this unit EXACTLY; it does not expand to the subtree.
+          orderTypeId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — order-type RID. An order's EFFECT lives on its items, so this matches an order with AT LEAST ONE item of this type (D-Orders).
+          status:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — lifecycle status. One of `draft`, `issued`, `revoked`.
+          issuedOnFrom:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — INCLUSIVE lower bound on `issuedOn`, an ISO-8601 calendar date (`YYYY-MM-DD`). A draft order has no issue date; such orders are excluded whenever either bound is set.
+          issuedOnTo:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — INCLUSIVE upper bound on `issuedOn` (`YYYY-MM-DD`). See `issuedOnFrom` for the unset-date rule.
+        returns: OrderPage
       listUnitOrders:
         http: GET /units/{unitId}/orders
         docs: List an issuing unit's orders (headers only), token-paginated.

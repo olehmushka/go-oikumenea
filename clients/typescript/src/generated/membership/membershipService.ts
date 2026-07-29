@@ -39,6 +39,22 @@ export interface IMembershipService {
     endMembership(membershipId: string, request: IEndMembershipRequest): Promise<IMembership>;
     /** Roster of a unit's active memberships, token-paginated. (The shadow gate applies once authz lands, M7.) */
     listMembers(unitId: string, pageSize?: number | null, pageToken?: string | null): Promise<IMembershipPage>;
+    /**
+     * List memberships across every unit the caller may read, token-paginated, narrowed by the
+     * membership facet set (D-ObjectFacets, M56). A non-instance-admin caller sees only
+     * memberships whose unit falls in their effective readable reach; every filter below is
+     * applied INSIDE that reach, before the page is cut, so a filtered page is never short and
+     * its cursor is never wrong.
+     *
+     * Unlike `GET /units/{unitId}/members` and `GET /persons/{personId}/memberships`, which
+     * return ACTIVE memberships only, this endpoint returns EVERY status by default — an
+     * unfiltered listing is the honest total. Narrow with `status`.
+     *
+     * The facet filters combine with AND. They are ordinary structural predicates and do NOT
+     * widen what the caller may see: filtering can only narrow the visible set.
+     *
+     */
+    listMemberships(pageSize?: number | null, pageToken?: string | null, unitId?: string | null, personId?: string | null, positionId?: string | null, status?: string | null, effectiveFromAfter?: string | null, effectiveFromBefore?: string | null): Promise<IMembershipPage>;
     /** A person's active memberships across units, token-paginated. */
     listPersonMemberships(personId: string, pageSize?: number | null, pageToken?: string | null): Promise<IMembershipPage>;
 }
@@ -209,6 +225,45 @@ export class MembershipService implements IMembershipService {
             [
                 unitId,
             ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * List memberships across every unit the caller may read, token-paginated, narrowed by the
+     * membership facet set (D-ObjectFacets, M56). A non-instance-admin caller sees only
+     * memberships whose unit falls in their effective readable reach; every filter below is
+     * applied INSIDE that reach, before the page is cut, so a filtered page is never short and
+     * its cursor is never wrong.
+     *
+     * Unlike `GET /units/{unitId}/members` and `GET /persons/{personId}/memberships`, which
+     * return ACTIVE memberships only, this endpoint returns EVERY status by default — an
+     * unfiltered listing is the honest total. Narrow with `status`.
+     *
+     * The facet filters combine with AND. They are ordinary structural predicates and do NOT
+     * widen what the caller may see: filtering can only narrow the visible set.
+     *
+     */
+    public listMemberships(pageSize?: number | null, pageToken?: string | null, unitId?: string | null, personId?: string | null, positionId?: string | null, status?: string | null, effectiveFromAfter?: string | null, effectiveFromBefore?: string | null): Promise<IMembershipPage> {
+        return this.bridge.call<IMembershipPage>(
+            "MembershipService",
+            "listMemberships",
+            "GET",
+            "/membership/v1/memberships",
+            __undefined,
+            __undefined,
+            {
+                "pageSize": pageSize,
+                "pageToken": pageToken,
+                "unitId": unitId,
+                "personId": personId,
+                "positionId": positionId,
+                "status": status,
+                "effectiveFromAfter": effectiveFromAfter,
+                "effectiveFromBefore": effectiveFromBefore,
+            },
+            __undefined,
             __undefined,
             __undefined
         );

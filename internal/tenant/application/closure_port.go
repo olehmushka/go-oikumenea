@@ -3,7 +3,9 @@
 
 package application
 
-import "context"
+import (
+	"context"
+)
 
 // This file exposes the tenant graph closure to the authorization PDP as a cross-module query
 // (overview.md): the PDP unions a subject's grants over these lookups. They are keyed by graph RID

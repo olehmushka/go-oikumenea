@@ -46,7 +46,9 @@ export function NewUnitForm({
     }
     let alive = true;
     api.tenant
-      .listUnits(orgId, null, null, null, null, null, null, 200)
+      // (org, domain, unitKind, level, visibility, state, pdpScoped, graph, parent, rootsOnly,
+      // pageSize, pageToken) — the M56 facet args widened the middle, so pageSize is 11th now.
+      .listUnits(orgId, null, null, null, null, null, null, null, null, null, 200)
       .then((p) => {
         if (alive)
           setParents(

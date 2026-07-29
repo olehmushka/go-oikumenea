@@ -60,7 +60,9 @@ func TestLocalesImportCreateIfAbsent(t *testing.T) {
 	const code = "zul" // isiZulu — not among the seeded ukr/eng/spa/por, so this run must create it
 	// Clean slate + cleanup so the test is repeatable and leaves no residue.
 	_, _ = pool.Exec(ctx, `DELETE FROM oikumenea.i18n_locales WHERE code = $1`, code)
-	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM oikumenea.i18n_locales WHERE code = $1`, code) })
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM oikumenea.i18n_locales WHERE code = $1`, code)
+	})
 
 	env := application.Envelope{
 		ObjectType:    domain.ObjectTypeLocales,

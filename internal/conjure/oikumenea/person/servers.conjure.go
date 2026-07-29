@@ -43,8 +43,31 @@ type PersonService interface {
 	GetPerson(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (Person, error)
 	// Update names, birthdate, date_of_death, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.
 	UpdatePerson(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpdatePersonRequest) (Person, error)
-	// Search/list the directory, token-paginated. (The read-scope union is applied once authz lands, M7.)
-	ListPersons(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string, queryArg *string) (PersonPage, error)
+	/*
+	   Search/list the directory, token-paginated, narrowed by the person facet set
+	   (D-ObjectFacets, M56). A non-instance-admin caller sees only the read-scope union
+	   (D-PersonReadScope); every filter below is applied INSIDE that union, before the page is
+	   cut, so a filtered page is never short and its cursor is never wrong.
+
+	   The facet filters combine with AND. They are ordinary structural predicates and do NOT
+	   widen what the caller may see: filtering can only narrow the visible set.
+	*/
+	ListPersons(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string, queryArg *string, sexArg *string, statusArg *string, birthdateFromArg *string, birthdateToArg *string, countryOfBirthArg *string, rankIdArg *string, unitIdArg *string, graphArg *string, hasAccountArg *bool) (PersonPage, error)
+	/*
+	   Facet distributions for the directory — the dashboard half of the facet vocabulary
+	   (M57 / D-ObjectFacets). Takes exactly the filter args `listPersons` takes (minus paging),
+	   so a dashboard and a list are two renderings of ONE request state and a chart segment is a
+	   link to the same URL with one more filter applied.
+
+	   Counted INSIDE the read-scope predicate (D-PersonReadScope), before anything is cut:
+	   `totalCount` equals the number of rows exhaustively paging `listPersons` with these same
+	   filters would return. One round-trip serves the whole dashboard.
+
+	   The path is `/stats/persons` rather than `/persons/stats` because the server's router
+	   rejects a literal path segment that is a sibling of `{personId}` — see the route-conflict
+	   guard in `internal/platform/transport`.
+	*/
+	PersonStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, queryArg *string, sexArg *string, statusArg *string, birthdateFromArg *string, birthdateToArg *string, countryOfBirthArg *string, rankIdArg *string, unitIdArg *string, graphArg *string, hasAccountArg *bool) (PersonStats, error)
 	// Set or clear the person's rank in one rank system (one rank per system, a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.
 	SetRank(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg SetRankRequest) (Person, error)
 	// Begin reversible deactivation (opens the grace window before purge).
@@ -321,6 +344,9 @@ func RegisterRoutesPersonService(router wrouter.Router, impl PersonService, rout
 	}
 	if err := resource.Get("ListPersons", "/person/v1/persons", httpserver.NewJSONHandler(handler.HandleListPersons, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listPersons route")
+	}
+	if err := resource.Get("PersonStats", "/person/v1/stats/persons", httpserver.NewJSONHandler(handler.HandlePersonStats, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add personStats route")
 	}
 	if err := resource.Put("SetRank", "/person/v1/persons/{personId}/rank", httpserver.NewJSONHandler(handler.HandleSetRank, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add setRank route")
@@ -760,7 +786,126 @@ func (p *personServiceHandler) HandleListPersons(rw http.ResponseWriter, req *ht
 		queryArgInternal := queryArgStr
 		queryArg = &queryArgInternal
 	}
-	respArg, err := p.impl.ListPersons(req.Context(), bearertoken.Token(authHeader), pageSizeArg, pageTokenArg, queryArg)
+	var sexArg *string
+	if sexArgStr := req.URL.Query().Get("sex"); sexArgStr != "" {
+		sexArgInternal := sexArgStr
+		sexArg = &sexArgInternal
+	}
+	var statusArg *string
+	if statusArgStr := req.URL.Query().Get("status"); statusArgStr != "" {
+		statusArgInternal := statusArgStr
+		statusArg = &statusArgInternal
+	}
+	var birthdateFromArg *string
+	if birthdateFromArgStr := req.URL.Query().Get("birthdateFrom"); birthdateFromArgStr != "" {
+		birthdateFromArgInternal := birthdateFromArgStr
+		birthdateFromArg = &birthdateFromArgInternal
+	}
+	var birthdateToArg *string
+	if birthdateToArgStr := req.URL.Query().Get("birthdateTo"); birthdateToArgStr != "" {
+		birthdateToArgInternal := birthdateToArgStr
+		birthdateToArg = &birthdateToArgInternal
+	}
+	var countryOfBirthArg *string
+	if countryOfBirthArgStr := req.URL.Query().Get("countryOfBirth"); countryOfBirthArgStr != "" {
+		countryOfBirthArgInternal := countryOfBirthArgStr
+		countryOfBirthArg = &countryOfBirthArgInternal
+	}
+	var rankIdArg *string
+	if rankIdArgStr := req.URL.Query().Get("rankId"); rankIdArgStr != "" {
+		rankIdArgInternal := rankIdArgStr
+		rankIdArg = &rankIdArgInternal
+	}
+	var unitIdArg *string
+	if unitIdArgStr := req.URL.Query().Get("unitId"); unitIdArgStr != "" {
+		unitIdArgInternal := unitIdArgStr
+		unitIdArg = &unitIdArgInternal
+	}
+	var graphArg *string
+	if graphArgStr := req.URL.Query().Get("graph"); graphArgStr != "" {
+		graphArgInternal := graphArgStr
+		graphArg = &graphArgInternal
+	}
+	var hasAccountArg *bool
+	if hasAccountArgStr := req.URL.Query().Get("hasAccount"); hasAccountArgStr != "" {
+		hasAccountArgInternal, err := strconv.ParseBool(hasAccountArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"hasAccount\" as boolean")
+		}
+		hasAccountArg = &hasAccountArgInternal
+	}
+	respArg, err := p.impl.ListPersons(req.Context(), bearertoken.Token(authHeader), pageSizeArg, pageTokenArg, queryArg, sexArg, statusArg, birthdateFromArg, birthdateToArg, countryOfBirthArg, rankIdArg, unitIdArg, graphArg, hasAccountArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (p *personServiceHandler) HandlePersonStats(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var facetsArg *string
+	if facetsArgStr := req.URL.Query().Get("facets"); facetsArgStr != "" {
+		facetsArgInternal := facetsArgStr
+		facetsArg = &facetsArgInternal
+	}
+	var queryArg *string
+	if queryArgStr := req.URL.Query().Get("query"); queryArgStr != "" {
+		queryArgInternal := queryArgStr
+		queryArg = &queryArgInternal
+	}
+	var sexArg *string
+	if sexArgStr := req.URL.Query().Get("sex"); sexArgStr != "" {
+		sexArgInternal := sexArgStr
+		sexArg = &sexArgInternal
+	}
+	var statusArg *string
+	if statusArgStr := req.URL.Query().Get("status"); statusArgStr != "" {
+		statusArgInternal := statusArgStr
+		statusArg = &statusArgInternal
+	}
+	var birthdateFromArg *string
+	if birthdateFromArgStr := req.URL.Query().Get("birthdateFrom"); birthdateFromArgStr != "" {
+		birthdateFromArgInternal := birthdateFromArgStr
+		birthdateFromArg = &birthdateFromArgInternal
+	}
+	var birthdateToArg *string
+	if birthdateToArgStr := req.URL.Query().Get("birthdateTo"); birthdateToArgStr != "" {
+		birthdateToArgInternal := birthdateToArgStr
+		birthdateToArg = &birthdateToArgInternal
+	}
+	var countryOfBirthArg *string
+	if countryOfBirthArgStr := req.URL.Query().Get("countryOfBirth"); countryOfBirthArgStr != "" {
+		countryOfBirthArgInternal := countryOfBirthArgStr
+		countryOfBirthArg = &countryOfBirthArgInternal
+	}
+	var rankIdArg *string
+	if rankIdArgStr := req.URL.Query().Get("rankId"); rankIdArgStr != "" {
+		rankIdArgInternal := rankIdArgStr
+		rankIdArg = &rankIdArgInternal
+	}
+	var unitIdArg *string
+	if unitIdArgStr := req.URL.Query().Get("unitId"); unitIdArgStr != "" {
+		unitIdArgInternal := unitIdArgStr
+		unitIdArg = &unitIdArgInternal
+	}
+	var graphArg *string
+	if graphArgStr := req.URL.Query().Get("graph"); graphArgStr != "" {
+		graphArgInternal := graphArgStr
+		graphArg = &graphArgInternal
+	}
+	var hasAccountArg *bool
+	if hasAccountArgStr := req.URL.Query().Get("hasAccount"); hasAccountArgStr != "" {
+		hasAccountArgInternal, err := strconv.ParseBool(hasAccountArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"hasAccount\" as boolean")
+		}
+		hasAccountArg = &hasAccountArgInternal
+	}
+	respArg, err := p.impl.PersonStats(req.Context(), bearertoken.Token(authHeader), facetsArg, queryArg, sexArg, statusArg, birthdateFromArg, birthdateToArg, countryOfBirthArg, rankIdArg, unitIdArg, graphArg, hasAccountArg)
 	if err != nil {
 		return err
 	}

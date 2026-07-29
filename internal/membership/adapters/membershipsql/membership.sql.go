@@ -161,6 +161,24 @@ func (q *Queries) CountReadableUnitsCapped(ctx context.Context, arg CountReadabl
 	return count, err
 }
 
+const countReadableUnitsForDispatch = `-- name: CountReadableUnitsForDispatch :one
+SELECT oikumenea.authz_readable_unit_count($1, $2::integer) AS n
+`
+
+type CountReadableUnitsForDispatchParams struct {
+	SubjectPersonID string
+	Cap             int32
+}
+
+// The capped reach-cardinality probe the sparse/dense list dispatch reads (migration 0017). Capped,
+// because the question is never "how big is the reach" but "is it past the threshold".
+func (q *Queries) CountReadableUnitsForDispatch(ctx context.Context, arg CountReadableUnitsForDispatchParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countReadableUnitsForDispatch, arg.SubjectPersonID, arg.Cap)
+	var n int64
+	err := row.Scan(&n)
+	return n, err
+}
+
 const endMembership = `-- name: EndMembership :one
 UPDATE oikumenea.membership_memberships SET
   status        = 'ended',
@@ -498,6 +516,95 @@ func (q *Queries) ListMembersByUnit(ctx context.Context, arg ListMembersByUnitPa
 	return items, nil
 }
 
+const listMemberships = `-- name: ListMemberships :many
+
+SELECT id, person_id, unit_id, position_id, order_item_id, status, effective_from, effective_to, created_at, updated_at, deleted_at FROM oikumenea.membership_memberships m
+WHERE m.deleted_at IS NULL
+  AND ($1 = '' OR m.id::text > $1)
+  AND ($2::uuid IS NULL OR m.unit_id = $2::uuid)
+  AND ($3::uuid IS NULL OR m.person_id = $3::uuid)
+  AND ($4::uuid IS NULL OR m.position_id = $4::uuid)
+  AND ($5::text IS NULL OR m.status = $5::text)
+  AND ($6::date IS NULL
+       OR m.effective_from >= $6::date)
+  AND ($7::date IS NULL
+       OR m.effective_from < ($7::date + 1))
+ORDER BY m.id
+LIMIT $8
+`
+
+type ListMembershipsParams struct {
+	After               interface{}
+	UnitID              pgtype.Text
+	PersonID            pgtype.Text
+	PositionID          pgtype.Text
+	Status              pgtype.Text
+	EffectiveFromAfter  pgtype.Date
+	EffectiveFromBefore pgtype.Date
+	Lim                 int32
+}
+
+// ============================ top-level facet-filtered list (M56 ticket 3 / D-ObjectFacets) ============================
+// GET /memberships. Two shapes, ONE filter block, byte-identical between them: the admin path and the
+// reach-scoped path must select the same rows for the same filters, differing ONLY by the reach
+// predicate. sqlparity_test.go proves the block is present in both with no database.
+//
+// NO implicit status filter, unlike ListMembersByUnit / ListMembershipsByPerson above: the top-level
+// listing returns every status, because a hidden default would make M57's totalCount disagree with
+// its own status distribution. Narrow with @status.
+//
+// Every predicate is folded INTO the SQL, before the LIMIT (review-2026-07 R-06). A Go-side
+// re-filter after the page is cut would return a short page WITH a nextPageToken.
+//
+// The `sqlc.narg('x')::type IS NULL OR col = ...` style is deliberate and load-bearing: R-21 BANS the
+// `(@arg = ” OR ...)` sentinel because the planner cannot prove the arg non-empty under a generic
+// prepared plan and sequential-scans.
+//
+// effective_from is a timestamptz; the bounds are calendar dates, so the upper bound compares against
+// the END of the given day (< the next day) rather than midnight, which would silently exclude every
+// row on the boundary date.
+// Instance-admin path: the whole membership set, keyset-paginated by RID.
+func (q *Queries) ListMemberships(ctx context.Context, arg ListMembershipsParams) ([]OikumeneaMembershipMembership, error) {
+	rows, err := q.db.Query(ctx, listMemberships,
+		arg.After,
+		arg.UnitID,
+		arg.PersonID,
+		arg.PositionID,
+		arg.Status,
+		arg.EffectiveFromAfter,
+		arg.EffectiveFromBefore,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaMembershipMembership
+	for rows.Next() {
+		var i OikumeneaMembershipMembership
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.UnitID,
+			&i.PositionID,
+			&i.OrderItemID,
+			&i.Status,
+			&i.EffectiveFrom,
+			&i.EffectiveTo,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMembershipsByPerson = `-- name: ListMembershipsByPerson :many
 SELECT id, person_id, unit_id, position_id, order_item_id, status, effective_from, effective_to, created_at, updated_at, deleted_at FROM oikumenea.membership_memberships
 WHERE person_id = $1 AND status = 'active' AND deleted_at IS NULL
@@ -515,6 +622,161 @@ type ListMembershipsByPersonParams struct {
 // A person's active memberships across units, keyset-paginated by RID.
 func (q *Queries) ListMembershipsByPerson(ctx context.Context, arg ListMembershipsByPersonParams) ([]OikumeneaMembershipMembership, error) {
 	rows, err := q.db.Query(ctx, listMembershipsByPerson, arg.PersonID, arg.After, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaMembershipMembership
+	for rows.Next() {
+		var i OikumeneaMembershipMembership
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.UnitID,
+			&i.PositionID,
+			&i.OrderItemID,
+			&i.Status,
+			&i.EffectiveFrom,
+			&i.EffectiveTo,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMembershipsForSubject = `-- name: ListMembershipsForSubject :many
+SELECT id, person_id, unit_id, position_id, order_item_id, status, effective_from, effective_to, created_at, updated_at, deleted_at FROM oikumenea.membership_memberships m
+WHERE m.deleted_at IS NULL
+  AND ($1 = '' OR m.id::text > $1)
+  AND ($2::uuid IS NULL OR m.unit_id = $2::uuid)
+  AND ($3::uuid IS NULL OR m.person_id = $3::uuid)
+  AND ($4::uuid IS NULL OR m.position_id = $4::uuid)
+  AND ($5::text IS NULL OR m.status = $5::text)
+  AND ($6::date IS NULL
+       OR m.effective_from >= $6::date)
+  AND ($7::date IS NULL
+       OR m.effective_from < ($7::date + 1))
+  AND m.unit_id IN (SELECT oikumenea.authz_readable_units($8))
+ORDER BY m.id
+LIMIT $9
+`
+
+type ListMembershipsForSubjectParams struct {
+	After               interface{}
+	UnitID              pgtype.Text
+	PersonID            pgtype.Text
+	PositionID          pgtype.Text
+	Status              pgtype.Text
+	EffectiveFromAfter  pgtype.Date
+	EffectiveFromBefore pgtype.Date
+	SubjectPersonID     string
+	Lim                 int32
+}
+
+// Read-scope path: the same set intersected with the subject's effective readable reach. The reach
+// set is UNCORRELATED — it reads only @subject_person_id, so the planner evaluates it once and probes
+// a hash, rather than re-deriving the closure per candidate row (M56 ticket 2: 242 ms -> 33 ms).
+func (q *Queries) ListMembershipsForSubject(ctx context.Context, arg ListMembershipsForSubjectParams) ([]OikumeneaMembershipMembership, error) {
+	rows, err := q.db.Query(ctx, listMembershipsForSubject,
+		arg.After,
+		arg.UnitID,
+		arg.PersonID,
+		arg.PositionID,
+		arg.Status,
+		arg.EffectiveFromAfter,
+		arg.EffectiveFromBefore,
+		arg.SubjectPersonID,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaMembershipMembership
+	for rows.Next() {
+		var i OikumeneaMembershipMembership
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.UnitID,
+			&i.PositionID,
+			&i.OrderItemID,
+			&i.Status,
+			&i.EffectiveFrom,
+			&i.EffectiveTo,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMembershipsForSubjectDense = `-- name: ListMembershipsForSubjectDense :many
+SELECT id, person_id, unit_id, position_id, order_item_id, status, effective_from, effective_to, created_at, updated_at, deleted_at FROM oikumenea.membership_memberships m
+WHERE m.deleted_at IS NULL
+  AND ($1 = '' OR m.id::text > $1)
+  AND ($2::uuid IS NULL OR m.unit_id = $2::uuid)
+  AND ($3::uuid IS NULL OR m.person_id = $3::uuid)
+  AND ($4::uuid IS NULL OR m.position_id = $4::uuid)
+  AND ($5::text IS NULL OR m.status = $5::text)
+  AND ($6::date IS NULL
+       OR m.effective_from >= $6::date)
+  AND ($7::date IS NULL
+       OR m.effective_from < ($7::date + 1))
+  AND oikumenea.authz_unit_readable_by(m.unit_id, $8)
+ORDER BY m.id
+LIMIT $9
+`
+
+type ListMembershipsForSubjectDenseParams struct {
+	After               interface{}
+	UnitID              pgtype.Text
+	PersonID            pgtype.Text
+	PositionID          pgtype.Text
+	Status              pgtype.Text
+	EffectiveFromAfter  pgtype.Date
+	EffectiveFromBefore pgtype.Date
+	SubjectPersonID     string
+	Lim                 int32
+}
+
+// DENSE-reach plan shape of the query above, byte-identical in its filter block and differing ONLY in
+// how reach is applied: a per-row point probe instead of a materialized reach set.
+//
+// Why two shapes (measured, review-2026-07 — the same sparse/dense split R-02.1 found for the
+// visible-persons queries): materializing a 100 000-unit reach makes the planner drive from the reach
+// side, build a 9x10^5-row hash and top-N sort, so the LIMIT never terminates early (1 937 ms at root
+// reach). The point probe keeps membership_memberships in keyset order and asks per candidate row —
+// 6 ms at root, because nearly every row qualifies and the LIMIT is satisfied almost immediately. At
+// SPARSE reach the same probe is catastrophic (13 100 ms at reach 1) because almost no row qualifies
+// and it scans the table to find out, which is exactly why the adapter dispatches rather than picking.
+func (q *Queries) ListMembershipsForSubjectDense(ctx context.Context, arg ListMembershipsForSubjectDenseParams) ([]OikumeneaMembershipMembership, error) {
+	rows, err := q.db.Query(ctx, listMembershipsForSubjectDense,
+		arg.After,
+		arg.UnitID,
+		arg.PersonID,
+		arg.PositionID,
+		arg.Status,
+		arg.EffectiveFromAfter,
+		arg.EffectiveFromBefore,
+		arg.SubjectPersonID,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -634,6 +896,32 @@ func (q *Queries) ListVacantPositionsByUnit(ctx context.Context, arg ListVacantP
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const readableUnitIDsForSubject = `-- name: ReadableUnitIDsForSubject :many
+SELECT oikumenea.authz_readable_units($1)::uuid AS unit_id
+`
+
+// The reach set as the SQL function projects it — the differential test's probe, asserting the
+// function agrees with the inline CTE below for randomized subjects (migration 0017's parity claim).
+func (q *Queries) ReadableUnitIDsForSubject(ctx context.Context, subjectPersonID string) ([]string, error) {
+	rows, err := q.db.Query(ctx, readableUnitIDsForSubject, subjectPersonID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var unit_id string
+		if err := rows.Scan(&unit_id); err != nil {
+			return nil, err
+		}
+		items = append(items, unit_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -786,58 +1074,115 @@ func (q *Queries) UpdatePosition(ctx context.Context, arg UpdatePositionParams) 
 }
 
 const visiblePersonIDsForSubjectDense = `-- name: VisiblePersonIDsForSubjectDense :many
-SELECT DISTINCT m.person_id
-FROM oikumenea.membership_memberships m
-WHERE m.status = 'active' AND m.deleted_at IS NULL
-  AND ($1 = '' OR m.person_id::text > $1)
+SELECT p.id
+FROM oikumenea.person_persons p
+WHERE p.deleted_at IS NULL
+  AND ($1 = '' OR p.id::text > $1)
+  AND ($2::text IS NULL OR p.sex = $2::text)
+  AND ($3::text IS NULL OR p.status = $3::text)
+  AND ($4::date IS NULL OR p.birthdate >= $4::date)
+  AND ($5::date IS NULL OR p.birthdate <= $5::date)
+  AND ($6::uuid IS NULL OR p.country_of_birth_id = $6::uuid)
+  AND ($7::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.person_ranks pr
+        WHERE pr.person_id = p.id AND pr.deleted_at IS NULL
+          AND pr.rank_id = $7::uuid))
+  AND ($8::boolean IS NULL
+       OR $8::boolean = EXISTS (
+            SELECT 1 FROM oikumenea.account_accounts ac
+            WHERE ac.person_id = p.id AND ac.deleted_at IS NULL))
+  AND ($9::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.membership_memberships fm
+        WHERE fm.person_id = p.id AND fm.status = 'active' AND fm.deleted_at IS NULL
+          AND fm.unit_id IN (
+            SELECT $9::uuid
+            UNION
+            SELECT c.descendant_id
+            FROM oikumenea.tenant_unit_closure c
+            JOIN oikumenea.tenant_graphs g ON g.id = c.graph_id
+            WHERE c.ancestor_id = $9::uuid
+              AND g.deleted_at IS NULL
+              AND g.is_authority_bearing
+              AND ($10::text IS NULL OR g.code = $10::text))))
   AND EXISTS (
     SELECT 1
-    FROM oikumenea.authz_role_assignments a
-    JOIN oikumenea.authz_roles r ON r.id = a.role_id AND r.deleted_at IS NULL
-    WHERE a.subject_person_id = $2
-      AND a.revoked_at IS NULL
-      AND (a.expires_at IS NULL OR a.expires_at > now())
-      AND EXISTS (SELECT 1 FROM oikumenea.authz_role_permissions rp
-                  WHERE rp.role_id = a.role_id AND rp.permission_code LIKE '%.read')
-      AND ((a.scope = 'unit' AND a.target_unit_id = m.unit_id)
-        OR (a.scope = 'subtree'
-            AND EXISTS (SELECT 1 FROM oikumenea.tenant_graphs g
-                        WHERE g.id = a.graph_id AND g.is_authority_bearing AND g.deleted_at IS NULL)
-            AND (a.target_unit_id = m.unit_id
-              OR EXISTS (SELECT 1
-                         FROM oikumenea.tenant_unit_closure c
-                         JOIN oikumenea.tenant_units u ON u.id = c.descendant_id AND u.deleted_at IS NULL
-                         WHERE c.graph_id = a.graph_id
-                           AND c.ancestor_id = a.target_unit_id
-                           AND c.descendant_id = m.unit_id))))
-  )
-ORDER BY m.person_id
-LIMIT $3
+    FROM oikumenea.membership_memberships m
+    WHERE m.person_id = p.id AND m.status = 'active' AND m.deleted_at IS NULL
+      AND EXISTS (
+        SELECT 1
+        FROM oikumenea.authz_role_assignments a
+        JOIN oikumenea.authz_roles r ON r.id = a.role_id AND r.deleted_at IS NULL
+        WHERE a.subject_person_id = $11
+          AND a.revoked_at IS NULL
+          AND (a.expires_at IS NULL OR a.expires_at > now())
+          AND EXISTS (SELECT 1 FROM oikumenea.authz_role_permissions rp
+                      WHERE rp.role_id = a.role_id AND rp.permission_code LIKE '%.read')
+          AND ((a.scope = 'unit' AND a.target_unit_id = m.unit_id)
+            OR (a.scope = 'subtree'
+                AND EXISTS (SELECT 1 FROM oikumenea.tenant_graphs g
+                            WHERE g.id = a.graph_id AND g.is_authority_bearing AND g.deleted_at IS NULL)
+                AND (a.target_unit_id = m.unit_id
+                  OR EXISTS (SELECT 1
+                             FROM oikumenea.tenant_unit_closure c
+                             JOIN oikumenea.tenant_units u ON u.id = c.descendant_id AND u.deleted_at IS NULL
+                             WHERE c.graph_id = a.graph_id
+                               AND c.ancestor_id = a.target_unit_id
+                               AND c.descendant_id = m.unit_id))))
+      ))
+ORDER BY p.id
+LIMIT $12
 `
 
 type VisiblePersonIDsForSubjectDenseParams struct {
-	After           interface{}
-	SubjectPersonID string
-	Lim             int32
+	After            interface{}
+	Sex              pgtype.Text
+	Status           pgtype.Text
+	BirthdateFrom    pgtype.Date
+	BirthdateTo      pgtype.Date
+	CountryOfBirthID pgtype.Text
+	RankID           pgtype.Text
+	HasAccount       pgtype.Bool
+	FilterUnitID     pgtype.Text
+	FilterGraph      pgtype.Text
+	SubjectPersonID  string
+	Lim              int32
 }
 
-// DENSE-reach plan shape: walk memberships in person-RID order (the pagination order) probing the
-// reach predicate per row — O(page) when most memberships are in reach (near-root subtree
-// subjects), pathological for tiny reach (every non-matching row still probes), hence the
-// adapter's cardinality dispatch. Same parity contract as the sparse shape.
+// DENSE-reach plan shape: probe the reach predicate per candidate person — O(page) when most
+// memberships are in reach (near-root subtree subjects), pathological for tiny reach (every
+// non-matching row still probes), hence the adapter's cardinality dispatch. Same parity contract as
+// the sparse shape, which the reach differential test asserts directly.
+//
+// Driven from person_persons in keyset order (M56), like the sparse and search shapes: the facet
+// predicates then sit on the driving relation. Measured on the M46 scale world at reach 10^5, the
+// membership-driven form took 816 ms with a unit filter against 30 ms for this shape, because it
+// walked memberships that the filter went on to discard.
 func (q *Queries) VisiblePersonIDsForSubjectDense(ctx context.Context, arg VisiblePersonIDsForSubjectDenseParams) ([]string, error) {
-	rows, err := q.db.Query(ctx, visiblePersonIDsForSubjectDense, arg.After, arg.SubjectPersonID, arg.Lim)
+	rows, err := q.db.Query(ctx, visiblePersonIDsForSubjectDense,
+		arg.After,
+		arg.Sex,
+		arg.Status,
+		arg.BirthdateFrom,
+		arg.BirthdateTo,
+		arg.CountryOfBirthID,
+		arg.RankID,
+		arg.HasAccount,
+		arg.FilterUnitID,
+		arg.FilterGraph,
+		arg.SubjectPersonID,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var items []string
 	for rows.Next() {
-		var person_id string
-		if err := rows.Scan(&person_id); err != nil {
+		var id string
+		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
-		items = append(items, person_id)
+		items = append(items, id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -856,6 +1201,39 @@ WHERE p.deleted_at IS NULL
     UNION
     SELECT v.person_id FROM oikumenea.person_name_variants v
       WHERE v.search_text ILIKE '%' || $2 || '%')
+  -- The M56 facet block, identical to the other visibility shapes. It sits AFTER the selective
+  -- trigram set so the GIN bitmap scan still leads and the facets narrow a small candidate set.
+  AND ($3::text IS NULL OR p.sex = $3::text)
+  AND ($4::text IS NULL OR p.status = $4::text)
+  AND ($5::date IS NULL OR p.birthdate >= $5::date)
+  AND ($6::date IS NULL OR p.birthdate <= $6::date)
+  AND ($7::uuid IS NULL OR p.country_of_birth_id = $7::uuid)
+  AND ($8::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.person_ranks pr
+        WHERE pr.person_id = p.id AND pr.deleted_at IS NULL
+          AND pr.rank_id = $8::uuid))
+  AND ($9::boolean IS NULL
+       OR $9::boolean = EXISTS (
+            SELECT 1 FROM oikumenea.account_accounts ac
+            WHERE ac.person_id = p.id AND ac.deleted_at IS NULL))
+  AND ($10::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.membership_memberships fm
+        WHERE fm.person_id = p.id AND fm.status = 'active' AND fm.deleted_at IS NULL
+          -- The unit itself plus its closure descendants, as an UNCORRELATED set: this subquery
+          -- reads only the two facet parameters, never p, so the planner evaluates it once and
+          -- probes it as a hash. The correlated form (a closure lookup per candidate person)
+          -- measured 242 ms at 10^6 persons against 33 ms for this shape, because it re-walked the
+          -- closure for every row the keyset scan touched to fill a page.
+          AND fm.unit_id IN (
+            SELECT $10::uuid
+            UNION
+            SELECT c.descendant_id
+            FROM oikumenea.tenant_unit_closure c
+            JOIN oikumenea.tenant_graphs g ON g.id = c.graph_id
+            WHERE c.ancestor_id = $10::uuid
+              AND g.deleted_at IS NULL
+              AND g.is_authority_bearing
+              AND ($11::text IS NULL OR g.code = $11::text))))
   AND EXISTS (
     SELECT 1
     FROM oikumenea.membership_memberships m
@@ -864,7 +1242,7 @@ WHERE p.deleted_at IS NULL
         SELECT 1
         FROM oikumenea.authz_role_assignments a
         JOIN oikumenea.authz_roles r ON r.id = a.role_id AND r.deleted_at IS NULL
-        WHERE a.subject_person_id = $3
+        WHERE a.subject_person_id = $12
           AND a.revoked_at IS NULL
           AND (a.expires_at IS NULL OR a.expires_at > now())
           AND EXISTS (SELECT 1 FROM oikumenea.authz_role_permissions rp
@@ -883,14 +1261,23 @@ WHERE p.deleted_at IS NULL
       )
   )
 ORDER BY p.id
-LIMIT $4
+LIMIT $13
 `
 
 type VisiblePersonIDsForSubjectSearchParams struct {
-	After           interface{}
-	Query           pgtype.Text
-	SubjectPersonID string
-	Lim             int32
+	After            interface{}
+	Query            pgtype.Text
+	Sex              pgtype.Text
+	Status           pgtype.Text
+	BirthdateFrom    pgtype.Date
+	BirthdateTo      pgtype.Date
+	CountryOfBirthID pgtype.Text
+	RankID           pgtype.Text
+	HasAccount       pgtype.Bool
+	FilterUnitID     pgtype.Text
+	FilterGraph      pgtype.Text
+	SubjectPersonID  string
+	Lim              int32
 }
 
 // Scoped directory SEARCH (review R-06): the visible-set union narrowed by a non-empty trigram
@@ -903,6 +1290,15 @@ func (q *Queries) VisiblePersonIDsForSubjectSearch(ctx context.Context, arg Visi
 	rows, err := q.db.Query(ctx, visiblePersonIDsForSubjectSearch,
 		arg.After,
 		arg.Query,
+		arg.Sex,
+		arg.Status,
+		arg.BirthdateFrom,
+		arg.BirthdateTo,
+		arg.CountryOfBirthID,
+		arg.RankID,
+		arg.HasAccount,
+		arg.FilterUnitID,
+		arg.FilterGraph,
 		arg.SubjectPersonID,
 		arg.Lim,
 	)
@@ -929,7 +1325,7 @@ WITH readable AS (
   SELECT a.target_unit_id AS unit_id
   FROM oikumenea.authz_role_assignments a
   JOIN oikumenea.authz_roles r ON r.id = a.role_id AND r.deleted_at IS NULL
-  WHERE a.subject_person_id = $3
+  WHERE a.subject_person_id = $12
     AND a.revoked_at IS NULL
     AND (a.expires_at IS NULL OR a.expires_at > now())
     AND EXISTS (SELECT 1 FROM oikumenea.authz_role_permissions rp
@@ -945,44 +1341,507 @@ WITH readable AS (
   JOIN oikumenea.tenant_unit_closure c
        ON c.graph_id = a.graph_id AND c.ancestor_id = a.target_unit_id
   JOIN oikumenea.tenant_units u ON u.id = c.descendant_id AND u.deleted_at IS NULL
-  WHERE a.subject_person_id = $3
+  WHERE a.subject_person_id = $12
     AND a.scope = 'subtree'
     AND a.revoked_at IS NULL
     AND (a.expires_at IS NULL OR a.expires_at > now())
     AND EXISTS (SELECT 1 FROM oikumenea.authz_role_permissions rp
                 WHERE rp.role_id = a.role_id AND rp.permission_code LIKE '%.read')
 )
-SELECT DISTINCT m.person_id
-FROM oikumenea.membership_memberships m
-JOIN readable rd ON rd.unit_id = m.unit_id
-WHERE m.status = 'active' AND m.deleted_at IS NULL
-  AND ($1 = '' OR m.person_id::text > $1)
-ORDER BY m.person_id
-LIMIT $2
+SELECT p.id
+FROM oikumenea.person_persons p
+WHERE p.deleted_at IS NULL
+  AND ($1 = '' OR p.id::text > $1)
+  AND ($2::text IS NULL OR p.sex = $2::text)
+  AND ($3::text IS NULL OR p.status = $3::text)
+  AND ($4::date IS NULL OR p.birthdate >= $4::date)
+  AND ($5::date IS NULL OR p.birthdate <= $5::date)
+  AND ($6::uuid IS NULL OR p.country_of_birth_id = $6::uuid)
+  AND ($7::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.person_ranks pr
+        WHERE pr.person_id = p.id AND pr.deleted_at IS NULL
+          AND pr.rank_id = $7::uuid))
+  AND ($8::boolean IS NULL
+       OR $8::boolean = EXISTS (
+            SELECT 1 FROM oikumenea.account_accounts ac
+            WHERE ac.person_id = p.id AND ac.deleted_at IS NULL))
+  AND ($9::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.membership_memberships fm
+        WHERE fm.person_id = p.id AND fm.status = 'active' AND fm.deleted_at IS NULL
+          AND fm.unit_id IN (
+            SELECT $9::uuid
+            UNION
+            SELECT c.descendant_id
+            FROM oikumenea.tenant_unit_closure c
+            JOIN oikumenea.tenant_graphs g ON g.id = c.graph_id
+            WHERE c.ancestor_id = $9::uuid
+              AND g.deleted_at IS NULL
+              AND g.is_authority_bearing
+              AND ($10::text IS NULL OR g.code = $10::text))))
+  AND EXISTS (
+    SELECT 1
+    FROM oikumenea.membership_memberships m
+    JOIN readable rd ON rd.unit_id = m.unit_id
+    WHERE m.person_id = p.id AND m.status = 'active' AND m.deleted_at IS NULL)
+ORDER BY p.id
+LIMIT $11
 `
 
 type VisiblePersonIDsForSubjectSparseParams struct {
-	After           interface{}
-	Lim             int32
-	SubjectPersonID string
+	After            interface{}
+	Sex              pgtype.Text
+	Status           pgtype.Text
+	BirthdateFrom    pgtype.Date
+	BirthdateTo      pgtype.Date
+	CountryOfBirthID pgtype.Text
+	RankID           pgtype.Text
+	HasAccount       pgtype.Bool
+	FilterUnitID     pgtype.Text
+	FilterGraph      pgtype.Text
+	Lim              int32
+	SubjectPersonID  string
 }
 
 // SPARSE-reach plan shape: materialize the (small) readable unit set, semi-join memberships via the
 // unit index. O(|reach| + page) — wrong shape for a near-root subtree subject (the whole reach
 // materializes before the LIMIT), hence the adapter's cardinality dispatch.
+//
+// DRIVEN FROM person_persons in keyset order (M56). Two reasons, both measured on the M46 scale
+// world (10^6 persons / 10^5 units, reach 658):
+//
+//   - the facet predicates sit on the driving relation, so a filtered page terminates early instead
+//     of materializing every in-reach membership and filtering afterwards. The membership-driven
+//     form with a person join measured 120 ms unfiltered / 200 ms with a unit filter against
+//     65 ms / 140 ms for this shape;
+//   - `p.deleted_at IS NULL` closes a pre-existing hole: the old shape returned soft-deleted person
+//     ids that ListPersonsByIDs then silently dropped, yielding a page SHORTER than pageSize while
+//     still handing back a nextPageToken.
+//
+// It also drops the DISTINCT + sort (a person with several in-reach memberships matched more than
+// once), and makes all three visibility shapes structurally identical — Search already drove from
+// person_persons, so this is the shape that was already proven.
 func (q *Queries) VisiblePersonIDsForSubjectSparse(ctx context.Context, arg VisiblePersonIDsForSubjectSparseParams) ([]string, error) {
-	rows, err := q.db.Query(ctx, visiblePersonIDsForSubjectSparse, arg.After, arg.Lim, arg.SubjectPersonID)
+	rows, err := q.db.Query(ctx, visiblePersonIDsForSubjectSparse,
+		arg.After,
+		arg.Sex,
+		arg.Status,
+		arg.BirthdateFrom,
+		arg.BirthdateTo,
+		arg.CountryOfBirthID,
+		arg.RankID,
+		arg.HasAccount,
+		arg.FilterUnitID,
+		arg.FilterGraph,
+		arg.Lim,
+		arg.SubjectPersonID,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var items []string
 	for rows.Next() {
-		var person_id string
-		if err := rows.Scan(&person_id); err != nil {
+		var id string
+		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
-		items = append(items, person_id)
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const visiblePersonStatsForSubject = `-- name: VisiblePersonStatsForSubject :many
+
+WITH cand AS MATERIALIZED (
+  SELECT p.id, p.sex, p.status, p.birthdate, p.country_of_birth_id
+  FROM oikumenea.person_persons p
+  WHERE p.deleted_at IS NULL
+  AND ($1::text IS NULL OR p.sex = $1::text)
+  AND ($2::text IS NULL OR p.status = $2::text)
+  AND ($3::date IS NULL OR p.birthdate >= $3::date)
+  AND ($4::date IS NULL OR p.birthdate <= $4::date)
+  AND ($5::uuid IS NULL OR p.country_of_birth_id = $5::uuid)
+  AND ($6::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.person_ranks pr
+        WHERE pr.person_id = p.id AND pr.deleted_at IS NULL
+          AND pr.rank_id = $6::uuid))
+  AND ($7::boolean IS NULL
+       OR $7::boolean = EXISTS (
+            SELECT 1 FROM oikumenea.account_accounts ac
+            WHERE ac.person_id = p.id AND ac.deleted_at IS NULL))
+  AND ($8::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.membership_memberships fm
+        WHERE fm.person_id = p.id AND fm.status = 'active' AND fm.deleted_at IS NULL
+          AND fm.unit_id IN (
+            SELECT $8::uuid
+            UNION
+            SELECT c.descendant_id
+            FROM oikumenea.tenant_unit_closure c
+            JOIN oikumenea.tenant_graphs g ON g.id = c.graph_id
+            WHERE c.ancestor_id = $8::uuid
+              AND g.deleted_at IS NULL
+              AND g.is_authority_bearing
+              AND ($9::text IS NULL OR g.code = $9::text))))
+  AND EXISTS (
+    SELECT 1
+    FROM oikumenea.membership_memberships m
+    WHERE m.person_id = p.id AND m.status = 'active' AND m.deleted_at IS NULL
+      AND m.unit_id IN (SELECT oikumenea.authz_readable_units($10)))
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n, NULL::bigint AS ord
+FROM cand
+UNION ALL
+SELECT 'sex'::text, c.sex::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE $11::boolean GROUP BY c.sex
+UNION ALL
+SELECT 'status'::text, c.status::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE $12::boolean GROUP BY c.status
+UNION ALL
+SELECT 'birthdate'::text,
+       (EXTRACT(YEAR FROM age(current_date, c.birthdate)))::integer::text,
+       count(*)::bigint, NULL::bigint
+FROM cand c WHERE $13::boolean GROUP BY 2
+UNION ALL
+SELECT 'countryOfBirth'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $14::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_of_birth_id::text AS k, count(*) AS n
+            FROM cand c WHERE $15::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'rankId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $14::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, min(t.ord)::bigint
+FROM (SELECT g.k, g.n, g.ord, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT r.id::text AS k, count(*) AS n,
+                   (rc.sort_order::bigint * 1000000 + rt.sort_order::bigint * 1000 + r.sort_order::bigint) AS ord
+            FROM cand c
+            LEFT JOIN oikumenea.person_ranks pr ON pr.person_id = c.id AND pr.deleted_at IS NULL
+            LEFT JOIN oikumenea.rank_ranks r ON r.id = pr.rank_id AND r.deleted_at IS NULL
+            LEFT JOIN oikumenea.rank_types rt ON rt.id = r.type_id AND rt.deleted_at IS NULL
+            LEFT JOIN oikumenea.rank_categories rc ON rc.id = rt.category_id AND rc.deleted_at IS NULL
+            WHERE $16::boolean
+            GROUP BY 1, 3) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'unitId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $14::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT m.unit_id::text AS k, count(*) AS n
+            FROM cand c
+            LEFT JOIN oikumenea.membership_memberships m
+                   ON m.person_id = c.id AND m.status = 'active' AND m.deleted_at IS NULL
+            WHERE $17::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'hasAccount'::text,
+       (EXISTS (SELECT 1 FROM oikumenea.account_accounts ac
+                WHERE ac.person_id = c.id AND ac.deleted_at IS NULL))::text,
+       count(*)::bigint, NULL::bigint
+FROM cand c WHERE $18::boolean GROUP BY 2
+`
+
+type VisiblePersonStatsForSubjectParams struct {
+	Sex                pgtype.Text
+	Status             pgtype.Text
+	BirthdateFrom      pgtype.Date
+	BirthdateTo        pgtype.Date
+	CountryOfBirthID   pgtype.Text
+	RankID             pgtype.Text
+	HasAccount         pgtype.Bool
+	FilterUnitID       pgtype.Text
+	FilterGraph        pgtype.Text
+	SubjectPersonID    string
+	WantSex            bool
+	WantStatus         bool
+	WantBirthdate      bool
+	TopN               int32
+	WantCountryOfBirth bool
+	WantRankID         bool
+	WantUnitID         bool
+	WantHasAccount     bool
+}
+
+type VisiblePersonStatsForSubjectRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+	Ord    pgtype.Int8
+}
+
+// ============================ dashboard aggregates (M57) ============================
+// The READ-SCOPE dashboard aggregate (M57 / D-ObjectFacets): PersonStats with the visibility
+// predicate folded INTO the candidate set, so every count is computed inside it. This is the rule
+// that makes a dashboard safe to ship — counting first and trimming afterwards would leak the size of
+// what the caller cannot read.
+//
+// The reach arrives as the migration-0017 SET function, uncorrelated: it reads only
+// @subject_person_id, so the planner evaluates it once and probes a hash. Its parity with the Go PDP
+// oracle is held by internal/membership/reach_differential_integration_test.go.
+// Age in WHOLE YEARS as of today, not the raw date: the bands live in the pkg/facet catalog (one
+// definition, already proven against the DDL), so SQL emits the number and Go assigns the band. A
+// NULL birthdate emits NULL and lands in the mandatory (unknown) bucket.
+// Top-N ref facets collapse their tail into (other) HERE rather than in Go: the tail's sum cannot be
+// known without grouping everything, so it is summed where the rows already are. NULL sorts last in
+// the ranking (`(k IS NULL)` first in the ORDER BY) so the (unknown) bucket never steals a top-N
+// slot from a real value.
+// rankId is LEFT-joined: a person with no active rank is a real bucket ((unknown)), not a row that
+// silently leaves the distribution. `ord` is the scheme's seniority ordinal — category, then type,
+// then rank — so the chart can be read as a seniority profile instead of a frequency ranking
+// (facets.md ④). A person holds one rank PER SYSTEM, so a multi-system directory counts them once
+// per system: this distribution is per-system by construction.
+// unitId counts ACTIVE memberships, LEFT-joined for the same reason: a person with no active
+// membership is the (unknown) bucket. A person in several units is counted in each, so this
+// distribution deliberately does NOT sum to totalCount — it answers "how many people are in unit X",
+// which is what the chart is read as.
+func (q *Queries) VisiblePersonStatsForSubject(ctx context.Context, arg VisiblePersonStatsForSubjectParams) ([]VisiblePersonStatsForSubjectRow, error) {
+	rows, err := q.db.Query(ctx, visiblePersonStatsForSubject,
+		arg.Sex,
+		arg.Status,
+		arg.BirthdateFrom,
+		arg.BirthdateTo,
+		arg.CountryOfBirthID,
+		arg.RankID,
+		arg.HasAccount,
+		arg.FilterUnitID,
+		arg.FilterGraph,
+		arg.SubjectPersonID,
+		arg.WantSex,
+		arg.WantStatus,
+		arg.WantBirthdate,
+		arg.TopN,
+		arg.WantCountryOfBirth,
+		arg.WantRankID,
+		arg.WantUnitID,
+		arg.WantHasAccount,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []VisiblePersonStatsForSubjectRow
+	for rows.Next() {
+		var i VisiblePersonStatsForSubjectRow
+		if err := rows.Scan(
+			&i.Facet,
+			&i.Bucket,
+			&i.N,
+			&i.Ord,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const visiblePersonStatsForSubjectSearch = `-- name: VisiblePersonStatsForSubjectSearch :many
+WITH cand AS MATERIALIZED (
+  SELECT p.id, p.sex, p.status, p.birthdate, p.country_of_birth_id
+  FROM oikumenea.person_persons p
+  WHERE p.deleted_at IS NULL
+  AND ($1::text IS NULL OR p.sex = $1::text)
+  AND ($2::text IS NULL OR p.status = $2::text)
+  AND ($3::date IS NULL OR p.birthdate >= $3::date)
+  AND ($4::date IS NULL OR p.birthdate <= $4::date)
+  AND ($5::uuid IS NULL OR p.country_of_birth_id = $5::uuid)
+  AND ($6::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.person_ranks pr
+        WHERE pr.person_id = p.id AND pr.deleted_at IS NULL
+          AND pr.rank_id = $6::uuid))
+  AND ($7::boolean IS NULL
+       OR $7::boolean = EXISTS (
+            SELECT 1 FROM oikumenea.account_accounts ac
+            WHERE ac.person_id = p.id AND ac.deleted_at IS NULL))
+  AND ($8::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.membership_memberships fm
+        WHERE fm.person_id = p.id AND fm.status = 'active' AND fm.deleted_at IS NULL
+          AND fm.unit_id IN (
+            SELECT $8::uuid
+            UNION
+            SELECT c.descendant_id
+            FROM oikumenea.tenant_unit_closure c
+            JOIN oikumenea.tenant_graphs g ON g.id = c.graph_id
+            WHERE c.ancestor_id = $8::uuid
+              AND g.deleted_at IS NULL
+              AND g.is_authority_bearing
+              AND ($9::text IS NULL OR g.code = $9::text))))
+  AND p.id IN (
+    SELECT ps.id FROM oikumenea.person_persons ps
+      WHERE ps.deleted_at IS NULL AND ps.search_text ILIKE '%' || $10 || '%'
+    UNION
+    SELECT v.person_id FROM oikumenea.person_name_variants v
+      WHERE v.search_text ILIKE '%' || $10 || '%')
+  AND EXISTS (
+    SELECT 1
+    FROM oikumenea.membership_memberships m
+    WHERE m.person_id = p.id AND m.status = 'active' AND m.deleted_at IS NULL
+      AND m.unit_id IN (SELECT oikumenea.authz_readable_units($11)))
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n, NULL::bigint AS ord
+FROM cand
+UNION ALL
+SELECT 'sex'::text, c.sex::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE $12::boolean GROUP BY c.sex
+UNION ALL
+SELECT 'status'::text, c.status::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE $13::boolean GROUP BY c.status
+UNION ALL
+SELECT 'birthdate'::text,
+       (EXTRACT(YEAR FROM age(current_date, c.birthdate)))::integer::text,
+       count(*)::bigint, NULL::bigint
+FROM cand c WHERE $14::boolean GROUP BY 2
+UNION ALL
+SELECT 'countryOfBirth'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $15::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_of_birth_id::text AS k, count(*) AS n
+            FROM cand c WHERE $16::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'rankId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $15::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, min(t.ord)::bigint
+FROM (SELECT g.k, g.n, g.ord, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT r.id::text AS k, count(*) AS n,
+                   (rc.sort_order::bigint * 1000000 + rt.sort_order::bigint * 1000 + r.sort_order::bigint) AS ord
+            FROM cand c
+            LEFT JOIN oikumenea.person_ranks pr ON pr.person_id = c.id AND pr.deleted_at IS NULL
+            LEFT JOIN oikumenea.rank_ranks r ON r.id = pr.rank_id AND r.deleted_at IS NULL
+            LEFT JOIN oikumenea.rank_types rt ON rt.id = r.type_id AND rt.deleted_at IS NULL
+            LEFT JOIN oikumenea.rank_categories rc ON rc.id = rt.category_id AND rc.deleted_at IS NULL
+            WHERE $17::boolean
+            GROUP BY 1, 3) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'unitId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $15::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT m.unit_id::text AS k, count(*) AS n
+            FROM cand c
+            LEFT JOIN oikumenea.membership_memberships m
+                   ON m.person_id = c.id AND m.status = 'active' AND m.deleted_at IS NULL
+            WHERE $18::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'hasAccount'::text,
+       (EXISTS (SELECT 1 FROM oikumenea.account_accounts ac
+                WHERE ac.person_id = c.id AND ac.deleted_at IS NULL))::text,
+       count(*)::bigint, NULL::bigint
+FROM cand c WHERE $19::boolean GROUP BY 2
+`
+
+type VisiblePersonStatsForSubjectSearchParams struct {
+	Sex                pgtype.Text
+	Status             pgtype.Text
+	BirthdateFrom      pgtype.Date
+	BirthdateTo        pgtype.Date
+	CountryOfBirthID   pgtype.Text
+	RankID             pgtype.Text
+	HasAccount         pgtype.Bool
+	FilterUnitID       pgtype.Text
+	FilterGraph        pgtype.Text
+	Query              pgtype.Text
+	SubjectPersonID    string
+	WantSex            bool
+	WantStatus         bool
+	WantBirthdate      bool
+	TopN               int32
+	WantCountryOfBirth bool
+	WantRankID         bool
+	WantUnitID         bool
+	WantHasAccount     bool
+}
+
+type VisiblePersonStatsForSubjectSearchRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+	Ord    pgtype.Int8
+}
+
+// The read-scope dashboard aggregate under a text search — VisiblePersonStatsForSubject with the
+// trigram id-set leading, the same split PersonStats/PersonStatsSearch makes and for the same reason.
+// Age in WHOLE YEARS as of today, not the raw date: the bands live in the pkg/facet catalog (one
+// definition, already proven against the DDL), so SQL emits the number and Go assigns the band. A
+// NULL birthdate emits NULL and lands in the mandatory (unknown) bucket.
+// Top-N ref facets collapse their tail into (other) HERE rather than in Go: the tail's sum cannot be
+// known without grouping everything, so it is summed where the rows already are. NULL sorts last in
+// the ranking (`(k IS NULL)` first in the ORDER BY) so the (unknown) bucket never steals a top-N
+// slot from a real value.
+// rankId is LEFT-joined: a person with no active rank is a real bucket ((unknown)), not a row that
+// silently leaves the distribution. `ord` is the scheme's seniority ordinal — category, then type,
+// then rank — so the chart can be read as a seniority profile instead of a frequency ranking
+// (facets.md ④). A person holds one rank PER SYSTEM, so a multi-system directory counts them once
+// per system: this distribution is per-system by construction.
+// unitId counts ACTIVE memberships, LEFT-joined for the same reason: a person with no active
+// membership is the (unknown) bucket. A person in several units is counted in each, so this
+// distribution deliberately does NOT sum to totalCount — it answers "how many people are in unit X",
+// which is what the chart is read as.
+func (q *Queries) VisiblePersonStatsForSubjectSearch(ctx context.Context, arg VisiblePersonStatsForSubjectSearchParams) ([]VisiblePersonStatsForSubjectSearchRow, error) {
+	rows, err := q.db.Query(ctx, visiblePersonStatsForSubjectSearch,
+		arg.Sex,
+		arg.Status,
+		arg.BirthdateFrom,
+		arg.BirthdateTo,
+		arg.CountryOfBirthID,
+		arg.RankID,
+		arg.HasAccount,
+		arg.FilterUnitID,
+		arg.FilterGraph,
+		arg.Query,
+		arg.SubjectPersonID,
+		arg.WantSex,
+		arg.WantStatus,
+		arg.WantBirthdate,
+		arg.TopN,
+		arg.WantCountryOfBirth,
+		arg.WantRankID,
+		arg.WantUnitID,
+		arg.WantHasAccount,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []VisiblePersonStatsForSubjectSearchRow
+	for rows.Next() {
+		var i VisiblePersonStatsForSubjectSearchRow
+		if err := rows.Scan(
+			&i.Facet,
+			&i.Bucket,
+			&i.N,
+			&i.Ord,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

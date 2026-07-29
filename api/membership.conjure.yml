@@ -297,6 +297,53 @@ services:
             type: optional<string>
             param-type: query
         returns: MembershipPage
+      listMemberships:
+        http: GET /memberships
+        docs: |
+          List memberships across every unit the caller may read, token-paginated, narrowed by the
+          membership facet set (D-ObjectFacets, M56). A non-instance-admin caller sees only
+          memberships whose unit falls in their effective readable reach; every filter below is
+          applied INSIDE that reach, before the page is cut, so a filtered page is never short and
+          its cursor is never wrong.
+
+          Unlike `GET /units/{unitId}/members` and `GET /persons/{personId}/memberships`, which
+          return ACTIVE memberships only, this endpoint returns EVERY status by default — an
+          unfiltered listing is the honest total. Narrow with `status`.
+
+          The facet filters combine with AND. They are ordinary structural predicates and do NOT
+          widen what the caller may see: filtering can only narrow the visible set.
+        args:
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+          unitId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — unit RID. Matches this unit EXACTLY; it does not expand to the subtree (use the per-unit roster for a single unit, or `listPersons?unitId=` for the subtree-expanding person view).
+          personId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — person RID.
+          positionId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — position RID. Nullable on the row — a membership without a billet is a plain belonging (D-Position).
+          status:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — lifecycle status. One of `active`, `ended`.
+          effectiveFromAfter:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — INCLUSIVE lower bound on `effectiveFrom`, an ISO-8601 calendar date (`YYYY-MM-DD`). The column is a timestamp; the bound is compared from the start of the given day (UTC).
+          effectiveFromBefore:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — INCLUSIVE upper bound on `effectiveFrom` (`YYYY-MM-DD`), compared to the END of the given day (UTC), so a single day is selectable by passing the same date to both bounds.
+        returns: MembershipPage
       listPersonMemberships:
         http: GET /persons/{personId}/memberships
         docs: A person's active memberships across units, token-paginated.

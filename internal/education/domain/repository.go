@@ -3,7 +3,9 @@
 
 package domain
 
-import "context"
+import (
+	"context"
+)
 
 // Repository is the education module's persistence port (implemented by adapters over pgx/sqlc). It is
 // bound to a single command surface — the pool for reads, or a caller's transaction for an audited write

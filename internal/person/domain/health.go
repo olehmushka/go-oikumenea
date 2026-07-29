@@ -62,20 +62,20 @@ func (h HealthRecord) Validate() error {
 // StoredHealthRecord is the at-rest row: the category-level detail is envelope-encrypted (all four
 // envelope columns NULL after a crypto-erase tombstone).
 type StoredHealthRecord struct {
-	ID                string
-	PersonID          string
-	Kind              string
-	DetailCiphertext  []byte
-	DetailWrappedDEK  []byte
-	DetailKeyRef      string
-	DetailBlindIndex  []byte
-	IsPublicRecord    bool
-	AssessedAt        string
-	LegalBasis        string
-	Source            string
-	Confidence        string
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	ID               string
+	PersonID         string
+	Kind             string
+	DetailCiphertext []byte
+	DetailWrappedDEK []byte
+	DetailKeyRef     string
+	DetailBlindIndex []byte
+	IsPublicRecord   bool
+	AssessedAt       string
+	LegalBasis       string
+	Source           string
+	Confidence       string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // Insurance is a person's insurance coverage (object insurance). pii:sensitive; gated on person.read.

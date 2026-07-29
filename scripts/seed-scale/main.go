@@ -13,7 +13,16 @@
 // be the operator dev DB `postgres` (refused, same rule as scripts/setup-test-db.sh). Re-running
 // against an already-seeded DB refuses and just re-prints the probe subjects.
 //
+// Facet columns (M56 / D-ObjectFacets) are populated with realistic distributions as part of the
+// seed, and can be added to an EXISTING scale world with -enrich (idempotent):
+//
+//	go run ./scripts/seed-scale -dsn "..." -enrich
+//
+// Without them every facet predicate is either 100%- or 0%-selective and an EXPLAIN of a filtered
+// list path proves nothing. See facets.go.
+//
 // Probe subjects (person.code → what they measure):
+//
 //	scale-root-subject  subtree grant at the graph root  → reach ≈ the whole org (the R-02 wall)
 //	scale-mid-subject   subtree grant mid-tree           → reach ≈ 10²–10⁴ units
 //	scale-leaf-subject  unit grant on one leaf           → minimal reach
@@ -48,15 +57,16 @@ func main() {
 	persons := flag.Int("persons", 1_000_000, "persons in the directory")
 	randomSubjects := flag.Int("random-subjects", 1_000, "additional random grant-holding subjects")
 	seed := flag.Int64("seed", 1, "PRNG seed (world is deterministic per seed)")
+	enrich := flag.Bool("enrich", false, "backfill facet columns on an ALREADY-seeded world and exit (M56); safe to re-run")
 	flag.Parse()
 
-	if err := run(context.Background(), *dsn, *units, *persons, *randomSubjects, *seed); err != nil {
+	if err := run(context.Background(), *dsn, *units, *persons, *randomSubjects, *seed, *enrich); err != nil {
 		fmt.Fprintln(os.Stderr, "seed-scale:", err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, dsn string, nUnits, nPersons, nRandomSubjects int, seed int64) error {
+func run(ctx context.Context, dsn string, nUnits, nPersons, nRandomSubjects int, seed int64, enrich bool) error {
 	if dsn == "" {
 		return fmt.Errorf("-dsn is required")
 	}
@@ -88,8 +98,24 @@ func run(ctx context.Context, dsn string, nUnits, nPersons, nRandomSubjects int,
 	).Scan(&seeded); err != nil {
 		return fmt.Errorf("check existing world (are migrations applied?): %w", err)
 	}
+	if enrich {
+		// The facet backfill runs against an EXISTING world (M56): re-seeding a 10^6-row database to
+		// gain a few columns would cost an hour for no benefit, and the enrichment is idempotent.
+		if !seeded {
+			return fmt.Errorf("-enrich needs an already-seeded world; run without it first")
+		}
+		orgID, domainID, graphID, err := loadScaleWorldIDs(ctx, conn)
+		if err != nil {
+			return err
+		}
+		if err := enrichFacets(ctx, conn, orgID, domainID, graphID); err != nil {
+			return err
+		}
+		return printProbeSubjects(ctx, conn)
+	}
 	if seeded {
 		fmt.Println("world already seeded — refusing to re-seed. Probe subjects:")
+		fmt.Println("  (to add/refresh the M56 facet columns on this world, re-run with -enrich)")
 		return printProbeSubjects(ctx, conn)
 	}
 
@@ -298,6 +324,12 @@ func run(ctx context.Context, dsn string, nUnits, nPersons, nRandomSubjects int,
 		if err != nil {
 			return fmt.Errorf("grant random subject: %w", err)
 		}
+	}
+
+	// Facet columns (M56 / D-ObjectFacets): without them every facet predicate is 100%- or
+	// 0%-selective and an EXPLAIN of a filtered path measures nothing.
+	if err := enrichFacets(ctx, conn, orgID, domainID, graphID); err != nil {
+		return err
 	}
 
 	fmt.Printf("==> world seeded in %s\n", time.Since(start).Round(time.Second))

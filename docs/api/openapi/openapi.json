@@ -4721,6 +4721,48 @@
         ],
         "type": "object"
       },
+      "FacetBucket": {
+        "description": "One bucket of a facet distribution (M57 / D-ObjectFacets).\n\n`key` is the bucket's stable, locale-agnostic identity — an enum value (`shadow`), a band\n(`2-3`), `true`/`false`, or a RID for a `ref` facet — and is exactly what you pass back as\nthe corresponding list filter. Two synthetic keys never name a real value: `(unknown)` is\nthe NULL bucket and `(other)` a top-N facet's collapsed tail; neither is a usable filter\nvalue.\n\n`label` carries the object's display name as a locale → text map (D-i18n) and is present\nonly for `ref` buckets, whose keys are RIDs. Best effort: an id with no resolvable name\ncarries no label.\n",
+        "properties": {
+          "count": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "count",
+          "key"
+        ],
+        "type": "object"
+      },
+      "FacetDistribution": {
+        "description": "One facet's buckets, in chart order — for an enum, the declared CHECK-set order with\nzero-count buckets included so a chart's shape is stable; for bands, the declared band\norder; for a ref, descending by count with `(other)`/`(unknown)` last.\n",
+        "properties": {
+          "buckets": {
+            "items": {
+              "$ref": "#/components/schemas/FacetBucket"
+            },
+            "type": "array"
+          },
+          "facet": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "buckets",
+          "facet"
+        ],
+        "type": "object"
+      },
       "FillPositionRequest": {
         "description": "Fill a vacant position with a person (a membership referencing the position; its unit is the position's unit).",
         "properties": {
@@ -8525,6 +8567,26 @@
         ],
         "type": "object"
       },
+      "PersonStats": {
+        "description": "Facet distributions over the SAME set `listPersons` returns under the same filters, counted\nINSIDE the visibility predicate (D-ObjectFacets): `totalCount` is what exhaustively paging\nthat list would yield, not an estimate and not a page count.\n\nA facet whose inherited read code the caller lacks is ABSENT from `facets` — never a zeroed\nbucket and never a 403.\n",
+        "properties": {
+          "facets": {
+            "items": {
+              "$ref": "#/components/schemas/FacetDistribution"
+            },
+            "type": "array"
+          },
+          "totalCount": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "facets",
+          "totalCount"
+        ],
+        "type": "object"
+      },
       "PersonVehicleRegistration": {
         "description": "A vehicle registration a person owns, enriched with the vehicle's identity (read-only).",
         "properties": {
@@ -12123,6 +12185,26 @@
           "ARCHIVED"
         ],
         "type": "string"
+      },
+      "UnitStats": {
+        "description": "Facet distributions over the SAME set `listUnits` returns under the same filters, with the\nshadow-visibility gate folded INTO the count (D-ObjectFacets): a shadow unit outside the\ncaller's reach is not counted at all, rather than counted and then trimmed.\n",
+        "properties": {
+          "facets": {
+            "items": {
+              "$ref": "#/components/schemas/FacetDistribution"
+            },
+            "type": "array"
+          },
+          "totalCount": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "facets",
+          "totalCount"
+        ],
+        "type": "object"
       },
       "UpdateAccountRequest": {
         "description": "Update currency/accountTypeId/status and optionally re-key the IBAN; omitted fields are unchanged.",
@@ -18454,6 +18536,120 @@
           }
         },
         "summary": "Edit a document type (instance-scope). `code` is immutable by convention.",
+        "tags": [
+          "DocumentService"
+        ]
+      }
+    },
+    "/document/v1/documents": {
+      "get": {
+        "description": "List documents across every holder the caller may read, token-paginated, narrowed by the\ndocument facet set (D-ObjectFacets, M56). Documents are scoped THROUGH THE HOLDER\n(D-PersonReadScope): a non-instance-admin caller sees only documents whose holder falls in\ntheir read-scope union. Every filter below is applied INSIDE that union, before the page is\ncut, so a filtered page is never short and its cursor is never wrong.\n\nMetadata only — the same projection the per-holder listing returns. The facet filters\ncombine with AND and do NOT widen what the caller may see: filtering can only narrow the\nvisible set.\n",
+        "operationId": "DocumentService_listDocuments",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — document-type RID (the catalog type, e.g. passport).",
+            "in": "query",
+            "name": "typeId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — lifecycle status. One of `active`, `superseded`, `revoked`.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — issuing-country RID (D-Geo). Nullable on the row.",
+            "in": "query",
+            "name": "issuingCountryId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE lower bound on `issuedOn`, an ISO-8601 calendar date (`YYYY-MM-DD`). Documents with an unset issue date are excluded whenever either bound is set.",
+            "in": "query",
+            "name": "issuedOnFrom",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE upper bound on `issuedOn` (`YYYY-MM-DD`). See `issuedOnFrom` for the unset-date rule.",
+            "in": "query",
+            "name": "issuedOnTo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE lower bound on `expiresOn` (`YYYY-MM-DD`). Documents with NO expiry are excluded whenever either bound is set; the no-expiry set is a distinct bucket on the M57 stats endpoint.",
+            "in": "query",
+            "name": "expiresOnFrom",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE upper bound on `expiresOn` (`YYYY-MM-DD`). Pair with `expiresOnFrom` = today for an \"expiring by\" listing. See `expiresOnFrom` for the no-expiry rule.",
+            "in": "query",
+            "name": "expiresOnTo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentPage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List documents across every holder the caller may read, token-paginated, narrowed by the",
         "tags": [
           "DocumentService"
         ]
@@ -27722,6 +27918,109 @@
       }
     },
     "/membership/v1/memberships": {
+      "get": {
+        "description": "List memberships across every unit the caller may read, token-paginated, narrowed by the\nmembership facet set (D-ObjectFacets, M56). A non-instance-admin caller sees only\nmemberships whose unit falls in their effective readable reach; every filter below is\napplied INSIDE that reach, before the page is cut, so a filtered page is never short and\nits cursor is never wrong.\n\nUnlike `GET /units/{unitId}/members` and `GET /persons/{personId}/memberships`, which\nreturn ACTIVE memberships only, this endpoint returns EVERY status by default — an\nunfiltered listing is the honest total. Narrow with `status`.\n\nThe facet filters combine with AND. They are ordinary structural predicates and do NOT\nwiden what the caller may see: filtering can only narrow the visible set.\n",
+        "operationId": "MembershipService_listMemberships",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — unit RID. Matches this unit EXACTLY; it does not expand to the subtree (use the per-unit roster for a single unit, or `listPersons?unitId=` for the subtree-expanding person view).",
+            "in": "query",
+            "name": "unitId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — person RID.",
+            "in": "query",
+            "name": "personId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — position RID. Nullable on the row — a membership without a billet is a plain belonging (D-Position).",
+            "in": "query",
+            "name": "positionId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — lifecycle status. One of `active`, `ended`.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE lower bound on `effectiveFrom`, an ISO-8601 calendar date (`YYYY-MM-DD`). The column is a timestamp; the bound is compared from the start of the given day (UTC).",
+            "in": "query",
+            "name": "effectiveFromAfter",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE upper bound on `effectiveFrom` (`YYYY-MM-DD`), compared to the END of the given day (UTC), so a single day is selectable by passing the same date to both bounds.",
+            "in": "query",
+            "name": "effectiveFromBefore",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipPage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List memberships across every unit the caller may read, token-paginated, narrowed by the",
+        "tags": [
+          "MembershipService"
+        ]
+      },
       "post": {
         "description": "Add a person's belonging to a unit, optionally filling a position. Returns Membership:PositionAlreadyFilled / Membership:MembershipConflict on a uniqueness clash.",
         "operationId": "MembershipService_createMembership",
@@ -28359,6 +28658,102 @@
           }
         },
         "summary": "Edit an order type (instance-scope). `code`, `category`, and `effect` are immutable by convention.",
+        "tags": [
+          "OrderService"
+        ]
+      }
+    },
+    "/order/v1/orders": {
+      "get": {
+        "description": "List orders (headers only) across every issuing unit the caller may read, token-paginated,\nnarrowed by the order facet set (D-ObjectFacets, M56). A non-instance-admin caller sees\nonly orders whose issuing unit falls in their effective readable reach; every filter below\nis applied INSIDE that reach, before the page is cut, so a filtered page is never short and\nits cursor is never wrong.\n\nThe facet filters combine with AND. They are ordinary structural predicates and do NOT\nwiden what the caller may see: filtering can only narrow the visible set.\n",
+        "operationId": "OrderService_listOrders",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — issuing-unit RID. Matches this unit EXACTLY; it does not expand to the subtree.",
+            "in": "query",
+            "name": "issuingUnitId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — order-type RID. An order's EFFECT lives on its items, so this matches an order with AT LEAST ONE item of this type (D-Orders).",
+            "in": "query",
+            "name": "orderTypeId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — lifecycle status. One of `draft`, `issued`, `revoked`.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE lower bound on `issuedOn`, an ISO-8601 calendar date (`YYYY-MM-DD`). A draft order has no issue date; such orders are excluded whenever either bound is set.",
+            "in": "query",
+            "name": "issuedOnFrom",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE upper bound on `issuedOn` (`YYYY-MM-DD`). See `issuedOnFrom` for the unset-date rule.",
+            "in": "query",
+            "name": "issuedOnTo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderPage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "List orders (headers only) across every issuing unit the caller may read, token-paginated,",
         "tags": [
           "OrderService"
         ]
@@ -29016,7 +29411,7 @@
     },
     "/person/v1/persons": {
       "get": {
-        "description": "Search/list the directory, token-paginated. (The read-scope union is applied once authz lands, M7.)",
+        "description": "Search/list the directory, token-paginated, narrowed by the person facet set\n(D-ObjectFacets, M56). A non-instance-admin caller sees only the read-scope union\n(D-PersonReadScope); every filter below is applied INSIDE that union, before the page is\ncut, so a filtered page is never short and its cursor is never wrong.\n\nThe facet filters combine with AND. They are ordinary structural predicates and do NOT\nwiden what the caller may see: filtering can only narrow the visible set.\n",
         "operationId": "PersonService_listPersons",
         "parameters": [
           {
@@ -29044,6 +29439,87 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Facet filter — ISO/IEC 5218 sex. One of `not_known`, `male`, `female`, `not_applicable`.",
+            "in": "query",
+            "name": "sex",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — lifecycle status. One of `active`, `deactivated`, `provisional`, `purged`.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE lower bound on birthdate, an ISO-8601 calendar date (`YYYY-MM-DD`). Persons with an UNKNOWN (null) birthdate are excluded whenever either bound is set.",
+            "in": "query",
+            "name": "birthdateFrom",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE upper bound on birthdate (`YYYY-MM-DD`). See `birthdateFrom` for the unknown-birthdate rule.",
+            "in": "query",
+            "name": "birthdateTo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — country-of-birth RID (D-Geo).",
+            "in": "query",
+            "name": "countryOfBirth",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — rank RID. Matches the person's ACTIVE rank row; a person holds one rank per rank system (D-Rank).",
+            "in": "query",
+            "name": "rankId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — unit RID. SUBTREE-EXPANDING — matches an active membership in this unit OR in any of its closure descendants. See `graph`.",
+            "in": "query",
+            "name": "unitId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Graph code narrowing the `unitId` subtree expansion to one DAG. Default — and when omitted — the expansion spans every authority-bearing graph, the same closure set the read-scope predicate uses. Meaningless without `unitId`, and rejected with Person:PersonInvalid if passed alone.",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — `true` selects persons with an active account, `false` those with none. The directory is account-optional (L-AccountOptional), so both sides are populated.",
+            "in": "query",
+            "name": "hasAccount",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -29068,7 +29544,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
-        "summary": "Search/list the directory, token-paginated. (The read-scope union is applied once authz lands, M7.)",
+        "summary": "Search/list the directory, token-paginated, narrowed by the person facet set",
         "tags": [
           "PersonService"
         ]
@@ -33648,6 +34124,139 @@
         ]
       }
     },
+    "/person/v1/stats/persons": {
+      "get": {
+        "description": "Facet distributions for the directory — the dashboard half of the facet vocabulary\n(M57 / D-ObjectFacets). Takes exactly the filter args `listPersons` takes (minus paging),\nso a dashboard and a list are two renderings of ONE request state and a chart segment is a\nlink to the same URL with one more filter applied.\n\nCounted INSIDE the read-scope predicate (D-PersonReadScope), before anything is cut:\n`totalCount` equals the number of rows exhaustively paging `listPersons` with these same\nfilters would return. One round-trip serves the whole dashboard.\n\nThe path is `/stats/persons` rather than `/persons/stats` because the server's router\nrejects a literal path segment that is a sibling of `{personId}` — see the route-conflict\nguard in `internal/platform/transport`.\n",
+        "operationId": "PersonService_personStats",
+        "parameters": [
+          {
+            "description": "Optional comma-separated facet keys to compute (`sex,status,birthdate`). Omitted or\nempty = every facet the caller may read; an explicit list of nothing (`facets=,`)\nreturns `totalCount` alone, which is the cheap way to ask only \"how many\". An\nundeclared facet key is a Person:PersonInvalid; a facet the caller may not READ is not\nan error — it is simply absent from the response.\n",
+            "in": "query",
+            "name": "facets",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Same free-text name/code match as `listPersons`, applied before the counts (D-PersonSearch).",
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listPersons`.",
+            "in": "query",
+            "name": "sex",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listPersons`.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listPersons`. Setting either bound excludes unknown birthdates, so the `(unknown)` bucket goes to zero.",
+            "in": "query",
+            "name": "birthdateFrom",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listPersons`.",
+            "in": "query",
+            "name": "birthdateTo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listPersons`.",
+            "in": "query",
+            "name": "countryOfBirth",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listPersons`.",
+            "in": "query",
+            "name": "rankId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — SUBTREE-EXPANDING, see `listPersons`.",
+            "in": "query",
+            "name": "unitId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Narrows the `unitId` subtree expansion to one DAG; rejected on its own, as on `listPersons`.",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listPersons`.",
+            "in": "query",
+            "name": "hasAccount",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonStats"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Facet distributions for the directory — the dashboard half of the facet vocabulary",
+        "tags": [
+          "PersonService"
+        ]
+      }
+    },
     "/platform/v1/colors": {
       "get": {
         "description": "List the color catalog (D-Color), optionally filtered to one domain (eye | hair | vehicle).",
@@ -37687,6 +38296,113 @@
         ]
       }
     },
+    "/tenant/v1/stats/units": {
+      "get": {
+        "description": "Facet distributions for an organization's units — the dashboard half of the facet\nvocabulary (M57 / D-ObjectFacets). Takes exactly the FLAT-listing filter args `listUnits`\ntakes (minus paging and the `graph`/`parent`/`rootsOnly` traversal args, which switch that\nendpoint to a hierarchy walk rather than adding a predicate), so a dashboard and a list are\ntwo renderings of one request state.\n\n`org` is REQUIRED, as on `listUnits`. The shadow gate is folded into SQL here: on the list\nit trims the page after it is cut — correct for a page, wrong for a count — so\n`totalCount` equals the number of rows exhaustively paging `listUnits` with these filters\nwould return.\n\nThe path is `/stats/units` rather than `/units/stats` because the server's router rejects a\nliteral path segment that is a sibling of `{unitId}` — see the route-conflict guard in\n`internal/platform/transport`.\n",
+        "operationId": "TenantService_unitStats",
+        "parameters": [
+          {
+            "description": "REQUIRED — the organization RID to scope the counts to.",
+            "in": "query",
+            "name": "org",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional comma-separated facet keys to compute (`unitKind,level,state`). Omitted or\nempty = every facet the caller may read; an explicit list of nothing (`facets=,`)\nreturns `totalCount` alone. An undeclared facet key is a Tenant:UnitInvalid.\n",
+            "in": "query",
+            "name": "facets",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listUnits`.",
+            "in": "query",
+            "name": "domain",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listUnits`.",
+            "in": "query",
+            "name": "unitKind",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — exact-match level, the scalar arg `listUnits` ships. The `level` DISTRIBUTION bands the same column (D-ObjectFacets as-built note).",
+            "in": "query",
+            "name": "level",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Facet filter — see `listUnits`. Narrows only; asking for `shadow` without shadow reach counts zero rather than erroring.",
+            "in": "query",
+            "name": "visibility",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listUnits`.",
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listUnits`.",
+            "in": "query",
+            "name": "pdpScoped",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitStats"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Facet distributions for an organization's units — the dashboard half of the facet",
+        "tags": [
+          "TenantService"
+        ]
+      }
+    },
     "/tenant/v1/unit-kinds": {
       "get": {
         "description": "List the unit-kind catalog for a domain (D-TenantOrganizations, M40). Gated by unit-kind.read.",
@@ -37824,7 +38540,7 @@
     },
     "/tenant/v1/units": {
       "get": {
-        "description": "List/search units within an organization (D-TenantOrganizations, M40). `org` is REQUIRED —\na fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally filtered by\n`domain` (cross-cut within the org, for mixed trees), `unitKind`, and `level`. Token-paginated.\n\nFor hierarchical (expand-on-click) browsing in graph `graph` (default `command`): pass\n`rootsOnly=true` to list only the org's top-level units (those with no parent in the graph),\nor `parent=\u003cunitRid\u003e` to list a unit's DIRECT children in the graph. The two are mutually\nexclusive, and each ignores the `domain`/`unitKind`/`level` filters. When neither is set the\nlisting is the flat, filtered org listing.\n",
+        "description": "List/search units within an organization (D-TenantOrganizations, M40). `org` is REQUIRED —\na fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally narrowed by the\nunit facet set (D-ObjectFacets, M56): `domain` (cross-cut within the org, for mixed trees),\n`unitKind`, `level`, `visibility`, `state` and `pdpScoped`. Token-paginated.\n\nThe shadow-visibility gate still trims the page AFTER it is cut, so `visibility` NARROWS and\nnever widens: asking for `visibility=shadow` without shadow reach yields an empty page, not\nan error and not a leak.\n\nFor hierarchical (expand-on-click) browsing in graph `graph` (default `command`): pass\n`rootsOnly=true` to list only the org's top-level units (those with no parent in the graph),\nor `parent=\u003cunitRid\u003e` to list a unit's DIRECT children in the graph. The two are mutually\nexclusive, and each ignores the flat-listing filters\n(`domain`/`unitKind`/`level`/`visibility`/`state`/`pdpScoped`). When neither is set the\nlisting is the flat, filtered org listing.\n",
         "operationId": "TenantService_listUnits",
         "parameters": [
           {
@@ -37855,12 +38571,40 @@
             }
           },
           {
+            "description": "Optional exact-match level filter. Ignored when `parent`/`rootsOnly` is set.",
             "in": "query",
             "name": "level",
             "required": false,
             "schema": {
               "format": "int32",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Facet filter — `public` or `shadow`. NARROWS only; the shadow gate still trims the page afterwards. Ignored when `parent`/`rootsOnly` is set.",
+            "in": "query",
+            "name": "visibility",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — `active`, `suspended` or `archived`. Ignored when `parent`/`rootsOnly` is set.",
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — `true` for operational (reach-scoped) units, `false` for reference units such as universities and companies (D-UnifiedOrgGraph, M41). Ignored when `parent`/`rootsOnly` is set.",
+            "in": "query",
+            "name": "pdpScoped",
+            "required": false,
+            "schema": {
+              "type": "boolean"
             }
           },
           {

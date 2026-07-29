@@ -89,6 +89,7 @@ referencing it. `GET /units/{id}/positions?state=vacant` is the closure of this 
 | `POST /positions/{id}/fill` | Fill a vacant position with a person | `membership.create` (on the unit) |
 | `POST /memberships/{id}/end` | End a membership → vacates its position | `membership.update` |
 | `GET /units/{unitId}/members` | Roster of a unit (token-paginated) | `membership.read` + shadow gate |
+| `GET /memberships` | **Top-level facet-filtered list** across every readable unit (M56 / D-ObjectFacets). Filters: `unitId`, `personId`, `positionId`, `status`, `effectiveFromAfter`/`Before`. Returns **every status** — no implicit active-only default, unlike the two per-parent listings above | `membership.read` **anywhere**, then the caller's readable reach folded INTO the SQL (two plan shapes dispatched on reach cardinality; [facets.md](../architecture/facets.md)) |
 | `GET /persons/{personId}/memberships` | A person's memberships | `membership.read` + shadow gate |
 | `GET /memberships` | **New (M56).** Top-level membership list, token-paginated; filtered by the declared facets — `unitId`, `personId`, `positionId`, `status`, `effectiveFromFrom`/`effectiveFromTo` ([D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope)) | `membership.read` + shadow gate |
 | `GET /memberships/stats` | Facet distributions over the **same** filter args + an optional `facets` CSV — active-vs-ended, joins per month, tenure bands, vacant-vs-filled positions (M57; [facets catalog](../architecture/facets.md)) | `membership.read` + shadow gate |
@@ -106,6 +107,27 @@ referencing it. `GET /units/{id}/positions?state=vacant` is the closure of this 
   the fill/end in the issue transaction, citing `order_item_id` (D-OrderApply).
 - **Called by:** read surfaces listing people-by-unit / vacancies; [order](order.md) (an order item
   may target a position; a fill/end may carry an `order_item_id` provenance link); [audit](audit.md).
+
+### The read-scope seam carries person's facet filter (M56)
+
+`VisiblePersonIDsForSubject` — the D-PersonReadScope semi-join this module owns — takes a
+`persondomain.PersonFilter` (D-ObjectFacets). Person owns the vocabulary over its own columns;
+membership owns the reach predicate; this seam is where the two meet, and its three plan shapes
+(sparse / dense / search) each carry the **identical** facet block that person's own instance-admin
+queries carry.
+
+The block lives inside the SQL, not in Go, because every predicate must run **before** the `LIMIT`:
+filtering a page after it is cut returns a page shorter than `pageSize` while still handing back a
+`nextPageToken` — the bug review-2026-07 R-06 fixed when it folded the `@query` predicate in here for
+exactly the same reason. That is also why membership's queries read `person_persons`, `person_ranks`
+and `account_accounts`, and expand `tenant_unit_closure` for the subtree-expanding `unitId` facet;
+those cross-module reads are reviewed entries in `scripts/check-module-tables.sh`, and a no-DB
+narg-parity test proves the block has not drifted between the five queries that carry it.
+
+All three shapes now drive from `person_persons` in keyset order (the shape `…Search` always used),
+so the facet predicates sit on the driving relation and a filtered page terminates early. The join
+also drops soft-deleted persons, which the previous shapes returned for the hydration step to
+silently skip — a short page with a next-page token.
 
 ## Authorization touchpoints
 

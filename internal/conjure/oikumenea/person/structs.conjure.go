@@ -601,6 +601,91 @@ func (o *ExternalReference) UnmarshalYAML(unmarshal func(interface{}) error) err
 }
 
 /*
+One bucket of a facet distribution (M57 / D-ObjectFacets).
+
+`key` is the bucket's stable, locale-agnostic identity — an enum value (`male`), a band
+(`25-34`), `true`/`false`, or a RID for a `ref` facet — and is exactly what you pass back
+as the corresponding list filter, which is what makes a chart segment and a filter the
+same act. Three synthetic keys never name a real value: `(unknown)` is the NULL bucket
+(mandatory for a nullable column, so the data-quality gap is visible rather than dropped),
+`(other)` is a top-N facet's collapsed tail, and neither is a usable filter value.
+
+`label` carries the object's display name as a locale → text map (D-i18n — all locales in
+every response) and is present only for `ref` buckets, whose keys are RIDs; enum, band and
+boolean keys are codes the client translates itself. It is best effort: an id with no
+resolvable name simply carries no label.
+*/
+type FacetBucket struct {
+	Key   string             `json:"key"`
+	Label *map[string]string `json:"label,omitempty"`
+	Count int                `json:"count"`
+}
+
+func (o FacetBucket) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *FacetBucket) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+One facet's buckets, in chart order — for an enum, the declared CHECK-set order with
+zero-count buckets included, so a chart's shape is stable across filterings; for bands, the
+declared band order; for a ref, descending by count (or the scheme's own order where it has
+one, e.g. rank seniority) with `(other)`/`(unknown)` last.
+*/
+type FacetDistribution struct {
+	Facet   string        `json:"facet"`
+	Buckets []FacetBucket `json:"buckets"`
+}
+
+func (o FacetDistribution) MarshalJSON() ([]byte, error) {
+	if o.Buckets == nil {
+		o.Buckets = make([]FacetBucket, 0)
+	}
+	type _tmpFacetDistribution FacetDistribution
+	return safejson.Marshal(_tmpFacetDistribution(o))
+}
+
+func (o *FacetDistribution) UnmarshalJSON(data []byte) error {
+	type _tmpFacetDistribution FacetDistribution
+	var rawFacetDistribution _tmpFacetDistribution
+	if err := safejson.Unmarshal(data, &rawFacetDistribution); err != nil {
+		return err
+	}
+	if rawFacetDistribution.Buckets == nil {
+		rawFacetDistribution.Buckets = make([]FacetBucket, 0)
+	}
+	*o = FacetDistribution(rawFacetDistribution)
+	return nil
+}
+
+func (o FacetDistribution) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *FacetDistribution) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
 A public office a person holds or held (D-InstitutionalTies, M33) — a reified link. pepTrigger
 persists after the position ends and feeds the M34 PEP watchlist check. pii:basic.
 */
@@ -1349,6 +1434,56 @@ func (o PersonRank) MarshalYAML() (interface{}, error) {
 }
 
 func (o *PersonRank) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+Facet distributions over the SAME set `listPersons` returns under the same filters, counted
+INSIDE the visibility predicate (D-ObjectFacets): `totalCount` is what exhaustively paging
+that list would yield, not an estimate and not a page count.
+
+A facet whose inherited read code the caller lacks is ABSENT from `facets` — never a zeroed
+bucket and never a 403.
+*/
+type PersonStats struct {
+	TotalCount int                 `json:"totalCount"`
+	Facets     []FacetDistribution `json:"facets"`
+}
+
+func (o PersonStats) MarshalJSON() ([]byte, error) {
+	if o.Facets == nil {
+		o.Facets = make([]FacetDistribution, 0)
+	}
+	type _tmpPersonStats PersonStats
+	return safejson.Marshal(_tmpPersonStats(o))
+}
+
+func (o *PersonStats) UnmarshalJSON(data []byte) error {
+	type _tmpPersonStats PersonStats
+	var rawPersonStats _tmpPersonStats
+	if err := safejson.Unmarshal(data, &rawPersonStats); err != nil {
+		return err
+	}
+	if rawPersonStats.Facets == nil {
+		rawPersonStats.Facets = make([]FacetDistribution, 0)
+	}
+	*o = PersonStats(rawPersonStats)
+	return nil
+}
+
+func (o PersonStats) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *PersonStats) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

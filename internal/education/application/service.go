@@ -297,7 +297,7 @@ func (s *Service) GetUnit(ctx context.Context, id string) (domain.Unit, error) {
 }
 
 func (s *Service) ListUnits(ctx context.Context, institutionID string) ([]domain.Unit, error) {
-	page, err := s.tenant.ListUnits(ctx, institutionID, nil, nil, nil, "", nil, false, maxPageSize, "")
+	page, err := s.tenant.ListUnits(ctx, tenantdomain.UnitFilter{OrgID: institutionID}, "", nil, false, maxPageSize, "")
 	if err != nil {
 		return nil, err
 	}

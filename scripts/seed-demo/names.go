@@ -3,7 +3,9 @@
 
 package main
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // Ukrainian-style name pools. Patronymic (по-батькові) is stored in person_persons.given2 (there is
 // no dedicated patronymic column). Marriage pairing uses `sex` — the seeder pairs male↔female only.

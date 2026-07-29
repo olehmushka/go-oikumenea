@@ -243,8 +243,22 @@ DATA-GOVERNANCE:
 | `POST /persons` | Create a person (no account, no unit needed) | `person.create` |
 | `GET /persons/{id}` | Read one | `person.read` |
 | `PUT /persons/{id}` | Update names (canonical + CLDR parts), `birthdate`, `date_of_death`, `sex`, `country_of_birth`, attributes | `person.update` |
-| `GET /persons` | Search/list the directory (token-paginated); **filtered by the declared facets** — `sex`, `status`, `unitId`, `rankId`, `birthdateFrom`/`birthdateTo`, `countryOfBirth`, `hasAccount` (M56, [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope)) | `person.read` |
-| `GET /persons/stats` | Facet distributions over the **same** filter args + an optional `facets` CSV: `totalCount` + `buckets[{key,label,count}]` per facet, counted **inside** the D-PersonReadScope predicate (M57; [facets catalog](../architecture/facets.md)) | `person.read` |
+| `GET /persons` | Search/list the directory (token-paginated); **filtered by the declared facets** — `sex`, `status`, `unitId` (+ the `graph` narrowing arg), `rankId`, `birthdateFrom`/`birthdateTo`, `countryOfBirth`, `hasAccount` (M56, [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope)) | `person.read` |
+| `GET /stats/persons` | Facet distributions over the **same** filter args + an optional `facets` CSV: `totalCount` + `buckets[{key,label,count}]` per facet, counted **inside** the D-PersonReadScope predicate (M57; [facets catalog](../architecture/facets.md)). `totalCount` equals what exhaustively paging `GET /persons` with the same filters returns — a differential test asserts it. The path is `/stats/persons`, not `/persons/stats`, because a literal segment beside `{personId}` makes the router refuse to register the route (D-ObjectFacets as-built) | `person.read` |
+
+> **Facet semantics that are not obvious from the arg names** (M56 ticket 2):
+> `unitId` is **subtree-expanding** — it matches an active membership in that unit or in any closure
+> descendant, over every **authority-bearing** graph by default. `graph` narrows that expansion to one
+> graph code; it is meaningless alone and is rejected with `Person:PersonInvalid`. Setting either
+> `birthdate` bound **excludes** persons with an unknown birthdate (SQL three-valued logic) — the
+> filter counterpart of M57's mandatory `(unknown)` bucket. `hasAccount=false` is a real filter value,
+> not an absent one, so it selects the account-less half of the directory (L-AccountOptional).
+>
+> The same `PersonFilter` drives the instance-admin list AND the read-scope list, and every predicate
+> is folded into the SQL of both — a Go-side re-filter after the page is cut would return a page
+> shorter than `pageSize` while still handing back a `nextPageToken` (review-2026-07 R-06). The
+> facet block therefore appears in five queries; a no-DB narg-parity test proves it is identical in
+> all of them, and a DB differential asserts `scoped(f) == admin(f) ∩ reach`.
 | `PUT /persons/{id}/rank` | Set/clear the person's rank | `person.rank.assign` |
 | `POST /persons/{id}/deactivate` | Begin reversible deactivation (grace window) | `person.lifecycle` |
 | `POST /persons/{id}/reactivate` | Cancel deactivation within grace | `person.lifecycle` |
@@ -362,7 +376,7 @@ unit, so the intersection is empty and they are readable **only on the instance 
 through the holder.
 
 **Facet rule (M56/M57, [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope)).**
-`GET /persons/stats` computes every count **inside** the read-scope predicate above — the same SQL
+`GET /stats/persons` computes every count **inside** the read-scope predicate above — the same SQL
 semi-join the list uses, never a post-paged tally. **No facet exists over an envelope-encrypted
 `pii:special` value** (ethnicity, party membership, political leaning, health, legal records): there
 is no plaintext to group, and grouping them is exactly the join **D-DataScope**'s aggregation rule

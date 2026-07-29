@@ -23,6 +23,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	authzapp "github.com/olegamysk/go-oikumenea/internal/authorization/application"
 	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
 	"github.com/olegamysk/go-oikumenea/internal/authorization/scope"
@@ -31,9 +33,6 @@ import (
 	localizationapp "github.com/olegamysk/go-oikumenea/internal/localization/application"
 	membershipapp "github.com/olegamysk/go-oikumenea/internal/membership/application"
 	"github.com/olegamysk/go-oikumenea/pkg/rid"
-
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func registerLinkDescriptors(

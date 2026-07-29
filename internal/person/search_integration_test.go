@@ -71,7 +71,7 @@ func TestAdminSearch_VariantAndAlias_Integration(t *testing.T) {
 		{"cyrillic variant", "Зеленко"},
 		{"alias", "Shadow"},
 	} {
-		page, err := svc.ListPersons(ctx, 0, "", tc.query)
+		page, err := svc.ListPersons(ctx, domain.PersonFilter{Query: tc.query}, 0, "")
 		if err != nil {
 			t.Fatalf("%s: ListPersons(%q): %v", tc.name, tc.query, err)
 		}
@@ -81,7 +81,7 @@ func TestAdminSearch_VariantAndAlias_Integration(t *testing.T) {
 	}
 
 	// A query that matches nothing returns an empty page.
-	none, err := svc.ListPersons(ctx, 0, "", "zzz-no-such-name")
+	none, err := svc.ListPersons(ctx, domain.PersonFilter{Query: "zzz-no-such-name"}, 0, "")
 	if err != nil {
 		t.Fatalf("ListPersons(no-match): %v", err)
 	}
@@ -127,7 +127,7 @@ func TestScopedSearch_Integration(t *testing.T) {
 		if pages > 100 {
 			t.Fatal("scoped search paging did not terminate")
 		}
-		page, err := svc.ListVisiblePersons(ctx, reader, 2, token, "Falcon")
+		page, err := svc.ListVisiblePersons(ctx, reader, domain.PersonFilter{Query: "Falcon"}, 2, token)
 		if err != nil {
 			t.Fatalf("ListVisiblePersons(search): %v", err)
 		}

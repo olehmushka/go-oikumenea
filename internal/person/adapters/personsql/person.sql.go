@@ -469,18 +469,58 @@ func (q *Queries) ListPersonRanks(ctx context.Context, personID string) ([]Oikum
 }
 
 const listPersons = `-- name: ListPersons :many
-SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2,
-  generation, credentials, preferred, birthdate, date_of_death, sex, country_of_birth_id,
-  attributes, status, deactivated_at, purge_after, created_at, updated_at
-FROM oikumenea.person_persons
-WHERE deleted_at IS NULL AND ($1 = '' OR id::text > $1)
-ORDER BY id
-LIMIT $2
+SELECT p.id, p.code, p.display_name, p.title, p.given, p.given2, p.surname, p.surname_prefix, p.surname2,
+  p.generation, p.credentials, p.preferred, p.birthdate, p.date_of_death, p.sex, p.country_of_birth_id,
+  p.attributes, p.status, p.deactivated_at, p.purge_after, p.created_at, p.updated_at
+FROM oikumenea.person_persons p
+WHERE p.deleted_at IS NULL AND ($1 = '' OR p.id::text > $1)
+  AND ($2::text IS NULL OR p.sex = $2::text)
+  AND ($3::text IS NULL OR p.status = $3::text)
+  AND ($4::date IS NULL OR p.birthdate >= $4::date)
+  AND ($5::date IS NULL OR p.birthdate <= $5::date)
+  AND ($6::uuid IS NULL OR p.country_of_birth_id = $6::uuid)
+  AND ($7::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.person_ranks pr
+        WHERE pr.person_id = p.id AND pr.deleted_at IS NULL
+          AND pr.rank_id = $7::uuid))
+  AND ($8::boolean IS NULL
+       OR $8::boolean = EXISTS (
+            SELECT 1 FROM oikumenea.account_accounts ac
+            WHERE ac.person_id = p.id AND ac.deleted_at IS NULL))
+  AND ($9::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.membership_memberships fm
+        WHERE fm.person_id = p.id AND fm.status = 'active' AND fm.deleted_at IS NULL
+          -- The unit itself plus its closure descendants, as an UNCORRELATED set: this subquery
+          -- reads only the two facet parameters, never p, so the planner evaluates it once and
+          -- probes it as a hash. The correlated form (a closure lookup per candidate person)
+          -- measured 242 ms at 10^6 persons against 33 ms for this shape, because it re-walked the
+          -- closure for every row the keyset scan touched to fill a page.
+          AND fm.unit_id IN (
+            SELECT $9::uuid
+            UNION
+            SELECT c.descendant_id
+            FROM oikumenea.tenant_unit_closure c
+            JOIN oikumenea.tenant_graphs g ON g.id = c.graph_id
+            WHERE c.ancestor_id = $9::uuid
+              AND g.deleted_at IS NULL
+              AND g.is_authority_bearing
+              AND ($10::text IS NULL OR g.code = $10::text))))
+ORDER BY p.id
+LIMIT $11
 `
 
 type ListPersonsParams struct {
-	After interface{}
-	Lim   int32
+	After            interface{}
+	Sex              pgtype.Text
+	Status           pgtype.Text
+	BirthdateFrom    pgtype.Date
+	BirthdateTo      pgtype.Date
+	CountryOfBirthID pgtype.Text
+	RankID           pgtype.Text
+	HasAccount       pgtype.Bool
+	FilterUnitID     pgtype.Text
+	FilterGraph      pgtype.Text
+	Lim              int32
 }
 
 type ListPersonsRow struct {
@@ -508,13 +548,28 @@ type ListPersonsRow struct {
 	UpdatedAt        pgtype.Timestamptz
 }
 
-// Keyset pagination over the time-ordered RID (an empty cursor starts at the beginning). The
-// unfiltered directory list; the application routes a text query to SearchPersons instead.
+// Keyset pagination over the time-ordered RID (an empty cursor starts at the beginning), narrowed by
+// the person facet set (M56 / D-ObjectFacets). The INSTANCE-ADMIN directory list; a scoped caller
+// goes through membership's visibility queries, which carry a byte-identical facet block. The
+// application routes a text query to SearchPersons instead.
+//
 // Explicit column list (review R-17): the directory list is a hot path and must NOT hydrate the wide
 // generated search_text haystack (nor the always-NULL deleted_at) — it lists exactly the columns the
 // row->domain mapper reads, so sqlc emits a lean row struct. Keep single-row GetPerson as SELECT *.
 func (q *Queries) ListPersons(ctx context.Context, arg ListPersonsParams) ([]ListPersonsRow, error) {
-	rows, err := q.db.Query(ctx, listPersons, arg.After, arg.Lim)
+	rows, err := q.db.Query(ctx, listPersons,
+		arg.After,
+		arg.Sex,
+		arg.Status,
+		arg.BirthdateFrom,
+		arg.BirthdateTo,
+		arg.CountryOfBirthID,
+		arg.RankID,
+		arg.HasAccount,
+		arg.FilterUnitID,
+		arg.FilterGraph,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -637,6 +692,390 @@ func (q *Queries) ListPersonsByIDs(ctx context.Context, ids []string) ([]ListPer
 	return items, nil
 }
 
+const personStats = `-- name: PersonStats :many
+
+WITH cand AS MATERIALIZED (
+  SELECT p.id, p.sex, p.status, p.birthdate, p.country_of_birth_id
+  FROM oikumenea.person_persons p
+  WHERE p.deleted_at IS NULL
+  AND ($1::text IS NULL OR p.sex = $1::text)
+  AND ($2::text IS NULL OR p.status = $2::text)
+  AND ($3::date IS NULL OR p.birthdate >= $3::date)
+  AND ($4::date IS NULL OR p.birthdate <= $4::date)
+  AND ($5::uuid IS NULL OR p.country_of_birth_id = $5::uuid)
+  AND ($6::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.person_ranks pr
+        WHERE pr.person_id = p.id AND pr.deleted_at IS NULL
+          AND pr.rank_id = $6::uuid))
+  AND ($7::boolean IS NULL
+       OR $7::boolean = EXISTS (
+            SELECT 1 FROM oikumenea.account_accounts ac
+            WHERE ac.person_id = p.id AND ac.deleted_at IS NULL))
+  AND ($8::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.membership_memberships fm
+        WHERE fm.person_id = p.id AND fm.status = 'active' AND fm.deleted_at IS NULL
+          AND fm.unit_id IN (
+            SELECT $8::uuid
+            UNION
+            SELECT c.descendant_id
+            FROM oikumenea.tenant_unit_closure c
+            JOIN oikumenea.tenant_graphs g ON g.id = c.graph_id
+            WHERE c.ancestor_id = $8::uuid
+              AND g.deleted_at IS NULL
+              AND g.is_authority_bearing
+              AND ($9::text IS NULL OR g.code = $9::text))))
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n, NULL::bigint AS ord
+FROM cand
+UNION ALL
+SELECT 'sex'::text, c.sex::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE $10::boolean GROUP BY c.sex
+UNION ALL
+SELECT 'status'::text, c.status::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE $11::boolean GROUP BY c.status
+UNION ALL
+SELECT 'birthdate'::text,
+       (EXTRACT(YEAR FROM age(current_date, c.birthdate)))::integer::text,
+       count(*)::bigint, NULL::bigint
+FROM cand c WHERE $12::boolean GROUP BY 2
+UNION ALL
+SELECT 'countryOfBirth'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $13::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_of_birth_id::text AS k, count(*) AS n
+            FROM cand c WHERE $14::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'rankId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $13::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, min(t.ord)::bigint
+FROM (SELECT g.k, g.n, g.ord, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT r.id::text AS k, count(*) AS n,
+                   (rc.sort_order::bigint * 1000000 + rt.sort_order::bigint * 1000 + r.sort_order::bigint) AS ord
+            FROM cand c
+            LEFT JOIN oikumenea.person_ranks pr ON pr.person_id = c.id AND pr.deleted_at IS NULL
+            LEFT JOIN oikumenea.rank_ranks r ON r.id = pr.rank_id AND r.deleted_at IS NULL
+            LEFT JOIN oikumenea.rank_types rt ON rt.id = r.type_id AND rt.deleted_at IS NULL
+            LEFT JOIN oikumenea.rank_categories rc ON rc.id = rt.category_id AND rc.deleted_at IS NULL
+            WHERE $15::boolean
+            GROUP BY 1, 3) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'unitId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $13::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT m.unit_id::text AS k, count(*) AS n
+            FROM cand c
+            LEFT JOIN oikumenea.membership_memberships m
+                   ON m.person_id = c.id AND m.status = 'active' AND m.deleted_at IS NULL
+            WHERE $16::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'hasAccount'::text,
+       (EXISTS (SELECT 1 FROM oikumenea.account_accounts ac
+                WHERE ac.person_id = c.id AND ac.deleted_at IS NULL))::text,
+       count(*)::bigint, NULL::bigint
+FROM cand c WHERE $17::boolean GROUP BY 2
+`
+
+type PersonStatsParams struct {
+	Sex                pgtype.Text
+	Status             pgtype.Text
+	BirthdateFrom      pgtype.Date
+	BirthdateTo        pgtype.Date
+	CountryOfBirthID   pgtype.Text
+	RankID             pgtype.Text
+	HasAccount         pgtype.Bool
+	FilterUnitID       pgtype.Text
+	FilterGraph        pgtype.Text
+	WantSex            bool
+	WantStatus         bool
+	WantBirthdate      bool
+	TopN               int32
+	WantCountryOfBirth bool
+	WantRankID         bool
+	WantUnitID         bool
+	WantHasAccount     bool
+}
+
+type PersonStatsRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+	Ord    pgtype.Int8
+}
+
+// ============================ dashboard aggregates (M57) ============================
+// The INSTANCE-ADMIN dashboard aggregate (M57 / D-ObjectFacets): every facet distribution for the
+// directory in ONE round-trip and ONE scan of the candidate set. The candidate CTE carries the facet
+// block VERBATIM from ListPersons — the list and the dashboard must see one world, or a chart would
+// describe a set the list does not return — and each aggregate branch is skipped, not merely hidden,
+// when its want_* flag is false (an unselected or unreadable facet is never grouped).
+//
+// No LIMIT anywhere: a count is over the whole filtered set by definition, which is also why this
+// needs no sparse/dense plan dispatch — there is no early termination for a reach set to spoil.
+// Age in WHOLE YEARS as of today, not the raw date: the bands live in the pkg/facet catalog (one
+// definition, already proven against the DDL), so SQL emits the number and Go assigns the band. A
+// NULL birthdate emits NULL and lands in the mandatory (unknown) bucket.
+// Top-N ref facets collapse their tail into (other) HERE rather than in Go: the tail's sum cannot be
+// known without grouping everything, so it is summed where the rows already are. NULL sorts last in
+// the ranking (`(k IS NULL)` first in the ORDER BY) so the (unknown) bucket never steals a top-N
+// slot from a real value.
+// rankId is LEFT-joined: a person with no active rank is a real bucket ((unknown)), not a row that
+// silently leaves the distribution. `ord` is the scheme's seniority ordinal — category, then type,
+// then rank — so the chart can be read as a seniority profile instead of a frequency ranking
+// (facets.md ④). A person holds one rank PER SYSTEM, so a multi-system directory counts them once
+// per system: this distribution is per-system by construction.
+// unitId counts ACTIVE memberships, LEFT-joined for the same reason: a person with no active
+// membership is the (unknown) bucket. A person in several units is counted in each, so this
+// distribution deliberately does NOT sum to totalCount — it answers "how many people are in unit X",
+// which is what the chart is read as.
+func (q *Queries) PersonStats(ctx context.Context, arg PersonStatsParams) ([]PersonStatsRow, error) {
+	rows, err := q.db.Query(ctx, personStats,
+		arg.Sex,
+		arg.Status,
+		arg.BirthdateFrom,
+		arg.BirthdateTo,
+		arg.CountryOfBirthID,
+		arg.RankID,
+		arg.HasAccount,
+		arg.FilterUnitID,
+		arg.FilterGraph,
+		arg.WantSex,
+		arg.WantStatus,
+		arg.WantBirthdate,
+		arg.TopN,
+		arg.WantCountryOfBirth,
+		arg.WantRankID,
+		arg.WantUnitID,
+		arg.WantHasAccount,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PersonStatsRow
+	for rows.Next() {
+		var i PersonStatsRow
+		if err := rows.Scan(
+			&i.Facet,
+			&i.Bucket,
+			&i.N,
+			&i.Ord,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const personStatsSearch = `-- name: PersonStatsSearch :many
+WITH cand AS MATERIALIZED (
+  SELECT p.id, p.sex, p.status, p.birthdate, p.country_of_birth_id
+  FROM oikumenea.person_persons p
+  WHERE p.deleted_at IS NULL
+  AND ($1::text IS NULL OR p.sex = $1::text)
+  AND ($2::text IS NULL OR p.status = $2::text)
+  AND ($3::date IS NULL OR p.birthdate >= $3::date)
+  AND ($4::date IS NULL OR p.birthdate <= $4::date)
+  AND ($5::uuid IS NULL OR p.country_of_birth_id = $5::uuid)
+  AND ($6::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.person_ranks pr
+        WHERE pr.person_id = p.id AND pr.deleted_at IS NULL
+          AND pr.rank_id = $6::uuid))
+  AND ($7::boolean IS NULL
+       OR $7::boolean = EXISTS (
+            SELECT 1 FROM oikumenea.account_accounts ac
+            WHERE ac.person_id = p.id AND ac.deleted_at IS NULL))
+  AND ($8::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.membership_memberships fm
+        WHERE fm.person_id = p.id AND fm.status = 'active' AND fm.deleted_at IS NULL
+          AND fm.unit_id IN (
+            SELECT $8::uuid
+            UNION
+            SELECT c.descendant_id
+            FROM oikumenea.tenant_unit_closure c
+            JOIN oikumenea.tenant_graphs g ON g.id = c.graph_id
+            WHERE c.ancestor_id = $8::uuid
+              AND g.deleted_at IS NULL
+              AND g.is_authority_bearing
+              AND ($9::text IS NULL OR g.code = $9::text))))
+  AND p.id IN (
+    SELECT ps.id FROM oikumenea.person_persons ps
+      WHERE ps.deleted_at IS NULL AND ps.search_text ILIKE '%' || $10 || '%'
+    UNION
+    SELECT v.person_id FROM oikumenea.person_name_variants v
+      WHERE v.search_text ILIKE '%' || $10 || '%')
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n, NULL::bigint AS ord
+FROM cand
+UNION ALL
+SELECT 'sex'::text, c.sex::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE $11::boolean GROUP BY c.sex
+UNION ALL
+SELECT 'status'::text, c.status::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE $12::boolean GROUP BY c.status
+UNION ALL
+SELECT 'birthdate'::text,
+       (EXTRACT(YEAR FROM age(current_date, c.birthdate)))::integer::text,
+       count(*)::bigint, NULL::bigint
+FROM cand c WHERE $13::boolean GROUP BY 2
+UNION ALL
+SELECT 'countryOfBirth'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $14::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_of_birth_id::text AS k, count(*) AS n
+            FROM cand c WHERE $15::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'rankId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $14::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, min(t.ord)::bigint
+FROM (SELECT g.k, g.n, g.ord, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT r.id::text AS k, count(*) AS n,
+                   (rc.sort_order::bigint * 1000000 + rt.sort_order::bigint * 1000 + r.sort_order::bigint) AS ord
+            FROM cand c
+            LEFT JOIN oikumenea.person_ranks pr ON pr.person_id = c.id AND pr.deleted_at IS NULL
+            LEFT JOIN oikumenea.rank_ranks r ON r.id = pr.rank_id AND r.deleted_at IS NULL
+            LEFT JOIN oikumenea.rank_types rt ON rt.id = r.type_id AND rt.deleted_at IS NULL
+            LEFT JOIN oikumenea.rank_categories rc ON rc.id = rt.category_id AND rc.deleted_at IS NULL
+            WHERE $16::boolean
+            GROUP BY 1, 3) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'unitId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $14::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT m.unit_id::text AS k, count(*) AS n
+            FROM cand c
+            LEFT JOIN oikumenea.membership_memberships m
+                   ON m.person_id = c.id AND m.status = 'active' AND m.deleted_at IS NULL
+            WHERE $17::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'hasAccount'::text,
+       (EXISTS (SELECT 1 FROM oikumenea.account_accounts ac
+                WHERE ac.person_id = c.id AND ac.deleted_at IS NULL))::text,
+       count(*)::bigint, NULL::bigint
+FROM cand c WHERE $18::boolean GROUP BY 2
+`
+
+type PersonStatsSearchParams struct {
+	Sex                pgtype.Text
+	Status             pgtype.Text
+	BirthdateFrom      pgtype.Date
+	BirthdateTo        pgtype.Date
+	CountryOfBirthID   pgtype.Text
+	RankID             pgtype.Text
+	HasAccount         pgtype.Bool
+	FilterUnitID       pgtype.Text
+	FilterGraph        pgtype.Text
+	Query              pgtype.Text
+	WantSex            bool
+	WantStatus         bool
+	WantBirthdate      bool
+	TopN               int32
+	WantCountryOfBirth bool
+	WantRankID         bool
+	WantUnitID         bool
+	WantHasAccount     bool
+}
+
+type PersonStatsSearchRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+	Ord    pgtype.Int8
+}
+
+// The instance-admin dashboard aggregate under a text search: PersonStats with SearchPersons'
+// trigram id-set leading the candidate CTE. A separate query rather than a nullable @query, for the
+// reason R-21 recorded: a `(@query IS NULL OR search_text ILIKE …)` predicate is not indexable, so the
+// unfiltered dashboard — the common case — would seq-scan the directory every time.
+// Age in WHOLE YEARS as of today, not the raw date: the bands live in the pkg/facet catalog (one
+// definition, already proven against the DDL), so SQL emits the number and Go assigns the band. A
+// NULL birthdate emits NULL and lands in the mandatory (unknown) bucket.
+// Top-N ref facets collapse their tail into (other) HERE rather than in Go: the tail's sum cannot be
+// known without grouping everything, so it is summed where the rows already are. NULL sorts last in
+// the ranking (`(k IS NULL)` first in the ORDER BY) so the (unknown) bucket never steals a top-N
+// slot from a real value.
+// rankId is LEFT-joined: a person with no active rank is a real bucket ((unknown)), not a row that
+// silently leaves the distribution. `ord` is the scheme's seniority ordinal — category, then type,
+// then rank — so the chart can be read as a seniority profile instead of a frequency ranking
+// (facets.md ④). A person holds one rank PER SYSTEM, so a multi-system directory counts them once
+// per system: this distribution is per-system by construction.
+// unitId counts ACTIVE memberships, LEFT-joined for the same reason: a person with no active
+// membership is the (unknown) bucket. A person in several units is counted in each, so this
+// distribution deliberately does NOT sum to totalCount — it answers "how many people are in unit X",
+// which is what the chart is read as.
+func (q *Queries) PersonStatsSearch(ctx context.Context, arg PersonStatsSearchParams) ([]PersonStatsSearchRow, error) {
+	rows, err := q.db.Query(ctx, personStatsSearch,
+		arg.Sex,
+		arg.Status,
+		arg.BirthdateFrom,
+		arg.BirthdateTo,
+		arg.CountryOfBirthID,
+		arg.RankID,
+		arg.HasAccount,
+		arg.FilterUnitID,
+		arg.FilterGraph,
+		arg.Query,
+		arg.WantSex,
+		arg.WantStatus,
+		arg.WantBirthdate,
+		arg.TopN,
+		arg.WantCountryOfBirth,
+		arg.WantRankID,
+		arg.WantUnitID,
+		arg.WantHasAccount,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PersonStatsSearchRow
+	for rows.Next() {
+		var i PersonStatsSearchRow
+		if err := rows.Scan(
+			&i.Facet,
+			&i.Bucket,
+			&i.N,
+			&i.Ord,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const purgePerson = `-- name: PurgePerson :one
 UPDATE oikumenea.person_persons SET
   code = NULL, display_name = '', title = NULL, given = NULL, given2 = NULL,
@@ -722,25 +1161,68 @@ func (q *Queries) ReactivatePerson(ctx context.Context, id string) (OikumeneaPer
 }
 
 const searchPersons = `-- name: SearchPersons :many
-SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2,
-  generation, credentials, preferred, birthdate, date_of_death, sex, country_of_birth_id,
-  attributes, status, deactivated_at, purge_after, created_at, updated_at
-FROM oikumenea.person_persons
-WHERE deleted_at IS NULL AND ($1 = '' OR id::text > $1)
-  AND id IN (
+SELECT p.id, p.code, p.display_name, p.title, p.given, p.given2, p.surname, p.surname_prefix, p.surname2,
+  p.generation, p.credentials, p.preferred, p.birthdate, p.date_of_death, p.sex, p.country_of_birth_id,
+  p.attributes, p.status, p.deactivated_at, p.purge_after, p.created_at, p.updated_at
+FROM oikumenea.person_persons p
+WHERE p.deleted_at IS NULL AND ($1 = '' OR p.id::text > $1)
+  AND p.id IN (
     SELECT ps.id FROM oikumenea.person_persons ps
       WHERE ps.deleted_at IS NULL AND ps.search_text ILIKE '%' || $2 || '%'
     UNION
     SELECT v.person_id FROM oikumenea.person_name_variants v
       WHERE v.search_text ILIKE '%' || $2 || '%')
-ORDER BY id
-LIMIT $3
+  -- The facet block, byte-identical to ListPersons (M56 / D-ObjectFacets): a text search and a
+  -- structural filter compose, and the two admin queries must never disagree about what a facet
+  -- selects. The selective trigram set leads, so the facets are applied to a small candidate set.
+  AND ($3::text IS NULL OR p.sex = $3::text)
+  AND ($4::text IS NULL OR p.status = $4::text)
+  AND ($5::date IS NULL OR p.birthdate >= $5::date)
+  AND ($6::date IS NULL OR p.birthdate <= $6::date)
+  AND ($7::uuid IS NULL OR p.country_of_birth_id = $7::uuid)
+  AND ($8::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.person_ranks pr
+        WHERE pr.person_id = p.id AND pr.deleted_at IS NULL
+          AND pr.rank_id = $8::uuid))
+  AND ($9::boolean IS NULL
+       OR $9::boolean = EXISTS (
+            SELECT 1 FROM oikumenea.account_accounts ac
+            WHERE ac.person_id = p.id AND ac.deleted_at IS NULL))
+  AND ($10::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.membership_memberships fm
+        WHERE fm.person_id = p.id AND fm.status = 'active' AND fm.deleted_at IS NULL
+          -- The unit itself plus its closure descendants, as an UNCORRELATED set: this subquery
+          -- reads only the two facet parameters, never p, so the planner evaluates it once and
+          -- probes it as a hash. The correlated form (a closure lookup per candidate person)
+          -- measured 242 ms at 10^6 persons against 33 ms for this shape, because it re-walked the
+          -- closure for every row the keyset scan touched to fill a page.
+          AND fm.unit_id IN (
+            SELECT $10::uuid
+            UNION
+            SELECT c.descendant_id
+            FROM oikumenea.tenant_unit_closure c
+            JOIN oikumenea.tenant_graphs g ON g.id = c.graph_id
+            WHERE c.ancestor_id = $10::uuid
+              AND g.deleted_at IS NULL
+              AND g.is_authority_bearing
+              AND ($11::text IS NULL OR g.code = $11::text))))
+ORDER BY p.id
+LIMIT $12
 `
 
 type SearchPersonsParams struct {
-	After interface{}
-	Query pgtype.Text
-	Lim   int32
+	After            interface{}
+	Query            pgtype.Text
+	Sex              pgtype.Text
+	Status           pgtype.Text
+	BirthdateFrom    pgtype.Date
+	BirthdateTo      pgtype.Date
+	CountryOfBirthID pgtype.Text
+	RankID           pgtype.Text
+	HasAccount       pgtype.Bool
+	FilterUnitID     pgtype.Text
+	FilterGraph      pgtype.Text
+	Lim              int32
 }
 
 type SearchPersonsRow struct {
@@ -777,7 +1259,20 @@ type SearchPersonsRow struct {
 // trigram) — acceptable for the rare short-prefix case. Lean column list (review R-17): a per-keystroke
 // typeahead path must not hydrate search_text/deleted_at — same lean projection as ListPersons.
 func (q *Queries) SearchPersons(ctx context.Context, arg SearchPersonsParams) ([]SearchPersonsRow, error) {
-	rows, err := q.db.Query(ctx, searchPersons, arg.After, arg.Query, arg.Lim)
+	rows, err := q.db.Query(ctx, searchPersons,
+		arg.After,
+		arg.Query,
+		arg.Sex,
+		arg.Status,
+		arg.BirthdateFrom,
+		arg.BirthdateTo,
+		arg.CountryOfBirthID,
+		arg.RankID,
+		arg.HasAccount,
+		arg.FilterUnitID,
+		arg.FilterGraph,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}

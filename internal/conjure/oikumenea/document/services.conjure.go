@@ -22,6 +22,18 @@ and validated against their scheme on write. Writes are audited in-process (D-Au
 type DocumentServiceClient interface {
 	// Attach a paper to a person. Returns Document:DocumentConflict on a duplicate (type, number).
 	AttachDocument(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg CreateDocumentRequest) (Document, error)
+	/*
+	   List documents across every holder the caller may read, token-paginated, narrowed by the
+	   document facet set (D-ObjectFacets, M56). Documents are scoped THROUGH THE HOLDER
+	   (D-PersonReadScope): a non-instance-admin caller sees only documents whose holder falls in
+	   their read-scope union. Every filter below is applied INSIDE that union, before the page is
+	   cut, so a filtered page is never short and its cursor is never wrong.
+
+	   Metadata only — the same projection the per-holder listing returns. The facet filters
+	   combine with AND and do NOT widen what the caller may see: filtering can only narrow the
+	   visible set.
+	*/
+	ListDocuments(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string, typeIdArg *string, statusArg *string, issuingCountryIdArg *string, issuedOnFromArg *string, issuedOnToArg *string, expiresOnFromArg *string, expiresOnToArg *string) (DocumentPage, error)
 	// List a person's documents, token-paginated.
 	ListPersonDocuments(ctx context.Context, authHeader bearertoken.Token, personIdArg string, pageSizeArg *int, pageTokenArg *string) (DocumentPage, error)
 	// Read one document.
@@ -78,6 +90,52 @@ func (c *documentServiceClient) AttachDocument(ctx context.Context, authHeader b
 	}
 	if returnVal == nil {
 		return *new(Document), werror.ErrorWithContextParams(ctx, "attachDocument response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *documentServiceClient) ListDocuments(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string, typeIdArg *string, statusArg *string, issuingCountryIdArg *string, issuedOnFromArg *string, issuedOnToArg *string, expiresOnFromArg *string, expiresOnToArg *string) (DocumentPage, error) {
+	var returnVal *DocumentPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListDocuments"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/document/v1/documents"))
+	queryParams := make(url.Values)
+	if pageSizeArg != nil {
+		queryParams.Set("pageSize", fmt.Sprint(*pageSizeArg))
+	}
+	if pageTokenArg != nil {
+		queryParams.Set("pageToken", fmt.Sprint(*pageTokenArg))
+	}
+	if typeIdArg != nil {
+		queryParams.Set("typeId", fmt.Sprint(*typeIdArg))
+	}
+	if statusArg != nil {
+		queryParams.Set("status", fmt.Sprint(*statusArg))
+	}
+	if issuingCountryIdArg != nil {
+		queryParams.Set("issuingCountryId", fmt.Sprint(*issuingCountryIdArg))
+	}
+	if issuedOnFromArg != nil {
+		queryParams.Set("issuedOnFrom", fmt.Sprint(*issuedOnFromArg))
+	}
+	if issuedOnToArg != nil {
+		queryParams.Set("issuedOnTo", fmt.Sprint(*issuedOnToArg))
+	}
+	if expiresOnFromArg != nil {
+		queryParams.Set("expiresOnFrom", fmt.Sprint(*expiresOnFromArg))
+	}
+	if expiresOnToArg != nil {
+		queryParams.Set("expiresOnTo", fmt.Sprint(*expiresOnToArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(DocumentPage), werror.WrapWithContextParams(ctx, err, "listDocuments failed")
+	}
+	if returnVal == nil {
+		return *new(DocumentPage), werror.ErrorWithContextParams(ctx, "listDocuments response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -342,6 +400,18 @@ and validated against their scheme on write. Writes are audited in-process (D-Au
 type DocumentServiceClientWithAuth interface {
 	// Attach a paper to a person. Returns Document:DocumentConflict on a duplicate (type, number).
 	AttachDocument(ctx context.Context, personIdArg string, requestArg CreateDocumentRequest) (Document, error)
+	/*
+	   List documents across every holder the caller may read, token-paginated, narrowed by the
+	   document facet set (D-ObjectFacets, M56). Documents are scoped THROUGH THE HOLDER
+	   (D-PersonReadScope): a non-instance-admin caller sees only documents whose holder falls in
+	   their read-scope union. Every filter below is applied INSIDE that union, before the page is
+	   cut, so a filtered page is never short and its cursor is never wrong.
+
+	   Metadata only — the same projection the per-holder listing returns. The facet filters
+	   combine with AND and do NOT widen what the caller may see: filtering can only narrow the
+	   visible set.
+	*/
+	ListDocuments(ctx context.Context, pageSizeArg *int, pageTokenArg *string, typeIdArg *string, statusArg *string, issuingCountryIdArg *string, issuedOnFromArg *string, issuedOnToArg *string, expiresOnFromArg *string, expiresOnToArg *string) (DocumentPage, error)
 	// List a person's documents, token-paginated.
 	ListPersonDocuments(ctx context.Context, personIdArg string, pageSizeArg *int, pageTokenArg *string) (DocumentPage, error)
 	// Read one document.
@@ -387,6 +457,10 @@ type documentServiceClientWithAuth struct {
 
 func (c *documentServiceClientWithAuth) AttachDocument(ctx context.Context, personIdArg string, requestArg CreateDocumentRequest) (Document, error) {
 	return c.client.AttachDocument(ctx, c.authHeader, personIdArg, requestArg)
+}
+
+func (c *documentServiceClientWithAuth) ListDocuments(ctx context.Context, pageSizeArg *int, pageTokenArg *string, typeIdArg *string, statusArg *string, issuingCountryIdArg *string, issuedOnFromArg *string, issuedOnToArg *string, expiresOnFromArg *string, expiresOnToArg *string) (DocumentPage, error) {
+	return c.client.ListDocuments(ctx, c.authHeader, pageSizeArg, pageTokenArg, typeIdArg, statusArg, issuingCountryIdArg, issuedOnFromArg, issuedOnToArg, expiresOnFromArg, expiresOnToArg)
 }
 
 func (c *documentServiceClientWithAuth) ListPersonDocuments(ctx context.Context, personIdArg string, pageSizeArg *int, pageTokenArg *string) (DocumentPage, error) {
@@ -460,6 +534,14 @@ func (c *documentServiceClientWithTokenProvider) AttachDocument(ctx context.Cont
 		return *new(Document), err
 	}
 	return c.client.AttachDocument(ctx, bearertoken.Token(token), personIdArg, requestArg)
+}
+
+func (c *documentServiceClientWithTokenProvider) ListDocuments(ctx context.Context, pageSizeArg *int, pageTokenArg *string, typeIdArg *string, statusArg *string, issuingCountryIdArg *string, issuedOnFromArg *string, issuedOnToArg *string, expiresOnFromArg *string, expiresOnToArg *string) (DocumentPage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(DocumentPage), err
+	}
+	return c.client.ListDocuments(ctx, bearertoken.Token(token), pageSizeArg, pageTokenArg, typeIdArg, statusArg, issuingCountryIdArg, issuedOnFromArg, issuedOnToArg, expiresOnFromArg, expiresOnToArg)
 }
 
 func (c *documentServiceClientWithTokenProvider) ListPersonDocuments(ctx context.Context, personIdArg string, pageSizeArg *int, pageTokenArg *string) (DocumentPage, error) {

@@ -39,6 +39,7 @@ import (
 	authzadapters "github.com/olegamysk/go-oikumenea/internal/authorization/adapters"
 	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
 	membershipadapters "github.com/olegamysk/go-oikumenea/internal/membership/adapters"
+	persondomain "github.com/olegamysk/go-oikumenea/internal/person/domain"
 	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
 	tenantadapters "github.com/olegamysk/go-oikumenea/internal/tenant/adapters"
 	tenantapp "github.com/olegamysk/go-oikumenea/internal/tenant/application"
@@ -110,7 +111,7 @@ func TestReachDifferential(t *testing.T) {
 		}
 
 		// (a) Directory union: full drain AND a limit-2 keyset drain must both equal the oracle.
-		gotFull, err := memRepo.VisiblePersonIDsForSubject(ctx, w.subject, "", "", 100000)
+		gotFull, err := memRepo.VisiblePersonIDsForSubject(ctx, w.subject, "", persondomain.PersonFilter{}, 100000)
 		if err != nil {
 			t.Fatalf("seed=%d world=%d VisiblePersonIDsForSubject: %v", seed, wi, err)
 		}
@@ -118,7 +119,7 @@ func TestReachDifferential(t *testing.T) {
 		var paged []string
 		after := ""
 		for {
-			batch, err := memRepo.VisiblePersonIDsForSubject(ctx, w.subject, after, "", 2)
+			batch, err := memRepo.VisiblePersonIDsForSubject(ctx, w.subject, after, persondomain.PersonFilter{}, 2)
 			if err != nil {
 				t.Fatalf("seed=%d world=%d paged drain: %v", seed, wi, err)
 			}
@@ -161,6 +162,25 @@ func TestReachDifferential(t *testing.T) {
 			}
 		}
 		assertSameSet(t, seed, wi, "ReadableUnitsForSubjectAmong", gotUnits, wantUnits)
+
+		// (c2) The SET-returning reach projection migration 0017 added
+		// (oikumenea.authz_readable_units), which the M56 ticket-3 list endpoints fold into their
+		// scoped queries. It is a THIRD copy of the reach algebra — the Go oracle, the inline CTE in
+		// VisiblePersonIDsForSubject*, and now this function — and 0017 claims all three agree. This
+		// is where that claim is checked.
+		//
+		// Unlike (c), which probes a candidate list, this projects the WHOLE reach, so it also
+		// catches the function returning EXTRA units the oracle never granted — the direction a
+		// candidate-list probe structurally cannot see.
+		gotReadable, err := memRepo.ReadableUnitIDsForSubject(ctx, w.subject)
+		if err != nil {
+			t.Fatalf("seed=%d world=%d ReadableUnitIDsForSubject: %v", seed, wi, err)
+		}
+		wantReadable := map[string]bool{}
+		for u := range reach.Readable {
+			wantReadable[u] = true
+		}
+		assertSameSet(t, seed, wi, "authz_readable_units", gotReadable, wantReadable)
 
 		// (d) The RLS policy predicate (R-02.2, oikumenea.authz_unit_in_reach): keyed on the
 		// app.person_id GUC, so probe on a dedicated connection. CONTRACT: never narrower than the

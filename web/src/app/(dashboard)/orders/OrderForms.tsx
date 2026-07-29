@@ -1,14 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { api } from "@/lib/api/client";
 import { ErrorBox } from "@/components/ErrorBox";
-import { EntitySelect } from "@/components/EntitySelect";
 import { Localized } from "@/components/Localized";
 import { T } from "@/components/T";
 import { useTg } from "@/lib/locale";
-import type { Order, OrderType } from "@/lib/api/types";
+import { OrderItemRows, emptyRow, rowsReady, toInputs, typeIndex, type ItemRow } from "./OrderItemRows";
+import { isDraft, isIssued } from "./status";
+import type { Order, OrderItemInput, OrderType } from "@/lib/api/types";
 
 const ORDER_CATEGORIES = [
   "personnel-list",
@@ -19,7 +20,12 @@ const ORDER_CATEGORIES = [
 ];
 const ORDER_EFFECTS = ["membership-start", "membership-end", "rank-change", "record-only"];
 
-/** Create an order against a unit with a single initial item (more can be added via the API). */
+/**
+ * Create a draft order against an issuing unit, with as many items ("points") as the наказ has.
+ *
+ * Controlled state rather than the FormData pattern used elsewhere in this file: a FormData form
+ * cannot express a variable row count, and mixing the two would be worse than either.
+ */
 export function OrderCreate({
   unitId,
   orderTypes,
@@ -31,26 +37,23 @@ export function OrderCreate({
   const tr = useTg();
   const [err, setErr] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  const [number, setNumber] = useState("");
+  const [issuedOn, setIssuedOn] = useState("");
+  const [rows, setRows] = useState<ItemRow[]>(() => [emptyRow()]);
+  const byId = useMemo(() => typeIndex(orderTypes), [orderTypes]);
+  const ready = rowsReady(rows, byId);
 
   return (
     <form
       className="card space-y-3 p-5"
       onSubmit={(e) => {
         e.preventDefault();
-        const f = new FormData(e.currentTarget);
         setBusy(true);
         setErr(null);
-        const body = {
-          number: String(f.get("number") || "").trim() || undefined,
-          issuedOn: String(f.get("issuedOn") || "").trim() || undefined,
-          items: [
-            {
-              typeId: String(f.get("typeId") || "").trim(),
-              personId: String(f.get("personId") || "").trim(),
-              unitId: String(f.get("itemUnitId") || "").trim() || undefined,
-              note: String(f.get("note") || "").trim() || undefined,
-            },
-          ],
+        const body: CreateOrderRequestBody = {
+          number: number.trim() || undefined,
+          issuedOn: issuedOn.trim() || undefined,
+          items: toInputs(rows, byId),
         };
         (async () => {
           try {
@@ -69,32 +72,35 @@ export function OrderCreate({
       </p>
       {err ? <ErrorBox error={err} /> : null}
       <div className="grid grid-cols-2 gap-3">
-        <input name="number" className="input" placeholder={tr("order number")} />
-        <input name="issuedOn" type="date" className="input" />
+        <input
+          className="input"
+          placeholder={tr("order number")}
+          value={number}
+          onChange={(e) => setNumber(e.target.value)}
+        />
+        <input
+          type="date"
+          className="input"
+          value={issuedOn}
+          onChange={(e) => setIssuedOn(e.target.value)}
+        />
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <select name="typeId" required className="input" defaultValue="">
-          <option value="" disabled>
-            {tr("item type…")}
-          </option>
-          {orderTypes.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.code}
-            </option>
-          ))}
-        </select>
-        <EntitySelect name="personId" kind="person" required placeholder={tr("subject person…")} />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <EntitySelect name="itemUnitId" kind="unit" allowEmpty placeholder={tr("item unit (optional)…")} />
-        <input name="note" className="input" placeholder={tr("note (optional)")} />
-      </div>
-      <button type="submit" className="btn-primary" disabled={busy}>
+
+      <OrderItemRows rows={rows} onChange={setRows} orderTypes={orderTypes} disabled={busy} />
+
+      <button type="submit" className="btn-primary" disabled={busy || !ready}>
         {busy ? <T>Creating…</T> : <T>Create order</T>}
       </button>
     </form>
   );
 }
+
+/** The create payload — `items` is a list, not a single entry (api/order.conjure.yml CreateOrderRequest). */
+type CreateOrderRequestBody = {
+  number?: string;
+  issuedOn?: string;
+  items: OrderItemInput[];
+};
 
 /** Edit a DRAFT order's number / issued-on. PUT /order/v1/orders/{id} (rejected once issued). */
 export function EditOrder({ order }: { order: Order }) {
@@ -103,7 +109,7 @@ export function EditOrder({ order }: { order: Order }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<unknown>(null);
-  if ((order.status ?? "").toUpperCase() !== "DRAFT") return null;
+  if (!isDraft(order.status)) return null;
   if (!open) {
     return (
       <button type="button" className="btn-ghost" onClick={() => setOpen(true)}>
@@ -298,14 +304,14 @@ export function OrderActions({ orderId, status }: { orderId: string; status?: st
       <div className="flex gap-2">
         <button
           className="btn-primary"
-          disabled={busy || status === "ISSUED" || status === "REVOKED"}
+          disabled={busy || !isDraft(status)}
           onClick={() => act("issue")}
         >
           <T>Issue</T>
         </button>
         <button
           className="btn-ghost"
-          disabled={busy || status === "REVOKED"}
+          disabled={busy || !isIssued(status)}
           onClick={() => act("revoke", {})}
         >
           <T>Revoke</T>

@@ -35,16 +35,39 @@ type TenantServiceClient interface {
 	ListUnitCodeEvents(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (UnitCodeEventList, error)
 	/*
 	   List/search units within an organization (D-TenantOrganizations, M40). `org` is REQUIRED —
-	   a fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally filtered by
-	   `domain` (cross-cut within the org, for mixed trees), `unitKind`, and `level`. Token-paginated.
+	   a fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally narrowed by the
+	   unit facet set (D-ObjectFacets, M56): `domain` (cross-cut within the org, for mixed trees),
+	   `unitKind`, `level`, `visibility`, `state` and `pdpScoped`. Token-paginated.
+
+	   The shadow-visibility gate still trims the page AFTER it is cut, so `visibility` NARROWS and
+	   never widens: asking for `visibility=shadow` without shadow reach yields an empty page, not
+	   an error and not a leak.
 
 	   For hierarchical (expand-on-click) browsing in graph `graph` (default `command`): pass
 	   `rootsOnly=true` to list only the org's top-level units (those with no parent in the graph),
 	   or `parent=<unitRid>` to list a unit's DIRECT children in the graph. The two are mutually
-	   exclusive, and each ignores the `domain`/`unitKind`/`level` filters. When neither is set the
+	   exclusive, and each ignores the flat-listing filters
+	   (`domain`/`unitKind`/`level`/`visibility`/`state`/`pdpScoped`). When neither is set the
 	   listing is the flat, filtered org listing.
 	*/
-	ListUnits(ctx context.Context, authHeader bearertoken.Token, orgArg string, domainArg *string, unitKindArg *string, levelArg *int, graphArg *string, parentArg *string, rootsOnlyArg *bool, pageSizeArg *int, pageTokenArg *string) (UnitPage, error)
+	ListUnits(ctx context.Context, authHeader bearertoken.Token, orgArg string, domainArg *string, unitKindArg *string, levelArg *int, visibilityArg *string, stateArg *string, pdpScopedArg *bool, graphArg *string, parentArg *string, rootsOnlyArg *bool, pageSizeArg *int, pageTokenArg *string) (UnitPage, error)
+	/*
+	   Facet distributions for an organization's units — the dashboard half of the facet
+	   vocabulary (M57 / D-ObjectFacets). Takes exactly the FLAT-listing filter args `listUnits`
+	   takes (minus paging and the `graph`/`parent`/`rootsOnly` traversal args, which switch that
+	   endpoint to a hierarchy walk rather than adding a predicate), so a dashboard and a list are
+	   two renderings of one request state.
+
+	   `org` is REQUIRED, as on `listUnits`. The shadow gate is folded into SQL here: on the list
+	   it trims the page after it is cut — correct for a page, wrong for a count — so
+	   `totalCount` equals the number of rows exhaustively paging `listUnits` with these filters
+	   would return.
+
+	   The path is `/stats/units` rather than `/units/stats` because the server's router rejects a
+	   literal path segment that is a sibling of `{unitId}` — see the route-conflict guard in
+	   `internal/platform/transport`.
+	*/
+	UnitStats(ctx context.Context, authHeader bearertoken.Token, orgArg string, facetsArg *string, domainArg *string, unitKindArg *string, levelArg *int, visibilityArg *string, stateArg *string, pdpScopedArg *bool) (UnitStats, error)
 	// Attach the path unit as a child of parentId within a graph (default command). Returns Tenant:UnitCycleDetected on a cycle.
 	AddEdge(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg AddEdgeRequest) (UnitEdge, error)
 	// Detach the path unit from a parent within a graph.
@@ -207,7 +230,7 @@ func (c *tenantServiceClient) ListUnitCodeEvents(ctx context.Context, authHeader
 	return *returnVal, nil
 }
 
-func (c *tenantServiceClient) ListUnits(ctx context.Context, authHeader bearertoken.Token, orgArg string, domainArg *string, unitKindArg *string, levelArg *int, graphArg *string, parentArg *string, rootsOnlyArg *bool, pageSizeArg *int, pageTokenArg *string) (UnitPage, error) {
+func (c *tenantServiceClient) ListUnits(ctx context.Context, authHeader bearertoken.Token, orgArg string, domainArg *string, unitKindArg *string, levelArg *int, visibilityArg *string, stateArg *string, pdpScopedArg *bool, graphArg *string, parentArg *string, rootsOnlyArg *bool, pageSizeArg *int, pageTokenArg *string) (UnitPage, error) {
 	var returnVal *UnitPage
 	var requestParams []httpclient.RequestParam
 	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListUnits"))
@@ -223,6 +246,15 @@ func (c *tenantServiceClient) ListUnits(ctx context.Context, authHeader bearerto
 	}
 	if levelArg != nil {
 		queryParams.Set("level", fmt.Sprint(*levelArg))
+	}
+	if visibilityArg != nil {
+		queryParams.Set("visibility", fmt.Sprint(*visibilityArg))
+	}
+	if stateArg != nil {
+		queryParams.Set("state", fmt.Sprint(*stateArg))
+	}
+	if pdpScopedArg != nil {
+		queryParams.Set("pdpScoped", fmt.Sprint(*pdpScopedArg))
 	}
 	if graphArg != nil {
 		queryParams.Set("graph", fmt.Sprint(*graphArg))
@@ -247,6 +279,47 @@ func (c *tenantServiceClient) ListUnits(ctx context.Context, authHeader bearerto
 	}
 	if returnVal == nil {
 		return *new(UnitPage), werror.ErrorWithContextParams(ctx, "listUnits response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *tenantServiceClient) UnitStats(ctx context.Context, authHeader bearertoken.Token, orgArg string, facetsArg *string, domainArg *string, unitKindArg *string, levelArg *int, visibilityArg *string, stateArg *string, pdpScopedArg *bool) (UnitStats, error) {
+	var returnVal *UnitStats
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("UnitStats"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/tenant/v1/stats/units"))
+	queryParams := make(url.Values)
+	queryParams.Set("org", fmt.Sprint(orgArg))
+	if facetsArg != nil {
+		queryParams.Set("facets", fmt.Sprint(*facetsArg))
+	}
+	if domainArg != nil {
+		queryParams.Set("domain", fmt.Sprint(*domainArg))
+	}
+	if unitKindArg != nil {
+		queryParams.Set("unitKind", fmt.Sprint(*unitKindArg))
+	}
+	if levelArg != nil {
+		queryParams.Set("level", fmt.Sprint(*levelArg))
+	}
+	if visibilityArg != nil {
+		queryParams.Set("visibility", fmt.Sprint(*visibilityArg))
+	}
+	if stateArg != nil {
+		queryParams.Set("state", fmt.Sprint(*stateArg))
+	}
+	if pdpScopedArg != nil {
+		queryParams.Set("pdpScoped", fmt.Sprint(*pdpScopedArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(UnitStats), werror.WrapWithContextParams(ctx, err, "unitStats failed")
+	}
+	if returnVal == nil {
+		return *new(UnitStats), werror.ErrorWithContextParams(ctx, "unitStats response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -763,16 +836,39 @@ type TenantServiceClientWithAuth interface {
 	ListUnitCodeEvents(ctx context.Context, unitIdArg string) (UnitCodeEventList, error)
 	/*
 	   List/search units within an organization (D-TenantOrganizations, M40). `org` is REQUIRED —
-	   a fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally filtered by
-	   `domain` (cross-cut within the org, for mixed trees), `unitKind`, and `level`. Token-paginated.
+	   a fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally narrowed by the
+	   unit facet set (D-ObjectFacets, M56): `domain` (cross-cut within the org, for mixed trees),
+	   `unitKind`, `level`, `visibility`, `state` and `pdpScoped`. Token-paginated.
+
+	   The shadow-visibility gate still trims the page AFTER it is cut, so `visibility` NARROWS and
+	   never widens: asking for `visibility=shadow` without shadow reach yields an empty page, not
+	   an error and not a leak.
 
 	   For hierarchical (expand-on-click) browsing in graph `graph` (default `command`): pass
 	   `rootsOnly=true` to list only the org's top-level units (those with no parent in the graph),
 	   or `parent=<unitRid>` to list a unit's DIRECT children in the graph. The two are mutually
-	   exclusive, and each ignores the `domain`/`unitKind`/`level` filters. When neither is set the
+	   exclusive, and each ignores the flat-listing filters
+	   (`domain`/`unitKind`/`level`/`visibility`/`state`/`pdpScoped`). When neither is set the
 	   listing is the flat, filtered org listing.
 	*/
-	ListUnits(ctx context.Context, orgArg string, domainArg *string, unitKindArg *string, levelArg *int, graphArg *string, parentArg *string, rootsOnlyArg *bool, pageSizeArg *int, pageTokenArg *string) (UnitPage, error)
+	ListUnits(ctx context.Context, orgArg string, domainArg *string, unitKindArg *string, levelArg *int, visibilityArg *string, stateArg *string, pdpScopedArg *bool, graphArg *string, parentArg *string, rootsOnlyArg *bool, pageSizeArg *int, pageTokenArg *string) (UnitPage, error)
+	/*
+	   Facet distributions for an organization's units — the dashboard half of the facet
+	   vocabulary (M57 / D-ObjectFacets). Takes exactly the FLAT-listing filter args `listUnits`
+	   takes (minus paging and the `graph`/`parent`/`rootsOnly` traversal args, which switch that
+	   endpoint to a hierarchy walk rather than adding a predicate), so a dashboard and a list are
+	   two renderings of one request state.
+
+	   `org` is REQUIRED, as on `listUnits`. The shadow gate is folded into SQL here: on the list
+	   it trims the page after it is cut — correct for a page, wrong for a count — so
+	   `totalCount` equals the number of rows exhaustively paging `listUnits` with these filters
+	   would return.
+
+	   The path is `/stats/units` rather than `/units/stats` because the server's router rejects a
+	   literal path segment that is a sibling of `{unitId}` — see the route-conflict guard in
+	   `internal/platform/transport`.
+	*/
+	UnitStats(ctx context.Context, orgArg string, facetsArg *string, domainArg *string, unitKindArg *string, levelArg *int, visibilityArg *string, stateArg *string, pdpScopedArg *bool) (UnitStats, error)
 	// Attach the path unit as a child of parentId within a graph (default command). Returns Tenant:UnitCycleDetected on a cycle.
 	AddEdge(ctx context.Context, unitIdArg string, requestArg AddEdgeRequest) (UnitEdge, error)
 	// Detach the path unit from a parent within a graph.
@@ -868,8 +964,12 @@ func (c *tenantServiceClientWithAuth) ListUnitCodeEvents(ctx context.Context, un
 	return c.client.ListUnitCodeEvents(ctx, c.authHeader, unitIdArg)
 }
 
-func (c *tenantServiceClientWithAuth) ListUnits(ctx context.Context, orgArg string, domainArg *string, unitKindArg *string, levelArg *int, graphArg *string, parentArg *string, rootsOnlyArg *bool, pageSizeArg *int, pageTokenArg *string) (UnitPage, error) {
-	return c.client.ListUnits(ctx, c.authHeader, orgArg, domainArg, unitKindArg, levelArg, graphArg, parentArg, rootsOnlyArg, pageSizeArg, pageTokenArg)
+func (c *tenantServiceClientWithAuth) ListUnits(ctx context.Context, orgArg string, domainArg *string, unitKindArg *string, levelArg *int, visibilityArg *string, stateArg *string, pdpScopedArg *bool, graphArg *string, parentArg *string, rootsOnlyArg *bool, pageSizeArg *int, pageTokenArg *string) (UnitPage, error) {
+	return c.client.ListUnits(ctx, c.authHeader, orgArg, domainArg, unitKindArg, levelArg, visibilityArg, stateArg, pdpScopedArg, graphArg, parentArg, rootsOnlyArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *tenantServiceClientWithAuth) UnitStats(ctx context.Context, orgArg string, facetsArg *string, domainArg *string, unitKindArg *string, levelArg *int, visibilityArg *string, stateArg *string, pdpScopedArg *bool) (UnitStats, error) {
+	return c.client.UnitStats(ctx, c.authHeader, orgArg, facetsArg, domainArg, unitKindArg, levelArg, visibilityArg, stateArg, pdpScopedArg)
 }
 
 func (c *tenantServiceClientWithAuth) AddEdge(ctx context.Context, unitIdArg string, requestArg AddEdgeRequest) (UnitEdge, error) {
@@ -1025,12 +1125,20 @@ func (c *tenantServiceClientWithTokenProvider) ListUnitCodeEvents(ctx context.Co
 	return c.client.ListUnitCodeEvents(ctx, bearertoken.Token(token), unitIdArg)
 }
 
-func (c *tenantServiceClientWithTokenProvider) ListUnits(ctx context.Context, orgArg string, domainArg *string, unitKindArg *string, levelArg *int, graphArg *string, parentArg *string, rootsOnlyArg *bool, pageSizeArg *int, pageTokenArg *string) (UnitPage, error) {
+func (c *tenantServiceClientWithTokenProvider) ListUnits(ctx context.Context, orgArg string, domainArg *string, unitKindArg *string, levelArg *int, visibilityArg *string, stateArg *string, pdpScopedArg *bool, graphArg *string, parentArg *string, rootsOnlyArg *bool, pageSizeArg *int, pageTokenArg *string) (UnitPage, error) {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
 		return *new(UnitPage), err
 	}
-	return c.client.ListUnits(ctx, bearertoken.Token(token), orgArg, domainArg, unitKindArg, levelArg, graphArg, parentArg, rootsOnlyArg, pageSizeArg, pageTokenArg)
+	return c.client.ListUnits(ctx, bearertoken.Token(token), orgArg, domainArg, unitKindArg, levelArg, visibilityArg, stateArg, pdpScopedArg, graphArg, parentArg, rootsOnlyArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *tenantServiceClientWithTokenProvider) UnitStats(ctx context.Context, orgArg string, facetsArg *string, domainArg *string, unitKindArg *string, levelArg *int, visibilityArg *string, stateArg *string, pdpScopedArg *bool) (UnitStats, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(UnitStats), err
+	}
+	return c.client.UnitStats(ctx, bearertoken.Token(token), orgArg, facetsArg, domainArg, unitKindArg, levelArg, visibilityArg, stateArg, pdpScopedArg)
 }
 
 func (c *tenantServiceClientWithTokenProvider) AddEdge(ctx context.Context, unitIdArg string, requestArg AddEdgeRequest) (UnitEdge, error) {

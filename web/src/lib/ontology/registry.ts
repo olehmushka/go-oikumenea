@@ -82,6 +82,67 @@ export interface ListDef {
   parse: (res: unknown) => { rows: Row[]; nextPageToken?: string };
 }
 
+/** The kinds mirror pkg/facet's Kind verbatim (D-ObjectFacets); a facet is declared once by the
+ *  module that owns the table and consumed twice — as a list filter here and as M57's groupBy key. */
+export type FilterKind = "enum" | "ref" | "date-range" | "bool" | "numeric-range";
+
+/** Which picker loads a `ref` filter's options. A token, not an imported EntityKind: importing from
+ *  a "use client" module would drag it into a registry that server components import. */
+export type RefControl =
+  | "org"
+  | "unit"
+  | "country"
+  | "person"
+  | "rank"
+  | "domain"
+  | "unitKind"
+  | "orderType"
+  | "documentType"
+  | "position";
+
+/**
+ * One filterable dimension of an object type — the console half of a `pkg/facet` Facet.
+ *
+ * `params` carries the EXACT contract arg name(s) rather than re-deriving them from `key` + `kind`.
+ * The derivation has live exceptions (unit.level pins the pre-existing scalar `level`;
+ * membership.effectiveFrom pins effectiveFromAfter/Before), so re-implementing Facet.Args() here
+ * would be a second copy of the rule that can itself drift. Writing the resolved names down makes
+ * the guard a set-equality — and makes the URL builder param-driven, with no per-kind branching.
+ *
+ * ARITY COMES FROM `params`, NEVER FROM `kind`: unit.level is a numeric-range with ONE param. A bar
+ * that renders a min/max pair off the kind would send args the contract does not ship.
+ *
+ * FORMAT CONTRACT: keep `key`, `kind` and `params` as literal string/array literals. pkg/facet's
+ * console_test.go parses this file (the plaintext_test.go technique) and holds every entry against
+ * the catalog in both directions; a computed value blinds the parser, so it fails the parse rather
+ * than passing.
+ */
+export interface FilterDef {
+  /** pkg/facet Facet.Key — also M57's groupBy token */
+  key: string;
+  kind: FilterKind;
+  /** English source string, rendered through <T>/tg() (D-i18n) */
+  label: string;
+  /** the contract query-arg name(s), in Facet.Args() order */
+  params: string[];
+  /** enum only: the CHECK set in CHART ORDER (never re-sorted alphabetically or by frequency) */
+  values?: { value: string; label: string }[];
+  /** ref only */
+  control?: RefControl;
+  /** ref only: the param whose current value scopes this one's options (domain → unitKind) */
+  dependsOn?: string;
+  /** the arg is NON-optional in the contract (unit.org — listUnits rejects an unscoped listing) */
+  required?: boolean;
+  /**
+   * Facet.ReadPermission — the inherited read code (D-ObjectFacets rule 2). Empty for every facet
+   * today (all are pii:none/basic); the bar hides a filter whose code the caller lacks, which is
+   * cosmetic only: the server omits the facet regardless.
+   */
+  requires?: string;
+  /** the SQL semantics an operator would otherwise reverse-engineer from a surprising count */
+  hint?: string;
+}
+
 export interface ObjectTypeDef {
   type: string;
   kind: "object" | "link" | "action";
@@ -105,6 +166,8 @@ export interface ObjectTypeDef {
   title: (obj: Row) => string;
   subtitle?: (obj: Row) => string | undefined;
   columns: ColumnDef[];
+  /** the type's facet vocabulary as list filters (D-ObjectFacets / D-ConsoleDashboards, M56) */
+  filters?: FilterDef[];
   properties?: PropertyDef[];
   links?: LinkDef[];
   actions?: ActionDef[];
@@ -158,7 +221,14 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
     labelPlural: "Persons",
     module: "person",
     blurb: "Instance-global personnel directory; account-optional, holds exactly one rank.",
-    list: { path: "/person/v1/persons", search: "?pageSize=50", parse: pageParse("persons") },
+    list: {
+      path: "/person/v1/persons",
+      search: "?pageSize=50",
+      // R-21 keeps List and Search separate plan shapes; `query` routes to SearchPersons (trigram),
+      // the structural filters below to ListPersons. pkg/facet classifies it ClassSearch.
+      searchParam: "query",
+      parse: pageParse("persons"),
+    },
     get: (id) => `/person/v1/persons/${id}`,
     title: (p) => s(p.displayName) || s(p.code) || ridTail(p.id),
     subtitle: (p) => s(p.code),
@@ -168,6 +238,38 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
       { key: "sex", header: "Sex", value: (p) => s(p.sex) },
       { key: "birthdate", header: "Birthdate", value: (p) => s(p.birthdate) },
       { key: "status", header: "Status", value: (p) => s(p.status), render: "pill", tone: (p) => statusTone(p.status) },
+    ],
+    filters: [
+      {
+        key: "sex", kind: "enum", label: "Sex", params: ["sex"],
+        values: [
+          { value: "not_known", label: "Not known" },
+          { value: "male", label: "Male" },
+          { value: "female", label: "Female" },
+          { value: "not_applicable", label: "Not applicable" },
+        ],
+      },
+      {
+        key: "status", kind: "enum", label: "Status", params: ["status"],
+        values: [
+          { value: "active", label: "Active" },
+          { value: "deactivated", label: "Deactivated" },
+          { value: "provisional", label: "Provisional" },
+          { value: "purged", label: "Purged" },
+        ],
+      },
+      {
+        key: "birthdate", kind: "date-range", label: "Birthdate",
+        params: ["birthdateFrom", "birthdateTo"],
+        hint: "Setting either bound excludes unknown birthdates.",
+      },
+      { key: "countryOfBirth", kind: "ref", label: "Country of birth", params: ["countryOfBirth"], control: "country" },
+      { key: "rankId", kind: "ref", label: "Rank", params: ["rankId"], control: "rank" },
+      {
+        key: "unitId", kind: "ref", label: "Unit", params: ["unitId"], control: "unit",
+        hint: "Includes the whole subtree.",
+      },
+      { key: "hasAccount", kind: "bool", label: "Has account", params: ["hasAccount"] },
     ],
     properties: [
       { label: "Given", value: (p) => s(p.given) },
@@ -322,6 +424,38 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
       { key: "visibility", header: "Visibility", value: (u) => s(u.visibility), render: "pill", tone: (u) => statusTone(u.visibility) },
       { key: "state", header: "State", value: (u) => s(u.state), render: "pill", tone: (u) => statusTone(u.state) },
     ],
+    filters: [
+      // org is REQUIRED — listUnits rejects a fully-unscoped listing (D-TenantOrganizations, M40).
+      { key: "org", kind: "ref", label: "Organization", params: ["org"], control: "org", required: true },
+      { key: "domain", kind: "ref", label: "Domain", params: ["domain"], control: "domain" },
+      {
+        key: "unitKind", kind: "ref", label: "Unit kind", params: ["unitKind"], control: "unitKind",
+        // unit_kinds are domain-scoped, and the catalog endpoint requires the domain arg.
+        dependsOn: "domain",
+      },
+      {
+        // numeric-range with ONE param: the contract's `level` predates the vocabulary and is an
+        // exact match, so the facet pins it via ArgOverride. M57 bands the same column for charts.
+        key: "level", kind: "numeric-range", label: "Level", params: ["level"],
+        hint: "Exact depth in the unit hierarchy.",
+      },
+      {
+        key: "visibility", kind: "enum", label: "Visibility", params: ["visibility"],
+        values: [
+          { value: "public", label: "Public" },
+          { value: "shadow", label: "Shadow" },
+        ],
+      },
+      {
+        key: "state", kind: "enum", label: "State", params: ["state"],
+        values: [
+          { value: "active", label: "Active" },
+          { value: "suspended", label: "Suspended" },
+          { value: "archived", label: "Archived" },
+        ],
+      },
+      { key: "pdpScoped", kind: "bool", label: "PDP-scoped", params: ["pdpScoped"] },
+    ],
     properties: [
       { label: "Name", value: (u) => loc(u.name) },
       { label: "Code", value: (u) => s(u.code), render: "mono" },
@@ -346,14 +480,33 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
     labelPlural: "Orders",
     module: "order",
     blurb: "Administrative orders (наказ): the legal basis for status changes; effects on issue.",
+    list: { path: "/order/v1/orders", search: "?pageSize=50", parse: pageParse("orders") },
     get: (id) => `/order/v1/orders/${id}`,
     title: (o) => (s(o.number) ? `Order ${s(o.number)}` : `Order ${ridTail(o.id)}`),
     subtitle: (o) => s(o.status),
     columns: [
       { key: "number", header: "Number", value: (o) => s(o.number) || ridTail(o.id), render: "mono" },
+      { key: "issuingUnitId", header: "Issuing unit", value: (o) => (s(o.issuingUnitId) ? ridTail(s(o.issuingUnitId)!) : undefined), render: "mono" },
       { key: "issuedOn", header: "Issued on", value: (o) => s(o.issuedOn) },
       { key: "items", header: "Items", value: (o) => (o.items as unknown[])?.length ?? 0 },
       { key: "status", header: "Status", value: (o) => s(o.status), render: "pill", tone: (o) => statusTone(o.status) },
+    ],
+    filters: [
+      { key: "issuingUnitId", kind: "ref", label: "Issuing unit", params: ["issuingUnitId"], control: "unit" },
+      { key: "orderTypeId", kind: "ref", label: "Order type", params: ["orderTypeId"], control: "orderType" },
+      {
+        key: "status", kind: "enum", label: "Status", params: ["status"],
+        values: [
+          { value: "draft", label: "Draft" },
+          { value: "issued", label: "Issued" },
+          { value: "revoked", label: "Revoked" },
+        ],
+      },
+      {
+        key: "issuedOn", kind: "date-range", label: "Issued on",
+        params: ["issuedOnFrom", "issuedOnTo"],
+        hint: "Setting either bound excludes drafts (no issue date).",
+      },
     ],
     properties: [
       { label: "Number", value: (o) => s(o.number), render: "mono" },
@@ -421,6 +574,62 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
       { label: "Granted at", value: (a) => s(a.grantedAt) },
       { label: "Expires at", value: (a) => s(a.expiresAt) },
       { label: "Revoked at", value: (a) => s(a.revokedAt) },
+    ],
+  },
+
+  link__member_of: {
+    type: "link__member_of",
+    kind: "link",
+    label: "Membership",
+    labelPlural: "Memberships",
+    module: "membership",
+    blurb: "Reified person ↔ unit belonging, effective-dated, optionally filling a position.",
+    // The FIRST faceted reified link (M56 ticket 3). Unlike the per-unit roster and the per-person
+    // listing, this top-level list carries NO implicit status default — an ended membership is
+    // reachable only here, and a hidden active-only filter would make M57's totalCount disagree
+    // with its own status distribution.
+    list: { path: "/membership/v1/memberships", search: "?pageSize=50", parse: pageParse("memberships") },
+    // No `get`: the contract ships no GET /memberships/{id}. The table suppresses the row-click
+    // drawer for a type with no detail endpoint rather than opening one that immediately errors.
+    title: (m) => `${ridTail(s(m.personId)!)} → ${ridTail(s(m.unitId)!)}`,
+    subtitle: (m) => s(m.status),
+    columns: [
+      { key: "personId", header: "Person", value: (m) => ridTail(s(m.personId)!), render: "mono" },
+      { key: "unitId", header: "Unit", value: (m) => ridTail(s(m.unitId)!), render: "mono" },
+      { key: "positionId", header: "Position", value: (m) => (s(m.positionId) ? ridTail(s(m.positionId)!) : undefined), render: "mono" },
+      { key: "status", header: "Status", value: (m) => s(m.status), render: "pill", tone: (m) => statusTone(m.status) },
+      { key: "effectiveFrom", header: "Effective from", value: (m) => s(m.effectiveFrom) },
+      { key: "effectiveTo", header: "Effective to", value: (m) => s(m.effectiveTo) },
+    ],
+    filters: [
+      {
+        key: "unitId", kind: "ref", label: "Unit", params: ["unitId"], control: "unit",
+        // person.unitId expands to the subtree; this one does not — same control, different SQL.
+        hint: "Exact unit — not the subtree.",
+      },
+      { key: "personId", kind: "ref", label: "Person", params: ["personId"], control: "person" },
+      { key: "positionId", kind: "ref", label: "Position", params: ["positionId"], control: "position", dependsOn: "unitId" },
+      {
+        key: "status", kind: "enum", label: "Status", params: ["status"],
+        values: [
+          { value: "active", label: "Active" },
+          { value: "ended", label: "Ended" },
+        ],
+      },
+      {
+        // ArgOverride in the catalog: the contract's after/before predate the From/To convention.
+        key: "effectiveFrom", kind: "date-range", label: "Effective from",
+        params: ["effectiveFromAfter", "effectiveFromBefore"],
+      },
+    ],
+    properties: [
+      { label: "Person", value: (m) => s(m.personId), render: "mono" },
+      { label: "Unit", value: (m) => s(m.unitId), render: "mono" },
+      { label: "Position", value: (m) => s(m.positionId), render: "mono" },
+      { label: "Status", value: (m) => s(m.status), render: "pill", tone: (m) => statusTone(m.status) },
+      { label: "Effective from", value: (m) => s(m.effectiveFrom) },
+      { label: "Effective to", value: (m) => s(m.effectiveTo) },
+      { label: "Order item", value: (m) => s(m.orderItemId), render: "mono" },
     ],
   },
 
@@ -548,13 +757,39 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
     labelPlural: "Documents",
     module: "document",
     blurb: "Person-held identity paper; catalog-typed, metadata only.",
+    list: { path: "/document/v1/documents", search: "?pageSize=50", parse: pageParse("documents") },
     get: (id) => `/document/v1/documents/${id}`,
     title: (d) => s(d.number) || ridTail(d.id),
     subtitle: (d) => s(d.status),
     columns: [
       { key: "number", header: "Number", value: (d) => s(d.number), render: "mono" },
+      { key: "typeId", header: "Document type", value: (d) => (s(d.typeId) ? ridTail(s(d.typeId)!) : undefined), render: "mono" },
       { key: "issuer", header: "Issuer", value: (d) => s(d.issuer) },
+      { key: "issuedOn", header: "Issued on", value: (d) => s(d.issuedOn) },
+      { key: "expiresOn", header: "Expires on", value: (d) => s(d.expiresOn) },
       { key: "status", header: "Status", value: (d) => s(d.status), render: "pill", tone: (d) => statusTone(d.status) },
+    ],
+    filters: [
+      { key: "typeId", kind: "ref", label: "Document type", params: ["typeId"], control: "documentType" },
+      {
+        key: "status", kind: "enum", label: "Status", params: ["status"],
+        values: [
+          { value: "active", label: "Active" },
+          { value: "superseded", label: "Superseded" },
+          { value: "revoked", label: "Revoked" },
+        ],
+      },
+      { key: "issuingCountryId", kind: "ref", label: "Issuing country", params: ["issuingCountryId"], control: "country" },
+      {
+        key: "issuedOn", kind: "date-range", label: "Issued on",
+        params: ["issuedOnFrom", "issuedOnTo"],
+        hint: "Setting either bound excludes documents with no issue date.",
+      },
+      {
+        key: "expiresOn", kind: "date-range", label: "Expires on",
+        params: ["expiresOnFrom", "expiresOnTo"],
+        hint: "Setting either bound excludes documents with no expiry.",
+      },
     ],
     properties: [
       { label: "Number", value: (d) => s(d.number), render: "mono" },

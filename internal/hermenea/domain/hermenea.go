@@ -75,14 +75,14 @@ var (
 
 // Source is a registered external dataset hermenea can sync into oikumenea.
 type Source struct {
-	ID            string
-	Code          string
-	Name          string
+	ID          string
+	Code        string
+	Name        string
 	FetcherType string
-	ObjectType    string
-	Locator       string
-	Cron          string // empty = trigger-only
-	Enabled       bool
+	ObjectType  string
+	Locator     string
+	Cron        string // empty = trigger-only
+	Enabled     bool
 }
 
 // Job is one unit of queued work in the runtime.

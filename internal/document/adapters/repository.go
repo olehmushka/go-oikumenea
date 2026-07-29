@@ -154,6 +154,99 @@ func (r *Repository) SoftDeleteDocument(ctx context.Context, id string) error {
 	return nil
 }
 
+// ListDocuments is the instance-admin arm of the top-level facet-filtered listing (M56 ticket 3).
+func (r *Repository) ListDocuments(ctx context.Context, f domain.DocumentFilter, after string, limit int) ([]domain.Document, error) {
+	fa := documentFacetArgs(f)
+	rows, err := r.q.ListDocuments(ctx, documentsql.ListDocumentsParams{
+		After:            after,
+		TypeID:           fa.typeID,
+		Status:           fa.status,
+		IssuingCountryID: fa.issuingCountryID,
+		IssuedOnFrom:     fa.issuedOnFrom,
+		IssuedOnTo:       fa.issuedOnTo,
+		ExpiresOnFrom:    fa.expiresOnFrom,
+		ExpiresOnTo:      fa.expiresOnTo,
+		Lim:              int32(limit),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return documentsFrom(rows), nil
+}
+
+// ListDocumentsForSubject is the read-scope arm: the same filter block restricted to documents whose
+// HOLDER the subject may read (D-PersonReadScope), folded into the SQL so the page is cut afterwards.
+//
+// Two plan shapes, dispatched on reach cardinality — see listReachIsDense and migration 0017. This is
+// the module where the dispatch matters most: the holder semi-join is the deepest visibility fold of
+// the three, and the set form measured 6 419 ms at root reach against 4.7 ms for the point probe.
+func (r *Repository) ListDocumentsForSubject(ctx context.Context, subjectPersonID string, f domain.DocumentFilter, after string, limit int) ([]domain.Document, error) {
+	fa := documentFacetArgs(f)
+	dense, err := r.listReachIsDense(ctx, subjectPersonID)
+	if err != nil {
+		return nil, err
+	}
+	if dense {
+		rows, err := r.q.ListDocumentsForSubjectDense(ctx, documentsql.ListDocumentsForSubjectDenseParams{
+			After:            after,
+			SubjectPersonID:  subjectPersonID,
+			TypeID:           fa.typeID,
+			Status:           fa.status,
+			IssuingCountryID: fa.issuingCountryID,
+			IssuedOnFrom:     fa.issuedOnFrom,
+			IssuedOnTo:       fa.issuedOnTo,
+			ExpiresOnFrom:    fa.expiresOnFrom,
+			ExpiresOnTo:      fa.expiresOnTo,
+			Lim:              int32(limit),
+		})
+		if err != nil {
+			return nil, err
+		}
+		return documentsFrom(rows), nil
+	}
+	rows, err := r.q.ListDocumentsForSubject(ctx, documentsql.ListDocumentsForSubjectParams{
+		After:            after,
+		SubjectPersonID:  subjectPersonID,
+		TypeID:           fa.typeID,
+		Status:           fa.status,
+		IssuingCountryID: fa.issuingCountryID,
+		IssuedOnFrom:     fa.issuedOnFrom,
+		IssuedOnTo:       fa.issuedOnTo,
+		ExpiresOnFrom:    fa.expiresOnFrom,
+		ExpiresOnTo:      fa.expiresOnTo,
+		Lim:              int32(limit),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return documentsFrom(rows), nil
+}
+
+// denseReachThreshold and listReachIsDense mirror membership's dispatch (see its repository.go for
+// the measured table). Duplicated as a THRESHOLD rather than shared, because the reach ALGEBRA — the
+// part that must never diverge — lives in one place, the SQL functions migration 0017 defines; this
+// is only the cardinality at which the two plan shapes cross over.
+const denseReachThreshold = 1000
+
+func (r *Repository) listReachIsDense(ctx context.Context, subjectPersonID string) (bool, error) {
+	n, err := r.q.CountReadableUnitsForDispatch(ctx, documentsql.CountReadableUnitsForDispatchParams{
+		SubjectPersonID: subjectPersonID, Cap: denseReachThreshold + 1,
+	})
+	if err != nil {
+		return false, err
+	}
+	return n > denseReachThreshold, nil
+}
+
+// documentsFrom maps a page of rows through the shared row->domain mapper.
+func documentsFrom(rows []documentsql.OikumeneaDocumentDocument) []domain.Document {
+	out := make([]domain.Document, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toDocument(row))
+	}
+	return out
+}
+
 func (r *Repository) ListDocumentsByPerson(ctx context.Context, personID, after string, limit int) ([]domain.Document, error) {
 	rows, err := r.q.ListDocumentsByPerson(ctx, documentsql.ListDocumentsByPersonParams{
 		PersonID: personID, After: after, Lim: int32(limit),

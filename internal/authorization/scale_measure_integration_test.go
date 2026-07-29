@@ -26,6 +26,7 @@ import (
 	authzapp "github.com/olegamysk/go-oikumenea/internal/authorization/application"
 	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
 	membershipadapters "github.com/olegamysk/go-oikumenea/internal/membership/adapters"
+	persondomain "github.com/olegamysk/go-oikumenea/internal/person/domain"
 	pdb "github.com/olegamysk/go-oikumenea/internal/platform/db"
 	tenantadapters "github.com/olegamysk/go-oikumenea/internal/tenant/adapters"
 	tenantapp "github.com/olegamysk/go-oikumenea/internal/tenant/application"
@@ -112,7 +113,7 @@ func TestScaleMeasure(t *testing.T) {
 
 			// (5) Visible-persons page: the R-02.1 semi-join (the reach set never leaves Postgres).
 			start = time.Now()
-			ids, err := memRepo.VisiblePersonIDsForSubject(ctx, subject, "", "", 51)
+			ids, err := memRepo.VisiblePersonIDsForSubject(ctx, subject, "", persondomain.PersonFilter{}, 51)
 			if err != nil {
 				t.Fatalf("VisiblePersonIDsForSubject: %v", err)
 			}

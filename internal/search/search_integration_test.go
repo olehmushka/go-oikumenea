@@ -123,9 +123,9 @@ func newWorld(t *testing.T) world {
 			var page personapp.Page
 			var err error
 			if isAdmin {
-				page, err = personSvc.ListPersons(ctx, limit, after, q)
+				page, err = personSvc.ListPersons(ctx, persondomain.PersonFilter{Query: q}, limit, after)
 			} else {
-				page, err = personSvc.ListVisiblePersons(ctx, subject, limit, after, q)
+				page, err = personSvc.ListVisiblePersons(ctx, subject, persondomain.PersonFilter{Query: q}, limit, after)
 			}
 			if err != nil {
 				return nil, "", err
@@ -292,7 +292,7 @@ func TestSearchFindsDeepPersonAndTrims(t *testing.T) {
 
 	// Differential parity (R-30 acceptance): engine person hits ≡ ListVisiblePersons(same subject,
 	// same query).
-	direct, err := w.person.ListVisiblePersons(subjectCtx(reader), reader, 50, "", q)
+	direct, err := w.person.ListVisiblePersons(subjectCtx(reader), reader, persondomain.PersonFilter{Query: q}, 50, "")
 	if err != nil {
 		t.Fatalf("ListVisiblePersons: %v", err)
 	}

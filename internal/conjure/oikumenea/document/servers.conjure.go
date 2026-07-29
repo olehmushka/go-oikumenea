@@ -25,6 +25,18 @@ and validated against their scheme on write. Writes are audited in-process (D-Au
 type DocumentService interface {
 	// Attach a paper to a person. Returns Document:DocumentConflict on a duplicate (type, number).
 	AttachDocument(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg CreateDocumentRequest) (Document, error)
+	/*
+	   List documents across every holder the caller may read, token-paginated, narrowed by the
+	   document facet set (D-ObjectFacets, M56). Documents are scoped THROUGH THE HOLDER
+	   (D-PersonReadScope): a non-instance-admin caller sees only documents whose holder falls in
+	   their read-scope union. Every filter below is applied INSIDE that union, before the page is
+	   cut, so a filtered page is never short and its cursor is never wrong.
+
+	   Metadata only — the same projection the per-holder listing returns. The facet filters
+	   combine with AND and do NOT widen what the caller may see: filtering can only narrow the
+	   visible set.
+	*/
+	ListDocuments(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string, typeIdArg *string, statusArg *string, issuingCountryIdArg *string, issuedOnFromArg *string, issuedOnToArg *string, expiresOnFromArg *string, expiresOnToArg *string) (DocumentPage, error)
 	// List a person's documents, token-paginated.
 	ListPersonDocuments(ctx context.Context, authHeader bearertoken.Token, personIdArg string, pageSizeArg *int, pageTokenArg *string) (DocumentPage, error)
 	// Read one document.
@@ -68,6 +80,9 @@ func RegisterRoutesDocumentService(router wrouter.Router, impl DocumentService, 
 	resource := wresource.New("documentservice", router)
 	if err := resource.Post("AttachDocument", "/document/v1/persons/{personId}/documents", httpserver.NewJSONHandler(handler.HandleAttachDocument, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add attachDocument route")
+	}
+	if err := resource.Get("ListDocuments", "/document/v1/documents", httpserver.NewJSONHandler(handler.HandleListDocuments, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listDocuments route")
 	}
 	if err := resource.Get("ListPersonDocuments", "/document/v1/persons/{personId}/documents", httpserver.NewJSONHandler(handler.HandleListPersonDocuments, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listPersonDocuments route")
@@ -136,6 +151,67 @@ func (d *documentServiceHandler) HandleAttachDocument(rw http.ResponseWriter, re
 		return errors.WrapWithInvalidArgument(err)
 	}
 	respArg, err := d.impl.AttachDocument(req.Context(), bearertoken.Token(authHeader), personIdArg, requestArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (d *documentServiceHandler) HandleListDocuments(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var pageSizeArg *int
+	if pageSizeArgStr := req.URL.Query().Get("pageSize"); pageSizeArgStr != "" {
+		pageSizeArgInternal, err := strconv.Atoi(pageSizeArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"pageSize\" as integer")
+		}
+		pageSizeArg = &pageSizeArgInternal
+	}
+	var pageTokenArg *string
+	if pageTokenArgStr := req.URL.Query().Get("pageToken"); pageTokenArgStr != "" {
+		pageTokenArgInternal := pageTokenArgStr
+		pageTokenArg = &pageTokenArgInternal
+	}
+	var typeIdArg *string
+	if typeIdArgStr := req.URL.Query().Get("typeId"); typeIdArgStr != "" {
+		typeIdArgInternal := typeIdArgStr
+		typeIdArg = &typeIdArgInternal
+	}
+	var statusArg *string
+	if statusArgStr := req.URL.Query().Get("status"); statusArgStr != "" {
+		statusArgInternal := statusArgStr
+		statusArg = &statusArgInternal
+	}
+	var issuingCountryIdArg *string
+	if issuingCountryIdArgStr := req.URL.Query().Get("issuingCountryId"); issuingCountryIdArgStr != "" {
+		issuingCountryIdArgInternal := issuingCountryIdArgStr
+		issuingCountryIdArg = &issuingCountryIdArgInternal
+	}
+	var issuedOnFromArg *string
+	if issuedOnFromArgStr := req.URL.Query().Get("issuedOnFrom"); issuedOnFromArgStr != "" {
+		issuedOnFromArgInternal := issuedOnFromArgStr
+		issuedOnFromArg = &issuedOnFromArgInternal
+	}
+	var issuedOnToArg *string
+	if issuedOnToArgStr := req.URL.Query().Get("issuedOnTo"); issuedOnToArgStr != "" {
+		issuedOnToArgInternal := issuedOnToArgStr
+		issuedOnToArg = &issuedOnToArgInternal
+	}
+	var expiresOnFromArg *string
+	if expiresOnFromArgStr := req.URL.Query().Get("expiresOnFrom"); expiresOnFromArgStr != "" {
+		expiresOnFromArgInternal := expiresOnFromArgStr
+		expiresOnFromArg = &expiresOnFromArgInternal
+	}
+	var expiresOnToArg *string
+	if expiresOnToArgStr := req.URL.Query().Get("expiresOnTo"); expiresOnToArgStr != "" {
+		expiresOnToArgInternal := expiresOnToArgStr
+		expiresOnToArg = &expiresOnToArgInternal
+	}
+	respArg, err := d.impl.ListDocuments(req.Context(), bearertoken.Token(authHeader), pageSizeArg, pageTokenArg, typeIdArg, statusArg, issuingCountryIdArg, issuedOnFromArg, issuedOnToArg, expiresOnFromArg, expiresOnToArg)
 	if err != nil {
 		return err
 	}

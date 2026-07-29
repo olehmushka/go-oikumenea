@@ -39,6 +39,21 @@ type MembershipServiceClient interface {
 	EndMembership(ctx context.Context, authHeader bearertoken.Token, membershipIdArg string, requestArg EndMembershipRequest) (Membership, error)
 	// Roster of a unit's active memberships, token-paginated. (The shadow gate applies once authz lands, M7.)
 	ListMembers(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, pageSizeArg *int, pageTokenArg *string) (MembershipPage, error)
+	/*
+	   List memberships across every unit the caller may read, token-paginated, narrowed by the
+	   membership facet set (D-ObjectFacets, M56). A non-instance-admin caller sees only
+	   memberships whose unit falls in their effective readable reach; every filter below is
+	   applied INSIDE that reach, before the page is cut, so a filtered page is never short and
+	   its cursor is never wrong.
+
+	   Unlike `GET /units/{unitId}/members` and `GET /persons/{personId}/memberships`, which
+	   return ACTIVE memberships only, this endpoint returns EVERY status by default — an
+	   unfiltered listing is the honest total. Narrow with `status`.
+
+	   The facet filters combine with AND. They are ordinary structural predicates and do NOT
+	   widen what the caller may see: filtering can only narrow the visible set.
+	*/
+	ListMemberships(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipPage, error)
 	// A person's active memberships across units, token-paginated.
 	ListPersonMemberships(ctx context.Context, authHeader bearertoken.Token, personIdArg string, pageSizeArg *int, pageTokenArg *string) (MembershipPage, error)
 }
@@ -228,6 +243,49 @@ func (c *membershipServiceClient) ListMembers(ctx context.Context, authHeader be
 	return *returnVal, nil
 }
 
+func (c *membershipServiceClient) ListMemberships(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipPage, error) {
+	var returnVal *MembershipPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListMemberships"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/membership/v1/memberships"))
+	queryParams := make(url.Values)
+	if pageSizeArg != nil {
+		queryParams.Set("pageSize", fmt.Sprint(*pageSizeArg))
+	}
+	if pageTokenArg != nil {
+		queryParams.Set("pageToken", fmt.Sprint(*pageTokenArg))
+	}
+	if unitIdArg != nil {
+		queryParams.Set("unitId", fmt.Sprint(*unitIdArg))
+	}
+	if personIdArg != nil {
+		queryParams.Set("personId", fmt.Sprint(*personIdArg))
+	}
+	if positionIdArg != nil {
+		queryParams.Set("positionId", fmt.Sprint(*positionIdArg))
+	}
+	if statusArg != nil {
+		queryParams.Set("status", fmt.Sprint(*statusArg))
+	}
+	if effectiveFromAfterArg != nil {
+		queryParams.Set("effectiveFromAfter", fmt.Sprint(*effectiveFromAfterArg))
+	}
+	if effectiveFromBeforeArg != nil {
+		queryParams.Set("effectiveFromBefore", fmt.Sprint(*effectiveFromBeforeArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(MembershipPage), werror.WrapWithContextParams(ctx, err, "listMemberships failed")
+	}
+	if returnVal == nil {
+		return *new(MembershipPage), werror.ErrorWithContextParams(ctx, "listMemberships response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 func (c *membershipServiceClient) ListPersonMemberships(ctx context.Context, authHeader bearertoken.Token, personIdArg string, pageSizeArg *int, pageTokenArg *string) (MembershipPage, error) {
 	var returnVal *MembershipPage
 	var requestParams []httpclient.RequestParam
@@ -279,6 +337,21 @@ type MembershipServiceClientWithAuth interface {
 	EndMembership(ctx context.Context, membershipIdArg string, requestArg EndMembershipRequest) (Membership, error)
 	// Roster of a unit's active memberships, token-paginated. (The shadow gate applies once authz lands, M7.)
 	ListMembers(ctx context.Context, unitIdArg string, pageSizeArg *int, pageTokenArg *string) (MembershipPage, error)
+	/*
+	   List memberships across every unit the caller may read, token-paginated, narrowed by the
+	   membership facet set (D-ObjectFacets, M56). A non-instance-admin caller sees only
+	   memberships whose unit falls in their effective readable reach; every filter below is
+	   applied INSIDE that reach, before the page is cut, so a filtered page is never short and
+	   its cursor is never wrong.
+
+	   Unlike `GET /units/{unitId}/members` and `GET /persons/{personId}/memberships`, which
+	   return ACTIVE memberships only, this endpoint returns EVERY status by default — an
+	   unfiltered listing is the honest total. Narrow with `status`.
+
+	   The facet filters combine with AND. They are ordinary structural predicates and do NOT
+	   widen what the caller may see: filtering can only narrow the visible set.
+	*/
+	ListMemberships(ctx context.Context, pageSizeArg *int, pageTokenArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipPage, error)
 	// A person's active memberships across units, token-paginated.
 	ListPersonMemberships(ctx context.Context, personIdArg string, pageSizeArg *int, pageTokenArg *string) (MembershipPage, error)
 }
@@ -326,6 +399,10 @@ func (c *membershipServiceClientWithAuth) EndMembership(ctx context.Context, mem
 
 func (c *membershipServiceClientWithAuth) ListMembers(ctx context.Context, unitIdArg string, pageSizeArg *int, pageTokenArg *string) (MembershipPage, error) {
 	return c.client.ListMembers(ctx, c.authHeader, unitIdArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *membershipServiceClientWithAuth) ListMemberships(ctx context.Context, pageSizeArg *int, pageTokenArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipPage, error) {
+	return c.client.ListMemberships(ctx, c.authHeader, pageSizeArg, pageTokenArg, unitIdArg, personIdArg, positionIdArg, statusArg, effectiveFromAfterArg, effectiveFromBeforeArg)
 }
 
 func (c *membershipServiceClientWithAuth) ListPersonMemberships(ctx context.Context, personIdArg string, pageSizeArg *int, pageTokenArg *string) (MembershipPage, error) {
@@ -411,6 +488,14 @@ func (c *membershipServiceClientWithTokenProvider) ListMembers(ctx context.Conte
 		return *new(MembershipPage), err
 	}
 	return c.client.ListMembers(ctx, bearertoken.Token(token), unitIdArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *membershipServiceClientWithTokenProvider) ListMemberships(ctx context.Context, pageSizeArg *int, pageTokenArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipPage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(MembershipPage), err
+	}
+	return c.client.ListMemberships(ctx, bearertoken.Token(token), pageSizeArg, pageTokenArg, unitIdArg, personIdArg, positionIdArg, statusArg, effectiveFromAfterArg, effectiveFromBeforeArg)
 }
 
 func (c *membershipServiceClientWithTokenProvider) ListPersonMemberships(ctx context.Context, personIdArg string, pageSizeArg *int, pageTokenArg *string) (MembershipPage, error) {

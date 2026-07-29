@@ -21,13 +21,18 @@ export function UnitSelect({
   onChange,
   name,
   defaultValue = "",
+  defaultLabel,
   required = false,
   allowEmpty = false,
   placeholder = "search a unit…",
 }: {
-  onChange?: (unitId: string) => void;
+  /** the label is passed back so a caller can cache rid → label for a later remount */
+  onChange?: (unitId: string, label?: string) => void;
   name?: string;
   defaultValue?: string;
+  /** the human label for defaultValue, when the caller already knows it — otherwise a preselected
+   *  unit can only show its RID until the operator re-picks it. */
+  defaultLabel?: string;
   required?: boolean;
   allowEmpty?: boolean;
   placeholder?: string;
@@ -46,9 +51,9 @@ export function UnitSelect({
   const boxRef = useRef<HTMLDivElement>(null);
   const orgTouched = useRef(false);
 
-  const emit = (id: string) => {
+  const emit = (id: string, label?: string) => {
     setValue(id);
-    onChange?.(id);
+    onChange?.(id, label);
   };
 
   useEffect(() => {
@@ -79,7 +84,9 @@ export function UnitSelect({
     }
     setLoadingUnits(true);
     api.tenant
-      .listUnits(orgId, undefined, undefined, undefined, undefined, undefined, undefined, 200)
+      // pageSize is the 11th arg since the M56 facet args widened the middle of listUnits
+      // (org, domain, unitKind, level, visibility, state, pdpScoped, graph, parent, rootsOnly, …).
+      .listUnits(orgId, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, 200)
       .then((r) => setUnits((r.units ?? []) as unknown as Unit[]))
       .catch(() => setUnits([]))
       .finally(() => setLoadingUnits(false));
@@ -102,7 +109,7 @@ export function UnitSelect({
     setSelected(u);
     setOpen(false);
     setQuery("");
-    emit(u.id);
+    emit(u.id, pickLabel(u.name, locale) || u.code || u.id);
   }
   function clear() {
     setSelected(null);
@@ -112,7 +119,7 @@ export function UnitSelect({
 
   // A value with no loaded Unit object (a preselected defaultValue) still shows a clearable chip.
   const hasChip = selected || (value && !orgTouched.current);
-  const chipLabel = selected ? pickLabel(selected.name, locale) || selected.code : value;
+  const chipLabel = selected ? pickLabel(selected.name, locale) || selected.code : defaultLabel || value;
 
   return (
     <div className="flex gap-2">

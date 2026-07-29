@@ -36,6 +36,18 @@ export interface IOrderService {
     issueOrder(orderId: string): Promise<IOrder>;
     /** Revoke an issued order (legal-status flip; effects are not auto-reversed). Returns Order:OrderNotIssued if not issued. */
     revokeOrder(orderId: string, request: IRevokeOrderRequest): Promise<IOrder>;
+    /**
+     * List orders (headers only) across every issuing unit the caller may read, token-paginated,
+     * narrowed by the order facet set (D-ObjectFacets, M56). A non-instance-admin caller sees
+     * only orders whose issuing unit falls in their effective readable reach; every filter below
+     * is applied INSIDE that reach, before the page is cut, so a filtered page is never short and
+     * its cursor is never wrong.
+     *
+     * The facet filters combine with AND. They are ordinary structural predicates and do NOT
+     * widen what the caller may see: filtering can only narrow the visible set.
+     *
+     */
+    listOrders(pageSize?: number | null, pageToken?: string | null, issuingUnitId?: string | null, orderTypeId?: string | null, status?: string | null, issuedOnFrom?: string | null, issuedOnTo?: string | null): Promise<IOrderPage>;
     /** List an issuing unit's orders (headers only), token-paginated. */
     listUnitOrders(unitId: string, pageSize?: number | null, pageToken?: string | null): Promise<IOrderPage>;
     /** List orders affecting a person (via their items), token-paginated. */
@@ -143,6 +155,40 @@ export class OrderService implements IOrderService {
             [
                 orderId,
             ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * List orders (headers only) across every issuing unit the caller may read, token-paginated,
+     * narrowed by the order facet set (D-ObjectFacets, M56). A non-instance-admin caller sees
+     * only orders whose issuing unit falls in their effective readable reach; every filter below
+     * is applied INSIDE that reach, before the page is cut, so a filtered page is never short and
+     * its cursor is never wrong.
+     *
+     * The facet filters combine with AND. They are ordinary structural predicates and do NOT
+     * widen what the caller may see: filtering can only narrow the visible set.
+     *
+     */
+    public listOrders(pageSize?: number | null, pageToken?: string | null, issuingUnitId?: string | null, orderTypeId?: string | null, status?: string | null, issuedOnFrom?: string | null, issuedOnTo?: string | null): Promise<IOrderPage> {
+        return this.bridge.call<IOrderPage>(
+            "OrderService",
+            "listOrders",
+            "GET",
+            "/order/v1/orders",
+            __undefined,
+            __undefined,
+            {
+                "pageSize": pageSize,
+                "pageToken": pageToken,
+                "issuingUnitId": issuingUnitId,
+                "orderTypeId": orderTypeId,
+                "status": status,
+                "issuedOnFrom": issuedOnFrom,
+                "issuedOnTo": issuedOnTo,
+            },
+            __undefined,
             __undefined,
             __undefined
         );

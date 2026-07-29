@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { errorInfo } from "@/lib/api/errors";
+import { T } from "@/components/T";
 
 export function PageHeader({
   title,
@@ -109,7 +110,7 @@ export function Pager({
         href={`${basePath}?${sep}pageToken=${encodeURIComponent(nextPageToken)}`}
         className="btn-ghost"
       >
-        Next page →
+        <T>Next page →</T>
       </Link>
     </div>
   );

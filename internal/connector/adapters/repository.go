@@ -53,10 +53,10 @@ const connectorCols = `id, code, name, description, principal_id, status, last_s
 
 func scanConnector(row pgx.Row) (domain.Connector, error) {
 	var (
-		c            domain.Connector
-		description  pgtype.Text
-		principalID  pgtype.Text
-		lastSeenAt   pgtype.Timestamptz
+		c           domain.Connector
+		description pgtype.Text
+		principalID pgtype.Text
+		lastSeenAt  pgtype.Timestamptz
 	)
 	if err := row.Scan(&c.ID, &c.Code, &c.Name, &description, &principalID, &c.Status, &lastSeenAt,
 		&c.CreatedAt, &c.UpdatedAt); err != nil {

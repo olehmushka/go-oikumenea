@@ -154,16 +154,126 @@ SELECT count(*)::int AS code_count FROM oikumenea.tenant_units
 WHERE code = @code AND deleted_at IS NULL AND id <> @exclude_id;
 
 -- name: ListUnits :many
--- Keyset pagination over the time-ordered RID (id), REQUIRED org scope + optional domain/kind/level.
+-- Keyset pagination over the time-ordered RID (id), REQUIRED org scope + the optional unit facet set
+-- (M56 / D-ObjectFacets: domain, unitKind, level, visibility, state, pdpScoped).
+--
+-- Every filter uses the `sqlc.narg('x')::type IS NULL OR col = ...` shape, NOT the
+-- `sqlc.arg(x)::text = ''` sentinel and never the `(@q = '' OR <ilike>)` guard D-PersonSearch's R-21
+-- generalization bans — under a generic prepared plan the planner cannot prove the sentinel
+-- non-empty and falls back to a seq scan.
+--
+-- `visibility` narrows only: the shadow-visibility gate still trims the page after it is cut, so this
+-- predicate can never widen what the caller sees.
 SELECT * FROM oikumenea.tenant_units
 WHERE deleted_at IS NULL
   AND org_id = @org_id
   AND (sqlc.narg('domain_id')::uuid IS NULL OR domain_id = sqlc.narg('domain_id')::uuid)
   AND (sqlc.narg('kind_id')::uuid IS NULL OR kind_id = sqlc.narg('kind_id')::uuid)
   AND (sqlc.narg('level')::smallint IS NULL OR level = sqlc.narg('level')::smallint)
+  AND (sqlc.narg('visibility')::text IS NULL OR visibility = sqlc.narg('visibility')::text)
+  AND (sqlc.narg('state')::text IS NULL OR state = sqlc.narg('state')::text)
+  AND (sqlc.narg('pdp_scoped')::boolean IS NULL OR pdp_scoped = sqlc.narg('pdp_scoped')::boolean)
   AND (sqlc.narg('after')::uuid IS NULL OR id > sqlc.narg('after')::uuid)
 ORDER BY id
 LIMIT @lim;
+
+-- ============================ dashboard aggregates (M57) ============================
+
+-- name: UnitStats :many
+-- The INSTANCE-ADMIN dashboard aggregate for an organization's units (M57 / D-ObjectFacets): every
+-- facet distribution in ONE round-trip and ONE scan. The candidate CTE carries ListUnits' filter
+-- block verbatim, so the dashboard and the list see one world; a branch whose want_* flag is false is
+-- skipped by the planner, not merely dropped from the response.
+--
+-- The traversal args (graph/parent/rootsOnly) have no counterpart here on purpose: they switch the
+-- LIST to a hierarchy walk rather than adding a predicate, so there is nothing for them to count.
+WITH cand AS MATERIALIZED (
+  SELECT id, org_id, domain_id, kind_id, level, visibility, state, pdp_scoped
+  FROM oikumenea.tenant_units
+  WHERE deleted_at IS NULL
+  AND org_id = @org_id
+  AND (sqlc.narg('domain_id')::uuid IS NULL OR domain_id = sqlc.narg('domain_id')::uuid)
+  AND (sqlc.narg('kind_id')::uuid IS NULL OR kind_id = sqlc.narg('kind_id')::uuid)
+  AND (sqlc.narg('level')::smallint IS NULL OR level = sqlc.narg('level')::smallint)
+  AND (sqlc.narg('visibility')::text IS NULL OR visibility = sqlc.narg('visibility')::text)
+  AND (sqlc.narg('state')::text IS NULL OR state = sqlc.narg('state')::text)
+  AND (sqlc.narg('pdp_scoped')::boolean IS NULL OR pdp_scoped = sqlc.narg('pdp_scoped')::boolean)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'org'::text, c.org_id::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_org')::boolean GROUP BY 2
+UNION ALL
+SELECT 'domain'::text, c.domain_id::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_domain')::boolean GROUP BY 2
+UNION ALL
+SELECT 'unitKind'::text, c.kind_id::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_unit_kind')::boolean GROUP BY 2
+UNION ALL
+-- The raw level, not a band: the bands live in the pkg/facet catalog (one definition, already proven
+-- against the DDL), so SQL emits the ordinal and Go assigns it. Levels are small, so the group count
+-- is bounded by the tree's depth.
+SELECT 'level'::text, c.level::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_level')::boolean GROUP BY 2
+UNION ALL
+SELECT 'visibility'::text, c.visibility::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_visibility')::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_state')::boolean GROUP BY 2
+UNION ALL
+SELECT 'pdpScoped'::text, c.pdp_scoped::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_pdp_scoped')::boolean GROUP BY 2;
+
+-- name: UnitStatsForSubject :many
+-- The visibility-scoped arm of UnitStats: identical filters and identical aggregates, with the
+-- shadow gate folded into the candidate set.
+WITH cand AS MATERIALIZED (
+  SELECT id, org_id, domain_id, kind_id, level, visibility, state, pdp_scoped
+  FROM oikumenea.tenant_units
+  WHERE deleted_at IS NULL
+  AND org_id = @org_id
+  AND (sqlc.narg('domain_id')::uuid IS NULL OR domain_id = sqlc.narg('domain_id')::uuid)
+  AND (sqlc.narg('kind_id')::uuid IS NULL OR kind_id = sqlc.narg('kind_id')::uuid)
+  AND (sqlc.narg('level')::smallint IS NULL OR level = sqlc.narg('level')::smallint)
+  AND (sqlc.narg('visibility')::text IS NULL OR visibility = sqlc.narg('visibility')::text)
+  AND (sqlc.narg('state')::text IS NULL OR state = sqlc.narg('state')::text)
+  AND (sqlc.narg('pdp_scoped')::boolean IS NULL OR pdp_scoped = sqlc.narg('pdp_scoped')::boolean)
+  -- The shadow gate, folded INTO the count (D-ObjectFacets rule 3). On the LIST it runs afterwards
+  -- (gateUnits trims the page once it is cut), which is right for a page — a short page, never a
+  -- skipped row — and wrong for a count: a trimmed row would still have been counted. A public unit
+  -- is visible to anyone holding unit.read; a shadow unit only within the subject's readable reach,
+  -- which is the same rule FilterVisibleUnits applies row by row, asked once as a set.
+  AND (visibility = 'public'
+       OR id IN (SELECT oikumenea.authz_readable_units(@subject_person_id)))
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'org'::text, c.org_id::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_org')::boolean GROUP BY 2
+UNION ALL
+SELECT 'domain'::text, c.domain_id::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_domain')::boolean GROUP BY 2
+UNION ALL
+SELECT 'unitKind'::text, c.kind_id::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_unit_kind')::boolean GROUP BY 2
+UNION ALL
+-- The raw level, not a band: the bands live in the pkg/facet catalog (one definition, already proven
+-- against the DDL), so SQL emits the ordinal and Go assigns it. Levels are small, so the group count
+-- is bounded by the tree's depth.
+SELECT 'level'::text, c.level::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_level')::boolean GROUP BY 2
+UNION ALL
+SELECT 'visibility'::text, c.visibility::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_visibility')::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_state')::boolean GROUP BY 2
+UNION ALL
+SELECT 'pdpScoped'::text, c.pdp_scoped::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_pdp_scoped')::boolean GROUP BY 2;
 
 -- name: ListChildUnits :many
 -- Direct children of @parent_id within graph @graph_id (the immediate edges, not the closure subtree).

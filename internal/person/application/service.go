@@ -29,6 +29,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/pkg/events"
 	"github.com/olegamysk/go-oikumenea/pkg/listing"
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 
@@ -66,8 +67,16 @@ type RepositoryFactory func(conn db.DBTX) domain.Repository
 // because membership is composed after person (overview.md composition ordering).
 type MembershipReader interface {
 	ActiveUnitIDsForPerson(ctx context.Context, personID string) ([]string, error)
-	VisiblePersonIDsForSubject(ctx context.Context, subjectPersonID, after, query string, limit int) ([]string, error)
+	// VisiblePersonIDsForSubject carries the person facet filter (M56 / D-ObjectFacets) INTO the
+	// visibility SQL: every predicate must run before the LIMIT, or a filtered page comes back short
+	// with a nextPageToken. The filter type is person's — person owns the vocabulary, membership
+	// consumes it, the same direction as the @query predicate R-06 already folded in.
+	VisiblePersonIDsForSubject(ctx context.Context, subjectPersonID, after string, f domain.PersonFilter, limit int) ([]string, error)
 	SubjectCanReadPerson(ctx context.Context, subjectPersonID, personID string) (bool, error)
+	// VisiblePersonStatsForSubject is the dashboard counterpart (M57 / D-ObjectFacets): the same
+	// filter and the same visibility predicate, aggregated instead of paged. It lives behind this
+	// seam for the same reason the id query does — the reach never leaves the database.
+	VisiblePersonStatsForSubject(ctx context.Context, subjectPersonID string, f domain.PersonFilter, sel stats.Selection) ([]stats.Group, error)
 }
 
 // Service is the person application service. It owns its writes, so it holds the pool to open
@@ -80,6 +89,9 @@ type Service struct {
 	now        func() time.Time
 	membership MembershipReader
 	bus        *events.Bus // set when SubscribeOrderEvents wires the bus; used to publish PersonMerged
+	// labeler resolves a dashboard's ref-bucket RIDs to locale->text names (M57). Optional: unset,
+	// a chart segment carries its RID and the client falls back to the RID tail.
+	labeler stats.Labeler
 }
 
 // NewService wires the service with the pool, the repository factory, the audit service, and the
@@ -93,6 +105,11 @@ func NewService(pool *pgxpool.Pool, newRepo RepositoryFactory, audit *auditapp.S
 // SetMembershipReader binds the cross-module membership query seam used by the read-scope projection
 // (D-PersonReadScope). Called once at composition time, after membership is built, before serving.
 func (s *Service) SetMembershipReader(r MembershipReader) { s.membership = r }
+
+// SetBucketLabeler binds the optional dashboard label resolver (M57 / D-ObjectFacets), wired at the
+// composition root from the same per-type labelers the links service uses — so a unit is named
+// identically in a graph row and in a chart segment.
+func (s *Service) SetBucketLabeler(l stats.Labeler) { s.labeler = l }
 
 // MustBeBound reports whether the mandatory cross-module seams are wired. The composition root calls
 // it at boot (review-2026-07 R-11) so a forgotten setter fails startup instead of surfacing as a
@@ -274,15 +291,30 @@ func (s *Service) UpdatePerson(ctx context.Context, id string, patch domain.Pers
 	return out, err
 }
 
-// ListPersons returns a keyset-paginated page of the directory (by time-ordered RID), optionally
-// narrowed by a case-insensitive name/code substring (server-side, keeps the keyset cursor correct).
-func (s *Service) ListPersons(ctx context.Context, pageSize int, pageToken, query string) (Page, error) {
+// ListPersons returns a keyset-paginated page of the directory (by time-ordered RID), narrowed by
+// the person facet set and optionally by a case-insensitive name/code substring — both applied
+// server-side, before the LIMIT, so the keyset cursor stays correct (M56 / D-ObjectFacets, R-06).
+//
+// This is the INSTANCE-ADMIN path; a scoped caller goes through ListVisiblePersons, which carries
+// the same filter through membership's visibility queries. The filter is validated HERE, once, so
+// both paths reject an ill-formed facet value identically.
+func (s *Service) ListPersons(ctx context.Context, f domain.PersonFilter, pageSize int, pageToken string) (Page, error) {
+	if err := f.Validate(); err != nil {
+		return Page{}, err
+	}
 	size := pageSizePolicy.Resolve(pageSize)
 	after, err := listing.DecodeCursor(pageToken)
 	if err != nil {
 		return Page{}, err
 	}
-	persons, err := s.newRepo(s.pool).ListPersons(ctx, after, query, size+1)
+	// The request-pinned RLS connection, NOT the bare pool. person's own tables carry no row
+	// security, so this path used the pool for years — but the M56 `unitId` facet probes
+	// `membership_memberships`, which IS RLS-protected, and on an unpinned connection the app.* GUCs
+	// are unset: `authz_unit_in_reach` then sees neither the instance-admin bypass nor any grant, the
+	// EXISTS matches nothing, and the filter silently returns an EMPTY page to a caller who may read
+	// every one of those people. Caught by the live end-to-end run, not by the integration suite,
+	// which connects as a superuser and so bypasses RLS entirely.
+	persons, err := s.newRepo(db.RequestQuerier(ctx, s.pool)).ListPersons(ctx, f, after, size+1)
 	if err != nil {
 		return Page{}, err
 	}
@@ -313,7 +345,10 @@ func (s *Service) ReadablePerson(ctx context.Context, subjectPersonID, personID 
 // R-02.1; the reach set never leaves the database). The instance-admin case is the unrestricted
 // ListPersons and is handled by the caller. Pagination keys on the person RID, matching the
 // membership union's ordering, so the returned rows are already in token order.
-func (s *Service) ListVisiblePersons(ctx context.Context, subjectPersonID string, pageSize int, pageToken, query string) (Page, error) {
+func (s *Service) ListVisiblePersons(ctx context.Context, subjectPersonID string, f domain.PersonFilter, pageSize int, pageToken string) (Page, error) {
+	if err := f.Validate(); err != nil {
+		return Page{}, err
+	}
 	size := pageSizePolicy.Resolve(pageSize)
 	after, err := listing.DecodeCursor(pageToken)
 	if err != nil {
@@ -322,10 +357,12 @@ func (s *Service) ListVisiblePersons(ctx context.Context, subjectPersonID string
 	if subjectPersonID == "" { // membership seam guaranteed wired at boot (MustBeBound, R-11)
 		return Page{}, nil
 	}
-	// The optional @query is folded into the membership semi-join SQL (review-2026-07 R-06): the
-	// trigram/name-variant predicate runs before the LIMIT, so the page is already filtered and the
-	// keyset on person RID stays correct — no Go-side re-filter, no empty-page-while-hasMore.
-	ids, err := s.membership.VisiblePersonIDsForSubject(ctx, subjectPersonID, after, strings.TrimSpace(query), size+1)
+	// The WHOLE filter — the optional @query (review-2026-07 R-06) and every facet added in M56 — is
+	// folded into the membership semi-join SQL: each predicate runs before the LIMIT, so the page is
+	// already filtered and the keyset on person RID stays correct. No Go-side re-filter, and so no
+	// empty-page-while-hasMore. Nothing here may ever become a post-filter.
+	f.Query = strings.TrimSpace(f.Query)
+	ids, err := s.membership.VisiblePersonIDsForSubject(ctx, subjectPersonID, after, f, size+1)
 	if err != nil {
 		return Page{}, err
 	}
@@ -335,7 +372,7 @@ func (s *Service) ListVisiblePersons(ctx context.Context, subjectPersonID string
 	}
 	// Both the membership union and ListPersonsByIDs order ascending by person RID, so the hydrated
 	// rows are already in token order (a soft-deleted person is simply dropped, never reordered).
-	persons, err := s.newRepo(s.pool).ListPersonsByIDs(ctx, ids)
+	persons, err := s.newRepo(db.RequestQuerier(ctx, s.pool)).ListPersonsByIDs(ctx, ids)
 	if err != nil {
 		return Page{}, err
 	}
@@ -343,6 +380,44 @@ func (s *Service) ListVisiblePersons(ctx context.Context, subjectPersonID string
 		return Page{Persons: persons, NextPageToken: listing.EncodeCursor(ids[len(ids)-1])}, nil
 	}
 	return Page{Persons: persons}, nil
+}
+
+// PersonStats is the directory dashboard (M57 / D-ObjectFacets): every selected facet's distribution
+// plus the total, over EXACTLY the set ListPersons/ListVisiblePersons would page under the same
+// filter. One round-trip, one scan, counts taken inside the visibility predicate.
+//
+// The admin/scoped dispatch is the caller's, as it is for the list: an instance admin aggregates the
+// whole directory, anyone else aggregates their read-scope union (subjectPersonID non-empty). The
+// filter is validated here, once, so both arms reject an ill-formed facet value identically.
+func (s *Service) PersonStats(ctx context.Context, subjectPersonID string, isAdmin bool, f domain.PersonFilter, sel stats.Selection) (stats.Result, error) {
+	if err := f.Validate(); err != nil {
+		return stats.Result{}, err
+	}
+	f.Query = strings.TrimSpace(f.Query)
+	var (
+		groups []stats.Group
+		err    error
+	)
+	if isAdmin {
+		// The request-pinned RLS connection, not the bare pool: the unitId facet and its filter probe
+		// membership_memberships, which IS row-secured, and on an unpinned connection the app.* GUCs
+		// are unset — the predicate would then match nothing and report a confident zero (the M56
+		// ticket-2 empty-page bug, in its counting form). The db source guard holds this line.
+		groups, err = s.newRepo(db.RequestQuerier(ctx, s.pool)).PersonStats(ctx, f, sel)
+	} else {
+		if subjectPersonID == "" { // membership seam guaranteed wired at boot (MustBeBound, R-11)
+			return stats.Result{}, nil
+		}
+		groups, err = s.membership.VisiblePersonStatsForSubject(ctx, subjectPersonID, f, sel)
+	}
+	if err != nil {
+		return stats.Result{}, err
+	}
+	res := stats.Assemble(sel, groups)
+	if err := stats.Label(ctx, s.labeler, sel, &res); err != nil {
+		return stats.Result{}, err
+	}
+	return res, nil
 }
 
 // SetPersonRank sets the person's rank in one rank system, or clears it (a directory attribute;

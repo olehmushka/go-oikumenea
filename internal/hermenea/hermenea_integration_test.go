@@ -23,9 +23,9 @@ package hermenea_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -36,9 +36,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/adapters"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/application"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/fetcher"
 	hdb "github.com/olegamysk/go-oikumenea/internal/hermenea/db"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
+	"github.com/olegamysk/go-oikumenea/internal/hermenea/fetcher"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/geocountries"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/runtime"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/wikidataorgs"
@@ -153,12 +153,12 @@ func TestExternalOrgsHTTPConnectorPipeline(t *testing.T) {
 	svc := newService(store, loader)
 
 	src := domain.Source{
-		Code:          "wikidata-orgs-" + uuid.NewString()[:8],
-		Name:          "test wikidata orgs",
+		Code:        "wikidata-orgs-" + uuid.NewString()[:8],
+		Name:        "test wikidata orgs",
 		FetcherType: domain.FetcherHTTP,
-		ObjectType:    wikidataorgs.ObjectType,
-		Locator:       srv.URL + "/sparql?format=json&query=SELECT",
-		Enabled:       true,
+		ObjectType:  wikidataorgs.ObjectType,
+		Locator:     srv.URL + "/sparql?format=json&query=SELECT",
+		Enabled:     true,
 	}
 	if err := svc.SeedSource(ctx, src); err != nil {
 		t.Fatalf("seed source: %v", err)
@@ -193,12 +193,12 @@ func TestTriggerDedupAndProcess(t *testing.T) {
 	svc := newService(store, loader)
 
 	src := domain.Source{
-		Code:          "geo-countries-" + uuid.NewString()[:8],
-		Name:          "test iso-3166",
+		Code:        "geo-countries-" + uuid.NewString()[:8],
+		Name:        "test iso-3166",
 		FetcherType: domain.FetcherFile,
-		ObjectType:    geocountries.ObjectType,
-		Locator:       presetFile(t),
-		Enabled:       true,
+		ObjectType:  geocountries.ObjectType,
+		Locator:     presetFile(t),
+		Enabled:     true,
 	}
 	if err := svc.SeedSource(ctx, src); err != nil {
 		t.Fatalf("seed source: %v", err)
@@ -254,12 +254,12 @@ func TestProcessLoaderFailureMarksRunFailed(t *testing.T) {
 	svc := newService(store, loader)
 
 	src := domain.Source{
-		Code:          "geo-countries-fail-" + uuid.NewString()[:8],
-		Name:          "test iso-3166 failing",
+		Code:        "geo-countries-fail-" + uuid.NewString()[:8],
+		Name:        "test iso-3166 failing",
 		FetcherType: domain.FetcherFile,
-		ObjectType:    geocountries.ObjectType,
-		Locator:       presetFile(t),
-		Enabled:       true,
+		ObjectType:  geocountries.ObjectType,
+		Locator:     presetFile(t),
+		Enabled:     true,
 	}
 	if err := svc.SeedSource(ctx, src); err != nil {
 		t.Fatalf("seed source: %v", err)
@@ -397,12 +397,12 @@ func TestWorkerConcurrency(t *testing.T) {
 	codes := make([]string, 4)
 	for i := range codes {
 		src := domain.Source{
-			Code:          fmt.Sprintf("conc-%d-%s", i, uuid.NewString()[:8]),
-			Name:          "concurrency probe",
+			Code:        fmt.Sprintf("conc-%d-%s", i, uuid.NewString()[:8]),
+			Name:        "concurrency probe",
 			FetcherType: domain.FetcherFile,
-			ObjectType:    objectType,
-			Locator:       presetFile(t),
-			Enabled:       true,
+			ObjectType:  objectType,
+			Locator:     presetFile(t),
+			Enabled:     true,
 		}
 		if err := svc.SeedSource(ctx, src); err != nil {
 			t.Fatalf("seed source %d: %v", i, err)

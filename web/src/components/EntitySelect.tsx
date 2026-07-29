@@ -23,6 +23,9 @@ export type EntityKind =
   | "unit"
   | "role"
   | "orderType"
+  | "documentType"
+  | "domain"
+  | "rank"
   | "institution"
   | "publication"
   | "scholarship";
@@ -75,6 +78,52 @@ const REGISTRY: Record<EntityKind, KindConfig> = {
       hint: str(t.code),
     }),
   },
+  documentType: {
+    path: "/document/v1/document-types",
+    pick: (d) => (Array.isArray(d) ? d : ((d as { documentTypes?: unknown[] })?.documentTypes ?? [])),
+    toOption: (t, locale) => ({
+      id: str(t.id) ?? "",
+      label: pickLabel(map(t.name), locale) || str(t.code) || str(t.id) || "",
+      hint: str(t.code),
+    }),
+  },
+  domain: {
+    path: "/tenant/v1/domains",
+    pick: (d) => (d as { domains?: unknown[] })?.domains ?? [],
+    toOption: (d, locale) => ({
+      id: str(d.id) ?? "",
+      label: pickLabel(map(d.name), locale) || str(d.code) || str(d.id) || "",
+      hint: str(d.code),
+    }),
+  },
+  rank: {
+    // The scheme is returned whole (systems → categories → types → ranks) in SENIORITY order; flatten
+    // to the leaf ranks, which is what person.rankId stores. Order is preserved deliberately — an
+    // ordered scheme re-sorted alphabetically loses the only ordering that means anything.
+    path: "/rank/v1/rank-scheme",
+    pick: (d) => {
+      const out: unknown[] = [];
+      // Types form a TREE (a type may nest under another via `children`), and ranks attach to LEAF
+      // types — so this recurses rather than walking a fixed three levels.
+      const walkTypes = (types: Record<string, unknown>[]) => {
+        for (const ty of types) {
+          out.push(...((ty.ranks ?? []) as unknown[]));
+          walkTypes((ty.children ?? []) as Record<string, unknown>[]);
+        }
+      };
+      for (const sys of ((d as { systems?: Record<string, unknown>[] })?.systems ?? [])) {
+        for (const cat of ((sys.categories ?? []) as Record<string, unknown>[])) {
+          walkTypes((cat.types ?? []) as Record<string, unknown>[]);
+        }
+      }
+      return out;
+    },
+    toOption: (r, locale) => ({
+      id: str(r.id) ?? "",
+      label: pickLabel(map(r.name), locale) || str(r.code) || str(r.id) || "",
+      hint: str(r.abbreviation) || str(r.code),
+    }),
+  },
   // Education (M20/M21) globally-scoped pickers. Institution-scoped child lists (units, grants,
   // research-groups, …) are loaded into plain <select>s by PersonEducation once an institution is chosen.
   institution: {
@@ -112,10 +161,13 @@ type EntitySelectProps = {
   kind: EntityKind;
   name?: string;
   defaultValue?: string;
+  /** the human label for defaultValue; only kind="unit" needs it (the flat kinds resolve their own
+   *  labels from the page they fetch), but it is accepted uniformly so callers need not branch. */
+  defaultLabel?: string;
   required?: boolean;
   placeholder?: string;
   allowEmpty?: boolean;
-  onChange?: (id: string) => void;
+  onChange?: (id: string, label?: string) => void;
 };
 
 /**
@@ -130,6 +182,7 @@ export function EntitySelect(props: EntitySelectProps) {
       <UnitSelect
         name={props.name}
         defaultValue={props.defaultValue}
+        defaultLabel={props.defaultLabel}
         required={props.required}
         allowEmpty={props.allowEmpty}
         placeholder={props.placeholder}
@@ -233,7 +286,7 @@ function FlatEntitySelect({
     setSelected(o.id);
     setQuery("");
     setOpen(false);
-    onChange?.(o.id);
+    onChange?.(o.id, o.label);
   }
   function clear() {
     setSelected("");

@@ -278,6 +278,71 @@ func Types() []TypeInfo {
 	return out
 }
 
+// TokenOf returns the registry TOKEN for every registered type — the name by which a type is
+// referred to outside pkg/rid: the key web/src/lib/ontology/registry.ts is keyed by, and the value a
+// pkg/facet ObjectType.Type must be.
+//
+// The scheme is a deterministic, collision-free function of the WHOLE registry: links get
+// "link__<name>", objects and actions get "<name>"; where a bare token would be claimed by more than
+// one (service, kind, code) triple, the lowest-service triple keeps it and the others are namespaced
+// to "<serviceName>_<name>" (or "link__<serviceName>_<name>"). e.g. finance's "account" object
+// becomes "finance_account" because the account service already owns "account".
+//
+// This lives here, rather than in tools/gen-ontology-mirror where it started, because it now has two
+// consumers — the generator that writes the console's mirror and the facet catalog that validates a
+// declaration against it (M56 ticket 3). Two copies of a collision rule is exactly how the console
+// registry and the facet catalog would come to name the same type differently.
+func TokenOf() map[TypeInfo]string {
+	services := Services()
+	types := Types() // sorted by (service, kind, code)
+
+	slugCount := map[string]int{}
+	for _, t := range types {
+		slugCount[baseSlug(t)]++
+	}
+	// types is service-ascending, so the first occurrence of a slug is the lowest-service triple.
+	claimed := map[string]bool{}
+	out := make(map[TypeInfo]string, len(types))
+	for _, t := range types {
+		slug := baseSlug(t)
+		token := slug
+		if slugCount[slug] > 1 {
+			if claimed[slug] {
+				token = namespacedSlug(t, services[t.Service])
+			} else {
+				claimed[slug] = true
+			}
+		}
+		out[t] = token
+	}
+	return out
+}
+
+// Tokens returns the reverse of TokenOf: every registry token and the type it names.
+func Tokens() map[string]TypeInfo {
+	out := make(map[string]TypeInfo)
+	for t, token := range TokenOf() {
+		out[token] = t
+	}
+	return out
+}
+
+// baseSlug is the un-namespaced token: "link__<name>" for a link, the bare name otherwise.
+func baseSlug(t TypeInfo) string {
+	if Kind(t.Kind) == KindLink {
+		return "link__" + t.Name
+	}
+	return t.Name
+}
+
+// namespacedSlug is the collision escape: the owning service's name prefixed onto the slug.
+func namespacedSlug(t TypeInfo, svcName string) string {
+	if Kind(t.Kind) == KindLink {
+		return "link__" + svcName + "_" + t.Name
+	}
+	return svcName + "_" + t.Name
+}
+
 // Querier is the minimal pgx surface AssertMatches needs (satisfied by *pgxpool.Pool / pgx.Conn / tx).
 type Querier interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)

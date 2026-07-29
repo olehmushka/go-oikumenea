@@ -232,7 +232,7 @@ func TestListRootsAndChildren(t *testing.T) {
 	}
 
 	// rootsOnly: only `a` has no parent edge in command.
-	roots, err := svc.ListUnits(ctx, org.ID, nil, nil, nil, "command", nil, true, 0, "")
+	roots, err := svc.ListUnits(ctx, domain.UnitFilter{OrgID: org.ID}, "command", nil, true, 0, "")
 	if err != nil {
 		t.Fatalf("list roots: %v", err)
 	}
@@ -242,7 +242,7 @@ func TestListRootsAndChildren(t *testing.T) {
 	}
 
 	// parent=a: direct children are b and c (NOT d, which is a grandchild).
-	kids, err := svc.ListUnits(ctx, org.ID, nil, nil, nil, "command", &a.ID, false, 0, "")
+	kids, err := svc.ListUnits(ctx, domain.UnitFilter{OrgID: org.ID}, "command", &a.ID, false, 0, "")
 	if err != nil {
 		t.Fatalf("list children of a: %v", err)
 	}
@@ -252,7 +252,7 @@ func TestListRootsAndChildren(t *testing.T) {
 	}
 
 	// parent=b: direct child is d only.
-	bKids, err := svc.ListUnits(ctx, org.ID, nil, nil, nil, "command", &b.ID, false, 0, "")
+	bKids, err := svc.ListUnits(ctx, domain.UnitFilter{OrgID: org.ID}, "command", &b.ID, false, 0, "")
 	if err != nil {
 		t.Fatalf("list children of b: %v", err)
 	}
@@ -261,7 +261,7 @@ func TestListRootsAndChildren(t *testing.T) {
 	}
 
 	// parent and rootsOnly are mutually exclusive.
-	if _, err := svc.ListUnits(ctx, org.ID, nil, nil, nil, "command", &a.ID, true, 0, ""); !errors.Is(err, domain.ErrInvalidUnit) {
+	if _, err := svc.ListUnits(ctx, domain.UnitFilter{OrgID: org.ID}, "command", &a.ID, true, 0, ""); !errors.Is(err, domain.ErrInvalidUnit) {
 		t.Fatalf("expected ErrInvalidUnit for parent+rootsOnly, got %v", err)
 	}
 }

@@ -30,6 +30,7 @@ import { IPartyMembership } from "./partyMembership";
 import { IPerson } from "./person";
 import { IPersonLanguage } from "./personLanguage";
 import { IPersonPage } from "./personPage";
+import { IPersonStats } from "./personStats";
 import { IPersonality } from "./personality";
 import { IPhone } from "./phone";
 import { IPhoneType } from "./phoneType";
@@ -111,8 +112,33 @@ export interface IPersonService {
     getPerson(personId: string): Promise<IPerson>;
     /** Update names, birthdate, date_of_death, sex, country_of_birth, attributes. `code` is immutable; rank via setRank. */
     updatePerson(personId: string, request: IUpdatePersonRequest): Promise<IPerson>;
-    /** Search/list the directory, token-paginated. (The read-scope union is applied once authz lands, M7.) */
-    listPersons(pageSize?: number | null, pageToken?: string | null, query?: string | null): Promise<IPersonPage>;
+    /**
+     * Search/list the directory, token-paginated, narrowed by the person facet set
+     * (D-ObjectFacets, M56). A non-instance-admin caller sees only the read-scope union
+     * (D-PersonReadScope); every filter below is applied INSIDE that union, before the page is
+     * cut, so a filtered page is never short and its cursor is never wrong.
+     *
+     * The facet filters combine with AND. They are ordinary structural predicates and do NOT
+     * widen what the caller may see: filtering can only narrow the visible set.
+     *
+     */
+    listPersons(pageSize?: number | null, pageToken?: string | null, query?: string | null, sex?: string | null, status?: string | null, birthdateFrom?: string | null, birthdateTo?: string | null, countryOfBirth?: string | null, rankId?: string | null, unitId?: string | null, graph?: string | null, hasAccount?: boolean | null): Promise<IPersonPage>;
+    /**
+     * Facet distributions for the directory — the dashboard half of the facet vocabulary
+     * (M57 / D-ObjectFacets). Takes exactly the filter args `listPersons` takes (minus paging),
+     * so a dashboard and a list are two renderings of ONE request state and a chart segment is a
+     * link to the same URL with one more filter applied.
+     *
+     * Counted INSIDE the read-scope predicate (D-PersonReadScope), before anything is cut:
+     * `totalCount` equals the number of rows exhaustively paging `listPersons` with these same
+     * filters would return. One round-trip serves the whole dashboard.
+     *
+     * The path is `/stats/persons` rather than `/persons/stats` because the server's router
+     * rejects a literal path segment that is a sibling of `{personId}` — see the route-conflict
+     * guard in `internal/platform/transport`.
+     *
+     */
+    personStats(facets?: string | null, query?: string | null, sex?: string | null, status?: string | null, birthdateFrom?: string | null, birthdateTo?: string | null, countryOfBirth?: string | null, rankId?: string | null, unitId?: string | null, graph?: string | null, hasAccount?: boolean | null): Promise<IPersonStats>;
     /** Set or clear the person's rank in one rank system (one rank per system, a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank. */
     setRank(personId: string, request: ISetRankRequest): Promise<IPerson>;
     /** Begin reversible deactivation (opens the grace window before purge). */
@@ -480,8 +506,17 @@ export class PersonService implements IPersonService {
         );
     }
 
-    /** Search/list the directory, token-paginated. (The read-scope union is applied once authz lands, M7.) */
-    public listPersons(pageSize?: number | null, pageToken?: string | null, query?: string | null): Promise<IPersonPage> {
+    /**
+     * Search/list the directory, token-paginated, narrowed by the person facet set
+     * (D-ObjectFacets, M56). A non-instance-admin caller sees only the read-scope union
+     * (D-PersonReadScope); every filter below is applied INSIDE that union, before the page is
+     * cut, so a filtered page is never short and its cursor is never wrong.
+     *
+     * The facet filters combine with AND. They are ordinary structural predicates and do NOT
+     * widen what the caller may see: filtering can only narrow the visible set.
+     *
+     */
+    public listPersons(pageSize?: number | null, pageToken?: string | null, query?: string | null, sex?: string | null, status?: string | null, birthdateFrom?: string | null, birthdateTo?: string | null, countryOfBirth?: string | null, rankId?: string | null, unitId?: string | null, graph?: string | null, hasAccount?: boolean | null): Promise<IPersonPage> {
         return this.bridge.call<IPersonPage>(
             "PersonService",
             "listPersons",
@@ -493,6 +528,57 @@ export class PersonService implements IPersonService {
                 "pageSize": pageSize,
                 "pageToken": pageToken,
                 "query": query,
+                "sex": sex,
+                "status": status,
+                "birthdateFrom": birthdateFrom,
+                "birthdateTo": birthdateTo,
+                "countryOfBirth": countryOfBirth,
+                "rankId": rankId,
+                "unitId": unitId,
+                "graph": graph,
+                "hasAccount": hasAccount,
+            },
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Facet distributions for the directory — the dashboard half of the facet vocabulary
+     * (M57 / D-ObjectFacets). Takes exactly the filter args `listPersons` takes (minus paging),
+     * so a dashboard and a list are two renderings of ONE request state and a chart segment is a
+     * link to the same URL with one more filter applied.
+     *
+     * Counted INSIDE the read-scope predicate (D-PersonReadScope), before anything is cut:
+     * `totalCount` equals the number of rows exhaustively paging `listPersons` with these same
+     * filters would return. One round-trip serves the whole dashboard.
+     *
+     * The path is `/stats/persons` rather than `/persons/stats` because the server's router
+     * rejects a literal path segment that is a sibling of `{personId}` — see the route-conflict
+     * guard in `internal/platform/transport`.
+     *
+     */
+    public personStats(facets?: string | null, query?: string | null, sex?: string | null, status?: string | null, birthdateFrom?: string | null, birthdateTo?: string | null, countryOfBirth?: string | null, rankId?: string | null, unitId?: string | null, graph?: string | null, hasAccount?: boolean | null): Promise<IPersonStats> {
+        return this.bridge.call<IPersonStats>(
+            "PersonService",
+            "personStats",
+            "GET",
+            "/person/v1/stats/persons",
+            __undefined,
+            __undefined,
+            {
+                "facets": facets,
+                "query": query,
+                "sex": sex,
+                "status": status,
+                "birthdateFrom": birthdateFrom,
+                "birthdateTo": birthdateTo,
+                "countryOfBirth": countryOfBirth,
+                "rankId": rankId,
+                "unitId": unitId,
+                "graph": graph,
+                "hasAccount": hasAccount,
             },
             __undefined,
             __undefined,

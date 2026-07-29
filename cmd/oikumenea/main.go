@@ -71,6 +71,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/pkg/config/envoverlay"
 	"github.com/olegamysk/go-oikumenea/pkg/crypto"
 	"github.com/olegamysk/go-oikumenea/pkg/events"
+	"github.com/olegamysk/go-oikumenea/pkg/facet"
 	"github.com/olegamysk/go-oikumenea/pkg/personalcode"
 	"github.com/olegamysk/go-oikumenea/pkg/rid"
 	"github.com/palantir/pkg/refreshable"
@@ -583,6 +584,19 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 		return nil, werror.Wrap(err, "composition root: link descriptor registration")
 	}
 
+	// Dashboard bucket labels (M57 / D-ObjectFacets): the ref-facet RIDs a stats response returns are
+	// named through the SAME per-type resolvers the link engine uses (stats_labelers.go), so a unit
+	// reads identically in a graph row and in a chart segment. The coverage assertion is pure and runs
+	// here rather than in the seam loop below, because it checks a compile-time table against the
+	// catalog, not a wired holder.
+	if err := assertBucketLabelersBound(); err != nil {
+		cleanup()
+		return nil, werror.Wrap(err, "composition root: stats bucket labelers")
+	}
+	statsLabeler := bucketLabeler(pool, locSvc)
+	personSvc.SetBucketLabeler(statsLabeler)
+	tenantSvc.SetBucketLabeler(statsLabeler)
+
 	// Identity-federation: the external-IdP seam. Its application service is the (issuer, subject)
 	// resolver the validation middleware binds to.
 	identitySvc, err := identityfederation.Register(info, pool, auditSvc, enforcer, install.IdentityLinkingEnabled, issuerOptions(install),
@@ -667,7 +681,11 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// serve. A forgotten Set*/Bind otherwise compiles and surfaces at request time — as a nil deref or,
 	// worse, a silently-empty read-scope page that reads as "no access" rather than "mis-wired server".
 	// Fail fast here, naming the missing seam, instead.
-	for _, seam := range []interface{ MustBeBound() error }{authenticator, enforcer, personSvc, profileSvc, sensitiveSvc, searchSvc, linksSvc} {
+	// facet.Default is a package-level catalog rather than a wired service, so it cannot be
+	// mis-injected — but it CAN be emptied or left inconsistent by an edit, and every list filter and
+	// (from M57) every stats bucket reads it. Asserting it here puts it on the same footing as the
+	// other seams: a broken vocabulary fails boot, not the first filtered request (D-ObjectFacets).
+	for _, seam := range []interface{ MustBeBound() error }{authenticator, enforcer, personSvc, profileSvc, sensitiveSvc, searchSvc, linksSvc, facet.Default} {
 		if err := seam.MustBeBound(); err != nil {
 			cleanup()
 			return nil, werror.Wrap(err, "composition root: late-bound seam not wired")

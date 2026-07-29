@@ -214,6 +214,11 @@ type Repository interface {
 	MarkRevoked(ctx context.Context, id string, revokingOrderID *string) (Order, error)
 	ListOrdersByUnit(ctx context.Context, unitID, after string, limit int) ([]Order, error)
 	ListOrdersByPerson(ctx context.Context, personID, after string, limit int) ([]Order, error)
+	// ListOrders and ListOrdersForSubject are the two arms of the top-level facet-filtered listing
+	// (M56 ticket 3 / D-ObjectFacets): the instance-admin view of every order, and the same filter
+	// set intersected with the subject's effective readable reach on the issuing unit.
+	ListOrders(ctx context.Context, f OrderFilter, after string, limit int) ([]Order, error)
+	ListOrdersForSubject(ctx context.Context, subjectPersonID string, f OrderFilter, after string, limit int) ([]Order, error)
 
 	// order items (parent-scoped)
 	InsertOrderItem(ctx context.Context, it OrderItem) (OrderItem, error)

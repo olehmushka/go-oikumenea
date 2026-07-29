@@ -69,7 +69,7 @@ func TestLoginEventStore(t *testing.T) {
 
 	// 2) The dedup key is (account, context, ip): a different context OR a different ip is a new row.
 	svc.RecordLoginSeen(ctx, accountID, domain.LoginContextRegistration, "203.0.113.5", "agent/1.0") // diff context
-	svc.RecordLoginSeen(ctx, accountID, domain.LoginContextLogin, "198.51.100.9", "agent/1.0")        // diff ip
+	svc.RecordLoginSeen(ctx, accountID, domain.LoginContextLogin, "198.51.100.9", "agent/1.0")       // diff ip
 	rows, _ = svc.ListLoginEvents(ctx, accountID, "", 50)
 	if len(rows) != 3 {
 		t.Fatalf("distinct (context,ip): want 3 rows, got %d", len(rows))

@@ -2582,7 +2582,8 @@ describes its own table once). From that one declaration come:
    one per facet, in the shape `listUnits(org, domain, unitKind, level, graph, parent, rootsOnly)`
    and `listExternalOrgs(query, kind, country, status)` already use. Not a generic filter DSL, not an
    opaque encoded `filter=` param: the args are typed in the generated SDKs and visible in OpenAPI.
-2. **A per-module stats endpoint** — `GET /<module>/v1/<collection>/stats`, taking **exactly the same
+2. **A per-module stats endpoint** — `GET /<module>/v1/stats/<collection>` (the path shape as built;
+   see the M57 as-built note), taking **exactly the same
    filter args** as the list endpoint plus an optional `facets` CSV, returning `totalCount` plus a
    `list<FacetDistribution>` (`facet`, `buckets[{key, label, count}]`). One endpoint per module, so a
    whole dashboard is one round-trip; backed by **static sqlc `GROUP BY` queries**, one per
@@ -2639,6 +2640,109 @@ in `audit`/`tenant`, **not** the `sqlc.arg(x)::text = ''` sentinel — and never
 facets and their charts lives in [`facets.md`](facets.md). Lands as **M56** (filters) and **M57**
 (stats endpoints), rolled out across the remaining types in **M58**
 ([milestones](../milestones.md)). Additive / expand-only.
+
+**As built (M56 ticket 2 — `person` and `unit`).** Three choices this decision left open, settled by
+implementation and recorded so the remaining tickets do not re-litigate them:
+
+- **The registry is `pkg/facet`, not per-module.** The IR-derived mirror and the drift test must live
+  in the same package as the catalog, which is why `pkg/action`'s catalog+generator+test triad works
+  and `internal/links` has no generator. "The `Descriptor` shape" is honoured as a shape; module
+  ownership is carried by a mandatory `Module` field and enforced by the plaintext/table guards. The
+  boot assertion `facet.Default.MustBeBound()` joins the composition root's seam loop.
+- **`person.unitId` is subtree-expanding over every authority-bearing graph**, and `listPersons`
+  gains a `graph` arg that narrows the expansion to one graph. `graph` is classified as a traversal
+  arg, not a facet; it is rejected on its own. The default is deliberately the same closure set the
+  read-scope predicate walks, so the filter cannot widen what a caller may see.
+- **`unit.level` keeps its legacy scalar arg.** The facet declares `numeric-range` (M57 bands the
+  column) but pins its filter arg to the `level` the contract already ships, via an explicit
+  `ArgOverride` that `Register` refuses without a written reason. `levelMin`/`levelMax` are additive
+  and deferred to when the bands are consumed.
+
+The **filter half** of "counts are computed inside the visibility predicate" is now real: one
+`PersonFilter` drives both list paths, folded into the SQL of all five queries, because a Go-side
+re-filter after the page is cut returns a short page with a `nextPageToken` (the R-06 failure). The
+guards are two-directional and check the *class* of every non-facet arg, so they cannot decay into an
+allowlist; `scripts/gen-action-params.sh --verify` keeps the generated mirror from going stale, which
+would otherwise let the guards validate an old contract and pass.
+
+**As built (M56 ticket 3 — `membership`, `order`, `document`), amending two points above.**
+
+- **"Listable object type" means object OR reified link.** `membership` is `link__member_of`
+  (`KindLink`), not a kind=object type, and it is the first faceted one; M58's `assignment` set is
+  `link__has_role`, another. A reified link is a first-class row with its own identity, attributes
+  and history ([D-Ontology](#d-ontology--every-entity-is-an-object-a-reified-link-or-an-audited-action)),
+  so it lists and filters exactly like an object and there is no reason to exclude it. `pkg/facet`
+  accepts object and link **tokens**; **actions remain non-listable** (an action is an audited
+  invocation, not a collection), so the check stays a kind check rather than "anything in the
+  registry". The token, not the bare name, is what a declaration carries — it is the key the console's
+  ontology registry uses — and the token scheme moved into `pkg/rid` (`rid.TokenOf`) so the facet
+  catalog and the console registry cannot name the same type differently.
+- **A scoped list ships TWO plan shapes, dispatched on reach cardinality.** "Counts are computed
+  inside the visibility predicate" is unchanged; *how* the reach is folded is not free, and the
+  ticket-3 measurement showed neither form is safe alone. Materializing the reach set makes the
+  planner drive from the reach side at large reach — it builds a ~10⁶-row hash and top-N sorts, so
+  the `LIMIT` never terminates early (documents: 6 419 ms at 100 000-unit reach). A per-row point
+  probe is the mirror image: 3.6–6.3 ms at that reach, 2 500–13 100 ms at reach 1. So the adapters
+  dispatch on a capped reach count — precisely the sparse/dense split `VisiblePersonIDsForSubject*`
+  has used since R-02.1, which this decision already cited for the person-scoped case and which now
+  generalizes to every scoped list. The three reach forms are SQL **functions** defined once in
+  migration `0017` (set / point probe / capped count), never inlined per query: their parity with the
+  Go PDP oracle is the invariant the differential test exists to protect, and it is now held over
+  four implementations at once. Numbers in
+  [review-2026-07](review-2026-07.md#m56-ticket-3--top-level-list-endpoints-2026-07-29).
+- **A top-level list carries no implicit status default.** `GET /memberships` returns every status,
+  unlike the per-unit roster and per-person listing it joins. A hidden active-only filter would make
+  M57's `totalCount` disagree with its own status distribution — the two consumers must see one
+  world — and would leave ended rows unreachable through any endpoint. The consequence is a
+  migration: every pre-existing `membership_memberships` index is partial on `status='active'`, so
+  the status-agnostic paths needed keyset indexes (`0017`), making M56 the first ticket in this
+  cluster with a non-`➖` `Migrated` gate.
+
+**As built (M57 ticket 1 — the `person` and `unit` stats endpoints).** Four things this decision
+specified differently, each settled by implementation or measurement and recorded so tickets 2–4 do
+not re-litigate them:
+
+- **The path is `/<module>/v1/stats/<collection>`, not `/<collection>/stats`.** The specified shape is
+  **unroutable in this stack**: witchcraft serves on julienschmidt/httprouter, whose radix tree
+  refuses a literal segment beside a wildcard at the same position, so `GET /persons/stats` next to
+  `GET /persons/{personId}` panics **at registration** — server startup, not a request, and invisible
+  to `go build` and every unit test. `/stats/<collection>` also generalizes better for the M58 modules
+  that list several collections (`/finance/v1/stats/accounts`, `/stats/cards`). A guard now holds the
+  whole contract: `internal/platform/transport/route_conflict_test.go` parses every `api/*.conjure.yml`
+  route and fails on a same-method literal/wildcard sibling — keyed by METHOD, because httprouter
+  keeps one tree per method (which is why the pre-existing `DELETE /rank-scheme/{level}/{nodeId}`
+  beside `POST /rank-scheme/systems` is legal and must not be reported).
+- **One static aggregate query per (module, ARM), not per (module, facet).** "Static sqlc `GROUP BY`
+  queries, one per (module, facet)" would have meant 7 facets × the arms each module ships — 30-odd
+  near-identical 40-line queries for `person` alone, and one round trip per facet. Instead each arm is
+  ONE statement: a materialized candidate CTE carrying the list's filter block verbatim, then one
+  `UNION ALL` branch per facet, each gated on a `want_<facet>` boolean so an unselected or unreadable
+  facet is **skipped by the planner** (a one-time false filter) rather than merely dropped from the
+  response. Staticness — the property this decision actually wanted, no dynamic `GROUP BY` builder —
+  is unchanged, and the whole dashboard is one scan of one candidate set. The arms exist for plan
+  reasons the ticket-3 measurement already established (a nullable trigram predicate is not indexable,
+  R-21; the admin arm must carry no visibility predicate at all), and `pkg/facet/statsparity_test.go`
+  holds their aggregate halves **byte-identical**, so a facet fixed in one arm cannot be forgotten in
+  another.
+- **A scoped aggregate needs only ONE plan shape**, unlike a scoped list. The sparse/dense dispatch
+  exists because a `LIMIT` cannot terminate early once the planner drives from the reach side; an
+  aggregate has no `LIMIT`, so the prediction was that the materialized reach set wins everywhere.
+  Measured, at 10^6 persons: set form 8.3 ms / 79.8 ms / 7 144 ms at leaf / mid / root reach against
+  the point probe's 12 926 / 17 066 / 24 869 ms. The dispatch — and its ~180 ms capped-count tax — is
+  therefore deliberately absent here. Numbers in
+  [review-2026-07](review-2026-07.md#m57-ticket-1--the-dashboard-aggregates-2026-07-29).
+- **A ref facet declares what its RIDs point at.** `Facet.RefType` (a `pkg/rid` object token) is new,
+  because a bucket key is a RID and an axis of RID tails is unreadable; the composition root resolves
+  them through the **same D-LinkTraversal labelers** the link engine uses, so a unit is named
+  identically in a graph row and in a chart segment, and a boot assertion fails startup for a ref
+  facet whose target type has no resolver. `Register` also now refuses a type whose ref facets declare
+  different `TopN`, since one query binds one `top_n` across its ref branches.
+
+Bucket assembly (zero-filling an enum in CHART order, banding an age, collapsing a top-N tail,
+surfacing NULLs as the mandatory `(unknown)` bucket) lives in the new stdlib-only `pkg/stats`, which
+also owns the `facets` CSV selection and rule 2's omission. Its one invariant: **every counted row
+lands in exactly one bucket** — an undeclared enum value is appended rather than dropped — so a facet
+over the listed table's own column always sums to `totalCount`.
 
 ---
 

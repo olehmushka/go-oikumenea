@@ -3,7 +3,9 @@
 
 package domain
 
-import "context"
+import (
+	"context"
+)
 
 // Repository is the finance persistence port (the domain owns it; adapters implement it). Bound to one
 // command surface (pool for reads, tx for writes). All methods are schema-qualified over oikumenea.finance_*.

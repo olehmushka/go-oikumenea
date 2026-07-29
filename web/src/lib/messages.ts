@@ -40,12 +40,17 @@ const eng: Catalog = {
   "nav.domains.hint": "org-kind catalog + unit kinds",
   "nav.graphs": "Graph admin",
   "nav.graphs.hint": "hierarchies + closure",
-  "nav.memberships": "Memberships",
+  // "Membership lookup", not "Memberships": the global faceted list is /explore/link__member_of
+  // (M56 ticket 4); this tool is the per-unit / per-person lookup with its add form.
+  "nav.memberships": "Membership lookup",
   "nav.memberships.hint": "person ↔ unit",
-  "nav.orders": "Orders",
+  // "Order desk" / "Document catalogs", not "Orders" / "Documents": since M56 ticket 4 the global
+  // faceted lists live at /explore/order and /explore/document. These tools are the per-unit issue
+  // desk and the type/scheme catalogs — different surfaces, so different names.
+  "nav.orders": "Order desk",
   "nav.orders.hint": "наказ",
-  "nav.documents": "Documents",
-  "nav.documents.hint": "papers & catalogs",
+  "nav.documents": "Document catalogs",
+  "nav.documents.hint": "types & code schemes",
   "nav.ranks": "Ranks",
   "nav.ranks.hint": "rank scheme",
   "nav.locations": "Locations",
@@ -99,12 +104,12 @@ const ukr: Catalog = {
   "nav.domains.hint": "каталог видів організацій + види підрозділів",
   "nav.graphs": "Адмін графів",
   "nav.graphs.hint": "ієрархії + замикання",
-  "nav.memberships": "Членства",
+  "nav.memberships": "Пошук членств",
   "nav.memberships.hint": "особа ↔ підрозділ",
-  "nav.orders": "Накази",
+  "nav.orders": "Робота з наказами",
   "nav.orders.hint": "наказ",
-  "nav.documents": "Документи",
-  "nav.documents.hint": "папери та каталоги",
+  "nav.documents": "Каталоги документів",
+  "nav.documents.hint": "типи та схеми кодів",
   "nav.ranks": "Звання",
   "nav.ranks.hint": "схема звань",
   "nav.locations": "Локації",
@@ -158,12 +163,12 @@ const spa: Catalog = {
   "nav.domains.hint": "catálogo de tipos de organización + tipos de unidad",
   "nav.graphs": "Administración de grafos",
   "nav.graphs.hint": "jerarquías + cierre",
-  "nav.memberships": "Membresías",
+  "nav.memberships": "Búsqueda de membresías",
   "nav.memberships.hint": "persona ↔ unidad",
-  "nav.orders": "Órdenes",
+  "nav.orders": "Gestión de órdenes",
   "nav.orders.hint": "наказ",
-  "nav.documents": "Documentos",
-  "nav.documents.hint": "papeles y catálogos",
+  "nav.documents": "Catálogos de documentos",
+  "nav.documents.hint": "tipos y esquemas de códigos",
   "nav.ranks": "Rangos",
   "nav.ranks.hint": "esquema de rangos",
   "nav.locations": "Ubicaciones",
@@ -217,12 +222,12 @@ const por: Catalog = {
   "nav.domains.hint": "catálogo de tipos de organização + tipos de unidade",
   "nav.graphs": "Administração de grafos",
   "nav.graphs.hint": "hierarquias + fecho",
-  "nav.memberships": "Vínculos",
+  "nav.memberships": "Busca de vínculos",
   "nav.memberships.hint": "pessoa ↔ unidade",
-  "nav.orders": "Ordens",
+  "nav.orders": "Gestão de ordens",
   "nav.orders.hint": "наказ",
-  "nav.documents": "Documentos",
-  "nav.documents.hint": "papéis e catálogos",
+  "nav.documents": "Catálogos de documentos",
+  "nav.documents.hint": "tipos e esquemas de códigos",
   "nav.ranks": "Patentes",
   "nav.ranks.hint": "esquema de patentes",
   "nav.locations": "Localizações",
@@ -362,6 +367,37 @@ const glossaryUkr: Record<string, string> = {
   "All": "Усі", "Indexing…": "Індексація…", "Type to search…": "Почніть вводити…",
   "No matches.": "Немає збігів.", "Open": "Відкрити", "Navigate": "Навігація", "Actions": "Дії",
   "Objects": "Об’єкти", "Nothing here yet.": "Поки що порожньо.",
+  // ── explorer filter bar (M56 ticket 4) ──
+  "Filters": "Фільтри", "Clear all": "Очистити все",
+  "Any": "Будь-який", "Yes": "Так", "No": "Ні", "Table": "Таблиця", "Tree": "Дерево",
+  "Filter rows on this page…": "Фільтрувати рядки на цій сторінці…", "on this page": "на цій сторінці",
+  "No matches for these filters.": "Немає збігів для цих фільтрів.",
+  "Organization": "Організація", "Select an organization…": "Оберіть організацію…",
+  "pick a domain first": "спочатку оберіть домен", "pick a unit first": "спочатку оберіть підрозділ",
+  "Membership": "Членство", "Membership lookup": "Пошук членств", "Order desk": "Робота з наказами",
+  "This type has no detail endpoint.": "Для цього типу немає ендпойнта деталей.",
+  "Could not load object.": "Не вдалося завантажити об’єкт.",
+  // filter labels not already in the glossary
+  "Domain": "Домен", "Unit kind": "Тип підрозділу", "Has account": "Має обліковий запис",
+  "PDP-scoped": "У сфері PDP", "Effective to": "Діє до",
+  // enum option labels (the wire value stays the raw code; only the label is translated)
+  "Not known": "Невідомо", "Male": "Чоловіча", "Female": "Жіноча", "Not applicable": "Не застосовно",
+  "Active": "Активний", "Deactivated": "Деактивований", "Provisional": "Попередній", "Purged": "Видалений",
+  "Public": "Публічний", "Shadow": "Тіньовий", "Suspended": "Призупинений", "Archived": "Архівований",
+  "Ended": "Завершене", "Draft": "Чернетка", "Issued": "Виданий", "Revoked": "Відкликаний",
+  "Superseded": "Замінений",
+  // filter hints (the SQL semantics an operator would otherwise reverse-engineer from a wrong count)
+  "Includes the whole subtree.": "Включає все піддерево.",
+  "Exact unit — not the subtree.": "Точний підрозділ — без піддерева.",
+  "Exact depth in the unit hierarchy.": "Точна глибина в ієрархії підрозділів.",
+  "Setting either bound excludes unknown birthdates.":
+    "Будь-яка з меж виключає невідомі дати народження.",
+  "Setting either bound excludes drafts (no issue date).":
+    "Будь-яка з меж виключає чернетки (без дати видання).",
+  "Setting either bound excludes documents with no issue date.":
+    "Будь-яка з меж виключає документи без дати видання.",
+  "Setting either bound excludes documents with no expiry.":
+    "Будь-яка з меж виключає документи без строку дії.",
   // command-palette specifics
   "Overview": "Огляд", "Ontology": "Онтологія", "Authorize": "Авторизація",
   "Localization": "Локалізація", "Audit": "Аудит",
@@ -473,6 +509,18 @@ const glossaryUkr: Record<string, string> = {
   "order number": "номер наказу", "item type…": "тип пункту…", "subject person…": "суб’єкт (особа)…",
   "item unit (optional)…": "підрозділ пункту (необов.)…", "note (optional)": "примітка (необов.)",
   "Create order": "Створити наказ", "Edit draft": "Редагувати чернетку", "number": "номер",
+  // multi-item orders (the наказ's points)
+  "Add item": "Додати пункт", "Duplicate last row": "Дублювати останній рядок",
+  "item position (optional)…": "посада пункту (необов.)…",
+  "item rank…": "звання пункту…", "pick an item unit first": "спершу оберіть підрозділ пункту",
+  "Pick an item type.": "Оберіть тип пункту.", "Pick a subject person.": "Оберіть суб’єкта (особу).",
+  "This item's type needs a unit or a position.": "Тип цього пункту потребує підрозділу або посади.",
+  "This item's type needs a rank.": "Тип цього пункту потребує звання.",
+  "An order needs at least one item.": "Наказ потребує щонайменше одного пункту.",
+  "A position, when set, overrides the unit.": "Якщо вказано посаду, вона має перевагу над підрозділом.",
+  "Draft items": "Пункти чернетки", "Save items": "Зберегти пункти", "Reset": "Скинути",
+  "Items lock when the order is issued.": "Пункти блокуються після видання наказу.",
+  "no target": "без цілі",
   "retired": "знятий", "category…": "категорія…", "effect…": "ефект…", "Add order type": "Додати тип наказу",
   // document catalog forms
   "Add scheme": "Додати схему", "regex (optional)": "регулярний вираз (необов.)",
@@ -797,6 +845,37 @@ const glossarySpa: Record<string, string> = {
   "All": "Todos", "Indexing…": "Indexando…", "Type to search…": "Escribe para buscar…",
   "No matches.": "Sin coincidencias.", "Open": "Abrir", "Navigate": "Navegar", "Actions": "Acciones",
   "Objects": "Objetos", "Nothing here yet.": "Aún no hay nada aquí.",
+  // ── explorer filter bar (M56 ticket 4) ──
+  "Filters": "Filtros", "Clear all": "Limpiar todo",
+  "Any": "Cualquiera", "Yes": "Sí", "No": "No", "Table": "Tabla", "Tree": "Árbol",
+  "Filter rows on this page…": "Filtrar filas de esta página…", "on this page": "en esta página",
+  "No matches for these filters.": "Sin coincidencias para estos filtros.",
+  "Organization": "Organización", "Select an organization…": "Seleccione una organización…",
+  "pick a domain first": "elija primero un dominio", "pick a unit first": "elija primero una unidad",
+  "Membership": "Membresía", "Membership lookup": "Búsqueda de membresías", "Order desk": "Gestión de órdenes",
+  "This type has no detail endpoint.": "Este tipo no tiene endpoint de detalle.",
+  "Could not load object.": "No se pudo cargar el objeto.",
+  // filter labels not already in the glossary
+  "Domain": "Dominio", "Unit kind": "Tipo de unidad", "Has account": "Tiene cuenta",
+  "PDP-scoped": "En el alcance del PDP", "Effective to": "Vigente hasta",
+  // enum option labels (the wire value stays the raw code; only the label is translated)
+  "Not known": "Desconocido", "Male": "Masculino", "Female": "Femenino", "Not applicable": "No aplicable",
+  "Active": "Activo", "Deactivated": "Desactivado", "Provisional": "Provisional", "Purged": "Purgado",
+  "Public": "Público", "Shadow": "Oculto", "Suspended": "Suspendido", "Archived": "Archivado",
+  "Ended": "Finalizado", "Draft": "Borrador", "Issued": "Emitido", "Revoked": "Revocado",
+  "Superseded": "Reemplazado",
+  // filter hints (the SQL semantics an operator would otherwise reverse-engineer from a wrong count)
+  "Includes the whole subtree.": "Incluye todo el subárbol.",
+  "Exact unit — not the subtree.": "Unidad exacta — no el subárbol.",
+  "Exact depth in the unit hierarchy.": "Profundidad exacta en la jerarquía de unidades.",
+  "Setting either bound excludes unknown birthdates.":
+    "Fijar cualquiera de los límites excluye las fechas de nacimiento desconocidas.",
+  "Setting either bound excludes drafts (no issue date).":
+    "Fijar cualquiera de los límites excluye los borradores (sin fecha de emisión).",
+  "Setting either bound excludes documents with no issue date.":
+    "Fijar cualquiera de los límites excluye los documentos sin fecha de emisión.",
+  "Setting either bound excludes documents with no expiry.":
+    "Fijar cualquiera de los límites excluye los documentos sin vencimiento.",
   // command-palette specifics
   "Overview": "Resumen", "Ontology": "Ontología", "Authorize": "Autorizar",
   "Localization": "Localización", "Audit": "Auditoría",
@@ -908,6 +987,18 @@ const glossarySpa: Record<string, string> = {
   "order number": "número de orden", "item type…": "tipo de ítem…", "subject person…": "sujeto (persona)…",
   "item unit (optional)…": "unidad del ítem (opcional)…", "note (optional)": "nota (opcional)",
   "Create order": "Crear orden", "Edit draft": "Editar borrador", "number": "número",
+  // multi-item orders (the наказ's points)
+  "Add item": "Agregar ítem", "Duplicate last row": "Duplicar la última fila",
+  "item position (optional)…": "cargo del ítem (opcional)…",
+  "item rank…": "rango del ítem…", "pick an item unit first": "elige primero una unidad del ítem",
+  "Pick an item type.": "Elige un tipo de ítem.", "Pick a subject person.": "Elige un sujeto (persona).",
+  "This item's type needs a unit or a position.": "El tipo de este ítem requiere una unidad o un cargo.",
+  "This item's type needs a rank.": "El tipo de este ítem requiere un rango.",
+  "An order needs at least one item.": "Una orden necesita al menos un ítem.",
+  "A position, when set, overrides the unit.": "Si se indica un cargo, prevalece sobre la unidad.",
+  "Draft items": "Ítems del borrador", "Save items": "Guardar ítems", "Reset": "Restablecer",
+  "Items lock when the order is issued.": "Los ítems se bloquean al emitir la orden.",
+  "no target": "sin objetivo",
   "retired": "retirado", "category…": "categoría…", "effect…": "efecto…", "Add order type": "Agregar tipo de orden",
   // document catalog forms
   "Add scheme": "Agregar esquema", "regex (optional)": "regex (opcional)",
@@ -1232,6 +1323,37 @@ const glossaryPor: Record<string, string> = {
   "All": "Todos", "Indexing…": "Indexando…", "Type to search…": "Digite para buscar…",
   "No matches.": "Sem correspondências.", "Open": "Abrir", "Navigate": "Navegar", "Actions": "Ações",
   "Objects": "Objetos", "Nothing here yet.": "Ainda não há nada aqui.",
+  // ── explorer filter bar (M56 ticket 4) ──
+  "Filters": "Filtros", "Clear all": "Limpar tudo",
+  "Any": "Qualquer", "Yes": "Sim", "No": "Não", "Table": "Tabela", "Tree": "Árvore",
+  "Filter rows on this page…": "Filtrar linhas desta página…", "on this page": "nesta página",
+  "No matches for these filters.": "Sem correspondências para estes filtros.",
+  "Organization": "Organização", "Select an organization…": "Selecione uma organização…",
+  "pick a domain first": "escolha primeiro um domínio", "pick a unit first": "escolha primeiro uma unidade",
+  "Membership": "Vínculo", "Membership lookup": "Busca de vínculos", "Order desk": "Gestão de ordens",
+  "This type has no detail endpoint.": "Este tipo não tem endpoint de detalhe.",
+  "Could not load object.": "Não foi possível carregar o objeto.",
+  // filter labels not already in the glossary
+  "Domain": "Domínio", "Unit kind": "Tipo de unidade", "Has account": "Tem conta",
+  "PDP-scoped": "No escopo do PDP", "Effective to": "Vigente até",
+  // enum option labels (the wire value stays the raw code; only the label is translated)
+  "Not known": "Desconhecido", "Male": "Masculino", "Female": "Feminino", "Not applicable": "Não aplicável",
+  "Active": "Ativo", "Deactivated": "Desativado", "Provisional": "Provisório", "Purged": "Expurgado",
+  "Public": "Público", "Shadow": "Oculto", "Suspended": "Suspenso", "Archived": "Arquivado",
+  "Ended": "Encerrado", "Draft": "Rascunho", "Issued": "Emitido", "Revoked": "Revogado",
+  "Superseded": "Substituído",
+  // filter hints (the SQL semantics an operator would otherwise reverse-engineer from a wrong count)
+  "Includes the whole subtree.": "Inclui toda a subárvore.",
+  "Exact unit — not the subtree.": "Unidade exata — não a subárvore.",
+  "Exact depth in the unit hierarchy.": "Profundidade exata na hierarquia de unidades.",
+  "Setting either bound excludes unknown birthdates.":
+    "Definir qualquer um dos limites exclui as datas de nascimento desconhecidas.",
+  "Setting either bound excludes drafts (no issue date).":
+    "Definir qualquer um dos limites exclui os rascunhos (sem data de emissão).",
+  "Setting either bound excludes documents with no issue date.":
+    "Definir qualquer um dos limites exclui os documentos sem data de emissão.",
+  "Setting either bound excludes documents with no expiry.":
+    "Definir qualquer um dos limites exclui os documentos sem validade.",
   // command-palette specifics
   "Overview": "Visão geral", "Ontology": "Ontologia", "Authorize": "Autorizar",
   "Localization": "Localização", "Audit": "Auditoria",
@@ -1343,6 +1465,18 @@ const glossaryPor: Record<string, string> = {
   "order number": "número da ordem", "item type…": "tipo de item…", "subject person…": "sujeito (pessoa)…",
   "item unit (optional)…": "unidade do item (opcional)…", "note (optional)": "nota (opcional)",
   "Create order": "Criar ordem", "Edit draft": "Editar rascunho", "number": "número",
+  // multi-item orders (the наказ's points)
+  "Add item": "Adicionar item", "Duplicate last row": "Duplicar a última linha",
+  "item position (optional)…": "cargo do item (opcional)…",
+  "item rank…": "patente do item…", "pick an item unit first": "escolha primeiro uma unidade do item",
+  "Pick an item type.": "Escolha um tipo de item.", "Pick a subject person.": "Escolha um sujeito (pessoa).",
+  "This item's type needs a unit or a position.": "O tipo deste item exige uma unidade ou um cargo.",
+  "This item's type needs a rank.": "O tipo deste item exige uma patente.",
+  "An order needs at least one item.": "Uma ordem precisa de pelo menos um item.",
+  "A position, when set, overrides the unit.": "Se um cargo for indicado, ele prevalece sobre a unidade.",
+  "Draft items": "Itens do rascunho", "Save items": "Salvar itens", "Reset": "Redefinir",
+  "Items lock when the order is issued.": "Os itens são travados quando a ordem é emitida.",
+  "no target": "sem alvo",
   "retired": "aposentado", "category…": "categoria…", "effect…": "efeito…", "Add order type": "Adicionar tipo de ordem",
   // document catalog forms
   "Add scheme": "Adicionar esquema", "regex (optional)": "regex (opcional)",

@@ -26,6 +26,19 @@ const __undefined: undefined = undefined;
 export interface IDocumentService {
     /** Attach a paper to a person. Returns Document:DocumentConflict on a duplicate (type, number). */
     attachDocument(personId: string, request: ICreateDocumentRequest): Promise<IDocument>;
+    /**
+     * List documents across every holder the caller may read, token-paginated, narrowed by the
+     * document facet set (D-ObjectFacets, M56). Documents are scoped THROUGH THE HOLDER
+     * (D-PersonReadScope): a non-instance-admin caller sees only documents whose holder falls in
+     * their read-scope union. Every filter below is applied INSIDE that union, before the page is
+     * cut, so a filtered page is never short and its cursor is never wrong.
+     *
+     * Metadata only — the same projection the per-holder listing returns. The facet filters
+     * combine with AND and do NOT widen what the caller may see: filtering can only narrow the
+     * visible set.
+     *
+     */
+    listDocuments(pageSize?: number | null, pageToken?: string | null, typeId?: string | null, status?: string | null, issuingCountryId?: string | null, issuedOnFrom?: string | null, issuedOnTo?: string | null, expiresOnFrom?: string | null, expiresOnTo?: string | null): Promise<IDocumentPage>;
     /** List a person's documents, token-paginated. */
     listPersonDocuments(personId: string, pageSize?: number | null, pageToken?: string | null): Promise<IDocumentPage>;
     /** Read one document. */
@@ -78,6 +91,43 @@ export class DocumentService implements IDocumentService {
             [
                 personId,
             ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * List documents across every holder the caller may read, token-paginated, narrowed by the
+     * document facet set (D-ObjectFacets, M56). Documents are scoped THROUGH THE HOLDER
+     * (D-PersonReadScope): a non-instance-admin caller sees only documents whose holder falls in
+     * their read-scope union. Every filter below is applied INSIDE that union, before the page is
+     * cut, so a filtered page is never short and its cursor is never wrong.
+     *
+     * Metadata only — the same projection the per-holder listing returns. The facet filters
+     * combine with AND and do NOT widen what the caller may see: filtering can only narrow the
+     * visible set.
+     *
+     */
+    public listDocuments(pageSize?: number | null, pageToken?: string | null, typeId?: string | null, status?: string | null, issuingCountryId?: string | null, issuedOnFrom?: string | null, issuedOnTo?: string | null, expiresOnFrom?: string | null, expiresOnTo?: string | null): Promise<IDocumentPage> {
+        return this.bridge.call<IDocumentPage>(
+            "DocumentService",
+            "listDocuments",
+            "GET",
+            "/document/v1/documents",
+            __undefined,
+            __undefined,
+            {
+                "pageSize": pageSize,
+                "pageToken": pageToken,
+                "typeId": typeId,
+                "status": status,
+                "issuingCountryId": issuingCountryId,
+                "issuedOnFrom": issuedOnFrom,
+                "issuedOnTo": issuedOnTo,
+                "expiresOnFrom": expiresOnFrom,
+                "expiresOnTo": expiresOnTo,
+            },
+            __undefined,
             __undefined,
             __undefined
         );

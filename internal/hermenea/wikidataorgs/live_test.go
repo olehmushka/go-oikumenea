@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/fetcher"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
+	"github.com/olegamysk/go-oikumenea/internal/hermenea/fetcher"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/wikidataorgs"
 )
 

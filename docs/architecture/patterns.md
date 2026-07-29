@@ -271,7 +271,7 @@ Owner: [upgrade-safety.md](upgrade-safety.md); every module's migrations comply.
 A **facet** is one filterable, groupable dimension of an object type — `{key, kind, column,
 readPermission, buckets}` — declared **once** by the module that owns the table and consumed
 **twice**: as a typed optional query arg on that module's list endpoint, and as a `groupBy` key on
-its `GET /<module>/v1/<collection>/stats` endpoint. Both take the same names and the same values, so
+its `GET /<module>/v1/stats/<collection>` endpoint. Both take the same names and the same values, so
 a chart segment and a list filter are the same act; the console keeps the whole set in the URL, so
 toggling list↔dashboard carries the filters across and clicking a chart is navigation that adds one.
 Parity between a facet and its query arg is a build-time drift guard derived from the Conjure IR.

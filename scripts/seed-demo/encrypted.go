@@ -3,7 +3,9 @@
 
 package main
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // phaseEEncrypted fills the envelope-encrypted tables. Each secret value is sealed with the app's
 // own cipher (built from the dev keys in install.yml) into the table's four envelope columns

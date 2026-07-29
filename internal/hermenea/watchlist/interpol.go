@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/fetcher"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
+	"github.com/olegamysk/go-oikumenea/internal/hermenea/fetcher"
 )
 
 // InterpolBaseURL is INTERPOL's public Red Notices endpoint (documented at interpol.api.bund.dev, the
