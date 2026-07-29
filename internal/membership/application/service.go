@@ -26,6 +26,7 @@ import (
 	auditdomain "github.com/olegamysk/go-oikumenea/internal/audit/domain"
 	"github.com/olegamysk/go-oikumenea/internal/membership/domain"
 	orderevents "github.com/olegamysk/go-oikumenea/internal/order/events"
+	persondomain "github.com/olegamysk/go-oikumenea/internal/person/domain"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/pkg/events"
 	"github.com/olegamysk/go-oikumenea/pkg/listing"
@@ -393,6 +394,38 @@ func (s *Service) ListPersonMemberships(ctx context.Context, personID string, pa
 	})
 }
 
+// ListMemberships is the INSTANCE-ADMIN arm of the top-level facet-filtered listing (M56 ticket 3 /
+// D-ObjectFacets): every membership, every status, narrowed only by the caller's filter.
+//
+// Validate runs HERE rather than in either arm, so the admin and read-scope paths reject an invalid
+// filter identically — half of the no-drift contract the two paths are held to.
+func (s *Service) ListMemberships(ctx context.Context, f domain.MembershipFilter, pageSize int, pageToken string) (MembershipPage, error) {
+	if err := f.Validate(); err != nil {
+		return MembershipPage{}, err
+	}
+	return s.listMemberships(ctx, pageSize, pageToken, func(after string, limit int) ([]domain.Membership, error) {
+		return s.newRepo(s.querier(ctx)).ListMemberships(ctx, f, after, limit)
+	})
+}
+
+// ListVisibleMemberships is the READ-SCOPE arm: the same filter intersected with the subject's
+// effective readable reach, folded into the SQL so the page is cut after the intersection (R-06 — a
+// Go-side re-filter would return a short page with a nextPageToken).
+func (s *Service) ListVisibleMemberships(ctx context.Context, subjectPersonID string, f domain.MembershipFilter, pageSize int, pageToken string) (MembershipPage, error) {
+	if err := f.Validate(); err != nil {
+		return MembershipPage{}, err
+	}
+	return s.listMemberships(ctx, pageSize, pageToken, func(after string, limit int) ([]domain.Membership, error) {
+		return s.newRepo(s.querier(ctx)).ListMembershipsForSubject(ctx, subjectPersonID, f, after, limit)
+	})
+}
+
+// ReadableUnitIDsForSubject exposes migration 0017's reach projection for the differential test that
+// holds it equal to the inline CTE (see domain.Repository).
+func (s *Service) ReadableUnitIDsForSubject(ctx context.Context, subjectPersonID string) ([]string, error) {
+	return s.newRepo(s.querier(ctx)).ReadableUnitIDsForSubject(ctx, subjectPersonID)
+}
+
 // ActiveUnitIDsForPerson returns the distinct units a person currently belongs to via active
 // memberships — the cross-module query the person/document read-scope projection intersects with the
 // reader's effective readable units (D-PersonReadScope). Runs on the request-pinned connection.
@@ -404,8 +437,8 @@ func (s *Service) ActiveUnitIDsForPerson(ctx context.Context, personID string) (
 // D-PersonReadScope, computed as one SQL semi-join over memberships × the subject's authz reach
 // (review-2026-07 R-02.1 — replaces the app-side reach flatten + PersonIDsWithActiveMembershipInUnits
 // array union). Keyset-paginated by person RID; powers the directory list (GET /persons).
-func (s *Service) VisiblePersonIDsForSubject(ctx context.Context, subjectPersonID, after, query string, limit int) ([]string, error) {
-	return s.newRepo(s.querier(ctx)).VisiblePersonIDsForSubject(ctx, subjectPersonID, after, query, limit)
+func (s *Service) VisiblePersonIDsForSubject(ctx context.Context, subjectPersonID, after string, f persondomain.PersonFilter, limit int) ([]string, error) {
+	return s.newRepo(s.querier(ctx)).VisiblePersonIDsForSubject(ctx, subjectPersonID, after, f, limit)
 }
 
 // SubjectCanReadPerson is the point probe of the same reach predicate: whether any of the person's

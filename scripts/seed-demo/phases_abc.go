@@ -3,7 +3,9 @@
 
 package main
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // openPosition is a billet ready to be filled; rankID is the UA rank a holder should carry ("" for
 // civilian positions, e.g. university).
@@ -17,10 +19,10 @@ type openPosition struct {
 
 // echelon → UA-armed-forces rank code (land force). Resolved to rank_ranks ids on demand.
 var echelonRank = map[string]string{
-	"brigade":   "polkovnyk",     // OF-5
-	"battalion": "pidpolkovnyk",  // OF-4
-	"company":   "kapitan",       // OF-2
-	"platoon":   "leitenant",     // OF-1
+	"brigade":   "polkovnyk",    // OF-5
+	"battalion": "pidpolkovnyk", // OF-4
+	"company":   "kapitan",      // OF-2
+	"platoon":   "leitenant",    // OF-1
 }
 
 var rifleRanks = []string{"soldat", "starshyi-soldat", "molodshyi-serzhant", "serzhant"}

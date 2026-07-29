@@ -89,7 +89,7 @@ func RunAsSystem(ctx context.Context, pool *pgxpool.Pool, fn func(ctx context.Co
 // setRLSGUCs sets the three app.* GUCs in ONE round trip (review-2026-07 R-03: the old four-GUC loop
 // cost 4 round trips per acquire; the machine reach arm added app.principal_id in M55). The policies
 // read them with current_setting(name, true), so an unset GUC reads as NULL (no rows) rather than
-// erroring; nullif('') maps the reset value to NULL.
+// erroring; nullif(”) maps the reset value to NULL.
 func setRLSGUCs(ctx context.Context, conn *pgxpool.Conn, state RLSState) error {
 	if _, err := conn.Exec(ctx,
 		"SELECT set_config('app.person_id', $1, false), set_config('app.is_instance_admin', $2, false), set_config('app.principal_id', $3, false)",

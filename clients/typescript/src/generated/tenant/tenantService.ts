@@ -57,17 +57,23 @@ export interface ITenantService {
     listUnitCodeEvents(unitId: string): Promise<IUnitCodeEventList>;
     /**
      * List/search units within an organization (D-TenantOrganizations, M40). `org` is REQUIRED —
-     * a fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally filtered by
-     * `domain` (cross-cut within the org, for mixed trees), `unitKind`, and `level`. Token-paginated.
+     * a fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally narrowed by the
+     * unit facet set (D-ObjectFacets, M56): `domain` (cross-cut within the org, for mixed trees),
+     * `unitKind`, `level`, `visibility`, `state` and `pdpScoped`. Token-paginated.
+     *
+     * The shadow-visibility gate still trims the page AFTER it is cut, so `visibility` NARROWS and
+     * never widens: asking for `visibility=shadow` without shadow reach yields an empty page, not
+     * an error and not a leak.
      *
      * For hierarchical (expand-on-click) browsing in graph `graph` (default `command`): pass
      * `rootsOnly=true` to list only the org's top-level units (those with no parent in the graph),
      * or `parent=<unitRid>` to list a unit's DIRECT children in the graph. The two are mutually
-     * exclusive, and each ignores the `domain`/`unitKind`/`level` filters. When neither is set the
+     * exclusive, and each ignores the flat-listing filters
+     * (`domain`/`unitKind`/`level`/`visibility`/`state`/`pdpScoped`). When neither is set the
      * listing is the flat, filtered org listing.
      *
      */
-    listUnits(org: string, domain?: string | null, unitKind?: string | null, level?: number | null, graph?: string | null, parent?: string | null, rootsOnly?: boolean | null, pageSize?: number | null, pageToken?: string | null): Promise<IUnitPage>;
+    listUnits(org: string, domain?: string | null, unitKind?: string | null, level?: number | null, visibility?: string | null, state?: string | null, pdpScoped?: boolean | null, graph?: string | null, parent?: string | null, rootsOnly?: boolean | null, pageSize?: number | null, pageToken?: string | null): Promise<IUnitPage>;
     /** Attach the path unit as a child of parentId within a graph (default command). Returns Tenant:UnitCycleDetected on a cycle. */
     addEdge(unitId: string, request: IAddEdgeRequest): Promise<IUnitEdge>;
     /** Detach the path unit from a parent within a graph. */
@@ -236,17 +242,23 @@ export class TenantService implements ITenantService {
 
     /**
      * List/search units within an organization (D-TenantOrganizations, M40). `org` is REQUIRED —
-     * a fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally filtered by
-     * `domain` (cross-cut within the org, for mixed trees), `unitKind`, and `level`. Token-paginated.
+     * a fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally narrowed by the
+     * unit facet set (D-ObjectFacets, M56): `domain` (cross-cut within the org, for mixed trees),
+     * `unitKind`, `level`, `visibility`, `state` and `pdpScoped`. Token-paginated.
+     *
+     * The shadow-visibility gate still trims the page AFTER it is cut, so `visibility` NARROWS and
+     * never widens: asking for `visibility=shadow` without shadow reach yields an empty page, not
+     * an error and not a leak.
      *
      * For hierarchical (expand-on-click) browsing in graph `graph` (default `command`): pass
      * `rootsOnly=true` to list only the org's top-level units (those with no parent in the graph),
      * or `parent=<unitRid>` to list a unit's DIRECT children in the graph. The two are mutually
-     * exclusive, and each ignores the `domain`/`unitKind`/`level` filters. When neither is set the
+     * exclusive, and each ignores the flat-listing filters
+     * (`domain`/`unitKind`/`level`/`visibility`/`state`/`pdpScoped`). When neither is set the
      * listing is the flat, filtered org listing.
      *
      */
-    public listUnits(org: string, domain?: string | null, unitKind?: string | null, level?: number | null, graph?: string | null, parent?: string | null, rootsOnly?: boolean | null, pageSize?: number | null, pageToken?: string | null): Promise<IUnitPage> {
+    public listUnits(org: string, domain?: string | null, unitKind?: string | null, level?: number | null, visibility?: string | null, state?: string | null, pdpScoped?: boolean | null, graph?: string | null, parent?: string | null, rootsOnly?: boolean | null, pageSize?: number | null, pageToken?: string | null): Promise<IUnitPage> {
         return this.bridge.call<IUnitPage>(
             "TenantService",
             "listUnits",
@@ -259,6 +271,9 @@ export class TenantService implements ITenantService {
                 "domain": domain,
                 "unitKind": unitKind,
                 "level": level,
+                "visibility": visibility,
+                "state": state,
+                "pdpScoped": pdpScoped,
                 "graph": graph,
                 "parent": parent,
                 "rootsOnly": rootsOnly,

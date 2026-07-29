@@ -23,6 +23,7 @@ export const SERVICE_NAMES: Record<number, string> = {
   17: "vehicle",
   18: "external_organization",
   19: "finance",
+  20: "connector",
 };
 
 export interface RidTypeInfo {
@@ -71,6 +72,9 @@ export const RID_TYPES: Record<string, RidTypeInfo> = {
   "6/1/17": { token: "crypto_wallet", name: "crypto_wallet", kind: "object" },
   "6/1/18": { token: "personality", name: "personality", kind: "object" },
   "6/1/19": { token: "political_leaning", name: "political_leaning", kind: "object" },
+  "6/1/20": { token: "health_record", name: "health_record", kind: "object" },
+  "6/1/21": { token: "insurance", name: "insurance", kind: "object" },
+  "6/1/22": { token: "legal_record", name: "legal_record", kind: "object" },
   "6/2/1": { token: "link__holds_rank", name: "holds_rank", kind: "link" },
   "6/2/2": { token: "link__partnered_with", name: "partnered_with", kind: "link" },
   "6/2/3": { token: "link__kin_parent_of", name: "kin_parent_of", kind: "link" },
@@ -89,8 +93,11 @@ export const RID_TYPES: Record<string, RidTypeInfo> = {
   "8/1/1": { token: "role", name: "role", kind: "object" },
   "8/2/1": { token: "link__has_role", name: "has_role", kind: "link" },
   "8/2/2": { token: "link__instance_admin", name: "instance_admin", kind: "link" },
+  "8/2/3": { token: "link__principal_grant", name: "principal_grant", kind: "link" },
   "9/1/1": { token: "account", name: "account", kind: "object" },
   "9/1/2": { token: "external_identity", name: "external_identity", kind: "object" },
+  "9/1/3": { token: "service_principal", name: "service_principal", kind: "object" },
+  "9/1/4": { token: "login_event", name: "login_event", kind: "object" },
   "10/1/1": { token: "document_type", name: "document_type", kind: "object" },
   "10/1/2": { token: "document", name: "document", kind: "object" },
   "10/1/3": { token: "personal_code", name: "personal_code", kind: "object" },
@@ -178,4 +185,7 @@ export const RID_TYPES: Record<string, RidTypeInfo> = {
   "19/1/3": { token: "account_type", name: "account_type", kind: "object" },
   "19/1/4": { token: "card_network", name: "card_network", kind: "object" },
   "19/2/1": { token: "link__held_by", name: "held_by", kind: "link" },
+  "20/1/1": { token: "connector", name: "connector", kind: "object" },
+  "20/1/2": { token: "connector_source", name: "connector_source", kind: "object" },
+  "20/1/3": { token: "sync_run", name: "sync_run", kind: "object" },
 };

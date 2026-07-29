@@ -10,9 +10,8 @@ import (
 	"sort"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	werror "github.com/palantir/witchcraft-go-error"
-
 	"github.com/olegamysk/go-oikumenea/migrations"
+	werror "github.com/palantir/witchcraft-go-error"
 )
 
 // ExpectedSchemaRevision is the schema revision this binary is built against — the revision the

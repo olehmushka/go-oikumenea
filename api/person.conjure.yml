@@ -1552,7 +1552,14 @@ services:
         returns: Person
       listPersons:
         http: GET /persons
-        docs: Search/list the directory, token-paginated. (The read-scope union is applied once authz lands, M7.)
+        docs: |
+          Search/list the directory, token-paginated, narrowed by the person facet set
+          (D-ObjectFacets, M56). A non-instance-admin caller sees only the read-scope union
+          (D-PersonReadScope); every filter below is applied INSIDE that union, before the page is
+          cut, so a filtered page is never short and its cursor is never wrong.
+
+          The facet filters combine with AND. They are ordinary structural predicates and do NOT
+          widen what the caller may see: filtering can only narrow the visible set.
         args:
           pageSize:
             type: optional<integer>
@@ -1564,6 +1571,42 @@ services:
             type: optional<string>
             param-type: query
             docs: Optional case-insensitive substring match on the person's name/code haystack (display name, code, given, surname) or any of their name variants (transliterations / aliases). Trigram-indexed; a query of 3+ characters is served by an index (D-PersonSearch).
+          sex:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — ISO/IEC 5218 sex. One of `not_known`, `male`, `female`, `not_applicable`.
+          status:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — lifecycle status. One of `active`, `deactivated`, `provisional`, `purged`.
+          birthdateFrom:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — INCLUSIVE lower bound on birthdate, an ISO-8601 calendar date (`YYYY-MM-DD`). Persons with an UNKNOWN (null) birthdate are excluded whenever either bound is set.
+          birthdateTo:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — INCLUSIVE upper bound on birthdate (`YYYY-MM-DD`). See `birthdateFrom` for the unknown-birthdate rule.
+          countryOfBirth:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — country-of-birth RID (D-Geo).
+          rankId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — rank RID. Matches the person's ACTIVE rank row; a person holds one rank per rank system (D-Rank).
+          unitId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — unit RID. SUBTREE-EXPANDING — matches an active membership in this unit OR in any of its closure descendants. See `graph`.
+          graph:
+            type: optional<string>
+            param-type: query
+            docs: Graph code narrowing the `unitId` subtree expansion to one DAG. Default — and when omitted — the expansion spans every authority-bearing graph, the same closure set the read-scope predicate uses. Meaningless without `unitId`, and rejected with Person:PersonInvalid if passed alone.
+          hasAccount:
+            type: optional<boolean>
+            param-type: query
+            docs: Facet filter — `true` selects persons with an active account, `false` those with none. The directory is account-optional (L-AccountOptional), so both sides are populated.
         returns: PersonPage
       setRank:
         http: PUT /persons/{personId}/rank

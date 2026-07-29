@@ -107,14 +107,20 @@ func (r *Repository) SetUnitState(ctx context.Context, id string, state domain.S
 	return toUnit(row), nil
 }
 
-func (r *Repository) ListUnits(ctx context.Context, orgID string, domainID, kindID *string, level *int, after string, limit int) ([]domain.Unit, error) {
+// ListUnits returns one keyset page of the flat org listing, narrowed by the unit facet set
+// (M56 / D-ObjectFacets). Every facet is bound as a nullable param, so an unset filter is a SQL NULL
+// and not a sentinel value.
+func (r *Repository) ListUnits(ctx context.Context, f domain.UnitFilter, after string, limit int) ([]domain.Unit, error) {
 	rows, err := r.q.ListUnits(ctx, tenantsql.ListUnitsParams{
-		OrgID:    orgID,
-		DomainID: textPtr(domainID),
-		KindID:   textPtr(kindID),
-		Level:    int2Ptr(level),
-		After:    textPtr(strPtrOrNil(after)),
-		Lim:      int32(limit),
+		OrgID:      f.OrgID,
+		DomainID:   textPtr(f.DomainID),
+		KindID:     textPtr(f.KindID),
+		Level:      int2Ptr(f.Level),
+		Visibility: textPtr(f.Visibility),
+		State:      textPtr(f.State),
+		PdpScoped:  boolPtr(f.PDPScoped),
+		After:      textPtr(strPtrOrNil(after)),
+		Lim:        int32(limit),
 	})
 	if err != nil {
 		return nil, err

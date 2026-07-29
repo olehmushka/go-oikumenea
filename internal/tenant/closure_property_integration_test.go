@@ -186,8 +186,8 @@ func TestClosureIncrementalPropertyDifferential(t *testing.T) {
 			units[i] = mustCreate(t, svc, org, uniqueCode(t, fmt.Sprintf("s%d-u%d", seed, i))).ID
 		}
 
-		edges := map[oracleEdge]bool{}   // the oracle's model
-		var edgeList []oracleEdge        // deterministic pick order for detaches
+		edges := map[oracleEdge]bool{} // the oracle's model
+		var edgeList []oracleEdge      // deterministic pick order for detaches
 		check := func(op int, what string) {
 			t.Helper()
 			got := storedClosure(t, pool, gid)

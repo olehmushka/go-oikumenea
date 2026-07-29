@@ -3,7 +3,9 @@
 
 package db
 
-import "testing"
+import (
+	"testing"
+)
 
 // TestExpectedSchemaRevisionDerivedFromEmbed proves the R-25 gate derives its expected revision from
 // the embedded hermenea migrations (no hand-bumped constant): the marker in the latest migration is

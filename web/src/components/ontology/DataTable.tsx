@@ -10,8 +10,16 @@ import { OBJECT_TYPES, rowSearchText, type Row } from "@/lib/ontology/registry";
 import { Value } from "./Value";
 import { Drawer } from "./Drawer";
 
-/** Registry-driven object table: quick filter, client sort, multi-select + bulk actions, and a detail
- *  drawer on row click (keeps your place in the list). `type` is a string; the def is looked up here. */
+/** Registry-driven object table: client sort, multi-select + bulk actions, and a detail drawer on row
+ *  click (keeps your place in the list). `type` is a string; the def is looked up here.
+ *
+ *  Filtering moved to the URL in M56 ticket 4 (FilterBar): a type whose list endpoint ships a search
+ *  arg is narrowed SERVER-side, so no box is drawn here. Types without one keep a page-local box,
+ *  labelled as such — it only ever sees the rows already fetched, and the old "N of M" counter beside
+ *  a keyset-paginated table read as a total, which it never was.
+ *
+ *  Column sort is still page-local for the same reason and cannot be honestly moved to the URL: no
+ *  list endpoint ships an `orderBy` arg (see the Sort open seam in docs/architecture/facets.md). */
 export function DataTable({
   type,
   rows,
@@ -32,6 +40,11 @@ export function DataTable({
   const [busy, setBusy] = useState(false);
 
   const cols = def?.columns ?? [];
+  // Only for types the backend cannot narrow; otherwise the FilterBar's search box is the real one.
+  const pageLocalFilter = !def?.list?.searchParam;
+  // A type with no detail endpoint (link__member_of — the contract ships no GET /memberships/{id})
+  // must not open a drawer that immediately errors.
+  const openable = Boolean(def?.get);
 
   // Stable per-row identity. Structural objects carry an `id` (RID); catalog/locale objects are
   // keyed by their locale-agnostic `code` instead. Fall back to a positional key so React keys
@@ -92,17 +105,19 @@ export function DataTable({
 
   return (
     <div>
-      <div className="mb-3 flex items-center gap-3">
-        <input
-          className="input max-w-xs"
-          placeholder={`${tg("Filter")} ${tg(def.labelPlural).toLowerCase()}…`}
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        />
-        <span className="text-xs text-slate-400">
-          {view.length} {tg("of")} {rows.length}
-        </span>
-      </div>
+      {pageLocalFilter ? (
+        <div className="mb-3 flex items-center gap-3">
+          <input
+            className="input max-w-xs"
+            placeholder={tg("Filter rows on this page…")}
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
+          <span className="text-xs text-slate-400">
+            {view.length} {tg("of")} {rows.length} {tg("on this page")}
+          </span>
+        </div>
+      ) : null}
 
       {selected.size > 0 && (def.actions?.length ?? 0) > 0 ? (
         <div className="mb-3 flex items-center gap-2 rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm">
@@ -150,7 +165,11 @@ export function DataTable({
             {view.map((r, i) => {
               const rid = ridOf(r);
               return (
-              <tr key={rid || `row-${i}`} className="cursor-pointer hover:bg-slate-50" onClick={() => setSel(rid)}>
+              <tr
+                key={rid || `row-${i}`}
+                className={`hover:bg-slate-50 ${openable ? "cursor-pointer" : ""}`}
+                onClick={openable ? () => setSel(rid) : undefined}
+              >
                 {(def.actions?.length ?? 0) > 0 ? (
                   <td className="td" onClick={(e) => e.stopPropagation()}>
                     <input type="checkbox" checked={selected.has(rid)} onChange={() => toggleOne(rid)} />

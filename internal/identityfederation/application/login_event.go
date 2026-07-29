@@ -14,8 +14,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation/domain"
-	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	personevents "github.com/olegamysk/go-oikumenea/internal/person/events"
+	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/pkg/events"
 	"github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )

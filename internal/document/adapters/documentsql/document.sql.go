@@ -11,6 +11,24 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countReadableUnitsForDispatch = `-- name: CountReadableUnitsForDispatch :one
+SELECT oikumenea.authz_readable_unit_count($1, $2::integer) AS n
+`
+
+type CountReadableUnitsForDispatchParams struct {
+	SubjectPersonID string
+	Cap             int32
+}
+
+// The capped reach-cardinality probe the sparse/dense list dispatch reads (migration 0017). Capped,
+// because the question is never "how big is the reach" but "is it past the threshold".
+func (q *Queries) CountReadableUnitsForDispatch(ctx context.Context, arg CountReadableUnitsForDispatchParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countReadableUnitsForDispatch, arg.SubjectPersonID, arg.Cap)
+	var n int64
+	err := row.Scan(&n)
+	return n, err
+}
+
 const cryptoErasePersonCodes = `-- name: CryptoErasePersonCodes :execrows
 UPDATE oikumenea.document_personal_codes SET value_ciphertext = NULL, wrapped_dek = NULL
 WHERE person_id = $1 AND deleted_at IS NULL
@@ -360,6 +378,93 @@ func (q *Queries) ListDocumentTypes(ctx context.Context) ([]OikumeneaDocumentDoc
 	return items, nil
 }
 
+const listDocuments = `-- name: ListDocuments :many
+
+SELECT id, person_id, type_id, number, issuer, issuing_country_id, issued_on, expires_on, attributes, status, created_at, updated_at, deleted_at FROM oikumenea.document_documents d
+WHERE d.deleted_at IS NULL
+  AND ($1 = '' OR d.id::text > $1)
+  AND ($2::uuid IS NULL OR d.type_id = $2::uuid)
+  AND ($3::text IS NULL OR d.status = $3::text)
+  AND ($4::uuid IS NULL OR d.issuing_country_id = $4::uuid)
+  AND ($5::date IS NULL OR d.issued_on >= $5::date)
+  AND ($6::date IS NULL OR d.issued_on <= $6::date)
+  AND ($7::date IS NULL OR d.expires_on >= $7::date)
+  AND ($8::date IS NULL OR d.expires_on <= $8::date)
+ORDER BY d.id
+LIMIT $9
+`
+
+type ListDocumentsParams struct {
+	After            interface{}
+	TypeID           pgtype.Text
+	Status           pgtype.Text
+	IssuingCountryID pgtype.Text
+	IssuedOnFrom     pgtype.Date
+	IssuedOnTo       pgtype.Date
+	ExpiresOnFrom    pgtype.Date
+	ExpiresOnTo      pgtype.Date
+	Lim              int32
+}
+
+// ============================ top-level facet-filtered list (M56 ticket 3 / D-ObjectFacets) ============================
+// GET /documents. Two shapes, ONE filter block, byte-identical between them: the admin path and the
+// holder-scoped path must select the same rows for the same filters, differing ONLY by the
+// visibility predicate. sqlparity_test.go proves the block is present in both with no database.
+//
+// document_documents carries NO unit column and NO RLS policy (0005): documents are scoped THROUGH
+// THE HOLDER (D-PersonReadScope). The scoped arm therefore folds the holder semi-join — the person
+// has an active membership in a unit of the subject's reach — rather than a unit predicate. This is
+// the SQL form of the holderReadable() point probe the per-person listing already uses; folded into
+// the query because a Go-side holder check after the page is cut would return a short page WITH a
+// nextPageToken (R-06).
+//
+// Metadata only. The pii:basic number/issuer and the pii:special `attributes` bag are returned by the
+// same projection the per-holder listing returns, and neither is filterable (D-ObjectFacets rule 1).
+// Instance-admin path: every document, keyset-paginated by RID.
+func (q *Queries) ListDocuments(ctx context.Context, arg ListDocumentsParams) ([]OikumeneaDocumentDocument, error) {
+	rows, err := q.db.Query(ctx, listDocuments,
+		arg.After,
+		arg.TypeID,
+		arg.Status,
+		arg.IssuingCountryID,
+		arg.IssuedOnFrom,
+		arg.IssuedOnTo,
+		arg.ExpiresOnFrom,
+		arg.ExpiresOnTo,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaDocumentDocument
+	for rows.Next() {
+		var i OikumeneaDocumentDocument
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.TypeID,
+			&i.Number,
+			&i.Issuer,
+			&i.IssuingCountryID,
+			&i.IssuedOn,
+			&i.ExpiresOn,
+			&i.Attributes,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDocumentsByPerson = `-- name: ListDocumentsByPerson :many
 SELECT id, person_id, type_id, number, issuer, issuing_country_id, issued_on, expires_on, attributes, status, created_at, updated_at, deleted_at FROM oikumenea.document_documents
 WHERE person_id = $1 AND deleted_at IS NULL
@@ -376,6 +481,169 @@ type ListDocumentsByPersonParams struct {
 
 func (q *Queries) ListDocumentsByPerson(ctx context.Context, arg ListDocumentsByPersonParams) ([]OikumeneaDocumentDocument, error) {
 	rows, err := q.db.Query(ctx, listDocumentsByPerson, arg.PersonID, arg.After, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaDocumentDocument
+	for rows.Next() {
+		var i OikumeneaDocumentDocument
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.TypeID,
+			&i.Number,
+			&i.Issuer,
+			&i.IssuingCountryID,
+			&i.IssuedOn,
+			&i.ExpiresOn,
+			&i.Attributes,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDocumentsForSubject = `-- name: ListDocumentsForSubject :many
+SELECT id, person_id, type_id, number, issuer, issuing_country_id, issued_on, expires_on, attributes, status, created_at, updated_at, deleted_at FROM oikumenea.document_documents d
+WHERE d.deleted_at IS NULL
+  AND ($1 = '' OR d.id::text > $1)
+  AND ($2::uuid IS NULL OR d.type_id = $2::uuid)
+  AND ($3::text IS NULL OR d.status = $3::text)
+  AND ($4::uuid IS NULL OR d.issuing_country_id = $4::uuid)
+  AND ($5::date IS NULL OR d.issued_on >= $5::date)
+  AND ($6::date IS NULL OR d.issued_on <= $6::date)
+  AND ($7::date IS NULL OR d.expires_on >= $7::date)
+  AND ($8::date IS NULL OR d.expires_on <= $8::date)
+  AND EXISTS (
+    SELECT 1 FROM oikumenea.membership_memberships m
+    WHERE m.person_id = d.person_id AND m.status = 'active' AND m.deleted_at IS NULL
+      AND m.unit_id IN (SELECT oikumenea.authz_readable_units($9)))
+ORDER BY d.id
+LIMIT $10
+`
+
+type ListDocumentsForSubjectParams struct {
+	After            interface{}
+	TypeID           pgtype.Text
+	Status           pgtype.Text
+	IssuingCountryID pgtype.Text
+	IssuedOnFrom     pgtype.Date
+	IssuedOnTo       pgtype.Date
+	ExpiresOnFrom    pgtype.Date
+	ExpiresOnTo      pgtype.Date
+	SubjectPersonID  string
+	Lim              int32
+}
+
+// Read-scope path: the same set restricted to documents whose HOLDER the subject may read. The reach
+// set is UNCORRELATED (it reads only @subject_person_id), so the planner evaluates it once and probes
+// a hash instead of re-deriving the closure per candidate document.
+func (q *Queries) ListDocumentsForSubject(ctx context.Context, arg ListDocumentsForSubjectParams) ([]OikumeneaDocumentDocument, error) {
+	rows, err := q.db.Query(ctx, listDocumentsForSubject,
+		arg.After,
+		arg.TypeID,
+		arg.Status,
+		arg.IssuingCountryID,
+		arg.IssuedOnFrom,
+		arg.IssuedOnTo,
+		arg.ExpiresOnFrom,
+		arg.ExpiresOnTo,
+		arg.SubjectPersonID,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaDocumentDocument
+	for rows.Next() {
+		var i OikumeneaDocumentDocument
+		if err := rows.Scan(
+			&i.ID,
+			&i.PersonID,
+			&i.TypeID,
+			&i.Number,
+			&i.Issuer,
+			&i.IssuingCountryID,
+			&i.IssuedOn,
+			&i.ExpiresOn,
+			&i.Attributes,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDocumentsForSubjectDense = `-- name: ListDocumentsForSubjectDense :many
+SELECT id, person_id, type_id, number, issuer, issuing_country_id, issued_on, expires_on, attributes, status, created_at, updated_at, deleted_at FROM oikumenea.document_documents d
+WHERE d.deleted_at IS NULL
+  AND ($1 = '' OR d.id::text > $1)
+  AND ($2::uuid IS NULL OR d.type_id = $2::uuid)
+  AND ($3::text IS NULL OR d.status = $3::text)
+  AND ($4::uuid IS NULL OR d.issuing_country_id = $4::uuid)
+  AND ($5::date IS NULL OR d.issued_on >= $5::date)
+  AND ($6::date IS NULL OR d.issued_on <= $6::date)
+  AND ($7::date IS NULL OR d.expires_on >= $7::date)
+  AND ($8::date IS NULL OR d.expires_on <= $8::date)
+  AND EXISTS (
+    SELECT 1 FROM oikumenea.membership_memberships m
+    WHERE m.person_id = d.person_id AND m.status = 'active' AND m.deleted_at IS NULL
+      AND oikumenea.authz_unit_readable_by(m.unit_id, $9))
+ORDER BY d.id
+LIMIT $10
+`
+
+type ListDocumentsForSubjectDenseParams struct {
+	After            interface{}
+	TypeID           pgtype.Text
+	Status           pgtype.Text
+	IssuingCountryID pgtype.Text
+	IssuedOnFrom     pgtype.Date
+	IssuedOnTo       pgtype.Date
+	ExpiresOnFrom    pgtype.Date
+	ExpiresOnTo      pgtype.Date
+	SubjectPersonID  string
+	Lim              int32
+}
+
+// DENSE-reach plan shape of the query above, byte-identical in its filter block and differing ONLY in
+// how the holder's reach is applied: a per-row point probe instead of a materialized reach set. See
+// migration 0017 for the measured reason both shapes exist — at root reach the set form measured
+// 6 419 ms against 4.7 ms here, because materializing the reach makes the planner drive from it,
+// build a 9x10^5-row person hash and top-N sort, so the LIMIT never terminates early. The adapter
+// dispatches on CountReadableUnitsCapped.
+func (q *Queries) ListDocumentsForSubjectDense(ctx context.Context, arg ListDocumentsForSubjectDenseParams) ([]OikumeneaDocumentDocument, error) {
+	rows, err := q.db.Query(ctx, listDocumentsForSubjectDense,
+		arg.After,
+		arg.TypeID,
+		arg.Status,
+		arg.IssuingCountryID,
+		arg.IssuedOnFrom,
+		arg.IssuedOnTo,
+		arg.ExpiresOnFrom,
+		arg.ExpiresOnTo,
+		arg.SubjectPersonID,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}

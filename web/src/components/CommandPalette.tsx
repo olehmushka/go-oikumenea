@@ -136,8 +136,10 @@ export function CommandPalette({ caps }: { caps: Capabilities }) {
     { label: tg("Overview"), href: "/", requires: undefined },
     { label: tg("Ontology"), href: "/ontology", requires: undefined },
     { label: tg("Authorize"), href: "/authorize", requires: "assignment.read" },
-    { label: tg("Memberships"), href: "/memberships", requires: "membership.read" },
-    { label: tg("Orders"), href: "/orders", requires: "order.read" },
+    // The tool pages, named apart from the explore entries above: /explore/link__member_of and
+    // /explore/order are the global faceted lists; these are the lookup and the issue desk.
+    { label: tg("Membership lookup"), href: "/memberships", requires: "membership.read" },
+    { label: tg("Order desk"), href: "/orders", requires: "order.read" },
     { label: tg("Ranks"), href: "/ranks", requires: "rank.scheme.read" },
     { label: tg("Localization"), href: "/localization", requires: "locale.read" },
     { label: tg("Audit"), href: "/audit", requires: "audit.read" },

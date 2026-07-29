@@ -179,6 +179,7 @@ enforcing its own invariants in its own write path. Effects land **at issue**;
 | `POST /orders/{id}/issue` | Issue a draft order (locks it; emits `OrderIssued` + per-item effect events; auto-applies structural effects in the same txn) | `order.issue` |
 | `POST /orders/{id}/revoke` | Revoke an issued order (via a revoking order) | `order.revoke` |
 | `GET /units/{unitId}/orders` | List a unit's orders (token-paginated) | `order.read` + shadow gate |
+| `GET /orders` | **Top-level facet-filtered list** across every readable issuing unit (M56 / D-ObjectFacets). Filters: `issuingUnitId`, `orderTypeId` (an `EXISTS` over the items — an order's effect lives there), `status`, `issuedOnFrom`/`To` | `order.read` **anywhere**, then the caller's readable reach on the ISSUING unit folded INTO the SQL (two plan shapes dispatched on reach cardinality; [facets.md](../architecture/facets.md)) |
 | `GET /orders/{id}` | Read one order (+ items) | `order.read` + shadow gate |
 | `GET /persons/{personId}/orders` | Orders affecting a person (via items) | `order.read` + shadow gate |
 | `GET /orders` | **New (M56).** Top-level order list, token-paginated; filtered by the declared facets — `issuingUnitId`, `orderTypeId`, `status`, `issuedOnFrom`/`issuedOnTo` ([D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope)) | `order.read` + shadow gate |

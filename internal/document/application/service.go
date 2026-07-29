@@ -217,6 +217,62 @@ func (s *Service) ListPersonDocuments(ctx context.Context, personID string, page
 	return DocumentPage{Documents: docs}, nil
 }
 
+// ListDocuments is the INSTANCE-ADMIN arm of the top-level facet-filtered listing (M56 ticket 3 /
+// D-ObjectFacets). Validate runs HERE rather than in either arm, so the admin and holder-scoped
+// paths reject an invalid filter identically — half of the no-drift contract the two are held to.
+func (s *Service) ListDocuments(ctx context.Context, f domain.DocumentFilter, pageSize int, pageToken string) (DocumentPage, error) {
+	if err := f.Validate(); err != nil {
+		return DocumentPage{}, err
+	}
+	return s.listDocuments(ctx, pageSize, pageToken, func(after string, limit int) ([]domain.Document, error) {
+		return s.newRepo(s.querier(ctx)).ListDocuments(ctx, f, after, limit)
+	})
+}
+
+// ListVisibleDocuments is the READ-SCOPE arm: the same filter restricted to documents whose HOLDER
+// the subject may read (D-PersonReadScope), folded into the SQL so the page is cut after the
+// restriction (R-06 — a Go-side holder check would return a short page with a nextPageToken).
+func (s *Service) ListVisibleDocuments(ctx context.Context, subjectPersonID string, f domain.DocumentFilter, pageSize int, pageToken string) (DocumentPage, error) {
+	if err := f.Validate(); err != nil {
+		return DocumentPage{}, err
+	}
+	return s.listDocuments(ctx, pageSize, pageToken, func(after string, limit int) ([]domain.Document, error) {
+		return s.newRepo(s.querier(ctx)).ListDocumentsForSubject(ctx, subjectPersonID, f, after, limit)
+	})
+}
+
+// listDocuments is the shared keyset-page assembly for the two top-level arms.
+func (s *Service) listDocuments(ctx context.Context, pageSize int, pageToken string, fetch func(after string, limit int) ([]domain.Document, error)) (DocumentPage, error) {
+	size := pageSizePolicy.Resolve(pageSize)
+	after, err := listing.DecodeCursor(pageToken)
+	if err != nil {
+		return DocumentPage{}, err
+	}
+	docs, err := fetch(after, size+1)
+	if err != nil {
+		return DocumentPage{}, err
+	}
+	if len(docs) > size {
+		return DocumentPage{Documents: docs[:size], NextPageToken: listing.EncodeCursor(docs[size-1].ID)}, nil
+	}
+	return DocumentPage{Documents: docs}, nil
+}
+
+// querier returns the request-pinned RLS connection if one is in context (db.AcquireScoped/WithConn),
+// else the bare pool.
+//
+// document_documents itself carries no row security, which is why every other read in this module
+// takes the bare pool. The top-level list is different: its read-scope arm probes
+// membership_memberships, which IS RLS-protected. On a connection that is not the request's pinned
+// one the app.* GUCs are unset, so authz_unit_in_reach sees neither the instance-admin bypass nor any
+// grant, the semi-join matches nothing, and the endpoint answers 200 with an EMPTY page to a caller
+// entitled to every row — the worst shape of wrong, because it reads as "no results" rather than as
+// a fault. That is exactly the bug M56 ticket 2 hit on the person directory (review-2026-07), and
+// the integration suite cannot catch it: it connects as a superuser and bypasses RLS.
+func (s *Service) querier(ctx context.Context) db.Querier {
+	return db.RequestQuerier(ctx, s.pool)
+}
+
 // ---------------------------------------------------------------- schemes
 
 func (s *Service) CreateScheme(ctx context.Context, sc domain.PersonalCodeScheme) (domain.PersonalCodeScheme, error) {

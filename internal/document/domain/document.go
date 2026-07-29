@@ -333,6 +333,12 @@ type Repository interface {
 	UpdateDocument(ctx context.Context, id string, patch DocumentPatch) (Document, error)
 	SoftDeleteDocument(ctx context.Context, id string) error
 	ListDocumentsByPerson(ctx context.Context, personID, after string, limit int) ([]Document, error)
+	// ListDocuments and ListDocumentsForSubject are the two arms of the top-level facet-filtered
+	// listing (M56 ticket 3 / D-ObjectFacets): the instance-admin view of every document, and the
+	// same filter set restricted to documents whose HOLDER the subject may read (D-PersonReadScope —
+	// document_documents has no unit column, so the scope is a holder semi-join, not a unit predicate).
+	ListDocuments(ctx context.Context, f DocumentFilter, after string, limit int) ([]Document, error)
+	ListDocumentsForSubject(ctx context.Context, subjectPersonID string, f DocumentFilter, after string, limit int) ([]Document, error)
 	// ErasePersonDocuments NULLs number/issuer/attributes for a person's documents (purge; D-PIITiers).
 	ErasePersonDocuments(ctx context.Context, personID string) (int64, error)
 

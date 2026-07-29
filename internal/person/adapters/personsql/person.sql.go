@@ -469,18 +469,58 @@ func (q *Queries) ListPersonRanks(ctx context.Context, personID string) ([]Oikum
 }
 
 const listPersons = `-- name: ListPersons :many
-SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2,
-  generation, credentials, preferred, birthdate, date_of_death, sex, country_of_birth_id,
-  attributes, status, deactivated_at, purge_after, created_at, updated_at
-FROM oikumenea.person_persons
-WHERE deleted_at IS NULL AND ($1 = '' OR id::text > $1)
-ORDER BY id
-LIMIT $2
+SELECT p.id, p.code, p.display_name, p.title, p.given, p.given2, p.surname, p.surname_prefix, p.surname2,
+  p.generation, p.credentials, p.preferred, p.birthdate, p.date_of_death, p.sex, p.country_of_birth_id,
+  p.attributes, p.status, p.deactivated_at, p.purge_after, p.created_at, p.updated_at
+FROM oikumenea.person_persons p
+WHERE p.deleted_at IS NULL AND ($1 = '' OR p.id::text > $1)
+  AND ($2::text IS NULL OR p.sex = $2::text)
+  AND ($3::text IS NULL OR p.status = $3::text)
+  AND ($4::date IS NULL OR p.birthdate >= $4::date)
+  AND ($5::date IS NULL OR p.birthdate <= $5::date)
+  AND ($6::uuid IS NULL OR p.country_of_birth_id = $6::uuid)
+  AND ($7::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.person_ranks pr
+        WHERE pr.person_id = p.id AND pr.deleted_at IS NULL
+          AND pr.rank_id = $7::uuid))
+  AND ($8::boolean IS NULL
+       OR $8::boolean = EXISTS (
+            SELECT 1 FROM oikumenea.account_accounts ac
+            WHERE ac.person_id = p.id AND ac.deleted_at IS NULL))
+  AND ($9::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.membership_memberships fm
+        WHERE fm.person_id = p.id AND fm.status = 'active' AND fm.deleted_at IS NULL
+          -- The unit itself plus its closure descendants, as an UNCORRELATED set: this subquery
+          -- reads only the two facet parameters, never p, so the planner evaluates it once and
+          -- probes it as a hash. The correlated form (a closure lookup per candidate person)
+          -- measured 242 ms at 10^6 persons against 33 ms for this shape, because it re-walked the
+          -- closure for every row the keyset scan touched to fill a page.
+          AND fm.unit_id IN (
+            SELECT $9::uuid
+            UNION
+            SELECT c.descendant_id
+            FROM oikumenea.tenant_unit_closure c
+            JOIN oikumenea.tenant_graphs g ON g.id = c.graph_id
+            WHERE c.ancestor_id = $9::uuid
+              AND g.deleted_at IS NULL
+              AND g.is_authority_bearing
+              AND ($10::text IS NULL OR g.code = $10::text))))
+ORDER BY p.id
+LIMIT $11
 `
 
 type ListPersonsParams struct {
-	After interface{}
-	Lim   int32
+	After            interface{}
+	Sex              pgtype.Text
+	Status           pgtype.Text
+	BirthdateFrom    pgtype.Date
+	BirthdateTo      pgtype.Date
+	CountryOfBirthID pgtype.Text
+	RankID           pgtype.Text
+	HasAccount       pgtype.Bool
+	FilterUnitID     pgtype.Text
+	FilterGraph      pgtype.Text
+	Lim              int32
 }
 
 type ListPersonsRow struct {
@@ -508,13 +548,28 @@ type ListPersonsRow struct {
 	UpdatedAt        pgtype.Timestamptz
 }
 
-// Keyset pagination over the time-ordered RID (an empty cursor starts at the beginning). The
-// unfiltered directory list; the application routes a text query to SearchPersons instead.
+// Keyset pagination over the time-ordered RID (an empty cursor starts at the beginning), narrowed by
+// the person facet set (M56 / D-ObjectFacets). The INSTANCE-ADMIN directory list; a scoped caller
+// goes through membership's visibility queries, which carry a byte-identical facet block. The
+// application routes a text query to SearchPersons instead.
+//
 // Explicit column list (review R-17): the directory list is a hot path and must NOT hydrate the wide
 // generated search_text haystack (nor the always-NULL deleted_at) — it lists exactly the columns the
 // row->domain mapper reads, so sqlc emits a lean row struct. Keep single-row GetPerson as SELECT *.
 func (q *Queries) ListPersons(ctx context.Context, arg ListPersonsParams) ([]ListPersonsRow, error) {
-	rows, err := q.db.Query(ctx, listPersons, arg.After, arg.Lim)
+	rows, err := q.db.Query(ctx, listPersons,
+		arg.After,
+		arg.Sex,
+		arg.Status,
+		arg.BirthdateFrom,
+		arg.BirthdateTo,
+		arg.CountryOfBirthID,
+		arg.RankID,
+		arg.HasAccount,
+		arg.FilterUnitID,
+		arg.FilterGraph,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -722,25 +777,68 @@ func (q *Queries) ReactivatePerson(ctx context.Context, id string) (OikumeneaPer
 }
 
 const searchPersons = `-- name: SearchPersons :many
-SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2,
-  generation, credentials, preferred, birthdate, date_of_death, sex, country_of_birth_id,
-  attributes, status, deactivated_at, purge_after, created_at, updated_at
-FROM oikumenea.person_persons
-WHERE deleted_at IS NULL AND ($1 = '' OR id::text > $1)
-  AND id IN (
+SELECT p.id, p.code, p.display_name, p.title, p.given, p.given2, p.surname, p.surname_prefix, p.surname2,
+  p.generation, p.credentials, p.preferred, p.birthdate, p.date_of_death, p.sex, p.country_of_birth_id,
+  p.attributes, p.status, p.deactivated_at, p.purge_after, p.created_at, p.updated_at
+FROM oikumenea.person_persons p
+WHERE p.deleted_at IS NULL AND ($1 = '' OR p.id::text > $1)
+  AND p.id IN (
     SELECT ps.id FROM oikumenea.person_persons ps
       WHERE ps.deleted_at IS NULL AND ps.search_text ILIKE '%' || $2 || '%'
     UNION
     SELECT v.person_id FROM oikumenea.person_name_variants v
       WHERE v.search_text ILIKE '%' || $2 || '%')
-ORDER BY id
-LIMIT $3
+  -- The facet block, byte-identical to ListPersons (M56 / D-ObjectFacets): a text search and a
+  -- structural filter compose, and the two admin queries must never disagree about what a facet
+  -- selects. The selective trigram set leads, so the facets are applied to a small candidate set.
+  AND ($3::text IS NULL OR p.sex = $3::text)
+  AND ($4::text IS NULL OR p.status = $4::text)
+  AND ($5::date IS NULL OR p.birthdate >= $5::date)
+  AND ($6::date IS NULL OR p.birthdate <= $6::date)
+  AND ($7::uuid IS NULL OR p.country_of_birth_id = $7::uuid)
+  AND ($8::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.person_ranks pr
+        WHERE pr.person_id = p.id AND pr.deleted_at IS NULL
+          AND pr.rank_id = $8::uuid))
+  AND ($9::boolean IS NULL
+       OR $9::boolean = EXISTS (
+            SELECT 1 FROM oikumenea.account_accounts ac
+            WHERE ac.person_id = p.id AND ac.deleted_at IS NULL))
+  AND ($10::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.membership_memberships fm
+        WHERE fm.person_id = p.id AND fm.status = 'active' AND fm.deleted_at IS NULL
+          -- The unit itself plus its closure descendants, as an UNCORRELATED set: this subquery
+          -- reads only the two facet parameters, never p, so the planner evaluates it once and
+          -- probes it as a hash. The correlated form (a closure lookup per candidate person)
+          -- measured 242 ms at 10^6 persons against 33 ms for this shape, because it re-walked the
+          -- closure for every row the keyset scan touched to fill a page.
+          AND fm.unit_id IN (
+            SELECT $10::uuid
+            UNION
+            SELECT c.descendant_id
+            FROM oikumenea.tenant_unit_closure c
+            JOIN oikumenea.tenant_graphs g ON g.id = c.graph_id
+            WHERE c.ancestor_id = $10::uuid
+              AND g.deleted_at IS NULL
+              AND g.is_authority_bearing
+              AND ($11::text IS NULL OR g.code = $11::text))))
+ORDER BY p.id
+LIMIT $12
 `
 
 type SearchPersonsParams struct {
-	After interface{}
-	Query pgtype.Text
-	Lim   int32
+	After            interface{}
+	Query            pgtype.Text
+	Sex              pgtype.Text
+	Status           pgtype.Text
+	BirthdateFrom    pgtype.Date
+	BirthdateTo      pgtype.Date
+	CountryOfBirthID pgtype.Text
+	RankID           pgtype.Text
+	HasAccount       pgtype.Bool
+	FilterUnitID     pgtype.Text
+	FilterGraph      pgtype.Text
+	Lim              int32
 }
 
 type SearchPersonsRow struct {
@@ -777,7 +875,20 @@ type SearchPersonsRow struct {
 // trigram) — acceptable for the rare short-prefix case. Lean column list (review R-17): a per-keystroke
 // typeahead path must not hydrate search_text/deleted_at — same lean projection as ListPersons.
 func (q *Queries) SearchPersons(ctx context.Context, arg SearchPersonsParams) ([]SearchPersonsRow, error) {
-	rows, err := q.db.Query(ctx, searchPersons, arg.After, arg.Query, arg.Lim)
+	rows, err := q.db.Query(ctx, searchPersons,
+		arg.After,
+		arg.Query,
+		arg.Sex,
+		arg.Status,
+		arg.BirthdateFrom,
+		arg.BirthdateTo,
+		arg.CountryOfBirthID,
+		arg.RankID,
+		arg.HasAccount,
+		arg.FilterUnitID,
+		arg.FilterGraph,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}

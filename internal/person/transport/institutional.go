@@ -10,11 +10,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/olegamysk/go-oikumenea/internal/person/domain"
-	werror "github.com/palantir/witchcraft-go-error"
-
 	personapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/person"
+	"github.com/olegamysk/go-oikumenea/internal/person/domain"
 	"github.com/palantir/pkg/bearertoken"
+	werror "github.com/palantir/witchcraft-go-error"
 )
 
 // ---------------------------------------------------------------- party memberships

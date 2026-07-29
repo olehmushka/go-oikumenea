@@ -208,14 +208,15 @@ func (s *Service) ListUnitLanguages(ctx context.Context, unitID string) ([]domai
 	return repo.ListUnitLanguages(ctx, unitID)
 }
 
-// ListUnits returns a keyset-paginated page of units within an organization (REQUIRED orgID;
-// D-TenantOrganizations, M40). For the flat listing it is optionally filtered by domain/kind/level.
-// For hierarchical browsing in graph graphCode (default command) it returns either the org's root
-// units (rootsOnly) or one unit's DIRECT children (parent); those two are mutually exclusive and
-// ignore the domain/kind/level filters.
-func (s *Service) ListUnits(ctx context.Context, orgID string, domainID, kindID *string, level *int, graphCode string, parent *string, rootsOnly bool, pageSize int, pageToken string) (UnitPage, error) {
-	if orgID == "" {
-		return UnitPage{}, domain.ErrInvalidUnit
+// ListUnits returns a keyset-paginated page of units within an organization (REQUIRED f.OrgID;
+// D-TenantOrganizations, M40). For the flat listing it is narrowed by the unit facet set
+// (M56 / D-ObjectFacets: domain, kind, level, visibility, state, pdpScoped). For hierarchical
+// browsing in graph graphCode (default command) it returns either the org's root units (rootsOnly)
+// or one unit's DIRECT children (parent); those two are mutually exclusive and ignore the facets.
+func (s *Service) ListUnits(ctx context.Context, f domain.UnitFilter, graphCode string, parent *string, rootsOnly bool, pageSize int, pageToken string) (UnitPage, error) {
+	// Validated once, here, so the flat and traversal paths reject an ill-formed filter identically.
+	if err := f.Validate(); err != nil {
+		return UnitPage{}, err
 	}
 	if parent != nil && rootsOnly {
 		return UnitPage{}, domain.ErrInvalidUnit
@@ -244,16 +245,16 @@ func (s *Service) ListUnits(ctx context.Context, orgID string, domainID, kindID 
 			return UnitPage{}, err
 		}
 	case rootsOnly:
-		g, err := repo.GetGraphForOrgByCode(ctx, &orgID, defaultGraph(graphCode))
+		g, err := repo.GetGraphForOrgByCode(ctx, &f.OrgID, defaultGraph(graphCode))
 		if err != nil {
 			return UnitPage{}, err
 		}
-		units, err = repo.ListRootUnits(ctx, orgID, g.ID, after, size+1)
+		units, err = repo.ListRootUnits(ctx, f.OrgID, g.ID, after, size+1)
 		if err != nil {
 			return UnitPage{}, err
 		}
 	default:
-		units, err = repo.ListUnits(ctx, orgID, domainID, kindID, level, after, size+1)
+		units, err = repo.ListUnits(ctx, f, after, size+1)
 		if err != nil {
 			return UnitPage{}, err
 		}

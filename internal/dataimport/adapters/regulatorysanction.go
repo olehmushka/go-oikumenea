@@ -6,7 +6,7 @@
 // instance-global catalogs). One parallel-array merge statement resolves persons inline (an
 // unresolved person drops out of the join — skipped, non-destructive) and keys idempotency on
 // (person_id, external_id), writing the M34 person_regulatory_sanctions table. Optional
-// amount/sanction_date cross as text ('' = NULL) so one array can carry absent values.
+// amount/sanction_date cross as text (” = NULL) so one array can carry absent values.
 package adapters
 
 import (

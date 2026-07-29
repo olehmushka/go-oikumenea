@@ -42,6 +42,21 @@ type MembershipService interface {
 	EndMembership(ctx context.Context, authHeader bearertoken.Token, membershipIdArg string, requestArg EndMembershipRequest) (Membership, error)
 	// Roster of a unit's active memberships, token-paginated. (The shadow gate applies once authz lands, M7.)
 	ListMembers(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, pageSizeArg *int, pageTokenArg *string) (MembershipPage, error)
+	/*
+	   List memberships across every unit the caller may read, token-paginated, narrowed by the
+	   membership facet set (D-ObjectFacets, M56). A non-instance-admin caller sees only
+	   memberships whose unit falls in their effective readable reach; every filter below is
+	   applied INSIDE that reach, before the page is cut, so a filtered page is never short and
+	   its cursor is never wrong.
+
+	   Unlike `GET /units/{unitId}/members` and `GET /persons/{personId}/memberships`, which
+	   return ACTIVE memberships only, this endpoint returns EVERY status by default — an
+	   unfiltered listing is the honest total. Narrow with `status`.
+
+	   The facet filters combine with AND. They are ordinary structural predicates and do NOT
+	   widen what the caller may see: filtering can only narrow the visible set.
+	*/
+	ListMemberships(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipPage, error)
 	// A person's active memberships across units, token-paginated.
 	ListPersonMemberships(ctx context.Context, authHeader bearertoken.Token, personIdArg string, pageSizeArg *int, pageTokenArg *string) (MembershipPage, error)
 }
@@ -79,6 +94,9 @@ func RegisterRoutesMembershipService(router wrouter.Router, impl MembershipServi
 	}
 	if err := resource.Get("ListMembers", "/membership/v1/units/{unitId}/members", httpserver.NewJSONHandler(handler.HandleListMembers, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listMembers route")
+	}
+	if err := resource.Get("ListMemberships", "/membership/v1/memberships", httpserver.NewJSONHandler(handler.HandleListMemberships, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listMemberships route")
 	}
 	if err := resource.Get("ListPersonMemberships", "/membership/v1/persons/{personId}/memberships", httpserver.NewJSONHandler(handler.HandleListPersonMemberships, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listPersonMemberships route")
@@ -315,6 +333,62 @@ func (m *membershipServiceHandler) HandleListMembers(rw http.ResponseWriter, req
 		pageTokenArg = &pageTokenArgInternal
 	}
 	respArg, err := m.impl.ListMembers(req.Context(), bearertoken.Token(authHeader), unitIdArg, pageSizeArg, pageTokenArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (m *membershipServiceHandler) HandleListMemberships(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var pageSizeArg *int
+	if pageSizeArgStr := req.URL.Query().Get("pageSize"); pageSizeArgStr != "" {
+		pageSizeArgInternal, err := strconv.Atoi(pageSizeArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"pageSize\" as integer")
+		}
+		pageSizeArg = &pageSizeArgInternal
+	}
+	var pageTokenArg *string
+	if pageTokenArgStr := req.URL.Query().Get("pageToken"); pageTokenArgStr != "" {
+		pageTokenArgInternal := pageTokenArgStr
+		pageTokenArg = &pageTokenArgInternal
+	}
+	var unitIdArg *string
+	if unitIdArgStr := req.URL.Query().Get("unitId"); unitIdArgStr != "" {
+		unitIdArgInternal := unitIdArgStr
+		unitIdArg = &unitIdArgInternal
+	}
+	var personIdArg *string
+	if personIdArgStr := req.URL.Query().Get("personId"); personIdArgStr != "" {
+		personIdArgInternal := personIdArgStr
+		personIdArg = &personIdArgInternal
+	}
+	var positionIdArg *string
+	if positionIdArgStr := req.URL.Query().Get("positionId"); positionIdArgStr != "" {
+		positionIdArgInternal := positionIdArgStr
+		positionIdArg = &positionIdArgInternal
+	}
+	var statusArg *string
+	if statusArgStr := req.URL.Query().Get("status"); statusArgStr != "" {
+		statusArgInternal := statusArgStr
+		statusArg = &statusArgInternal
+	}
+	var effectiveFromAfterArg *string
+	if effectiveFromAfterArgStr := req.URL.Query().Get("effectiveFromAfter"); effectiveFromAfterArgStr != "" {
+		effectiveFromAfterArgInternal := effectiveFromAfterArgStr
+		effectiveFromAfterArg = &effectiveFromAfterArgInternal
+	}
+	var effectiveFromBeforeArg *string
+	if effectiveFromBeforeArgStr := req.URL.Query().Get("effectiveFromBefore"); effectiveFromBeforeArgStr != "" {
+		effectiveFromBeforeArgInternal := effectiveFromBeforeArgStr
+		effectiveFromBeforeArg = &effectiveFromBeforeArgInternal
+	}
+	respArg, err := m.impl.ListMemberships(req.Context(), bearertoken.Token(authHeader), pageSizeArg, pageTokenArg, unitIdArg, personIdArg, positionIdArg, statusArg, effectiveFromAfterArg, effectiveFromBeforeArg)
 	if err != nil {
 		return err
 	}

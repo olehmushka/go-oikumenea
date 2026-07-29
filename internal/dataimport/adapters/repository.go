@@ -238,7 +238,7 @@ var _ domain.LanguoidStore = (*LanguoidRepo)(nil)
 // BulkUpsert merges one chunk set-based (R-05): the parallel-array merge (or, under
 // prov.CreateOnly, the insert-absent-only variant that never touches an existing row), then the
 // second-pass parent resolution over the touched rows only. Latitude/longitude cross as text
-// ('' = NULL) so one array can carry absent values.
+// (” = NULL) so one array can carry absent values.
 func (r *LanguoidRepo) BulkUpsert(ctx context.Context, ls []domain.Languoid, prov domain.Provenance) (created, updated []string, err error) {
 	if len(ls) == 0 {
 		return nil, nil, nil

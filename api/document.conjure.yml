@@ -280,6 +280,54 @@ services:
             param-type: path
           request: CreateDocumentRequest
         returns: Document
+      listDocuments:
+        http: GET /documents
+        docs: |
+          List documents across every holder the caller may read, token-paginated, narrowed by the
+          document facet set (D-ObjectFacets, M56). Documents are scoped THROUGH THE HOLDER
+          (D-PersonReadScope): a non-instance-admin caller sees only documents whose holder falls in
+          their read-scope union. Every filter below is applied INSIDE that union, before the page is
+          cut, so a filtered page is never short and its cursor is never wrong.
+
+          Metadata only — the same projection the per-holder listing returns. The facet filters
+          combine with AND and do NOT widen what the caller may see: filtering can only narrow the
+          visible set.
+        args:
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+          typeId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — document-type RID (the catalog type, e.g. passport).
+          status:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — lifecycle status. One of `active`, `superseded`, `revoked`.
+          issuingCountryId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — issuing-country RID (D-Geo). Nullable on the row.
+          issuedOnFrom:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — INCLUSIVE lower bound on `issuedOn`, an ISO-8601 calendar date (`YYYY-MM-DD`). Documents with an unset issue date are excluded whenever either bound is set.
+          issuedOnTo:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — INCLUSIVE upper bound on `issuedOn` (`YYYY-MM-DD`). See `issuedOnFrom` for the unset-date rule.
+          expiresOnFrom:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — INCLUSIVE lower bound on `expiresOn` (`YYYY-MM-DD`). Documents with NO expiry are excluded whenever either bound is set; the no-expiry set is a distinct bucket on the M57 stats endpoint.
+          expiresOnTo:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — INCLUSIVE upper bound on `expiresOn` (`YYYY-MM-DD`). Pair with `expiresOnFrom` = today for an "expiring by" listing. See `expiresOnFrom` for the no-expiry rule.
+        returns: DocumentPage
       listPersonDocuments:
         http: GET /persons/{personId}/documents
         docs: List a person's documents, token-paginated.

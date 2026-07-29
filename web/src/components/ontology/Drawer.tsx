@@ -100,7 +100,7 @@ export function Drawer({
         </div>
 
         <div className="flex-1 space-y-5 overflow-y-auto p-4">
-          {err ? <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{err}</div> : null}
+          {err ? <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{tg(err)}</div> : null}
           {!obj && !err ? <div className="text-sm text-slate-400">{tg("Loading…")}</div> : null}
 
           {obj && def ? (

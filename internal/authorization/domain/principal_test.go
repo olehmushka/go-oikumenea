@@ -3,7 +3,9 @@
 
 package domain
 
-import "testing"
+import (
+	"testing"
+)
 
 // TestPrincipalGrantSatisfies pins the org-scoping semantics that bound a connector's blast radius
 // (M51 / D-ServiceIdentities). The asymmetry in the last case is the point of the design: a grant

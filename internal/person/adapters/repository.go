@@ -210,15 +210,31 @@ func (r *Repository) UpdatePerson(ctx context.Context, id string, patch domain.P
 // trigram SearchPersons (review R-06) so each match branch stays a GIN bitmap scan; the empty case
 // is the unfiltered list. Both queries key on the person RID, so the caller's cursor is identical.
 
-// ListPersons returns a keyset page of the directory. A non-empty query routes to the dedicated
-// trigram SearchPersons (review R-06) so each match branch stays a GIN bitmap scan; the empty case
-// is the unfiltered list. Both queries key on the person RID, so the caller's cursor is identical.
-func (r *Repository) ListPersons(ctx context.Context, after, query string, limit int) ([]domain.Person, error) {
+// ListPersons returns a keyset page of the directory, narrowed by the person facet set
+// (M56 / D-ObjectFacets). A non-empty f.Query routes to the dedicated trigram SearchPersons (review
+// R-06) so each match branch stays a GIN bitmap scan; the empty case is the plain list. Both queries
+// carry the SAME facet block and key on the person RID, so the caller's cursor is identical either
+// way and the two can never disagree about what a facet selects.
+func (r *Repository) ListPersons(ctx context.Context, f domain.PersonFilter, after string, limit int) ([]domain.Person, error) {
 	// The two list queries share the lean R-17 projection, so they return field-identical row structs
 	// (convertible to ListPersonsRow) and map through the one leanToPerson mapper.
 	var rows []personsql.ListPersonsRow
-	if q := strings.TrimSpace(query); q != "" {
-		found, err := r.q.SearchPersons(ctx, personsql.SearchPersonsParams{After: after, Query: pgtype.Text{String: q, Valid: true}, Lim: int32(limit)})
+	fa := personFacetArgs(f)
+	if q := strings.TrimSpace(f.Query); q != "" {
+		found, err := r.q.SearchPersons(ctx, personsql.SearchPersonsParams{
+			After:            after,
+			Query:            pgtype.Text{String: q, Valid: true},
+			Sex:              fa.sex,
+			Status:           fa.status,
+			BirthdateFrom:    fa.birthdateFrom,
+			BirthdateTo:      fa.birthdateTo,
+			CountryOfBirthID: fa.countryOfBirth,
+			RankID:           fa.rankID,
+			HasAccount:       fa.hasAccount,
+			FilterUnitID:     fa.unitID,
+			FilterGraph:      fa.graph,
+			Lim:              int32(limit),
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -228,7 +244,19 @@ func (r *Repository) ListPersons(ctx context.Context, after, query string, limit
 		}
 	} else {
 		var err error
-		if rows, err = r.q.ListPersons(ctx, personsql.ListPersonsParams{After: after, Lim: int32(limit)}); err != nil {
+		if rows, err = r.q.ListPersons(ctx, personsql.ListPersonsParams{
+			After:            after,
+			Sex:              fa.sex,
+			Status:           fa.status,
+			BirthdateFrom:    fa.birthdateFrom,
+			BirthdateTo:      fa.birthdateTo,
+			CountryOfBirthID: fa.countryOfBirth,
+			RankID:           fa.rankID,
+			HasAccount:       fa.hasAccount,
+			FilterUnitID:     fa.unitID,
+			FilterGraph:      fa.graph,
+			Lim:              int32(limit),
+		}); err != nil {
 			return nil, err
 		}
 	}

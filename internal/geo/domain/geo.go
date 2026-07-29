@@ -9,7 +9,9 @@
 // hermenea import pipeline (geo-countries / WOF), not here.
 package domain
 
-import "context"
+import (
+	"context"
+)
 
 // Country is one entry in the ISO-3166-1 registry. ID is the RID (the reference key other modules
 // store); Code is the stable ISO-3166-1 alpha-2 lookup code; Name is the default-locale name.

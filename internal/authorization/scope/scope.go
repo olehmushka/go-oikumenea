@@ -17,7 +17,9 @@
 // late-bound seam pattern).
 package scope
 
-import "context"
+import (
+	"context"
+)
 
 // Visibility trims a candidate id set to the subset the subject may read, preserving input order.
 // isAdmin is the instance-admin flag from pep.SubjectAuthority — every scope short-circuits on it

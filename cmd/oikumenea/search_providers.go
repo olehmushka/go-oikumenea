@@ -27,6 +27,7 @@ import (
 	langdomain "github.com/olegamysk/go-oikumenea/internal/language/domain"
 	membershipapp "github.com/olegamysk/go-oikumenea/internal/membership/application"
 	personapp "github.com/olegamysk/go-oikumenea/internal/person/application"
+	persondomain "github.com/olegamysk/go-oikumenea/internal/person/domain"
 	searchapp "github.com/olegamysk/go-oikumenea/internal/search/application"
 	searchdomain "github.com/olegamysk/go-oikumenea/internal/search/domain"
 )
@@ -55,10 +56,13 @@ func registerSearchProviders(
 			Search: func(ctx context.Context, subject string, isAdmin bool, q, after string, limit int) ([]searchdomain.RawHit, string, error) {
 				var page personapp.Page
 				var err error
+				// Unified search passes only the text query: a search hit is a name match, not a
+				// faceted listing (the facets belong to the list endpoint, D-ObjectFacets).
+				filter := persondomain.PersonFilter{Query: q}
 				if isAdmin {
-					page, err = personSvc.ListPersons(ctx, limit, after, q)
+					page, err = personSvc.ListPersons(ctx, filter, limit, after)
 				} else {
-					page, err = personSvc.ListVisiblePersons(ctx, subject, limit, after, q)
+					page, err = personSvc.ListVisiblePersons(ctx, subject, filter, limit, after)
 				}
 				if err != nil {
 					return nil, "", err

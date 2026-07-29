@@ -29016,7 +29016,7 @@
     },
     "/person/v1/persons": {
       "get": {
-        "description": "Search/list the directory, token-paginated. (The read-scope union is applied once authz lands, M7.)",
+        "description": "Search/list the directory, token-paginated, narrowed by the person facet set\n(D-ObjectFacets, M56). A non-instance-admin caller sees only the read-scope union\n(D-PersonReadScope); every filter below is applied INSIDE that union, before the page is\ncut, so a filtered page is never short and its cursor is never wrong.\n\nThe facet filters combine with AND. They are ordinary structural predicates and do NOT\nwiden what the caller may see: filtering can only narrow the visible set.\n",
         "operationId": "PersonService_listPersons",
         "parameters": [
           {
@@ -29044,6 +29044,87 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Facet filter — ISO/IEC 5218 sex. One of `not_known`, `male`, `female`, `not_applicable`.",
+            "in": "query",
+            "name": "sex",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — lifecycle status. One of `active`, `deactivated`, `provisional`, `purged`.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE lower bound on birthdate, an ISO-8601 calendar date (`YYYY-MM-DD`). Persons with an UNKNOWN (null) birthdate are excluded whenever either bound is set.",
+            "in": "query",
+            "name": "birthdateFrom",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE upper bound on birthdate (`YYYY-MM-DD`). See `birthdateFrom` for the unknown-birthdate rule.",
+            "in": "query",
+            "name": "birthdateTo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — country-of-birth RID (D-Geo).",
+            "in": "query",
+            "name": "countryOfBirth",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — rank RID. Matches the person's ACTIVE rank row; a person holds one rank per rank system (D-Rank).",
+            "in": "query",
+            "name": "rankId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — unit RID. SUBTREE-EXPANDING — matches an active membership in this unit OR in any of its closure descendants. See `graph`.",
+            "in": "query",
+            "name": "unitId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Graph code narrowing the `unitId` subtree expansion to one DAG. Default — and when omitted — the expansion spans every authority-bearing graph, the same closure set the read-scope predicate uses. Meaningless without `unitId`, and rejected with Person:PersonInvalid if passed alone.",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — `true` selects persons with an active account, `false` those with none. The directory is account-optional (L-AccountOptional), so both sides are populated.",
+            "in": "query",
+            "name": "hasAccount",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -29068,7 +29149,7 @@
             "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
           }
         },
-        "summary": "Search/list the directory, token-paginated. (The read-scope union is applied once authz lands, M7.)",
+        "summary": "Search/list the directory, token-paginated, narrowed by the person facet set",
         "tags": [
           "PersonService"
         ]
@@ -37824,7 +37905,7 @@
     },
     "/tenant/v1/units": {
       "get": {
-        "description": "List/search units within an organization (D-TenantOrganizations, M40). `org` is REQUIRED —\na fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally filtered by\n`domain` (cross-cut within the org, for mixed trees), `unitKind`, and `level`. Token-paginated.\n\nFor hierarchical (expand-on-click) browsing in graph `graph` (default `command`): pass\n`rootsOnly=true` to list only the org's top-level units (those with no parent in the graph),\nor `parent=\u003cunitRid\u003e` to list a unit's DIRECT children in the graph. The two are mutually\nexclusive, and each ignores the `domain`/`unitKind`/`level` filters. When neither is set the\nlisting is the flat, filtered org listing.\n",
+        "description": "List/search units within an organization (D-TenantOrganizations, M40). `org` is REQUIRED —\na fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally narrowed by the\nunit facet set (D-ObjectFacets, M56): `domain` (cross-cut within the org, for mixed trees),\n`unitKind`, `level`, `visibility`, `state` and `pdpScoped`. Token-paginated.\n\nThe shadow-visibility gate still trims the page AFTER it is cut, so `visibility` NARROWS and\nnever widens: asking for `visibility=shadow` without shadow reach yields an empty page, not\nan error and not a leak.\n\nFor hierarchical (expand-on-click) browsing in graph `graph` (default `command`): pass\n`rootsOnly=true` to list only the org's top-level units (those with no parent in the graph),\nor `parent=\u003cunitRid\u003e` to list a unit's DIRECT children in the graph. The two are mutually\nexclusive, and each ignores the flat-listing filters\n(`domain`/`unitKind`/`level`/`visibility`/`state`/`pdpScoped`). When neither is set the\nlisting is the flat, filtered org listing.\n",
         "operationId": "TenantService_listUnits",
         "parameters": [
           {
@@ -37855,12 +37936,40 @@
             }
           },
           {
+            "description": "Optional exact-match level filter. Ignored when `parent`/`rootsOnly` is set.",
             "in": "query",
             "name": "level",
             "required": false,
             "schema": {
               "format": "int32",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Facet filter — `public` or `shadow`. NARROWS only; the shadow gate still trims the page afterwards. Ignored when `parent`/`rootsOnly` is set.",
+            "in": "query",
+            "name": "visibility",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — `active`, `suspended` or `archived`. Ignored when `parent`/`rootsOnly` is set.",
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — `true` for operational (reach-scoped) units, `false` for reference units such as universities and companies (D-UnifiedOrgGraph, M41). Ignored when `parent`/`rootsOnly` is set.",
+            "in": "query",
+            "name": "pdpScoped",
+            "required": false,
+            "schema": {
+              "type": "boolean"
             }
           },
           {

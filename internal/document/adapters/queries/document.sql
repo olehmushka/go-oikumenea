@@ -64,6 +64,86 @@ RETURNING *;
 UPDATE oikumenea.document_documents SET deleted_at = now()
 WHERE id = @id AND deleted_at IS NULL;
 
+-- ============================ top-level facet-filtered list (M56 ticket 3 / D-ObjectFacets) ============================
+-- GET /documents. Two shapes, ONE filter block, byte-identical between them: the admin path and the
+-- holder-scoped path must select the same rows for the same filters, differing ONLY by the
+-- visibility predicate. sqlparity_test.go proves the block is present in both with no database.
+--
+-- document_documents carries NO unit column and NO RLS policy (0005): documents are scoped THROUGH
+-- THE HOLDER (D-PersonReadScope). The scoped arm therefore folds the holder semi-join — the person
+-- has an active membership in a unit of the subject's reach — rather than a unit predicate. This is
+-- the SQL form of the holderReadable() point probe the per-person listing already uses; folded into
+-- the query because a Go-side holder check after the page is cut would return a short page WITH a
+-- nextPageToken (R-06).
+--
+-- Metadata only. The pii:basic number/issuer and the pii:special `attributes` bag are returned by the
+-- same projection the per-holder listing returns, and neither is filterable (D-ObjectFacets rule 1).
+
+-- name: ListDocuments :many
+-- Instance-admin path: every document, keyset-paginated by RID.
+SELECT * FROM oikumenea.document_documents d
+WHERE d.deleted_at IS NULL
+  AND (@after = '' OR d.id::text > @after)
+  AND (sqlc.narg('type_id')::uuid IS NULL OR d.type_id = sqlc.narg('type_id')::uuid)
+  AND (sqlc.narg('status')::text IS NULL OR d.status = sqlc.narg('status')::text)
+  AND (sqlc.narg('issuing_country_id')::uuid IS NULL OR d.issuing_country_id = sqlc.narg('issuing_country_id')::uuid)
+  AND (sqlc.narg('issued_on_from')::date IS NULL OR d.issued_on >= sqlc.narg('issued_on_from')::date)
+  AND (sqlc.narg('issued_on_to')::date IS NULL OR d.issued_on <= sqlc.narg('issued_on_to')::date)
+  AND (sqlc.narg('expires_on_from')::date IS NULL OR d.expires_on >= sqlc.narg('expires_on_from')::date)
+  AND (sqlc.narg('expires_on_to')::date IS NULL OR d.expires_on <= sqlc.narg('expires_on_to')::date)
+ORDER BY d.id
+LIMIT @lim;
+
+-- name: ListDocumentsForSubject :many
+-- Read-scope path: the same set restricted to documents whose HOLDER the subject may read. The reach
+-- set is UNCORRELATED (it reads only @subject_person_id), so the planner evaluates it once and probes
+-- a hash instead of re-deriving the closure per candidate document.
+SELECT * FROM oikumenea.document_documents d
+WHERE d.deleted_at IS NULL
+  AND (@after = '' OR d.id::text > @after)
+  AND (sqlc.narg('type_id')::uuid IS NULL OR d.type_id = sqlc.narg('type_id')::uuid)
+  AND (sqlc.narg('status')::text IS NULL OR d.status = sqlc.narg('status')::text)
+  AND (sqlc.narg('issuing_country_id')::uuid IS NULL OR d.issuing_country_id = sqlc.narg('issuing_country_id')::uuid)
+  AND (sqlc.narg('issued_on_from')::date IS NULL OR d.issued_on >= sqlc.narg('issued_on_from')::date)
+  AND (sqlc.narg('issued_on_to')::date IS NULL OR d.issued_on <= sqlc.narg('issued_on_to')::date)
+  AND (sqlc.narg('expires_on_from')::date IS NULL OR d.expires_on >= sqlc.narg('expires_on_from')::date)
+  AND (sqlc.narg('expires_on_to')::date IS NULL OR d.expires_on <= sqlc.narg('expires_on_to')::date)
+  AND EXISTS (
+    SELECT 1 FROM oikumenea.membership_memberships m
+    WHERE m.person_id = d.person_id AND m.status = 'active' AND m.deleted_at IS NULL
+      AND m.unit_id IN (SELECT oikumenea.authz_readable_units(@subject_person_id)))
+ORDER BY d.id
+LIMIT @lim;
+
+-- name: CountReadableUnitsForDispatch :one
+-- The capped reach-cardinality probe the sparse/dense list dispatch reads (migration 0017). Capped,
+-- because the question is never "how big is the reach" but "is it past the threshold".
+SELECT oikumenea.authz_readable_unit_count(@subject_person_id, @cap::integer) AS n;
+
+-- name: ListDocumentsForSubjectDense :many
+-- DENSE-reach plan shape of the query above, byte-identical in its filter block and differing ONLY in
+-- how the holder's reach is applied: a per-row point probe instead of a materialized reach set. See
+-- migration 0017 for the measured reason both shapes exist — at root reach the set form measured
+-- 6 419 ms against 4.7 ms here, because materializing the reach makes the planner drive from it,
+-- build a 9x10^5-row person hash and top-N sort, so the LIMIT never terminates early. The adapter
+-- dispatches on CountReadableUnitsCapped.
+SELECT * FROM oikumenea.document_documents d
+WHERE d.deleted_at IS NULL
+  AND (@after = '' OR d.id::text > @after)
+  AND (sqlc.narg('type_id')::uuid IS NULL OR d.type_id = sqlc.narg('type_id')::uuid)
+  AND (sqlc.narg('status')::text IS NULL OR d.status = sqlc.narg('status')::text)
+  AND (sqlc.narg('issuing_country_id')::uuid IS NULL OR d.issuing_country_id = sqlc.narg('issuing_country_id')::uuid)
+  AND (sqlc.narg('issued_on_from')::date IS NULL OR d.issued_on >= sqlc.narg('issued_on_from')::date)
+  AND (sqlc.narg('issued_on_to')::date IS NULL OR d.issued_on <= sqlc.narg('issued_on_to')::date)
+  AND (sqlc.narg('expires_on_from')::date IS NULL OR d.expires_on >= sqlc.narg('expires_on_from')::date)
+  AND (sqlc.narg('expires_on_to')::date IS NULL OR d.expires_on <= sqlc.narg('expires_on_to')::date)
+  AND EXISTS (
+    SELECT 1 FROM oikumenea.membership_memberships m
+    WHERE m.person_id = d.person_id AND m.status = 'active' AND m.deleted_at IS NULL
+      AND oikumenea.authz_unit_readable_by(m.unit_id, @subject_person_id))
+ORDER BY d.id
+LIMIT @lim;
+
 -- name: ListDocumentsByPerson :many
 SELECT * FROM oikumenea.document_documents
 WHERE person_id = @person_id AND deleted_at IS NULL

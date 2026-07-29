@@ -69,6 +69,8 @@ const REGISTRY: Record<SearchKind, KindConfig> = {
 export function SearchSelect({
   kind,
   name,
+  defaultValue = "",
+  defaultLabel,
   onChange,
   required = false,
   placeholder = "Search…",
@@ -76,7 +78,13 @@ export function SearchSelect({
 }: {
   kind: SearchKind;
   name?: string;
-  onChange?: (id: string) => void;
+  /** a preselected RID (e.g. an active URL filter) — shown as a clearable chip on mount. */
+  defaultValue?: string;
+  /** the human label for defaultValue, when the caller already knows it (an order item's person is
+   *  resolved server-side for rendering) — otherwise the chip can only show the RID. */
+  defaultLabel?: string;
+  /** the label is passed back so a caller can cache rid → label for a later remount */
+  onChange?: (id: string, label?: string) => void;
   required?: boolean;
   placeholder?: string;
   // When set (and kind === "location"), show a "＋" button that opens a modal to create a new location
@@ -88,7 +96,9 @@ export function SearchSelect({
   const cfg = REGISTRY[kind];
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Result[]>([]);
-  const [selected, setSelected] = useState<Result | null>(null);
+  const [selected, setSelected] = useState<Result | null>(
+    defaultValue ? { id: defaultValue, label: defaultLabel || defaultValue } : null,
+  );
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -131,7 +141,7 @@ export function SearchSelect({
     setSelected(r);
     setOpen(false);
     setQuery("");
-    onChange?.(r.id);
+    onChange?.(r.id, r.label);
   }
   function onLocationCreated(loc: Location) {
     setCreating(false);

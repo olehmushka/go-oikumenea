@@ -379,7 +379,7 @@ type Repository interface {
 	GetUnit(ctx context.Context, id string) (Unit, error)
 	UpdateUnit(ctx context.Context, id string, patch UnitPatch) (Unit, error)
 	SetUnitState(ctx context.Context, id string, state State) (Unit, error)
-	ListUnits(ctx context.Context, orgID string, domainID, kindID *string, level *int, after string, limit int) ([]Unit, error)
+	ListUnits(ctx context.Context, f UnitFilter, after string, limit int) ([]Unit, error)
 	ListChildUnits(ctx context.Context, parentID, graphID, after string, limit int) ([]Unit, error)
 	ListRootUnits(ctx context.Context, orgID, graphID, after string, limit int) ([]Unit, error)
 

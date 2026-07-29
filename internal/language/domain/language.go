@@ -8,7 +8,9 @@
 // (language-scheme / language-scripts), not here.
 package domain
 
-import "context"
+import (
+	"context"
+)
 
 // Languoid is one node in the Glottolog forest. ID is the RID (the reference key person/unit/locale
 // links store); Code is the stable glottocode; optional fields fold to "" when absent.

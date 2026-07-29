@@ -174,6 +174,82 @@ func (r *Repository) ListOrdersByUnit(ctx context.Context, unitID, after string,
 	return ordersFrom(rows), nil
 }
 
+// ListOrders is the instance-admin arm of the top-level facet-filtered listing (M56 ticket 3).
+func (r *Repository) ListOrders(ctx context.Context, f domain.OrderFilter, after string, limit int) ([]domain.Order, error) {
+	fa := orderFacetArgs(f)
+	rows, err := r.q.ListOrders(ctx, ordersql.ListOrdersParams{
+		After:         after,
+		IssuingUnitID: fa.issuingUnitID,
+		OrderTypeID:   fa.orderTypeID,
+		Status:        fa.status,
+		IssuedOnFrom:  fa.issuedOnFrom,
+		IssuedOnTo:    fa.issuedOnTo,
+		Lim:           int32(limit),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ordersFrom(rows), nil
+}
+
+// ListOrdersForSubject is the read-scope arm: the same filter block intersected with the subject's
+// effective readable reach on the ISSUING unit, folded into the SQL so the page is cut afterwards.
+//
+// Two plan shapes, dispatched on reach cardinality — see listReachIsDense and migration 0017.
+func (r *Repository) ListOrdersForSubject(ctx context.Context, subjectPersonID string, f domain.OrderFilter, after string, limit int) ([]domain.Order, error) {
+	fa := orderFacetArgs(f)
+	dense, err := r.listReachIsDense(ctx, subjectPersonID)
+	if err != nil {
+		return nil, err
+	}
+	if dense {
+		rows, err := r.q.ListOrdersForSubjectDense(ctx, ordersql.ListOrdersForSubjectDenseParams{
+			After:           after,
+			SubjectPersonID: subjectPersonID,
+			IssuingUnitID:   fa.issuingUnitID,
+			OrderTypeID:     fa.orderTypeID,
+			Status:          fa.status,
+			IssuedOnFrom:    fa.issuedOnFrom,
+			IssuedOnTo:      fa.issuedOnTo,
+			Lim:             int32(limit),
+		})
+		if err != nil {
+			return nil, err
+		}
+		return ordersFrom(rows), nil
+	}
+	rows, err := r.q.ListOrdersForSubject(ctx, ordersql.ListOrdersForSubjectParams{
+		After:           after,
+		SubjectPersonID: subjectPersonID,
+		IssuingUnitID:   fa.issuingUnitID,
+		OrderTypeID:     fa.orderTypeID,
+		Status:          fa.status,
+		IssuedOnFrom:    fa.issuedOnFrom,
+		IssuedOnTo:      fa.issuedOnTo,
+		Lim:             int32(limit),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ordersFrom(rows), nil
+}
+
+// denseReachThreshold and listReachIsDense mirror membership's dispatch (see its repository.go for
+// the measured table). Duplicated as a THRESHOLD rather than shared, because the reach ALGEBRA — the
+// part that must never diverge — lives in one place, the SQL functions migration 0017 defines; this
+// is only the cardinality at which the two plan shapes cross over.
+const denseReachThreshold = 1000
+
+func (r *Repository) listReachIsDense(ctx context.Context, subjectPersonID string) (bool, error) {
+	n, err := r.q.CountReadableUnitsForDispatch(ctx, ordersql.CountReadableUnitsForDispatchParams{
+		SubjectPersonID: subjectPersonID, Cap: denseReachThreshold + 1,
+	})
+	if err != nil {
+		return false, err
+	}
+	return n > denseReachThreshold, nil
+}
+
 func (r *Repository) ListOrdersByPerson(ctx context.Context, personID, after string, limit int) ([]domain.Order, error) {
 	rows, err := r.q.ListOrdersByPerson(ctx, ordersql.ListOrdersByPersonParams{PersonID: personID, After: after, Lim: int32(limit)})
 	if err != nil {

@@ -7,12 +7,15 @@
 // Postgres. Proves the oikumenea SIDE of the hermenea import path:
 //
 //   - a record referencing a real person creates the overlay row (Created=1);
+//
 //   - a re-import of unchanged data is an idempotent no-op (Skipped=1);
+//
 //   - a changed field updates in place (Updated=1), keyed on (person, externalId);
+//
 //   - a record whose person RID does not resolve is skipped (Skipped=1), non-destructively.
 //
-//	OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable" \
-//	  go test -tags integration ./internal/dataimport/...
+//     OIKUMENEA_TEST_DSN="postgres://postgres:dev@localhost:5432/oikumenea_test?sslmode=disable" \
+//     go test -tags integration ./internal/dataimport/...
 package dataimport_test
 
 import (

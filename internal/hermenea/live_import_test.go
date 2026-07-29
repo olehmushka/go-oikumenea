@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/cldrscripts"
-	"github.com/olegamysk/go-oikumenea/internal/hermenea/fetcher"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/domain"
+	"github.com/olegamysk/go-oikumenea/internal/hermenea/fetcher"
 	"github.com/olegamysk/go-oikumenea/internal/hermenea/glottolog"
 )
 

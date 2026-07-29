@@ -308,6 +308,30 @@ func (s *Service) ListOrdersByPerson(ctx context.Context, personID string, pageS
 	})
 }
 
+// ListOrders is the INSTANCE-ADMIN arm of the top-level facet-filtered listing (M56 ticket 3 /
+// D-ObjectFacets). Validate runs HERE rather than in either arm, so the admin and read-scope paths
+// reject an invalid filter identically — half of the no-drift contract the two paths are held to.
+func (s *Service) ListOrders(ctx context.Context, f domain.OrderFilter, pageSize int, pageToken string) (OrderPage, error) {
+	if err := f.Validate(); err != nil {
+		return OrderPage{}, err
+	}
+	return s.listOrders(ctx, pageSize, pageToken, func(after string, limit int) ([]domain.Order, error) {
+		return s.newRepo(s.querier(ctx)).ListOrders(ctx, f, after, limit)
+	})
+}
+
+// ListVisibleOrders is the READ-SCOPE arm: the same filter intersected with the subject's effective
+// readable reach on the issuing unit, folded into the SQL so the page is cut after the intersection
+// (R-06 — a Go-side re-filter would return a short page with a nextPageToken).
+func (s *Service) ListVisibleOrders(ctx context.Context, subjectPersonID string, f domain.OrderFilter, pageSize int, pageToken string) (OrderPage, error) {
+	if err := f.Validate(); err != nil {
+		return OrderPage{}, err
+	}
+	return s.listOrders(ctx, pageSize, pageToken, func(after string, limit int) ([]domain.Order, error) {
+		return s.newRepo(s.querier(ctx)).ListOrdersForSubject(ctx, subjectPersonID, f, after, limit)
+	})
+}
+
 // ---------------------------------------------------------------- helpers
 
 // insertItems validates each item against its type's effect (the type is loaded for the effect; an

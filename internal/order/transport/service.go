@@ -123,6 +123,36 @@ func (s Service) RevokeOrder(ctx context.Context, token bearertoken.Token, order
 	return toAPIOrder(revoked), nil
 }
 
+// ListOrders is the top-level facet-filtered listing (M56 ticket 3 / D-ObjectFacets). Unlike
+// ListUnitOrders, which gates on `order.read` AT a named unit, this one has no unit to gate on: it
+// requires the code ANYWHERE and then folds the caller's readable reach on the ISSUING unit into the
+// SQL, so the page is cut after the intersection (the ListPersons dispatch, D-PersonReadScope).
+func (s Service) ListOrders(ctx context.Context, token bearertoken.Token, pageSize *int, pageToken *string, issuingUnitID, orderTypeID, status, issuedOnFrom, issuedOnTo *string) (orderapi.OrderPage, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermOrderRead)); err != nil {
+		return orderapi.OrderPage{}, err
+	}
+	// One filter for the whole vocabulary, built once and passed down BOTH branches of the dispatch
+	// below — the two paths must never see different filters.
+	filter, err := orderFilter(issuingUnitID, orderTypeID, status, issuedOnFrom, issuedOnTo)
+	if err != nil {
+		return orderapi.OrderPage{}, s.mapError(ctx, err, errCtx{})
+	}
+	subject, isAdmin, err := s.pep.SubjectAuthority(ctx)
+	if err != nil {
+		return orderapi.OrderPage{}, s.mapError(ctx, err, errCtx{})
+	}
+	var page application.OrderPage
+	if isAdmin {
+		page, err = s.app.ListOrders(ctx, filter, derefOr(pageSize, 0), derefOr(pageToken, ""))
+	} else {
+		page, err = s.app.ListVisibleOrders(ctx, subject, filter, derefOr(pageSize, 0), derefOr(pageToken, ""))
+	}
+	if err != nil {
+		return orderapi.OrderPage{}, s.mapError(ctx, err, errCtx{})
+	}
+	return toAPIOrderPage(page), nil
+}
+
 func (s Service) ListUnitOrders(ctx context.Context, token bearertoken.Token, unitID string, pageSize *int, pageToken *string) (orderapi.OrderPage, error) {
 	if err := s.pep.Require(ctx, token, string(authzdomain.PermOrderRead), unitID); err != nil {
 		return orderapi.OrderPage{}, err

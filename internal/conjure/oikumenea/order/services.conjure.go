@@ -36,6 +36,17 @@ type OrderServiceClient interface {
 	IssueOrder(ctx context.Context, authHeader bearertoken.Token, orderIdArg string) (Order, error)
 	// Revoke an issued order (legal-status flip; effects are not auto-reversed). Returns Order:OrderNotIssued if not issued.
 	RevokeOrder(ctx context.Context, authHeader bearertoken.Token, orderIdArg string, requestArg RevokeOrderRequest) (Order, error)
+	/*
+	   List orders (headers only) across every issuing unit the caller may read, token-paginated,
+	   narrowed by the order facet set (D-ObjectFacets, M56). A non-instance-admin caller sees
+	   only orders whose issuing unit falls in their effective readable reach; every filter below
+	   is applied INSIDE that reach, before the page is cut, so a filtered page is never short and
+	   its cursor is never wrong.
+
+	   The facet filters combine with AND. They are ordinary structural predicates and do NOT
+	   widen what the caller may see: filtering can only narrow the visible set.
+	*/
+	ListOrders(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string, issuingUnitIdArg *string, orderTypeIdArg *string, statusArg *string, issuedOnFromArg *string, issuedOnToArg *string) (OrderPage, error)
 	// List an issuing unit's orders (headers only), token-paginated.
 	ListUnitOrders(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, pageSizeArg *int, pageTokenArg *string) (OrderPage, error)
 	// List orders affecting a person (via their items), token-paginated.
@@ -140,6 +151,46 @@ func (c *orderServiceClient) RevokeOrder(ctx context.Context, authHeader bearert
 	}
 	if returnVal == nil {
 		return *new(Order), werror.ErrorWithContextParams(ctx, "revokeOrder response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *orderServiceClient) ListOrders(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string, issuingUnitIdArg *string, orderTypeIdArg *string, statusArg *string, issuedOnFromArg *string, issuedOnToArg *string) (OrderPage, error) {
+	var returnVal *OrderPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListOrders"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/order/v1/orders"))
+	queryParams := make(url.Values)
+	if pageSizeArg != nil {
+		queryParams.Set("pageSize", fmt.Sprint(*pageSizeArg))
+	}
+	if pageTokenArg != nil {
+		queryParams.Set("pageToken", fmt.Sprint(*pageTokenArg))
+	}
+	if issuingUnitIdArg != nil {
+		queryParams.Set("issuingUnitId", fmt.Sprint(*issuingUnitIdArg))
+	}
+	if orderTypeIdArg != nil {
+		queryParams.Set("orderTypeId", fmt.Sprint(*orderTypeIdArg))
+	}
+	if statusArg != nil {
+		queryParams.Set("status", fmt.Sprint(*statusArg))
+	}
+	if issuedOnFromArg != nil {
+		queryParams.Set("issuedOnFrom", fmt.Sprint(*issuedOnFromArg))
+	}
+	if issuedOnToArg != nil {
+		queryParams.Set("issuedOnTo", fmt.Sprint(*issuedOnToArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(OrderPage), werror.WrapWithContextParams(ctx, err, "listOrders failed")
+	}
+	if returnVal == nil {
+		return *new(OrderPage), werror.ErrorWithContextParams(ctx, "listOrders response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -270,6 +321,17 @@ type OrderServiceClientWithAuth interface {
 	IssueOrder(ctx context.Context, orderIdArg string) (Order, error)
 	// Revoke an issued order (legal-status flip; effects are not auto-reversed). Returns Order:OrderNotIssued if not issued.
 	RevokeOrder(ctx context.Context, orderIdArg string, requestArg RevokeOrderRequest) (Order, error)
+	/*
+	   List orders (headers only) across every issuing unit the caller may read, token-paginated,
+	   narrowed by the order facet set (D-ObjectFacets, M56). A non-instance-admin caller sees
+	   only orders whose issuing unit falls in their effective readable reach; every filter below
+	   is applied INSIDE that reach, before the page is cut, so a filtered page is never short and
+	   its cursor is never wrong.
+
+	   The facet filters combine with AND. They are ordinary structural predicates and do NOT
+	   widen what the caller may see: filtering can only narrow the visible set.
+	*/
+	ListOrders(ctx context.Context, pageSizeArg *int, pageTokenArg *string, issuingUnitIdArg *string, orderTypeIdArg *string, statusArg *string, issuedOnFromArg *string, issuedOnToArg *string) (OrderPage, error)
 	// List an issuing unit's orders (headers only), token-paginated.
 	ListUnitOrders(ctx context.Context, unitIdArg string, pageSizeArg *int, pageTokenArg *string) (OrderPage, error)
 	// List orders affecting a person (via their items), token-paginated.
@@ -309,6 +371,10 @@ func (c *orderServiceClientWithAuth) IssueOrder(ctx context.Context, orderIdArg 
 
 func (c *orderServiceClientWithAuth) RevokeOrder(ctx context.Context, orderIdArg string, requestArg RevokeOrderRequest) (Order, error) {
 	return c.client.RevokeOrder(ctx, c.authHeader, orderIdArg, requestArg)
+}
+
+func (c *orderServiceClientWithAuth) ListOrders(ctx context.Context, pageSizeArg *int, pageTokenArg *string, issuingUnitIdArg *string, orderTypeIdArg *string, statusArg *string, issuedOnFromArg *string, issuedOnToArg *string) (OrderPage, error) {
+	return c.client.ListOrders(ctx, c.authHeader, pageSizeArg, pageTokenArg, issuingUnitIdArg, orderTypeIdArg, statusArg, issuedOnFromArg, issuedOnToArg)
 }
 
 func (c *orderServiceClientWithAuth) ListUnitOrders(ctx context.Context, unitIdArg string, pageSizeArg *int, pageTokenArg *string) (OrderPage, error) {
@@ -378,6 +444,14 @@ func (c *orderServiceClientWithTokenProvider) RevokeOrder(ctx context.Context, o
 		return *new(Order), err
 	}
 	return c.client.RevokeOrder(ctx, bearertoken.Token(token), orderIdArg, requestArg)
+}
+
+func (c *orderServiceClientWithTokenProvider) ListOrders(ctx context.Context, pageSizeArg *int, pageTokenArg *string, issuingUnitIdArg *string, orderTypeIdArg *string, statusArg *string, issuedOnFromArg *string, issuedOnToArg *string) (OrderPage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(OrderPage), err
+	}
+	return c.client.ListOrders(ctx, bearertoken.Token(token), pageSizeArg, pageTokenArg, issuingUnitIdArg, orderTypeIdArg, statusArg, issuedOnFromArg, issuedOnToArg)
 }
 
 func (c *orderServiceClientWithTokenProvider) ListUnitOrders(ctx context.Context, unitIdArg string, pageSizeArg *int, pageTokenArg *string) (OrderPage, error) {

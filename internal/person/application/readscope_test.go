@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/olegamysk/go-oikumenea/internal/person/application"
+	"github.com/olegamysk/go-oikumenea/internal/person/domain"
 )
 
 // fakeMembership answers the reach point probe from a canned subject→person allow map.
@@ -25,7 +26,7 @@ func (f fakeMembership) ActiveUnitIDsForPerson(_ context.Context, _ string) ([]s
 	return nil, nil
 }
 
-func (f fakeMembership) VisiblePersonIDsForSubject(_ context.Context, _ string, _ string, _ string, _ int) ([]string, error) {
+func (f fakeMembership) VisiblePersonIDsForSubject(_ context.Context, _ string, _ string, _ domain.PersonFilter, _ int) ([]string, error) {
 	return nil, nil
 }
 

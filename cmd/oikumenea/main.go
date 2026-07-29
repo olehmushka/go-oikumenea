@@ -71,6 +71,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/pkg/config/envoverlay"
 	"github.com/olegamysk/go-oikumenea/pkg/crypto"
 	"github.com/olegamysk/go-oikumenea/pkg/events"
+	"github.com/olegamysk/go-oikumenea/pkg/facet"
 	"github.com/olegamysk/go-oikumenea/pkg/personalcode"
 	"github.com/olegamysk/go-oikumenea/pkg/rid"
 	"github.com/palantir/pkg/refreshable"
@@ -667,7 +668,11 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// serve. A forgotten Set*/Bind otherwise compiles and surfaces at request time — as a nil deref or,
 	// worse, a silently-empty read-scope page that reads as "no access" rather than "mis-wired server".
 	// Fail fast here, naming the missing seam, instead.
-	for _, seam := range []interface{ MustBeBound() error }{authenticator, enforcer, personSvc, profileSvc, sensitiveSvc, searchSvc, linksSvc} {
+	// facet.Default is a package-level catalog rather than a wired service, so it cannot be
+	// mis-injected — but it CAN be emptied or left inconsistent by an edit, and every list filter and
+	// (from M57) every stats bucket reads it. Asserting it here puts it on the same footing as the
+	// other seams: a broken vocabulary fails boot, not the first filtered request (D-ObjectFacets).
+	for _, seam := range []interface{ MustBeBound() error }{authenticator, enforcer, personSvc, profileSvc, sensitiveSvc, searchSvc, linksSvc, facet.Default} {
 		if err := seam.MustBeBound(); err != nil {
 			cleanup()
 			return nil, werror.Wrap(err, "composition root: late-bound seam not wired")

@@ -11,6 +11,24 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countReadableUnitsForDispatch = `-- name: CountReadableUnitsForDispatch :one
+SELECT oikumenea.authz_readable_unit_count($1, $2::integer) AS n
+`
+
+type CountReadableUnitsForDispatchParams struct {
+	SubjectPersonID string
+	Cap             int32
+}
+
+// The capped reach-cardinality probe the sparse/dense list dispatch reads (migration 0017). Capped,
+// because the question is never "how big is the reach" but "is it past the threshold".
+func (q *Queries) CountReadableUnitsForDispatch(ctx context.Context, arg CountReadableUnitsForDispatchParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countReadableUnitsForDispatch, arg.SubjectPersonID, arg.Cap)
+	var n int64
+	err := row.Scan(&n)
+	return n, err
+}
+
 const deleteOrderItems = `-- name: DeleteOrderItems :exec
 DELETE FROM oikumenea.order_order_items WHERE order_id = $1
 `
@@ -306,6 +324,84 @@ func (q *Queries) ListOrderTypes(ctx context.Context) ([]OikumeneaOrderOrderType
 	return items, nil
 }
 
+const listOrders = `-- name: ListOrders :many
+
+SELECT id, number, issued_on, issuing_unit_id, status, revoked_by_order_id, revoked_at, created_at, updated_at, deleted_at FROM oikumenea.order_orders o
+WHERE o.deleted_at IS NULL
+  AND ($1 = '' OR o.id::text > $1)
+  AND ($2::uuid IS NULL OR o.issuing_unit_id = $2::uuid)
+  AND ($3::text IS NULL OR o.status = $3::text)
+  AND ($4::date IS NULL OR o.issued_on >= $4::date)
+  AND ($5::date IS NULL OR o.issued_on <= $5::date)
+  AND ($6::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.order_order_items i
+        WHERE i.order_id = o.id AND i.type_id = $6::uuid))
+ORDER BY o.id
+LIMIT $7
+`
+
+type ListOrdersParams struct {
+	After         interface{}
+	IssuingUnitID pgtype.Text
+	Status        pgtype.Text
+	IssuedOnFrom  pgtype.Date
+	IssuedOnTo    pgtype.Date
+	OrderTypeID   pgtype.Text
+	Lim           int32
+}
+
+// ============================ top-level facet-filtered list (M56 ticket 3 / D-ObjectFacets) ============================
+// GET /orders. Two shapes, ONE filter block, byte-identical between them: the admin path and the
+// reach-scoped path must select the same rows for the same filters, differing ONLY by the reach
+// predicate. sqlparity_test.go proves the block is present in both with no database.
+//
+// Every predicate is folded INTO the SQL, before the LIMIT (review-2026-07 R-06); a Go-side
+// re-filter after the page is cut would return a short page WITH a nextPageToken. The
+// `sqlc.narg('x')::type IS NULL OR col = ...` style is what R-21 requires — the `(@arg = ” OR ...)`
+// sentinel is banned because the planner cannot prove the arg non-empty under a generic plan.
+//
+// order_type_id is an EXISTS over the ITEMS, never a join: an order's effect lives on its items, and
+// joining would multiply the order row across every matching item and corrupt the keyset page.
+// Instance-admin path: every order header, keyset-paginated by RID.
+func (q *Queries) ListOrders(ctx context.Context, arg ListOrdersParams) ([]OikumeneaOrderOrder, error) {
+	rows, err := q.db.Query(ctx, listOrders,
+		arg.After,
+		arg.IssuingUnitID,
+		arg.Status,
+		arg.IssuedOnFrom,
+		arg.IssuedOnTo,
+		arg.OrderTypeID,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaOrderOrder
+	for rows.Next() {
+		var i OikumeneaOrderOrder
+		if err := rows.Scan(
+			&i.ID,
+			&i.Number,
+			&i.IssuedOn,
+			&i.IssuingUnitID,
+			&i.Status,
+			&i.RevokedByOrderID,
+			&i.RevokedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOrdersByPerson = `-- name: ListOrdersByPerson :many
 SELECT o.id, o.number, o.issued_on, o.issuing_unit_id, o.status, o.revoked_by_order_id, o.revoked_at, o.created_at, o.updated_at, o.deleted_at FROM oikumenea.order_orders o
 WHERE o.deleted_at IS NULL
@@ -373,6 +469,147 @@ type ListOrdersByUnitParams struct {
 // An issuing unit's orders (headers only), keyset-paginated by RID.
 func (q *Queries) ListOrdersByUnit(ctx context.Context, arg ListOrdersByUnitParams) ([]OikumeneaOrderOrder, error) {
 	rows, err := q.db.Query(ctx, listOrdersByUnit, arg.IssuingUnitID, arg.After, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaOrderOrder
+	for rows.Next() {
+		var i OikumeneaOrderOrder
+		if err := rows.Scan(
+			&i.ID,
+			&i.Number,
+			&i.IssuedOn,
+			&i.IssuingUnitID,
+			&i.Status,
+			&i.RevokedByOrderID,
+			&i.RevokedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOrdersForSubject = `-- name: ListOrdersForSubject :many
+SELECT id, number, issued_on, issuing_unit_id, status, revoked_by_order_id, revoked_at, created_at, updated_at, deleted_at FROM oikumenea.order_orders o
+WHERE o.deleted_at IS NULL
+  AND ($1 = '' OR o.id::text > $1)
+  AND ($2::uuid IS NULL OR o.issuing_unit_id = $2::uuid)
+  AND ($3::text IS NULL OR o.status = $3::text)
+  AND ($4::date IS NULL OR o.issued_on >= $4::date)
+  AND ($5::date IS NULL OR o.issued_on <= $5::date)
+  AND ($6::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.order_order_items i
+        WHERE i.order_id = o.id AND i.type_id = $6::uuid))
+  AND o.issuing_unit_id IN (SELECT oikumenea.authz_readable_units($7))
+ORDER BY o.id
+LIMIT $8
+`
+
+type ListOrdersForSubjectParams struct {
+	After           interface{}
+	IssuingUnitID   pgtype.Text
+	Status          pgtype.Text
+	IssuedOnFrom    pgtype.Date
+	IssuedOnTo      pgtype.Date
+	OrderTypeID     pgtype.Text
+	SubjectPersonID string
+	Lim             int32
+}
+
+// Read-scope path: the same set intersected with the subject's effective readable reach on the
+// ISSUING unit. The reach set is UNCORRELATED — it reads only @subject_person_id, so the planner
+// evaluates it once and probes a hash (M56 ticket 2: the correlated form measured 242 ms vs 33 ms).
+func (q *Queries) ListOrdersForSubject(ctx context.Context, arg ListOrdersForSubjectParams) ([]OikumeneaOrderOrder, error) {
+	rows, err := q.db.Query(ctx, listOrdersForSubject,
+		arg.After,
+		arg.IssuingUnitID,
+		arg.Status,
+		arg.IssuedOnFrom,
+		arg.IssuedOnTo,
+		arg.OrderTypeID,
+		arg.SubjectPersonID,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OikumeneaOrderOrder
+	for rows.Next() {
+		var i OikumeneaOrderOrder
+		if err := rows.Scan(
+			&i.ID,
+			&i.Number,
+			&i.IssuedOn,
+			&i.IssuingUnitID,
+			&i.Status,
+			&i.RevokedByOrderID,
+			&i.RevokedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOrdersForSubjectDense = `-- name: ListOrdersForSubjectDense :many
+SELECT id, number, issued_on, issuing_unit_id, status, revoked_by_order_id, revoked_at, created_at, updated_at, deleted_at FROM oikumenea.order_orders o
+WHERE o.deleted_at IS NULL
+  AND ($1 = '' OR o.id::text > $1)
+  AND ($2::uuid IS NULL OR o.issuing_unit_id = $2::uuid)
+  AND ($3::text IS NULL OR o.status = $3::text)
+  AND ($4::date IS NULL OR o.issued_on >= $4::date)
+  AND ($5::date IS NULL OR o.issued_on <= $5::date)
+  AND ($6::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.order_order_items i
+        WHERE i.order_id = o.id AND i.type_id = $6::uuid))
+  AND oikumenea.authz_unit_readable_by(o.issuing_unit_id, $7)
+ORDER BY o.id
+LIMIT $8
+`
+
+type ListOrdersForSubjectDenseParams struct {
+	After           interface{}
+	IssuingUnitID   pgtype.Text
+	Status          pgtype.Text
+	IssuedOnFrom    pgtype.Date
+	IssuedOnTo      pgtype.Date
+	OrderTypeID     pgtype.Text
+	SubjectPersonID string
+	Lim             int32
+}
+
+// DENSE-reach plan shape of the query above, byte-identical in its filter block and differing ONLY in
+// how reach is applied: a per-row point probe instead of a materialized reach set. See
+// ListMembershipsForSubjectDense and migration 0017 for the measured reason both shapes exist; the
+// adapter dispatches on CountReadableUnitsCapped.
+func (q *Queries) ListOrdersForSubjectDense(ctx context.Context, arg ListOrdersForSubjectDenseParams) ([]OikumeneaOrderOrder, error) {
+	rows, err := q.db.Query(ctx, listOrdersForSubjectDense,
+		arg.After,
+		arg.IssuingUnitID,
+		arg.Status,
+		arg.IssuedOnFrom,
+		arg.IssuedOnTo,
+		arg.OrderTypeID,
+		arg.SubjectPersonID,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}

@@ -71,13 +71,13 @@ type Oikumenea struct {
 
 // Source is a declaratively-seeded import source.
 type Source struct {
-	Code          string `yaml:"code"`
-	Name          string `yaml:"name"`
+	Code        string `yaml:"code"`
+	Name        string `yaml:"name"`
 	FetcherType string `yaml:"connector-type"` // http | file | wof-sqlite | http-files
-	ObjectType    string `yaml:"object-type"`    // oikumenea import target (e.g. geo-places)
-	Locator       string `yaml:"locator"`        // URL (http / wof-sqlite) | path (file) | URL list (http-files)
-	Cron          string `yaml:"cron"`           // optional: @every <dur> / @hourly / @daily / @weekly
-	Enabled       *bool  `yaml:"enabled"`        // default true
+	ObjectType  string `yaml:"object-type"`    // oikumenea import target (e.g. geo-places)
+	Locator     string `yaml:"locator"`        // URL (http / wof-sqlite) | path (file) | URL list (http-files)
+	Cron        string `yaml:"cron"`           // optional: @every <dur> / @hourly / @daily / @weekly
+	Enabled     *bool  `yaml:"enabled"`        // default true
 }
 
 // EnabledOrDefault returns Enabled, defaulting to true when unset.

@@ -38,16 +38,22 @@ type TenantService interface {
 	ListUnitCodeEvents(ctx context.Context, authHeader bearertoken.Token, unitIdArg string) (UnitCodeEventList, error)
 	/*
 	   List/search units within an organization (D-TenantOrganizations, M40). `org` is REQUIRED —
-	   a fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally filtered by
-	   `domain` (cross-cut within the org, for mixed trees), `unitKind`, and `level`. Token-paginated.
+	   a fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally narrowed by the
+	   unit facet set (D-ObjectFacets, M56): `domain` (cross-cut within the org, for mixed trees),
+	   `unitKind`, `level`, `visibility`, `state` and `pdpScoped`. Token-paginated.
+
+	   The shadow-visibility gate still trims the page AFTER it is cut, so `visibility` NARROWS and
+	   never widens: asking for `visibility=shadow` without shadow reach yields an empty page, not
+	   an error and not a leak.
 
 	   For hierarchical (expand-on-click) browsing in graph `graph` (default `command`): pass
 	   `rootsOnly=true` to list only the org's top-level units (those with no parent in the graph),
 	   or `parent=<unitRid>` to list a unit's DIRECT children in the graph. The two are mutually
-	   exclusive, and each ignores the `domain`/`unitKind`/`level` filters. When neither is set the
+	   exclusive, and each ignores the flat-listing filters
+	   (`domain`/`unitKind`/`level`/`visibility`/`state`/`pdpScoped`). When neither is set the
 	   listing is the flat, filtered org listing.
 	*/
-	ListUnits(ctx context.Context, authHeader bearertoken.Token, orgArg string, domainArg *string, unitKindArg *string, levelArg *int, graphArg *string, parentArg *string, rootsOnlyArg *bool, pageSizeArg *int, pageTokenArg *string) (UnitPage, error)
+	ListUnits(ctx context.Context, authHeader bearertoken.Token, orgArg string, domainArg *string, unitKindArg *string, levelArg *int, visibilityArg *string, stateArg *string, pdpScopedArg *bool, graphArg *string, parentArg *string, rootsOnlyArg *bool, pageSizeArg *int, pageTokenArg *string) (UnitPage, error)
 	// Attach the path unit as a child of parentId within a graph (default command). Returns Tenant:UnitCycleDetected on a cycle.
 	AddEdge(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg AddEdgeRequest) (UnitEdge, error)
 	// Detach the path unit from a parent within a graph.
@@ -357,6 +363,24 @@ func (t *tenantServiceHandler) HandleListUnits(rw http.ResponseWriter, req *http
 		}
 		levelArg = &levelArgInternal
 	}
+	var visibilityArg *string
+	if visibilityArgStr := req.URL.Query().Get("visibility"); visibilityArgStr != "" {
+		visibilityArgInternal := visibilityArgStr
+		visibilityArg = &visibilityArgInternal
+	}
+	var stateArg *string
+	if stateArgStr := req.URL.Query().Get("state"); stateArgStr != "" {
+		stateArgInternal := stateArgStr
+		stateArg = &stateArgInternal
+	}
+	var pdpScopedArg *bool
+	if pdpScopedArgStr := req.URL.Query().Get("pdpScoped"); pdpScopedArgStr != "" {
+		pdpScopedArgInternal, err := strconv.ParseBool(pdpScopedArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"pdpScoped\" as boolean")
+		}
+		pdpScopedArg = &pdpScopedArgInternal
+	}
 	var graphArg *string
 	if graphArgStr := req.URL.Query().Get("graph"); graphArgStr != "" {
 		graphArgInternal := graphArgStr
@@ -388,7 +412,7 @@ func (t *tenantServiceHandler) HandleListUnits(rw http.ResponseWriter, req *http
 		pageTokenArgInternal := pageTokenArgStr
 		pageTokenArg = &pageTokenArgInternal
 	}
-	respArg, err := t.impl.ListUnits(req.Context(), bearertoken.Token(authHeader), orgArg, domainArg, unitKindArg, levelArg, graphArg, parentArg, rootsOnlyArg, pageSizeArg, pageTokenArg)
+	respArg, err := t.impl.ListUnits(req.Context(), bearertoken.Token(authHeader), orgArg, domainArg, unitKindArg, levelArg, visibilityArg, stateArg, pdpScopedArg, graphArg, parentArg, rootsOnlyArg, pageSizeArg, pageTokenArg)
 	if err != nil {
 		return err
 	}

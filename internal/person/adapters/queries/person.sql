@@ -48,17 +48,51 @@ WHERE id = @id AND deleted_at IS NULL
 RETURNING *;
 
 -- name: ListPersons :many
--- Keyset pagination over the time-ordered RID (an empty cursor starts at the beginning). The
--- unfiltered directory list; the application routes a text query to SearchPersons instead.
+-- Keyset pagination over the time-ordered RID (an empty cursor starts at the beginning), narrowed by
+-- the person facet set (M56 / D-ObjectFacets). The INSTANCE-ADMIN directory list; a scoped caller
+-- goes through membership's visibility queries, which carry a byte-identical facet block. The
+-- application routes a text query to SearchPersons instead.
+--
 -- Explicit column list (review R-17): the directory list is a hot path and must NOT hydrate the wide
 -- generated search_text haystack (nor the always-NULL deleted_at) — it lists exactly the columns the
 -- row->domain mapper reads, so sqlc emits a lean row struct. Keep single-row GetPerson as SELECT *.
-SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2,
-  generation, credentials, preferred, birthdate, date_of_death, sex, country_of_birth_id,
-  attributes, status, deactivated_at, purge_after, created_at, updated_at
-FROM oikumenea.person_persons
-WHERE deleted_at IS NULL AND (@after = '' OR id::text > @after)
-ORDER BY id
+SELECT p.id, p.code, p.display_name, p.title, p.given, p.given2, p.surname, p.surname_prefix, p.surname2,
+  p.generation, p.credentials, p.preferred, p.birthdate, p.date_of_death, p.sex, p.country_of_birth_id,
+  p.attributes, p.status, p.deactivated_at, p.purge_after, p.created_at, p.updated_at
+FROM oikumenea.person_persons p
+WHERE p.deleted_at IS NULL AND (@after = '' OR p.id::text > @after)
+  AND (sqlc.narg('sex')::text IS NULL OR p.sex = sqlc.narg('sex')::text)
+  AND (sqlc.narg('status')::text IS NULL OR p.status = sqlc.narg('status')::text)
+  AND (sqlc.narg('birthdate_from')::date IS NULL OR p.birthdate >= sqlc.narg('birthdate_from')::date)
+  AND (sqlc.narg('birthdate_to')::date IS NULL OR p.birthdate <= sqlc.narg('birthdate_to')::date)
+  AND (sqlc.narg('country_of_birth_id')::uuid IS NULL OR p.country_of_birth_id = sqlc.narg('country_of_birth_id')::uuid)
+  AND (sqlc.narg('rank_id')::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.person_ranks pr
+        WHERE pr.person_id = p.id AND pr.deleted_at IS NULL
+          AND pr.rank_id = sqlc.narg('rank_id')::uuid))
+  AND (sqlc.narg('has_account')::boolean IS NULL
+       OR sqlc.narg('has_account')::boolean = EXISTS (
+            SELECT 1 FROM oikumenea.account_accounts ac
+            WHERE ac.person_id = p.id AND ac.deleted_at IS NULL))
+  AND (sqlc.narg('filter_unit_id')::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.membership_memberships fm
+        WHERE fm.person_id = p.id AND fm.status = 'active' AND fm.deleted_at IS NULL
+          -- The unit itself plus its closure descendants, as an UNCORRELATED set: this subquery
+          -- reads only the two facet parameters, never p, so the planner evaluates it once and
+          -- probes it as a hash. The correlated form (a closure lookup per candidate person)
+          -- measured 242 ms at 10^6 persons against 33 ms for this shape, because it re-walked the
+          -- closure for every row the keyset scan touched to fill a page.
+          AND fm.unit_id IN (
+            SELECT sqlc.narg('filter_unit_id')::uuid
+            UNION
+            SELECT c.descendant_id
+            FROM oikumenea.tenant_unit_closure c
+            JOIN oikumenea.tenant_graphs g ON g.id = c.graph_id
+            WHERE c.ancestor_id = sqlc.narg('filter_unit_id')::uuid
+              AND g.deleted_at IS NULL
+              AND g.is_authority_bearing
+              AND (sqlc.narg('filter_graph')::text IS NULL OR g.code = sqlc.narg('filter_graph')::text))))
+ORDER BY p.id
 LIMIT @lim;
 
 -- name: SearchPersons :many
@@ -70,18 +104,52 @@ LIMIT @lim;
 -- outer keyset then paginates by RID. Sub-3-char queries fall back to a scan (pg_trgm needs a full
 -- trigram) — acceptable for the rare short-prefix case. Lean column list (review R-17): a per-keystroke
 -- typeahead path must not hydrate search_text/deleted_at — same lean projection as ListPersons.
-SELECT id, code, display_name, title, given, given2, surname, surname_prefix, surname2,
-  generation, credentials, preferred, birthdate, date_of_death, sex, country_of_birth_id,
-  attributes, status, deactivated_at, purge_after, created_at, updated_at
-FROM oikumenea.person_persons
-WHERE deleted_at IS NULL AND (@after = '' OR id::text > @after)
-  AND id IN (
+SELECT p.id, p.code, p.display_name, p.title, p.given, p.given2, p.surname, p.surname_prefix, p.surname2,
+  p.generation, p.credentials, p.preferred, p.birthdate, p.date_of_death, p.sex, p.country_of_birth_id,
+  p.attributes, p.status, p.deactivated_at, p.purge_after, p.created_at, p.updated_at
+FROM oikumenea.person_persons p
+WHERE p.deleted_at IS NULL AND (@after = '' OR p.id::text > @after)
+  AND p.id IN (
     SELECT ps.id FROM oikumenea.person_persons ps
       WHERE ps.deleted_at IS NULL AND ps.search_text ILIKE '%' || @query || '%'
     UNION
     SELECT v.person_id FROM oikumenea.person_name_variants v
       WHERE v.search_text ILIKE '%' || @query || '%')
-ORDER BY id
+  -- The facet block, byte-identical to ListPersons (M56 / D-ObjectFacets): a text search and a
+  -- structural filter compose, and the two admin queries must never disagree about what a facet
+  -- selects. The selective trigram set leads, so the facets are applied to a small candidate set.
+  AND (sqlc.narg('sex')::text IS NULL OR p.sex = sqlc.narg('sex')::text)
+  AND (sqlc.narg('status')::text IS NULL OR p.status = sqlc.narg('status')::text)
+  AND (sqlc.narg('birthdate_from')::date IS NULL OR p.birthdate >= sqlc.narg('birthdate_from')::date)
+  AND (sqlc.narg('birthdate_to')::date IS NULL OR p.birthdate <= sqlc.narg('birthdate_to')::date)
+  AND (sqlc.narg('country_of_birth_id')::uuid IS NULL OR p.country_of_birth_id = sqlc.narg('country_of_birth_id')::uuid)
+  AND (sqlc.narg('rank_id')::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.person_ranks pr
+        WHERE pr.person_id = p.id AND pr.deleted_at IS NULL
+          AND pr.rank_id = sqlc.narg('rank_id')::uuid))
+  AND (sqlc.narg('has_account')::boolean IS NULL
+       OR sqlc.narg('has_account')::boolean = EXISTS (
+            SELECT 1 FROM oikumenea.account_accounts ac
+            WHERE ac.person_id = p.id AND ac.deleted_at IS NULL))
+  AND (sqlc.narg('filter_unit_id')::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.membership_memberships fm
+        WHERE fm.person_id = p.id AND fm.status = 'active' AND fm.deleted_at IS NULL
+          -- The unit itself plus its closure descendants, as an UNCORRELATED set: this subquery
+          -- reads only the two facet parameters, never p, so the planner evaluates it once and
+          -- probes it as a hash. The correlated form (a closure lookup per candidate person)
+          -- measured 242 ms at 10^6 persons against 33 ms for this shape, because it re-walked the
+          -- closure for every row the keyset scan touched to fill a page.
+          AND fm.unit_id IN (
+            SELECT sqlc.narg('filter_unit_id')::uuid
+            UNION
+            SELECT c.descendant_id
+            FROM oikumenea.tenant_unit_closure c
+            JOIN oikumenea.tenant_graphs g ON g.id = c.graph_id
+            WHERE c.ancestor_id = sqlc.narg('filter_unit_id')::uuid
+              AND g.deleted_at IS NULL
+              AND g.is_authority_bearing
+              AND (sqlc.narg('filter_graph')::text IS NULL OR g.code = sqlc.narg('filter_graph')::text))))
+ORDER BY p.id
 LIMIT @lim;
 
 -- name: ListPersonsByIDs :many

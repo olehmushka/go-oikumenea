@@ -159,7 +159,7 @@ func (s *seeder) marry(a, b person) error {
 		INSERT INTO oikumenea.person_partnerships (person_id_a, person_id_b, status, effective_from)
 		SELECT least($1::uuid,$2::uuid), greatest($1::uuid,$2::uuid), 'married', $3
 		WHERE least($1::uuid,$2::uuid) <> greatest($1::uuid,$2::uuid)`,
-		a.id, b.id, time.Now().AddDate(-(1 + s.rng.Intn(25)), 0, 0).Format("2006-01-02"))
+		a.id, b.id, time.Now().AddDate(-(1+s.rng.Intn(25)), 0, 0).Format("2006-01-02"))
 }
 
 func (s *seeder) kinship(parentID, childID string) error {

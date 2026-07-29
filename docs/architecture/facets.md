@@ -1,6 +1,9 @@
 # Facets — the shared filter/aggregation vocabulary and the dashboard catalog
 
-> **Status: designed (M56–M58), not yet built.** Binding design lives in
+> **Status: the kernel is BUILT — `person` and `unit` (M56 ticket 2), `membership` / `order` /
+> `document` (M56 ticket 3, alongside their new top-level list endpoints), and all five reach the
+> console as URL-borne list filters (M56 ticket 4); the remaining types are M58.** Binding design
+> lives in
 > [`decisions.md` → D-ObjectFacets](decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope)
 > and [D-ConsoleDashboards](decisions.md#d-consoledashboards--every-listable-type-gets-a-list-view-and-a-dashboard-view-over-one-url-borne-filter-set-amends-d-webui);
 > this note is the readable overview **and the catalog** — the per-object-type list of every facet and
@@ -81,8 +84,8 @@ URL with one more filter applied.
 | `birthdate` | date-range | `birthdate` | nullable — a `(unknown)` bucket is mandatory, not optional |
 | `countryOfBirth` | ref | `country_of_birth_id` → `geo_countries` | |
 | `rankId` | ref | `person_ranks.rank_id` (active row) | one rank per rank system — the facet is per-system |
-| `unitId` | ref | `membership_memberships.unit_id` (active) | subtree-expanding: filtering by a unit includes its closure descendants |
-| `hasAccount` | bool | `identity_accounts` semi-join | account-optional directory (L-AccountOptional) |
+| `unitId` | ref | `membership_memberships.unit_id` (active) | subtree-expanding: filtering by a unit includes its closure descendants over **every authority-bearing graph**. `listPersons` also takes a `graph` arg that narrows the expansion to one graph; it is a traversal arg, not a facet, and is rejected on its own. The expansion is an **uncorrelated** closure set — see [review-2026-07](review-2026-07.md#m56-ticket-2--person-facet-filters-2026-07-28) |
+| `hasAccount` | bool | `account_accounts` semi-join | account-optional directory (L-AccountOptional) |
 
 **Components.** ① **Age pyramid** — horizontal histogram of `birthdate` age bands (`0–17, 18–24,
 25–34, 35–44, 45–54, 55–64, 65+, unknown`) split by `sex`, the two sexes mirrored about a centre axis;
@@ -103,11 +106,14 @@ frequency would destroy the only ordering that means anything). ⑤ **Top units*
 | `org` | ref | `org_id` | **required** today (`listUnits` rejects an unscoped listing) |
 | `domain` | ref | `domain_id` | |
 | `unitKind` | ref | `kind_id` | domain-scoped catalog |
-| `level` | numeric-range | `level` | |
+| `level` | numeric-range | `level` | the contract ships a **scalar exact-match `level`** arg that predates this vocabulary and (expand-only) keeps it; the facet pins that name. M57 bands the same column; `levelMin`/`levelMax` are additive and deferred to when the bands are consumed |
 | `visibility` | enum | `visibility` | `public`/`shadow` |
 | `state` | enum | `state` | `active`/`suspended`/`archived` |
-| `graph` | ref | `tenant_graphs` | selects which DAG `parent`/`rootsOnly` traverse |
 | `pdpScoped` | bool | `pdp_scoped` | operational vs reference units (D-UnifiedOrgGraph) |
+
+> `graph` is **not** a facet. It selects which DAG `parent`/`rootsOnly` walk and adds no predicate to
+> `tenant_units` — there is no `tenant_units.graph_id` to filter or `GROUP BY`. M56 classifies it as a
+> traversal arg, which is what the drift guard checks it against.
 
 **Components.** ① **Units per level** — bar, level ascending; the org chart's width profile. ②
 **Kind mix** donut. ③ **Public/shadow split** — a two-segment bar, not a donut: the shadow count is a
@@ -116,16 +122,26 @@ governance number an operator reads exactly, so the label carries the count. ④
 `membership`'s stats rather than `unit`'s (a cross-module read, gated on `membership.read`, omitted
 without it).
 
-#### `membership` — [membership](../modules/membership.md) · `membership_memberships`, `membership_positions`
+#### `membership` (token `link__member_of`) — [membership](../modules/membership.md) · `membership_memberships`
+
+> The **first faceted reified link**. A link is a first-class row with its own identity, attributes
+> and history (D-Ontology), so it lists and filters exactly like an object; `pkg/facet` accepts
+> object and link tokens, and the token carries the `link__` prefix because that is what the console's
+> ontology registry is keyed by. Actions remain non-listable.
+>
+> The top-level `GET /memberships` carries **no implicit status filter**, unlike the per-unit roster
+> and the per-person listing, which are hard-wired to `status='active'`. A hidden default would make
+> M57's `totalCount` disagree with its own status distribution, and would leave ended memberships
+> unreachable through any endpoint.
 
 | Facet | Kind | Source | Notes |
 |---|---|---|---|
-| `unitId` | ref | `unit_id` | |
+| `unitId` | ref | `unit_id` | EXACT match, **not** subtree-expanding — the opposite of `person.unitId`. A membership names the one unit the person belongs to; expanding would double-count a person against every ancestor and make the M57 headcount-by-unit chart lie |
 | `personId` | ref | `person_id` | |
 | `positionId` | ref | `position_id` | nullable — membership without a billet is legal |
 | `status` | enum | `status` | `active`/`ended` |
-| `effectiveFrom` | date-range | `effective_from` | |
-| `positionState` (positions) | enum | `status` + fill state | `active`/`abolished` × `vacant`/`filled` |
+| `effectiveFrom` | date-range | `effective_from` | Args are `effectiveFromAfter`/`effectiveFromBefore`, not the derived `…From`/`…To` — the key already ends in the word a date-range appends. The column is a `timestamptz`; the bounds are calendar dates compared against the start/end of the given day, so passing one date to both selects that day |
+| ~~`positionState`~~ (positions) | enum | `status` + fill state | **DEFERRED.** It is sourced from `membership_positions`, a different table behind a different endpoint (the per-unit `listPositions`), so it belongs to a `position` object type rather than to `link__member_of`. Declaring it here would have required a facet whose `Table` is unrelated to its list endpoint. Lands with `position` in M58 |
 
 **Components.** ① **Active vs ended tiles**. ② **Joins per month** — `date_trunc('month',
 effective_from)` histogram; the intake curve. ③ **Vacant vs filled positions** donut — the staffing
@@ -137,9 +153,9 @@ gap, the number this module exists to answer. ④ **Tenure histogram** — bands
 | Facet | Kind | Source | Notes |
 |---|---|---|---|
 | `issuingUnitId` | ref | `issuing_unit_id` | |
-| `orderTypeId` | ref | `order_items.type_id` | an order's *effect* lives on its items |
+| `orderTypeId` | ref | `order_order_items.type_id` | An order's *effect* lives on its items, so the filter is an `EXISTS` semi-join — never a join, which would multiply the order across its items and corrupt the keyset page |
 | `status` | enum | `status` | `draft`/`issued`/`revoked` |
-| `issuedOn` | date-range | `issued_on` | |
+| `issuedOn` | date-range | `issued_on` | Nullable — a **draft** order has no issue date, so the `(unknown)` bucket is the draft backlog and any bound excludes drafts |
 
 **Components.** ① **Orders per month** histogram. ② **Type mix** bar — which administrative effects
 this org actually issues. ③ **Draft/issued/revoked tiles**, revoked toned `red`. ④ **Revocation rate**
@@ -208,6 +224,56 @@ under rule 2 — each inherits its surface's own read code (`person.health.read`
 `person_persons.attributes` is a free-form `pii:special` bag and is **never** faceted: the boundary
 there is policy, not a code split (D-DataScope's residual).
 
+## The two plan shapes a scoped list ships
+
+Not a detail — it is why every scoped list endpoint carries **two** SQL queries rather than one, and
+the ticket-3 measurement is what forced it (see
+[review-2026-07](review-2026-07.md#m56-ticket-3--top-level-list-endpoints-2026-07-29)).
+
+Folding visibility into SQL can be done two ways, and neither is safe alone:
+
+| | **set form** — `unit_id IN (SELECT authz_readable_units(subject))` | **point probe** — `authz_unit_readable_by(unit, subject)` |
+|---|---|---|
+| leaf reach (1 unit) | 1.3 ms | 2 500 – 13 100 ms |
+| mid reach (658) | 27 – 122 ms | 128 – 162 ms |
+| root reach (100 000) | 640 – 6 400 ms | 3.6 – 6.3 ms |
+
+The set form materializes the reach and semi-joins it — right when the reach is small. At root it
+makes the planner drive from the *reach* side, build a ~10⁶-row hash and top-N sort, so the `LIMIT`
+never terminates early. The point probe leaves the driving table in keyset order and asks the
+question per candidate row — right when nearly every row qualifies, catastrophic when almost none do,
+because it scans the table to find out.
+
+So the adapters **dispatch on reach cardinality** (`authz_readable_unit_count`, capped at the
+threshold), exactly as `VisiblePersonIDsForSubject*` has since R-02.1. All three reach forms are SQL
+**functions** defined once in migration `0017`, not inlined per query: their parity with the Go PDP
+oracle is the most safety-critical invariant in the codebase, and a differential test holds the
+functions, the inline CTE and the oracle to one answer over randomized worlds.
+
+## What the build-time guards actually check
+
+Since M56 ticket 2 the three rules above are not prose. `pkg/facet/plaintext_test.go` parses
+`migrations/*.sql` (no database) and fails the build when a facet names a `pii:special` column or an
+envelope-encryption artefact, when a facet above `pii:basic` leaves `readPermission` empty, or when a
+nullable column omits its `(unknown)` bucket — plus a contrapositive sweep asserting that **no**
+`pii:special` column anywhere in the schema carries a facet, so the guard fires whether someone adds
+the facet or downgrades the tier. `pkg/facet/args_test.go` holds the vocabulary and the Conjure
+contract in agreement in both directions. Editing this catalog therefore changes behaviour; it is no
+longer only a document.
+
+Ticket 4 adds the **third consumer** to the same discipline: `pkg/facet/console_test.go` parses
+`web/src/lib/ontology/registry.ts` (the same no-database technique, applied to TypeScript) and holds
+each type's `FilterDef[]` against the catalog in **both** directions — a facet the API filters on may
+not be one the console silently omits, and a `FilterDef` may not name an arg the contract does not
+ship (checked against the IR mirror, not only against the catalog, so a hand-re-derived
+`levelMin`/`levelMax` is caught at the console). Because it is a regex over TypeScript, a
+non-vacuity floor asserts the parse actually found every registered type's block and every declared
+facet's def: a broken parse goes red rather than turning the other assertions into vacuous passes.
+Console-side omissions must be declared in `consoleExempt` with a reason — the `NonFacetArg.Why`
+idiom — so the mechanism cannot decay into an allowlist. `filters:` blocks must therefore stay
+literal `key`/`kind`/`params` literals; the constraint is stated in `registry.ts` beside the
+interface, where the edit happens.
+
 ## Open seams
 
 - **Cross-type dashboards.** Every dashboard is single-type by construction (per-module stats
@@ -218,9 +284,23 @@ there is policy, not a code split (D-DataScope's residual).
   the tier-(a) `valid_from`/`valid_to` link history (D-Temporal) folded into the aggregate, which is
   the same seam R-31's re-scope left open — not attempted here.
 - **Sort.** The contract still has **no sort param anywhere**. Facets give filtering and grouping;
-  ordering a list by a facet is a separate, additive change.
+  ordering a list by a facet is a separate, additive change. The console's column sort is therefore
+  still client-side `useState` over the rows already fetched — it reorders *a page*, not the list,
+  and M56 ticket 4 deliberately left it out of the URL rather than encoding a server semantic that
+  does not exist. The same applies to the quick-filter box on the four types whose list endpoint
+  ships no search arg (unit, order, document, `link__member_of`): it stays page-local and now says
+  so ("Filter rows on this page…", "N of M **on this page**"), where the old "N of M" beside a
+  keyset-paginated table read as a total. Person and languoid, which do ship `query`, narrow
+  server-side through the URL instead.
 - **`totalCount` on list envelopes.** Deliberately not added — the stats endpoint carries the count,
   so list pagination stays a pure forward-only keyset with no counting cost per page.
+- **The reach-cardinality dispatch tax.** Every scoped list pays one capped reach count before it
+  picks a plan shape — ~180 ms at 100 000-unit reach, which is the floor under every root-reach number
+  in the ticket-3 table. It is **not new**: the equivalent shipped probe `CountReadableUnitsCapped`,
+  which the person directory has paid since R-02.1, measures 248 ms on the same subject. The cost is
+  the `UNION`'s sort of the whole reach before the cap can apply; `UNION ALL` would stream, at the
+  price of counting duplicate grants. Fixing it means touching person's measured-and-green path, so
+  it is recorded here rather than attempted inside a list ticket.
 - **Estimated totals.** At registry scale an exact `count(*)` over an unfiltered, visibility-scoped
   10⁶-row set may exceed its latency budget; `pg_class.reltuples` estimation is the fallback and is
   measured, not assumed, during M57.

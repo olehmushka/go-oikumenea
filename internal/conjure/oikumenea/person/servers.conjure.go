@@ -43,8 +43,16 @@ type PersonService interface {
 	GetPerson(ctx context.Context, authHeader bearertoken.Token, personIdArg string) (Person, error)
 	// Update names, birthdate, date_of_death, sex, country_of_birth, attributes. `code` is immutable; rank via setRank.
 	UpdatePerson(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg UpdatePersonRequest) (Person, error)
-	// Search/list the directory, token-paginated. (The read-scope union is applied once authz lands, M7.)
-	ListPersons(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string, queryArg *string) (PersonPage, error)
+	/*
+	   Search/list the directory, token-paginated, narrowed by the person facet set
+	   (D-ObjectFacets, M56). A non-instance-admin caller sees only the read-scope union
+	   (D-PersonReadScope); every filter below is applied INSIDE that union, before the page is
+	   cut, so a filtered page is never short and its cursor is never wrong.
+
+	   The facet filters combine with AND. They are ordinary structural predicates and do NOT
+	   widen what the caller may see: filtering can only narrow the visible set.
+	*/
+	ListPersons(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string, queryArg *string, sexArg *string, statusArg *string, birthdateFromArg *string, birthdateToArg *string, countryOfBirthArg *string, rankIdArg *string, unitIdArg *string, graphArg *string, hasAccountArg *bool) (PersonPage, error)
 	// Set or clear the person's rank in one rank system (one rank per system, a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.
 	SetRank(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg SetRankRequest) (Person, error)
 	// Begin reversible deactivation (opens the grace window before purge).
@@ -760,7 +768,55 @@ func (p *personServiceHandler) HandleListPersons(rw http.ResponseWriter, req *ht
 		queryArgInternal := queryArgStr
 		queryArg = &queryArgInternal
 	}
-	respArg, err := p.impl.ListPersons(req.Context(), bearertoken.Token(authHeader), pageSizeArg, pageTokenArg, queryArg)
+	var sexArg *string
+	if sexArgStr := req.URL.Query().Get("sex"); sexArgStr != "" {
+		sexArgInternal := sexArgStr
+		sexArg = &sexArgInternal
+	}
+	var statusArg *string
+	if statusArgStr := req.URL.Query().Get("status"); statusArgStr != "" {
+		statusArgInternal := statusArgStr
+		statusArg = &statusArgInternal
+	}
+	var birthdateFromArg *string
+	if birthdateFromArgStr := req.URL.Query().Get("birthdateFrom"); birthdateFromArgStr != "" {
+		birthdateFromArgInternal := birthdateFromArgStr
+		birthdateFromArg = &birthdateFromArgInternal
+	}
+	var birthdateToArg *string
+	if birthdateToArgStr := req.URL.Query().Get("birthdateTo"); birthdateToArgStr != "" {
+		birthdateToArgInternal := birthdateToArgStr
+		birthdateToArg = &birthdateToArgInternal
+	}
+	var countryOfBirthArg *string
+	if countryOfBirthArgStr := req.URL.Query().Get("countryOfBirth"); countryOfBirthArgStr != "" {
+		countryOfBirthArgInternal := countryOfBirthArgStr
+		countryOfBirthArg = &countryOfBirthArgInternal
+	}
+	var rankIdArg *string
+	if rankIdArgStr := req.URL.Query().Get("rankId"); rankIdArgStr != "" {
+		rankIdArgInternal := rankIdArgStr
+		rankIdArg = &rankIdArgInternal
+	}
+	var unitIdArg *string
+	if unitIdArgStr := req.URL.Query().Get("unitId"); unitIdArgStr != "" {
+		unitIdArgInternal := unitIdArgStr
+		unitIdArg = &unitIdArgInternal
+	}
+	var graphArg *string
+	if graphArgStr := req.URL.Query().Get("graph"); graphArgStr != "" {
+		graphArgInternal := graphArgStr
+		graphArg = &graphArgInternal
+	}
+	var hasAccountArg *bool
+	if hasAccountArgStr := req.URL.Query().Get("hasAccount"); hasAccountArgStr != "" {
+		hasAccountArgInternal, err := strconv.ParseBool(hasAccountArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"hasAccount\" as boolean")
+		}
+		hasAccountArg = &hasAccountArgInternal
+	}
+	respArg, err := p.impl.ListPersons(req.Context(), bearertoken.Token(authHeader), pageSizeArg, pageTokenArg, queryArg, sexArg, statusArg, birthdateFromArg, birthdateToArg, countryOfBirthArg, rankIdArg, unitIdArg, graphArg, hasAccountArg)
 	if err != nil {
 		return err
 	}

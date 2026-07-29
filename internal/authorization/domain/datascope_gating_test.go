@@ -3,7 +3,9 @@
 
 package domain
 
-import "testing"
+import (
+	"testing"
+)
 
 // TestSensitivePersonReadsGatedByOwnCodes proves the D-DataScope aggregation rule (review R-14) at the
 // base-role level: the three pii:special Art.9 person reads are (a) in the closed catalog, (b) reachable

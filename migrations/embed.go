@@ -7,7 +7,9 @@
 // the hermenea companion's migrations live in the migrations/hermenea subdir and are not matched.
 package migrations
 
-import "embed"
+import (
+	"embed"
+)
 
 // FS holds the versioned oikumenea migration files. atlas ignores this Go file when hashing the
 // directory (migrate hash only considers .sql files + atlas.sum), so it does not affect atlas.sum.

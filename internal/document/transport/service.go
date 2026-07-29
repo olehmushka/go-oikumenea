@@ -87,6 +87,43 @@ func (s Service) AttachDocument(ctx context.Context, token bearertoken.Token, pe
 	return toAPIDocument(created), nil
 }
 
+// ListDocuments is the top-level facet-filtered listing (M56 ticket 3 / D-ObjectFacets).
+//
+// Where ListPersonDocuments gates on ONE named holder and hides an unreadable one as an empty page,
+// this endpoint has no holder to probe: the holder read-scope (D-PersonReadScope) is folded into the
+// query itself, so an unreadable holder's documents are simply not in the result set. That is not
+// merely an optimization — a Go-side holder check after the keyset page was cut would return a page
+// SHORTER than pageSize while still handing back a nextPageToken (R-06).
+func (s Service) ListDocuments(ctx context.Context, token bearertoken.Token, pageSize *int, pageToken *string, typeID, status, issuingCountryID, issuedOnFrom, issuedOnTo, expiresOnFrom, expiresOnTo *string) (documentapi.DocumentPage, error) {
+	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermDocumentRead)); err != nil {
+		return documentapi.DocumentPage{}, err
+	}
+	// One filter for the whole vocabulary, built once and passed down BOTH branches of the dispatch
+	// below — the two paths must never see different filters.
+	filter, err := documentFilter(typeID, status, issuingCountryID, issuedOnFrom, issuedOnTo, expiresOnFrom, expiresOnTo)
+	if err != nil {
+		return documentapi.DocumentPage{}, s.mapError(ctx, err, errCtx{})
+	}
+	subject, isAdmin, err := s.pep.SubjectAuthority(ctx)
+	if err != nil {
+		return documentapi.DocumentPage{}, s.mapError(ctx, err, errCtx{})
+	}
+	var page application.DocumentPage
+	if isAdmin {
+		page, err = s.app.ListDocuments(ctx, filter, derefOr(pageSize, 0), derefOr(pageToken, ""))
+	} else {
+		page, err = s.app.ListVisibleDocuments(ctx, subject, filter, derefOr(pageSize, 0), derefOr(pageToken, ""))
+	}
+	if err != nil {
+		return documentapi.DocumentPage{}, s.mapError(ctx, err, errCtx{})
+	}
+	docs := make([]documentapi.Document, 0, len(page.Documents))
+	for _, d := range page.Documents {
+		docs = append(docs, toAPIDocument(d))
+	}
+	return documentapi.DocumentPage{Documents: docs, NextPageToken: tokenPtr(page.NextPageToken)}, nil
+}
+
 func (s Service) ListPersonDocuments(ctx context.Context, token bearertoken.Token, personID string, pageSize *int, pageToken *string) (documentapi.DocumentPage, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermDocumentRead)); err != nil {
 		return documentapi.DocumentPage{}, err

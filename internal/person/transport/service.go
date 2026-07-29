@@ -211,9 +211,15 @@ func (s Service) UpdatePerson(ctx context.Context, token bearertoken.Token, pers
 	return toAPIPerson(updated), nil
 }
 
-func (s Service) ListPersons(ctx context.Context, token bearertoken.Token, pageSize *int, pageToken *string, query *string) (personapi.PersonPage, error) {
+func (s Service) ListPersons(ctx context.Context, token bearertoken.Token, pageSize *int, pageToken *string, query *string, sex *string, status *string, birthdateFrom *string, birthdateTo *string, countryOfBirth *string, rankID *string, unitID *string, graph *string, hasAccount *bool) (personapi.PersonPage, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, permRead); err != nil {
 		return personapi.PersonPage{}, err
+	}
+	// One filter for the whole vocabulary (M56 / D-ObjectFacets), built once and passed down BOTH
+	// branches of the read-scope dispatch below — the two paths must never see different filters.
+	filter, err := personFilter(query, sex, status, birthdateFrom, birthdateTo, countryOfBirth, rankID, unitID, graph, hasAccount)
+	if err != nil {
+		return personapi.PersonPage{}, s.mapError(ctx, err, "")
 	}
 	// Read-scope projection (D-PersonReadScope): an instance admin sees the whole directory; any other
 	// reader sees only the union of people reachable through their effective readable units — computed
@@ -224,9 +230,9 @@ func (s Service) ListPersons(ctx context.Context, token bearertoken.Token, pageS
 	}
 	var page application.Page
 	if isAdmin {
-		page, err = s.app.ListPersons(ctx, derefOr(pageSize, 0), derefOr(pageToken, ""), derefOr(query, ""))
+		page, err = s.app.ListPersons(ctx, filter, derefOr(pageSize, 0), derefOr(pageToken, ""))
 	} else {
-		page, err = s.app.ListVisiblePersons(ctx, subject, derefOr(pageSize, 0), derefOr(pageToken, ""), derefOr(query, ""))
+		page, err = s.app.ListVisiblePersons(ctx, subject, filter, derefOr(pageSize, 0), derefOr(pageToken, ""))
 	}
 	if err != nil {
 		return personapi.PersonPage{}, s.mapError(ctx, err, "")

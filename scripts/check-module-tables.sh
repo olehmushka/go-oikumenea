@@ -108,6 +108,20 @@ personsensitive:geo    # ethnicity-type country associations (geo_countries)
 personsensitive:language # ethnicity-type language associations (language_languoids)
 rank:geo               # rank preset import resolves geo_countries by code
 tenant:language        # unit language links
+# Person facet block (M56 / D-ObjectFacets). The person facet vocabulary spans three cross-module
+# probes — hasAccount (account_accounts), unitId (membership_memberships) and its subtree expansion
+# (tenant_unit_closure / tenant_graphs) — and the SAME block is bound into person's two admin list
+# queries AND membership's three visibility queries.
+#
+# Why the block is duplicated rather than routed through a seam: the predicates must run INSIDE the
+# query, before the LIMIT (review-2026-07 R-06). Calling a membership seam from person's admin path
+# would either return up to 10^5 person ids to Go, breaking filter-before-LIMIT, or give the admin
+# and read-scope paths different query bodies — which is the drift the shared PersonFilter and the
+# SQL narg-parity test exist to prevent. person:membership inverts the usual direction knowingly.
+membership:account     # hasAccount facet: EXISTS over active accounts, inside the visibility queries
+person:account         # hasAccount facet: the same probe on the instance-admin list/search queries
+person:membership      # unitId facet: active-membership probe, folded in before the LIMIT
+person:tenant          # unitId facet: subtree expansion over tenant_unit_closure / tenant_graphs
 "
 
 # EXEMPT: modules with no domain boundary to protect on their query surface.

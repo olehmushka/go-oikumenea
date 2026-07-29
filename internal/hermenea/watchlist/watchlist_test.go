@@ -18,9 +18,9 @@ import (
 
 // memCache is an in-memory Cache for the Service test.
 type memCache struct {
-	rows  map[string]domain.WatchlistResult
-	puts  int
-	gets  int
+	rows map[string]domain.WatchlistResult
+	puts int
+	gets int
 }
 
 func (c *memCache) Get(_ context.Context, key string) (domain.WatchlistResult, bool, error) {
@@ -103,7 +103,7 @@ func fptr(v float64) *float64 { return &v }
 
 type stubProvider struct{ hit Hit }
 
-func (stubProvider) Name() string { return "stub" }
+func (stubProvider) Name() string                                                 { return "stub" }
 func (s stubProvider) Screen(context.Context, domain.WatchlistQuery) (Hit, error) { return s.hit, nil }
 
 type countingProvider struct{ calls int }

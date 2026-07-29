@@ -538,13 +538,19 @@ services:
         http: GET /units
         docs: |
           List/search units within an organization (D-TenantOrganizations, M40). `org` is REQUIRED —
-          a fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally filtered by
-          `domain` (cross-cut within the org, for mixed trees), `unitKind`, and `level`. Token-paginated.
+          a fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally narrowed by the
+          unit facet set (D-ObjectFacets, M56): `domain` (cross-cut within the org, for mixed trees),
+          `unitKind`, `level`, `visibility`, `state` and `pdpScoped`. Token-paginated.
+
+          The shadow-visibility gate still trims the page AFTER it is cut, so `visibility` NARROWS and
+          never widens: asking for `visibility=shadow` without shadow reach yields an empty page, not
+          an error and not a leak.
 
           For hierarchical (expand-on-click) browsing in graph `graph` (default `command`): pass
           `rootsOnly=true` to list only the org's top-level units (those with no parent in the graph),
           or `parent=<unitRid>` to list a unit's DIRECT children in the graph. The two are mutually
-          exclusive, and each ignores the `domain`/`unitKind`/`level` filters. When neither is set the
+          exclusive, and each ignores the flat-listing filters
+          (`domain`/`unitKind`/`level`/`visibility`/`state`/`pdpScoped`). When neither is set the
           listing is the flat, filtered org listing.
         args:
           org:
@@ -562,6 +568,19 @@ services:
           level:
             type: optional<integer>
             param-type: query
+            docs: Optional exact-match level filter. Ignored when `parent`/`rootsOnly` is set.
+          visibility:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — `public` or `shadow`. NARROWS only; the shadow gate still trims the page afterwards. Ignored when `parent`/`rootsOnly` is set.
+          state:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — `active`, `suspended` or `archived`. Ignored when `parent`/`rootsOnly` is set.
+          pdpScoped:
+            type: optional<boolean>
+            param-type: query
+            docs: Facet filter — `true` for operational (reach-scoped) units, `false` for reference units such as universities and companies (D-UnifiedOrgGraph, M41). Ignored when `parent`/`rootsOnly` is set.
           graph:
             type: optional<string>
             param-type: query

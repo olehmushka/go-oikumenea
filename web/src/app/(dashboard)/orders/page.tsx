@@ -4,6 +4,7 @@ import { EmptyState, ErrorNotice, Mono, Pager, PageHeader, Pill, Table } from "@
 import { LookupForm } from "@/components/LookupForm";
 import { T } from "@/components/T";
 import { OrderCreate, OrderTypeManager } from "./OrderForms";
+import { statusTone } from "./status";
 import type { OrderPage, OrderType } from "@/lib/api/types";
 
 export default async function OrdersPage({
@@ -69,9 +70,7 @@ export default async function OrdersPage({
                   <td className="td">{o.issuedOn ?? "—"}</td>
                   <td className="td">{o.items?.length ?? 0}</td>
                   <td className="td">
-                    <Pill tone={o.status === "ISSUED" ? "green" : o.status === "REVOKED" ? "red" : "slate"}>
-                      {o.status ?? "—"}
-                    </Pill>
+                    <Pill tone={statusTone(o.status)}>{o.status ?? "—"}</Pill>
                   </td>
                 </tr>
               ))}
@@ -84,7 +83,8 @@ export default async function OrdersPage({
             nextPageToken={page.nextPageToken}
             extraQuery={`unitId=${encodeURIComponent(unitId)}`}
           />
-          <div className="mt-6 max-w-xl">
+          {/* wider than the other cards: the item rows are a two-column grid */}
+          <div className="mt-6 max-w-3xl">
             <OrderCreate unitId={unitId} orderTypes={orderTypes} />
           </div>
         </>

@@ -132,6 +132,7 @@ export type DocumentDoc = document.IDocument;
 
 // ── order ────────────────────────────────────────────────────────────────────
 export type OrderItem = order.IOrderItem;
+export type OrderItemInput = order.IOrderItemInput;
 export type Order = order.IOrder;
 export type OrderPage = order.IOrderPage;
 export type OrderType = order.IOrderType;

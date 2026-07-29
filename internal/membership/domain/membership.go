@@ -18,6 +18,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	persondomain "github.com/olegamysk/go-oikumenea/internal/person/domain"
 )
 
 // Sentinel errors mapped to Conjure SerializableErrors by the transport layer. The DB constraints
@@ -182,6 +184,16 @@ type Repository interface {
 	ActivePlainMembership(ctx context.Context, personID, unitID string) (Membership, error)
 	ListMembersByUnit(ctx context.Context, unitID, after string, limit int) ([]Membership, error)
 	ListMembershipsByPerson(ctx context.Context, personID, after string, limit int) ([]Membership, error)
+	// ListMemberships and ListMembershipsForSubject are the two arms of the top-level facet-filtered
+	// listing (M56 ticket 3 / D-ObjectFacets): the instance-admin view of every membership, and the
+	// same filter set intersected with the subject's effective readable reach. Both return EVERY
+	// status — the top-level list carries no implicit active-only default (see MembershipFilter).
+	ListMemberships(ctx context.Context, f MembershipFilter, after string, limit int) ([]Membership, error)
+	ListMembershipsForSubject(ctx context.Context, subjectPersonID string, f MembershipFilter, after string, limit int) ([]Membership, error)
+	// ReadableUnitIDsForSubject projects the subject's reach through the SQL function migration 0017
+	// added. It exists for the differential test that asserts the function agrees with the inline CTE
+	// in VisiblePersonIDsForSubject* — the parity claim 0017 makes.
+	ReadableUnitIDsForSubject(ctx context.Context, subjectPersonID string) ([]string, error)
 	// ActiveUnitIDsByPerson returns the distinct units a person currently belongs to via active
 	// memberships (the person/document read-scope projection input; D-PersonReadScope).
 	ActiveUnitIDsByPerson(ctx context.Context, personID string) ([]string, error)
@@ -191,10 +203,16 @@ type Repository interface {
 	// VisiblePersonIDsForSubject returns the distinct persons with an active membership in any unit
 	// of the SUBJECT's effective readable reach, computed as a SQL semi-join over the authz
 	// assignments + tenant closure (D-PersonReadScope; review-2026-07 R-02.1 — the reach set never
-	// leaves the database). An optional case-insensitive query narrows the union by the person's
-	// trigram-indexed name/code haystack or any name variant, folded into the same SQL so the page
-	// fills correctly (review-2026-07 R-06). Keyset-paginated by person RID.
-	VisiblePersonIDsForSubject(ctx context.Context, subjectPersonID, after, query string, limit int) ([]string, error)
+	// leaves the database), narrowed by the caller's person filter.
+	//
+	// The filter carries both the optional case-insensitive query (the person's trigram-indexed
+	// name/code haystack or any name variant) and the M56 facet set (D-ObjectFacets). ALL of it is
+	// folded into the same SQL, so every predicate runs before the LIMIT and the page fills
+	// correctly (review-2026-07 R-06). Keyset-paginated by person RID.
+	//
+	// The filter type is PERSON's: person owns the vocabulary over its own columns, membership owns
+	// the reach predicate, and this seam is where the two meet.
+	VisiblePersonIDsForSubject(ctx context.Context, subjectPersonID, after string, f persondomain.PersonFilter, limit int) ([]string, error)
 	// SubjectCanReadPerson is the point probe of the same reach predicate: whether any of the
 	// person's active-membership units falls in the subject's readable reach.
 	SubjectCanReadPerson(ctx context.Context, subjectPersonID, personID string) (bool, error)

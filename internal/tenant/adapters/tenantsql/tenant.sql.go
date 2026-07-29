@@ -1300,27 +1300,45 @@ WHERE deleted_at IS NULL
   AND ($2::uuid IS NULL OR domain_id = $2::uuid)
   AND ($3::uuid IS NULL OR kind_id = $3::uuid)
   AND ($4::smallint IS NULL OR level = $4::smallint)
-  AND ($5::uuid IS NULL OR id > $5::uuid)
+  AND ($5::text IS NULL OR visibility = $5::text)
+  AND ($6::text IS NULL OR state = $6::text)
+  AND ($7::boolean IS NULL OR pdp_scoped = $7::boolean)
+  AND ($8::uuid IS NULL OR id > $8::uuid)
 ORDER BY id
-LIMIT $6
+LIMIT $9
 `
 
 type ListUnitsParams struct {
-	OrgID    string
-	DomainID pgtype.Text
-	KindID   pgtype.Text
-	Level    pgtype.Int2
-	After    pgtype.Text
-	Lim      int32
+	OrgID      string
+	DomainID   pgtype.Text
+	KindID     pgtype.Text
+	Level      pgtype.Int2
+	Visibility pgtype.Text
+	State      pgtype.Text
+	PdpScoped  pgtype.Bool
+	After      pgtype.Text
+	Lim        int32
 }
 
-// Keyset pagination over the time-ordered RID (id), REQUIRED org scope + optional domain/kind/level.
+// Keyset pagination over the time-ordered RID (id), REQUIRED org scope + the optional unit facet set
+// (M56 / D-ObjectFacets: domain, unitKind, level, visibility, state, pdpScoped).
+//
+// Every filter uses the `sqlc.narg('x')::type IS NULL OR col = ...` shape, NOT the
+// `sqlc.arg(x)::text = ”` sentinel and never the `(@q = ” OR <ilike>)` guard D-PersonSearch's R-21
+// generalization bans — under a generic prepared plan the planner cannot prove the sentinel
+// non-empty and falls back to a seq scan.
+//
+// `visibility` narrows only: the shadow-visibility gate still trims the page after it is cut, so this
+// predicate can never widen what the caller sees.
 func (q *Queries) ListUnits(ctx context.Context, arg ListUnitsParams) ([]OikumeneaTenantUnit, error) {
 	rows, err := q.db.Query(ctx, listUnits,
 		arg.OrgID,
 		arg.DomainID,
 		arg.KindID,
 		arg.Level,
+		arg.Visibility,
+		arg.State,
+		arg.PdpScoped,
 		arg.After,
 		arg.Lim,
 	)
