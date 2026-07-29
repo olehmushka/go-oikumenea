@@ -31,6 +31,13 @@ var personFilterQueries = []struct{ module, query string }{
 	{"membership", "VisiblePersonIDsForSubjectSparse"},
 	{"membership", "VisiblePersonIDsForSubjectDense"},
 	{"membership", "VisiblePersonIDsForSubjectSearch"},
+	// M57: the dashboard aggregates carry the SAME block. A list and a dashboard that disagree about
+	// what a filter selects is the worst of the drift shapes — the chart would describe a set the
+	// list does not return, and neither number would look wrong on its own.
+	{"person", "PersonStats"},
+	{"person", "PersonStatsSearch"},
+	{"membership", "VisiblePersonStatsForSubject"},
+	{"membership", "VisiblePersonStatsForSubjectSearch"},
 }
 
 // personFacetNargs maps each person facet key to the sqlc.narg name(s) its predicate binds. The
@@ -49,7 +56,11 @@ var personFacetNargs = map[string][]string{
 
 // unitFilterQueries: the unit facets live in a single flat-listing query (the traversal modes
 // deliberately ignore them), so parity there is a presence check rather than a cross-query one.
-var unitFilterQueries = []struct{ module, query string }{{"tenant", "ListUnits"}}
+var unitFilterQueries = []struct{ module, query string }{
+	{"tenant", "ListUnits"},
+	{"tenant", "UnitStats"},
+	{"tenant", "UnitStatsForSubject"},
+}
 
 var unitFacetNargs = map[string][]string{
 	"domain":     {"domain_id"},

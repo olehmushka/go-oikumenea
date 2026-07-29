@@ -2582,7 +2582,8 @@ describes its own table once). From that one declaration come:
    one per facet, in the shape `listUnits(org, domain, unitKind, level, graph, parent, rootsOnly)`
    and `listExternalOrgs(query, kind, country, status)` already use. Not a generic filter DSL, not an
    opaque encoded `filter=` param: the args are typed in the generated SDKs and visible in OpenAPI.
-2. **A per-module stats endpoint** — `GET /<module>/v1/<collection>/stats`, taking **exactly the same
+2. **A per-module stats endpoint** — `GET /<module>/v1/stats/<collection>` (the path shape as built;
+   see the M57 as-built note), taking **exactly the same
    filter args** as the list endpoint plus an optional `facets` CSV, returning `totalCount` plus a
    `list<FacetDistribution>` (`facet`, `buckets[{key, label, count}]`). One endpoint per module, so a
    whole dashboard is one round-trip; backed by **static sqlc `GROUP BY` queries**, one per
@@ -2696,6 +2697,52 @@ would otherwise let the guards validate an old contract and pass.
   migration: every pre-existing `membership_memberships` index is partial on `status='active'`, so
   the status-agnostic paths needed keyset indexes (`0017`), making M56 the first ticket in this
   cluster with a non-`➖` `Migrated` gate.
+
+**As built (M57 ticket 1 — the `person` and `unit` stats endpoints).** Four things this decision
+specified differently, each settled by implementation or measurement and recorded so tickets 2–4 do
+not re-litigate them:
+
+- **The path is `/<module>/v1/stats/<collection>`, not `/<collection>/stats`.** The specified shape is
+  **unroutable in this stack**: witchcraft serves on julienschmidt/httprouter, whose radix tree
+  refuses a literal segment beside a wildcard at the same position, so `GET /persons/stats` next to
+  `GET /persons/{personId}` panics **at registration** — server startup, not a request, and invisible
+  to `go build` and every unit test. `/stats/<collection>` also generalizes better for the M58 modules
+  that list several collections (`/finance/v1/stats/accounts`, `/stats/cards`). A guard now holds the
+  whole contract: `internal/platform/transport/route_conflict_test.go` parses every `api/*.conjure.yml`
+  route and fails on a same-method literal/wildcard sibling — keyed by METHOD, because httprouter
+  keeps one tree per method (which is why the pre-existing `DELETE /rank-scheme/{level}/{nodeId}`
+  beside `POST /rank-scheme/systems` is legal and must not be reported).
+- **One static aggregate query per (module, ARM), not per (module, facet).** "Static sqlc `GROUP BY`
+  queries, one per (module, facet)" would have meant 7 facets × the arms each module ships — 30-odd
+  near-identical 40-line queries for `person` alone, and one round trip per facet. Instead each arm is
+  ONE statement: a materialized candidate CTE carrying the list's filter block verbatim, then one
+  `UNION ALL` branch per facet, each gated on a `want_<facet>` boolean so an unselected or unreadable
+  facet is **skipped by the planner** (a one-time false filter) rather than merely dropped from the
+  response. Staticness — the property this decision actually wanted, no dynamic `GROUP BY` builder —
+  is unchanged, and the whole dashboard is one scan of one candidate set. The arms exist for plan
+  reasons the ticket-3 measurement already established (a nullable trigram predicate is not indexable,
+  R-21; the admin arm must carry no visibility predicate at all), and `pkg/facet/statsparity_test.go`
+  holds their aggregate halves **byte-identical**, so a facet fixed in one arm cannot be forgotten in
+  another.
+- **A scoped aggregate needs only ONE plan shape**, unlike a scoped list. The sparse/dense dispatch
+  exists because a `LIMIT` cannot terminate early once the planner drives from the reach side; an
+  aggregate has no `LIMIT`, so the prediction was that the materialized reach set wins everywhere.
+  Measured, at 10^6 persons: set form 8.3 ms / 79.8 ms / 7 144 ms at leaf / mid / root reach against
+  the point probe's 12 926 / 17 066 / 24 869 ms. The dispatch — and its ~180 ms capped-count tax — is
+  therefore deliberately absent here. Numbers in
+  [review-2026-07](review-2026-07.md#m57-ticket-1--the-dashboard-aggregates-2026-07-29).
+- **A ref facet declares what its RIDs point at.** `Facet.RefType` (a `pkg/rid` object token) is new,
+  because a bucket key is a RID and an axis of RID tails is unreadable; the composition root resolves
+  them through the **same D-LinkTraversal labelers** the link engine uses, so a unit is named
+  identically in a graph row and in a chart segment, and a boot assertion fails startup for a ref
+  facet whose target type has no resolver. `Register` also now refuses a type whose ref facets declare
+  different `TopN`, since one query binds one `top_n` across its ref branches.
+
+Bucket assembly (zero-filling an enum in CHART order, banding an age, collapsing a top-N tail,
+surfacing NULLs as the mandatory `(unknown)` bucket) lives in the new stdlib-only `pkg/stats`, which
+also owns the `facets` CSV selection and rule 2's omission. Its one invariant: **every counted row
+lands in exactly one bucket** — an undeclared enum value is appended rather than dropped — so a facet
+over the listed table's own column always sums to `totalCount`.
 
 ---
 

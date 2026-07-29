@@ -152,6 +152,246 @@ WHERE p.deleted_at IS NULL AND (@after = '' OR p.id::text > @after)
 ORDER BY p.id
 LIMIT @lim;
 
+-- ============================ dashboard aggregates (M57) ============================
+
+-- name: PersonStats :many
+-- The INSTANCE-ADMIN dashboard aggregate (M57 / D-ObjectFacets): every facet distribution for the
+-- directory in ONE round-trip and ONE scan of the candidate set. The candidate CTE carries the facet
+-- block VERBATIM from ListPersons — the list and the dashboard must see one world, or a chart would
+-- describe a set the list does not return — and each aggregate branch is skipped, not merely hidden,
+-- when its want_* flag is false (an unselected or unreadable facet is never grouped).
+--
+-- No LIMIT anywhere: a count is over the whole filtered set by definition, which is also why this
+-- needs no sparse/dense plan dispatch — there is no early termination for a reach set to spoil.
+WITH cand AS MATERIALIZED (
+  SELECT p.id, p.sex, p.status, p.birthdate, p.country_of_birth_id
+  FROM oikumenea.person_persons p
+  WHERE p.deleted_at IS NULL
+  AND (sqlc.narg('sex')::text IS NULL OR p.sex = sqlc.narg('sex')::text)
+  AND (sqlc.narg('status')::text IS NULL OR p.status = sqlc.narg('status')::text)
+  AND (sqlc.narg('birthdate_from')::date IS NULL OR p.birthdate >= sqlc.narg('birthdate_from')::date)
+  AND (sqlc.narg('birthdate_to')::date IS NULL OR p.birthdate <= sqlc.narg('birthdate_to')::date)
+  AND (sqlc.narg('country_of_birth_id')::uuid IS NULL OR p.country_of_birth_id = sqlc.narg('country_of_birth_id')::uuid)
+  AND (sqlc.narg('rank_id')::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.person_ranks pr
+        WHERE pr.person_id = p.id AND pr.deleted_at IS NULL
+          AND pr.rank_id = sqlc.narg('rank_id')::uuid))
+  AND (sqlc.narg('has_account')::boolean IS NULL
+       OR sqlc.narg('has_account')::boolean = EXISTS (
+            SELECT 1 FROM oikumenea.account_accounts ac
+            WHERE ac.person_id = p.id AND ac.deleted_at IS NULL))
+  AND (sqlc.narg('filter_unit_id')::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.membership_memberships fm
+        WHERE fm.person_id = p.id AND fm.status = 'active' AND fm.deleted_at IS NULL
+          AND fm.unit_id IN (
+            SELECT sqlc.narg('filter_unit_id')::uuid
+            UNION
+            SELECT c.descendant_id
+            FROM oikumenea.tenant_unit_closure c
+            JOIN oikumenea.tenant_graphs g ON g.id = c.graph_id
+            WHERE c.ancestor_id = sqlc.narg('filter_unit_id')::uuid
+              AND g.deleted_at IS NULL
+              AND g.is_authority_bearing
+              AND (sqlc.narg('filter_graph')::text IS NULL OR g.code = sqlc.narg('filter_graph')::text))))
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n, NULL::bigint AS ord
+FROM cand
+UNION ALL
+SELECT 'sex'::text, c.sex::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE sqlc.arg('want_sex')::boolean GROUP BY c.sex
+UNION ALL
+SELECT 'status'::text, c.status::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE sqlc.arg('want_status')::boolean GROUP BY c.status
+UNION ALL
+-- Age in WHOLE YEARS as of today, not the raw date: the bands live in the pkg/facet catalog (one
+-- definition, already proven against the DDL), so SQL emits the number and Go assigns the band. A
+-- NULL birthdate emits NULL and lands in the mandatory (unknown) bucket.
+SELECT 'birthdate'::text,
+       (EXTRACT(YEAR FROM age(current_date, c.birthdate)))::integer::text,
+       count(*)::bigint, NULL::bigint
+FROM cand c WHERE sqlc.arg('want_birthdate')::boolean GROUP BY 2
+UNION ALL
+-- Top-N ref facets collapse their tail into (other) HERE rather than in Go: the tail's sum cannot be
+-- known without grouping everything, so it is summed where the rows already are. NULL sorts last in
+-- the ranking (`(k IS NULL)` first in the ORDER BY) so the (unknown) bucket never steals a top-N
+-- slot from a real value.
+SELECT 'countryOfBirth'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_of_birth_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_country_of_birth')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+-- rankId is LEFT-joined: a person with no active rank is a real bucket ((unknown)), not a row that
+-- silently leaves the distribution. `ord` is the scheme's seniority ordinal — category, then type,
+-- then rank — so the chart can be read as a seniority profile instead of a frequency ranking
+-- (facets.md ④). A person holds one rank PER SYSTEM, so a multi-system directory counts them once
+-- per system: this distribution is per-system by construction.
+SELECT 'rankId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, min(t.ord)::bigint
+FROM (SELECT g.k, g.n, g.ord, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT r.id::text AS k, count(*) AS n,
+                   (rc.sort_order::bigint * 1000000 + rt.sort_order::bigint * 1000 + r.sort_order::bigint) AS ord
+            FROM cand c
+            LEFT JOIN oikumenea.person_ranks pr ON pr.person_id = c.id AND pr.deleted_at IS NULL
+            LEFT JOIN oikumenea.rank_ranks r ON r.id = pr.rank_id AND r.deleted_at IS NULL
+            LEFT JOIN oikumenea.rank_types rt ON rt.id = r.type_id AND rt.deleted_at IS NULL
+            LEFT JOIN oikumenea.rank_categories rc ON rc.id = rt.category_id AND rc.deleted_at IS NULL
+            WHERE sqlc.arg('want_rank_id')::boolean
+            GROUP BY 1, 3) g) t
+GROUP BY 2
+UNION ALL
+-- unitId counts ACTIVE memberships, LEFT-joined for the same reason: a person with no active
+-- membership is the (unknown) bucket. A person in several units is counted in each, so this
+-- distribution deliberately does NOT sum to totalCount — it answers "how many people are in unit X",
+-- which is what the chart is read as.
+SELECT 'unitId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT m.unit_id::text AS k, count(*) AS n
+            FROM cand c
+            LEFT JOIN oikumenea.membership_memberships m
+                   ON m.person_id = c.id AND m.status = 'active' AND m.deleted_at IS NULL
+            WHERE sqlc.arg('want_unit_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'hasAccount'::text,
+       (EXISTS (SELECT 1 FROM oikumenea.account_accounts ac
+                WHERE ac.person_id = c.id AND ac.deleted_at IS NULL))::text,
+       count(*)::bigint, NULL::bigint
+FROM cand c WHERE sqlc.arg('want_has_account')::boolean GROUP BY 2;
+
+-- name: PersonStatsSearch :many
+-- The instance-admin dashboard aggregate under a text search: PersonStats with SearchPersons'
+-- trigram id-set leading the candidate CTE. A separate query rather than a nullable @query, for the
+-- reason R-21 recorded: a `(@query IS NULL OR search_text ILIKE …)` predicate is not indexable, so the
+-- unfiltered dashboard — the common case — would seq-scan the directory every time.
+WITH cand AS MATERIALIZED (
+  SELECT p.id, p.sex, p.status, p.birthdate, p.country_of_birth_id
+  FROM oikumenea.person_persons p
+  WHERE p.deleted_at IS NULL
+  AND (sqlc.narg('sex')::text IS NULL OR p.sex = sqlc.narg('sex')::text)
+  AND (sqlc.narg('status')::text IS NULL OR p.status = sqlc.narg('status')::text)
+  AND (sqlc.narg('birthdate_from')::date IS NULL OR p.birthdate >= sqlc.narg('birthdate_from')::date)
+  AND (sqlc.narg('birthdate_to')::date IS NULL OR p.birthdate <= sqlc.narg('birthdate_to')::date)
+  AND (sqlc.narg('country_of_birth_id')::uuid IS NULL OR p.country_of_birth_id = sqlc.narg('country_of_birth_id')::uuid)
+  AND (sqlc.narg('rank_id')::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.person_ranks pr
+        WHERE pr.person_id = p.id AND pr.deleted_at IS NULL
+          AND pr.rank_id = sqlc.narg('rank_id')::uuid))
+  AND (sqlc.narg('has_account')::boolean IS NULL
+       OR sqlc.narg('has_account')::boolean = EXISTS (
+            SELECT 1 FROM oikumenea.account_accounts ac
+            WHERE ac.person_id = p.id AND ac.deleted_at IS NULL))
+  AND (sqlc.narg('filter_unit_id')::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.membership_memberships fm
+        WHERE fm.person_id = p.id AND fm.status = 'active' AND fm.deleted_at IS NULL
+          AND fm.unit_id IN (
+            SELECT sqlc.narg('filter_unit_id')::uuid
+            UNION
+            SELECT c.descendant_id
+            FROM oikumenea.tenant_unit_closure c
+            JOIN oikumenea.tenant_graphs g ON g.id = c.graph_id
+            WHERE c.ancestor_id = sqlc.narg('filter_unit_id')::uuid
+              AND g.deleted_at IS NULL
+              AND g.is_authority_bearing
+              AND (sqlc.narg('filter_graph')::text IS NULL OR g.code = sqlc.narg('filter_graph')::text))))
+  AND p.id IN (
+    SELECT ps.id FROM oikumenea.person_persons ps
+      WHERE ps.deleted_at IS NULL AND ps.search_text ILIKE '%' || @query || '%'
+    UNION
+    SELECT v.person_id FROM oikumenea.person_name_variants v
+      WHERE v.search_text ILIKE '%' || @query || '%')
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n, NULL::bigint AS ord
+FROM cand
+UNION ALL
+SELECT 'sex'::text, c.sex::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE sqlc.arg('want_sex')::boolean GROUP BY c.sex
+UNION ALL
+SELECT 'status'::text, c.status::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE sqlc.arg('want_status')::boolean GROUP BY c.status
+UNION ALL
+-- Age in WHOLE YEARS as of today, not the raw date: the bands live in the pkg/facet catalog (one
+-- definition, already proven against the DDL), so SQL emits the number and Go assigns the band. A
+-- NULL birthdate emits NULL and lands in the mandatory (unknown) bucket.
+SELECT 'birthdate'::text,
+       (EXTRACT(YEAR FROM age(current_date, c.birthdate)))::integer::text,
+       count(*)::bigint, NULL::bigint
+FROM cand c WHERE sqlc.arg('want_birthdate')::boolean GROUP BY 2
+UNION ALL
+-- Top-N ref facets collapse their tail into (other) HERE rather than in Go: the tail's sum cannot be
+-- known without grouping everything, so it is summed where the rows already are. NULL sorts last in
+-- the ranking (`(k IS NULL)` first in the ORDER BY) so the (unknown) bucket never steals a top-N
+-- slot from a real value.
+SELECT 'countryOfBirth'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_of_birth_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_country_of_birth')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+-- rankId is LEFT-joined: a person with no active rank is a real bucket ((unknown)), not a row that
+-- silently leaves the distribution. `ord` is the scheme's seniority ordinal — category, then type,
+-- then rank — so the chart can be read as a seniority profile instead of a frequency ranking
+-- (facets.md ④). A person holds one rank PER SYSTEM, so a multi-system directory counts them once
+-- per system: this distribution is per-system by construction.
+SELECT 'rankId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, min(t.ord)::bigint
+FROM (SELECT g.k, g.n, g.ord, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT r.id::text AS k, count(*) AS n,
+                   (rc.sort_order::bigint * 1000000 + rt.sort_order::bigint * 1000 + r.sort_order::bigint) AS ord
+            FROM cand c
+            LEFT JOIN oikumenea.person_ranks pr ON pr.person_id = c.id AND pr.deleted_at IS NULL
+            LEFT JOIN oikumenea.rank_ranks r ON r.id = pr.rank_id AND r.deleted_at IS NULL
+            LEFT JOIN oikumenea.rank_types rt ON rt.id = r.type_id AND rt.deleted_at IS NULL
+            LEFT JOIN oikumenea.rank_categories rc ON rc.id = rt.category_id AND rc.deleted_at IS NULL
+            WHERE sqlc.arg('want_rank_id')::boolean
+            GROUP BY 1, 3) g) t
+GROUP BY 2
+UNION ALL
+-- unitId counts ACTIVE memberships, LEFT-joined for the same reason: a person with no active
+-- membership is the (unknown) bucket. A person in several units is counted in each, so this
+-- distribution deliberately does NOT sum to totalCount — it answers "how many people are in unit X",
+-- which is what the chart is read as.
+SELECT 'unitId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT m.unit_id::text AS k, count(*) AS n
+            FROM cand c
+            LEFT JOIN oikumenea.membership_memberships m
+                   ON m.person_id = c.id AND m.status = 'active' AND m.deleted_at IS NULL
+            WHERE sqlc.arg('want_unit_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'hasAccount'::text,
+       (EXISTS (SELECT 1 FROM oikumenea.account_accounts ac
+                WHERE ac.person_id = c.id AND ac.deleted_at IS NULL))::text,
+       count(*)::bigint, NULL::bigint
+FROM cand c WHERE sqlc.arg('want_has_account')::boolean GROUP BY 2;
+
 -- name: ListPersonsByIDs :many
 -- Load the base person rows for a set of RIDs (the D-PersonReadScope directory-list union resolves
 -- visible person ids through memberships, then hydrates the rows here). Ordered by RID so the caller

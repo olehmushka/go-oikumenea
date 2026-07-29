@@ -244,7 +244,7 @@ DATA-GOVERNANCE:
 | `GET /persons/{id}` | Read one | `person.read` |
 | `PUT /persons/{id}` | Update names (canonical + CLDR parts), `birthdate`, `date_of_death`, `sex`, `country_of_birth`, attributes | `person.update` |
 | `GET /persons` | Search/list the directory (token-paginated); **filtered by the declared facets** — `sex`, `status`, `unitId` (+ the `graph` narrowing arg), `rankId`, `birthdateFrom`/`birthdateTo`, `countryOfBirth`, `hasAccount` (M56, [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope)) | `person.read` |
-| `GET /persons/stats` | Facet distributions over the **same** filter args + an optional `facets` CSV: `totalCount` + `buckets[{key,label,count}]` per facet, counted **inside** the D-PersonReadScope predicate (M57; [facets catalog](../architecture/facets.md)) | `person.read` |
+| `GET /stats/persons` | Facet distributions over the **same** filter args + an optional `facets` CSV: `totalCount` + `buckets[{key,label,count}]` per facet, counted **inside** the D-PersonReadScope predicate (M57; [facets catalog](../architecture/facets.md)). `totalCount` equals what exhaustively paging `GET /persons` with the same filters returns — a differential test asserts it. The path is `/stats/persons`, not `/persons/stats`, because a literal segment beside `{personId}` makes the router refuse to register the route (D-ObjectFacets as-built) | `person.read` |
 
 > **Facet semantics that are not obvious from the arg names** (M56 ticket 2):
 > `unitId` is **subtree-expanding** — it matches an active membership in that unit or in any closure
@@ -376,7 +376,7 @@ unit, so the intersection is empty and they are readable **only on the instance 
 through the holder.
 
 **Facet rule (M56/M57, [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope)).**
-`GET /persons/stats` computes every count **inside** the read-scope predicate above — the same SQL
+`GET /stats/persons` computes every count **inside** the read-scope predicate above — the same SQL
 semi-join the list uses, never a post-paged tally. **No facet exists over an envelope-encrypted
 `pii:special` value** (ethnicity, party membership, political leaning, health, legal records): there
 is no plaintext to group, and grouping them is exactly the join **D-DataScope**'s aggregation rule

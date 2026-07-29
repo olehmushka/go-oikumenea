@@ -195,6 +195,39 @@ types:
         fields:
           units: list<Unit>
           nextPageToken: optional<string>
+      FacetBucket:
+        docs: |
+          One bucket of a facet distribution (M57 / D-ObjectFacets).
+
+          `key` is the bucket's stable, locale-agnostic identity — an enum value (`shadow`), a band
+          (`2-3`), `true`/`false`, or a RID for a `ref` facet — and is exactly what you pass back as
+          the corresponding list filter. Two synthetic keys never name a real value: `(unknown)` is
+          the NULL bucket and `(other)` a top-N facet's collapsed tail; neither is a usable filter
+          value.
+
+          `label` carries the object's display name as a locale → text map (D-i18n) and is present
+          only for `ref` buckets, whose keys are RIDs. Best effort: an id with no resolvable name
+          carries no label.
+        fields:
+          key: string
+          label: optional<map<string, string>>
+          count: integer
+      FacetDistribution:
+        docs: |
+          One facet's buckets, in chart order — for an enum, the declared CHECK-set order with
+          zero-count buckets included so a chart's shape is stable; for bands, the declared band
+          order; for a ref, descending by count with `(other)`/`(unknown)` last.
+        fields:
+          facet: string
+          buckets: list<FacetBucket>
+      UnitStats:
+        docs: |
+          Facet distributions over the SAME set `listUnits` returns under the same filters, with the
+          shadow-visibility gate folded INTO the count (D-ObjectFacets): a shadow unit outside the
+          caller's reach is not counted at all, rather than counted and then trimmed.
+        fields:
+          totalCount: integer
+          facets: list<FacetDistribution>
       UnitRefList:
         docs: An ordered list of unit references (ancestors), nearest first.
         fields:
@@ -600,6 +633,60 @@ services:
             type: optional<string>
             param-type: query
         returns: UnitPage
+      unitStats:
+        http: GET /stats/units
+        docs: |
+          Facet distributions for an organization's units — the dashboard half of the facet
+          vocabulary (M57 / D-ObjectFacets). Takes exactly the FLAT-listing filter args `listUnits`
+          takes (minus paging and the `graph`/`parent`/`rootsOnly` traversal args, which switch that
+          endpoint to a hierarchy walk rather than adding a predicate), so a dashboard and a list are
+          two renderings of one request state.
+
+          `org` is REQUIRED, as on `listUnits`. The shadow gate is folded into SQL here: on the list
+          it trims the page after it is cut — correct for a page, wrong for a count — so
+          `totalCount` equals the number of rows exhaustively paging `listUnits` with these filters
+          would return.
+
+          The path is `/stats/units` rather than `/units/stats` because the server's router rejects a
+          literal path segment that is a sibling of `{unitId}` — see the route-conflict guard in
+          `internal/platform/transport`.
+        args:
+          org:
+            type: string
+            param-type: query
+            docs: REQUIRED — the organization RID to scope the counts to.
+          facets:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Optional comma-separated facet keys to compute (`unitKind,level,state`). Omitted or
+              empty = every facet the caller may read; an explicit list of nothing (`facets=,`)
+              returns `totalCount` alone. An undeclared facet key is a Tenant:UnitInvalid.
+          domain:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listUnits`.
+          unitKind:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listUnits`.
+          level:
+            type: optional<integer>
+            param-type: query
+            docs: Facet filter — exact-match level, the scalar arg `listUnits` ships. The `level` DISTRIBUTION bands the same column (D-ObjectFacets as-built note).
+          visibility:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listUnits`. Narrows only; asking for `shadow` without shadow reach counts zero rather than erroring.
+          state:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listUnits`.
+          pdpScoped:
+            type: optional<boolean>
+            param-type: query
+            docs: Facet filter — see `listUnits`.
+        returns: UnitStats
       addEdge:
         http: POST /units/{unitId}/edges
         docs: Attach the path unit as a child of parentId within a graph (default command). Returns Tenant:UnitCycleDetected on a cycle.

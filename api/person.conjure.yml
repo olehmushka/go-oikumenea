@@ -1073,6 +1073,45 @@ types:
         fields:
           persons: list<Person>
           nextPageToken: optional<string>
+      FacetBucket:
+        docs: |
+          One bucket of a facet distribution (M57 / D-ObjectFacets).
+
+          `key` is the bucket's stable, locale-agnostic identity — an enum value (`male`), a band
+          (`25-34`), `true`/`false`, or a RID for a `ref` facet — and is exactly what you pass back
+          as the corresponding list filter, which is what makes a chart segment and a filter the
+          same act. Three synthetic keys never name a real value: `(unknown)` is the NULL bucket
+          (mandatory for a nullable column, so the data-quality gap is visible rather than dropped),
+          `(other)` is a top-N facet's collapsed tail, and neither is a usable filter value.
+
+          `label` carries the object's display name as a locale → text map (D-i18n — all locales in
+          every response) and is present only for `ref` buckets, whose keys are RIDs; enum, band and
+          boolean keys are codes the client translates itself. It is best effort: an id with no
+          resolvable name simply carries no label.
+        fields:
+          key: string
+          label: optional<map<string, string>>
+          count: integer
+      FacetDistribution:
+        docs: |
+          One facet's buckets, in chart order — for an enum, the declared CHECK-set order with
+          zero-count buckets included, so a chart's shape is stable across filterings; for bands, the
+          declared band order; for a ref, descending by count (or the scheme's own order where it has
+          one, e.g. rank seniority) with `(other)`/`(unknown)` last.
+        fields:
+          facet: string
+          buckets: list<FacetBucket>
+      PersonStats:
+        docs: |
+          Facet distributions over the SAME set `listPersons` returns under the same filters, counted
+          INSIDE the visibility predicate (D-ObjectFacets): `totalCount` is what exhaustively paging
+          that list would yield, not an estimate and not a page count.
+
+          A facet whose inherited read code the caller lacks is ABSENT from `facets` — never a zeroed
+          bucket and never a 403.
+        fields:
+          totalCount: integer
+          facets: list<FacetDistribution>
       CreatePersonRequest:
         docs: Create a person — no account and no unit required (L-AccountOptional / D-PersonGlobal).
         fields:
@@ -1608,6 +1647,72 @@ services:
             param-type: query
             docs: Facet filter — `true` selects persons with an active account, `false` those with none. The directory is account-optional (L-AccountOptional), so both sides are populated.
         returns: PersonPage
+      personStats:
+        http: GET /stats/persons
+        docs: |
+          Facet distributions for the directory — the dashboard half of the facet vocabulary
+          (M57 / D-ObjectFacets). Takes exactly the filter args `listPersons` takes (minus paging),
+          so a dashboard and a list are two renderings of ONE request state and a chart segment is a
+          link to the same URL with one more filter applied.
+
+          Counted INSIDE the read-scope predicate (D-PersonReadScope), before anything is cut:
+          `totalCount` equals the number of rows exhaustively paging `listPersons` with these same
+          filters would return. One round-trip serves the whole dashboard.
+
+          The path is `/stats/persons` rather than `/persons/stats` because the server's router
+          rejects a literal path segment that is a sibling of `{personId}` — see the route-conflict
+          guard in `internal/platform/transport`.
+        args:
+          facets:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Optional comma-separated facet keys to compute (`sex,status,birthdate`). Omitted or
+              empty = every facet the caller may read; an explicit list of nothing (`facets=,`)
+              returns `totalCount` alone, which is the cheap way to ask only "how many". An
+              undeclared facet key is a Person:PersonInvalid; a facet the caller may not READ is not
+              an error — it is simply absent from the response.
+          query:
+            type: optional<string>
+            param-type: query
+            docs: Same free-text name/code match as `listPersons`, applied before the counts (D-PersonSearch).
+          sex:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listPersons`.
+          status:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listPersons`.
+          birthdateFrom:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listPersons`. Setting either bound excludes unknown birthdates, so the `(unknown)` bucket goes to zero.
+          birthdateTo:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listPersons`.
+          countryOfBirth:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listPersons`.
+          rankId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listPersons`.
+          unitId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — SUBTREE-EXPANDING, see `listPersons`.
+          graph:
+            type: optional<string>
+            param-type: query
+            docs: Narrows the `unitId` subtree expansion to one DAG; rejected on its own, as on `listPersons`.
+          hasAccount:
+            type: optional<boolean>
+            param-type: query
+            docs: Facet filter — see `listPersons`.
+        returns: PersonStats
       setRank:
         http: PUT /persons/{personId}/rank
         docs: Set or clear the person's rank in one rank system (one rank per system, a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.

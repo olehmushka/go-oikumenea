@@ -46,9 +46,10 @@ func mustBuild() *Registry {
 // plaintext_test.go). See docs/architecture/facets.md § What has no facet.
 func personType() ObjectType {
 	return ObjectType{
-		Type:         "person",
-		Module:       "person",
-		ListEndpoint: "PersonService.listPersons",
+		Type:          "person",
+		Module:        "person",
+		ListEndpoint:  "PersonService.listPersons",
+		StatsEndpoint: "PersonService.personStats",
 		Facets: []Facet{
 			{
 				Key:     "sex",
@@ -85,6 +86,7 @@ func personType() ObjectType {
 				Kind:    KindRef,
 				Table:   "oikumenea.person_persons",
 				Column:  "country_of_birth_id",
+				RefType: "country",
 				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
 				Note:    "-> oikumenea.geo_countries (D-Geo). Nullable.",
 			},
@@ -93,6 +95,7 @@ func personType() ObjectType {
 				Kind:    KindRef,
 				Table:   "oikumenea.person_ranks",
 				Column:  "rank_id",
+				RefType: "rank",
 				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
 				Note: "Another table (still person's): matches the person's ACTIVE rank row " +
 					"(deleted_at IS NULL). A person holds one rank PER RANK SYSTEM (D-Rank), so the " +
@@ -103,6 +106,7 @@ func personType() ObjectType {
 				Kind:    KindRef,
 				Table:   "oikumenea.membership_memberships",
 				Column:  "unit_id",
+				RefType: "unit",
 				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
 				Note: "Cross-module (membership owns the table): matches an ACTIVE membership. " +
 					"SUBTREE-EXPANDING — the unit itself or any closure descendant. The `graph` arg " +
@@ -165,15 +169,17 @@ func iptr(n int) *int { return &n }
 // tenant_units.graph_id to filter or GROUP BY. It is classified as a traversal arg below.
 func unitType() ObjectType {
 	return ObjectType{
-		Type:         "unit",
-		Module:       "tenant",
-		ListEndpoint: "TenantService.listUnits",
+		Type:          "unit",
+		Module:        "tenant",
+		ListEndpoint:  "TenantService.listUnits",
+		StatsEndpoint: "TenantService.unitStats",
 		Facets: []Facet{
 			{
 				Key:      "org",
 				Kind:     KindRef,
 				Table:    "oikumenea.tenant_units",
 				Column:   "org_id",
+				RefType:  "organization",
 				Required: true,
 				Buckets:  Buckets{Strategy: StrategyTopN, TopN: 15},
 				Note:     "REQUIRED — a fully-unscoped listing is rejected (D-TenantOrganizations, M40).",
@@ -183,6 +189,7 @@ func unitType() ObjectType {
 				Kind:    KindRef,
 				Table:   "oikumenea.tenant_units",
 				Column:  "domain_id",
+				RefType: "domain",
 				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15},
 			},
 			{
@@ -190,6 +197,7 @@ func unitType() ObjectType {
 				Kind:    KindRef,
 				Table:   "oikumenea.tenant_units",
 				Column:  "kind_id",
+				RefType: "unit_kind",
 				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
 				Note:    "Domain-scoped catalog (tenant_unit_kinds). Nullable.",
 			},
@@ -294,6 +302,7 @@ func membershipType() ObjectType {
 				Kind:    KindRef,
 				Table:   "oikumenea.membership_memberships",
 				Column:  "unit_id",
+				RefType: "unit",
 				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15},
 				Note: "EXACT match, NOT subtree-expanding — the opposite of person.unitId. A membership " +
 					"names the one unit the person belongs to; expanding here would double-count a " +
@@ -304,6 +313,7 @@ func membershipType() ObjectType {
 				Kind:    KindRef,
 				Table:   "oikumenea.membership_memberships",
 				Column:  "person_id",
+				RefType: "person",
 				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15},
 			},
 			{
@@ -311,6 +321,7 @@ func membershipType() ObjectType {
 				Kind:    KindRef,
 				Table:   "oikumenea.membership_memberships",
 				Column:  "position_id",
+				RefType: "position",
 				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
 				Note:    "Nullable — a membership without a billet is a plain belonging (D-Position).",
 			},
@@ -358,6 +369,7 @@ func orderType() ObjectType {
 				Kind:    KindRef,
 				Table:   "oikumenea.order_orders",
 				Column:  "issuing_unit_id",
+				RefType: "unit",
 				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15},
 				Note:    "EXACT match, not subtree-expanding. Every order is unit-issued (D-Orders), so never null.",
 			},
@@ -366,6 +378,7 @@ func orderType() ObjectType {
 				Kind:    KindRef,
 				Table:   "oikumenea.order_order_items",
 				Column:  "type_id",
+				RefType: "order_type",
 				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15},
 				Note: "ANOTHER TABLE (still order's): an order's EFFECT lives on its items, so the " +
 					"filter matches an order with at least one item of this type — an EXISTS " +
@@ -417,6 +430,7 @@ func documentType() ObjectType {
 				Kind:    KindRef,
 				Table:   "oikumenea.document_documents",
 				Column:  "type_id",
+				RefType: "document_type",
 				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15},
 				Note:    "-> oikumenea.document_document_types, the instance-admin-managed catalog.",
 			},
@@ -433,6 +447,7 @@ func documentType() ObjectType {
 				Kind:    KindRef,
 				Table:   "oikumenea.document_documents",
 				Column:  "issuing_country_id",
+				RefType: "country",
 				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
 				Note:    "-> oikumenea.geo_countries (D-Geo). Nullable.",
 			},

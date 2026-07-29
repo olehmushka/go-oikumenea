@@ -1641,6 +1641,224 @@ func (q *Queries) SoftDeleteGraph(ctx context.Context, id string) (OikumeneaTena
 	return i, err
 }
 
+const unitStats = `-- name: UnitStats :many
+
+WITH cand AS MATERIALIZED (
+  SELECT id, org_id, domain_id, kind_id, level, visibility, state, pdp_scoped
+  FROM oikumenea.tenant_units
+  WHERE deleted_at IS NULL
+  AND org_id = $1
+  AND ($2::uuid IS NULL OR domain_id = $2::uuid)
+  AND ($3::uuid IS NULL OR kind_id = $3::uuid)
+  AND ($4::smallint IS NULL OR level = $4::smallint)
+  AND ($5::text IS NULL OR visibility = $5::text)
+  AND ($6::text IS NULL OR state = $6::text)
+  AND ($7::boolean IS NULL OR pdp_scoped = $7::boolean)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'org'::text, c.org_id::text, count(*)::bigint
+FROM cand c WHERE $8::boolean GROUP BY 2
+UNION ALL
+SELECT 'domain'::text, c.domain_id::text, count(*)::bigint
+FROM cand c WHERE $9::boolean GROUP BY 2
+UNION ALL
+SELECT 'unitKind'::text, c.kind_id::text, count(*)::bigint
+FROM cand c WHERE $10::boolean GROUP BY 2
+UNION ALL
+SELECT 'level'::text, c.level::text, count(*)::bigint
+FROM cand c WHERE $11::boolean GROUP BY 2
+UNION ALL
+SELECT 'visibility'::text, c.visibility::text, count(*)::bigint
+FROM cand c WHERE $12::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE $13::boolean GROUP BY 2
+UNION ALL
+SELECT 'pdpScoped'::text, c.pdp_scoped::text, count(*)::bigint
+FROM cand c WHERE $14::boolean GROUP BY 2
+`
+
+type UnitStatsParams struct {
+	OrgID          string
+	DomainID       pgtype.Text
+	KindID         pgtype.Text
+	Level          pgtype.Int2
+	Visibility     pgtype.Text
+	State          pgtype.Text
+	PdpScoped      pgtype.Bool
+	WantOrg        bool
+	WantDomain     bool
+	WantUnitKind   bool
+	WantLevel      bool
+	WantVisibility bool
+	WantState      bool
+	WantPdpScoped  bool
+}
+
+type UnitStatsRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+}
+
+// ============================ dashboard aggregates (M57) ============================
+// The INSTANCE-ADMIN dashboard aggregate for an organization's units (M57 / D-ObjectFacets): every
+// facet distribution in ONE round-trip and ONE scan. The candidate CTE carries ListUnits' filter
+// block verbatim, so the dashboard and the list see one world; a branch whose want_* flag is false is
+// skipped by the planner, not merely dropped from the response.
+//
+// The traversal args (graph/parent/rootsOnly) have no counterpart here on purpose: they switch the
+// LIST to a hierarchy walk rather than adding a predicate, so there is nothing for them to count.
+// The raw level, not a band: the bands live in the pkg/facet catalog (one definition, already proven
+// against the DDL), so SQL emits the ordinal and Go assigns it. Levels are small, so the group count
+// is bounded by the tree's depth.
+func (q *Queries) UnitStats(ctx context.Context, arg UnitStatsParams) ([]UnitStatsRow, error) {
+	rows, err := q.db.Query(ctx, unitStats,
+		arg.OrgID,
+		arg.DomainID,
+		arg.KindID,
+		arg.Level,
+		arg.Visibility,
+		arg.State,
+		arg.PdpScoped,
+		arg.WantOrg,
+		arg.WantDomain,
+		arg.WantUnitKind,
+		arg.WantLevel,
+		arg.WantVisibility,
+		arg.WantState,
+		arg.WantPdpScoped,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []UnitStatsRow
+	for rows.Next() {
+		var i UnitStatsRow
+		if err := rows.Scan(&i.Facet, &i.Bucket, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const unitStatsForSubject = `-- name: UnitStatsForSubject :many
+WITH cand AS MATERIALIZED (
+  SELECT id, org_id, domain_id, kind_id, level, visibility, state, pdp_scoped
+  FROM oikumenea.tenant_units
+  WHERE deleted_at IS NULL
+  AND org_id = $1
+  AND ($2::uuid IS NULL OR domain_id = $2::uuid)
+  AND ($3::uuid IS NULL OR kind_id = $3::uuid)
+  AND ($4::smallint IS NULL OR level = $4::smallint)
+  AND ($5::text IS NULL OR visibility = $5::text)
+  AND ($6::text IS NULL OR state = $6::text)
+  AND ($7::boolean IS NULL OR pdp_scoped = $7::boolean)
+  -- The shadow gate, folded INTO the count (D-ObjectFacets rule 3). On the LIST it runs afterwards
+  -- (gateUnits trims the page once it is cut), which is right for a page — a short page, never a
+  -- skipped row — and wrong for a count: a trimmed row would still have been counted. A public unit
+  -- is visible to anyone holding unit.read; a shadow unit only within the subject's readable reach,
+  -- which is the same rule FilterVisibleUnits applies row by row, asked once as a set.
+  AND (visibility = 'public'
+       OR id IN (SELECT oikumenea.authz_readable_units($8)))
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'org'::text, c.org_id::text, count(*)::bigint
+FROM cand c WHERE $9::boolean GROUP BY 2
+UNION ALL
+SELECT 'domain'::text, c.domain_id::text, count(*)::bigint
+FROM cand c WHERE $10::boolean GROUP BY 2
+UNION ALL
+SELECT 'unitKind'::text, c.kind_id::text, count(*)::bigint
+FROM cand c WHERE $11::boolean GROUP BY 2
+UNION ALL
+SELECT 'level'::text, c.level::text, count(*)::bigint
+FROM cand c WHERE $12::boolean GROUP BY 2
+UNION ALL
+SELECT 'visibility'::text, c.visibility::text, count(*)::bigint
+FROM cand c WHERE $13::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE $14::boolean GROUP BY 2
+UNION ALL
+SELECT 'pdpScoped'::text, c.pdp_scoped::text, count(*)::bigint
+FROM cand c WHERE $15::boolean GROUP BY 2
+`
+
+type UnitStatsForSubjectParams struct {
+	OrgID           string
+	DomainID        pgtype.Text
+	KindID          pgtype.Text
+	Level           pgtype.Int2
+	Visibility      pgtype.Text
+	State           pgtype.Text
+	PdpScoped       pgtype.Bool
+	SubjectPersonID string
+	WantOrg         bool
+	WantDomain      bool
+	WantUnitKind    bool
+	WantLevel       bool
+	WantVisibility  bool
+	WantState       bool
+	WantPdpScoped   bool
+}
+
+type UnitStatsForSubjectRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+}
+
+// The visibility-scoped arm of UnitStats: identical filters and identical aggregates, with the
+// shadow gate folded into the candidate set.
+// The raw level, not a band: the bands live in the pkg/facet catalog (one definition, already proven
+// against the DDL), so SQL emits the ordinal and Go assigns it. Levels are small, so the group count
+// is bounded by the tree's depth.
+func (q *Queries) UnitStatsForSubject(ctx context.Context, arg UnitStatsForSubjectParams) ([]UnitStatsForSubjectRow, error) {
+	rows, err := q.db.Query(ctx, unitStatsForSubject,
+		arg.OrgID,
+		arg.DomainID,
+		arg.KindID,
+		arg.Level,
+		arg.Visibility,
+		arg.State,
+		arg.PdpScoped,
+		arg.SubjectPersonID,
+		arg.WantOrg,
+		arg.WantDomain,
+		arg.WantUnitKind,
+		arg.WantLevel,
+		arg.WantVisibility,
+		arg.WantState,
+		arg.WantPdpScoped,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []UnitStatsForSubjectRow
+	for rows.Next() {
+		var i UnitStatsForSubjectRow
+		if err := rows.Scan(&i.Facet, &i.Bucket, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateDomain = `-- name: UpdateDomain :one
 UPDATE oikumenea.tenant_domains SET
   name       = COALESCE($1, name),

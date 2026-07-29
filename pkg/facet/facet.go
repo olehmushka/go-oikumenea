@@ -119,6 +119,14 @@ type Facet struct {
 	ReadPermission string
 	// Buckets is the M57 strategy.
 	Buckets Buckets
+	// RefType is the rid registry token of the object a KindRef facet's column POINTS AT
+	// ("country", "unit", "rank"), and is required for — and legal only on — a ref facet. M57 reads
+	// it to label a bucket: a ref bucket's key is a RID, and a chart segment must carry the object's
+	// locale→text display name (D-i18n), resolved by the labeler the composition root registers per
+	// token. Declared here rather than derived per module so the label wiring is checkable: a ref
+	// facet whose target type has no registered labeler is a boot failure, not a silently unlabelled
+	// axis.
+	RefType string
 	// Values is the CHECK set IN CHART ORDER; KindEnum only. Chart order, not alphabetical: an
 	// ordered scheme (rank seniority, ISCED level, endangerment severity) must not be re-sorted by
 	// frequency, which would destroy the only ordering that means anything.
@@ -203,8 +211,14 @@ type ObjectType struct {
 	// ListEndpoint is the Conjure service+endpoint the facets bind to, "PersonService.listPersons".
 	// tools/genfacetargs resolves it against the IR and hard-errors if it does not exist.
 	ListEndpoint string
-	Facets       []Facet
-	NonFacetArgs []NonFacetArg
+	// StatsEndpoint is the M57 dashboard endpoint, "PersonService.personStats". Empty until the type's
+	// stats endpoint ships; args_test.go keeps that honest with an explicit pending list rather than
+	// letting an unbound type go unchecked. When set, the IR mirror proves it carries EVERY facet arg
+	// the list carries — the two consumers must take the same argument names and the same values, or a
+	// chart segment and a filter stop being the same act.
+	StatsEndpoint string
+	Facets        []Facet
+	NonFacetArgs  []NonFacetArg
 }
 
 // Registry holds the registered object types plus the deliberate exemptions. The zero value is not
@@ -237,6 +251,19 @@ func listableTypeTokens() map[string]bool {
 	out := map[string]bool{}
 	for t, token := range rid.TokenOf() {
 		if t.Kind == int(rid.KindObject) || t.Kind == int(rid.KindLink) {
+			out[token] = true
+		}
+	}
+	return out
+}
+
+// objectTypeTokens is the set of tokens a ref facet's RefType may name: kind=object types ONLY. A
+// ref bucket's key is the RID of the thing being counted BY (a country, a rank, a unit), which is
+// always an object — a reified link is itself listable, never the target of another type's column.
+func objectTypeTokens() map[string]bool {
+	out := map[string]bool{}
+	for t, token := range rid.TokenOf() {
+		if t.Kind == int(rid.KindObject) {
 			out[token] = true
 		}
 	}
@@ -282,6 +309,23 @@ func (r *Registry) Register(o ObjectType) error {
 			claimed[a] = "facet " + f.Key
 		}
 	}
+	// One object type's ref facets must agree on TopN. The M57 stats query answers a whole dashboard
+	// in one statement and binds ONE top_n across its ref branches; a facet declaring a different
+	// cutoff would silently get the other one's. Cross-facet, so it cannot live in validateFacet.
+	topN := 0
+	for _, f := range o.Facets {
+		if f.Kind != KindRef {
+			continue
+		}
+		if topN == 0 {
+			topN = f.Buckets.TopN
+			continue
+		}
+		if f.Buckets.TopN != topN {
+			return fmt.Errorf("facet: %s ref facet %q declares TopN %d but the type already uses %d — "+
+				"one stats query binds a single top_n for every ref branch", o.Type, f.Key, f.Buckets.TopN, topN)
+		}
+	}
 	for _, n := range o.NonFacetArgs {
 		if err := validateNonFacetArg(o.Type, n); err != nil {
 			return err
@@ -324,6 +368,16 @@ func validateFacet(objectType string, f Facet) error {
 		}
 	default:
 		return fmt.Errorf("%s: unknown Kind %q", where, f.Kind)
+	}
+	if f.Kind == KindRef {
+		if f.RefType == "" {
+			return fmt.Errorf("%s: a ref facet must declare RefType (the token its RID buckets point at, for M57 labels)", where)
+		}
+		if !objectTypeTokens()[f.RefType] {
+			return fmt.Errorf("%s: RefType %q is not a registered object type token (pkg/rid)", where, f.RefType)
+		}
+	} else if f.RefType != "" {
+		return fmt.Errorf("%s: RefType is meaningful only for a ref facet", where)
 	}
 	return validateBuckets(where, f)
 }

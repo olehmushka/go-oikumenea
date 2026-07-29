@@ -22,6 +22,8 @@ import (
 	"time"
 
 	"github.com/olegamysk/go-oikumenea/pkg/rid"
+
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
 
 // ISODate is the layout person calendar-date fields (birthdate, citizenship/residence windows) are
@@ -1039,6 +1041,10 @@ type Repository interface {
 	// ListPersonsByIDs loads the base person rows for a set of RIDs (the directory-list union under
 	// D-PersonReadScope resolves visible ids via memberships, then hydrates the rows here).
 	ListPersonsByIDs(ctx context.Context, ids []string) ([]Person, error)
+	// PersonStats is the instance-admin dashboard aggregate over the SAME candidate set ListPersons
+	// pages (M57 / D-ObjectFacets): raw (facet, bucket, count) rows, assembled by pkg/stats. The
+	// scoped arm lives behind the MembershipReader seam, where the reach predicate does.
+	PersonStats(ctx context.Context, f PersonFilter, sel stats.Selection) ([]stats.Group, error)
 
 	// person ranks (the HOLDS_RANK link; one rank per rank system — D-Rank).
 	// UpsertPersonRank sets the person's rank in the system DERIVED from rankID; an unknown/soft-deleted

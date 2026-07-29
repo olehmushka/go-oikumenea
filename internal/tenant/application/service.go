@@ -24,6 +24,8 @@ import (
 	"github.com/olegamysk/go-oikumenea/pkg/listing"
 	"github.com/palantir/pkg/metrics"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
+
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
 
 // Page-size policy (API conventions: token pagination, bounded pages).
@@ -60,7 +62,15 @@ type Service struct {
 	pool    *pgxpool.Pool
 	newRepo RepositoryFactory
 	audit   *auditapp.Service
+	// labeler resolves a dashboard's ref-bucket RIDs to locale->text names (M57 / D-ObjectFacets).
+	// Optional: unset, a chart segment carries its RID and the client falls back to the RID tail.
+	labeler stats.Labeler
 }
+
+// SetBucketLabeler binds the optional dashboard label resolver, wired at the composition root from
+// the same per-type labelers the links service uses — so a unit is named identically in a graph row
+// and in a chart segment.
+func (s *Service) SetBucketLabeler(l stats.Labeler) { s.labeler = l }
 
 // NewService wires the service with the pool, the repository factory, and the audit service every
 // write records into.
@@ -206,6 +216,27 @@ func (s *Service) ListUnitLanguages(ctx context.Context, unitID string) ([]domai
 		return nil, err
 	}
 	return repo.ListUnitLanguages(ctx, unitID)
+}
+
+// UnitStats is the unit dashboard (M57 / D-ObjectFacets): every selected facet's distribution plus
+// the total, over EXACTLY the set ListUnits' FLAT listing would page under the same filters.
+//
+// subjectPersonID is empty for an instance admin and the subject's RID otherwise; the visibility
+// predicate is chosen on that, in SQL. The filter is validated here, once, so the admin and scoped
+// arms reject an ill-formed facet value identically — the same discipline the list path follows.
+func (s *Service) UnitStats(ctx context.Context, subjectPersonID string, f domain.UnitFilter, sel stats.Selection) (stats.Result, error) {
+	if err := f.Validate(); err != nil {
+		return stats.Result{}, err
+	}
+	groups, err := s.newRepo(s.querier(ctx)).UnitStats(ctx, subjectPersonID, f, sel)
+	if err != nil {
+		return stats.Result{}, err
+	}
+	res := stats.Assemble(sel, groups)
+	if err := stats.Label(ctx, s.labeler, sel, &res); err != nil {
+		return stats.Result{}, err
+	}
+	return res, nil
 }
 
 // ListUnits returns a keyset-paginated page of units within an organization (REQUIRED f.OrgID;

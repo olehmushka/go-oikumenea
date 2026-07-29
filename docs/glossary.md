@@ -507,7 +507,7 @@ a **plaintext** column: envelope-encrypted `pii:special` values have none. The p
 map for `ref` facets (D-i18n). Enum facets return a bucket per allowed value including zero-count
 ones, so a chart's shape does not change as data arrives.
 
-**Stats endpoint.** `GET /<module>/v1/<collection>/stats` — the per-module aggregation surface
+**Stats endpoint.** `GET /<module>/v1/stats/<collection>` — the per-module aggregation surface
 (D-ObjectFacets, M57). Takes **exactly the same filter args** as its list endpoint plus an optional
 `facets` CSV; returns `totalCount` + one bucket set per facet. Every count is computed **inside** the
 caller's visibility predicate (see *Visibility-safe aggregation* in

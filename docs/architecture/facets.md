@@ -2,8 +2,9 @@
 
 > **Status: the kernel is BUILT — `person` and `unit` (M56 ticket 2), `membership` / `order` /
 > `document` (M56 ticket 3, alongside their new top-level list endpoints), and all five reach the
-> console as URL-borne list filters (M56 ticket 4); the remaining types are M58.** Binding design
-> lives in
+> console as URL-borne list filters (M56 ticket 4). The DASHBOARD half is under way: `person` and
+> `unit` now have stats endpoints (M57 ticket 1); the remaining three follow in ticket 2, the charts
+> in ticket 3, and the remaining types are M58.** Binding design lives in
 > [`decisions.md` → D-ObjectFacets](decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope)
 > and [D-ConsoleDashboards](decisions.md#d-consoledashboards--every-listable-type-gets-a-list-view-and-a-dashboard-view-over-one-url-borne-filter-set-amends-d-webui);
 > this note is the readable overview **and the catalog** — the per-object-type list of every facet and
@@ -20,7 +21,12 @@ the module that owns the table, and consumed **twice**:
 | Consumer | Shape |
 |---|---|
 | **List filter** | a typed optional Conjure query arg on the owning module's list endpoint |
-| **Stats bucket** | a `groupBy` key on that module's `GET /<module>/v1/<collection>/stats` |
+| **Stats bucket** | a bucket set on that module's `GET /<module>/v1/stats/<collection>` |
+
+> The stats path is `/stats/<collection>`, not the `/<collection>/stats` this catalog and
+> D-ObjectFacets originally wrote: httprouter refuses a literal path segment beside `{id}` at the same
+> position and **panics at server startup**, so the specified shape was unroutable. A contract-wide
+> guard (`internal/platform/transport/route_conflict_test.go`) now fails the build on that shape.
 
 Both take the **same argument names and the same values**, which is the whole point: a chart segment
 and a list filter are the same act, so toggling between the console's list and dashboard views
@@ -33,6 +39,7 @@ Facet {
   column          // the plaintext source column
   readPermission  // inherited gate; "" = the endpoint's own read code is the whole decision
   buckets         // how values become buckets (identity, ranges, date_trunc, top-N + other)
+  refType         // ref facets only: the object token the bucket RIDs point at, for labels
 }
 ```
 
@@ -93,7 +100,10 @@ the canonical personnel-structure view. ② **Sex donut** with an explicit `not_
 is the data-quality signal, so it is never hidden. ③ **Status tiles** — four `StatTile`s
 (active/deactivated/provisional/purged) with `totalCount` as the headline. ④ **Rank distribution** —
 vertical bar ordered by **rank seniority, not by count** (rank is an ordered scheme; sorting by
-frequency would destroy the only ordering that means anything). ⑤ **Top units** — top-15 bar +
+frequency would destroy the only ordering that means anything). As built: the top-15 cutoff still
+SELECTS by count — that is what `topN` means — and the resulting buckets are then ORDERED by the
+scheme's own ordinal (category → type → rank sort_order), which the query supplies per bucket. So the
+chart reads as a seniority profile over the fifteen most-held ranks. ⑤ **Top units** — top-15 bar +
 `other`. ⑥ **Country of birth** — top-15 bar + `other`.
 
 > No facet over ethnicity, party membership, political leaning, religious affiliation, health or
@@ -301,6 +311,16 @@ interface, where the edit happens.
   the `UNION`'s sort of the whole reach before the cap can apply; `UNION ALL` would stream, at the
   price of counting duplicate grants. Fixing it means touching person's measured-and-green path, so
   it is recorded here rather than attempted inside a list ticket.
-- **Estimated totals.** At registry scale an exact `count(*)` over an unfiltered, visibility-scoped
-  10⁶-row set may exceed its latency budget; `pg_class.reltuples` estimation is the fallback and is
-  measured, not assumed, during M57.
+- **Estimated totals — now measured, still open.** The fear was right: at 10⁶ persons a root-reach
+  subject's dashboard costs **14.5 s** for all seven facets and **6.6 s** for `totalCount` alone (the
+  reach semi-join, not the aggregation). A mid-reach subject — the ordinary case — draws the full
+  dashboard in 873 ms. The count stays EXACT because D-ObjectFacets promises `totalCount` equals what
+  exhaustively paging the same list returns, and the differential test asserts it; `pg_class.reltuples`
+  is worth considering only for the unfiltered, whole-world case, and would be wrong rather than
+  approximate for a filtered or scoped one. The console's real lever meanwhile is the `facets` CSV:
+  ask for what you draw. Numbers in
+  [review-2026-07](review-2026-07.md#m57-ticket-1--the-dashboard-aggregates-2026-07-29).
+- **One plan shape for a scoped aggregate.** A scoped LIST ships two (the table above); a scoped
+  aggregate ships one, because the set form beat the point probe at every reach once the `LIMIT` was
+  gone (8.3 / 79.8 / 7 144 ms against 12 926 / 17 066 / 24 869 ms). If a future stats endpoint ever
+  paginates its buckets, that reasoning lapses and the dispatch comes back.

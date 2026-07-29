@@ -147,8 +147,20 @@ func TestRegisterRejects(t *testing.T) {
 			f.Kind, f.Values = KindBool, nil
 		}), "identity buckets require an enum"},
 		{"topN without N", mut(func(f *Facet) {
-			f.Kind, f.Values, f.Buckets = KindRef, nil, Buckets{Strategy: StrategyTopN}
+			f.Kind, f.Values, f.RefType, f.Buckets = KindRef, nil, "country", Buckets{Strategy: StrategyTopN}
 		}), "positive TopN"},
+		{"ref without RefType", mut(func(f *Facet) {
+			f.Kind, f.Values, f.Buckets = KindRef, nil, Buckets{Strategy: StrategyTopN, TopN: 15}
+		}), "must declare RefType"},
+		{"ref at an unregistered target", mut(func(f *Facet) {
+			f.Kind, f.Values, f.RefType, f.Buckets = KindRef, nil, "planet", Buckets{Strategy: StrategyTopN, TopN: 15}
+		}), "not a registered object type token"},
+		{"ref at a LINK target", mut(func(f *Facet) {
+			// A ref bucket counts BY an object; a reified link is itself listable and is never the
+			// target of another type's column, so the check is kind=object, not "anything in pkg/rid".
+			f.Kind, f.Values, f.RefType, f.Buckets = KindRef, nil, "link__member_of", Buckets{Strategy: StrategyTopN, TopN: 15}
+		}), "not a registered object type token"},
+		{"RefType on a non-ref", mut(func(f *Facet) { f.RefType = "country" }), "meaningful only for a ref facet"},
 		{"dateTrunc without grain", mut(func(f *Facet) {
 			f.Kind, f.Values, f.Buckets = KindDateRange, nil, Buckets{Strategy: StrategyDateTrunc}
 		}), "Grain day|month|year"},

@@ -29,6 +29,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/pkg/events"
 	"github.com/olegamysk/go-oikumenea/pkg/listing"
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 
@@ -72,6 +73,10 @@ type MembershipReader interface {
 	// consumes it, the same direction as the @query predicate R-06 already folded in.
 	VisiblePersonIDsForSubject(ctx context.Context, subjectPersonID, after string, f domain.PersonFilter, limit int) ([]string, error)
 	SubjectCanReadPerson(ctx context.Context, subjectPersonID, personID string) (bool, error)
+	// VisiblePersonStatsForSubject is the dashboard counterpart (M57 / D-ObjectFacets): the same
+	// filter and the same visibility predicate, aggregated instead of paged. It lives behind this
+	// seam for the same reason the id query does — the reach never leaves the database.
+	VisiblePersonStatsForSubject(ctx context.Context, subjectPersonID string, f domain.PersonFilter, sel stats.Selection) ([]stats.Group, error)
 }
 
 // Service is the person application service. It owns its writes, so it holds the pool to open
@@ -84,6 +89,9 @@ type Service struct {
 	now        func() time.Time
 	membership MembershipReader
 	bus        *events.Bus // set when SubscribeOrderEvents wires the bus; used to publish PersonMerged
+	// labeler resolves a dashboard's ref-bucket RIDs to locale->text names (M57). Optional: unset,
+	// a chart segment carries its RID and the client falls back to the RID tail.
+	labeler stats.Labeler
 }
 
 // NewService wires the service with the pool, the repository factory, the audit service, and the
@@ -97,6 +105,11 @@ func NewService(pool *pgxpool.Pool, newRepo RepositoryFactory, audit *auditapp.S
 // SetMembershipReader binds the cross-module membership query seam used by the read-scope projection
 // (D-PersonReadScope). Called once at composition time, after membership is built, before serving.
 func (s *Service) SetMembershipReader(r MembershipReader) { s.membership = r }
+
+// SetBucketLabeler binds the optional dashboard label resolver (M57 / D-ObjectFacets), wired at the
+// composition root from the same per-type labelers the links service uses — so a unit is named
+// identically in a graph row and in a chart segment.
+func (s *Service) SetBucketLabeler(l stats.Labeler) { s.labeler = l }
 
 // MustBeBound reports whether the mandatory cross-module seams are wired. The composition root calls
 // it at boot (review-2026-07 R-11) so a forgotten setter fails startup instead of surfacing as a
@@ -367,6 +380,44 @@ func (s *Service) ListVisiblePersons(ctx context.Context, subjectPersonID string
 		return Page{Persons: persons, NextPageToken: listing.EncodeCursor(ids[len(ids)-1])}, nil
 	}
 	return Page{Persons: persons}, nil
+}
+
+// PersonStats is the directory dashboard (M57 / D-ObjectFacets): every selected facet's distribution
+// plus the total, over EXACTLY the set ListPersons/ListVisiblePersons would page under the same
+// filter. One round-trip, one scan, counts taken inside the visibility predicate.
+//
+// The admin/scoped dispatch is the caller's, as it is for the list: an instance admin aggregates the
+// whole directory, anyone else aggregates their read-scope union (subjectPersonID non-empty). The
+// filter is validated here, once, so both arms reject an ill-formed facet value identically.
+func (s *Service) PersonStats(ctx context.Context, subjectPersonID string, isAdmin bool, f domain.PersonFilter, sel stats.Selection) (stats.Result, error) {
+	if err := f.Validate(); err != nil {
+		return stats.Result{}, err
+	}
+	f.Query = strings.TrimSpace(f.Query)
+	var (
+		groups []stats.Group
+		err    error
+	)
+	if isAdmin {
+		// The request-pinned RLS connection, not the bare pool: the unitId facet and its filter probe
+		// membership_memberships, which IS row-secured, and on an unpinned connection the app.* GUCs
+		// are unset — the predicate would then match nothing and report a confident zero (the M56
+		// ticket-2 empty-page bug, in its counting form). The db source guard holds this line.
+		groups, err = s.newRepo(db.RequestQuerier(ctx, s.pool)).PersonStats(ctx, f, sel)
+	} else {
+		if subjectPersonID == "" { // membership seam guaranteed wired at boot (MustBeBound, R-11)
+			return stats.Result{}, nil
+		}
+		groups, err = s.membership.VisiblePersonStatsForSubject(ctx, subjectPersonID, f, sel)
+	}
+	if err != nil {
+		return stats.Result{}, err
+	}
+	res := stats.Assemble(sel, groups)
+	if err := stats.Label(ctx, s.labeler, sel, &res); err != nil {
+		return stats.Result{}, err
+	}
+	return res, nil
 }
 
 // SetPersonRank sets the person's rank in one rank system, or clears it (a directory attribute;

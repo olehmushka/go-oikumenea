@@ -83,7 +83,8 @@ type argSpec struct {
 // genactionendpoints parses pkg/action/registry.go. Deliberately strict: it requires the three fields
 // in declaration order, so a reformat that breaks it trips the zero-bindings guard below rather than
 // silently dropping a type.
-var bindingRe = regexp.MustCompile(`Type:\s*"([a-z_][a-z0-9_]*)",\s*Module:\s*"([a-z][a-z0-9_-]*)",\s*ListEndpoint:\s*"([A-Za-z]+)\.([A-Za-z][A-Za-z0-9]*)"`)
+var bindingRe = regexp.MustCompile(`Type:\s*"([a-z_][a-z0-9_]*)",\s*Module:\s*"([a-z][a-z0-9_-]*)",\s*ListEndpoint:\s*"([A-Za-z]+)\.([A-Za-z][A-Za-z0-9]*)",` +
+	`(?:\s*StatsEndpoint:\s*"([A-Za-z]+)\.([A-Za-z][A-Za-z0-9]*)",)?`)
 
 func main() {
 	irPath := flag.String("ir", "", "path to Conjure IR JSON (from ir2openapi -dump-ir)")
@@ -134,11 +135,13 @@ func main() {
 	type binding struct {
 		objectType string
 		args       []argSpec
+		statsArgs  []argSpec // nil when the type has no stats endpoint yet (M57 rolls them out)
 	}
 	var bindings []binding
 	seenType := map[string]bool{}
 	for _, m := range matches {
 		objectType, svc, ep := m[1], m[3], m[4]
+		statsSvc, statsEp := m[5], m[6]
 		if seenType[objectType] {
 			log.Fatalf("genfacetargs: object type %q is declared twice in %s", objectType, *catPath)
 		}
@@ -161,7 +164,23 @@ func main() {
 			seenArg[a.name] = true
 		}
 		sort.Slice(args, func(i, j int) bool { return args[i].name < args[j].name })
-		bindings = append(bindings, binding{objectType: objectType, args: args})
+
+		// The M57 stats endpoint, when the type has one. Same hard-error discipline: a StatsEndpoint
+		// naming something the IR does not contain is a stale catalog, not a warning.
+		var stats []argSpec
+		if statsEp != "" {
+			stats, ok = queryArgs[key{statsSvc, statsEp}]
+			if !ok {
+				log.Fatalf("genfacetargs: %s binds StatsEndpoint %s.%s, which the Conjure IR does not "+
+					"contain (renamed or removed?) — fix the catalog or the contract", objectType, statsSvc, statsEp)
+			}
+			if len(stats) == 0 {
+				log.Fatalf("genfacetargs: %s binds stats endpoint %s.%s, which ships NO query args — it "+
+					"could not take the list's filters", objectType, statsSvc, statsEp)
+			}
+			sort.Slice(stats, func(i, j int) bool { return stats[i].name < stats[j].name })
+		}
+		bindings = append(bindings, binding{objectType: objectType, args: args, statsArgs: stats})
 	}
 	sort.Slice(bindings, func(i, j int) bool { return bindings[i].objectType < bindings[j].objectType })
 
@@ -180,6 +199,21 @@ func main() {
 	for _, bd := range bindings {
 		b.WriteString(fmt.Sprintf("\t%q: {\n", bd.objectType))
 		for _, a := range bd.args {
+			b.WriteString(fmt.Sprintf("\t\t{Name: %q, Type: %q, Optional: %t},\n", a.name, a.typ, a.optional))
+		}
+		b.WriteString("\t},\n")
+	}
+	b.WriteString("}\n\n")
+	b.WriteString("// statsArgs is every param-type=query arg on each registered object type's M57 STATS\n")
+	b.WriteString("// endpoint, keyed by the object type token. A type absent here has no stats endpoint yet;\n")
+	b.WriteString("// args_test.go holds that against an explicit pending list rather than letting it pass unnoticed.\n")
+	b.WriteString("var statsArgs = map[string][]ArgSpec{\n")
+	for _, bd := range bindings {
+		if len(bd.statsArgs) == 0 {
+			continue
+		}
+		b.WriteString(fmt.Sprintf("\t%q: {\n", bd.objectType))
+		for _, a := range bd.statsArgs {
 			b.WriteString(fmt.Sprintf("\t\t{Name: %q, Type: %q, Optional: %t},\n", a.name, a.typ, a.optional))
 		}
 		b.WriteString("\t},\n")

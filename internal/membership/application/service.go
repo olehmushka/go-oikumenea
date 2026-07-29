@@ -31,6 +31,8 @@ import (
 	"github.com/olegamysk/go-oikumenea/pkg/events"
 	"github.com/olegamysk/go-oikumenea/pkg/listing"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
+
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
 
 // Page-size policy (API conventions: token pagination, bounded pages).
@@ -439,6 +441,13 @@ func (s *Service) ActiveUnitIDsForPerson(ctx context.Context, personID string) (
 // array union). Keyset-paginated by person RID; powers the directory list (GET /persons).
 func (s *Service) VisiblePersonIDsForSubject(ctx context.Context, subjectPersonID, after string, f persondomain.PersonFilter, limit int) ([]string, error) {
 	return s.newRepo(s.querier(ctx)).VisiblePersonIDsForSubject(ctx, subjectPersonID, after, f, limit)
+}
+
+// VisiblePersonStatsForSubject is the read-scope directory DASHBOARD (M57 / D-ObjectFacets): the
+// same filter and the same reach predicate as VisiblePersonIDsForSubject, aggregated rather than
+// paged, with every count taken inside the visibility predicate.
+func (s *Service) VisiblePersonStatsForSubject(ctx context.Context, subjectPersonID string, f persondomain.PersonFilter, sel stats.Selection) ([]stats.Group, error) {
+	return s.newRepo(s.querier(ctx)).VisiblePersonStatsForSubject(ctx, subjectPersonID, f, sel)
 }
 
 // SubjectCanReadPerson is the point probe of the same reach predicate: whether any of the person's

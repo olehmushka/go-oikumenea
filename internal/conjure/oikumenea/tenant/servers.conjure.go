@@ -54,6 +54,23 @@ type TenantService interface {
 	   listing is the flat, filtered org listing.
 	*/
 	ListUnits(ctx context.Context, authHeader bearertoken.Token, orgArg string, domainArg *string, unitKindArg *string, levelArg *int, visibilityArg *string, stateArg *string, pdpScopedArg *bool, graphArg *string, parentArg *string, rootsOnlyArg *bool, pageSizeArg *int, pageTokenArg *string) (UnitPage, error)
+	/*
+	   Facet distributions for an organization's units — the dashboard half of the facet
+	   vocabulary (M57 / D-ObjectFacets). Takes exactly the FLAT-listing filter args `listUnits`
+	   takes (minus paging and the `graph`/`parent`/`rootsOnly` traversal args, which switch that
+	   endpoint to a hierarchy walk rather than adding a predicate), so a dashboard and a list are
+	   two renderings of one request state.
+
+	   `org` is REQUIRED, as on `listUnits`. The shadow gate is folded into SQL here: on the list
+	   it trims the page after it is cut — correct for a page, wrong for a count — so
+	   `totalCount` equals the number of rows exhaustively paging `listUnits` with these filters
+	   would return.
+
+	   The path is `/stats/units` rather than `/units/stats` because the server's router rejects a
+	   literal path segment that is a sibling of `{unitId}` — see the route-conflict guard in
+	   `internal/platform/transport`.
+	*/
+	UnitStats(ctx context.Context, authHeader bearertoken.Token, orgArg string, facetsArg *string, domainArg *string, unitKindArg *string, levelArg *int, visibilityArg *string, stateArg *string, pdpScopedArg *bool) (UnitStats, error)
 	// Attach the path unit as a child of parentId within a graph (default command). Returns Tenant:UnitCycleDetected on a cycle.
 	AddEdge(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg AddEdgeRequest) (UnitEdge, error)
 	// Detach the path unit from a parent within a graph.
@@ -144,6 +161,9 @@ func RegisterRoutesTenantService(router wrouter.Router, impl TenantService, rout
 	}
 	if err := resource.Get("ListUnits", "/tenant/v1/units", httpserver.NewJSONHandler(handler.HandleListUnits, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listUnits route")
+	}
+	if err := resource.Get("UnitStats", "/tenant/v1/stats/units", httpserver.NewJSONHandler(handler.HandleUnitStats, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add unitStats route")
 	}
 	if err := resource.Post("AddEdge", "/tenant/v1/units/{unitId}/edges", httpserver.NewJSONHandler(handler.HandleAddEdge, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add addEdge route")
@@ -413,6 +433,61 @@ func (t *tenantServiceHandler) HandleListUnits(rw http.ResponseWriter, req *http
 		pageTokenArg = &pageTokenArgInternal
 	}
 	respArg, err := t.impl.ListUnits(req.Context(), bearertoken.Token(authHeader), orgArg, domainArg, unitKindArg, levelArg, visibilityArg, stateArg, pdpScopedArg, graphArg, parentArg, rootsOnlyArg, pageSizeArg, pageTokenArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (t *tenantServiceHandler) HandleUnitStats(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	orgArg := req.URL.Query().Get("org")
+	var facetsArg *string
+	if facetsArgStr := req.URL.Query().Get("facets"); facetsArgStr != "" {
+		facetsArgInternal := facetsArgStr
+		facetsArg = &facetsArgInternal
+	}
+	var domainArg *string
+	if domainArgStr := req.URL.Query().Get("domain"); domainArgStr != "" {
+		domainArgInternal := domainArgStr
+		domainArg = &domainArgInternal
+	}
+	var unitKindArg *string
+	if unitKindArgStr := req.URL.Query().Get("unitKind"); unitKindArgStr != "" {
+		unitKindArgInternal := unitKindArgStr
+		unitKindArg = &unitKindArgInternal
+	}
+	var levelArg *int
+	if levelArgStr := req.URL.Query().Get("level"); levelArgStr != "" {
+		levelArgInternal, err := strconv.Atoi(levelArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"level\" as integer")
+		}
+		levelArg = &levelArgInternal
+	}
+	var visibilityArg *string
+	if visibilityArgStr := req.URL.Query().Get("visibility"); visibilityArgStr != "" {
+		visibilityArgInternal := visibilityArgStr
+		visibilityArg = &visibilityArgInternal
+	}
+	var stateArg *string
+	if stateArgStr := req.URL.Query().Get("state"); stateArgStr != "" {
+		stateArgInternal := stateArgStr
+		stateArg = &stateArgInternal
+	}
+	var pdpScopedArg *bool
+	if pdpScopedArgStr := req.URL.Query().Get("pdpScoped"); pdpScopedArgStr != "" {
+		pdpScopedArgInternal, err := strconv.ParseBool(pdpScopedArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"pdpScoped\" as boolean")
+		}
+		pdpScopedArg = &pdpScopedArgInternal
+	}
+	respArg, err := t.impl.UnitStats(req.Context(), bearertoken.Token(authHeader), orgArg, facetsArg, domainArg, unitKindArg, levelArg, visibilityArg, stateArg, pdpScopedArg)
 	if err != nil {
 		return err
 	}

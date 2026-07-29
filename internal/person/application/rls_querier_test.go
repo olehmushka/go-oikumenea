@@ -38,6 +38,10 @@ func TestListPathsUseTheRequestPinnedConnection(t *testing.T) {
 	want := map[string]bool{
 		"ListPersons":        false,
 		"ListVisiblePersons": false,
+		// M57: the dashboard aggregate runs the SAME predicates without a LIMIT. On an unpinned
+		// connection it would not return a short page — it would return a confident ZERO, which is
+		// the same bug wearing a number instead of an empty list.
+		"PersonStats": false,
 	}
 
 	for _, decl := range file.Decls {

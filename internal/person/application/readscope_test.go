@@ -15,6 +15,7 @@ import (
 
 	"github.com/olegamysk/go-oikumenea/internal/person/application"
 	"github.com/olegamysk/go-oikumenea/internal/person/domain"
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
 
 // fakeMembership answers the reach point probe from a canned subject→person allow map.
@@ -27,6 +28,10 @@ func (f fakeMembership) ActiveUnitIDsForPerson(_ context.Context, _ string) ([]s
 }
 
 func (f fakeMembership) VisiblePersonIDsForSubject(_ context.Context, _ string, _ string, _ domain.PersonFilter, _ int) ([]string, error) {
+	return nil, nil
+}
+
+func (f fakeMembership) VisiblePersonStatsForSubject(_ context.Context, _ string, _ domain.PersonFilter, _ stats.Selection) ([]stats.Group, error) {
 	return nil, nil
 }
 

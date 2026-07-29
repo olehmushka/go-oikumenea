@@ -335,6 +335,88 @@ func (o *DomainList) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+/*
+One bucket of a facet distribution (M57 / D-ObjectFacets).
+
+`key` is the bucket's stable, locale-agnostic identity — an enum value (`shadow`), a band
+(`2-3`), `true`/`false`, or a RID for a `ref` facet — and is exactly what you pass back as
+the corresponding list filter. Two synthetic keys never name a real value: `(unknown)` is
+the NULL bucket and `(other)` a top-N facet's collapsed tail; neither is a usable filter
+value.
+
+`label` carries the object's display name as a locale → text map (D-i18n) and is present
+only for `ref` buckets, whose keys are RIDs. Best effort: an id with no resolvable name
+carries no label.
+*/
+type FacetBucket struct {
+	Key   string             `json:"key"`
+	Label *map[string]string `json:"label,omitempty"`
+	Count int                `json:"count"`
+}
+
+func (o FacetBucket) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *FacetBucket) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+One facet's buckets, in chart order — for an enum, the declared CHECK-set order with
+zero-count buckets included so a chart's shape is stable; for bands, the declared band
+order; for a ref, descending by count with `(other)`/`(unknown)` last.
+*/
+type FacetDistribution struct {
+	Facet   string        `json:"facet"`
+	Buckets []FacetBucket `json:"buckets"`
+}
+
+func (o FacetDistribution) MarshalJSON() ([]byte, error) {
+	if o.Buckets == nil {
+		o.Buckets = make([]FacetBucket, 0)
+	}
+	type _tmpFacetDistribution FacetDistribution
+	return safejson.Marshal(_tmpFacetDistribution(o))
+}
+
+func (o *FacetDistribution) UnmarshalJSON(data []byte) error {
+	type _tmpFacetDistribution FacetDistribution
+	var rawFacetDistribution _tmpFacetDistribution
+	if err := safejson.Unmarshal(data, &rawFacetDistribution); err != nil {
+		return err
+	}
+	if rawFacetDistribution.Buckets == nil {
+		rawFacetDistribution.Buckets = make([]FacetBucket, 0)
+	}
+	*o = FacetDistribution(rawFacetDistribution)
+	return nil
+}
+
+func (o FacetDistribution) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *FacetDistribution) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // A named hierarchy over the units (D-Graphs), per organization (M40). Each graph is independently a DAG.
 type Graph struct {
 	// The graph's URN RID (carried as a plain string).
@@ -1059,6 +1141,53 @@ func (o UnitRefPage) MarshalYAML() (interface{}, error) {
 }
 
 func (o *UnitRefPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+Facet distributions over the SAME set `listUnits` returns under the same filters, with the
+shadow-visibility gate folded INTO the count (D-ObjectFacets): a shadow unit outside the
+caller's reach is not counted at all, rather than counted and then trimmed.
+*/
+type UnitStats struct {
+	TotalCount int                 `json:"totalCount"`
+	Facets     []FacetDistribution `json:"facets"`
+}
+
+func (o UnitStats) MarshalJSON() ([]byte, error) {
+	if o.Facets == nil {
+		o.Facets = make([]FacetDistribution, 0)
+	}
+	type _tmpUnitStats UnitStats
+	return safejson.Marshal(_tmpUnitStats(o))
+}
+
+func (o *UnitStats) UnmarshalJSON(data []byte) error {
+	type _tmpUnitStats UnitStats
+	var rawUnitStats _tmpUnitStats
+	if err := safejson.Unmarshal(data, &rawUnitStats); err != nil {
+		return err
+	}
+	if rawUnitStats.Facets == nil {
+		rawUnitStats.Facets = make([]FacetDistribution, 0)
+	}
+	*o = UnitStats(rawUnitStats)
+	return nil
+}
+
+func (o UnitStats) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *UnitStats) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

@@ -76,3 +76,32 @@ var listArgs = map[string][]ArgSpec{
 		{Name: "visibility", Type: "string", Optional: true},
 	},
 }
+
+// statsArgs is every param-type=query arg on each registered object type's M57 STATS
+// endpoint, keyed by the object type token. A type absent here has no stats endpoint yet;
+// args_test.go holds that against an explicit pending list rather than letting it pass unnoticed.
+var statsArgs = map[string][]ArgSpec{
+	"person": {
+		{Name: "birthdateFrom", Type: "string", Optional: true},
+		{Name: "birthdateTo", Type: "string", Optional: true},
+		{Name: "countryOfBirth", Type: "string", Optional: true},
+		{Name: "facets", Type: "string", Optional: true},
+		{Name: "graph", Type: "string", Optional: true},
+		{Name: "hasAccount", Type: "boolean", Optional: true},
+		{Name: "query", Type: "string", Optional: true},
+		{Name: "rankId", Type: "string", Optional: true},
+		{Name: "sex", Type: "string", Optional: true},
+		{Name: "status", Type: "string", Optional: true},
+		{Name: "unitId", Type: "string", Optional: true},
+	},
+	"unit": {
+		{Name: "domain", Type: "string", Optional: true},
+		{Name: "facets", Type: "string", Optional: true},
+		{Name: "level", Type: "integer", Optional: true},
+		{Name: "org", Type: "string", Optional: false},
+		{Name: "pdpScoped", Type: "boolean", Optional: true},
+		{Name: "state", Type: "string", Optional: true},
+		{Name: "unitKind", Type: "string", Optional: true},
+		{Name: "visibility", Type: "string", Optional: true},
+	},
+}

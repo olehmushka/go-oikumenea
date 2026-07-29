@@ -1452,3 +1452,399 @@ func (q *Queries) VisiblePersonIDsForSubjectSparse(ctx context.Context, arg Visi
 	}
 	return items, nil
 }
+
+const visiblePersonStatsForSubject = `-- name: VisiblePersonStatsForSubject :many
+
+WITH cand AS MATERIALIZED (
+  SELECT p.id, p.sex, p.status, p.birthdate, p.country_of_birth_id
+  FROM oikumenea.person_persons p
+  WHERE p.deleted_at IS NULL
+  AND ($1::text IS NULL OR p.sex = $1::text)
+  AND ($2::text IS NULL OR p.status = $2::text)
+  AND ($3::date IS NULL OR p.birthdate >= $3::date)
+  AND ($4::date IS NULL OR p.birthdate <= $4::date)
+  AND ($5::uuid IS NULL OR p.country_of_birth_id = $5::uuid)
+  AND ($6::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.person_ranks pr
+        WHERE pr.person_id = p.id AND pr.deleted_at IS NULL
+          AND pr.rank_id = $6::uuid))
+  AND ($7::boolean IS NULL
+       OR $7::boolean = EXISTS (
+            SELECT 1 FROM oikumenea.account_accounts ac
+            WHERE ac.person_id = p.id AND ac.deleted_at IS NULL))
+  AND ($8::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.membership_memberships fm
+        WHERE fm.person_id = p.id AND fm.status = 'active' AND fm.deleted_at IS NULL
+          AND fm.unit_id IN (
+            SELECT $8::uuid
+            UNION
+            SELECT c.descendant_id
+            FROM oikumenea.tenant_unit_closure c
+            JOIN oikumenea.tenant_graphs g ON g.id = c.graph_id
+            WHERE c.ancestor_id = $8::uuid
+              AND g.deleted_at IS NULL
+              AND g.is_authority_bearing
+              AND ($9::text IS NULL OR g.code = $9::text))))
+  AND EXISTS (
+    SELECT 1
+    FROM oikumenea.membership_memberships m
+    WHERE m.person_id = p.id AND m.status = 'active' AND m.deleted_at IS NULL
+      AND m.unit_id IN (SELECT oikumenea.authz_readable_units($10)))
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n, NULL::bigint AS ord
+FROM cand
+UNION ALL
+SELECT 'sex'::text, c.sex::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE $11::boolean GROUP BY c.sex
+UNION ALL
+SELECT 'status'::text, c.status::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE $12::boolean GROUP BY c.status
+UNION ALL
+SELECT 'birthdate'::text,
+       (EXTRACT(YEAR FROM age(current_date, c.birthdate)))::integer::text,
+       count(*)::bigint, NULL::bigint
+FROM cand c WHERE $13::boolean GROUP BY 2
+UNION ALL
+SELECT 'countryOfBirth'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $14::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_of_birth_id::text AS k, count(*) AS n
+            FROM cand c WHERE $15::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'rankId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $14::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, min(t.ord)::bigint
+FROM (SELECT g.k, g.n, g.ord, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT r.id::text AS k, count(*) AS n,
+                   (rc.sort_order::bigint * 1000000 + rt.sort_order::bigint * 1000 + r.sort_order::bigint) AS ord
+            FROM cand c
+            LEFT JOIN oikumenea.person_ranks pr ON pr.person_id = c.id AND pr.deleted_at IS NULL
+            LEFT JOIN oikumenea.rank_ranks r ON r.id = pr.rank_id AND r.deleted_at IS NULL
+            LEFT JOIN oikumenea.rank_types rt ON rt.id = r.type_id AND rt.deleted_at IS NULL
+            LEFT JOIN oikumenea.rank_categories rc ON rc.id = rt.category_id AND rc.deleted_at IS NULL
+            WHERE $16::boolean
+            GROUP BY 1, 3) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'unitId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $14::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT m.unit_id::text AS k, count(*) AS n
+            FROM cand c
+            LEFT JOIN oikumenea.membership_memberships m
+                   ON m.person_id = c.id AND m.status = 'active' AND m.deleted_at IS NULL
+            WHERE $17::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'hasAccount'::text,
+       (EXISTS (SELECT 1 FROM oikumenea.account_accounts ac
+                WHERE ac.person_id = c.id AND ac.deleted_at IS NULL))::text,
+       count(*)::bigint, NULL::bigint
+FROM cand c WHERE $18::boolean GROUP BY 2
+`
+
+type VisiblePersonStatsForSubjectParams struct {
+	Sex                pgtype.Text
+	Status             pgtype.Text
+	BirthdateFrom      pgtype.Date
+	BirthdateTo        pgtype.Date
+	CountryOfBirthID   pgtype.Text
+	RankID             pgtype.Text
+	HasAccount         pgtype.Bool
+	FilterUnitID       pgtype.Text
+	FilterGraph        pgtype.Text
+	SubjectPersonID    string
+	WantSex            bool
+	WantStatus         bool
+	WantBirthdate      bool
+	TopN               int32
+	WantCountryOfBirth bool
+	WantRankID         bool
+	WantUnitID         bool
+	WantHasAccount     bool
+}
+
+type VisiblePersonStatsForSubjectRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+	Ord    pgtype.Int8
+}
+
+// ============================ dashboard aggregates (M57) ============================
+// The READ-SCOPE dashboard aggregate (M57 / D-ObjectFacets): PersonStats with the visibility
+// predicate folded INTO the candidate set, so every count is computed inside it. This is the rule
+// that makes a dashboard safe to ship — counting first and trimming afterwards would leak the size of
+// what the caller cannot read.
+//
+// The reach arrives as the migration-0017 SET function, uncorrelated: it reads only
+// @subject_person_id, so the planner evaluates it once and probes a hash. Its parity with the Go PDP
+// oracle is held by internal/membership/reach_differential_integration_test.go.
+// Age in WHOLE YEARS as of today, not the raw date: the bands live in the pkg/facet catalog (one
+// definition, already proven against the DDL), so SQL emits the number and Go assigns the band. A
+// NULL birthdate emits NULL and lands in the mandatory (unknown) bucket.
+// Top-N ref facets collapse their tail into (other) HERE rather than in Go: the tail's sum cannot be
+// known without grouping everything, so it is summed where the rows already are. NULL sorts last in
+// the ranking (`(k IS NULL)` first in the ORDER BY) so the (unknown) bucket never steals a top-N
+// slot from a real value.
+// rankId is LEFT-joined: a person with no active rank is a real bucket ((unknown)), not a row that
+// silently leaves the distribution. `ord` is the scheme's seniority ordinal — category, then type,
+// then rank — so the chart can be read as a seniority profile instead of a frequency ranking
+// (facets.md ④). A person holds one rank PER SYSTEM, so a multi-system directory counts them once
+// per system: this distribution is per-system by construction.
+// unitId counts ACTIVE memberships, LEFT-joined for the same reason: a person with no active
+// membership is the (unknown) bucket. A person in several units is counted in each, so this
+// distribution deliberately does NOT sum to totalCount — it answers "how many people are in unit X",
+// which is what the chart is read as.
+func (q *Queries) VisiblePersonStatsForSubject(ctx context.Context, arg VisiblePersonStatsForSubjectParams) ([]VisiblePersonStatsForSubjectRow, error) {
+	rows, err := q.db.Query(ctx, visiblePersonStatsForSubject,
+		arg.Sex,
+		arg.Status,
+		arg.BirthdateFrom,
+		arg.BirthdateTo,
+		arg.CountryOfBirthID,
+		arg.RankID,
+		arg.HasAccount,
+		arg.FilterUnitID,
+		arg.FilterGraph,
+		arg.SubjectPersonID,
+		arg.WantSex,
+		arg.WantStatus,
+		arg.WantBirthdate,
+		arg.TopN,
+		arg.WantCountryOfBirth,
+		arg.WantRankID,
+		arg.WantUnitID,
+		arg.WantHasAccount,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []VisiblePersonStatsForSubjectRow
+	for rows.Next() {
+		var i VisiblePersonStatsForSubjectRow
+		if err := rows.Scan(
+			&i.Facet,
+			&i.Bucket,
+			&i.N,
+			&i.Ord,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const visiblePersonStatsForSubjectSearch = `-- name: VisiblePersonStatsForSubjectSearch :many
+WITH cand AS MATERIALIZED (
+  SELECT p.id, p.sex, p.status, p.birthdate, p.country_of_birth_id
+  FROM oikumenea.person_persons p
+  WHERE p.deleted_at IS NULL
+  AND ($1::text IS NULL OR p.sex = $1::text)
+  AND ($2::text IS NULL OR p.status = $2::text)
+  AND ($3::date IS NULL OR p.birthdate >= $3::date)
+  AND ($4::date IS NULL OR p.birthdate <= $4::date)
+  AND ($5::uuid IS NULL OR p.country_of_birth_id = $5::uuid)
+  AND ($6::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.person_ranks pr
+        WHERE pr.person_id = p.id AND pr.deleted_at IS NULL
+          AND pr.rank_id = $6::uuid))
+  AND ($7::boolean IS NULL
+       OR $7::boolean = EXISTS (
+            SELECT 1 FROM oikumenea.account_accounts ac
+            WHERE ac.person_id = p.id AND ac.deleted_at IS NULL))
+  AND ($8::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.membership_memberships fm
+        WHERE fm.person_id = p.id AND fm.status = 'active' AND fm.deleted_at IS NULL
+          AND fm.unit_id IN (
+            SELECT $8::uuid
+            UNION
+            SELECT c.descendant_id
+            FROM oikumenea.tenant_unit_closure c
+            JOIN oikumenea.tenant_graphs g ON g.id = c.graph_id
+            WHERE c.ancestor_id = $8::uuid
+              AND g.deleted_at IS NULL
+              AND g.is_authority_bearing
+              AND ($9::text IS NULL OR g.code = $9::text))))
+  AND p.id IN (
+    SELECT ps.id FROM oikumenea.person_persons ps
+      WHERE ps.deleted_at IS NULL AND ps.search_text ILIKE '%' || $10 || '%'
+    UNION
+    SELECT v.person_id FROM oikumenea.person_name_variants v
+      WHERE v.search_text ILIKE '%' || $10 || '%')
+  AND EXISTS (
+    SELECT 1
+    FROM oikumenea.membership_memberships m
+    WHERE m.person_id = p.id AND m.status = 'active' AND m.deleted_at IS NULL
+      AND m.unit_id IN (SELECT oikumenea.authz_readable_units($11)))
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n, NULL::bigint AS ord
+FROM cand
+UNION ALL
+SELECT 'sex'::text, c.sex::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE $12::boolean GROUP BY c.sex
+UNION ALL
+SELECT 'status'::text, c.status::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE $13::boolean GROUP BY c.status
+UNION ALL
+SELECT 'birthdate'::text,
+       (EXTRACT(YEAR FROM age(current_date, c.birthdate)))::integer::text,
+       count(*)::bigint, NULL::bigint
+FROM cand c WHERE $14::boolean GROUP BY 2
+UNION ALL
+SELECT 'countryOfBirth'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $15::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.country_of_birth_id::text AS k, count(*) AS n
+            FROM cand c WHERE $16::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'rankId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $15::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, min(t.ord)::bigint
+FROM (SELECT g.k, g.n, g.ord, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT r.id::text AS k, count(*) AS n,
+                   (rc.sort_order::bigint * 1000000 + rt.sort_order::bigint * 1000 + r.sort_order::bigint) AS ord
+            FROM cand c
+            LEFT JOIN oikumenea.person_ranks pr ON pr.person_id = c.id AND pr.deleted_at IS NULL
+            LEFT JOIN oikumenea.rank_ranks r ON r.id = pr.rank_id AND r.deleted_at IS NULL
+            LEFT JOIN oikumenea.rank_types rt ON rt.id = r.type_id AND rt.deleted_at IS NULL
+            LEFT JOIN oikumenea.rank_categories rc ON rc.id = rt.category_id AND rc.deleted_at IS NULL
+            WHERE $17::boolean
+            GROUP BY 1, 3) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'unitId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $15::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT m.unit_id::text AS k, count(*) AS n
+            FROM cand c
+            LEFT JOIN oikumenea.membership_memberships m
+                   ON m.person_id = c.id AND m.status = 'active' AND m.deleted_at IS NULL
+            WHERE $18::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'hasAccount'::text,
+       (EXISTS (SELECT 1 FROM oikumenea.account_accounts ac
+                WHERE ac.person_id = c.id AND ac.deleted_at IS NULL))::text,
+       count(*)::bigint, NULL::bigint
+FROM cand c WHERE $19::boolean GROUP BY 2
+`
+
+type VisiblePersonStatsForSubjectSearchParams struct {
+	Sex                pgtype.Text
+	Status             pgtype.Text
+	BirthdateFrom      pgtype.Date
+	BirthdateTo        pgtype.Date
+	CountryOfBirthID   pgtype.Text
+	RankID             pgtype.Text
+	HasAccount         pgtype.Bool
+	FilterUnitID       pgtype.Text
+	FilterGraph        pgtype.Text
+	Query              pgtype.Text
+	SubjectPersonID    string
+	WantSex            bool
+	WantStatus         bool
+	WantBirthdate      bool
+	TopN               int32
+	WantCountryOfBirth bool
+	WantRankID         bool
+	WantUnitID         bool
+	WantHasAccount     bool
+}
+
+type VisiblePersonStatsForSubjectSearchRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+	Ord    pgtype.Int8
+}
+
+// The read-scope dashboard aggregate under a text search — VisiblePersonStatsForSubject with the
+// trigram id-set leading, the same split PersonStats/PersonStatsSearch makes and for the same reason.
+// Age in WHOLE YEARS as of today, not the raw date: the bands live in the pkg/facet catalog (one
+// definition, already proven against the DDL), so SQL emits the number and Go assigns the band. A
+// NULL birthdate emits NULL and lands in the mandatory (unknown) bucket.
+// Top-N ref facets collapse their tail into (other) HERE rather than in Go: the tail's sum cannot be
+// known without grouping everything, so it is summed where the rows already are. NULL sorts last in
+// the ranking (`(k IS NULL)` first in the ORDER BY) so the (unknown) bucket never steals a top-N
+// slot from a real value.
+// rankId is LEFT-joined: a person with no active rank is a real bucket ((unknown)), not a row that
+// silently leaves the distribution. `ord` is the scheme's seniority ordinal — category, then type,
+// then rank — so the chart can be read as a seniority profile instead of a frequency ranking
+// (facets.md ④). A person holds one rank PER SYSTEM, so a multi-system directory counts them once
+// per system: this distribution is per-system by construction.
+// unitId counts ACTIVE memberships, LEFT-joined for the same reason: a person with no active
+// membership is the (unknown) bucket. A person in several units is counted in each, so this
+// distribution deliberately does NOT sum to totalCount — it answers "how many people are in unit X",
+// which is what the chart is read as.
+func (q *Queries) VisiblePersonStatsForSubjectSearch(ctx context.Context, arg VisiblePersonStatsForSubjectSearchParams) ([]VisiblePersonStatsForSubjectSearchRow, error) {
+	rows, err := q.db.Query(ctx, visiblePersonStatsForSubjectSearch,
+		arg.Sex,
+		arg.Status,
+		arg.BirthdateFrom,
+		arg.BirthdateTo,
+		arg.CountryOfBirthID,
+		arg.RankID,
+		arg.HasAccount,
+		arg.FilterUnitID,
+		arg.FilterGraph,
+		arg.Query,
+		arg.SubjectPersonID,
+		arg.WantSex,
+		arg.WantStatus,
+		arg.WantBirthdate,
+		arg.TopN,
+		arg.WantCountryOfBirth,
+		arg.WantRankID,
+		arg.WantUnitID,
+		arg.WantHasAccount,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []VisiblePersonStatsForSubjectSearchRow
+	for rows.Next() {
+		var i VisiblePersonStatsForSubjectSearchRow
+		if err := rows.Scan(
+			&i.Facet,
+			&i.Bucket,
+			&i.N,
+			&i.Ord,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

@@ -50,6 +50,21 @@ type PersonServiceClient interface {
 	   widen what the caller may see: filtering can only narrow the visible set.
 	*/
 	ListPersons(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string, queryArg *string, sexArg *string, statusArg *string, birthdateFromArg *string, birthdateToArg *string, countryOfBirthArg *string, rankIdArg *string, unitIdArg *string, graphArg *string, hasAccountArg *bool) (PersonPage, error)
+	/*
+	   Facet distributions for the directory — the dashboard half of the facet vocabulary
+	   (M57 / D-ObjectFacets). Takes exactly the filter args `listPersons` takes (minus paging),
+	   so a dashboard and a list are two renderings of ONE request state and a chart segment is a
+	   link to the same URL with one more filter applied.
+
+	   Counted INSIDE the read-scope predicate (D-PersonReadScope), before anything is cut:
+	   `totalCount` equals the number of rows exhaustively paging `listPersons` with these same
+	   filters would return. One round-trip serves the whole dashboard.
+
+	   The path is `/stats/persons` rather than `/persons/stats` because the server's router
+	   rejects a literal path segment that is a sibling of `{personId}` — see the route-conflict
+	   guard in `internal/platform/transport`.
+	*/
+	PersonStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, queryArg *string, sexArg *string, statusArg *string, birthdateFromArg *string, birthdateToArg *string, countryOfBirthArg *string, rankIdArg *string, unitIdArg *string, graphArg *string, hasAccountArg *bool) (PersonStats, error)
 	// Set or clear the person's rank in one rank system (one rank per system, a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.
 	SetRank(ctx context.Context, authHeader bearertoken.Token, personIdArg string, requestArg SetRankRequest) (Person, error)
 	// Begin reversible deactivation (opens the grace window before purge).
@@ -450,6 +465,58 @@ func (c *personServiceClient) ListPersons(ctx context.Context, authHeader bearer
 	}
 	if returnVal == nil {
 		return *new(PersonPage), werror.ErrorWithContextParams(ctx, "listPersons response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *personServiceClient) PersonStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, queryArg *string, sexArg *string, statusArg *string, birthdateFromArg *string, birthdateToArg *string, countryOfBirthArg *string, rankIdArg *string, unitIdArg *string, graphArg *string, hasAccountArg *bool) (PersonStats, error) {
+	var returnVal *PersonStats
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("PersonStats"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/person/v1/stats/persons"))
+	queryParams := make(url.Values)
+	if facetsArg != nil {
+		queryParams.Set("facets", fmt.Sprint(*facetsArg))
+	}
+	if queryArg != nil {
+		queryParams.Set("query", fmt.Sprint(*queryArg))
+	}
+	if sexArg != nil {
+		queryParams.Set("sex", fmt.Sprint(*sexArg))
+	}
+	if statusArg != nil {
+		queryParams.Set("status", fmt.Sprint(*statusArg))
+	}
+	if birthdateFromArg != nil {
+		queryParams.Set("birthdateFrom", fmt.Sprint(*birthdateFromArg))
+	}
+	if birthdateToArg != nil {
+		queryParams.Set("birthdateTo", fmt.Sprint(*birthdateToArg))
+	}
+	if countryOfBirthArg != nil {
+		queryParams.Set("countryOfBirth", fmt.Sprint(*countryOfBirthArg))
+	}
+	if rankIdArg != nil {
+		queryParams.Set("rankId", fmt.Sprint(*rankIdArg))
+	}
+	if unitIdArg != nil {
+		queryParams.Set("unitId", fmt.Sprint(*unitIdArg))
+	}
+	if graphArg != nil {
+		queryParams.Set("graph", fmt.Sprint(*graphArg))
+	}
+	if hasAccountArg != nil {
+		queryParams.Set("hasAccount", fmt.Sprint(*hasAccountArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(PersonStats), werror.WrapWithContextParams(ctx, err, "personStats failed")
+	}
+	if returnVal == nil {
+		return *new(PersonStats), werror.ErrorWithContextParams(ctx, "personStats response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -2121,6 +2188,21 @@ type PersonServiceClientWithAuth interface {
 	   widen what the caller may see: filtering can only narrow the visible set.
 	*/
 	ListPersons(ctx context.Context, pageSizeArg *int, pageTokenArg *string, queryArg *string, sexArg *string, statusArg *string, birthdateFromArg *string, birthdateToArg *string, countryOfBirthArg *string, rankIdArg *string, unitIdArg *string, graphArg *string, hasAccountArg *bool) (PersonPage, error)
+	/*
+	   Facet distributions for the directory — the dashboard half of the facet vocabulary
+	   (M57 / D-ObjectFacets). Takes exactly the filter args `listPersons` takes (minus paging),
+	   so a dashboard and a list are two renderings of ONE request state and a chart segment is a
+	   link to the same URL with one more filter applied.
+
+	   Counted INSIDE the read-scope predicate (D-PersonReadScope), before anything is cut:
+	   `totalCount` equals the number of rows exhaustively paging `listPersons` with these same
+	   filters would return. One round-trip serves the whole dashboard.
+
+	   The path is `/stats/persons` rather than `/persons/stats` because the server's router
+	   rejects a literal path segment that is a sibling of `{personId}` — see the route-conflict
+	   guard in `internal/platform/transport`.
+	*/
+	PersonStats(ctx context.Context, facetsArg *string, queryArg *string, sexArg *string, statusArg *string, birthdateFromArg *string, birthdateToArg *string, countryOfBirthArg *string, rankIdArg *string, unitIdArg *string, graphArg *string, hasAccountArg *bool) (PersonStats, error)
 	// Set or clear the person's rank in one rank system (one rank per system, a directory attribute; D-Rank). Returns Person:PersonInvalid for an unknown rank.
 	SetRank(ctx context.Context, personIdArg string, requestArg SetRankRequest) (Person, error)
 	// Begin reversible deactivation (opens the grace window before purge).
@@ -2404,6 +2486,10 @@ func (c *personServiceClientWithAuth) UpdatePerson(ctx context.Context, personId
 
 func (c *personServiceClientWithAuth) ListPersons(ctx context.Context, pageSizeArg *int, pageTokenArg *string, queryArg *string, sexArg *string, statusArg *string, birthdateFromArg *string, birthdateToArg *string, countryOfBirthArg *string, rankIdArg *string, unitIdArg *string, graphArg *string, hasAccountArg *bool) (PersonPage, error) {
 	return c.client.ListPersons(ctx, c.authHeader, pageSizeArg, pageTokenArg, queryArg, sexArg, statusArg, birthdateFromArg, birthdateToArg, countryOfBirthArg, rankIdArg, unitIdArg, graphArg, hasAccountArg)
+}
+
+func (c *personServiceClientWithAuth) PersonStats(ctx context.Context, facetsArg *string, queryArg *string, sexArg *string, statusArg *string, birthdateFromArg *string, birthdateToArg *string, countryOfBirthArg *string, rankIdArg *string, unitIdArg *string, graphArg *string, hasAccountArg *bool) (PersonStats, error) {
+	return c.client.PersonStats(ctx, c.authHeader, facetsArg, queryArg, sexArg, statusArg, birthdateFromArg, birthdateToArg, countryOfBirthArg, rankIdArg, unitIdArg, graphArg, hasAccountArg)
 }
 
 func (c *personServiceClientWithAuth) SetRank(ctx context.Context, personIdArg string, requestArg SetRankRequest) (Person, error) {
@@ -2865,6 +2951,14 @@ func (c *personServiceClientWithTokenProvider) ListPersons(ctx context.Context, 
 		return *new(PersonPage), err
 	}
 	return c.client.ListPersons(ctx, bearertoken.Token(token), pageSizeArg, pageTokenArg, queryArg, sexArg, statusArg, birthdateFromArg, birthdateToArg, countryOfBirthArg, rankIdArg, unitIdArg, graphArg, hasAccountArg)
+}
+
+func (c *personServiceClientWithTokenProvider) PersonStats(ctx context.Context, facetsArg *string, queryArg *string, sexArg *string, statusArg *string, birthdateFromArg *string, birthdateToArg *string, countryOfBirthArg *string, rankIdArg *string, unitIdArg *string, graphArg *string, hasAccountArg *bool) (PersonStats, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(PersonStats), err
+	}
+	return c.client.PersonStats(ctx, bearertoken.Token(token), facetsArg, queryArg, sexArg, statusArg, birthdateFromArg, birthdateToArg, countryOfBirthArg, rankIdArg, unitIdArg, graphArg, hasAccountArg)
 }
 
 func (c *personServiceClientWithTokenProvider) SetRank(ctx context.Context, personIdArg string, requestArg SetRankRequest) (Person, error) {

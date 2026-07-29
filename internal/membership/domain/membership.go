@@ -20,6 +20,8 @@ import (
 	"time"
 
 	persondomain "github.com/olegamysk/go-oikumenea/internal/person/domain"
+
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
 
 // Sentinel errors mapped to Conjure SerializableErrors by the transport layer. The DB constraints
@@ -213,6 +215,11 @@ type Repository interface {
 	// The filter type is PERSON's: person owns the vocabulary over its own columns, membership owns
 	// the reach predicate, and this seam is where the two meet.
 	VisiblePersonIDsForSubject(ctx context.Context, subjectPersonID, after string, f persondomain.PersonFilter, limit int) ([]string, error)
+	// VisiblePersonStatsForSubject is the DASHBOARD form of the same question (M57 / D-ObjectFacets):
+	// the same filter and the same reach predicate, aggregated instead of paged. The counts are taken
+	// inside the visibility predicate — a count over a set trimmed afterwards would describe rows the
+	// caller may not read.
+	VisiblePersonStatsForSubject(ctx context.Context, subjectPersonID string, f persondomain.PersonFilter, sel stats.Selection) ([]stats.Group, error)
 	// SubjectCanReadPerson is the point probe of the same reach predicate: whether any of the
 	// person's active-membership units falls in the subject's readable reach.
 	SubjectCanReadPerson(ctx context.Context, subjectPersonID, personID string) (bool, error)

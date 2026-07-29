@@ -15,6 +15,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
 
 // Sentinel errors mapped to Conjure SerializableErrors by the transport layer. The DB
@@ -380,6 +382,10 @@ type Repository interface {
 	UpdateUnit(ctx context.Context, id string, patch UnitPatch) (Unit, error)
 	SetUnitState(ctx context.Context, id string, state State) (Unit, error)
 	ListUnits(ctx context.Context, f UnitFilter, after string, limit int) ([]Unit, error)
+	// UnitStats is the dashboard aggregate over the same candidate set ListUnits pages (M57 /
+	// D-ObjectFacets). An empty subjectPersonID is the instance-admin arm; otherwise the shadow gate
+	// is folded into the SQL, because a count cannot be trimmed after the fact the way a page can.
+	UnitStats(ctx context.Context, subjectPersonID string, f UnitFilter, sel stats.Selection) ([]stats.Group, error)
 	ListChildUnits(ctx context.Context, parentID, graphID, after string, limit int) ([]Unit, error)
 	ListRootUnits(ctx context.Context, orgID, graphID, after string, limit int) ([]Unit, error)
 

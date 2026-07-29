@@ -584,6 +584,19 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 		return nil, werror.Wrap(err, "composition root: link descriptor registration")
 	}
 
+	// Dashboard bucket labels (M57 / D-ObjectFacets): the ref-facet RIDs a stats response returns are
+	// named through the SAME per-type resolvers the link engine uses (stats_labelers.go), so a unit
+	// reads identically in a graph row and in a chart segment. The coverage assertion is pure and runs
+	// here rather than in the seam loop below, because it checks a compile-time table against the
+	// catalog, not a wired holder.
+	if err := assertBucketLabelersBound(); err != nil {
+		cleanup()
+		return nil, werror.Wrap(err, "composition root: stats bucket labelers")
+	}
+	statsLabeler := bucketLabeler(pool, locSvc)
+	personSvc.SetBucketLabeler(statsLabeler)
+	tenantSvc.SetBucketLabeler(statsLabeler)
+
 	// Identity-federation: the external-IdP seam. Its application service is the (issuer, subject)
 	// resolver the validation middleware binds to.
 	identitySvc, err := identityfederation.Register(info, pool, auditSvc, enforcer, install.IdentityLinkingEnabled, issuerOptions(install),
