@@ -83,11 +83,12 @@ export function UnitSelect({
       return;
     }
     setLoadingUnits(true);
-    api.tenant
-      // pageSize is the 11th arg since the M56 facet args widened the middle of listUnits
-      // (org, domain, unitKind, level, visibility, state, pdpScoped, graph, parent, rootsOnly, …).
-      .listUnits(orgId, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, 200)
-      .then((r) => setUnits((r.units ?? []) as unknown as Unit[]))
+    // The generic escape hatch, NOT the positional `listUnits(...)`: every facet arg added to the
+    // middle of that signature (M56's six, M57's levelMin/levelMax) silently shifted `200` onto
+    // whatever now sits in the 11th slot. A query string names what it means and cannot shift.
+    api
+      .request("GET", "/tenant/v1/units", { query: `?org=${encodeURIComponent(orgId)}&pageSize=200` })
+      .then((r) => setUnits(((r as { units?: unknown[] }).units ?? []) as unknown as Unit[]))
       .catch(() => setUnits([]))
       .finally(() => setLoadingUnits(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps

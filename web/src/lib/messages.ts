@@ -389,7 +389,8 @@ const glossaryUkr: Record<string, string> = {
   // filter hints (the SQL semantics an operator would otherwise reverse-engineer from a wrong count)
   "Includes the whole subtree.": "Включає все піддерево.",
   "Exact unit — not the subtree.": "Точний підрозділ — без піддерева.",
-  "Exact depth in the unit hierarchy.": "Точна глибина в ієрархії підрозділів.",
+  "Depth in the unit hierarchy, inclusive. Units with no level are excluded when either bound is set.":
+    "Глибина в ієрархії підрозділів, включно. Підрозділи без рівня виключаються, щойно задано будь-яку межу.",
   "Setting either bound excludes unknown birthdates.":
     "Будь-яка з меж виключає невідомі дати народження.",
   "Setting either bound excludes drafts (no issue date).":
@@ -916,7 +917,8 @@ const glossarySpa: Record<string, string> = {
   // filter hints (the SQL semantics an operator would otherwise reverse-engineer from a wrong count)
   "Includes the whole subtree.": "Incluye todo el subárbol.",
   "Exact unit — not the subtree.": "Unidad exacta — no el subárbol.",
-  "Exact depth in the unit hierarchy.": "Profundidad exacta en la jerarquía de unidades.",
+  "Depth in the unit hierarchy, inclusive. Units with no level are excluded when either bound is set.":
+    "Profundidad en la jerarquía de unidades, inclusive. Las unidades sin nivel se excluyen si se fija cualquiera de los límites.",
   "Setting either bound excludes unknown birthdates.":
     "Fijar cualquiera de los límites excluye las fechas de nacimiento desconocidas.",
   "Setting either bound excludes drafts (no issue date).":
@@ -1443,7 +1445,8 @@ const glossaryPor: Record<string, string> = {
   // filter hints (the SQL semantics an operator would otherwise reverse-engineer from a wrong count)
   "Includes the whole subtree.": "Inclui toda a subárvore.",
   "Exact unit — not the subtree.": "Unidade exata — não a subárvore.",
-  "Exact depth in the unit hierarchy.": "Profundidade exata na hierarquia de unidades.",
+  "Depth in the unit hierarchy, inclusive. Units with no level are excluded when either bound is set.":
+    "Profundidade na hierarquia de unidades, inclusive. Unidades sem nível são excluídas quando qualquer limite é definido.",
   "Setting either bound excludes unknown birthdates.":
     "Definir qualquer um dos limites exclui as datas de nascimento desconhecidas.",
   "Setting either bound excludes drafts (no issue date).":

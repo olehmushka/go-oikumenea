@@ -116,6 +116,8 @@ func (r *Repository) ListUnits(ctx context.Context, f domain.UnitFilter, after s
 		DomainID:   textPtr(f.DomainID),
 		KindID:     textPtr(f.KindID),
 		Level:      int2Ptr(f.Level),
+		LevelMin:   int2Ptr(f.LevelMin),
+		LevelMax:   int2Ptr(f.LevelMax),
 		Visibility: textPtr(f.Visibility),
 		State:      textPtr(f.State),
 		PdpScoped:  boolPtr(f.PDPScoped),

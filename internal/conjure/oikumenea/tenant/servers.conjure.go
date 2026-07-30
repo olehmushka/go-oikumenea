@@ -40,7 +40,8 @@ type TenantService interface {
 	   List/search units within an organization (D-TenantOrganizations, M40). `org` is REQUIRED —
 	   a fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally narrowed by the
 	   unit facet set (D-ObjectFacets, M56): `domain` (cross-cut within the org, for mixed trees),
-	   `unitKind`, `level`, `visibility`, `state` and `pdpScoped`. Token-paginated.
+	   `unitKind`, `level` / `levelMin` / `levelMax`, `visibility`, `state` and `pdpScoped`.
+	   Token-paginated.
 
 	   The shadow-visibility gate still trims the page AFTER it is cut, so `visibility` NARROWS and
 	   never widens: asking for `visibility=shadow` without shadow reach yields an empty page, not
@@ -50,10 +51,10 @@ type TenantService interface {
 	   `rootsOnly=true` to list only the org's top-level units (those with no parent in the graph),
 	   or `parent=<unitRid>` to list a unit's DIRECT children in the graph. The two are mutually
 	   exclusive, and each ignores the flat-listing filters
-	   (`domain`/`unitKind`/`level`/`visibility`/`state`/`pdpScoped`). When neither is set the
+	   (`domain`/`unitKind`/`level`/`levelMin`/`levelMax`/`visibility`/`state`/`pdpScoped`). When neither is set the
 	   listing is the flat, filtered org listing.
 	*/
-	ListUnits(ctx context.Context, authHeader bearertoken.Token, orgArg string, domainArg *string, unitKindArg *string, levelArg *int, visibilityArg *string, stateArg *string, pdpScopedArg *bool, graphArg *string, parentArg *string, rootsOnlyArg *bool, pageSizeArg *int, pageTokenArg *string) (UnitPage, error)
+	ListUnits(ctx context.Context, authHeader bearertoken.Token, orgArg string, domainArg *string, unitKindArg *string, levelArg *int, levelMinArg *int, levelMaxArg *int, visibilityArg *string, stateArg *string, pdpScopedArg *bool, graphArg *string, parentArg *string, rootsOnlyArg *bool, pageSizeArg *int, pageTokenArg *string) (UnitPage, error)
 	/*
 	   Facet distributions for an organization's units — the dashboard half of the facet
 	   vocabulary (M57 / D-ObjectFacets). Takes exactly the FLAT-listing filter args `listUnits`
@@ -70,7 +71,7 @@ type TenantService interface {
 	   literal path segment that is a sibling of `{unitId}` — see the route-conflict guard in
 	   `internal/platform/transport`.
 	*/
-	UnitStats(ctx context.Context, authHeader bearertoken.Token, orgArg string, facetsArg *string, domainArg *string, unitKindArg *string, levelArg *int, visibilityArg *string, stateArg *string, pdpScopedArg *bool) (UnitStats, error)
+	UnitStats(ctx context.Context, authHeader bearertoken.Token, orgArg string, facetsArg *string, domainArg *string, unitKindArg *string, levelArg *int, levelMinArg *int, levelMaxArg *int, visibilityArg *string, stateArg *string, pdpScopedArg *bool) (UnitStats, error)
 	// Attach the path unit as a child of parentId within a graph (default command). Returns Tenant:UnitCycleDetected on a cycle.
 	AddEdge(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg AddEdgeRequest) (UnitEdge, error)
 	// Detach the path unit from a parent within a graph.
@@ -383,6 +384,22 @@ func (t *tenantServiceHandler) HandleListUnits(rw http.ResponseWriter, req *http
 		}
 		levelArg = &levelArgInternal
 	}
+	var levelMinArg *int
+	if levelMinArgStr := req.URL.Query().Get("levelMin"); levelMinArgStr != "" {
+		levelMinArgInternal, err := strconv.Atoi(levelMinArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"levelMin\" as integer")
+		}
+		levelMinArg = &levelMinArgInternal
+	}
+	var levelMaxArg *int
+	if levelMaxArgStr := req.URL.Query().Get("levelMax"); levelMaxArgStr != "" {
+		levelMaxArgInternal, err := strconv.Atoi(levelMaxArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"levelMax\" as integer")
+		}
+		levelMaxArg = &levelMaxArgInternal
+	}
 	var visibilityArg *string
 	if visibilityArgStr := req.URL.Query().Get("visibility"); visibilityArgStr != "" {
 		visibilityArgInternal := visibilityArgStr
@@ -432,7 +449,7 @@ func (t *tenantServiceHandler) HandleListUnits(rw http.ResponseWriter, req *http
 		pageTokenArgInternal := pageTokenArgStr
 		pageTokenArg = &pageTokenArgInternal
 	}
-	respArg, err := t.impl.ListUnits(req.Context(), bearertoken.Token(authHeader), orgArg, domainArg, unitKindArg, levelArg, visibilityArg, stateArg, pdpScopedArg, graphArg, parentArg, rootsOnlyArg, pageSizeArg, pageTokenArg)
+	respArg, err := t.impl.ListUnits(req.Context(), bearertoken.Token(authHeader), orgArg, domainArg, unitKindArg, levelArg, levelMinArg, levelMaxArg, visibilityArg, stateArg, pdpScopedArg, graphArg, parentArg, rootsOnlyArg, pageSizeArg, pageTokenArg)
 	if err != nil {
 		return err
 	}
@@ -469,6 +486,22 @@ func (t *tenantServiceHandler) HandleUnitStats(rw http.ResponseWriter, req *http
 		}
 		levelArg = &levelArgInternal
 	}
+	var levelMinArg *int
+	if levelMinArgStr := req.URL.Query().Get("levelMin"); levelMinArgStr != "" {
+		levelMinArgInternal, err := strconv.Atoi(levelMinArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"levelMin\" as integer")
+		}
+		levelMinArg = &levelMinArgInternal
+	}
+	var levelMaxArg *int
+	if levelMaxArgStr := req.URL.Query().Get("levelMax"); levelMaxArgStr != "" {
+		levelMaxArgInternal, err := strconv.Atoi(levelMaxArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"levelMax\" as integer")
+		}
+		levelMaxArg = &levelMaxArgInternal
+	}
 	var visibilityArg *string
 	if visibilityArgStr := req.URL.Query().Get("visibility"); visibilityArgStr != "" {
 		visibilityArgInternal := visibilityArgStr
@@ -487,7 +520,7 @@ func (t *tenantServiceHandler) HandleUnitStats(rw http.ResponseWriter, req *http
 		}
 		pdpScopedArg = &pdpScopedArgInternal
 	}
-	respArg, err := t.impl.UnitStats(req.Context(), bearertoken.Token(authHeader), orgArg, facetsArg, domainArg, unitKindArg, levelArg, visibilityArg, stateArg, pdpScopedArg)
+	respArg, err := t.impl.UnitStats(req.Context(), bearertoken.Token(authHeader), orgArg, facetsArg, domainArg, unitKindArg, levelArg, levelMinArg, levelMaxArg, visibilityArg, stateArg, pdpScopedArg)
 	if err != nil {
 		return err
 	}

@@ -573,7 +573,8 @@ services:
           List/search units within an organization (D-TenantOrganizations, M40). `org` is REQUIRED —
           a fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally narrowed by the
           unit facet set (D-ObjectFacets, M56): `domain` (cross-cut within the org, for mixed trees),
-          `unitKind`, `level`, `visibility`, `state` and `pdpScoped`. Token-paginated.
+          `unitKind`, `level` / `levelMin` / `levelMax`, `visibility`, `state` and `pdpScoped`.
+          Token-paginated.
 
           The shadow-visibility gate still trims the page AFTER it is cut, so `visibility` NARROWS and
           never widens: asking for `visibility=shadow` without shadow reach yields an empty page, not
@@ -583,7 +584,7 @@ services:
           `rootsOnly=true` to list only the org's top-level units (those with no parent in the graph),
           or `parent=<unitRid>` to list a unit's DIRECT children in the graph. The two are mutually
           exclusive, and each ignores the flat-listing filters
-          (`domain`/`unitKind`/`level`/`visibility`/`state`/`pdpScoped`). When neither is set the
+          (`domain`/`unitKind`/`level`/`levelMin`/`levelMax`/`visibility`/`state`/`pdpScoped`). When neither is set the
           listing is the flat, filtered org listing.
         args:
           org:
@@ -601,7 +602,24 @@ services:
           level:
             type: optional<integer>
             param-type: query
-            docs: Optional exact-match level filter. Ignored when `parent`/`rootsOnly` is set.
+            docs: |
+              Optional exact-match level filter, and the arg this endpoint has always shipped.
+              SUPERSEDED by `levelMin`/`levelMax` (an exact match is `levelMin=n&levelMax=n`); it is
+              retained because the contract is expand-only, and it still applies when set — the three
+              are ANDed. Ignored when `parent`/`rootsOnly` is set.
+          levelMin:
+            type: optional<integer>
+            param-type: query
+            docs: |
+              Facet filter — INCLUSIVE lower bound on `level` (M57 ticket 3, D-ObjectFacets). The pair
+              is what makes the `level` DISTRIBUTION's bands click-through: a band is a range, and no
+              single value expresses one. Units with no level are excluded whenever either bound is
+              set (SQL three-valued logic), so the `(unknown)` bucket stays reachable only by leaving
+              both unset. Ignored when `parent`/`rootsOnly` is set.
+          levelMax:
+            type: optional<integer>
+            param-type: query
+            docs: Facet filter — INCLUSIVE upper bound on `level`. See `levelMin`. Ignored when `parent`/`rootsOnly` is set.
           visibility:
             type: optional<string>
             param-type: query
@@ -673,7 +691,15 @@ services:
           level:
             type: optional<integer>
             param-type: query
-            docs: Facet filter — exact-match level, the scalar arg `listUnits` ships. The `level` DISTRIBUTION bands the same column (D-ObjectFacets as-built note).
+            docs: Facet filter — exact-match level, the scalar arg `listUnits` has always shipped and still honours. Superseded by `levelMin`/`levelMax`; see `listUnits`.
+          levelMin:
+            type: optional<integer>
+            param-type: query
+            docs: Facet filter — INCLUSIVE lower bound on `level`, the args the `level` distribution's bands filter by. See `listUnits`.
+          levelMax:
+            type: optional<integer>
+            param-type: query
+            docs: Facet filter — INCLUSIVE upper bound on `level`. See `listUnits`.
           visibility:
             type: optional<string>
             param-type: query

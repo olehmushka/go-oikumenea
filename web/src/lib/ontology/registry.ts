@@ -518,11 +518,13 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
         dependsOn: "domain",
       },
       {
-        // numeric-range with ONE param: the contract's `level` predates the vocabulary and is an
-        // exact match, so the facet pins it via ArgOverride. M57 bands the same column for charts.
-        key: "level", kind: "numeric-range", label: "Level", params: ["level"],
+        // A min/max PAIR since M57 ticket 3 — which is what makes the units-per-level bars
+        // click-through: a band is a range, and the scalar `level` the contract also ships (and still
+        // honours) cannot express one. Arity comes from `params`, so this control became two boxes
+        // without a line of widget code.
+        key: "level", kind: "numeric-range", label: "Level", params: ["levelMin", "levelMax"],
         buckets: "bands",
-        hint: "Exact depth in the unit hierarchy.",
+        hint: "Depth in the unit hierarchy, inclusive. Units with no level are excluded when either bound is set.",
       },
       {
         key: "visibility", kind: "enum", label: "Visibility", params: ["visibility"],

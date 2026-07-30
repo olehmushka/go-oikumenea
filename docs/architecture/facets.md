@@ -124,7 +124,7 @@ chart reads as a seniority profile over the fifteen most-held ranks. ⑤ **Top u
 | `org` | ref | `org_id` | **required** today (`listUnits` rejects an unscoped listing) |
 | `domain` | ref | `domain_id` | |
 | `unitKind` | ref | `kind_id` | domain-scoped catalog |
-| `level` | numeric-range | `level` | the contract ships a **scalar exact-match `level`** arg that predates this vocabulary and (expand-only) keeps it; the facet pins that name. M57 bands the same column; `levelMin`/`levelMax` are additive and deferred to when the bands are consumed |
+| `level` | numeric-range | `level` | binds `levelMin`/`levelMax` (inclusive), which is what makes the band chart click-through — a band is a RANGE, and the **scalar exact-match `level`** the contract has always shipped cannot express one. That scalar is retained and still honoured (expand-only) and is classified `superseded`; all three predicates are ANDed. Landed M57 ticket 3, having been deferred at M56 "to when the bands are consumed" |
 | `visibility` | enum | `visibility` | `public`/`shadow` |
 | `state` | enum | `state` | `active`/`suspended`/`archived` |
 | `pdpScoped` | bool | `pdp_scoped` | operational vs reference units (D-UnifiedOrgGraph) |
@@ -133,10 +133,11 @@ chart reads as a seniority profile over the fifteen most-held ranks. ⑤ **Top u
 > `tenant_units` — there is no `tenant_units.graph_id` to filter or `GROUP BY`. M56 classifies it as a
 > traversal arg, which is what the drift guard checks it against.
 
-**Components.** ① **Units per level** — bar, level ascending; the org chart's width profile. The bars
-are **not click-through**: the contract ships a scalar exact-match `level`, the catalog buckets it in
-pairs, and no single value expresses a band (the `levelMin`/`levelMax` note above). The chart says so
-rather than linking to a narrower set than the bar counted. ②
+**Components.** ① **Units per level** — bar, level ascending; the org chart's width profile. Each bar
+links to `levelMin`/`levelMax` bracketing its band; those args exist *because* this chart does (the
+scalar `level` matches one level, a band is two). The equality is asserted, not assumed:
+`TestUnitStatsLevelBandsAreClickThrough` holds every band's bucket against the row count its own bar's
+filter returns. ②
 **Kind mix** donut. ③ **Public/shadow split** — a two-segment bar, not a donut: the shadow count is a
 governance number an operator reads exactly, so the label carries the count. ④ **State tiles**. ⑤
 ~~**Headcount by unit**~~ — **NOT BUILT (M57 ticket 3), and it is a contract gap rather than a
@@ -301,6 +302,12 @@ idiom — so the mechanism cannot decay into an allowlist. `filters:` blocks mus
 literal `key`/`kind`/`params` literals; the constraint is stated in `registry.ts` beside the
 interface, where the edit happens.
 
+The **non-facet classes** gained a fourth in the same ticket: `superseded`, for an arg a facet's own
+args have replaced and that the expand-only contract cannot remove (`unit.level`). Its check is
+earned like the others — the named successor must exist, be a RANGE facet over the same column, take
+the same Conjure type, and not itself bind the arg — so the class can excuse a genuine predecessor
+and nothing else.
+
 M57 ticket 3 adds the **fourth** consumer to the same discipline: `pkg/facet/dashboard_test.go` parses
 the registry's `dashboard:` blocks and holds every `ChartDef` against the catalog. The failure it
 guards is worse than a missing filter — the console asks for exactly the facets it draws
@@ -331,13 +338,16 @@ inverse of a calendar month. Same non-vacuity floor, same live-negative fixtures
   is not the listed table, which the catalog does not do today), or draw it from `person`'s stats
   filtered by the org's root unit, since `person.unitId` IS subtree-expanding — which undercounts on a
   multi-root org and so needs the facet anyway. M58.
-- **A band is only click-through when the contract ships bounds.** `unit.level`'s bars are inert: the
-  arg is a scalar exact match and the buckets are pairs of levels. This is the case
-  `levelMin`/`levelMax` were deferred against ("additive and deferred to when the bands are
-  consumed") — they are consumed now, so the deferral has come due. Age bands have the same shape and
-  are NOT affected: `birthdateFrom`/`birthdateTo` exist, and the inverse of an age band is a birthdate
-  range (`age >= lo ⟺ birthdate <= today − lo years`, `age <= hi ⟺ birthdate >= today − (hi+1) years
-  + 1 day`).
+- ~~**A band is only click-through when the contract ships bounds.**~~ **CLOSED (M57 ticket 3
+  follow-up).** `unit.level`'s bars were inert because the arg was a scalar exact match and the
+  buckets are pairs of levels — the case `levelMin`/`levelMax` had been deferred against ("additive
+  and deferred to when the bands are consumed"). They are consumed now, so they shipped: the facet
+  binds the derived pair, the scalar is retained and classified `superseded`, and the bars link.
+  What remains is the general rule, worth keeping in view when M58 declares a range facet: **a band
+  is drawable from any bucketing, but click-through needs the contract to ship BOUNDS.** Age bands
+  never had the problem — `birthdateFrom`/`birthdateTo` already existed, and the inverse of an age
+  band is a birthdate range (`age >= lo ⟺ birthdate <= today − lo years`, `age <= hi ⟺ birthdate >=
+  today − (hi+1) years + 1 day`).
 - **D-ObjectFacets rule 2 has no live case yet.** Every facet in the catalog is `pii:none`/`pii:basic`
   with an empty `ReadPermission`, so no caller has ever seen a facet omitted. The console's
   absent-is-not-empty branch (an omitted facet draws NO card, never a zeroed one) is therefore

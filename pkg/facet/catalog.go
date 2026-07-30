@@ -202,20 +202,22 @@ func unitType() ObjectType {
 				Note:    "Domain-scoped catalog (tenant_unit_kinds). Nullable.",
 			},
 			{
-				Key:         "level",
-				Kind:        KindNumericRange,
-				Table:       "oikumenea.tenant_units",
-				Column:      "level",
-				ArgOverride: []string{"level"},
+				Key:    "level",
+				Kind:   KindNumericRange,
+				Table:  "oikumenea.tenant_units",
+				Column: "level",
 				Buckets: Buckets{
 					Strategy:       StrategyBands,
 					Bands:          levelBands(),
 					IncludeUnknown: true,
 				},
-				Note: "The contract already ships a SCALAR exact-match `level` arg that predates this " +
-					"vocabulary, and the contract is expand-only, so the facet pins it rather than " +
-					"minting levelMin/levelMax. M57 bands the same column; adding the range args is " +
-					"additive and deferred to when the bands are actually consumed.",
+				Note: "Binds the DERIVED levelMin/levelMax pair. Until M57 ticket 3 it pinned the " +
+					"pre-existing scalar `level` via ArgOverride, and the deferral was explicit: the " +
+					"range args were 'additive and deferred to when the bands are actually consumed'. " +
+					"Consuming them is exactly what a dashboard does — a band is a RANGE, and no " +
+					"single value expresses one, so the bars were readable and inert. The scalar is " +
+					"still shipped and still honoured (the contract is expand-only); it is classified " +
+					"below as superseded.",
 			},
 			{
 				Key:     "visibility",
@@ -264,6 +266,15 @@ func unitType() ObjectType {
 				Class:  ClassTraversal,
 				Why:    "switches the listing to the org's root units within `graph`",
 				Drives: "ListRootUnits",
+			},
+			{
+				Arg:   "level",
+				Class: ClassSuperseded,
+				Why: "the exact-match scalar this endpoint has always shipped; levelMin/levelMax bind " +
+					"the same column as a range (an exact match is levelMin=n&levelMax=n). Retained " +
+					"and still honoured because the contract is expand-only — the three predicates " +
+					"are ANDed rather than one silently winning",
+				Drives: "level",
 			},
 		},
 	}

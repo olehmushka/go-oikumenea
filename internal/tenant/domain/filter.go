@@ -22,10 +22,15 @@ import (
 // visibility=shadow without shadow reach therefore yields an empty page, not an error and not a leak.
 type UnitFilter struct {
 	// OrgID is REQUIRED — a fully-unscoped listing is rejected (D-TenantOrganizations, M40).
-	OrgID      string
-	DomainID   *string
-	KindID     *string
+	OrgID    string
+	DomainID *string
+	KindID   *string
+	// Level is the EXACT-match arg listUnits has always shipped; LevelMin/LevelMax are the range the
+	// facet's own args bind (M57 ticket 3). All three are ANDed, so a caller passing the superseded
+	// scalar alongside a range gets the intersection rather than a silently ignored predicate.
 	Level      *int
+	LevelMin   *int
+	LevelMax   *int
 	Visibility *string
 	State      *string
 	PDPScoped  *bool
@@ -49,8 +54,18 @@ func (f UnitFilter) Validate() error {
 			return fmt.Errorf("%w: %s must be a RID", ErrInvalidUnit, r.arg)
 		}
 	}
-	if f.Level != nil && (*f.Level < 0 || *f.Level > 32767) {
-		return fmt.Errorf("%w: level is out of range", ErrInvalidUnit)
+	for _, r := range []struct {
+		arg string
+		val *int
+	}{{"level", f.Level}, {"levelMin", f.LevelMin}, {"levelMax", f.LevelMax}} {
+		if r.val != nil && (*r.val < 0 || *r.val > 32767) {
+			return fmt.Errorf("%w: %s is out of range", ErrInvalidUnit, r.arg)
+		}
+	}
+	// An inverted range is a caller mistake, not an empty result: silently returning zero rows would
+	// read as "there are none at that depth" rather than "that range is impossible".
+	if f.LevelMin != nil && f.LevelMax != nil && *f.LevelMin > *f.LevelMax {
+		return fmt.Errorf("%w: levelMin must not exceed levelMax", ErrInvalidUnit)
 	}
 	if err := validateUnitEnum("visibility", f.Visibility); err != nil {
 		return err

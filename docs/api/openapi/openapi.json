@@ -38689,9 +38689,29 @@
             }
           },
           {
-            "description": "Facet filter — exact-match level, the scalar arg `listUnits` ships. The `level` DISTRIBUTION bands the same column (D-ObjectFacets as-built note).",
+            "description": "Facet filter — exact-match level, the scalar arg `listUnits` has always shipped and still honours. Superseded by `levelMin`/`levelMax`; see `listUnits`.",
             "in": "query",
             "name": "level",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE lower bound on `level`, the args the `level` distribution's bands filter by. See `listUnits`.",
+            "in": "query",
+            "name": "levelMin",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE upper bound on `level`. See `listUnits`.",
+            "in": "query",
+            "name": "levelMax",
             "required": false,
             "schema": {
               "format": "int32",
@@ -38891,7 +38911,7 @@
     },
     "/tenant/v1/units": {
       "get": {
-        "description": "List/search units within an organization (D-TenantOrganizations, M40). `org` is REQUIRED —\na fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally narrowed by the\nunit facet set (D-ObjectFacets, M56): `domain` (cross-cut within the org, for mixed trees),\n`unitKind`, `level`, `visibility`, `state` and `pdpScoped`. Token-paginated.\n\nThe shadow-visibility gate still trims the page AFTER it is cut, so `visibility` NARROWS and\nnever widens: asking for `visibility=shadow` without shadow reach yields an empty page, not\nan error and not a leak.\n\nFor hierarchical (expand-on-click) browsing in graph `graph` (default `command`): pass\n`rootsOnly=true` to list only the org's top-level units (those with no parent in the graph),\nor `parent=\u003cunitRid\u003e` to list a unit's DIRECT children in the graph. The two are mutually\nexclusive, and each ignores the flat-listing filters\n(`domain`/`unitKind`/`level`/`visibility`/`state`/`pdpScoped`). When neither is set the\nlisting is the flat, filtered org listing.\n",
+        "description": "List/search units within an organization (D-TenantOrganizations, M40). `org` is REQUIRED —\na fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally narrowed by the\nunit facet set (D-ObjectFacets, M56): `domain` (cross-cut within the org, for mixed trees),\n`unitKind`, `level` / `levelMin` / `levelMax`, `visibility`, `state` and `pdpScoped`.\nToken-paginated.\n\nThe shadow-visibility gate still trims the page AFTER it is cut, so `visibility` NARROWS and\nnever widens: asking for `visibility=shadow` without shadow reach yields an empty page, not\nan error and not a leak.\n\nFor hierarchical (expand-on-click) browsing in graph `graph` (default `command`): pass\n`rootsOnly=true` to list only the org's top-level units (those with no parent in the graph),\nor `parent=\u003cunitRid\u003e` to list a unit's DIRECT children in the graph. The two are mutually\nexclusive, and each ignores the flat-listing filters\n(`domain`/`unitKind`/`level`/`levelMin`/`levelMax`/`visibility`/`state`/`pdpScoped`). When neither is set the\nlisting is the flat, filtered org listing.\n",
         "operationId": "TenantService_listUnits",
         "parameters": [
           {
@@ -38922,9 +38942,29 @@
             }
           },
           {
-            "description": "Optional exact-match level filter. Ignored when `parent`/`rootsOnly` is set.",
+            "description": "Optional exact-match level filter, and the arg this endpoint has always shipped.\nSUPERSEDED by `levelMin`/`levelMax` (an exact match is `levelMin=n\u0026levelMax=n`); it is\nretained because the contract is expand-only, and it still applies when set — the three\nare ANDed. Ignored when `parent`/`rootsOnly` is set.\n",
             "in": "query",
             "name": "level",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE lower bound on `level` (M57 ticket 3, D-ObjectFacets). The pair\nis what makes the `level` DISTRIBUTION's bands click-through: a band is a range, and no\nsingle value expresses one. Units with no level are excluded whenever either bound is\nset (SQL three-valued logic), so the `(unknown)` bucket stays reachable only by leaving\nboth unset. Ignored when `parent`/`rootsOnly` is set.\n",
+            "in": "query",
+            "name": "levelMin",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE upper bound on `level`. See `levelMin`. Ignored when `parent`/`rootsOnly` is set.",
+            "in": "query",
+            "name": "levelMax",
             "required": false,
             "schema": {
               "format": "int32",
