@@ -39,6 +39,18 @@ var statsAggregateGroups = []struct {
 		{"tenant", "UnitStats"},
 		{"tenant", "UnitStatsForSubject"},
 	}},
+	{"link__member_of", []struct{ module, query string }{
+		{"membership", "MembershipStats"},
+		{"membership", "MembershipStatsForSubject"},
+	}},
+	{"order", []struct{ module, query string }{
+		{"order", "OrderStats"},
+		{"order", "OrderStatsForSubject"},
+	}},
+	{"document", []struct{ module, query string }{
+		{"document", "DocumentStats"},
+		{"document", "DocumentStatsForSubject"},
+	}},
 }
 
 func TestStatsAggregateHalvesAreIdentical(t *testing.T) {
@@ -105,7 +117,14 @@ func aggregateHalf(t *testing.T, module, query string) string {
 	if i < 0 {
 		t.Fatalf("%s.%s does not have the expected `WITH cand AS MATERIALIZED (…)` + total-branch shape", module, query)
 	}
-	return body[i+len("\n)\n"):]
+	half := body[i+len("\n)\n"):]
+	// Cut at the statement terminator. queryBody runs to the next `-- name:` marker, so whatever
+	// follows the query — a section header, a blank line — would otherwise count as part of the
+	// aggregate and make two byte-identical queries compare unequal depending on what sits after them.
+	if j := strings.LastIndex(half, ";"); j >= 0 {
+		half = half[:j+1]
+	}
+	return half
 }
 
 // snake maps a lowerCamel facet key to the snake_case want_* parameter name the SQL binds.

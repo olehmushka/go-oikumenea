@@ -45,10 +45,10 @@ func (s Service) UnitStats(ctx context.Context, token bearertoken.Token, org str
 	if err != nil {
 		return tenantapi.UnitStats{}, s.mapError(ctx, err, errCtx{orgID: org})
 	}
-	if isAdmin {
-		subject = "" // the admin arm carries no visibility predicate at all
-	}
-	res, err := s.app.UnitStats(ctx, subject, filter, sel)
+	// Both the subject AND the admin flag go down: stats.Compute owns the arm convention, so the
+	// transport does not get to encode "empty subject means admin" — a non-admin with no subject reads
+	// nothing rather than everything.
+	res, err := s.app.UnitStats(ctx, subject, isAdmin, filter, sel)
 	if err != nil {
 		return tenantapi.UnitStats{}, s.mapError(ctx, err, errCtx{orgID: org})
 	}

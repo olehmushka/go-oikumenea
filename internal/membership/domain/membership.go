@@ -192,6 +192,11 @@ type Repository interface {
 	// status — the top-level list carries no implicit active-only default (see MembershipFilter).
 	ListMemberships(ctx context.Context, f MembershipFilter, after string, limit int) ([]Membership, error)
 	ListMembershipsForSubject(ctx context.Context, subjectPersonID string, f MembershipFilter, after string, limit int) ([]Membership, error)
+	// MembershipStats is the dashboard aggregate over the SAME candidate set the two list arms page
+	// (M57 / D-ObjectFacets): raw (facet, bucket, count) rows, assembled by pkg/stats. An empty
+	// subjectPersonID is the instance-admin arm; otherwise the reach predicate is folded into the SQL,
+	// because a count cannot be trimmed after the fact the way a page can.
+	MembershipStats(ctx context.Context, subjectPersonID string, f MembershipFilter, sel stats.Selection) ([]stats.Group, error)
 	// ReadableUnitIDsForSubject projects the subject's reach through the SQL function migration 0017
 	// added. It exists for the differential test that asserts the function agrees with the inline CTE
 	// in VisiblePersonIDsForSubject* — the parity claim 0017 makes.

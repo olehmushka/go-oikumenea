@@ -79,6 +79,10 @@ var unitFacetNargs = map[string][]string{
 var membershipFilterQueries = []struct{ module, query string }{
 	{"membership", "ListMemberships"},
 	{"membership", "ListMembershipsForSubject"},
+	// M57 ticket 2: the dashboard candidate CTEs carry the SAME block, so a chart cannot describe a set
+	// the list does not return.
+	{"membership", "MembershipStats"},
+	{"membership", "MembershipStatsForSubject"},
 }
 
 var membershipFacetNargs = map[string][]string{
@@ -92,6 +96,8 @@ var membershipFacetNargs = map[string][]string{
 var orderFilterQueries = []struct{ module, query string }{
 	{"order", "ListOrders"},
 	{"order", "ListOrdersForSubject"},
+	{"order", "OrderStats"},
+	{"order", "OrderStatsForSubject"},
 }
 
 var orderFacetNargs = map[string][]string{
@@ -104,6 +110,8 @@ var orderFacetNargs = map[string][]string{
 var documentFilterQueries = []struct{ module, query string }{
 	{"document", "ListDocuments"},
 	{"document", "ListDocumentsForSubject"},
+	{"document", "DocumentStats"},
+	{"document", "DocumentStatsForSubject"},
 }
 
 var documentFacetNargs = map[string][]string{

@@ -32,6 +32,8 @@ import (
 	"github.com/olegamysk/go-oikumenea/pkg/events"
 	"github.com/olegamysk/go-oikumenea/pkg/listing"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
+
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
 
 // Page-size policy (API conventions: token pagination, bounded pages).
@@ -69,8 +71,15 @@ type Service struct {
 	pool    *pgxpool.Pool
 	newRepo RepositoryFactory
 	audit   *auditapp.Service
-	bus     *events.Bus
+	bus     *events.Bus // labeler resolves a dashboard's ref-bucket RIDs to locale->text names (M57 / D-ObjectFacets).
+	// Optional: unset, a chart segment carries its RID and the client falls back to the RID tail.
+	labeler stats.Labeler
 }
+
+// SetBucketLabeler binds the optional dashboard label resolver (M57 / D-ObjectFacets), wired at the
+// composition root from the same per-type labelers the links service uses — so an object reads
+// identically in a graph row and in a chart segment.
+func (s *Service) SetBucketLabeler(l stats.Labeler) { s.labeler = l }
 
 // NewService wires the service with the pool, the repository factory, the audit service, and the
 // event bus.
@@ -495,4 +504,16 @@ func toJSON(v any) json.RawMessage {
 		return nil
 	}
 	return raw
+}
+
+// OrderStats is the order-register dashboard (M57 / D-ObjectFacets): every selected facet's
+// distribution plus the total, over EXACTLY the set ListOrders/ListVisibleOrders would page under the
+// same filter, with reach on the issuing unit folded into the SQL.
+func (s *Service) OrderStats(ctx context.Context, subjectPersonID string, isAdmin bool, f domain.OrderFilter, sel stats.Selection) (stats.Result, error) {
+	if err := f.Validate(); err != nil {
+		return stats.Result{}, err
+	}
+	return stats.Compute(ctx, s.labeler, sel, isAdmin, subjectPersonID, func(subject string) ([]stats.Group, error) {
+		return s.newRepo(s.querier(ctx)).OrderStats(ctx, subject, f, sel)
+	})
 }

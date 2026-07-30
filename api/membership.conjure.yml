@@ -95,6 +95,44 @@ types:
         fields:
           memberships: list<Membership>
           nextPageToken: optional<string>
+      FacetBucket:
+        docs: |
+          One bucket of a facet distribution (M57 / D-ObjectFacets).
+
+          `key` is the bucket's stable, locale-agnostic identity — an enum value, a `YYYY-MM` month, a
+          band, `true`/`false`, or a RID for a `ref` facet — and is exactly what you pass back as the
+          corresponding list filter, which is what makes a chart segment and a filter the same act.
+          Two synthetic keys never name a real value: `(unknown)` is the NULL bucket (mandatory for a
+          nullable column, so the gap is visible rather than dropped) and `(other)` is a top-N facet's
+          collapsed tail; neither is a usable filter value.
+
+          `label` carries the object's display name as a locale → text map (D-i18n — all locales in
+          every response) and is present only for `ref` buckets, whose keys are RIDs. Best effort: an
+          id with no resolvable name simply carries no label.
+        fields:
+          key: string
+          label: optional<map<string, string>>
+          count: integer
+      FacetDistribution:
+        docs: |
+          One facet's buckets, in chart order — for an enum, the declared CHECK-set order with
+          zero-count buckets included so a chart's shape is stable across filterings; for a monthly
+          histogram, ascending by month with `(unknown)` last; for a ref, descending by count with
+          `(other)`/`(unknown)` last.
+        fields:
+          facet: string
+          buckets: list<FacetBucket>
+      MembershipStats:
+        docs: |
+          Facet distributions over the SAME set `listMemberships` returns under the same filters,
+          counted INSIDE the caller's readable reach (D-ObjectFacets): `totalCount` is what
+          exhaustively paging that list would yield, not an estimate and not a page count.
+
+          Like the list, it applies NO implicit status filter — the unfiltered total is the honest
+          one, and it agrees with its own status distribution by construction.
+        fields:
+          totalCount: integer
+          facets: list<FacetDistribution>
       CreatePositionRequest:
         docs: Create a billet in a unit (vacant). The title is the default-locale fallback; additional locales are set via LocalizationService.
         fields:
@@ -297,6 +335,55 @@ services:
             type: optional<string>
             param-type: query
         returns: MembershipPage
+      membershipStats:
+        http: GET /stats/memberships
+        docs: |
+          Facet distributions for the membership roster — the dashboard half of the facet vocabulary
+          (M57 / D-ObjectFacets). Takes exactly the filter args `listMemberships` takes (minus paging),
+          so a dashboard and a list are two renderings of ONE request state and a chart segment is a
+          link to the same URL with one more filter applied.
+
+          Counted INSIDE the reach predicate, before anything is cut: `totalCount` equals the number of
+          rows exhaustively paging `listMemberships` with these same filters would return. One
+          round-trip serves the whole dashboard.
+
+          The path is `/stats/memberships` rather than `/memberships/stats` because the server's router
+          rejects a literal path segment that is a sibling of `{membershipId}` — see the route-conflict
+          guard in `internal/platform/transport`.
+        args:
+          facets:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Optional comma-separated facet keys to compute (`status,unitId`). Omitted or empty = every
+              facet the caller may read; an explicit list of nothing (`facets=,`) returns `totalCount`
+              alone, which is the cheap way to ask only "how many". An undeclared facet key is a
+              Membership:MembershipInvalid; a facet the caller may not READ is not an error — it is simply absent.
+          unitId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listMemberships`. EXACT unit, not the subtree.
+          personId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listMemberships`.
+          positionId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listMemberships`. The `(unknown)` bucket of this facet's distribution is the memberships with no billet.
+          status:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listMemberships`. No implicit default, so the distribution and the total agree.
+          effectiveFromAfter:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listMemberships`.
+          effectiveFromBefore:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listMemberships`.
+        returns: MembershipStats
       listMemberships:
         http: GET /memberships
         docs: |

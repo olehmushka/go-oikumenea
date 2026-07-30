@@ -19,6 +19,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
 
 // ISODate is the wire/calendar date format (a day, not an instant) for issued/expires dates.
@@ -339,6 +341,11 @@ type Repository interface {
 	// document_documents has no unit column, so the scope is a holder semi-join, not a unit predicate).
 	ListDocuments(ctx context.Context, f DocumentFilter, after string, limit int) ([]Document, error)
 	ListDocumentsForSubject(ctx context.Context, subjectPersonID string, f DocumentFilter, after string, limit int) ([]Document, error)
+	// DocumentStats is the dashboard aggregate over the SAME candidate set the two list arms page (M57 /
+	// D-ObjectFacets). An empty subjectPersonID is the instance-admin arm; otherwise the holder
+	// read-scope semi-join is folded into the SQL, so an unreadable holder's documents are never
+	// counted.
+	DocumentStats(ctx context.Context, subjectPersonID string, f DocumentFilter, sel stats.Selection) ([]stats.Group, error)
 	// ErasePersonDocuments NULLs number/issuer/attributes for a person's documents (purge; D-PIITiers).
 	ErasePersonDocuments(ctx context.Context, personID string) (int64, error)
 

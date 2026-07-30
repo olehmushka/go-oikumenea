@@ -72,8 +72,15 @@ type RepositoryFactory func(conn db.DBTX) domain.Repository
 type Service struct {
 	pool    *pgxpool.Pool
 	newRepo RepositoryFactory
-	audit   *auditapp.Service
+	audit   *auditapp.Service // labeler resolves a dashboard's ref-bucket RIDs to locale->text names (M57 / D-ObjectFacets).
+	// Optional: unset, a chart segment carries its RID and the client falls back to the RID tail.
+	labeler stats.Labeler
 }
+
+// SetBucketLabeler binds the optional dashboard label resolver (M57 / D-ObjectFacets), wired at the
+// composition root from the same per-type labelers the links service uses — so an object reads
+// identically in a graph row and in a chart segment.
+func (s *Service) SetBucketLabeler(l stats.Labeler) { s.labeler = l }
 
 // NewService wires the service with the pool, the repository factory, and the audit service every
 // write records into.
@@ -441,6 +448,22 @@ func (s *Service) ActiveUnitIDsForPerson(ctx context.Context, personID string) (
 // array union). Keyset-paginated by person RID; powers the directory list (GET /persons).
 func (s *Service) VisiblePersonIDsForSubject(ctx context.Context, subjectPersonID, after string, f persondomain.PersonFilter, limit int) ([]string, error) {
 	return s.newRepo(s.querier(ctx)).VisiblePersonIDsForSubject(ctx, subjectPersonID, after, f, limit)
+}
+
+// MembershipStats is the roster dashboard (M57 / D-ObjectFacets): every selected facet's distribution
+// plus the total, over EXACTLY the set ListMemberships/ListVisibleMemberships would page under the same
+// filter. One round-trip, one scan, counts taken inside the visibility predicate.
+//
+// The admin/scoped dispatch is the caller's, as it is for the list: an instance admin aggregates every
+// membership, anyone else aggregates their reach. The filter is validated here, once, so both arms
+// reject an ill-formed facet value identically.
+func (s *Service) MembershipStats(ctx context.Context, subjectPersonID string, isAdmin bool, f domain.MembershipFilter, sel stats.Selection) (stats.Result, error) {
+	if err := f.Validate(); err != nil {
+		return stats.Result{}, err
+	}
+	return stats.Compute(ctx, s.labeler, sel, isAdmin, subjectPersonID, func(subject string) ([]stats.Group, error) {
+		return s.newRepo(s.querier(ctx)).MembershipStats(ctx, subject, f, sel)
+	})
 }
 
 // VisiblePersonStatsForSubject is the read-scope directory DASHBOARD (M57 / D-ObjectFacets): the

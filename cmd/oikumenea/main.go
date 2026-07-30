@@ -596,6 +596,9 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	statsLabeler := bucketLabeler(pool, locSvc)
 	personSvc.SetBucketLabeler(statsLabeler)
 	tenantSvc.SetBucketLabeler(statsLabeler)
+	membershipSvc.SetBucketLabeler(statsLabeler)
+	orderSvc.SetBucketLabeler(statsLabeler)
+	documentSvc.SetBucketLabeler(statsLabeler)
 
 	// Identity-federation: the external-IdP seam. Its application service is the (issuer, subject)
 	// resolver the validation middleware binds to.

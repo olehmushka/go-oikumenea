@@ -1,6 +1,8 @@
 export * from "./createMembershipRequest";
 export * from "./createPositionRequest";
 export * from "./endMembershipRequest";
+export * from "./facetBucket";
+export * from "./facetDistribution";
 export * from "./fillPositionRequest";
 export * from "./membership";
 export * from "./membershipConflict";
@@ -9,6 +11,7 @@ export * from "./membershipLifecycleConflict";
 export * from "./membershipNotFound";
 export * from "./membershipPage";
 export * from "./membershipService";
+export * from "./membershipStats";
 export * from "./position";
 export * from "./positionAlreadyFilled";
 export * from "./positionConflict";

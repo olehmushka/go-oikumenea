@@ -40,11 +40,13 @@ func TestModuleListPathsUseTheRequestPinnedConnection(t *testing.T) {
 		// membership_memberships and order_orders are RLS-protected on their unit column (0005).
 		{"membership", []string{"ListMemberships", "ListVisibleMemberships",
 			// M57: the read-scope dashboard aggregate, same predicate without a LIMIT.
-			"VisiblePersonStatsForSubject"}},
-		{"order", []string{"ListOrders", "ListVisibleOrders"}},
+			"VisiblePersonStatsForSubject",
+			// M57 ticket 2: the roster's own dashboard, same predicate without a LIMIT.
+			"MembershipStats"}},
+		{"order", []string{"ListOrders", "ListVisibleOrders", "OrderStats"}},
 		// document_documents has NO policy, but the read-scope arm's holder semi-join probes
 		// membership_memberships, which does — so the same rule binds.
-		{"document", []string{"ListDocuments", "ListVisibleDocuments"}},
+		{"document", []string{"ListDocuments", "ListVisibleDocuments", "DocumentStats"}},
 		// tenant_units is RLS-protected (0005/0042); the unit dashboard folds the shadow gate into
 		// SQL, so it reads through the same pinned connection the list does.
 		{"tenant", []string{"ListUnits", "UnitStats"}},

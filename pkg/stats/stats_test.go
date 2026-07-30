@@ -4,6 +4,7 @@
 package stats
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -220,6 +221,88 @@ func TestChronologicalBucketsSortAscending(t *testing.T) {
 		{Facet: "issuedOn", Key: nil, Count: 4},
 	}))
 	assertBuckets(t, got, []Bucket{{Key: "2025-11", Count: 1}, {Key: "2026-03", Count: 2}, {Key: BucketUnknown, Count: 4}})
+}
+
+// A declared (unknown) bucket is emitted even when nothing is in it — the same rule every other
+// strategy follows. Concretely: an order register with no drafts must still show a zero draft backlog,
+// or the chart changes shape as the data does (M57 ticket 2).
+func TestChronologicalBucketsKeepAnEmptyDeclaredUnknown(t *testing.T) {
+	f := facet.Facet{Key: "issuedOn", Kind: facet.KindDateRange,
+		Buckets: facet.Buckets{Strategy: facet.StrategyDateTrunc, Grain: "month", IncludeUnknown: true}}
+	got := dist(t, Assemble(selectOne(t, f), []Group{{Facet: "issuedOn", Key: k("2026-03"), Count: 2}}))
+	assertBuckets(t, got, []Bucket{{Key: "2026-03", Count: 2}, {Key: BucketUnknown, Count: 0}})
+
+	// ...and a facet that declares no unknown bucket still surfaces NULLs it actually counted, rather
+	// than losing the rows.
+	g := facet.Facet{Key: "issuedOn", Kind: facet.KindDateRange,
+		Buckets: facet.Buckets{Strategy: facet.StrategyDateTrunc, Grain: "month"}}
+	got = dist(t, Assemble(selectOne(t, g), []Group{{Facet: "issuedOn", Key: k("2026-03"), Count: 2}}))
+	assertBuckets(t, got, []Bucket{{Key: "2026-03", Count: 2}})
+}
+
+// ---------------------------------------------------------------- the arm convention
+
+// The property Compute exists to guarantee: an empty subject means the ADMIN arm, so a non-admin
+// without a subject (a machine principal — pep.SubjectAuthority returns ("", false) for one) must read
+// NOTHING rather than everything. This is the leak the helper centralizes away from five transports.
+func TestComputeNeverGivesANonAdminTheAdminArm(t *testing.T) {
+	sel := selectOne(t, facet.Facet{Key: "sex", Kind: facet.KindEnum, Values: []string{"male"},
+		Buckets: facet.Buckets{Strategy: facet.StrategyIdentity}})
+
+	var armSeen string
+	fetched := false
+	fetch := func(subject string) ([]Group, error) {
+		armSeen, fetched = subject, true
+		return []Group{{Facet: TotalFacet, Count: 999}}, nil
+	}
+
+	res, err := Compute(context.Background(), nil, sel, false, "", fetch)
+	if err != nil {
+		t.Fatalf("Compute: %v", err)
+	}
+	if fetched {
+		t.Errorf("a non-admin with no subject reached the query at all (arm %q) — it must read nothing", armSeen)
+	}
+	if res.TotalCount != 0 || len(res.Distributions) != 0 {
+		t.Errorf("got %+v, want an empty result", res)
+	}
+
+	// An instance admin gets the unscoped arm...
+	if _, err = Compute(context.Background(), nil, sel, true, "someone", fetch); err != nil {
+		t.Fatalf("Compute(admin): %v", err)
+	}
+	if armSeen != "" {
+		t.Errorf("admin arm passed subject %q — the admin arm carries no visibility predicate", armSeen)
+	}
+
+	// ...and an ordinary subject is scoped to itself.
+	if _, err = Compute(context.Background(), nil, sel, false, "subject-1", fetch); err != nil {
+		t.Fatalf("Compute(scoped): %v", err)
+	}
+	if armSeen != "subject-1" {
+		t.Errorf("scoped arm passed subject %q, want subject-1", armSeen)
+	}
+}
+
+func TestComputeAssemblesAndPropagatesErrors(t *testing.T) {
+	sel := selectOne(t, facet.Facet{Key: "sex", Kind: facet.KindEnum, Values: []string{"male", "female"},
+		Buckets: facet.Buckets{Strategy: facet.StrategyIdentity}})
+	res, err := Compute(context.Background(), nil, sel, true, "", func(string) ([]Group, error) {
+		return []Group{{Facet: TotalFacet, Count: 3}, {Facet: "sex", Key: k("male"), Count: 3}}, nil
+	})
+	if err != nil {
+		t.Fatalf("Compute: %v", err)
+	}
+	if res.TotalCount != 3 || len(res.Distributions) != 1 || res.Distributions[0].Buckets[0].Count != 3 {
+		t.Fatalf("got %+v, want the assembled sex distribution", res)
+	}
+
+	boom := errors.New("db down")
+	if _, err := Compute(context.Background(), nil, sel, true, "", func(string) ([]Group, error) {
+		return nil, boom
+	}); !errors.Is(err, boom) {
+		t.Fatalf("err = %v, want the fetch error propagated", err)
+	}
 }
 
 func TestTopNBucketsOrderByCountWithSyntheticsLast(t *testing.T) {

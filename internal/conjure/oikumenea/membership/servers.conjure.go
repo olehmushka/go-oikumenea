@@ -43,6 +43,21 @@ type MembershipService interface {
 	// Roster of a unit's active memberships, token-paginated. (The shadow gate applies once authz lands, M7.)
 	ListMembers(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, pageSizeArg *int, pageTokenArg *string) (MembershipPage, error)
 	/*
+	   Facet distributions for the membership roster — the dashboard half of the facet vocabulary
+	   (M57 / D-ObjectFacets). Takes exactly the filter args `listMemberships` takes (minus paging),
+	   so a dashboard and a list are two renderings of ONE request state and a chart segment is a
+	   link to the same URL with one more filter applied.
+
+	   Counted INSIDE the reach predicate, before anything is cut: `totalCount` equals the number of
+	   rows exhaustively paging `listMemberships` with these same filters would return. One
+	   round-trip serves the whole dashboard.
+
+	   The path is `/stats/memberships` rather than `/memberships/stats` because the server's router
+	   rejects a literal path segment that is a sibling of `{membershipId}` — see the route-conflict
+	   guard in `internal/platform/transport`.
+	*/
+	MembershipStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, unitIdArg *string, personIdArg *string, positionIdArg *string, statusArg *string, effectiveFromAfterArg *string, effectiveFromBeforeArg *string) (MembershipStats, error)
+	/*
 	   List memberships across every unit the caller may read, token-paginated, narrowed by the
 	   membership facet set (D-ObjectFacets, M56). A non-instance-admin caller sees only
 	   memberships whose unit falls in their effective readable reach; every filter below is
@@ -94,6 +109,9 @@ func RegisterRoutesMembershipService(router wrouter.Router, impl MembershipServi
 	}
 	if err := resource.Get("ListMembers", "/membership/v1/units/{unitId}/members", httpserver.NewJSONHandler(handler.HandleListMembers, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listMembers route")
+	}
+	if err := resource.Get("MembershipStats", "/membership/v1/stats/memberships", httpserver.NewJSONHandler(handler.HandleMembershipStats, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add membershipStats route")
 	}
 	if err := resource.Get("ListMemberships", "/membership/v1/memberships", httpserver.NewJSONHandler(handler.HandleListMemberships, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listMemberships route")
@@ -333,6 +351,54 @@ func (m *membershipServiceHandler) HandleListMembers(rw http.ResponseWriter, req
 		pageTokenArg = &pageTokenArgInternal
 	}
 	respArg, err := m.impl.ListMembers(req.Context(), bearertoken.Token(authHeader), unitIdArg, pageSizeArg, pageTokenArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (m *membershipServiceHandler) HandleMembershipStats(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var facetsArg *string
+	if facetsArgStr := req.URL.Query().Get("facets"); facetsArgStr != "" {
+		facetsArgInternal := facetsArgStr
+		facetsArg = &facetsArgInternal
+	}
+	var unitIdArg *string
+	if unitIdArgStr := req.URL.Query().Get("unitId"); unitIdArgStr != "" {
+		unitIdArgInternal := unitIdArgStr
+		unitIdArg = &unitIdArgInternal
+	}
+	var personIdArg *string
+	if personIdArgStr := req.URL.Query().Get("personId"); personIdArgStr != "" {
+		personIdArgInternal := personIdArgStr
+		personIdArg = &personIdArgInternal
+	}
+	var positionIdArg *string
+	if positionIdArgStr := req.URL.Query().Get("positionId"); positionIdArgStr != "" {
+		positionIdArgInternal := positionIdArgStr
+		positionIdArg = &positionIdArgInternal
+	}
+	var statusArg *string
+	if statusArgStr := req.URL.Query().Get("status"); statusArgStr != "" {
+		statusArgInternal := statusArgStr
+		statusArg = &statusArgInternal
+	}
+	var effectiveFromAfterArg *string
+	if effectiveFromAfterArgStr := req.URL.Query().Get("effectiveFromAfter"); effectiveFromAfterArgStr != "" {
+		effectiveFromAfterArgInternal := effectiveFromAfterArgStr
+		effectiveFromAfterArg = &effectiveFromAfterArgInternal
+	}
+	var effectiveFromBeforeArg *string
+	if effectiveFromBeforeArgStr := req.URL.Query().Get("effectiveFromBefore"); effectiveFromBeforeArgStr != "" {
+		effectiveFromBeforeArgInternal := effectiveFromBeforeArgStr
+		effectiveFromBeforeArg = &effectiveFromBeforeArgInternal
+	}
+	respArg, err := m.impl.MembershipStats(req.Context(), bearertoken.Token(authHeader), facetsArg, unitIdArg, personIdArg, positionIdArg, statusArg, effectiveFromAfterArg, effectiveFromBeforeArg)
 	if err != nil {
 		return err
 	}

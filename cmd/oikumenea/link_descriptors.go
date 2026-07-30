@@ -32,6 +32,7 @@ import (
 	linksdomain "github.com/olegamysk/go-oikumenea/internal/links/domain"
 	localizationapp "github.com/olegamysk/go-oikumenea/internal/localization/application"
 	membershipapp "github.com/olegamysk/go-oikumenea/internal/membership/application"
+	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/pkg/rid"
 )
 
@@ -138,11 +139,18 @@ func registerLinkDescriptors(
 // localization.NamesByID → a locale→text map. A type with no translation rows yields a single-entry
 // map (default locale). Raw SQL over a COMPILE-TIME table/column (never user input), Sanitize'd — the
 // same justified dynamic-SQL pattern as the engine and the unit-visibility scope above.
+//
+// It reads through the REQUEST-PINNED connection (db.RequestQuerier), not the bare pool: several label
+// tables are row-secured (membership_positions, tenant_units), and on an unpinned connection the app.*
+// GUCs are unset, so an RLS-protected table returns ZERO rows and every label silently disappears.
+// M57 ticket 2 found this the moment a labeler was pointed at membership_positions — the position
+// buckets came back unlabelled while every non-RLS type resolved. Units were affected less visibly:
+// their policy has a public-read arm, so PUBLIC units resolved and in-reach SHADOW ones did not.
 func overlayLabeler(pool *pgxpool.Pool, loc *localizationapp.Service, table, nameCol, entityType string) linksapp.LabelFunc {
 	q := fmt.Sprintf(`SELECT id::text, %s FROM %s WHERE id = ANY($1::uuid[])`,
 		pgx.Identifier{nameCol}.Sanitize(), pgx.Identifier{"oikumenea", table}.Sanitize())
 	return func(ctx context.Context, ids []string) (map[string]map[string]string, error) {
-		rows, err := pool.Query(ctx, q, ids)
+		rows, err := db.RequestQuerier(ctx, pool).Query(ctx, q, ids)
 		if err != nil {
 			return nil, err
 		}
@@ -177,7 +185,8 @@ func personLabeler(pool *pgxpool.Pool, loc *localizationapp.Service) linksapp.La
 			return nil, err
 		}
 		out := make(map[string]map[string]string, len(ids))
-		rows, err := pool.Query(ctx, `SELECT id::text, display_name FROM oikumenea.person_persons WHERE id = ANY($1::uuid[])`, ids)
+		rows, err := db.RequestQuerier(ctx, pool).Query(ctx,
+			`SELECT id::text, display_name FROM oikumenea.person_persons WHERE id = ANY($1::uuid[])`, ids)
 		if err != nil {
 			return nil, err
 		}
@@ -198,7 +207,7 @@ func personLabeler(pool *pgxpool.Pool, loc *localizationapp.Service) linksapp.La
 		}
 		// Canonical per-locale name forms only (variant_kind='transliteration'); aliases/akas excluded.
 		// is_primary last so it wins a last-write when a locale has several transliterations.
-		vrows, err := pool.Query(ctx,
+		vrows, err := db.RequestQuerier(ctx, pool).Query(ctx,
 			`SELECT person_id::text, locale, display_name FROM oikumenea.person_name_variants
 			 WHERE person_id = ANY($1::uuid[]) AND variant_kind = 'transliteration' AND display_name IS NOT NULL
 			 ORDER BY is_primary`, ids)

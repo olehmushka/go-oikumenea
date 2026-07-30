@@ -109,7 +109,7 @@ func TestUnitStatsTotalEqualsExhaustivePaging_Integration(t *testing.T) {
 		paged := allUnitIDs(t, func(tok string) (application.UnitPage, error) {
 			return svc.ListUnits(ctx, f, "", nil, false, 0, tok)
 		})
-		res, err := svc.UnitStats(ctx, "", f, sel)
+		res, err := svc.UnitStats(ctx, "", true, f, sel)
 		if err != nil {
 			t.Fatalf("filter %d: stats: %v", i, err)
 		}
@@ -147,7 +147,7 @@ func TestUnitStatsDistributionsMatchTheSeededOrg_Integration(t *testing.T) {
 		}
 	}
 
-	res, err := svc.UnitStats(ctx, "", domain.UnitFilter{OrgID: org.ID}, sel)
+	res, err := svc.UnitStats(ctx, "", true, domain.UnitFilter{OrgID: org.ID}, sel)
 	if err != nil {
 		t.Fatalf("stats: %v", err)
 	}
@@ -198,11 +198,11 @@ func TestUnitStatsShadowGateIsInsideTheCount_Integration(t *testing.T) {
 	// every public one is not.
 	stranger := seedStatsPerson(t, pool)
 
-	admin, err := svc.UnitStats(ctx, "", domain.UnitFilter{OrgID: org.ID}, sel)
+	admin, err := svc.UnitStats(ctx, "", true, domain.UnitFilter{OrgID: org.ID}, sel)
 	if err != nil {
 		t.Fatalf("admin stats: %v", err)
 	}
-	scoped, err := svc.UnitStats(ctx, stranger, domain.UnitFilter{OrgID: org.ID}, sel)
+	scoped, err := svc.UnitStats(ctx, stranger, false, domain.UnitFilter{OrgID: org.ID}, sel)
 	if err != nil {
 		t.Fatalf("scoped stats: %v", err)
 	}
@@ -233,4 +233,25 @@ func seedStatsPerson(t *testing.T, pool *pgxpool.Pool) string {
 		t.Fatalf("seed stranger: %v", err)
 	}
 	return id
+}
+
+// TestUnitStatsNonAdminWithNoSubjectReadsNothing: an empty subject means the ADMIN arm in the SQL, so a
+// caller who is neither an admin nor an identified person (a machine principal — pep.SubjectAuthority
+// returns ("", false) for one) must read NOTHING rather than every unit in the org. pkg/stats.Compute
+// owns the rule; this proves tenant is wired through it, which it was NOT before M57 ticket 2 — the
+// transport used to collapse the two cases into one argument.
+func TestUnitStatsNonAdminWithNoSubjectReadsNothing_Integration(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newService(t)
+	org := seedOrg(t, svc)
+	mustCreate(t, svc, org, uniqueCode(t, "armconv"))
+
+	res, err := svc.UnitStats(ctx, "", false, domain.UnitFilter{OrgID: org.ID}, allUnitFacets(t))
+	if err != nil {
+		t.Fatalf("stats: %v", err)
+	}
+	if res.TotalCount != 0 || len(res.Distributions) != 0 {
+		t.Errorf("a non-admin with no subject got totalCount %d and %d distributions — it must read "+
+			"nothing, never the admin arm", res.TotalCount, len(res.Distributions))
+	}
 }

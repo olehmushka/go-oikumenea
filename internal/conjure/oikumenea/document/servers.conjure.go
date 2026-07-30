@@ -37,6 +37,20 @@ type DocumentService interface {
 	   visible set.
 	*/
 	ListDocuments(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string, typeIdArg *string, statusArg *string, issuingCountryIdArg *string, issuedOnFromArg *string, issuedOnToArg *string, expiresOnFromArg *string, expiresOnToArg *string) (DocumentPage, error)
+	/*
+	   Facet distributions for the document register — the dashboard half of the facet vocabulary
+	   (M57 / D-ObjectFacets). Takes exactly the filter args `listDocuments` takes (minus paging), so
+	   a dashboard and a list are two renderings of one request state.
+
+	   Counted INSIDE the holder read-scope semi-join: `totalCount` equals what exhaustively paging
+	   `listDocuments` with these filters would return. The `expiresOn` distribution's `(unknown)`
+	   bucket is the NO-EXPIRY (permanent) population, not missing data.
+
+	   The path is `/stats/documents` rather than `/documents/stats` because the server's router
+	   rejects a literal path segment that is a sibling of `{documentId}` — see the route-conflict
+	   guard in `internal/platform/transport`.
+	*/
+	DocumentStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, typeIdArg *string, statusArg *string, issuingCountryIdArg *string, issuedOnFromArg *string, issuedOnToArg *string, expiresOnFromArg *string, expiresOnToArg *string) (DocumentStats, error)
 	// List a person's documents, token-paginated.
 	ListPersonDocuments(ctx context.Context, authHeader bearertoken.Token, personIdArg string, pageSizeArg *int, pageTokenArg *string) (DocumentPage, error)
 	// Read one document.
@@ -83,6 +97,9 @@ func RegisterRoutesDocumentService(router wrouter.Router, impl DocumentService, 
 	}
 	if err := resource.Get("ListDocuments", "/document/v1/documents", httpserver.NewJSONHandler(handler.HandleListDocuments, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listDocuments route")
+	}
+	if err := resource.Get("DocumentStats", "/document/v1/stats/documents", httpserver.NewJSONHandler(handler.HandleDocumentStats, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add documentStats route")
 	}
 	if err := resource.Get("ListPersonDocuments", "/document/v1/persons/{personId}/documents", httpserver.NewJSONHandler(handler.HandleListPersonDocuments, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listPersonDocuments route")
@@ -212,6 +229,59 @@ func (d *documentServiceHandler) HandleListDocuments(rw http.ResponseWriter, req
 		expiresOnToArg = &expiresOnToArgInternal
 	}
 	respArg, err := d.impl.ListDocuments(req.Context(), bearertoken.Token(authHeader), pageSizeArg, pageTokenArg, typeIdArg, statusArg, issuingCountryIdArg, issuedOnFromArg, issuedOnToArg, expiresOnFromArg, expiresOnToArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (d *documentServiceHandler) HandleDocumentStats(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var facetsArg *string
+	if facetsArgStr := req.URL.Query().Get("facets"); facetsArgStr != "" {
+		facetsArgInternal := facetsArgStr
+		facetsArg = &facetsArgInternal
+	}
+	var typeIdArg *string
+	if typeIdArgStr := req.URL.Query().Get("typeId"); typeIdArgStr != "" {
+		typeIdArgInternal := typeIdArgStr
+		typeIdArg = &typeIdArgInternal
+	}
+	var statusArg *string
+	if statusArgStr := req.URL.Query().Get("status"); statusArgStr != "" {
+		statusArgInternal := statusArgStr
+		statusArg = &statusArgInternal
+	}
+	var issuingCountryIdArg *string
+	if issuingCountryIdArgStr := req.URL.Query().Get("issuingCountryId"); issuingCountryIdArgStr != "" {
+		issuingCountryIdArgInternal := issuingCountryIdArgStr
+		issuingCountryIdArg = &issuingCountryIdArgInternal
+	}
+	var issuedOnFromArg *string
+	if issuedOnFromArgStr := req.URL.Query().Get("issuedOnFrom"); issuedOnFromArgStr != "" {
+		issuedOnFromArgInternal := issuedOnFromArgStr
+		issuedOnFromArg = &issuedOnFromArgInternal
+	}
+	var issuedOnToArg *string
+	if issuedOnToArgStr := req.URL.Query().Get("issuedOnTo"); issuedOnToArgStr != "" {
+		issuedOnToArgInternal := issuedOnToArgStr
+		issuedOnToArg = &issuedOnToArgInternal
+	}
+	var expiresOnFromArg *string
+	if expiresOnFromArgStr := req.URL.Query().Get("expiresOnFrom"); expiresOnFromArgStr != "" {
+		expiresOnFromArgInternal := expiresOnFromArgStr
+		expiresOnFromArg = &expiresOnFromArgInternal
+	}
+	var expiresOnToArg *string
+	if expiresOnToArgStr := req.URL.Query().Get("expiresOnTo"); expiresOnToArgStr != "" {
+		expiresOnToArgInternal := expiresOnToArgStr
+		expiresOnToArg = &expiresOnToArgInternal
+	}
+	respArg, err := d.impl.DocumentStats(req.Context(), bearertoken.Token(authHeader), facetsArg, typeIdArg, statusArg, issuingCountryIdArg, issuedOnFromArg, issuedOnToArg, expiresOnFromArg, expiresOnToArg)
 	if err != nil {
 		return err
 	}

@@ -258,6 +258,43 @@ func (r *Result) ApplyLabels(sel Selection, labels map[string]map[string]map[str
 	}
 }
 
+// Compute is the whole non-SQL body of a module's stats endpoint: pick the arm, run the module's
+// aggregate, assemble the buckets, attach the labels. Every stats endpoint goes through it so the ARM
+// CONVENTION is written down once.
+//
+// The convention, and the reason it is not left to each transport: `fetch` receives the subject whose
+// visibility predicate the SQL must apply, and the EMPTY STRING means "no predicate at all — the
+// instance-admin arm". Those two facts make one mistake possible and expensive: a NON-admin whose
+// subject is empty would be handed the whole instance's counts. That is reachable in principle —
+// pep.SubjectAuthority returns ("", false) for a machine subject (M51: a principal has no person
+// identity and no reach) — so the guard belongs here rather than in five transports, where four of
+// them would be one edit away from the leak. A non-admin with no subject reads nothing.
+func Compute(
+	ctx context.Context,
+	l Labeler,
+	sel Selection,
+	isAdmin bool,
+	subject string,
+	fetch func(subject string) ([]Group, error),
+) (Result, error) {
+	arm := subject
+	switch {
+	case isAdmin:
+		arm = "" // the admin arm carries no visibility predicate
+	case subject == "":
+		return Result{}, nil // no identity, no reach, no counts — never the admin arm
+	}
+	groups, err := fetch(arm)
+	if err != nil {
+		return Result{}, err
+	}
+	res := Assemble(sel, groups)
+	if err := Label(ctx, l, sel, &res); err != nil {
+		return Result{}, err
+	}
+	return res, nil
+}
+
 // Assemble turns the raw aggregate rows into the declared buckets, in catalog order. Rows naming a
 // facet outside the selection are ignored (a query branch that ran when it should not have is a bug
 // the guard tests catch, not something to surface mid-response); the total arrives under TotalFacet.
@@ -289,7 +326,7 @@ func bucketsFor(f facet.Facet, groups []Group) []Bucket {
 	case facet.StrategyBands:
 		return bandBuckets(f, groups)
 	case facet.StrategyDateTrunc:
-		return chronologicalBuckets(groups)
+		return chronologicalBuckets(f, groups)
 	case facet.StrategyTopN:
 		return topNBuckets(f, groups)
 	default:
@@ -373,17 +410,20 @@ func bandBuckets(f facet.Facet, groups []Group) []Bucket {
 // chronologicalBuckets emits date_trunc keys in ascending time order (ISO-8601 keys sort
 // lexicographically), with no zero-fill: a histogram of what happened has no declared value set, and
 // inventing empty months between the extremes is the chart's job, not the API's.
-func chronologicalBuckets(groups []Group) []Bucket {
+//
+// The `(unknown)` bucket, however, IS declared, and follows the same rule as every other strategy: a
+// facet over a nullable column always emits it. That matters concretely here — an order register with
+// no drafts, or a document register where everything expires, would otherwise drop the bucket and
+// change the chart's shape, when the honest answer is a zero. Whether the population is empty is data;
+// whether the bucket exists is the catalog's decision.
+func chronologicalBuckets(f facet.Facet, groups []Group) []Bucket {
 	counts, unknown, keys := indexGroups(groups)
 	sort.Strings(keys)
 	out := make([]Bucket, 0, len(keys)+1)
 	for _, k := range keys {
 		out = append(out, Bucket{Key: k, Count: counts[k]})
 	}
-	if unknown > 0 {
-		out = append(out, Bucket{Key: BucketUnknown, Count: unknown})
-	}
-	return out
+	return appendUnknown(out, f, unknown)
 }
 
 // topNBuckets orders a ref facet's buckets. The SQL has already collapsed the tail into `(other)`

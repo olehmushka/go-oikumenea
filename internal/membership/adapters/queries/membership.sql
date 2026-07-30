@@ -789,6 +789,145 @@ SELECT 'hasAccount'::text,
        count(*)::bigint, NULL::bigint
 FROM cand c WHERE sqlc.arg('want_has_account')::boolean GROUP BY 2;
 
+-- ==================== the roster's own dashboard aggregate (M57 ticket 2) ====================
+
+-- name: MembershipStats :many
+-- The INSTANCE-ADMIN dashboard aggregate for the membership roster (M57 / D-ObjectFacets): every
+-- selected facet's distribution plus the total, in ONE round-trip and ONE scan of the candidate set.
+-- The candidate CTE carries ListMemberships' filter block VERBATIM — the list and the dashboard must
+-- see one world — and each branch is SKIPPED, not merely hidden, when its want_* flag is false.
+--
+-- No LIMIT anywhere: a count is over the whole filtered set by definition, which is also why this
+-- needs no sparse/dense plan dispatch (M57 ticket 1's measurement, re-confirmed here for this table:
+-- set form 13 ms / 2 201 ms at leaf / root reach against the point probe's 12 827 / 24 513 ms).
+--
+-- unitId/personId/positionId are per-ROW attributes of the membership, so each of those distributions
+-- partitions the candidate set exactly; positionId's (unknown) bucket is the memberships with no
+-- billet, which is the vacancy signal this module exists to answer.
+WITH cand AS MATERIALIZED (
+  SELECT m.id, m.unit_id, m.person_id, m.position_id, m.status, m.effective_from
+  FROM oikumenea.membership_memberships m
+  WHERE m.deleted_at IS NULL
+  AND (sqlc.narg('unit_id')::uuid IS NULL OR m.unit_id = sqlc.narg('unit_id')::uuid)
+  AND (sqlc.narg('person_id')::uuid IS NULL OR m.person_id = sqlc.narg('person_id')::uuid)
+  AND (sqlc.narg('position_id')::uuid IS NULL OR m.position_id = sqlc.narg('position_id')::uuid)
+  AND (sqlc.narg('status')::text IS NULL OR m.status = sqlc.narg('status')::text)
+  AND (sqlc.narg('effective_from_after')::date IS NULL
+       OR m.effective_from >= sqlc.narg('effective_from_after')::date)
+  AND (sqlc.narg('effective_from_before')::date IS NULL
+       OR m.effective_from < (sqlc.narg('effective_from_before')::date + 1))
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n, NULL::bigint AS ord
+FROM cand
+UNION ALL
+SELECT 'unitId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.unit_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE sqlc.arg('want_unit_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'personId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.person_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE sqlc.arg('want_person_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'positionId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.position_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE sqlc.arg('want_position_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'status'::text, c.status::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE sqlc.arg('want_status')::boolean GROUP BY c.status
+UNION ALL
+SELECT 'effectiveFrom'::text, to_char(date_trunc('month', c.effective_from), 'YYYY-MM'), count(*)::bigint, NULL::bigint
+FROM cand c WHERE sqlc.arg('want_effective_from')::boolean GROUP BY 2;
+
+-- name: MembershipStatsForSubject :many
+-- The READ-SCOPE arm: identical filters and identical aggregates, with the reach predicate folded
+-- INTO the candidate set so every count is taken inside it. Counting first and trimming afterwards
+-- would leak the size of what the caller cannot read.
+--
+-- The reach arrives as the migration-0017 SET function, uncorrelated: it reads only
+-- @subject_person_id, so the planner evaluates it once and probes a hash.
+WITH cand AS MATERIALIZED (
+  SELECT m.id, m.unit_id, m.person_id, m.position_id, m.status, m.effective_from
+  FROM oikumenea.membership_memberships m
+  WHERE m.deleted_at IS NULL
+  AND (sqlc.narg('unit_id')::uuid IS NULL OR m.unit_id = sqlc.narg('unit_id')::uuid)
+  AND (sqlc.narg('person_id')::uuid IS NULL OR m.person_id = sqlc.narg('person_id')::uuid)
+  AND (sqlc.narg('position_id')::uuid IS NULL OR m.position_id = sqlc.narg('position_id')::uuid)
+  AND (sqlc.narg('status')::text IS NULL OR m.status = sqlc.narg('status')::text)
+  AND (sqlc.narg('effective_from_after')::date IS NULL
+       OR m.effective_from >= sqlc.narg('effective_from_after')::date)
+  AND (sqlc.narg('effective_from_before')::date IS NULL
+       OR m.effective_from < (sqlc.narg('effective_from_before')::date + 1))
+  AND m.unit_id IN (SELECT oikumenea.authz_readable_units(@subject_person_id))
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n, NULL::bigint AS ord
+FROM cand
+UNION ALL
+SELECT 'unitId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.unit_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE sqlc.arg('want_unit_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'personId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.person_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE sqlc.arg('want_person_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'positionId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.position_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE sqlc.arg('want_position_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'status'::text, c.status::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE sqlc.arg('want_status')::boolean GROUP BY c.status
+UNION ALL
+SELECT 'effectiveFrom'::text, to_char(date_trunc('month', c.effective_from), 'YYYY-MM'), count(*)::bigint, NULL::bigint
+FROM cand c WHERE sqlc.arg('want_effective_from')::boolean GROUP BY 2;
+
 -- name: SubjectReadablePersonsAmong :many
 -- Batch variant of SubjectCanReadPerson for the D-VisibilityScope person-scope adapter (R-30):
 -- which of the candidate persons does the subject's '*.read' reach through an active membership?

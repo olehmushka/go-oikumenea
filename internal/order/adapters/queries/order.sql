@@ -143,6 +143,117 @@ WHERE o.deleted_at IS NULL
 ORDER BY o.id
 LIMIT @lim;
 
+-- ============================ dashboard aggregates (M57) ============================
+
+-- name: OrderStats :many
+-- The INSTANCE-ADMIN dashboard aggregate for the order register (M57 / D-ObjectFacets): the candidate
+-- CTE carries ListOrders' filter block VERBATIM, then one branch per facet, each skipped by the
+-- planner when its want_* flag is false. No LIMIT, and so no sparse/dense dispatch (set form 16 ms /
+-- 801 ms at leaf / root reach against the point probe's 2 594 / 4 092 ms).
+--
+-- orderTypeId is the one MULTIPLYING branch: an order's effect lives on its ITEMS, so an order
+-- carrying two different effects is counted in two buckets and this distribution deliberately does not
+-- sum to totalCount. It is LEFT-joined, so an order with no items is the (unknown) bucket rather than a
+-- row that silently leaves the chart. The FILTER counterpart stays an EXISTS semi-join (in the CTE
+-- above), because there a join would multiply the order row and corrupt the count itself.
+--
+-- issuedOn's (unknown) bucket is the DRAFT backlog: a draft order has no issue date.
+WITH cand AS MATERIALIZED (
+  SELECT o.id, o.issuing_unit_id, o.status, o.issued_on
+  FROM oikumenea.order_orders o
+  WHERE o.deleted_at IS NULL
+  AND (sqlc.narg('issuing_unit_id')::uuid IS NULL OR o.issuing_unit_id = sqlc.narg('issuing_unit_id')::uuid)
+  AND (sqlc.narg('status')::text IS NULL OR o.status = sqlc.narg('status')::text)
+  AND (sqlc.narg('issued_on_from')::date IS NULL OR o.issued_on >= sqlc.narg('issued_on_from')::date)
+  AND (sqlc.narg('issued_on_to')::date IS NULL OR o.issued_on <= sqlc.narg('issued_on_to')::date)
+  AND (sqlc.narg('order_type_id')::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.order_order_items i
+        WHERE i.order_id = o.id AND i.type_id = sqlc.narg('order_type_id')::uuid))
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n, NULL::bigint AS ord
+FROM cand
+UNION ALL
+SELECT 'issuingUnitId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.issuing_unit_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE sqlc.arg('want_issuing_unit_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'orderTypeId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT i.type_id::text AS k, count(*) AS n
+            FROM cand c
+            LEFT JOIN oikumenea.order_order_items i ON i.order_id = c.id
+            WHERE sqlc.arg('want_order_type_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'status'::text, c.status::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE sqlc.arg('want_status')::boolean GROUP BY c.status
+UNION ALL
+SELECT 'issuedOn'::text, to_char(date_trunc('month', c.issued_on), 'YYYY-MM'), count(*)::bigint, NULL::bigint
+FROM cand c WHERE sqlc.arg('want_issued_on')::boolean GROUP BY 2;
+
+-- name: OrderStatsForSubject :many
+-- The READ-SCOPE arm: identical filters and identical aggregates, with reach on the ISSUING unit
+-- folded into the candidate set, so every count is taken inside the visibility predicate.
+WITH cand AS MATERIALIZED (
+  SELECT o.id, o.issuing_unit_id, o.status, o.issued_on
+  FROM oikumenea.order_orders o
+  WHERE o.deleted_at IS NULL
+  AND (sqlc.narg('issuing_unit_id')::uuid IS NULL OR o.issuing_unit_id = sqlc.narg('issuing_unit_id')::uuid)
+  AND (sqlc.narg('status')::text IS NULL OR o.status = sqlc.narg('status')::text)
+  AND (sqlc.narg('issued_on_from')::date IS NULL OR o.issued_on >= sqlc.narg('issued_on_from')::date)
+  AND (sqlc.narg('issued_on_to')::date IS NULL OR o.issued_on <= sqlc.narg('issued_on_to')::date)
+  AND (sqlc.narg('order_type_id')::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.order_order_items i
+        WHERE i.order_id = o.id AND i.type_id = sqlc.narg('order_type_id')::uuid))
+  AND o.issuing_unit_id IN (SELECT oikumenea.authz_readable_units(@subject_person_id))
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n, NULL::bigint AS ord
+FROM cand
+UNION ALL
+SELECT 'issuingUnitId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.issuing_unit_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE sqlc.arg('want_issuing_unit_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'orderTypeId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT i.type_id::text AS k, count(*) AS n
+            FROM cand c
+            LEFT JOIN oikumenea.order_order_items i ON i.order_id = c.id
+            WHERE sqlc.arg('want_order_type_id')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'status'::text, c.status::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE sqlc.arg('want_status')::boolean GROUP BY c.status
+UNION ALL
+SELECT 'issuedOn'::text, to_char(date_trunc('month', c.issued_on), 'YYYY-MM'), count(*)::bigint, NULL::bigint
+FROM cand c WHERE sqlc.arg('want_issued_on')::boolean GROUP BY 2;
+
 -- name: ListOrdersByUnit :many
 -- An issuing unit's orders (headers only), keyset-paginated by RID.
 SELECT * FROM oikumenea.order_orders

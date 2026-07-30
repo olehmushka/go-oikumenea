@@ -698,6 +698,233 @@ func (q *Queries) MarkRevoked(ctx context.Context, arg MarkRevokedParams) (Oikum
 	return i, err
 }
 
+const orderStats = `-- name: OrderStats :many
+
+WITH cand AS MATERIALIZED (
+  SELECT o.id, o.issuing_unit_id, o.status, o.issued_on
+  FROM oikumenea.order_orders o
+  WHERE o.deleted_at IS NULL
+  AND ($1::uuid IS NULL OR o.issuing_unit_id = $1::uuid)
+  AND ($2::text IS NULL OR o.status = $2::text)
+  AND ($3::date IS NULL OR o.issued_on >= $3::date)
+  AND ($4::date IS NULL OR o.issued_on <= $4::date)
+  AND ($5::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.order_order_items i
+        WHERE i.order_id = o.id AND i.type_id = $5::uuid))
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n, NULL::bigint AS ord
+FROM cand
+UNION ALL
+SELECT 'issuingUnitId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $6::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.issuing_unit_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE $7::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'orderTypeId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $6::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT i.type_id::text AS k, count(*) AS n
+            FROM cand c
+            LEFT JOIN oikumenea.order_order_items i ON i.order_id = c.id
+            WHERE $8::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'status'::text, c.status::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE $9::boolean GROUP BY c.status
+UNION ALL
+SELECT 'issuedOn'::text, to_char(date_trunc('month', c.issued_on), 'YYYY-MM'), count(*)::bigint, NULL::bigint
+FROM cand c WHERE $10::boolean GROUP BY 2
+`
+
+type OrderStatsParams struct {
+	IssuingUnitID     pgtype.Text
+	Status            pgtype.Text
+	IssuedOnFrom      pgtype.Date
+	IssuedOnTo        pgtype.Date
+	OrderTypeID       pgtype.Text
+	TopN              int32
+	WantIssuingUnitID bool
+	WantOrderTypeID   bool
+	WantStatus        bool
+	WantIssuedOn      bool
+}
+
+type OrderStatsRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+	Ord    pgtype.Int8
+}
+
+// ============================ dashboard aggregates (M57) ============================
+// The INSTANCE-ADMIN dashboard aggregate for the order register (M57 / D-ObjectFacets): the candidate
+// CTE carries ListOrders' filter block VERBATIM, then one branch per facet, each skipped by the
+// planner when its want_* flag is false. No LIMIT, and so no sparse/dense dispatch (set form 16 ms /
+// 801 ms at leaf / root reach against the point probe's 2 594 / 4 092 ms).
+//
+// orderTypeId is the one MULTIPLYING branch: an order's effect lives on its ITEMS, so an order
+// carrying two different effects is counted in two buckets and this distribution deliberately does not
+// sum to totalCount. It is LEFT-joined, so an order with no items is the (unknown) bucket rather than a
+// row that silently leaves the chart. The FILTER counterpart stays an EXISTS semi-join (in the CTE
+// above), because there a join would multiply the order row and corrupt the count itself.
+//
+// issuedOn's (unknown) bucket is the DRAFT backlog: a draft order has no issue date.
+func (q *Queries) OrderStats(ctx context.Context, arg OrderStatsParams) ([]OrderStatsRow, error) {
+	rows, err := q.db.Query(ctx, orderStats,
+		arg.IssuingUnitID,
+		arg.Status,
+		arg.IssuedOnFrom,
+		arg.IssuedOnTo,
+		arg.OrderTypeID,
+		arg.TopN,
+		arg.WantIssuingUnitID,
+		arg.WantOrderTypeID,
+		arg.WantStatus,
+		arg.WantIssuedOn,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OrderStatsRow
+	for rows.Next() {
+		var i OrderStatsRow
+		if err := rows.Scan(
+			&i.Facet,
+			&i.Bucket,
+			&i.N,
+			&i.Ord,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const orderStatsForSubject = `-- name: OrderStatsForSubject :many
+WITH cand AS MATERIALIZED (
+  SELECT o.id, o.issuing_unit_id, o.status, o.issued_on
+  FROM oikumenea.order_orders o
+  WHERE o.deleted_at IS NULL
+  AND ($1::uuid IS NULL OR o.issuing_unit_id = $1::uuid)
+  AND ($2::text IS NULL OR o.status = $2::text)
+  AND ($3::date IS NULL OR o.issued_on >= $3::date)
+  AND ($4::date IS NULL OR o.issued_on <= $4::date)
+  AND ($5::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM oikumenea.order_order_items i
+        WHERE i.order_id = o.id AND i.type_id = $5::uuid))
+  AND o.issuing_unit_id IN (SELECT oikumenea.authz_readable_units($6))
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n, NULL::bigint AS ord
+FROM cand
+UNION ALL
+SELECT 'issuingUnitId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $7::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.issuing_unit_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE $8::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'orderTypeId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $7::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT i.type_id::text AS k, count(*) AS n
+            FROM cand c
+            LEFT JOIN oikumenea.order_order_items i ON i.order_id = c.id
+            WHERE $9::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'status'::text, c.status::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE $10::boolean GROUP BY c.status
+UNION ALL
+SELECT 'issuedOn'::text, to_char(date_trunc('month', c.issued_on), 'YYYY-MM'), count(*)::bigint, NULL::bigint
+FROM cand c WHERE $11::boolean GROUP BY 2
+`
+
+type OrderStatsForSubjectParams struct {
+	IssuingUnitID     pgtype.Text
+	Status            pgtype.Text
+	IssuedOnFrom      pgtype.Date
+	IssuedOnTo        pgtype.Date
+	OrderTypeID       pgtype.Text
+	SubjectPersonID   string
+	TopN              int32
+	WantIssuingUnitID bool
+	WantOrderTypeID   bool
+	WantStatus        bool
+	WantIssuedOn      bool
+}
+
+type OrderStatsForSubjectRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+	Ord    pgtype.Int8
+}
+
+// The READ-SCOPE arm: identical filters and identical aggregates, with reach on the ISSUING unit
+// folded into the candidate set, so every count is taken inside the visibility predicate.
+func (q *Queries) OrderStatsForSubject(ctx context.Context, arg OrderStatsForSubjectParams) ([]OrderStatsForSubjectRow, error) {
+	rows, err := q.db.Query(ctx, orderStatsForSubject,
+		arg.IssuingUnitID,
+		arg.Status,
+		arg.IssuedOnFrom,
+		arg.IssuedOnTo,
+		arg.OrderTypeID,
+		arg.SubjectPersonID,
+		arg.TopN,
+		arg.WantIssuingUnitID,
+		arg.WantOrderTypeID,
+		arg.WantStatus,
+		arg.WantIssuedOn,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OrderStatsForSubjectRow
+	for rows.Next() {
+		var i OrderStatsForSubjectRow
+		if err := rows.Scan(
+			&i.Facet,
+			&i.Bucket,
+			&i.N,
+			&i.Ord,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateOrderHeader = `-- name: UpdateOrderHeader :one
 UPDATE oikumenea.order_orders SET
   number    = COALESCE($1, number),

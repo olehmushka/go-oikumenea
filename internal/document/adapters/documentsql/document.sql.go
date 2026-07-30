@@ -44,6 +44,252 @@ func (q *Queries) CryptoErasePersonCodes(ctx context.Context, personID string) (
 	return result.RowsAffected(), nil
 }
 
+const documentStats = `-- name: DocumentStats :many
+
+WITH cand AS MATERIALIZED (
+  SELECT d.id, d.type_id, d.status, d.issuing_country_id, d.issued_on, d.expires_on
+  FROM oikumenea.document_documents d
+  WHERE d.deleted_at IS NULL
+  AND ($1::uuid IS NULL OR d.type_id = $1::uuid)
+  AND ($2::text IS NULL OR d.status = $2::text)
+  AND ($3::uuid IS NULL OR d.issuing_country_id = $3::uuid)
+  AND ($4::date IS NULL OR d.issued_on >= $4::date)
+  AND ($5::date IS NULL OR d.issued_on <= $5::date)
+  AND ($6::date IS NULL OR d.expires_on >= $6::date)
+  AND ($7::date IS NULL OR d.expires_on <= $7::date)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n, NULL::bigint AS ord
+FROM cand
+UNION ALL
+SELECT 'typeId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $8::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.type_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE $9::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'status'::text, c.status::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE $10::boolean GROUP BY c.status
+UNION ALL
+SELECT 'issuingCountryId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $8::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.issuing_country_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE $11::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'issuedOn'::text, to_char(date_trunc('month', c.issued_on), 'YYYY-MM'), count(*)::bigint, NULL::bigint
+FROM cand c WHERE $12::boolean GROUP BY 2
+UNION ALL
+SELECT 'expiresOn'::text, to_char(date_trunc('month', c.expires_on), 'YYYY-MM'), count(*)::bigint, NULL::bigint
+FROM cand c WHERE $13::boolean GROUP BY 2
+`
+
+type DocumentStatsParams struct {
+	TypeID               pgtype.Text
+	Status               pgtype.Text
+	IssuingCountryID     pgtype.Text
+	IssuedOnFrom         pgtype.Date
+	IssuedOnTo           pgtype.Date
+	ExpiresOnFrom        pgtype.Date
+	ExpiresOnTo          pgtype.Date
+	TopN                 int32
+	WantTypeID           bool
+	WantStatus           bool
+	WantIssuingCountryID bool
+	WantIssuedOn         bool
+	WantExpiresOn        bool
+}
+
+type DocumentStatsRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+	Ord    pgtype.Int8
+}
+
+// ============================ dashboard aggregates (M57) ============================
+// The INSTANCE-ADMIN dashboard aggregate for the document register (M57 / D-ObjectFacets): the
+// candidate CTE carries ListDocuments' filter block VERBATIM, then one branch per facet, each skipped
+// by the planner when its want_* flag is false. No LIMIT, and so no sparse/dense dispatch.
+//
+// expiresOn's (unknown) bucket is the NO-EXPIRY (permanent document) population — a real set, not
+// missing data, which is why the catalog makes the bucket mandatory here.
+func (q *Queries) DocumentStats(ctx context.Context, arg DocumentStatsParams) ([]DocumentStatsRow, error) {
+	rows, err := q.db.Query(ctx, documentStats,
+		arg.TypeID,
+		arg.Status,
+		arg.IssuingCountryID,
+		arg.IssuedOnFrom,
+		arg.IssuedOnTo,
+		arg.ExpiresOnFrom,
+		arg.ExpiresOnTo,
+		arg.TopN,
+		arg.WantTypeID,
+		arg.WantStatus,
+		arg.WantIssuingCountryID,
+		arg.WantIssuedOn,
+		arg.WantExpiresOn,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DocumentStatsRow
+	for rows.Next() {
+		var i DocumentStatsRow
+		if err := rows.Scan(
+			&i.Facet,
+			&i.Bucket,
+			&i.N,
+			&i.Ord,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const documentStatsForSubject = `-- name: DocumentStatsForSubject :many
+WITH cand AS MATERIALIZED (
+  SELECT d.id, d.type_id, d.status, d.issuing_country_id, d.issued_on, d.expires_on
+  FROM oikumenea.document_documents d
+  WHERE d.deleted_at IS NULL
+  AND ($1::uuid IS NULL OR d.type_id = $1::uuid)
+  AND ($2::text IS NULL OR d.status = $2::text)
+  AND ($3::uuid IS NULL OR d.issuing_country_id = $3::uuid)
+  AND ($4::date IS NULL OR d.issued_on >= $4::date)
+  AND ($5::date IS NULL OR d.issued_on <= $5::date)
+  AND ($6::date IS NULL OR d.expires_on >= $6::date)
+  AND ($7::date IS NULL OR d.expires_on <= $7::date)
+  AND EXISTS (
+    SELECT 1 FROM oikumenea.membership_memberships m
+    WHERE m.person_id = d.person_id AND m.status = 'active' AND m.deleted_at IS NULL
+      AND m.unit_id IN (SELECT oikumenea.authz_readable_units($8)))
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n, NULL::bigint AS ord
+FROM cand
+UNION ALL
+SELECT 'typeId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $9::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.type_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE $10::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'status'::text, c.status::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE $11::boolean GROUP BY c.status
+UNION ALL
+SELECT 'issuingCountryId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $9::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.issuing_country_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE $12::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'issuedOn'::text, to_char(date_trunc('month', c.issued_on), 'YYYY-MM'), count(*)::bigint, NULL::bigint
+FROM cand c WHERE $13::boolean GROUP BY 2
+UNION ALL
+SELECT 'expiresOn'::text, to_char(date_trunc('month', c.expires_on), 'YYYY-MM'), count(*)::bigint, NULL::bigint
+FROM cand c WHERE $14::boolean GROUP BY 2
+`
+
+type DocumentStatsForSubjectParams struct {
+	TypeID               pgtype.Text
+	Status               pgtype.Text
+	IssuingCountryID     pgtype.Text
+	IssuedOnFrom         pgtype.Date
+	IssuedOnTo           pgtype.Date
+	ExpiresOnFrom        pgtype.Date
+	ExpiresOnTo          pgtype.Date
+	SubjectPersonID      string
+	TopN                 int32
+	WantTypeID           bool
+	WantStatus           bool
+	WantIssuingCountryID bool
+	WantIssuedOn         bool
+	WantExpiresOn        bool
+}
+
+type DocumentStatsForSubjectRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+	Ord    pgtype.Int8
+}
+
+// The READ-SCOPE arm. Documents carry no unit, so reach goes THROUGH THE HOLDER: the same active-
+// membership semi-join ListDocumentsForSubject uses, folded into the candidate set. An unreadable
+// holder's documents are therefore absent from the count rather than counted and trimmed.
+//
+// This is the table whose LIST could not use the materialized reach set at root reach (the LIMIT never
+// terminated early — 6 419 ms). The AGGREGATE has no LIMIT, and re-measuring the holder semi-join both
+// ways confirmed the set form wins here too: 25.7 / 218 / 4 322 ms at leaf / mid / root reach against
+// the point probe's 12 447 / 15 771 / 23 651 ms. So one scoped query, like the other four types.
+func (q *Queries) DocumentStatsForSubject(ctx context.Context, arg DocumentStatsForSubjectParams) ([]DocumentStatsForSubjectRow, error) {
+	rows, err := q.db.Query(ctx, documentStatsForSubject,
+		arg.TypeID,
+		arg.Status,
+		arg.IssuingCountryID,
+		arg.IssuedOnFrom,
+		arg.IssuedOnTo,
+		arg.ExpiresOnFrom,
+		arg.ExpiresOnTo,
+		arg.SubjectPersonID,
+		arg.TopN,
+		arg.WantTypeID,
+		arg.WantStatus,
+		arg.WantIssuingCountryID,
+		arg.WantIssuedOn,
+		arg.WantExpiresOn,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DocumentStatsForSubjectRow
+	for rows.Next() {
+		var i DocumentStatsForSubjectRow
+		if err := rows.Scan(
+			&i.Facet,
+			&i.Bucket,
+			&i.N,
+			&i.Ord,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const erasePersonDocuments = `-- name: ErasePersonDocuments :execrows
 UPDATE oikumenea.document_documents SET number = NULL, issuer = NULL, attributes = '{}'
 WHERE person_id = $1 AND deleted_at IS NULL
