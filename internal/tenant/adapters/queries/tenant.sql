@@ -155,7 +155,7 @@ WHERE code = @code AND deleted_at IS NULL AND id <> @exclude_id;
 
 -- name: ListUnits :many
 -- Keyset pagination over the time-ordered RID (id), REQUIRED org scope + the optional unit facet set
--- (M56 / D-ObjectFacets: domain, unitKind, level, visibility, state, pdpScoped).
+-- (M56 / D-ObjectFacets: domain, unitKind, level/levelMin/levelMax, visibility, state, pdpScoped).
 --
 -- Every filter uses the `sqlc.narg('x')::type IS NULL OR col = ...` shape, NOT the
 -- `sqlc.arg(x)::text = ''` sentinel and never the `(@q = '' OR <ilike>)` guard D-PersonSearch's R-21
@@ -170,6 +170,8 @@ WHERE deleted_at IS NULL
   AND (sqlc.narg('domain_id')::uuid IS NULL OR domain_id = sqlc.narg('domain_id')::uuid)
   AND (sqlc.narg('kind_id')::uuid IS NULL OR kind_id = sqlc.narg('kind_id')::uuid)
   AND (sqlc.narg('level')::smallint IS NULL OR level = sqlc.narg('level')::smallint)
+  AND (sqlc.narg('level_min')::smallint IS NULL OR level >= sqlc.narg('level_min')::smallint)
+  AND (sqlc.narg('level_max')::smallint IS NULL OR level <= sqlc.narg('level_max')::smallint)
   AND (sqlc.narg('visibility')::text IS NULL OR visibility = sqlc.narg('visibility')::text)
   AND (sqlc.narg('state')::text IS NULL OR state = sqlc.narg('state')::text)
   AND (sqlc.narg('pdp_scoped')::boolean IS NULL OR pdp_scoped = sqlc.narg('pdp_scoped')::boolean)
@@ -195,6 +197,8 @@ WITH cand AS MATERIALIZED (
   AND (sqlc.narg('domain_id')::uuid IS NULL OR domain_id = sqlc.narg('domain_id')::uuid)
   AND (sqlc.narg('kind_id')::uuid IS NULL OR kind_id = sqlc.narg('kind_id')::uuid)
   AND (sqlc.narg('level')::smallint IS NULL OR level = sqlc.narg('level')::smallint)
+  AND (sqlc.narg('level_min')::smallint IS NULL OR level >= sqlc.narg('level_min')::smallint)
+  AND (sqlc.narg('level_max')::smallint IS NULL OR level <= sqlc.narg('level_max')::smallint)
   AND (sqlc.narg('visibility')::text IS NULL OR visibility = sqlc.narg('visibility')::text)
   AND (sqlc.narg('state')::text IS NULL OR state = sqlc.narg('state')::text)
   AND (sqlc.narg('pdp_scoped')::boolean IS NULL OR pdp_scoped = sqlc.narg('pdp_scoped')::boolean)
@@ -237,6 +241,8 @@ WITH cand AS MATERIALIZED (
   AND (sqlc.narg('domain_id')::uuid IS NULL OR domain_id = sqlc.narg('domain_id')::uuid)
   AND (sqlc.narg('kind_id')::uuid IS NULL OR kind_id = sqlc.narg('kind_id')::uuid)
   AND (sqlc.narg('level')::smallint IS NULL OR level = sqlc.narg('level')::smallint)
+  AND (sqlc.narg('level_min')::smallint IS NULL OR level >= sqlc.narg('level_min')::smallint)
+  AND (sqlc.narg('level_max')::smallint IS NULL OR level <= sqlc.narg('level_max')::smallint)
   AND (sqlc.narg('visibility')::text IS NULL OR visibility = sqlc.narg('visibility')::text)
   AND (sqlc.narg('state')::text IS NULL OR state = sqlc.narg('state')::text)
   AND (sqlc.narg('pdp_scoped')::boolean IS NULL OR pdp_scoped = sqlc.narg('pdp_scoped')::boolean)

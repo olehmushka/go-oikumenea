@@ -60,7 +60,8 @@ export interface ITenantService {
      * List/search units within an organization (D-TenantOrganizations, M40). `org` is REQUIRED —
      * a fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally narrowed by the
      * unit facet set (D-ObjectFacets, M56): `domain` (cross-cut within the org, for mixed trees),
-     * `unitKind`, `level`, `visibility`, `state` and `pdpScoped`. Token-paginated.
+     * `unitKind`, `level` / `levelMin` / `levelMax`, `visibility`, `state` and `pdpScoped`.
+     * Token-paginated.
      *
      * The shadow-visibility gate still trims the page AFTER it is cut, so `visibility` NARROWS and
      * never widens: asking for `visibility=shadow` without shadow reach yields an empty page, not
@@ -70,11 +71,11 @@ export interface ITenantService {
      * `rootsOnly=true` to list only the org's top-level units (those with no parent in the graph),
      * or `parent=<unitRid>` to list a unit's DIRECT children in the graph. The two are mutually
      * exclusive, and each ignores the flat-listing filters
-     * (`domain`/`unitKind`/`level`/`visibility`/`state`/`pdpScoped`). When neither is set the
+     * (`domain`/`unitKind`/`level`/`levelMin`/`levelMax`/`visibility`/`state`/`pdpScoped`). When neither is set the
      * listing is the flat, filtered org listing.
      *
      */
-    listUnits(org: string, domain?: string | null, unitKind?: string | null, level?: number | null, visibility?: string | null, state?: string | null, pdpScoped?: boolean | null, graph?: string | null, parent?: string | null, rootsOnly?: boolean | null, pageSize?: number | null, pageToken?: string | null): Promise<IUnitPage>;
+    listUnits(org: string, domain?: string | null, unitKind?: string | null, level?: number | null, levelMin?: number | null, levelMax?: number | null, visibility?: string | null, state?: string | null, pdpScoped?: boolean | null, graph?: string | null, parent?: string | null, rootsOnly?: boolean | null, pageSize?: number | null, pageToken?: string | null): Promise<IUnitPage>;
     /**
      * Facet distributions for an organization's units — the dashboard half of the facet
      * vocabulary (M57 / D-ObjectFacets). Takes exactly the FLAT-listing filter args `listUnits`
@@ -92,7 +93,7 @@ export interface ITenantService {
      * `internal/platform/transport`.
      *
      */
-    unitStats(org: string, facets?: string | null, domain?: string | null, unitKind?: string | null, level?: number | null, visibility?: string | null, state?: string | null, pdpScoped?: boolean | null): Promise<IUnitStats>;
+    unitStats(org: string, facets?: string | null, domain?: string | null, unitKind?: string | null, level?: number | null, levelMin?: number | null, levelMax?: number | null, visibility?: string | null, state?: string | null, pdpScoped?: boolean | null): Promise<IUnitStats>;
     /** Attach the path unit as a child of parentId within a graph (default command). Returns Tenant:UnitCycleDetected on a cycle. */
     addEdge(unitId: string, request: IAddEdgeRequest): Promise<IUnitEdge>;
     /** Detach the path unit from a parent within a graph. */
@@ -263,7 +264,8 @@ export class TenantService implements ITenantService {
      * List/search units within an organization (D-TenantOrganizations, M40). `org` is REQUIRED —
      * a fully-unscoped listing is rejected with Tenant:UnitInvalid. Optionally narrowed by the
      * unit facet set (D-ObjectFacets, M56): `domain` (cross-cut within the org, for mixed trees),
-     * `unitKind`, `level`, `visibility`, `state` and `pdpScoped`. Token-paginated.
+     * `unitKind`, `level` / `levelMin` / `levelMax`, `visibility`, `state` and `pdpScoped`.
+     * Token-paginated.
      *
      * The shadow-visibility gate still trims the page AFTER it is cut, so `visibility` NARROWS and
      * never widens: asking for `visibility=shadow` without shadow reach yields an empty page, not
@@ -273,11 +275,11 @@ export class TenantService implements ITenantService {
      * `rootsOnly=true` to list only the org's top-level units (those with no parent in the graph),
      * or `parent=<unitRid>` to list a unit's DIRECT children in the graph. The two are mutually
      * exclusive, and each ignores the flat-listing filters
-     * (`domain`/`unitKind`/`level`/`visibility`/`state`/`pdpScoped`). When neither is set the
+     * (`domain`/`unitKind`/`level`/`levelMin`/`levelMax`/`visibility`/`state`/`pdpScoped`). When neither is set the
      * listing is the flat, filtered org listing.
      *
      */
-    public listUnits(org: string, domain?: string | null, unitKind?: string | null, level?: number | null, visibility?: string | null, state?: string | null, pdpScoped?: boolean | null, graph?: string | null, parent?: string | null, rootsOnly?: boolean | null, pageSize?: number | null, pageToken?: string | null): Promise<IUnitPage> {
+    public listUnits(org: string, domain?: string | null, unitKind?: string | null, level?: number | null, levelMin?: number | null, levelMax?: number | null, visibility?: string | null, state?: string | null, pdpScoped?: boolean | null, graph?: string | null, parent?: string | null, rootsOnly?: boolean | null, pageSize?: number | null, pageToken?: string | null): Promise<IUnitPage> {
         return this.bridge.call<IUnitPage>(
             "TenantService",
             "listUnits",
@@ -290,6 +292,8 @@ export class TenantService implements ITenantService {
                 "domain": domain,
                 "unitKind": unitKind,
                 "level": level,
+                "levelMin": levelMin,
+                "levelMax": levelMax,
                 "visibility": visibility,
                 "state": state,
                 "pdpScoped": pdpScoped,
@@ -322,7 +326,7 @@ export class TenantService implements ITenantService {
      * `internal/platform/transport`.
      *
      */
-    public unitStats(org: string, facets?: string | null, domain?: string | null, unitKind?: string | null, level?: number | null, visibility?: string | null, state?: string | null, pdpScoped?: boolean | null): Promise<IUnitStats> {
+    public unitStats(org: string, facets?: string | null, domain?: string | null, unitKind?: string | null, level?: number | null, levelMin?: number | null, levelMax?: number | null, visibility?: string | null, state?: string | null, pdpScoped?: boolean | null): Promise<IUnitStats> {
         return this.bridge.call<IUnitStats>(
             "TenantService",
             "unitStats",
@@ -336,6 +340,8 @@ export class TenantService implements ITenantService {
                 "domain": domain,
                 "unitKind": unitKind,
                 "level": level,
+                "levelMin": levelMin,
+                "levelMax": levelMax,
                 "visibility": visibility,
                 "state": state,
                 "pdpScoped": pdpScoped,

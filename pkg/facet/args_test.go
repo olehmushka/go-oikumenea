@@ -126,8 +126,51 @@ func checkClass(t *testing.T, o ObjectType, n NonFacetArg, a ArgSpec) {
 		requireDrivesResolves(t, o, n)
 	case ClassTraversal:
 		requireDrivesResolves(t, o, n)
+	case ClassSuperseded:
+		requireSupersededByFacet(t, o, n, a)
 	default:
 		t.Errorf("%s arg %q carries unknown class %q", o.Type, a.Name, n.Class)
+	}
+}
+
+// requireSupersededByFacet proves a "superseded" exemption names a facet that genuinely replaces the
+// arg: the facet must exist, must cover the SAME column (otherwise it is a different predicate and
+// the arg is simply unclassified), must NOT bind the arg itself (or nothing was superseded at all),
+// and must be a RANGE kind — the only shape whose args can subsume an exact match. Without these the
+// class would be free-text and could excuse any filter someone did not feel like declaring.
+func requireSupersededByFacet(t *testing.T, o ObjectType, n NonFacetArg, a ArgSpec) {
+	t.Helper()
+	if n.Drives == "" {
+		t.Errorf("%s arg %q is classified superseded with no Drives (the facet that replaces it)", o.Type, n.Arg)
+		return
+	}
+	var successor *Facet
+	for i, f := range o.Facets {
+		if f.Key == n.Drives {
+			successor = &o.Facets[i]
+			break
+		}
+	}
+	if successor == nil {
+		t.Errorf("%s arg %q claims to be superseded by facet %q, which %s does not declare",
+			o.Type, n.Arg, n.Drives, o.Type)
+		return
+	}
+	for _, arg := range successor.Args() {
+		if arg == n.Arg {
+			t.Errorf("%s arg %q is classified superseded by facet %q, but that facet BINDS it "+
+				"(Args() = %v) — nothing supersedes it and it is simply the facet's own arg",
+				o.Type, n.Arg, n.Drives, successor.Args())
+			return
+		}
+	}
+	if successor.Kind != KindNumericRange && successor.Kind != KindDateRange {
+		t.Errorf("%s arg %q is superseded by a %s facet; only a range facet's args can subsume an "+
+			"exact match", o.Type, n.Arg, successor.Kind)
+	}
+	if want := successor.ArgType(); a.Type != want {
+		t.Errorf("%s arg %q is %s in the contract but its successor facet %q takes %s — they cannot "+
+			"be filtering the same column", o.Type, n.Arg, a.Type, n.Drives, want)
 	}
 }
 

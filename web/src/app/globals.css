@@ -45,6 +45,22 @@ body {
   }
 }
 
+/* ── Charts (M57, D-ConsoleDashboards) ───────────────────────────────────────
+   A chart segment is an <a> to the same URL with one more filter applied, so it needs the
+   affordance of a link without any JS: the mark lifts on hover and takes a focus ring for the
+   keyboard, which SVG children do not get from Tailwind's utilities. Segments with no href render
+   as bare <g> and deliberately get neither — `(unknown)` and `(other)` are not filters. */
+.chart-mark {
+  cursor: pointer;
+}
+.chart-mark:hover {
+  opacity: 0.78;
+}
+.chart-mark:focus-visible {
+  outline: 2px solid var(--color-indigo-500);
+  outline-offset: 2px;
+}
+
 /* ── Command palette (cmdk) ──────────────────────────────────────────────── */
 [cmdk-overlay] {
   @apply fixed inset-0 z-40 bg-slate-900/30 backdrop-blur-sm;

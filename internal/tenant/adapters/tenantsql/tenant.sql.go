@@ -1300,12 +1300,14 @@ WHERE deleted_at IS NULL
   AND ($2::uuid IS NULL OR domain_id = $2::uuid)
   AND ($3::uuid IS NULL OR kind_id = $3::uuid)
   AND ($4::smallint IS NULL OR level = $4::smallint)
-  AND ($5::text IS NULL OR visibility = $5::text)
-  AND ($6::text IS NULL OR state = $6::text)
-  AND ($7::boolean IS NULL OR pdp_scoped = $7::boolean)
-  AND ($8::uuid IS NULL OR id > $8::uuid)
+  AND ($5::smallint IS NULL OR level >= $5::smallint)
+  AND ($6::smallint IS NULL OR level <= $6::smallint)
+  AND ($7::text IS NULL OR visibility = $7::text)
+  AND ($8::text IS NULL OR state = $8::text)
+  AND ($9::boolean IS NULL OR pdp_scoped = $9::boolean)
+  AND ($10::uuid IS NULL OR id > $10::uuid)
 ORDER BY id
-LIMIT $9
+LIMIT $11
 `
 
 type ListUnitsParams struct {
@@ -1313,6 +1315,8 @@ type ListUnitsParams struct {
 	DomainID   pgtype.Text
 	KindID     pgtype.Text
 	Level      pgtype.Int2
+	LevelMin   pgtype.Int2
+	LevelMax   pgtype.Int2
 	Visibility pgtype.Text
 	State      pgtype.Text
 	PdpScoped  pgtype.Bool
@@ -1321,7 +1325,7 @@ type ListUnitsParams struct {
 }
 
 // Keyset pagination over the time-ordered RID (id), REQUIRED org scope + the optional unit facet set
-// (M56 / D-ObjectFacets: domain, unitKind, level, visibility, state, pdpScoped).
+// (M56 / D-ObjectFacets: domain, unitKind, level/levelMin/levelMax, visibility, state, pdpScoped).
 //
 // Every filter uses the `sqlc.narg('x')::type IS NULL OR col = ...` shape, NOT the
 // `sqlc.arg(x)::text = ”` sentinel and never the `(@q = ” OR <ilike>)` guard D-PersonSearch's R-21
@@ -1336,6 +1340,8 @@ func (q *Queries) ListUnits(ctx context.Context, arg ListUnitsParams) ([]Oikumen
 		arg.DomainID,
 		arg.KindID,
 		arg.Level,
+		arg.LevelMin,
+		arg.LevelMax,
 		arg.Visibility,
 		arg.State,
 		arg.PdpScoped,
@@ -1651,33 +1657,35 @@ WITH cand AS MATERIALIZED (
   AND ($2::uuid IS NULL OR domain_id = $2::uuid)
   AND ($3::uuid IS NULL OR kind_id = $3::uuid)
   AND ($4::smallint IS NULL OR level = $4::smallint)
-  AND ($5::text IS NULL OR visibility = $5::text)
-  AND ($6::text IS NULL OR state = $6::text)
-  AND ($7::boolean IS NULL OR pdp_scoped = $7::boolean)
+  AND ($5::smallint IS NULL OR level >= $5::smallint)
+  AND ($6::smallint IS NULL OR level <= $6::smallint)
+  AND ($7::text IS NULL OR visibility = $7::text)
+  AND ($8::text IS NULL OR state = $8::text)
+  AND ($9::boolean IS NULL OR pdp_scoped = $9::boolean)
 )
 SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
 FROM cand
 UNION ALL
 SELECT 'org'::text, c.org_id::text, count(*)::bigint
-FROM cand c WHERE $8::boolean GROUP BY 2
-UNION ALL
-SELECT 'domain'::text, c.domain_id::text, count(*)::bigint
-FROM cand c WHERE $9::boolean GROUP BY 2
-UNION ALL
-SELECT 'unitKind'::text, c.kind_id::text, count(*)::bigint
 FROM cand c WHERE $10::boolean GROUP BY 2
 UNION ALL
-SELECT 'level'::text, c.level::text, count(*)::bigint
+SELECT 'domain'::text, c.domain_id::text, count(*)::bigint
 FROM cand c WHERE $11::boolean GROUP BY 2
 UNION ALL
-SELECT 'visibility'::text, c.visibility::text, count(*)::bigint
+SELECT 'unitKind'::text, c.kind_id::text, count(*)::bigint
 FROM cand c WHERE $12::boolean GROUP BY 2
 UNION ALL
-SELECT 'state'::text, c.state::text, count(*)::bigint
+SELECT 'level'::text, c.level::text, count(*)::bigint
 FROM cand c WHERE $13::boolean GROUP BY 2
 UNION ALL
-SELECT 'pdpScoped'::text, c.pdp_scoped::text, count(*)::bigint
+SELECT 'visibility'::text, c.visibility::text, count(*)::bigint
 FROM cand c WHERE $14::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE $15::boolean GROUP BY 2
+UNION ALL
+SELECT 'pdpScoped'::text, c.pdp_scoped::text, count(*)::bigint
+FROM cand c WHERE $16::boolean GROUP BY 2
 `
 
 type UnitStatsParams struct {
@@ -1685,6 +1693,8 @@ type UnitStatsParams struct {
 	DomainID       pgtype.Text
 	KindID         pgtype.Text
 	Level          pgtype.Int2
+	LevelMin       pgtype.Int2
+	LevelMax       pgtype.Int2
 	Visibility     pgtype.Text
 	State          pgtype.Text
 	PdpScoped      pgtype.Bool
@@ -1720,6 +1730,8 @@ func (q *Queries) UnitStats(ctx context.Context, arg UnitStatsParams) ([]UnitSta
 		arg.DomainID,
 		arg.KindID,
 		arg.Level,
+		arg.LevelMin,
+		arg.LevelMax,
 		arg.Visibility,
 		arg.State,
 		arg.PdpScoped,
@@ -1758,40 +1770,42 @@ WITH cand AS MATERIALIZED (
   AND ($2::uuid IS NULL OR domain_id = $2::uuid)
   AND ($3::uuid IS NULL OR kind_id = $3::uuid)
   AND ($4::smallint IS NULL OR level = $4::smallint)
-  AND ($5::text IS NULL OR visibility = $5::text)
-  AND ($6::text IS NULL OR state = $6::text)
-  AND ($7::boolean IS NULL OR pdp_scoped = $7::boolean)
+  AND ($5::smallint IS NULL OR level >= $5::smallint)
+  AND ($6::smallint IS NULL OR level <= $6::smallint)
+  AND ($7::text IS NULL OR visibility = $7::text)
+  AND ($8::text IS NULL OR state = $8::text)
+  AND ($9::boolean IS NULL OR pdp_scoped = $9::boolean)
   -- The shadow gate, folded INTO the count (D-ObjectFacets rule 3). On the LIST it runs afterwards
   -- (gateUnits trims the page once it is cut), which is right for a page — a short page, never a
   -- skipped row — and wrong for a count: a trimmed row would still have been counted. A public unit
   -- is visible to anyone holding unit.read; a shadow unit only within the subject's readable reach,
   -- which is the same rule FilterVisibleUnits applies row by row, asked once as a set.
   AND (visibility = 'public'
-       OR id IN (SELECT oikumenea.authz_readable_units($8)))
+       OR id IN (SELECT oikumenea.authz_readable_units($10)))
 )
 SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
 FROM cand
 UNION ALL
 SELECT 'org'::text, c.org_id::text, count(*)::bigint
-FROM cand c WHERE $9::boolean GROUP BY 2
-UNION ALL
-SELECT 'domain'::text, c.domain_id::text, count(*)::bigint
-FROM cand c WHERE $10::boolean GROUP BY 2
-UNION ALL
-SELECT 'unitKind'::text, c.kind_id::text, count(*)::bigint
 FROM cand c WHERE $11::boolean GROUP BY 2
 UNION ALL
-SELECT 'level'::text, c.level::text, count(*)::bigint
+SELECT 'domain'::text, c.domain_id::text, count(*)::bigint
 FROM cand c WHERE $12::boolean GROUP BY 2
 UNION ALL
-SELECT 'visibility'::text, c.visibility::text, count(*)::bigint
+SELECT 'unitKind'::text, c.kind_id::text, count(*)::bigint
 FROM cand c WHERE $13::boolean GROUP BY 2
 UNION ALL
-SELECT 'state'::text, c.state::text, count(*)::bigint
+SELECT 'level'::text, c.level::text, count(*)::bigint
 FROM cand c WHERE $14::boolean GROUP BY 2
 UNION ALL
-SELECT 'pdpScoped'::text, c.pdp_scoped::text, count(*)::bigint
+SELECT 'visibility'::text, c.visibility::text, count(*)::bigint
 FROM cand c WHERE $15::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE $16::boolean GROUP BY 2
+UNION ALL
+SELECT 'pdpScoped'::text, c.pdp_scoped::text, count(*)::bigint
+FROM cand c WHERE $17::boolean GROUP BY 2
 `
 
 type UnitStatsForSubjectParams struct {
@@ -1799,6 +1813,8 @@ type UnitStatsForSubjectParams struct {
 	DomainID        pgtype.Text
 	KindID          pgtype.Text
 	Level           pgtype.Int2
+	LevelMin        pgtype.Int2
+	LevelMax        pgtype.Int2
 	Visibility      pgtype.Text
 	State           pgtype.Text
 	PdpScoped       pgtype.Bool
@@ -1829,6 +1845,8 @@ func (q *Queries) UnitStatsForSubject(ctx context.Context, arg UnitStatsForSubje
 		arg.DomainID,
 		arg.KindID,
 		arg.Level,
+		arg.LevelMin,
+		arg.LevelMax,
 		arg.Visibility,
 		arg.State,
 		arg.PdpScoped,

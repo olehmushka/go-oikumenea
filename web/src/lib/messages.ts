@@ -389,7 +389,8 @@ const glossaryUkr: Record<string, string> = {
   // filter hints (the SQL semantics an operator would otherwise reverse-engineer from a wrong count)
   "Includes the whole subtree.": "Включає все піддерево.",
   "Exact unit — not the subtree.": "Точний підрозділ — без піддерева.",
-  "Exact depth in the unit hierarchy.": "Точна глибина в ієрархії підрозділів.",
+  "Depth in the unit hierarchy, inclusive. Units with no level are excluded when either bound is set.":
+    "Глибина в ієрархії підрозділів, включно. Підрозділи без рівня виключаються, щойно задано будь-яку межу.",
   "Setting either bound excludes unknown birthdates.":
     "Будь-яка з меж виключає невідомі дати народження.",
   "Setting either bound excludes drafts (no issue date).":
@@ -398,6 +399,55 @@ const glossaryUkr: Record<string, string> = {
     "Будь-яка з меж виключає документи без дати видання.",
   "Setting either bound excludes documents with no expiry.":
     "Будь-яка з меж виключає документи без строку дії.",
+  // ── module dashboards (M57 ticket 3) ──
+  "Dashboard": "Дашборд", "Counting…": "Підрахунок…",
+  "Matching rows": "Знайдено рядків", "Unknown": "Невідомо", "Other": "Інше",
+  "Not filterable:": "Не фільтрується:",
+  "Smaller values folded into “other”:": "Дрібніші значення згорнуто в «інше»:",
+  "Nothing to chart under these filters.": "Немає що показати за цими фільтрами.",
+  "Counts are exact for what you may read:": "Підрахунки точні в межах доступного вам:",
+  "rows match these filters.": "рядків відповідає цим фільтрам.",
+  // chart titles
+  "Directory": "Довідник", "Age structure": "Вікова структура",
+  "Rank distribution": "Розподіл за званнями", "Top units": "Найбільші підрозділи",
+  "Units per level": "Підрозділи за рівнем", "Kind mix": "Розподіл за типом",
+  "Public / shadow": "Публічні / тіньові", "Joins per month": "Приєднання за місяцями",
+  "Billets held": "Зайняті посади", "Register": "Реєстр",
+  "Revocation rate": "Частка відкликань", "Orders per month": "Накази за місяцями",
+  "Type mix": "Розподіл за типом наказу", "Expiring within 90 days": "Спливає протягом 90 днів",
+  "Expiry by month": "Строк дії за місяцями",
+  // chart readouts
+  "Revoked of ever-issued": "Відкликано з виданих", "Next 90 days": "Наступні 90 днів",
+  "of matching rows": "від знайдених рядків",
+  "Expiries over the next twelve months": "Спливання строку за наступні дванадцять місяців",
+  "No issue date:": "Без дати видання:",
+  "No date recorded:": "Дату не вказано:", "No birthdate recorded:": "Дату народження не вказано:",
+  "Sexes outside the two wings are counted in the sex chart.":
+    "Інші значення статі враховано на діаграмі статі.",
+  // chart notes (the SQL semantics behind a surprising count)
+  "Age at today's date; persons with no birthdate are counted beside the chart, never inside a band.":
+    "Вік на сьогодні; особи без дати народження показані поруч із діаграмою, а не всередині смуги.",
+  "The fifteen most-held ranks, ordered by seniority rather than by count.":
+    "П’ятнадцять найпоширеніших звань, упорядковані за старшинством, а не за кількістю.",
+  "Depth bands, shallowest first — the org chart's width profile.":
+    "Смуги глибини, від найменшої — профіль ширини оргструктури.",
+  "A shadow unit is listed only for a subject whose read reaches it (L-Visibility).":
+    "Тіньовий підрозділ видно лише суб’єктові, чиє право читання його досягає (L-Visibility).",
+  "The global list applies no implicit status filter, so ended rows are counted here.":
+    "Глобальний список не додає неявного фільтра статусу, тож завершені рядки теж враховано.",
+  "By the month the membership took effect.": "За місяцем набуття чинності членства.",
+  "The unlabelled bucket is memberships with no billet — a membership without a position is legal.":
+    "Непідписана частка — членства без посади; членство без посади є допустимим.",
+  "Revoked orders as a share of everything ever issued — the audit-facing number.":
+    "Відкликані накази як частка від усіх виданих — показник для аудиту.",
+  "An order with no issue date — typically a draft — is counted beside the axis, not on it.":
+    "Наказ без дати видання — зазвичай чернетка — рахується поруч з віссю, а не на ній.",
+  "An order counts once per type it carries an item of — effects live on the items.":
+    "Наказ враховано один раз для кожного типу його пунктів — дія наказу живе в пунктах.",
+  "An exact count over the window, not a month-boundary approximation.":
+    "Точний підрахунок за вікном, а не наближення за межами місяця.",
+  "Months already past are overdue documents, not a forecast.":
+    "Минулі місяці — це прострочені документи, а не прогноз.",
   // command-palette specifics
   "Overview": "Огляд", "Ontology": "Онтологія", "Authorize": "Авторизація",
   "Localization": "Локалізація", "Audit": "Аудит",
@@ -867,7 +917,8 @@ const glossarySpa: Record<string, string> = {
   // filter hints (the SQL semantics an operator would otherwise reverse-engineer from a wrong count)
   "Includes the whole subtree.": "Incluye todo el subárbol.",
   "Exact unit — not the subtree.": "Unidad exacta — no el subárbol.",
-  "Exact depth in the unit hierarchy.": "Profundidad exacta en la jerarquía de unidades.",
+  "Depth in the unit hierarchy, inclusive. Units with no level are excluded when either bound is set.":
+    "Profundidad en la jerarquía de unidades, inclusive. Las unidades sin nivel se excluyen si se fija cualquiera de los límites.",
   "Setting either bound excludes unknown birthdates.":
     "Fijar cualquiera de los límites excluye las fechas de nacimiento desconocidas.",
   "Setting either bound excludes drafts (no issue date).":
@@ -876,6 +927,55 @@ const glossarySpa: Record<string, string> = {
     "Fijar cualquiera de los límites excluye los documentos sin fecha de emisión.",
   "Setting either bound excludes documents with no expiry.":
     "Fijar cualquiera de los límites excluye los documentos sin vencimiento.",
+  // ── module dashboards (M57 ticket 3) ──
+  "Dashboard": "Panel", "Counting…": "Contando…",
+  "Matching rows": "Filas coincidentes", "Unknown": "Desconocido", "Other": "Otros",
+  "Not filterable:": "No filtrable:",
+  "Smaller values folded into “other”:": "Valores menores agrupados en «otros»:",
+  "Nothing to chart under these filters.": "No hay nada que graficar con estos filtros.",
+  "Counts are exact for what you may read:": "Los conteos son exactos para lo que puede leer:",
+  "rows match these filters.": "filas coinciden con estos filtros.",
+  // chart titles
+  "Directory": "Directorio", "Age structure": "Estructura por edad",
+  "Rank distribution": "Distribución por rango", "Top units": "Unidades principales",
+  "Units per level": "Unidades por nivel", "Kind mix": "Mezcla de tipos",
+  "Public / shadow": "Públicas / ocultas", "Joins per month": "Altas por mes",
+  "Billets held": "Puestos ocupados", "Register": "Registro",
+  "Revocation rate": "Tasa de revocación", "Orders per month": "Órdenes por mes",
+  "Type mix": "Mezcla de tipos de orden", "Expiring within 90 days": "Vencen en 90 días",
+  "Expiry by month": "Vencimientos por mes",
+  // chart readouts
+  "Revoked of ever-issued": "Revocadas sobre emitidas", "Next 90 days": "Próximos 90 días",
+  "of matching rows": "de las filas coincidentes",
+  "Expiries over the next twelve months": "Vencimientos de los próximos doce meses",
+  "No issue date:": "Sin fecha de emisión:",
+  "No date recorded:": "Sin fecha registrada:", "No birthdate recorded:": "Sin fecha de nacimiento:",
+  "Sexes outside the two wings are counted in the sex chart.":
+    "Los demás valores de sexo se cuentan en el gráfico de sexo.",
+  // chart notes (the SQL semantics behind a surprising count)
+  "Age at today's date; persons with no birthdate are counted beside the chart, never inside a band.":
+    "Edad a la fecha de hoy; las personas sin fecha de nacimiento se cuentan junto al gráfico, nunca dentro de una banda.",
+  "The fifteen most-held ranks, ordered by seniority rather than by count.":
+    "Los quince rangos más frecuentes, ordenados por antigüedad y no por cantidad.",
+  "Depth bands, shallowest first — the org chart's width profile.":
+    "Bandas de profundidad, de menor a mayor — el perfil de anchura del organigrama.",
+  "A shadow unit is listed only for a subject whose read reaches it (L-Visibility).":
+    "Una unidad oculta se lista solo para un sujeto cuya lectura la alcanza (L-Visibility).",
+  "The global list applies no implicit status filter, so ended rows are counted here.":
+    "La lista global no aplica ningún filtro de estado implícito, por eso las filas finalizadas también se cuentan.",
+  "By the month the membership took effect.": "Por el mes en que la membresía entró en vigor.",
+  "The unlabelled bucket is memberships with no billet — a membership without a position is legal.":
+    "El grupo sin etiqueta son membresías sin puesto — una membresía sin puesto es válida.",
+  "Revoked orders as a share of everything ever issued — the audit-facing number.":
+    "Órdenes revocadas como proporción de todas las emitidas — la cifra para auditoría.",
+  "An order with no issue date — typically a draft — is counted beside the axis, not on it.":
+    "Una orden sin fecha de emisión —normalmente un borrador— se cuenta junto al eje, no sobre él.",
+  "An order counts once per type it carries an item of — effects live on the items.":
+    "Una orden cuenta una vez por cada tipo de ítem que lleva — los efectos viven en los ítems.",
+  "An exact count over the window, not a month-boundary approximation.":
+    "Un conteo exacto sobre la ventana, no una aproximación por límites de mes.",
+  "Months already past are overdue documents, not a forecast.":
+    "Los meses ya pasados son documentos vencidos, no un pronóstico.",
   // command-palette specifics
   "Overview": "Resumen", "Ontology": "Ontología", "Authorize": "Autorizar",
   "Localization": "Localización", "Audit": "Auditoría",
@@ -1345,7 +1445,8 @@ const glossaryPor: Record<string, string> = {
   // filter hints (the SQL semantics an operator would otherwise reverse-engineer from a wrong count)
   "Includes the whole subtree.": "Inclui toda a subárvore.",
   "Exact unit — not the subtree.": "Unidade exata — não a subárvore.",
-  "Exact depth in the unit hierarchy.": "Profundidade exata na hierarquia de unidades.",
+  "Depth in the unit hierarchy, inclusive. Units with no level are excluded when either bound is set.":
+    "Profundidade na hierarquia de unidades, inclusive. Unidades sem nível são excluídas quando qualquer limite é definido.",
   "Setting either bound excludes unknown birthdates.":
     "Definir qualquer um dos limites exclui as datas de nascimento desconhecidas.",
   "Setting either bound excludes drafts (no issue date).":
@@ -1354,6 +1455,55 @@ const glossaryPor: Record<string, string> = {
     "Definir qualquer um dos limites exclui os documentos sem data de emissão.",
   "Setting either bound excludes documents with no expiry.":
     "Definir qualquer um dos limites exclui os documentos sem validade.",
+  // ── module dashboards (M57 ticket 3) ──
+  "Dashboard": "Painel", "Counting…": "Contando…",
+  "Matching rows": "Linhas correspondentes", "Unknown": "Desconhecido", "Other": "Outros",
+  "Not filterable:": "Não filtrável:",
+  "Smaller values folded into “other”:": "Valores menores agrupados em «outros»:",
+  "Nothing to chart under these filters.": "Nada a exibir com estes filtros.",
+  "Counts are exact for what you may read:": "As contagens são exatas para o que você pode ler:",
+  "rows match these filters.": "linhas correspondem a estes filtros.",
+  // chart titles
+  "Directory": "Diretório", "Age structure": "Estrutura etária",
+  "Rank distribution": "Distribuição por posto", "Top units": "Principais unidades",
+  "Units per level": "Unidades por nível", "Kind mix": "Distribuição por tipo",
+  "Public / shadow": "Públicas / ocultas", "Joins per month": "Entradas por mês",
+  "Billets held": "Cargos ocupados", "Register": "Registro",
+  "Revocation rate": "Taxa de revogação", "Orders per month": "Ordens por mês",
+  "Type mix": "Distribuição por tipo de ordem", "Expiring within 90 days": "Vencem em 90 dias",
+  "Expiry by month": "Vencimentos por mês",
+  // chart readouts
+  "Revoked of ever-issued": "Revogadas sobre emitidas", "Next 90 days": "Próximos 90 dias",
+  "of matching rows": "das linhas correspondentes",
+  "Expiries over the next twelve months": "Vencimentos nos próximos doze meses",
+  "No issue date:": "Sem data de emissão:",
+  "No date recorded:": "Sem data registrada:", "No birthdate recorded:": "Sem data de nascimento:",
+  "Sexes outside the two wings are counted in the sex chart.":
+    "Os demais valores de sexo são contados no gráfico de sexo.",
+  // chart notes (the SQL semantics behind a surprising count)
+  "Age at today's date; persons with no birthdate are counted beside the chart, never inside a band.":
+    "Idade na data de hoje; pessoas sem data de nascimento são contadas ao lado do gráfico, nunca dentro de uma faixa.",
+  "The fifteen most-held ranks, ordered by seniority rather than by count.":
+    "Os quinze postos mais frequentes, ordenados por antiguidade e não por quantidade.",
+  "Depth bands, shallowest first — the org chart's width profile.":
+    "Faixas de profundidade, da menor para a maior — o perfil de largura do organograma.",
+  "A shadow unit is listed only for a subject whose read reaches it (L-Visibility).":
+    "Uma unidade oculta é listada apenas para um sujeito cuja leitura a alcança (L-Visibility).",
+  "The global list applies no implicit status filter, so ended rows are counted here.":
+    "A lista global não aplica filtro de status implícito, então as linhas encerradas também são contadas.",
+  "By the month the membership took effect.": "Pelo mês em que o vínculo entrou em vigor.",
+  "The unlabelled bucket is memberships with no billet — a membership without a position is legal.":
+    "O grupo sem rótulo são vínculos sem cargo — um vínculo sem cargo é válido.",
+  "Revoked orders as a share of everything ever issued — the audit-facing number.":
+    "Ordens revogadas como parcela de todas as emitidas — o número voltado à auditoria.",
+  "An order with no issue date — typically a draft — is counted beside the axis, not on it.":
+    "Uma ordem sem data de emissão — normalmente um rascunho — é contada ao lado do eixo, não sobre ele.",
+  "An order counts once per type it carries an item of — effects live on the items.":
+    "Uma ordem conta uma vez para cada tipo de item que carrega — os efeitos vivem nos itens.",
+  "An exact count over the window, not a month-boundary approximation.":
+    "Uma contagem exata na janela, não uma aproximação por limites de mês.",
+  "Months already past are overdue documents, not a forecast.":
+    "Meses já passados são documentos vencidos, não uma previsão.",
   // command-palette specifics
   "Overview": "Visão geral", "Ontology": "Ontologia", "Authorize": "Autorizar",
   "Localization": "Localização", "Audit": "Auditoria",

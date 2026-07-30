@@ -70,6 +70,68 @@ func sumOf(bs []stats.Bucket) int64 {
 	return n
 }
 
+// TestUnitStatsLevelBandsAreClickThrough is the property M57 ticket 3's levelMin/levelMax exist for,
+// and it is the one a chart cannot check on its own: every band bucket of the `level` distribution
+// must contain exactly the units the filter its bar links to returns.
+//
+// Until the range args shipped, a level bar could only be drawn, not clicked — the contract's scalar
+// `level` matches ONE level and a band is a range of two. A wrong inverse here would not fail
+// loudly: the operator would land on a list that quietly disagrees with the bar they clicked.
+func TestUnitStatsLevelBandsAreClickThrough_Integration(t *testing.T) {
+	ctx := context.Background()
+	svc, pool := newService(t)
+	org := seedOrg(t, svc)
+
+	// One unit per declared band, plus one with no level at all — the `(unknown)` bucket, which is
+	// deliberately NOT click-through (every bound excludes NULLs, so the nearest filter would return
+	// the bucket's complement).
+	for _, lvl := range []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 12} {
+		u := mustCreate(t, svc, org, uniqueCode(t, "lvl"))
+		if _, err := pool.Exec(ctx, `UPDATE oikumenea.tenant_units SET level=$2 WHERE id=$1`, u.ID, lvl); err != nil {
+			t.Fatalf("seed level: %v", err)
+		}
+	}
+	mustCreate(t, svc, org, uniqueCode(t, "nolvl"))
+
+	res, err := svc.UnitStats(ctx, "", true, domain.UnitFilter{OrgID: org.ID}, allUnitFacets(t))
+	if err != nil {
+		t.Fatalf("UnitStats: %v", err)
+	}
+	buckets := unitBuckets(t, res, "level")
+
+	// The bounds the console derives from each band key (lib/ontology/buckets.ts): "6-7" is
+	// levelMin=6&levelMax=7, and the open-ended "8+" clears the upper bound.
+	bounds := map[string][2]*int{
+		"0-1": {intp(0), intp(1)},
+		"2-3": {intp(2), intp(3)},
+		"4-5": {intp(4), intp(5)},
+		"6-7": {intp(6), intp(7)},
+		"8+":  {intp(8), nil},
+	}
+	var covered int64
+	for key, b := range bounds {
+		want := countOf(buckets, key)
+		if want < 0 {
+			t.Fatalf("no %q band in the level distribution", key)
+		}
+		covered += want
+		got := allUnitIDs(t, func(tok string) (application.UnitPage, error) {
+			return svc.ListUnits(ctx, domain.UnitFilter{OrgID: org.ID, LevelMin: b[0], LevelMax: b[1]}, "", nil, false, 0, tok)
+		})
+		if int64(len(got)) != want {
+			t.Errorf("band %s: bucket counts %d units, its own filter returns %d — the bar and the list it links to disagree",
+				key, want, len(got))
+		}
+	}
+
+	// Every levelled unit lands in exactly one band, so the bands plus `(unknown)` account for the
+	// whole filtered set — the same "every counted row lands in exactly one bucket" invariant the
+	// kernel promises, checked here against the click-through bounds rather than against SQL.
+	if unknown := countOf(buckets, stats.BucketUnknown); covered+unknown != res.TotalCount {
+		t.Errorf("bands (%d) + unknown (%d) = %d, want totalCount %d", covered, unknown, covered+unknown, res.TotalCount)
+	}
+}
+
 // TestUnitStatsTotalEqualsExhaustivePaging: the admin arm, per filter. `org` is required, so the
 // world is naturally bounded and no tagging trick is needed.
 func TestUnitStatsTotalEqualsExhaustivePaging_Integration(t *testing.T) {

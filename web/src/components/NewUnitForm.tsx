@@ -45,11 +45,13 @@ export function NewUnitForm({
       return;
     }
     let alive = true;
-    api.tenant
-      // (org, domain, unitKind, level, visibility, state, pdpScoped, graph, parent, rootsOnly,
-      // pageSize, pageToken) — the M56 facet args widened the middle, so pageSize is 11th now.
-      .listUnits(orgId, null, null, null, null, null, null, null, null, null, 200)
-      .then((p) => {
+    // The generic escape hatch, NOT the positional `listUnits(...)`: a facet arg added to the middle
+    // of that signature shifts `200` onto another parameter, silently (M56's six args, then M57's
+    // levelMin/levelMax). A query string cannot shift.
+    api
+      .request("GET", "/tenant/v1/units", { query: `?org=${encodeURIComponent(orgId)}&pageSize=200` })
+      .then((res) => {
+        const p = res as { units?: { id: string; name: Record<string, string>; code?: string }[] };
         if (alive)
           setParents(
             (p.units ?? []).map((u) => ({

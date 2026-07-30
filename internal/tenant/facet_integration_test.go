@@ -26,6 +26,7 @@ import (
 
 func strp(s string) *string { return &s }
 func boolp(b bool) *bool    { return &b }
+func intp(n int) *int       { return &n }
 
 // allUnitIDs pages a unit listing to exhaustion — the shared test database holds units from every
 // other suite, so a single page proves nothing about a filter.
@@ -97,8 +98,20 @@ func TestUnitFacetFilters_Integration(t *testing.T) {
 			[]string{reference.ID}, []string{public.ID}},
 		{"domain", domain.UnitFilter{OrgID: org.ID, DomainID: strp(org.DomainID)},
 			[]string{public.ID, shadow.ID}, nil},
-		{"level", domain.UnitFilter{OrgID: org.ID, Level: func() *int { n := 7; return &n }()},
+		{"level (the superseded scalar, still honoured)", domain.UnitFilter{OrgID: org.ID, Level: intp(7)},
 			[]string{levelled.ID}, []string{public.ID}},
+		// M57 ticket 3: the range args the level BANDS filter by. The band that contains 7 is `6-7`,
+		// so these are the two bounds a chart segment sends.
+		{"levelMin/levelMax bracket the band", domain.UnitFilter{OrgID: org.ID, LevelMin: intp(6), LevelMax: intp(7)},
+			[]string{levelled.ID}, []string{public.ID}},
+		{"levelMin alone is a lower bound", domain.UnitFilter{OrgID: org.ID, LevelMin: intp(7)},
+			[]string{levelled.ID}, []string{public.ID}},
+		{"levelMax alone excludes the unlevelled", domain.UnitFilter{OrgID: org.ID, LevelMax: intp(6)},
+			nil, []string{levelled.ID, public.ID}},
+		{"a band that misses", domain.UnitFilter{OrgID: org.ID, LevelMin: intp(0), LevelMax: intp(1)},
+			nil, []string{levelled.ID}},
+		{"scalar and range compose (ANDed, not one winning)", domain.UnitFilter{OrgID: org.ID, Level: intp(7), LevelMin: intp(0), LevelMax: intp(1)},
+			nil, []string{levelled.ID, public.ID}},
 		{"two facets compose", domain.UnitFilter{OrgID: org.ID, Visibility: strp("public"), State: strp("suspended")},
 			[]string{suspended.ID}, []string{public.ID, shadow.ID}},
 		{"unfiltered sees them all", base,
@@ -213,6 +226,11 @@ func TestUnitFilterValidation_Integration(t *testing.T) {
 		{OrgID: org.ID, Visibility: strp("hidden")},
 		{OrgID: org.ID, State: strp("deleted")},
 		{OrgID: org.ID, DomainID: strp("not-a-rid")},
+		// An inverted range is a caller mistake, not an empty result: returning zero rows would read
+		// as "there are none that deep" rather than "that range is impossible".
+		{OrgID: org.ID, LevelMin: intp(5), LevelMax: intp(2)},
+		{OrgID: org.ID, LevelMin: intp(-1)},
+		{OrgID: org.ID, LevelMax: intp(40000)},
 		{}, // missing the required org scope
 	} {
 		if _, err := svc.ListUnits(ctx, bad, "", nil, false, 0, ""); !errors.Is(err, domain.ErrInvalidUnit) {

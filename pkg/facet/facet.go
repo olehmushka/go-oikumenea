@@ -186,6 +186,15 @@ const (
 	ClassSearch Class = "search"
 	// ClassTraversal selects a traversal MODE rather than adding a predicate to the listed table.
 	ClassTraversal Class = "traversal"
+	// ClassSuperseded is a filter arg a FACET'S OWN args have replaced, retained only because the
+	// contract is expand-only (L-UpgradeSafe): removing a query arg breaks every stored link and
+	// every client that still sends it. `Drives` names the facet that supersedes it, and the guard
+	// checks that facet exists, covers the SAME column, and does NOT itself bind this arg — so the
+	// class can only ever excuse a genuine predecessor, never an unclassified filter.
+	//
+	// The arg keeps working: a superseded predicate is ANDed with its successor's, so a caller who
+	// sends both gets the intersection rather than one silently winning.
+	ClassSuperseded Class = "superseded"
 )
 
 // NonFacetArg classifies one query arg that carries no facet.
@@ -459,7 +468,7 @@ func validateNonFacetArg(objectType string, n NonFacetArg) error {
 		if n.Arg != "pageSize" && n.Arg != "pageToken" {
 			return fmt.Errorf("%s: the paging class covers only pageSize/pageToken", where)
 		}
-	case ClassSearch, ClassTraversal:
+	case ClassSearch, ClassTraversal, ClassSuperseded:
 		if n.Drives == "" {
 			return fmt.Errorf("%s: the %s class requires Drives (the query or facet it feeds)", where, n.Class)
 		}

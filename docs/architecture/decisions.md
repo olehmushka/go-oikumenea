@@ -2653,10 +2653,16 @@ implementation and recorded so the remaining tickets do not re-litigate them:
   gains a `graph` arg that narrows the expansion to one graph. `graph` is classified as a traversal
   arg, not a facet; it is rejected on its own. The default is deliberately the same closure set the
   read-scope predicate walks, so the filter cannot widen what a caller may see.
-- **`unit.level` keeps its legacy scalar arg.** The facet declares `numeric-range` (M57 bands the
-  column) but pins its filter arg to the `level` the contract already ships, via an explicit
-  `ArgOverride` that `Register` refuses without a written reason. `levelMin`/`levelMax` are additive
-  and deferred to when the bands are consumed.
+- **`unit.level` binds `levelMin`/`levelMax`, and the legacy scalar is *superseded*, not removed.**
+  Until M57 ticket 3 the facet pinned the pre-existing scalar `level` via `ArgOverride` and the range
+  args were "additive and deferred to when the bands are consumed". A dashboard consumes them: a band
+  is a RANGE, and no single value expresses one, so the bars were readable and inert. The facet now
+  binds the derived pair; the scalar is still shipped and still honoured, because **the contract is
+  expand-only** (removing a query arg breaks every stored link and every client that still sends it),
+  and the three predicates are **ANDed** so neither silently wins. It is classified `superseded` — a
+  fourth non-facet class whose check is earned rather than written: the named successor must exist,
+  must be a *range* facet over the *same* column, must not itself bind the arg, and must take the
+  same Conjure type.
 
 The **filter half** of "counts are computed inside the visibility predicate" is now real: one
 `PersonFilter` drives both list paths, folded into the SQL of all five queries, because a Go-side
@@ -2777,7 +2783,15 @@ and deliberately not built.
 **Decision.** The console's generic explorer (`/explore/[type]`) gains a second view. **List** and
 **dashboard** are two renderings of *one* request state, and that state lives **entirely in the URL**
 — generalizing the `?view=tree` toggle units already have to `?view=dashboard`, and moving today's
-`useState` quick-filter/sort out of `DataTable` into `searchParams`. Both are driven from the existing
+`useState` quick-filter/sort out of `DataTable` into `searchParams`.
+
+**Amended (M57 ticket 3, as built): the dashboard is the DEFAULT view** for every type that declares
+one, and `?view=table` is the explicit opt-out. Opening a collection should answer *what is in here*
+before *what is on page 1*: the aggregate describes the whole filtered set, while a keyset page
+describes fifty rows and cannot be totalled (there is deliberately no `totalCount` on a list
+envelope). The default view is the one that clears the `view` param, so a collection's canonical URL
+stays paramless and a shared link never carries a redundant `?view=`. Types with no dashboard are
+unaffected — their default remains the table, and no existing URL changes meaning. Both are driven from the existing
 ontology registry (`web/src/lib/ontology/registry.ts`): `ObjectTypeDef` gains `filters?: FilterDef[]`
 and `dashboard?: ChartDef[]`, siblings of the `ColumnDef`/`PropertyDef`/`LinkDef`/`ActionDef` arrays
 already there — so a type joins both surfaces by a registry entry, not new pages.
