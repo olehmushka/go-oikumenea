@@ -1,10 +1,11 @@
 # Facets — the shared filter/aggregation vocabulary and the dashboard catalog
 
-> **Status: the kernel is BUILT — `person` and `unit` (M56 ticket 2), `membership` / `order` /
-> `document` (M56 ticket 3, alongside their new top-level list endpoints), and all five reach the
-> console as URL-borne list filters (M56 ticket 4). The DASHBOARD half is now BACKEND-COMPLETE for the
-> M57 tranche: all five types have stats endpoints (ticket 1 `person`/`unit`, ticket 2
-> `link__member_of`/`order`/`document`). The charts are ticket 3; the remaining types are M58.** Binding
+> **Status: the M57 tranche is COMPLETE and verified.** The kernel is built — `person` and `unit`
+> (M56 ticket 2), `membership` / `order` / `document` (M56 ticket 3, alongside their new top-level
+> list endpoints), and all five reach the console as URL-borne list filters (M56 ticket 4). All five
+> have stats endpoints (M57 tickets 1–2) and all five have **dashboards** — which are the **default
+> view** of their collection, with `?view=table` as the opt-out (M57 ticket 3) — verified live
+> end-to-end (ticket 4). The remaining types are M58. Binding
 > design lives in
 > [`decisions.md` → D-ObjectFacets](decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope)
 > and [D-ConsoleDashboards](decisions.md#d-consoledashboards--every-listable-type-gets-a-list-view-and-a-dashboard-view-over-one-url-borne-filter-set-amends-d-webui);
@@ -97,7 +98,13 @@ URL with one more filter applied.
 
 **Components.** ① **Age pyramid** — horizontal histogram of `birthdate` age bands (`0–17, 18–24,
 25–34, 35–44, 45–54, 55–64, 65+, unknown`) split by `sex`, the two sexes mirrored about a centre axis;
-the canonical personnel-structure view. ② **Sex donut** with an explicit `not_known` slice — the slice
+the canonical personnel-structure view. **As built it is the one chart that costs more than one
+request:** a distribution is per-facet and this is a cross-tab, so each wing is the same request state
+plus `sex=<value>` and `facets=birthdate` — which is not a workaround but the design working, since a
+wing is exactly the list its bar links to. When `sex` is already filtered the pyramid collapses to the
+single-series band histogram rather than drawing one empty wing. Both wings share ONE x scale; scaling
+each to its own maximum would make an 80/20 split look symmetric, which is the thing the chart exists
+to show. ② **Sex donut** with an explicit `not_known` slice — the slice
 is the data-quality signal, so it is never hidden. ③ **Status tiles** — four `StatTile`s
 (active/deactivated/provisional/purged) with `totalCount` as the headline. ④ **Rank distribution** —
 vertical bar ordered by **rank seniority, not by count** (rank is an ordered scheme; sorting by
@@ -126,12 +133,17 @@ chart reads as a seniority profile over the fifteen most-held ranks. ⑤ **Top u
 > `tenant_units` — there is no `tenant_units.graph_id` to filter or `GROUP BY`. M56 classifies it as a
 > traversal arg, which is what the drift guard checks it against.
 
-**Components.** ① **Units per level** — bar, level ascending; the org chart's width profile. ②
+**Components.** ① **Units per level** — bar, level ascending; the org chart's width profile. The bars
+are **not click-through**: the contract ships a scalar exact-match `level`, the catalog buckets it in
+pairs, and no single value expresses a band (the `levelMin`/`levelMax` note above). The chart says so
+rather than linking to a narrower set than the bar counted. ②
 **Kind mix** donut. ③ **Public/shadow split** — a two-segment bar, not a donut: the shadow count is a
 governance number an operator reads exactly, so the label carries the count. ④ **State tiles**. ⑤
-**Headcount by unit** — top-15 bar of active memberships, the one component sourced from
-`membership`'s stats rather than `unit`'s (a cross-module read, gated on `membership.read`, omitted
-without it).
+~~**Headcount by unit**~~ — **NOT BUILT (M57 ticket 3), and it is a contract gap rather than a
+console omission.** The unit dashboard is org-scoped (`org` is a *required* filter) but
+`membershipStats` ships no `org` arg, and `membership.unitId` is an exact-match facet — so no
+membership query can be narrowed to an organization, and the chart would have shown units from other
+orgs beneath an org-filtered dashboard. Recorded in [Open seams](#open-seams) with the two routes out.
 
 #### `membership` (token `link__member_of`) — [membership](../modules/membership.md) · `membership_memberships`
 
@@ -184,7 +196,11 @@ this org actually issues. ③ **Draft/issued/revoked tiles**, revoked toned `red
 
 **Components.** ① **Expiring soon** — a `StatTile` (expiring within 90 days) over a histogram of
 `expires_on` by month, past-due bars toned `red`; the one component with an operational deadline
-attached, so it leads. ② **Type mix** bar. ③ **Status donut**. ④ **Issuing country** top-15 bar.
+attached, so it leads. As built the tile is a **second bounded count** (`expiresOnFrom=today`,
+`expiresOnTo=today+90d`, `facets=` — the total alone), not a sum of month buckets: the window the tile
+claims does not fall on month boundaries, so deriving it from the histogram would be off by up to two
+months. It carries a `Sparkline` of the next twelve months, so the number reads as a window on a
+curve. ② **Type mix** bar. ③ **Status donut**. ④ **Issuing country** top-15 bar.
 
 ### M58 tranche — the verticals and reference plane
 
@@ -285,12 +301,48 @@ idiom — so the mechanism cannot decay into an allowlist. `filters:` blocks mus
 literal `key`/`kind`/`params` literals; the constraint is stated in `registry.ts` beside the
 interface, where the edit happens.
 
+M57 ticket 3 adds the **fourth** consumer to the same discipline: `pkg/facet/dashboard_test.go` parses
+the registry's `dashboard:` blocks and holds every `ChartDef` against the catalog. The failure it
+guards is worse than a missing filter — the console asks for exactly the facets it draws
+(`?facets=a,b,c`), so a key the type no longer declares is a **400 on the whole request**: one stale
+chart blanks the entire dashboard rather than itself. It also checks the dashboard's `path` against
+the **Conjure YAML** (`base-path` + the endpoint's `http:` line), because a hand-typed
+`/documents/stats` is the exact shape httprouter refuses and no unit test would otherwise see it;
+that a `tone:` key still names a value of its enum; that a pyramid's `splitBy` param is a real facet
+arg; and that the console's `buckets:` declaration matches the catalog's bucket **strategy**, since
+the click-through inverts a bucket key back into a filter and the inverse of an age band is not the
+inverse of a calendar month. Same non-vacuity floor, same live-negative fixtures.
+
 ## Open seams
 
 - **Cross-type dashboards.** Every dashboard is single-type by construction (per-module stats
   endpoints, D-ObjectFacets). "Persons by unit *and* by rank at once" is a two-facet cross-tab, not
   supported; a genuine cross-type roll-up would want the fan-in service D-ObjectFacets rejected, and
-  should be re-argued on evidence rather than assumed.
+  should be re-argued on evidence rather than assumed. **What M57 ticket 3 showed is that the cheap
+  case is already covered without one:** a cross-tab against an *enum* facet is N extra requests, each
+  the same request state plus one filter value (the age pyramid is two). That works because a wing is
+  a real, reachable list — it does not generalize to a high-cardinality ref, where N is the
+  cardinality.
+- **A dashboard chart that needs another module's stats.** `unit` ⑤ headcount-by-unit is the only
+  catalogued component of the M57 tranche that was NOT built, because it cannot be drawn honestly: the
+  unit dashboard is org-scoped and `membershipStats` has no `org` arg, so the chart would mix
+  organizations. Two routes out, both additive: declare an `org` facet on `link__member_of` (the
+  membership row has no `org_id`, so it would be a join through `tenant_units` — a facet whose Table
+  is not the listed table, which the catalog does not do today), or draw it from `person`'s stats
+  filtered by the org's root unit, since `person.unitId` IS subtree-expanding — which undercounts on a
+  multi-root org and so needs the facet anyway. M58.
+- **A band is only click-through when the contract ships bounds.** `unit.level`'s bars are inert: the
+  arg is a scalar exact match and the buckets are pairs of levels. This is the case
+  `levelMin`/`levelMax` were deferred against ("additive and deferred to when the bands are
+  consumed") — they are consumed now, so the deferral has come due. Age bands have the same shape and
+  are NOT affected: `birthdateFrom`/`birthdateTo` exist, and the inverse of an age band is a birthdate
+  range (`age >= lo ⟺ birthdate <= today − lo years`, `age <= hi ⟺ birthdate >= today − (hi+1) years
+  + 1 day`).
+- **D-ObjectFacets rule 2 has no live case yet.** Every facet in the catalog is `pii:none`/`pii:basic`
+  with an empty `ReadPermission`, so no caller has ever seen a facet omitted. The console's
+  absent-is-not-empty branch (an omitted facet draws NO card, never a zeroed one) is therefore
+  exercised only by construction; the first gated facet — `person_health_records.kind` and its
+  siblings, M58 — is what will exercise it for real.
 - **Time series over history.** Every count is *as of now*. "Headcount over the last 12 months" needs
   the tier-(a) `valid_from`/`valid_to` link history (D-Temporal) folded into the aggregate, which is
   the same seam R-31's re-scope left open — not attempted here.

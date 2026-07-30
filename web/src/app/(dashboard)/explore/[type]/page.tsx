@@ -5,14 +5,15 @@ import { oikumenea } from "@/lib/api/server";
 import { capabilities } from "@/lib/api/capabilities";
 import { EmptyState, ErrorNotice, PageHeader, Pager } from "@/components/ui";
 import { DataTable } from "@/components/ontology/DataTable";
+import { Dashboard } from "@/components/ontology/Dashboard";
 import { FilterBar } from "@/components/ontology/FilterBar";
 import { UnitTree } from "@/components/ontology/UnitTree";
 import { TypeBadge } from "@/components/ontology/TypeBadge";
+import { ViewToggle, type ViewKey } from "@/components/ontology/ViewToggle";
 import { OBJECT_TYPES, type Row } from "@/lib/ontology/registry";
 import {
   apiQuery,
   exploreExtraQuery,
-  exploreHref,
   hasActiveFilters,
   readQuery,
   requiredFiltersSatisfied,
@@ -54,8 +55,24 @@ export default async function ExplorePage({
 
   const sp = toSearchParams(await searchParams);
   const view = sp.get("view") ?? undefined;
-  // Units support a hierarchical (expand-on-click) Tree view alongside the flat Table.
+  // Units support a hierarchical (expand-on-click) Tree view alongside the flat Table; any type with
+  // a registry dashboard also has a chart view over the same filters (M57, D-ConsoleDashboards).
+  //
+  // The DASHBOARD is the default view wherever a type has one: opening a collection should answer
+  // "what is in here" before it answers "what is on page 1", and the aggregate is the only view that
+  // describes the WHOLE filtered set — a keyset page describes 50 rows. `?view=table` is the explicit
+  // opt-out, and it is what every link into a row list carries. A type with no dashboard is
+  // unaffected: `defaultView` is then `table` and no URL changes meaning.
+  const hasDashboard = def.dashboard != null;
+  const defaultView: ViewKey = hasDashboard ? "dashboard" : "table";
   const treeView = type === "unit" && view === "tree";
+  const dashboardView = hasDashboard && !treeView && (view === undefined || view === "dashboard");
+  const tableView = !treeView && !dashboardView;
+  const views: ViewKey[] = [
+    ...(hasDashboard ? (["dashboard"] as ViewKey[]) : []),
+    "table",
+    ...(type === "unit" ? (["tree"] as ViewKey[]) : []),
+  ];
   // Backend substring search (persons, languoids): the query param narrows server-side; browsing
   // beyond the first page is via keyset pagination (pageToken/nextPageToken, the Pager below).
   const query = readQuery(def, sp);
@@ -79,7 +96,7 @@ export default async function ExplorePage({
 
   let rows: Row[] = [];
   let nextPageToken: string | undefined;
-  if (!error && ready && !treeView) {
+  if (!error && ready && tableView) {
     try {
       const res = await oikumenea().then((ok) =>
         ok.request("GET", def.list!.path, { query: apiQuery(def, sp) }),
@@ -119,28 +136,28 @@ export default async function ExplorePage({
       <Suspense fallback={null}>
         <FilterBar type={type} caps={caps} orgOptions={orgOptions} />
       </Suspense>
-      {type === "unit" && ready ? (
-        <div className="mb-4 flex items-center gap-1 text-sm">
-          <Link
-            href={exploreHref("unit", sp, { view: undefined })}
-            className={treeView ? "btn-ghost" : "btn-primary"}
-          >
-            <T>Table</T>
-          </Link>
-          <Link
-            href={exploreHref("unit", sp, { view: "tree" })}
-            className={treeView ? "btn-primary" : "btn-ghost"}
-          >
-            <T>Tree</T>
-          </Link>
-        </div>
+      {ready ? (
+        <ViewToggle
+          type={type}
+          sp={sp}
+          views={views}
+          current={treeView ? "tree" : dashboardView ? "dashboard" : "table"}
+          defaultView={defaultView}
+        />
       ) : null}
       {treeView && ready ? <UnitTree orgId={sp.get("org") ?? ""} /> : null}
       {error ? <ErrorNotice error={error} /> : null}
+      {!error && dashboardView && ready ? (
+        // A root-reach aggregate can take seconds; the boundary lets the header, the filter bar and
+        // the view switch paint first rather than holding the whole page on the slowest count.
+        <Suspense fallback={<EmptyState><T>Counting…</T></EmptyState>}>
+          <Dashboard type={type} search={sp.toString()} />
+        </Suspense>
+      ) : null}
       {!error && !ready ? (
         <EmptyState><T>Select an organization to view its units.</T></EmptyState>
       ) : null}
-      {!error && !treeView && ready && rows.length === 0 ? (
+      {!error && tableView && ready && rows.length === 0 ? (
         <EmptyState>
           {filtered ? (
             <T>No matches for these filters.</T>
@@ -151,7 +168,7 @@ export default async function ExplorePage({
           )}
         </EmptyState>
       ) : null}
-      {!error && !treeView && rows.length > 0 ? (
+      {!error && tableView && rows.length > 0 ? (
         <>
           <DataTable type={type} rows={rows} />
           <Pager

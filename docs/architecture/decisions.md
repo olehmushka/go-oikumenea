@@ -2777,7 +2777,15 @@ and deliberately not built.
 **Decision.** The console's generic explorer (`/explore/[type]`) gains a second view. **List** and
 **dashboard** are two renderings of *one* request state, and that state lives **entirely in the URL**
 — generalizing the `?view=tree` toggle units already have to `?view=dashboard`, and moving today's
-`useState` quick-filter/sort out of `DataTable` into `searchParams`. Both are driven from the existing
+`useState` quick-filter/sort out of `DataTable` into `searchParams`.
+
+**Amended (M57 ticket 3, as built): the dashboard is the DEFAULT view** for every type that declares
+one, and `?view=table` is the explicit opt-out. Opening a collection should answer *what is in here*
+before *what is on page 1*: the aggregate describes the whole filtered set, while a keyset page
+describes fifty rows and cannot be totalled (there is deliberately no `totalCount` on a list
+envelope). The default view is the one that clears the `view` param, so a collection's canonical URL
+stays paramless and a shared link never carries a redundant `?view=`. Types with no dashboard are
+unaffected — their default remains the table, and no existing URL changes meaning. Both are driven from the existing
 ontology registry (`web/src/lib/ontology/registry.ts`): `ObjectTypeDef` gains `filters?: FilterDef[]`
 and `dashboard?: ChartDef[]`, siblings of the `ColumnDef`/`PropertyDef`/`LinkDef`/`ActionDef` arrays
 already there — so a type joins both surfaces by a registry entry, not new pages.

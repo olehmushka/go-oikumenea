@@ -139,8 +139,65 @@ export interface FilterDef {
    * cosmetic only: the server omits the facet regardless.
    */
   requires?: string;
+  /**
+   * How the SERVER buckets this facet (pkg/facet `Buckets.Strategy`), declared exactly where `kind`
+   * does not imply it: a `date-range` is either calendar `dateTrunc` months or declared `bands`
+   * (person.birthdate's age bands), and a `numeric-range` is always `bands`. enum / bool / ref imply
+   * identity / bool / topN and must NOT declare it.
+   *
+   * M57's click-through needs the distinction to turn a bucket key back into a filter — `2026-03` is
+   * a month, `25-34` is an age band, and the inverse of an age band is a birthdate range. The Go
+   * guard holds this against the catalog, so it cannot drift into decoration.
+   */
+  buckets?: "bands" | "dateTrunc";
   /** the SQL semantics an operator would otherwise reverse-engineer from a surprising count */
   hint?: string;
+}
+
+/**
+ * One chart on a type's dashboard — the console half of an M57 facet distribution, and the third
+ * consumer of a facet declared once in `pkg/facet` (list filter → stats groupBy → chart).
+ *
+ * `facet` MUST name a facet the catalog declares for this type: the console asks for exactly the
+ * facets it draws (the `facets` CSV is the difference between an 11-second and a 3-second dashboard
+ * at root reach), and an undeclared key is a **400 on the whole request** — one stale chart would
+ * blank the entire dashboard, not itself. `pkg/facet/dashboard_test.go` holds this.
+ *
+ * FORMAT CONTRACT, as for FilterDef: keep `key`, `form` and `facet` literal strings — the guard
+ * parses this file with regexes and a computed value blinds the parse.
+ */
+export interface ChartDef {
+  /** stable id: the React key and the guard's subject */
+  key: string;
+  /** English source string, rendered through <T> (D-i18n) */
+  title: string;
+  form: "tiles" | "bar" | "donut" | "histogram" | "pyramid" | "stat";
+  /** the pkg/facet Facet.Key this chart draws */
+  facet: string;
+  /** bar only — vertical for ORDERED short categories (levels, rank seniority), else horizontal */
+  orientation?: "horizontal" | "vertical";
+  /** per-bucket status colour: the tones Pill paints the same value with in a table */
+  tone?: Record<string, Tone>;
+  /** donut only: fold past this many slices into `(other)` (the palette has six identity slots) */
+  maxSlices?: number;
+  /** histogram only: tone the buckets before this month red — they are overdue, not forecast */
+  pastDue?: boolean;
+  /**
+   * pyramid only: the facet distribution is fetched once per value with that value as an extra
+   * filter, because a cross-tab is not something a per-facet stats endpoint can answer.
+   */
+  splitBy?: { param: string; values: string[] };
+  /** stat only: a number computed from the distribution (a ratio) or from an extra bounded count */
+  derived?: "revocationRate" | "expiringSoon";
+  /** the SQL semantics an operator would otherwise reverse-engineer from a surprising count */
+  note?: string;
+}
+
+/** A type's dashboard: where the aggregate lives, and what to draw from it. */
+export interface DashboardDef {
+  /** the stats endpoint path — `/stats/<collection>`, never `/<collection>/stats` (httprouter) */
+  path: string;
+  charts: ChartDef[];
 }
 
 export interface ObjectTypeDef {
@@ -168,6 +225,8 @@ export interface ObjectTypeDef {
   columns: ColumnDef[];
   /** the type's facet vocabulary as list filters (D-ObjectFacets / D-ConsoleDashboards, M56) */
   filters?: FilterDef[];
+  /** the same vocabulary as charts — `?view=dashboard` on the same URL (M57 ticket 3) */
+  dashboard?: DashboardDef;
   properties?: PropertyDef[];
   links?: LinkDef[];
   actions?: ActionDef[];
@@ -261,6 +320,7 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
       {
         key: "birthdate", kind: "date-range", label: "Birthdate",
         params: ["birthdateFrom", "birthdateTo"],
+        buckets: "bands",
         hint: "Setting either bound excludes unknown birthdates.",
       },
       { key: "countryOfBirth", kind: "ref", label: "Country of birth", params: ["countryOfBirth"], control: "country" },
@@ -271,6 +331,30 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
       },
       { key: "hasAccount", kind: "bool", label: "Has account", params: ["hasAccount"] },
     ],
+    dashboard: {
+      path: "/person/v1/stats/persons",
+      charts: [
+        {
+          key: "status", title: "Directory", form: "tiles", facet: "status",
+          tone: { active: "green", deactivated: "amber", provisional: "slate", purged: "red" },
+        },
+        {
+          key: "pyramid", title: "Age structure", form: "pyramid", facet: "birthdate",
+          splitBy: { param: "sex", values: ["male", "female"] },
+          note: "Age at today's date; persons with no birthdate are counted beside the chart, never inside a band.",
+        },
+        { key: "sex", title: "Sex", form: "donut", facet: "sex" },
+        {
+          key: "rank", title: "Rank distribution", form: "bar", facet: "rankId", orientation: "vertical",
+          note: "The fifteen most-held ranks, ordered by seniority rather than by count.",
+        },
+        { key: "units", title: "Top units", form: "bar", facet: "unitId", orientation: "horizontal" },
+        {
+          key: "countryOfBirth", title: "Country of birth", form: "bar", facet: "countryOfBirth",
+          orientation: "horizontal",
+        },
+      ],
+    },
     properties: [
       { label: "Given", value: (p) => s(p.given) },
       { label: "Surname", value: (p) => s(p.surname) },
@@ -437,6 +521,7 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
         // numeric-range with ONE param: the contract's `level` predates the vocabulary and is an
         // exact match, so the facet pins it via ArgOverride. M57 bands the same column for charts.
         key: "level", kind: "numeric-range", label: "Level", params: ["level"],
+        buckets: "bands",
         hint: "Exact depth in the unit hierarchy.",
       },
       {
@@ -456,6 +541,27 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
       },
       { key: "pdpScoped", kind: "bool", label: "PDP-scoped", params: ["pdpScoped"] },
     ],
+    dashboard: {
+      path: "/tenant/v1/stats/units",
+      charts: [
+        {
+          key: "state", title: "Units", form: "tiles", facet: "state",
+          tone: { active: "green", suspended: "amber", archived: "slate" },
+        },
+        {
+          key: "level", title: "Units per level", form: "bar", facet: "level", orientation: "vertical",
+          note: "Depth bands, shallowest first — the org chart's width profile.",
+        },
+        { key: "kind", title: "Kind mix", form: "donut", facet: "unitKind" },
+        {
+          // A bar rather than a donut: the shadow count is a governance number an operator reads
+          // exactly, so it carries its own count beside the mark (facets.md ③).
+          key: "visibility", title: "Public / shadow", form: "bar", facet: "visibility",
+          orientation: "horizontal", tone: { public: "slate", shadow: "amber" },
+          note: "A shadow unit is listed only for a subject whose read reaches it (L-Visibility).",
+        },
+      ],
+    },
     properties: [
       { label: "Name", value: (u) => loc(u.name) },
       { label: "Code", value: (u) => s(u.code), render: "mono" },
@@ -505,9 +611,32 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
       {
         key: "issuedOn", kind: "date-range", label: "Issued on",
         params: ["issuedOnFrom", "issuedOnTo"],
+        buckets: "dateTrunc",
         hint: "Setting either bound excludes drafts (no issue date).",
       },
     ],
+    dashboard: {
+      path: "/order/v1/stats/orders",
+      charts: [
+        {
+          key: "status", title: "Register", form: "tiles", facet: "status",
+          tone: { draft: "amber", issued: "green", revoked: "red" },
+        },
+        {
+          key: "revocationRate", title: "Revocation rate", form: "stat", facet: "status",
+          derived: "revocationRate",
+          note: "Revoked orders as a share of everything ever issued — the audit-facing number.",
+        },
+        {
+          key: "issuedOn", title: "Orders per month", form: "histogram", facet: "issuedOn",
+          note: "An order with no issue date — typically a draft — is counted beside the axis, not on it.",
+        },
+        {
+          key: "types", title: "Type mix", form: "bar", facet: "orderTypeId", orientation: "horizontal",
+          note: "An order counts once per type it carries an item of — effects live on the items.",
+        },
+      ],
+    },
     properties: [
       { label: "Number", value: (o) => s(o.number), render: "mono" },
       { label: "Issued on", value: (o) => s(o.issuedOn) },
@@ -620,8 +749,31 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
         // ArgOverride in the catalog: the contract's after/before predate the From/To convention.
         key: "effectiveFrom", kind: "date-range", label: "Effective from",
         params: ["effectiveFromAfter", "effectiveFromBefore"],
+        buckets: "dateTrunc",
       },
     ],
+    dashboard: {
+      // Deliberately three charts, not five: `personId` is a FILTER facet with no chart behind it,
+      // and its top-N over a million distinct persons costs 8.6 s on its own — asking for what is
+      // drawn is what keeps this dashboard at ~1.3 s (review-2026-07 § M57 ticket 2).
+      path: "/membership/v1/stats/memberships",
+      charts: [
+        {
+          key: "status", title: "Memberships", form: "tiles", facet: "status",
+          tone: { active: "green", ended: "slate" },
+          note: "The global list applies no implicit status filter, so ended rows are counted here.",
+        },
+        {
+          key: "intake", title: "Joins per month", form: "histogram", facet: "effectiveFrom",
+          note: "By the month the membership took effect.",
+        },
+        {
+          key: "billets", title: "Billets held", form: "bar", facet: "positionId",
+          orientation: "horizontal",
+          note: "The unlabelled bucket is memberships with no billet — a membership without a position is legal.",
+        },
+      ],
+    },
     properties: [
       { label: "Person", value: (m) => s(m.personId), render: "mono" },
       { label: "Unit", value: (m) => s(m.unitId), render: "mono" },
@@ -783,14 +935,43 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
       {
         key: "issuedOn", kind: "date-range", label: "Issued on",
         params: ["issuedOnFrom", "issuedOnTo"],
+        buckets: "dateTrunc",
         hint: "Setting either bound excludes documents with no issue date.",
       },
       {
         key: "expiresOn", kind: "date-range", label: "Expires on",
         params: ["expiresOnFrom", "expiresOnTo"],
+        buckets: "dateTrunc",
         hint: "Setting either bound excludes documents with no expiry.",
       },
     ],
+    dashboard: {
+      path: "/document/v1/stats/documents",
+      charts: [
+        {
+          // Leads: it is the one component with an operational deadline attached.
+          key: "expiringSoon", title: "Expiring within 90 days", form: "stat", facet: "expiresOn",
+          derived: "expiringSoon",
+          note: "An exact count over the window, not a month-boundary approximation.",
+        },
+        {
+          // Past-due months are toned red by the dashboard, which knows today's date; a per-bucket
+          // tone map cannot express "before now".
+          key: "expiry", title: "Expiry by month", form: "histogram", facet: "expiresOn",
+          pastDue: true,
+          note: "Months already past are overdue documents, not a forecast.",
+        },
+        {
+          key: "status", title: "Status", form: "donut", facet: "status",
+          tone: { active: "green", superseded: "slate", revoked: "red" },
+        },
+        { key: "types", title: "Type mix", form: "bar", facet: "typeId", orientation: "horizontal" },
+        {
+          key: "issuingCountry", title: "Issuing country", form: "bar", facet: "issuingCountryId",
+          orientation: "horizontal",
+        },
+      ],
+    },
     properties: [
       { label: "Number", value: (d) => s(d.number), render: "mono" },
       { label: "Issuer", value: (d) => s(d.issuer) },

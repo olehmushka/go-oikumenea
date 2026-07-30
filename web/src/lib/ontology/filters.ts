@@ -72,6 +72,36 @@ export function apiQuery(def: ObjectTypeDef, sp: URLSearchParams): string {
 }
 
 /**
+ * The outbound STATS query (M57): exactly the list's filter args — the endpoint takes the same set —
+ * minus paging, plus the `facets` CSV. Built from the same `readFilters`/`readQuery` whitelist as
+ * `apiQuery`, because a dashboard that filtered differently from its list would make `totalCount`
+ * disagree with the rows the operator can page to, which is the one property M57 promises.
+ *
+ * `overrides` applies the extra narrowing a multi-call chart needs (the pyramid's `sex` wings), and
+ * an `undefined` there clears an inherited filter.
+ *
+ * `facets` MUST be non-empty: `facets=` is the wire form of "count only, no distributions", so
+ * sending an accidental empty list draws an empty dashboard rather than the whole one.
+ */
+export function statsQuery(
+  def: ObjectTypeDef,
+  sp: URLSearchParams,
+  facets: string,
+  overrides: Record<string, string | undefined> = {},
+): string {
+  const q = new URLSearchParams();
+  for (const [name, value] of Object.entries(readFilters(def, sp))) q.set(name, value);
+  const term = readQuery(def, sp);
+  if (term && def.list?.searchParam) q.set(def.list.searchParam, term);
+  for (const [name, value] of Object.entries(overrides)) {
+    if (value === undefined || value === "") q.delete(name);
+    else q.set(name, value);
+  }
+  q.set("facets", facets);
+  return `?${q.toString()}`;
+}
+
+/**
  * A URL for the same explorer with `patch` applied — `undefined` deletes a param.
  *
  * `pageToken` is ALWAYS dropped unless the patch sets it explicitly: a keyset cursor was minted
