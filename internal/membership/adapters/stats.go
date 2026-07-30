@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/olegamysk/go-oikumenea/internal/membership/adapters/membershipsql"
+	"github.com/olegamysk/go-oikumenea/internal/membership/domain"
 	persondomain "github.com/olegamysk/go-oikumenea/internal/person/domain"
 	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
@@ -119,4 +120,88 @@ func statsGroup(facetKey string, bucket pgtype.Text, n int64, ord pgtype.Int8) s
 		g.Ord = &o
 	}
 	return g
+}
+
+// ---------------------------------------------------------------- the roster's own dashboard
+
+// MembershipStats is the membership-roster dashboard aggregate (M57 / D-ObjectFacets): every selected
+// facet's distribution plus the total, over the same candidate set ListMemberships pages under the
+// same filters.
+//
+// An empty subjectPersonID is the INSTANCE-ADMIN arm (no visibility predicate at all); otherwise the
+// reach set is folded into the candidate CTE. Like person's dashboard above — and unlike either LIST
+// arm — there is no sparse/dense dispatch, because an aggregate has no LIMIT for the materialized
+// reach set to spoil.
+//
+// Note this file now holds TWO dashboards: person's read-scope arm (which lives here because the reach
+// predicate does) and membership's own. They share nothing but the row mapper; the facet keys they name
+// belong to different object types, and pkg/facet is what keeps those from drifting.
+func (r *Repository) MembershipStats(ctx context.Context, subjectPersonID string, f domain.MembershipFilter, sel stats.Selection) ([]stats.Group, error) {
+	fa := membershipFacetArgs(f)
+	w := membershipStatsWants(sel)
+	if subjectPersonID != "" {
+		rows, err := r.q.MembershipStatsForSubject(ctx, membershipsql.MembershipStatsForSubjectParams{
+			SubjectPersonID:     subjectPersonID,
+			UnitID:              fa.unitID,
+			PersonID:            fa.personID,
+			PositionID:          fa.positionID,
+			Status:              fa.status,
+			EffectiveFromAfter:  fa.effectiveFromAfter,
+			EffectiveFromBefore: fa.effectiveFromBefore,
+			WantUnitID:          w.unitID,
+			WantPersonID:        w.personID,
+			WantPositionID:      w.positionID,
+			WantStatus:          w.status,
+			WantEffectiveFrom:   w.effectiveFrom,
+			TopN:                w.topN,
+		})
+		if err != nil {
+			return nil, err
+		}
+		out := make([]stats.Group, 0, len(rows))
+		for _, row := range rows {
+			out = append(out, statsGroup(row.Facet, row.Bucket, row.N, row.Ord))
+		}
+		return out, nil
+	}
+	rows, err := r.q.MembershipStats(ctx, membershipsql.MembershipStatsParams{
+		UnitID:              fa.unitID,
+		PersonID:            fa.personID,
+		PositionID:          fa.positionID,
+		Status:              fa.status,
+		EffectiveFromAfter:  fa.effectiveFromAfter,
+		EffectiveFromBefore: fa.effectiveFromBefore,
+		WantUnitID:          w.unitID,
+		WantPersonID:        w.personID,
+		WantPositionID:      w.positionID,
+		WantStatus:          w.status,
+		WantEffectiveFrom:   w.effectiveFrom,
+		TopN:                w.topN,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]stats.Group, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, statsGroup(row.Facet, row.Bucket, row.N, row.Ord))
+	}
+	return out, nil
+}
+
+// membershipStatsWantFlags is one selection projected onto the per-branch flags the query binds; an
+// unselected facet's branch is skipped by the planner, not merely dropped from the response.
+type membershipStatsWantFlags struct {
+	unitID, personID, positionID, status, effectiveFrom bool
+	topN                                                int32
+}
+
+func membershipStatsWants(sel stats.Selection) membershipStatsWantFlags {
+	return membershipStatsWantFlags{
+		unitID:        sel.Wants("unitId"),
+		personID:      sel.Wants("personId"),
+		positionID:    sel.Wants("positionId"),
+		status:        sel.Wants("status"),
+		effectiveFrom: sel.Wants("effectiveFrom"),
+		topN:          int32(sel.TopN()),
+	}
 }

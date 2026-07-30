@@ -394,30 +394,21 @@ func (s *Service) PersonStats(ctx context.Context, subjectPersonID string, isAdm
 		return stats.Result{}, err
 	}
 	f.Query = strings.TrimSpace(f.Query)
-	var (
-		groups []stats.Group
-		err    error
-	)
-	if isAdmin {
-		// The request-pinned RLS connection, not the bare pool: the unitId facet and its filter probe
-		// membership_memberships, which IS row-secured, and on an unpinned connection the app.* GUCs
-		// are unset — the predicate would then match nothing and report a confident zero (the M56
-		// ticket-2 empty-page bug, in its counting form). The db source guard holds this line.
-		groups, err = s.newRepo(db.RequestQuerier(ctx, s.pool)).PersonStats(ctx, f, sel)
-	} else {
-		if subjectPersonID == "" { // membership seam guaranteed wired at boot (MustBeBound, R-11)
-			return stats.Result{}, nil
+	// stats.Compute owns the arm convention (an empty subject means the admin arm, and a NON-admin with
+	// no subject must never fall into it), so the only thing left here is WHICH repository answers:
+	// person's own for the admin arm, membership's reach-scoped query otherwise — the same split
+	// ListPersons/ListVisiblePersons make.
+	return stats.Compute(ctx, s.labeler, sel, isAdmin, subjectPersonID, func(subject string) ([]stats.Group, error) {
+		if subject == "" {
+			// The request-pinned RLS connection, not the bare pool: the unitId facet and its filter probe
+			// membership_memberships, which IS row-secured, and on an unpinned connection the app.* GUCs
+			// are unset — the predicate would then match nothing and report a confident zero (the M56
+			// ticket-2 empty-page bug, in its counting form). The db source guard holds this line.
+			return s.newRepo(db.RequestQuerier(ctx, s.pool)).PersonStats(ctx, f, sel)
 		}
-		groups, err = s.membership.VisiblePersonStatsForSubject(ctx, subjectPersonID, f, sel)
-	}
-	if err != nil {
-		return stats.Result{}, err
-	}
-	res := stats.Assemble(sel, groups)
-	if err := stats.Label(ctx, s.labeler, sel, &res); err != nil {
-		return stats.Result{}, err
-	}
-	return res, nil
+		// The membership seam is guaranteed wired at boot (MustBeBound, R-11).
+		return s.membership.VisiblePersonStatsForSubject(ctx, subject, f, sel)
+	})
 }
 
 // SetPersonRank sets the person's rank in one rank system, or clears it (a directory attribute;

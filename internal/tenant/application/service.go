@@ -224,19 +224,13 @@ func (s *Service) ListUnitLanguages(ctx context.Context, unitID string) ([]domai
 // subjectPersonID is empty for an instance admin and the subject's RID otherwise; the visibility
 // predicate is chosen on that, in SQL. The filter is validated here, once, so the admin and scoped
 // arms reject an ill-formed facet value identically — the same discipline the list path follows.
-func (s *Service) UnitStats(ctx context.Context, subjectPersonID string, f domain.UnitFilter, sel stats.Selection) (stats.Result, error) {
+func (s *Service) UnitStats(ctx context.Context, subjectPersonID string, isAdmin bool, f domain.UnitFilter, sel stats.Selection) (stats.Result, error) {
 	if err := f.Validate(); err != nil {
 		return stats.Result{}, err
 	}
-	groups, err := s.newRepo(s.querier(ctx)).UnitStats(ctx, subjectPersonID, f, sel)
-	if err != nil {
-		return stats.Result{}, err
-	}
-	res := stats.Assemble(sel, groups)
-	if err := stats.Label(ctx, s.labeler, sel, &res); err != nil {
-		return stats.Result{}, err
-	}
-	return res, nil
+	return stats.Compute(ctx, s.labeler, sel, isAdmin, subjectPersonID, func(subject string) ([]stats.Group, error) {
+		return s.newRepo(s.querier(ctx)).UnitStats(ctx, subject, f, sel)
+	})
 }
 
 // ListUnits returns a keyset-paginated page of units within an organization (REQUIRED f.OrgID;

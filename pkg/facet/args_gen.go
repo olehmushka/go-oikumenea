@@ -81,6 +81,33 @@ var listArgs = map[string][]ArgSpec{
 // endpoint, keyed by the object type token. A type absent here has no stats endpoint yet;
 // args_test.go holds that against an explicit pending list rather than letting it pass unnoticed.
 var statsArgs = map[string][]ArgSpec{
+	"document": {
+		{Name: "expiresOnFrom", Type: "string", Optional: true},
+		{Name: "expiresOnTo", Type: "string", Optional: true},
+		{Name: "facets", Type: "string", Optional: true},
+		{Name: "issuedOnFrom", Type: "string", Optional: true},
+		{Name: "issuedOnTo", Type: "string", Optional: true},
+		{Name: "issuingCountryId", Type: "string", Optional: true},
+		{Name: "status", Type: "string", Optional: true},
+		{Name: "typeId", Type: "string", Optional: true},
+	},
+	"link__member_of": {
+		{Name: "effectiveFromAfter", Type: "string", Optional: true},
+		{Name: "effectiveFromBefore", Type: "string", Optional: true},
+		{Name: "facets", Type: "string", Optional: true},
+		{Name: "personId", Type: "string", Optional: true},
+		{Name: "positionId", Type: "string", Optional: true},
+		{Name: "status", Type: "string", Optional: true},
+		{Name: "unitId", Type: "string", Optional: true},
+	},
+	"order": {
+		{Name: "facets", Type: "string", Optional: true},
+		{Name: "issuedOnFrom", Type: "string", Optional: true},
+		{Name: "issuedOnTo", Type: "string", Optional: true},
+		{Name: "issuingUnitId", Type: "string", Optional: true},
+		{Name: "orderTypeId", Type: "string", Optional: true},
+		{Name: "status", Type: "string", Optional: true},
+	},
 	"person": {
 		{Name: "birthdateFrom", Type: "string", Optional: true},
 		{Name: "birthdateTo", Type: "string", Optional: true},

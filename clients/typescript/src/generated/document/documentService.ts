@@ -4,6 +4,7 @@ import { ICreatePersonalCodeRequest } from "./createPersonalCodeRequest";
 import { ICreatePersonalCodeSchemeRequest } from "./createPersonalCodeSchemeRequest";
 import { IDocument } from "./document";
 import { IDocumentPage } from "./documentPage";
+import { IDocumentStats } from "./documentStats";
 import { IDocumentType } from "./documentType";
 import { IPersonalCode } from "./personalCode";
 import { IPersonalCodeScheme } from "./personalCodeScheme";
@@ -39,6 +40,21 @@ export interface IDocumentService {
      *
      */
     listDocuments(pageSize?: number | null, pageToken?: string | null, typeId?: string | null, status?: string | null, issuingCountryId?: string | null, issuedOnFrom?: string | null, issuedOnTo?: string | null, expiresOnFrom?: string | null, expiresOnTo?: string | null): Promise<IDocumentPage>;
+    /**
+     * Facet distributions for the document register — the dashboard half of the facet vocabulary
+     * (M57 / D-ObjectFacets). Takes exactly the filter args `listDocuments` takes (minus paging), so
+     * a dashboard and a list are two renderings of one request state.
+     *
+     * Counted INSIDE the holder read-scope semi-join: `totalCount` equals what exhaustively paging
+     * `listDocuments` with these filters would return. The `expiresOn` distribution's `(unknown)`
+     * bucket is the NO-EXPIRY (permanent) population, not missing data.
+     *
+     * The path is `/stats/documents` rather than `/documents/stats` because the server's router
+     * rejects a literal path segment that is a sibling of `{documentId}` — see the route-conflict
+     * guard in `internal/platform/transport`.
+     *
+     */
+    documentStats(facets?: string | null, typeId?: string | null, status?: string | null, issuingCountryId?: string | null, issuedOnFrom?: string | null, issuedOnTo?: string | null, expiresOnFrom?: string | null, expiresOnTo?: string | null): Promise<IDocumentStats>;
     /** List a person's documents, token-paginated. */
     listPersonDocuments(personId: string, pageSize?: number | null, pageToken?: string | null): Promise<IDocumentPage>;
     /** Read one document. */
@@ -119,6 +135,44 @@ export class DocumentService implements IDocumentService {
             {
                 "pageSize": pageSize,
                 "pageToken": pageToken,
+                "typeId": typeId,
+                "status": status,
+                "issuingCountryId": issuingCountryId,
+                "issuedOnFrom": issuedOnFrom,
+                "issuedOnTo": issuedOnTo,
+                "expiresOnFrom": expiresOnFrom,
+                "expiresOnTo": expiresOnTo,
+            },
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Facet distributions for the document register — the dashboard half of the facet vocabulary
+     * (M57 / D-ObjectFacets). Takes exactly the filter args `listDocuments` takes (minus paging), so
+     * a dashboard and a list are two renderings of one request state.
+     *
+     * Counted INSIDE the holder read-scope semi-join: `totalCount` equals what exhaustively paging
+     * `listDocuments` with these filters would return. The `expiresOn` distribution's `(unknown)`
+     * bucket is the NO-EXPIRY (permanent) population, not missing data.
+     *
+     * The path is `/stats/documents` rather than `/documents/stats` because the server's router
+     * rejects a literal path segment that is a sibling of `{documentId}` — see the route-conflict
+     * guard in `internal/platform/transport`.
+     *
+     */
+    public documentStats(facets?: string | null, typeId?: string | null, status?: string | null, issuingCountryId?: string | null, issuedOnFrom?: string | null, issuedOnTo?: string | null, expiresOnFrom?: string | null, expiresOnTo?: string | null): Promise<IDocumentStats> {
+        return this.bridge.call<IDocumentStats>(
+            "DocumentService",
+            "documentStats",
+            "GET",
+            "/document/v1/stats/documents",
+            __undefined,
+            __undefined,
+            {
+                "facets": facets,
                 "typeId": typeId,
                 "status": status,
                 "issuingCountryId": issuingCountryId,

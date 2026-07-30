@@ -34,6 +34,20 @@ type DocumentServiceClient interface {
 	   visible set.
 	*/
 	ListDocuments(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string, typeIdArg *string, statusArg *string, issuingCountryIdArg *string, issuedOnFromArg *string, issuedOnToArg *string, expiresOnFromArg *string, expiresOnToArg *string) (DocumentPage, error)
+	/*
+	   Facet distributions for the document register — the dashboard half of the facet vocabulary
+	   (M57 / D-ObjectFacets). Takes exactly the filter args `listDocuments` takes (minus paging), so
+	   a dashboard and a list are two renderings of one request state.
+
+	   Counted INSIDE the holder read-scope semi-join: `totalCount` equals what exhaustively paging
+	   `listDocuments` with these filters would return. The `expiresOn` distribution's `(unknown)`
+	   bucket is the NO-EXPIRY (permanent) population, not missing data.
+
+	   The path is `/stats/documents` rather than `/documents/stats` because the server's router
+	   rejects a literal path segment that is a sibling of `{documentId}` — see the route-conflict
+	   guard in `internal/platform/transport`.
+	*/
+	DocumentStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, typeIdArg *string, statusArg *string, issuingCountryIdArg *string, issuedOnFromArg *string, issuedOnToArg *string, expiresOnFromArg *string, expiresOnToArg *string) (DocumentStats, error)
 	// List a person's documents, token-paginated.
 	ListPersonDocuments(ctx context.Context, authHeader bearertoken.Token, personIdArg string, pageSizeArg *int, pageTokenArg *string) (DocumentPage, error)
 	// Read one document.
@@ -136,6 +150,49 @@ func (c *documentServiceClient) ListDocuments(ctx context.Context, authHeader be
 	}
 	if returnVal == nil {
 		return *new(DocumentPage), werror.ErrorWithContextParams(ctx, "listDocuments response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *documentServiceClient) DocumentStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, typeIdArg *string, statusArg *string, issuingCountryIdArg *string, issuedOnFromArg *string, issuedOnToArg *string, expiresOnFromArg *string, expiresOnToArg *string) (DocumentStats, error) {
+	var returnVal *DocumentStats
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("DocumentStats"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/document/v1/stats/documents"))
+	queryParams := make(url.Values)
+	if facetsArg != nil {
+		queryParams.Set("facets", fmt.Sprint(*facetsArg))
+	}
+	if typeIdArg != nil {
+		queryParams.Set("typeId", fmt.Sprint(*typeIdArg))
+	}
+	if statusArg != nil {
+		queryParams.Set("status", fmt.Sprint(*statusArg))
+	}
+	if issuingCountryIdArg != nil {
+		queryParams.Set("issuingCountryId", fmt.Sprint(*issuingCountryIdArg))
+	}
+	if issuedOnFromArg != nil {
+		queryParams.Set("issuedOnFrom", fmt.Sprint(*issuedOnFromArg))
+	}
+	if issuedOnToArg != nil {
+		queryParams.Set("issuedOnTo", fmt.Sprint(*issuedOnToArg))
+	}
+	if expiresOnFromArg != nil {
+		queryParams.Set("expiresOnFrom", fmt.Sprint(*expiresOnFromArg))
+	}
+	if expiresOnToArg != nil {
+		queryParams.Set("expiresOnTo", fmt.Sprint(*expiresOnToArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(DocumentStats), werror.WrapWithContextParams(ctx, err, "documentStats failed")
+	}
+	if returnVal == nil {
+		return *new(DocumentStats), werror.ErrorWithContextParams(ctx, "documentStats response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -412,6 +469,20 @@ type DocumentServiceClientWithAuth interface {
 	   visible set.
 	*/
 	ListDocuments(ctx context.Context, pageSizeArg *int, pageTokenArg *string, typeIdArg *string, statusArg *string, issuingCountryIdArg *string, issuedOnFromArg *string, issuedOnToArg *string, expiresOnFromArg *string, expiresOnToArg *string) (DocumentPage, error)
+	/*
+	   Facet distributions for the document register — the dashboard half of the facet vocabulary
+	   (M57 / D-ObjectFacets). Takes exactly the filter args `listDocuments` takes (minus paging), so
+	   a dashboard and a list are two renderings of one request state.
+
+	   Counted INSIDE the holder read-scope semi-join: `totalCount` equals what exhaustively paging
+	   `listDocuments` with these filters would return. The `expiresOn` distribution's `(unknown)`
+	   bucket is the NO-EXPIRY (permanent) population, not missing data.
+
+	   The path is `/stats/documents` rather than `/documents/stats` because the server's router
+	   rejects a literal path segment that is a sibling of `{documentId}` — see the route-conflict
+	   guard in `internal/platform/transport`.
+	*/
+	DocumentStats(ctx context.Context, facetsArg *string, typeIdArg *string, statusArg *string, issuingCountryIdArg *string, issuedOnFromArg *string, issuedOnToArg *string, expiresOnFromArg *string, expiresOnToArg *string) (DocumentStats, error)
 	// List a person's documents, token-paginated.
 	ListPersonDocuments(ctx context.Context, personIdArg string, pageSizeArg *int, pageTokenArg *string) (DocumentPage, error)
 	// Read one document.
@@ -461,6 +532,10 @@ func (c *documentServiceClientWithAuth) AttachDocument(ctx context.Context, pers
 
 func (c *documentServiceClientWithAuth) ListDocuments(ctx context.Context, pageSizeArg *int, pageTokenArg *string, typeIdArg *string, statusArg *string, issuingCountryIdArg *string, issuedOnFromArg *string, issuedOnToArg *string, expiresOnFromArg *string, expiresOnToArg *string) (DocumentPage, error) {
 	return c.client.ListDocuments(ctx, c.authHeader, pageSizeArg, pageTokenArg, typeIdArg, statusArg, issuingCountryIdArg, issuedOnFromArg, issuedOnToArg, expiresOnFromArg, expiresOnToArg)
+}
+
+func (c *documentServiceClientWithAuth) DocumentStats(ctx context.Context, facetsArg *string, typeIdArg *string, statusArg *string, issuingCountryIdArg *string, issuedOnFromArg *string, issuedOnToArg *string, expiresOnFromArg *string, expiresOnToArg *string) (DocumentStats, error) {
+	return c.client.DocumentStats(ctx, c.authHeader, facetsArg, typeIdArg, statusArg, issuingCountryIdArg, issuedOnFromArg, issuedOnToArg, expiresOnFromArg, expiresOnToArg)
 }
 
 func (c *documentServiceClientWithAuth) ListPersonDocuments(ctx context.Context, personIdArg string, pageSizeArg *int, pageTokenArg *string) (DocumentPage, error) {
@@ -542,6 +617,14 @@ func (c *documentServiceClientWithTokenProvider) ListDocuments(ctx context.Conte
 		return *new(DocumentPage), err
 	}
 	return c.client.ListDocuments(ctx, bearertoken.Token(token), pageSizeArg, pageTokenArg, typeIdArg, statusArg, issuingCountryIdArg, issuedOnFromArg, issuedOnToArg, expiresOnFromArg, expiresOnToArg)
+}
+
+func (c *documentServiceClientWithTokenProvider) DocumentStats(ctx context.Context, facetsArg *string, typeIdArg *string, statusArg *string, issuingCountryIdArg *string, issuedOnFromArg *string, issuedOnToArg *string, expiresOnFromArg *string, expiresOnToArg *string) (DocumentStats, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(DocumentStats), err
+	}
+	return c.client.DocumentStats(ctx, bearertoken.Token(token), facetsArg, typeIdArg, statusArg, issuingCountryIdArg, issuedOnFromArg, issuedOnToArg, expiresOnFromArg, expiresOnToArg)
 }
 
 func (c *documentServiceClientWithTokenProvider) ListPersonDocuments(ctx context.Context, personIdArg string, pageSizeArg *int, pageTokenArg *string) (DocumentPage, error) {

@@ -2,9 +2,10 @@
 
 > **Status: the kernel is BUILT — `person` and `unit` (M56 ticket 2), `membership` / `order` /
 > `document` (M56 ticket 3, alongside their new top-level list endpoints), and all five reach the
-> console as URL-borne list filters (M56 ticket 4). The DASHBOARD half is under way: `person` and
-> `unit` now have stats endpoints (M57 ticket 1); the remaining three follow in ticket 2, the charts
-> in ticket 3, and the remaining types are M58.** Binding design lives in
+> console as URL-borne list filters (M56 ticket 4). The DASHBOARD half is now BACKEND-COMPLETE for the
+> M57 tranche: all five types have stats endpoints (ticket 1 `person`/`unit`, ticket 2
+> `link__member_of`/`order`/`document`). The charts are ticket 3; the remaining types are M58.** Binding
+> design lives in
 > [`decisions.md` → D-ObjectFacets](decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope)
 > and [D-ConsoleDashboards](decisions.md#d-consoledashboards--every-listable-type-gets-a-list-view-and-a-dashboard-view-over-one-url-borne-filter-set-amends-d-webui);
 > this note is the readable overview **and the catalog** — the per-object-type list of every facet and
@@ -320,6 +321,20 @@ interface, where the edit happens.
   approximate for a filtered or scoped one. The console's real lever meanwhile is the `facets` CSV:
   ask for what you draw. Numbers in
   [review-2026-07](review-2026-07.md#m57-ticket-1--the-dashboard-aggregates-2026-07-29).
+- **Two membership components have no facet behind them.** facets.md's ③ vacant-vs-filled donut and ④
+  tenure histogram are NOT backed by declared facets, so M57 ticket 2 did not ship them: `positionState`
+  is sourced from `membership_positions` behind a different endpoint (it belongs to a `position` object
+  type — M58), and tenure would need a facet over `now() - effective_from`, which is a computed value
+  rather than a column. What the shipped `positionId` distribution DOES give is the same signal in
+  cruder form: its `(unknown)` bucket is the memberships with no billet. Deliberate: adding a facet is a
+  catalog decision, not something a repetition ticket should smuggle in.
+- **A top-N over a high-cardinality ref column is expensive.** `link__member_of.personId` costs 8.6 s
+  alone at 10^6 distinct persons — the ranking window sorts every group to keep fifteen. No shipped
+  chart asks for it (it is a filter facet), and the dashboard as drawn costs 1.3 s admin / 3.2 s root
+  against 9.6 / 11.1 s for all facets, which is precisely what the `facets` CSV is for. The fix, if a
+  genuine high-cardinality ref chart is ever wanted, is a bounded `ORDER BY … LIMIT k` heapsort plus a
+  per-facet group-total row so `(other)` stays derivable; costed in
+  [review-2026-07](review-2026-07.md#m57-ticket-2--the-membership--order--document-dashboards-2026-07-30).
 - **One plan shape for a scoped aggregate.** A scoped LIST ships two (the table above); a scoped
   aggregate ships one, because the set form beat the point probe at every reach once the `LIMIT` was
   gone (8.3 / 79.8 / 7 144 ms against 12 926 / 17 066 / 24 869 ms). If a future stats endpoint ever

@@ -50,6 +50,20 @@ type OrderService interface {
 	   widen what the caller may see: filtering can only narrow the visible set.
 	*/
 	ListOrders(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string, issuingUnitIdArg *string, orderTypeIdArg *string, statusArg *string, issuedOnFromArg *string, issuedOnToArg *string) (OrderPage, error)
+	/*
+	   Facet distributions for the order register — the dashboard half of the facet vocabulary
+	   (M57 / D-ObjectFacets). Takes exactly the filter args `listOrders` takes (minus paging), so a
+	   dashboard and a list are two renderings of one request state.
+
+	   Counted INSIDE the reach predicate on the issuing unit: `totalCount` equals what exhaustively
+	   paging `listOrders` with these filters would return. The `issuedOn` distribution's
+	   `(unknown)` bucket is the DRAFT backlog — a draft has no issue date.
+
+	   The path is `/stats/orders` rather than `/orders/stats` because the server's router rejects a
+	   literal path segment that is a sibling of `{orderId}` — see the route-conflict guard in
+	   `internal/platform/transport`.
+	*/
+	OrderStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, issuingUnitIdArg *string, orderTypeIdArg *string, statusArg *string, issuedOnFromArg *string, issuedOnToArg *string) (OrderStats, error)
 	// List an issuing unit's orders (headers only), token-paginated.
 	ListUnitOrders(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, pageSizeArg *int, pageTokenArg *string) (OrderPage, error)
 	// List orders affecting a person (via their items), token-paginated.
@@ -86,6 +100,9 @@ func RegisterRoutesOrderService(router wrouter.Router, impl OrderService, router
 	}
 	if err := resource.Get("ListOrders", "/order/v1/orders", httpserver.NewJSONHandler(handler.HandleListOrders, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listOrders route")
+	}
+	if err := resource.Get("OrderStats", "/order/v1/stats/orders", httpserver.NewJSONHandler(handler.HandleOrderStats, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add orderStats route")
 	}
 	if err := resource.Get("ListUnitOrders", "/order/v1/units/{unitId}/orders", httpserver.NewJSONHandler(handler.HandleListUnitOrders, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listUnitOrders route")
@@ -270,6 +287,49 @@ func (o *orderServiceHandler) HandleListOrders(rw http.ResponseWriter, req *http
 		issuedOnToArg = &issuedOnToArgInternal
 	}
 	respArg, err := o.impl.ListOrders(req.Context(), bearertoken.Token(authHeader), pageSizeArg, pageTokenArg, issuingUnitIdArg, orderTypeIdArg, statusArg, issuedOnFromArg, issuedOnToArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (o *orderServiceHandler) HandleOrderStats(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var facetsArg *string
+	if facetsArgStr := req.URL.Query().Get("facets"); facetsArgStr != "" {
+		facetsArgInternal := facetsArgStr
+		facetsArg = &facetsArgInternal
+	}
+	var issuingUnitIdArg *string
+	if issuingUnitIdArgStr := req.URL.Query().Get("issuingUnitId"); issuingUnitIdArgStr != "" {
+		issuingUnitIdArgInternal := issuingUnitIdArgStr
+		issuingUnitIdArg = &issuingUnitIdArgInternal
+	}
+	var orderTypeIdArg *string
+	if orderTypeIdArgStr := req.URL.Query().Get("orderTypeId"); orderTypeIdArgStr != "" {
+		orderTypeIdArgInternal := orderTypeIdArgStr
+		orderTypeIdArg = &orderTypeIdArgInternal
+	}
+	var statusArg *string
+	if statusArgStr := req.URL.Query().Get("status"); statusArgStr != "" {
+		statusArgInternal := statusArgStr
+		statusArg = &statusArgInternal
+	}
+	var issuedOnFromArg *string
+	if issuedOnFromArgStr := req.URL.Query().Get("issuedOnFrom"); issuedOnFromArgStr != "" {
+		issuedOnFromArgInternal := issuedOnFromArgStr
+		issuedOnFromArg = &issuedOnFromArgInternal
+	}
+	var issuedOnToArg *string
+	if issuedOnToArgStr := req.URL.Query().Get("issuedOnTo"); issuedOnToArgStr != "" {
+		issuedOnToArgInternal := issuedOnToArgStr
+		issuedOnToArg = &issuedOnToArgInternal
+	}
+	respArg, err := o.impl.OrderStats(req.Context(), bearertoken.Token(authHeader), facetsArg, issuingUnitIdArg, orderTypeIdArg, statusArg, issuedOnFromArg, issuedOnToArg)
 	if err != nil {
 		return err
 	}

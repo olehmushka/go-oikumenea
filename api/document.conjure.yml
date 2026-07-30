@@ -84,6 +84,41 @@ types:
         fields:
           documents: list<Document>
           nextPageToken: optional<string>
+      FacetBucket:
+        docs: |
+          One bucket of a facet distribution (M57 / D-ObjectFacets).
+
+          `key` is the bucket's stable, locale-agnostic identity — an enum value, a `YYYY-MM` month, a
+          band, `true`/`false`, or a RID for a `ref` facet — and is exactly what you pass back as the
+          corresponding list filter, which is what makes a chart segment and a filter the same act.
+          Two synthetic keys never name a real value: `(unknown)` is the NULL bucket (mandatory for a
+          nullable column, so the gap is visible rather than dropped) and `(other)` is a top-N facet's
+          collapsed tail; neither is a usable filter value.
+
+          `label` carries the object's display name as a locale → text map (D-i18n — all locales in
+          every response) and is present only for `ref` buckets, whose keys are RIDs. Best effort: an
+          id with no resolvable name simply carries no label.
+        fields:
+          key: string
+          label: optional<map<string, string>>
+          count: integer
+      FacetDistribution:
+        docs: |
+          One facet's buckets, in chart order — for an enum, the declared CHECK-set order with
+          zero-count buckets included so a chart's shape is stable across filterings; for a monthly
+          histogram, ascending by month with `(unknown)` last; for a ref, descending by count with
+          `(other)`/`(unknown)` last.
+        fields:
+          facet: string
+          buckets: list<FacetBucket>
+      DocumentStats:
+        docs: |
+          Facet distributions over the SAME set `listDocuments` returns under the same filters, counted
+          INSIDE the holder read-scope semi-join (D-ObjectFacets / D-PersonReadScope): a document whose
+          holder the caller cannot read is not counted at all, rather than counted and then trimmed.
+        fields:
+          totalCount: integer
+          facets: list<FacetDistribution>
       PersonalCodeScheme:
         docs: An instance-admin catalog entry naming a country-namespaced national-identifier scheme (ua-rnokpp, us-ssn).
         fields:
@@ -328,6 +363,58 @@ services:
             param-type: query
             docs: Facet filter — INCLUSIVE upper bound on `expiresOn` (`YYYY-MM-DD`). Pair with `expiresOnFrom` = today for an "expiring by" listing. See `expiresOnFrom` for the no-expiry rule.
         returns: DocumentPage
+      documentStats:
+        http: GET /stats/documents
+        docs: |
+          Facet distributions for the document register — the dashboard half of the facet vocabulary
+          (M57 / D-ObjectFacets). Takes exactly the filter args `listDocuments` takes (minus paging), so
+          a dashboard and a list are two renderings of one request state.
+
+          Counted INSIDE the holder read-scope semi-join: `totalCount` equals what exhaustively paging
+          `listDocuments` with these filters would return. The `expiresOn` distribution's `(unknown)`
+          bucket is the NO-EXPIRY (permanent) population, not missing data.
+
+          The path is `/stats/documents` rather than `/documents/stats` because the server's router
+          rejects a literal path segment that is a sibling of `{documentId}` — see the route-conflict
+          guard in `internal/platform/transport`.
+        args:
+          facets:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Optional comma-separated facet keys to compute (`status,expiresOn`). Omitted or empty = every
+              facet the caller may read; an explicit list of nothing (`facets=,`) returns `totalCount`
+              alone, which is the cheap way to ask only "how many". An undeclared facet key is a
+              Document:DocumentInvalid; a facet the caller may not READ is not an error — it is simply absent.
+          typeId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listDocuments`.
+          status:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listDocuments`.
+          issuingCountryId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listDocuments`.
+          issuedOnFrom:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listDocuments`.
+          issuedOnTo:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listDocuments`.
+          expiresOnFrom:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listDocuments`. Setting either bound excludes the no-expiry set, so the `(unknown)` bucket goes to zero.
+          expiresOnTo:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listDocuments`.
+        returns: DocumentStats
       listPersonDocuments:
         http: GET /persons/{personId}/documents
         docs: List a person's documents, token-paginated.

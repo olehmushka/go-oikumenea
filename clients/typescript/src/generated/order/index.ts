@@ -1,5 +1,7 @@
 export * from "./createOrderRequest";
 export * from "./createOrderTypeRequest";
+export * from "./facetBucket";
+export * from "./facetDistribution";
 export * from "./order";
 export * from "./orderAlreadyIssued";
 export * from "./orderConflict";
@@ -11,6 +13,7 @@ export * from "./orderNotFound";
 export * from "./orderNotIssued";
 export * from "./orderPage";
 export * from "./orderService";
+export * from "./orderStats";
 export * from "./orderType";
 export * from "./orderTypeConflict";
 export * from "./orderTypeNotFound";

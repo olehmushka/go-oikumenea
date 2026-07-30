@@ -903,6 +903,269 @@ func (q *Queries) ListVacantPositionsByUnit(ctx context.Context, arg ListVacantP
 	return items, nil
 }
 
+const membershipStats = `-- name: MembershipStats :many
+
+WITH cand AS MATERIALIZED (
+  SELECT m.id, m.unit_id, m.person_id, m.position_id, m.status, m.effective_from
+  FROM oikumenea.membership_memberships m
+  WHERE m.deleted_at IS NULL
+  AND ($1::uuid IS NULL OR m.unit_id = $1::uuid)
+  AND ($2::uuid IS NULL OR m.person_id = $2::uuid)
+  AND ($3::uuid IS NULL OR m.position_id = $3::uuid)
+  AND ($4::text IS NULL OR m.status = $4::text)
+  AND ($5::date IS NULL
+       OR m.effective_from >= $5::date)
+  AND ($6::date IS NULL
+       OR m.effective_from < ($6::date + 1))
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n, NULL::bigint AS ord
+FROM cand
+UNION ALL
+SELECT 'unitId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $7::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.unit_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE $8::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'personId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $7::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.person_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE $9::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'positionId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $7::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.position_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE $10::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'status'::text, c.status::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE $11::boolean GROUP BY c.status
+UNION ALL
+SELECT 'effectiveFrom'::text, to_char(date_trunc('month', c.effective_from), 'YYYY-MM'), count(*)::bigint, NULL::bigint
+FROM cand c WHERE $12::boolean GROUP BY 2
+`
+
+type MembershipStatsParams struct {
+	UnitID              pgtype.Text
+	PersonID            pgtype.Text
+	PositionID          pgtype.Text
+	Status              pgtype.Text
+	EffectiveFromAfter  pgtype.Date
+	EffectiveFromBefore pgtype.Date
+	TopN                int32
+	WantUnitID          bool
+	WantPersonID        bool
+	WantPositionID      bool
+	WantStatus          bool
+	WantEffectiveFrom   bool
+}
+
+type MembershipStatsRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+	Ord    pgtype.Int8
+}
+
+// ============================ dashboard aggregates (M57) ============================
+// The INSTANCE-ADMIN dashboard aggregate for the membership roster (M57 / D-ObjectFacets): every
+// selected facet's distribution plus the total, in ONE round-trip and ONE scan of the candidate set.
+// The candidate CTE carries ListMemberships' filter block VERBATIM — the list and the dashboard must
+// see one world — and each branch is SKIPPED, not merely hidden, when its want_* flag is false.
+//
+// No LIMIT anywhere: a count is over the whole filtered set by definition, which is also why this
+// needs no sparse/dense plan dispatch (M57 ticket 1's measurement, re-confirmed here for this table:
+// set form 13 ms / 2 201 ms at leaf / root reach against the point probe's 12 827 / 24 513 ms).
+//
+// unitId/personId/positionId are per-ROW attributes of the membership, so each of those distributions
+// partitions the candidate set exactly; positionId's (unknown) bucket is the memberships with no
+// billet, which is the vacancy signal this module exists to answer.
+func (q *Queries) MembershipStats(ctx context.Context, arg MembershipStatsParams) ([]MembershipStatsRow, error) {
+	rows, err := q.db.Query(ctx, membershipStats,
+		arg.UnitID,
+		arg.PersonID,
+		arg.PositionID,
+		arg.Status,
+		arg.EffectiveFromAfter,
+		arg.EffectiveFromBefore,
+		arg.TopN,
+		arg.WantUnitID,
+		arg.WantPersonID,
+		arg.WantPositionID,
+		arg.WantStatus,
+		arg.WantEffectiveFrom,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MembershipStatsRow
+	for rows.Next() {
+		var i MembershipStatsRow
+		if err := rows.Scan(
+			&i.Facet,
+			&i.Bucket,
+			&i.N,
+			&i.Ord,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const membershipStatsForSubject = `-- name: MembershipStatsForSubject :many
+WITH cand AS MATERIALIZED (
+  SELECT m.id, m.unit_id, m.person_id, m.position_id, m.status, m.effective_from
+  FROM oikumenea.membership_memberships m
+  WHERE m.deleted_at IS NULL
+  AND ($1::uuid IS NULL OR m.unit_id = $1::uuid)
+  AND ($2::uuid IS NULL OR m.person_id = $2::uuid)
+  AND ($3::uuid IS NULL OR m.position_id = $3::uuid)
+  AND ($4::text IS NULL OR m.status = $4::text)
+  AND ($5::date IS NULL
+       OR m.effective_from >= $5::date)
+  AND ($6::date IS NULL
+       OR m.effective_from < ($6::date + 1))
+  AND m.unit_id IN (SELECT oikumenea.authz_readable_units($7))
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n, NULL::bigint AS ord
+FROM cand
+UNION ALL
+SELECT 'unitId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $8::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.unit_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE $9::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'personId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $8::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.person_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE $10::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'positionId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $8::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.position_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE $11::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'status'::text, c.status::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE $12::boolean GROUP BY c.status
+UNION ALL
+SELECT 'effectiveFrom'::text, to_char(date_trunc('month', c.effective_from), 'YYYY-MM'), count(*)::bigint, NULL::bigint
+FROM cand c WHERE $13::boolean GROUP BY 2
+`
+
+type MembershipStatsForSubjectParams struct {
+	UnitID              pgtype.Text
+	PersonID            pgtype.Text
+	PositionID          pgtype.Text
+	Status              pgtype.Text
+	EffectiveFromAfter  pgtype.Date
+	EffectiveFromBefore pgtype.Date
+	SubjectPersonID     string
+	TopN                int32
+	WantUnitID          bool
+	WantPersonID        bool
+	WantPositionID      bool
+	WantStatus          bool
+	WantEffectiveFrom   bool
+}
+
+type MembershipStatsForSubjectRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+	Ord    pgtype.Int8
+}
+
+// The READ-SCOPE arm: identical filters and identical aggregates, with the reach predicate folded
+// INTO the candidate set so every count is taken inside it. Counting first and trimming afterwards
+// would leak the size of what the caller cannot read.
+//
+// The reach arrives as the migration-0017 SET function, uncorrelated: it reads only
+// @subject_person_id, so the planner evaluates it once and probes a hash.
+func (q *Queries) MembershipStatsForSubject(ctx context.Context, arg MembershipStatsForSubjectParams) ([]MembershipStatsForSubjectRow, error) {
+	rows, err := q.db.Query(ctx, membershipStatsForSubject,
+		arg.UnitID,
+		arg.PersonID,
+		arg.PositionID,
+		arg.Status,
+		arg.EffectiveFromAfter,
+		arg.EffectiveFromBefore,
+		arg.SubjectPersonID,
+		arg.TopN,
+		arg.WantUnitID,
+		arg.WantPersonID,
+		arg.WantPositionID,
+		arg.WantStatus,
+		arg.WantEffectiveFrom,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MembershipStatsForSubjectRow
+	for rows.Next() {
+		var i MembershipStatsForSubjectRow
+		if err := rows.Scan(
+			&i.Facet,
+			&i.Bucket,
+			&i.N,
+			&i.Ord,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const readableUnitIDsForSubject = `-- name: ReadableUnitIDsForSubject :many
 SELECT oikumenea.authz_readable_units($1)::uuid AS unit_id
 `

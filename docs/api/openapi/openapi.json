@@ -3916,6 +3916,26 @@
         ],
         "type": "object"
       },
+      "DocumentStats": {
+        "description": "Facet distributions over the SAME set `listDocuments` returns under the same filters, counted\nINSIDE the holder read-scope semi-join (D-ObjectFacets / D-PersonReadScope): a document whose\nholder the caller cannot read is not counted at all, rather than counted and then trimmed.\n",
+        "properties": {
+          "facets": {
+            "items": {
+              "$ref": "#/components/schemas/FacetDistribution"
+            },
+            "type": "array"
+          },
+          "totalCount": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "facets",
+          "totalCount"
+        ],
+        "type": "object"
+      },
       "DocumentType": {
         "description": "An instance-admin catalog entry naming a PAPER kind (passport, driver-license). Stable code + translatable name.",
         "properties": {
@@ -7017,6 +7037,26 @@
         ],
         "type": "object"
       },
+      "MembershipStats": {
+        "description": "Facet distributions over the SAME set `listMemberships` returns under the same filters,\ncounted INSIDE the caller's readable reach (D-ObjectFacets): `totalCount` is what\nexhaustively paging that list would yield, not an estimate and not a page count.\n\nLike the list, it applies NO implicit status filter — the unfiltered total is the honest\none, and it agrees with its own status distribution by construction.\n",
+        "properties": {
+          "facets": {
+            "items": {
+              "$ref": "#/components/schemas/FacetDistribution"
+            },
+            "type": "array"
+          },
+          "totalCount": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "facets",
+          "totalCount"
+        ],
+        "type": "object"
+      },
       "MergeExternalOrgRequest": {
         "description": "Resolve a provisional stub into a canonical organization. The provisional org (the path id) is\ntombstoned; the canonical (intoOrgId) survives. confidence is recorded on the merge action.\n",
         "properties": {
@@ -7641,6 +7681,26 @@
         },
         "required": [
           "orders"
+        ],
+        "type": "object"
+      },
+      "OrderStats": {
+        "description": "Facet distributions over the SAME set `listOrders` returns under the same filters, counted\nINSIDE the caller's readable reach on the issuing unit (D-ObjectFacets): `totalCount` is what\nexhaustively paging that list would yield.\n\nNote that `orderTypeId` counts ORDER ITEMS' types: an order carrying two different effects\nappears in two buckets, so that one distribution deliberately does not sum to `totalCount`.\n",
+        "properties": {
+          "facets": {
+            "items": {
+              "$ref": "#/components/schemas/FacetDistribution"
+            },
+            "type": "array"
+          },
+          "totalCount": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "facets",
+          "totalCount"
         ],
         "type": "object"
       },
@@ -19214,6 +19274,112 @@
         ]
       }
     },
+    "/document/v1/stats/documents": {
+      "get": {
+        "description": "Facet distributions for the document register — the dashboard half of the facet vocabulary\n(M57 / D-ObjectFacets). Takes exactly the filter args `listDocuments` takes (minus paging), so\na dashboard and a list are two renderings of one request state.\n\nCounted INSIDE the holder read-scope semi-join: `totalCount` equals what exhaustively paging\n`listDocuments` with these filters would return. The `expiresOn` distribution's `(unknown)`\nbucket is the NO-EXPIRY (permanent) population, not missing data.\n\nThe path is `/stats/documents` rather than `/documents/stats` because the server's router\nrejects a literal path segment that is a sibling of `{documentId}` — see the route-conflict\nguard in `internal/platform/transport`.\n",
+        "operationId": "DocumentService_documentStats",
+        "parameters": [
+          {
+            "description": "Optional comma-separated facet keys to compute (`status,expiresOn`). Omitted or empty = every\nfacet the caller may read; an explicit list of nothing (`facets=,`) returns `totalCount`\nalone, which is the cheap way to ask only \"how many\". An undeclared facet key is a\nDocument:DocumentInvalid; a facet the caller may not READ is not an error — it is simply absent.\n",
+            "in": "query",
+            "name": "facets",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listDocuments`.",
+            "in": "query",
+            "name": "typeId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listDocuments`.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listDocuments`.",
+            "in": "query",
+            "name": "issuingCountryId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listDocuments`.",
+            "in": "query",
+            "name": "issuedOnFrom",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listDocuments`.",
+            "in": "query",
+            "name": "issuedOnTo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listDocuments`. Setting either bound excludes the no-expiry set, so the `(unknown)` bucket goes to zero.",
+            "in": "query",
+            "name": "expiresOnFrom",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listDocuments`.",
+            "in": "query",
+            "name": "expiresOnTo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentStats"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Facet distributions for the document register — the dashboard half of the facet vocabulary",
+        "tags": [
+          "DocumentService"
+        ]
+      }
+    },
     "/education/v1/accreditation-events": {
       "get": {
         "operationId": "EducationReferenceService_listAccreditationEvents",
@@ -28359,6 +28525,103 @@
         ]
       }
     },
+    "/membership/v1/stats/memberships": {
+      "get": {
+        "description": "Facet distributions for the membership roster — the dashboard half of the facet vocabulary\n(M57 / D-ObjectFacets). Takes exactly the filter args `listMemberships` takes (minus paging),\nso a dashboard and a list are two renderings of ONE request state and a chart segment is a\nlink to the same URL with one more filter applied.\n\nCounted INSIDE the reach predicate, before anything is cut: `totalCount` equals the number of\nrows exhaustively paging `listMemberships` with these same filters would return. One\nround-trip serves the whole dashboard.\n\nThe path is `/stats/memberships` rather than `/memberships/stats` because the server's router\nrejects a literal path segment that is a sibling of `{membershipId}` — see the route-conflict\nguard in `internal/platform/transport`.\n",
+        "operationId": "MembershipService_membershipStats",
+        "parameters": [
+          {
+            "description": "Optional comma-separated facet keys to compute (`status,unitId`). Omitted or empty = every\nfacet the caller may read; an explicit list of nothing (`facets=,`) returns `totalCount`\nalone, which is the cheap way to ask only \"how many\". An undeclared facet key is a\nMembership:MembershipInvalid; a facet the caller may not READ is not an error — it is simply absent.\n",
+            "in": "query",
+            "name": "facets",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listMemberships`. EXACT unit, not the subtree.",
+            "in": "query",
+            "name": "unitId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listMemberships`.",
+            "in": "query",
+            "name": "personId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listMemberships`. The `(unknown)` bucket of this facet's distribution is the memberships with no billet.",
+            "in": "query",
+            "name": "positionId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listMemberships`. No implicit default, so the distribution and the total agree.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listMemberships`.",
+            "in": "query",
+            "name": "effectiveFromAfter",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listMemberships`.",
+            "in": "query",
+            "name": "effectiveFromBefore",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipStats"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Facet distributions for the membership roster — the dashboard half of the facet vocabulary",
+        "tags": [
+          "MembershipService"
+        ]
+      }
+    },
     "/membership/v1/units/{unitId}/members": {
       "get": {
         "description": "Roster of a unit's active memberships, token-paginated. (The shadow gate applies once authz lands, M7.)",
@@ -28999,6 +29262,94 @@
           }
         },
         "summary": "List orders affecting a person (via their items), token-paginated.",
+        "tags": [
+          "OrderService"
+        ]
+      }
+    },
+    "/order/v1/stats/orders": {
+      "get": {
+        "description": "Facet distributions for the order register — the dashboard half of the facet vocabulary\n(M57 / D-ObjectFacets). Takes exactly the filter args `listOrders` takes (minus paging), so a\ndashboard and a list are two renderings of one request state.\n\nCounted INSIDE the reach predicate on the issuing unit: `totalCount` equals what exhaustively\npaging `listOrders` with these filters would return. The `issuedOn` distribution's\n`(unknown)` bucket is the DRAFT backlog — a draft has no issue date.\n\nThe path is `/stats/orders` rather than `/orders/stats` because the server's router rejects a\nliteral path segment that is a sibling of `{orderId}` — see the route-conflict guard in\n`internal/platform/transport`.\n",
+        "operationId": "OrderService_orderStats",
+        "parameters": [
+          {
+            "description": "Optional comma-separated facet keys to compute (`status,orderTypeId`). Omitted or empty = every\nfacet the caller may read; an explicit list of nothing (`facets=,`) returns `totalCount`\nalone, which is the cheap way to ask only \"how many\". An undeclared facet key is a\nOrder:OrderInvalid; a facet the caller may not READ is not an error — it is simply absent.\n",
+            "in": "query",
+            "name": "facets",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listOrders`.",
+            "in": "query",
+            "name": "issuingUnitId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listOrders`. As a DISTRIBUTION this counts order ITEMS' types, so an order with two different effects lands in two buckets and the facet does not sum to `totalCount`.",
+            "in": "query",
+            "name": "orderTypeId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listOrders`.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listOrders`. Setting either bound excludes drafts, so the `(unknown)` bucket goes to zero.",
+            "in": "query",
+            "name": "issuedOnFrom",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `listOrders`.",
+            "in": "query",
+            "name": "issuedOnTo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderStats"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Facet distributions for the order register — the dashboard half of the facet vocabulary",
         "tags": [
           "OrderService"
         ]

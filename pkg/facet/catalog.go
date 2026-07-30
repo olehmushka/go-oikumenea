@@ -293,9 +293,10 @@ func levelBands() []Band {
 // hidden default would make M57's totalCount disagree with its own status distribution.
 func membershipType() ObjectType {
 	return ObjectType{
-		Type:         "link__member_of",
-		Module:       "membership",
-		ListEndpoint: "MembershipService.listMemberships",
+		Type:          "link__member_of",
+		Module:        "membership",
+		ListEndpoint:  "MembershipService.listMemberships",
+		StatsEndpoint: "MembershipService.membershipStats",
 		Facets: []Facet{
 			{
 				Key:     "unitId",
@@ -360,9 +361,10 @@ func membershipType() ObjectType {
 // stays empty and order.read is the whole decision.
 func orderType() ObjectType {
 	return ObjectType{
-		Type:         "order",
-		Module:       "order",
-		ListEndpoint: "OrderService.listOrders",
+		Type:          "order",
+		Module:        "order",
+		ListEndpoint:  "OrderService.listOrders",
+		StatsEndpoint: "OrderService.orderStats",
 		Facets: []Facet{
 			{
 				Key:     "issuingUnitId",
@@ -421,9 +423,10 @@ func orderType() ObjectType {
 // code split, exactly as with person_persons.attributes (D-DataScope's residual).
 func documentType() ObjectType {
 	return ObjectType{
-		Type:         "document",
-		Module:       "document",
-		ListEndpoint: "DocumentService.listDocuments",
+		Type:          "document",
+		Module:        "document",
+		ListEndpoint:  "DocumentService.listDocuments",
+		StatsEndpoint: "DocumentService.documentStats",
 		Facets: []Facet{
 			{
 				Key:     "typeId",

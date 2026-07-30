@@ -17,6 +17,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
 
 // Sentinel errors. The adapter maps Postgres constraint violations to these; the transport maps them
@@ -219,6 +221,11 @@ type Repository interface {
 	// set intersected with the subject's effective readable reach on the issuing unit.
 	ListOrders(ctx context.Context, f OrderFilter, after string, limit int) ([]Order, error)
 	ListOrdersForSubject(ctx context.Context, subjectPersonID string, f OrderFilter, after string, limit int) ([]Order, error)
+	// OrderStats is the dashboard aggregate over the SAME candidate set the two list arms page (M57 /
+	// D-ObjectFacets). An empty subjectPersonID is the instance-admin arm; otherwise reach on the
+	// issuing unit is folded into the SQL, because a count cannot be trimmed afterwards the way a page
+	// can. The orderTypeId distribution counts ITEMS' types and so does not sum to the total.
+	OrderStats(ctx context.Context, subjectPersonID string, f OrderFilter, sel stats.Selection) ([]stats.Group, error)
 
 	// order items (parent-scoped)
 	InsertOrderItem(ctx context.Context, it OrderItem) (OrderItem, error)

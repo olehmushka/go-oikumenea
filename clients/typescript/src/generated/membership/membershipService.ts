@@ -4,6 +4,7 @@ import { IEndMembershipRequest } from "./endMembershipRequest";
 import { IFillPositionRequest } from "./fillPositionRequest";
 import { IMembership } from "./membership";
 import { IMembershipPage } from "./membershipPage";
+import { IMembershipStats } from "./membershipStats";
 import { IPosition } from "./position";
 import { IPositionPage } from "./positionPage";
 import { IUpdatePositionRequest } from "./updatePositionRequest";
@@ -39,6 +40,22 @@ export interface IMembershipService {
     endMembership(membershipId: string, request: IEndMembershipRequest): Promise<IMembership>;
     /** Roster of a unit's active memberships, token-paginated. (The shadow gate applies once authz lands, M7.) */
     listMembers(unitId: string, pageSize?: number | null, pageToken?: string | null): Promise<IMembershipPage>;
+    /**
+     * Facet distributions for the membership roster — the dashboard half of the facet vocabulary
+     * (M57 / D-ObjectFacets). Takes exactly the filter args `listMemberships` takes (minus paging),
+     * so a dashboard and a list are two renderings of ONE request state and a chart segment is a
+     * link to the same URL with one more filter applied.
+     *
+     * Counted INSIDE the reach predicate, before anything is cut: `totalCount` equals the number of
+     * rows exhaustively paging `listMemberships` with these same filters would return. One
+     * round-trip serves the whole dashboard.
+     *
+     * The path is `/stats/memberships` rather than `/memberships/stats` because the server's router
+     * rejects a literal path segment that is a sibling of `{membershipId}` — see the route-conflict
+     * guard in `internal/platform/transport`.
+     *
+     */
+    membershipStats(facets?: string | null, unitId?: string | null, personId?: string | null, positionId?: string | null, status?: string | null, effectiveFromAfter?: string | null, effectiveFromBefore?: string | null): Promise<IMembershipStats>;
     /**
      * List memberships across every unit the caller may read, token-paginated, narrowed by the
      * membership facet set (D-ObjectFacets, M56). A non-instance-admin caller sees only
@@ -225,6 +242,44 @@ export class MembershipService implements IMembershipService {
             [
                 unitId,
             ],
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Facet distributions for the membership roster — the dashboard half of the facet vocabulary
+     * (M57 / D-ObjectFacets). Takes exactly the filter args `listMemberships` takes (minus paging),
+     * so a dashboard and a list are two renderings of ONE request state and a chart segment is a
+     * link to the same URL with one more filter applied.
+     *
+     * Counted INSIDE the reach predicate, before anything is cut: `totalCount` equals the number of
+     * rows exhaustively paging `listMemberships` with these same filters would return. One
+     * round-trip serves the whole dashboard.
+     *
+     * The path is `/stats/memberships` rather than `/memberships/stats` because the server's router
+     * rejects a literal path segment that is a sibling of `{membershipId}` — see the route-conflict
+     * guard in `internal/platform/transport`.
+     *
+     */
+    public membershipStats(facets?: string | null, unitId?: string | null, personId?: string | null, positionId?: string | null, status?: string | null, effectiveFromAfter?: string | null, effectiveFromBefore?: string | null): Promise<IMembershipStats> {
+        return this.bridge.call<IMembershipStats>(
+            "MembershipService",
+            "membershipStats",
+            "GET",
+            "/membership/v1/stats/memberships",
+            __undefined,
+            __undefined,
+            {
+                "facets": facets,
+                "unitId": unitId,
+                "personId": personId,
+                "positionId": positionId,
+                "status": status,
+                "effectiveFromAfter": effectiveFromAfter,
+                "effectiveFromBefore": effectiveFromBefore,
+            },
+            __undefined,
             __undefined,
             __undefined
         );

@@ -2744,6 +2744,32 @@ also owns the `facets` CSV selection and rule 2's omission. Its one invariant: *
 lands in exactly one bucket** — an undeclared enum value is appended rather than dropped — so a facet
 over the listed table's own column always sums to `totalCount`.
 
+**As built (M57 ticket 2 — `link__member_of`, `order`, `document`), adding two things and correcting one.**
+
+- **The arm convention lives in the kernel, not in five transports.** An empty subject means "no
+  visibility predicate" to every stats query, and `pep.SubjectAuthority` returns `("", false)` for a
+  MACHINE subject (M51: a principal has no person identity and no reach) — so a non-admin with no
+  subject would have been handed whole-instance counts. Ticket 1's tenant transport encoded that
+  collapse itself, which is exactly the shape of edit that turns into a leak. `stats.Compute` now owns
+  it — pick the arm, run the module's aggregate, assemble, label — and **all five types route through
+  it**: a non-admin with no subject reads nothing.
+- **The set-vs-probe verdict is re-measured per table, not inherited.** Ticket 1's conclusion was
+  reached on `person`, whose reach lands on the membership row; `document` reaches through the HOLDER
+  and is the case that broke the set form for lists. Measured, the set form still wins at every reach
+  (documents 25.7 / 218 / 4 322 ms against the probe's 12 447 / 15 771 / 23 651 ms), so all five types
+  ship one scoped query.
+- **A `dateTrunc` facet's `(unknown)` bucket is emitted even when empty**, like every other strategy's:
+  an order register with no drafts must still show a zero draft backlog, or the chart changes shape as
+  the data does. (Ticket 1 had no `dateTrunc` facet, so the kernel's inconsistency was unreachable.)
+
+The one facet-level cost worth recording: a top-N over a HIGH-CARDINALITY ref column is expensive —
+`link__member_of.personId` costs 8.6 s alone at 10^6 distinct persons, because the ranking window sorts
+every group to keep fifteen. It is a FILTER facet, not one of the catalog's charts, and the dashboard as
+drawn costs 1.3 s admin / 3.2 s root instead of 9.6 / 11.1 — which is what the `facets` CSV is for. The
+bounded-top-N alternative is costed in
+[review-2026-07](review-2026-07.md#m57-ticket-2--the-membership--order--document-dashboards-2026-07-30)
+and deliberately not built.
+
 ---
 
 ### D-ConsoleDashboards — Every listable type gets a list view and a dashboard view over one URL-borne filter set (amends D-WebUI)

@@ -47,6 +47,20 @@ type OrderServiceClient interface {
 	   widen what the caller may see: filtering can only narrow the visible set.
 	*/
 	ListOrders(ctx context.Context, authHeader bearertoken.Token, pageSizeArg *int, pageTokenArg *string, issuingUnitIdArg *string, orderTypeIdArg *string, statusArg *string, issuedOnFromArg *string, issuedOnToArg *string) (OrderPage, error)
+	/*
+	   Facet distributions for the order register — the dashboard half of the facet vocabulary
+	   (M57 / D-ObjectFacets). Takes exactly the filter args `listOrders` takes (minus paging), so a
+	   dashboard and a list are two renderings of one request state.
+
+	   Counted INSIDE the reach predicate on the issuing unit: `totalCount` equals what exhaustively
+	   paging `listOrders` with these filters would return. The `issuedOn` distribution's
+	   `(unknown)` bucket is the DRAFT backlog — a draft has no issue date.
+
+	   The path is `/stats/orders` rather than `/orders/stats` because the server's router rejects a
+	   literal path segment that is a sibling of `{orderId}` — see the route-conflict guard in
+	   `internal/platform/transport`.
+	*/
+	OrderStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, issuingUnitIdArg *string, orderTypeIdArg *string, statusArg *string, issuedOnFromArg *string, issuedOnToArg *string) (OrderStats, error)
 	// List an issuing unit's orders (headers only), token-paginated.
 	ListUnitOrders(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, pageSizeArg *int, pageTokenArg *string) (OrderPage, error)
 	// List orders affecting a person (via their items), token-paginated.
@@ -195,6 +209,43 @@ func (c *orderServiceClient) ListOrders(ctx context.Context, authHeader bearerto
 	return *returnVal, nil
 }
 
+func (c *orderServiceClient) OrderStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, issuingUnitIdArg *string, orderTypeIdArg *string, statusArg *string, issuedOnFromArg *string, issuedOnToArg *string) (OrderStats, error) {
+	var returnVal *OrderStats
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("OrderStats"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/order/v1/stats/orders"))
+	queryParams := make(url.Values)
+	if facetsArg != nil {
+		queryParams.Set("facets", fmt.Sprint(*facetsArg))
+	}
+	if issuingUnitIdArg != nil {
+		queryParams.Set("issuingUnitId", fmt.Sprint(*issuingUnitIdArg))
+	}
+	if orderTypeIdArg != nil {
+		queryParams.Set("orderTypeId", fmt.Sprint(*orderTypeIdArg))
+	}
+	if statusArg != nil {
+		queryParams.Set("status", fmt.Sprint(*statusArg))
+	}
+	if issuedOnFromArg != nil {
+		queryParams.Set("issuedOnFrom", fmt.Sprint(*issuedOnFromArg))
+	}
+	if issuedOnToArg != nil {
+		queryParams.Set("issuedOnTo", fmt.Sprint(*issuedOnToArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(OrderStats), werror.WrapWithContextParams(ctx, err, "orderStats failed")
+	}
+	if returnVal == nil {
+		return *new(OrderStats), werror.ErrorWithContextParams(ctx, "orderStats response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 func (c *orderServiceClient) ListUnitOrders(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, pageSizeArg *int, pageTokenArg *string) (OrderPage, error) {
 	var returnVal *OrderPage
 	var requestParams []httpclient.RequestParam
@@ -332,6 +383,20 @@ type OrderServiceClientWithAuth interface {
 	   widen what the caller may see: filtering can only narrow the visible set.
 	*/
 	ListOrders(ctx context.Context, pageSizeArg *int, pageTokenArg *string, issuingUnitIdArg *string, orderTypeIdArg *string, statusArg *string, issuedOnFromArg *string, issuedOnToArg *string) (OrderPage, error)
+	/*
+	   Facet distributions for the order register — the dashboard half of the facet vocabulary
+	   (M57 / D-ObjectFacets). Takes exactly the filter args `listOrders` takes (minus paging), so a
+	   dashboard and a list are two renderings of one request state.
+
+	   Counted INSIDE the reach predicate on the issuing unit: `totalCount` equals what exhaustively
+	   paging `listOrders` with these filters would return. The `issuedOn` distribution's
+	   `(unknown)` bucket is the DRAFT backlog — a draft has no issue date.
+
+	   The path is `/stats/orders` rather than `/orders/stats` because the server's router rejects a
+	   literal path segment that is a sibling of `{orderId}` — see the route-conflict guard in
+	   `internal/platform/transport`.
+	*/
+	OrderStats(ctx context.Context, facetsArg *string, issuingUnitIdArg *string, orderTypeIdArg *string, statusArg *string, issuedOnFromArg *string, issuedOnToArg *string) (OrderStats, error)
 	// List an issuing unit's orders (headers only), token-paginated.
 	ListUnitOrders(ctx context.Context, unitIdArg string, pageSizeArg *int, pageTokenArg *string) (OrderPage, error)
 	// List orders affecting a person (via their items), token-paginated.
@@ -375,6 +440,10 @@ func (c *orderServiceClientWithAuth) RevokeOrder(ctx context.Context, orderIdArg
 
 func (c *orderServiceClientWithAuth) ListOrders(ctx context.Context, pageSizeArg *int, pageTokenArg *string, issuingUnitIdArg *string, orderTypeIdArg *string, statusArg *string, issuedOnFromArg *string, issuedOnToArg *string) (OrderPage, error) {
 	return c.client.ListOrders(ctx, c.authHeader, pageSizeArg, pageTokenArg, issuingUnitIdArg, orderTypeIdArg, statusArg, issuedOnFromArg, issuedOnToArg)
+}
+
+func (c *orderServiceClientWithAuth) OrderStats(ctx context.Context, facetsArg *string, issuingUnitIdArg *string, orderTypeIdArg *string, statusArg *string, issuedOnFromArg *string, issuedOnToArg *string) (OrderStats, error) {
+	return c.client.OrderStats(ctx, c.authHeader, facetsArg, issuingUnitIdArg, orderTypeIdArg, statusArg, issuedOnFromArg, issuedOnToArg)
 }
 
 func (c *orderServiceClientWithAuth) ListUnitOrders(ctx context.Context, unitIdArg string, pageSizeArg *int, pageTokenArg *string) (OrderPage, error) {
@@ -452,6 +521,14 @@ func (c *orderServiceClientWithTokenProvider) ListOrders(ctx context.Context, pa
 		return *new(OrderPage), err
 	}
 	return c.client.ListOrders(ctx, bearertoken.Token(token), pageSizeArg, pageTokenArg, issuingUnitIdArg, orderTypeIdArg, statusArg, issuedOnFromArg, issuedOnToArg)
+}
+
+func (c *orderServiceClientWithTokenProvider) OrderStats(ctx context.Context, facetsArg *string, issuingUnitIdArg *string, orderTypeIdArg *string, statusArg *string, issuedOnFromArg *string, issuedOnToArg *string) (OrderStats, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(OrderStats), err
+	}
+	return c.client.OrderStats(ctx, bearertoken.Token(token), facetsArg, issuingUnitIdArg, orderTypeIdArg, statusArg, issuedOnFromArg, issuedOnToArg)
 }
 
 func (c *orderServiceClientWithTokenProvider) ListUnitOrders(ctx context.Context, unitIdArg string, pageSizeArg *int, pageTokenArg *string) (OrderPage, error) {

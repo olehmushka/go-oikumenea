@@ -2,6 +2,7 @@ import { ICreateOrderRequest } from "./createOrderRequest";
 import { ICreateOrderTypeRequest } from "./createOrderTypeRequest";
 import { IOrder } from "./order";
 import { IOrderPage } from "./orderPage";
+import { IOrderStats } from "./orderStats";
 import { IOrderType } from "./orderType";
 import { IRevokeOrderRequest } from "./revokeOrderRequest";
 import { IUpdateOrderRequest } from "./updateOrderRequest";
@@ -48,6 +49,21 @@ export interface IOrderService {
      *
      */
     listOrders(pageSize?: number | null, pageToken?: string | null, issuingUnitId?: string | null, orderTypeId?: string | null, status?: string | null, issuedOnFrom?: string | null, issuedOnTo?: string | null): Promise<IOrderPage>;
+    /**
+     * Facet distributions for the order register — the dashboard half of the facet vocabulary
+     * (M57 / D-ObjectFacets). Takes exactly the filter args `listOrders` takes (minus paging), so a
+     * dashboard and a list are two renderings of one request state.
+     *
+     * Counted INSIDE the reach predicate on the issuing unit: `totalCount` equals what exhaustively
+     * paging `listOrders` with these filters would return. The `issuedOn` distribution's
+     * `(unknown)` bucket is the DRAFT backlog — a draft has no issue date.
+     *
+     * The path is `/stats/orders` rather than `/orders/stats` because the server's router rejects a
+     * literal path segment that is a sibling of `{orderId}` — see the route-conflict guard in
+     * `internal/platform/transport`.
+     *
+     */
+    orderStats(facets?: string | null, issuingUnitId?: string | null, orderTypeId?: string | null, status?: string | null, issuedOnFrom?: string | null, issuedOnTo?: string | null): Promise<IOrderStats>;
     /** List an issuing unit's orders (headers only), token-paginated. */
     listUnitOrders(unitId: string, pageSize?: number | null, pageToken?: string | null): Promise<IOrderPage>;
     /** List orders affecting a person (via their items), token-paginated. */
@@ -182,6 +198,42 @@ export class OrderService implements IOrderService {
             {
                 "pageSize": pageSize,
                 "pageToken": pageToken,
+                "issuingUnitId": issuingUnitId,
+                "orderTypeId": orderTypeId,
+                "status": status,
+                "issuedOnFrom": issuedOnFrom,
+                "issuedOnTo": issuedOnTo,
+            },
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Facet distributions for the order register — the dashboard half of the facet vocabulary
+     * (M57 / D-ObjectFacets). Takes exactly the filter args `listOrders` takes (minus paging), so a
+     * dashboard and a list are two renderings of one request state.
+     *
+     * Counted INSIDE the reach predicate on the issuing unit: `totalCount` equals what exhaustively
+     * paging `listOrders` with these filters would return. The `issuedOn` distribution's
+     * `(unknown)` bucket is the DRAFT backlog — a draft has no issue date.
+     *
+     * The path is `/stats/orders` rather than `/orders/stats` because the server's router rejects a
+     * literal path segment that is a sibling of `{orderId}` — see the route-conflict guard in
+     * `internal/platform/transport`.
+     *
+     */
+    public orderStats(facets?: string | null, issuingUnitId?: string | null, orderTypeId?: string | null, status?: string | null, issuedOnFrom?: string | null, issuedOnTo?: string | null): Promise<IOrderStats> {
+        return this.bridge.call<IOrderStats>(
+            "OrderService",
+            "orderStats",
+            "GET",
+            "/order/v1/stats/orders",
+            __undefined,
+            __undefined,
+            {
+                "facets": facets,
                 "issuingUnitId": issuingUnitId,
                 "orderTypeId": orderTypeId,
                 "status": status,

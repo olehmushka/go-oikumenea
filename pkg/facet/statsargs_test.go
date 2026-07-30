@@ -29,9 +29,9 @@ import (
 // listed here fails, and a type listed here that HAS a stats endpoint fails too, so the list cannot
 // outlive its reason (the NonFacetArg.Why idiom).
 var statsPending = map[string]string{
-	"link__member_of": "M57 ticket 2 — membership stats endpoint",
-	"order":           "M57 ticket 2 — order stats endpoint",
-	"document":        "M57 ticket 2 — document stats endpoint",
+	// EMPTY as of M57 ticket 2: all five registered types ship a stats endpoint. An M58 type registered
+	// without one belongs here with the ticket that lands it, and TestEveryTypeIsBoundOrPending fails
+	// either way — an unbound type with no entry, or an entry for a type that has since been bound.
 }
 
 func TestEveryTypeIsBoundOrPending(t *testing.T) {
