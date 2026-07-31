@@ -437,3 +437,29 @@ func ageBands() []facet.Band {
 	}
 	return nil
 }
+
+// TestSelectionTopNCoversEveryTopNKind is a regression test for a bug the LIVE run caught and no unit
+// test would have: TopN() used to look only for a ref facet, so a selection made entirely of `code`
+// facets (M58's audit dashboard asking for `action` + `targetType` and nothing else) bound top_n = 0.
+// Every bucket then failed the `rk <= top_n` test and collapsed into `(other)` — a chart that is not
+// empty, not an error, and completely wrong.
+func TestSelectionTopNCoversEveryTopNKind(t *testing.T) {
+	o := facet.ObjectType{
+		Type: "audit", Module: "audit", ListEndpoint: "AuditService.query",
+		Ledger: "a test ledger whose rows carry no type token of their own, as the real one does",
+		Facets: []facet.Facet{
+			{Key: "outcome", Kind: facet.KindEnum, Table: "oikumenea.audit_log", Column: "outcome",
+				Values: []string{"success", "denied"}, Buckets: facet.Buckets{Strategy: facet.StrategyIdentity}},
+			{Key: "action", Kind: facet.KindCode, Table: "oikumenea.audit_log", Column: "action",
+				Buckets: facet.Buckets{Strategy: facet.StrategyTopN, TopN: 15}},
+		},
+	}
+	sel, err := Select(o, "outcome,action", nil)
+	if err != nil {
+		t.Fatalf("Select: %v", err)
+	}
+	if got := sel.TopN(); got != 15 {
+		t.Errorf("TopN() = %d for a selection with a code facet and no ref facet; want 15 — a zero here "+
+			"collapses every ranked bucket into (other)", got)
+	}
+}

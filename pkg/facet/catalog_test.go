@@ -16,7 +16,8 @@ func TestDefaultRegistryBuilds(t *testing.T) {
 	if err := Default.MustBeBound(); err != nil {
 		t.Fatalf("catalog is not bound: %v", err)
 	}
-	want := []string{"person", "unit", "link__member_of", "order", "document"}
+	// M56 registered the first five; M58 adds `audit`, the first LEDGER type (no RID token).
+	want := []string{"person", "unit", "link__member_of", "order", "document", "audit"}
 	for _, w := range want {
 		o, ok := Default.Get(w)
 		if !ok {
@@ -27,7 +28,7 @@ func TestDefaultRegistryBuilds(t *testing.T) {
 		}
 	}
 	if got := len(Default.All()); got != len(want) {
-		t.Errorf("M56 registers exactly %v; got %d types", want, got)
+		t.Errorf("the catalog registers exactly %v; got %d types", want, got)
 	}
 }
 
@@ -289,5 +290,53 @@ func TestExemptIsMutuallyExclusive(t *testing.T) {
 	}
 	if got := r.Exemptions(); len(got) != 1 || got[0] != "person" {
 		t.Errorf("Exemptions()=%v", got)
+	}
+}
+
+// TestLedgerExemptionsAreEarned holds the ONE escape from the type-token check to its reason (M58).
+// `Ledger` exists for a collection whose rows carry no type of their own — the audit log, whose every
+// entry is keyed by an Action RID minted by the service that produced it. The danger is obvious: a
+// free-text field that turns "this token is not in pkg/rid" from an error into a shrug. So it must
+// carry a reason, must NOT name a token that IS registered (Register enforces that), and must stay
+// rare enough to notice — a second ledger is a conversation, not a copy-paste.
+func TestLedgerExemptionsAreEarned(t *testing.T) {
+	var ledgers []string
+	for _, o := range Default.All() {
+		if o.Ledger == "" {
+			continue
+		}
+		ledgers = append(ledgers, o.Type)
+		if len(strings.TrimSpace(o.Ledger)) < 40 {
+			t.Errorf("%s: Ledger must explain WHY the type has no RID token, in a sentence", o.Type)
+		}
+		if listableTypeTokens()[o.Type] {
+			t.Errorf("%s claims Ledger but IS a registered type token — the escape is for collections "+
+				"with no token, not a way around the check", o.Type)
+		}
+	}
+	// The floor, and the point of the test: exactly one type may be extraordinary without anyone
+	// noticing. This number changing is a review moment.
+	if len(ledgers) > 1 {
+		t.Errorf("more than one Ledger type registered (%v) — each is an exception to D-Ontology's "+
+			"kind rule and needs its own argument in decisions.md, not a precedent", ledgers)
+	}
+}
+
+// TestCodeFacetsCarryNoLabelPromise: a code facet's KEY IS ITS LABEL, which is the whole reason the
+// kind exists beside ref. Declaring a RefType on one would promise a labeler that will never be
+// called — Register already rejects it, and this says why in the place a reader looks for intent.
+func TestCodeFacetsCarryNoLabelPromise(t *testing.T) {
+	for _, o := range Default.All() {
+		for _, f := range o.Facets {
+			if f.Kind != KindCode {
+				continue
+			}
+			if f.RefType != "" {
+				t.Errorf("%s.%s is a code facet with RefType %q — a code bucket is its own label", o.Type, f.Key, f.RefType)
+			}
+			if f.Buckets.Strategy != StrategyTopN {
+				t.Errorf("%s.%s is a code facet bucketed %q — an open value set can only be ranked", o.Type, f.Key, f.Buckets.Strategy)
+			}
+		}
 	}
 }

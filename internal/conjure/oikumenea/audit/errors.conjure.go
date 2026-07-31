@@ -164,6 +164,161 @@ func (e *AuditEntryNotFound) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type auditQueryInvalid struct {
+	Reason string `json:"reason"`
+}
+
+func (o auditQueryInvalid) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *auditQueryInvalid) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewAuditQueryInvalid returns new instance of AuditQueryInvalid error.
+func NewAuditQueryInvalid(reasonArg string) *AuditQueryInvalid {
+	return &AuditQueryInvalid{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), auditQueryInvalid: auditQueryInvalid{Reason: reasonArg}}
+}
+
+// WrapWithAuditQueryInvalid returns new instance of AuditQueryInvalid error wrapping an existing error.
+func WrapWithAuditQueryInvalid(err error, reasonArg string) *AuditQueryInvalid {
+	return &AuditQueryInvalid{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, auditQueryInvalid: auditQueryInvalid{Reason: reasonArg}}
+}
+
+// AuditQueryInvalid is an error type.
+/*
+A malformed read: an undeclared `facets` key, or a filter value the vocabulary rejects
+(M58 / D-ObjectFacets). A facet the caller may not READ is never this error — it is omitted
+from the response (rule 2).
+*/
+type AuditQueryInvalid struct {
+	errorInstanceID uuid.UUID
+	auditQueryInvalid
+	cause error
+	stack werror.StackTrace
+}
+
+// IsAuditQueryInvalid returns true if err is an instance of AuditQueryInvalid.
+func IsAuditQueryInvalid(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*AuditQueryInvalid)
+	return ok
+}
+
+func (e *AuditQueryInvalid) Error() string {
+	return fmt.Sprintf("INVALID_ARGUMENT Audit:AuditQueryInvalid (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *AuditQueryInvalid) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *AuditQueryInvalid) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *AuditQueryInvalid) Message() string {
+	return "INVALID_ARGUMENT Audit:AuditQueryInvalid"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *AuditQueryInvalid) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *AuditQueryInvalid) Code() errors.ErrorCode {
+	return errors.InvalidArgument
+}
+
+// Name returns an error name identifying error type.
+func (e *AuditQueryInvalid) Name() string {
+	return "Audit:AuditQueryInvalid"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *AuditQueryInvalid) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *AuditQueryInvalid) Parameters() map[string]interface{} {
+	return map[string]interface{}{"reason": e.Reason}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *AuditQueryInvalid) safeParams() map[string]interface{} {
+	return map[string]interface{}{"reason": e.Reason, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *AuditQueryInvalid) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *AuditQueryInvalid) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *AuditQueryInvalid) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e AuditQueryInvalid) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.auditQueryInvalid)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.InvalidArgument, ErrorName: "Audit:AuditQueryInvalid", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *AuditQueryInvalid) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters auditQueryInvalid
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.auditQueryInvalid = parameters
+	return nil
+}
+
 func init() {
 	conjureerrors.RegisterErrorType("Audit:AuditEntryNotFound", reflect.TypeOf(AuditEntryNotFound{}))
+	conjureerrors.RegisterErrorType("Audit:AuditQueryInvalid", reflect.TypeOf(AuditQueryInvalid{}))
 }

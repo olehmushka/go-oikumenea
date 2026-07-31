@@ -46,6 +46,14 @@ const (
 	// KindRef is an RID pointing at another object. Buckets are top-N by count + an "other" bucket;
 	// labels resolve as locale -> text maps (D-i18n).
 	KindRef Kind = "ref"
+	// KindCode is a plaintext code column whose value set is OPEN — no CHECK constraint to enumerate
+	// (so not an enum, which zero-fills its declared values) and no RID to resolve (so not a ref,
+	// which needs a labeler). Buckets are top-N + "other", and the KEY IS ITS OWN LABEL: a dotted
+	// action code reads as itself, so nothing has to be looked up to draw the chart.
+	//
+	// M58's audit ledger is the first: `action` has a registry (pkg/action, 288 codes) but not a
+	// CHECK set, and enumerating it as enum Values to zero-fill 288 buckets would be absurd.
+	KindCode Kind = "code"
 	// KindDateRange filters with <key>From / <key>To (ISO-8601 calendar dates) and buckets by
 	// date_trunc to a grain or by named bands.
 	KindDateRange Kind = "date-range"
@@ -168,8 +176,33 @@ func (f Facet) ArgType() string {
 		return "boolean"
 	case KindNumericRange:
 		return "integer"
-	default: // enum, ref, date-range — all carried as strings (RIDs and YYYY-MM-DD dates included)
+	default: // enum, ref, code, date-range — all carried as strings (RIDs and YYYY-MM-DD dates included)
 		return "string"
+	}
+}
+
+// ArgTypes is every contract type this facet's arg may legally have — ArgType is the canonical one,
+// and these are the alternatives that preserve the property the vocabulary actually depends on:
+// A BUCKET KEY MUST REMAIN A USABLE FILTER VALUE.
+//
+//   - An ENUM facet may be carried as a CONJURE ENUM rather than a bare string (audit's actorType and
+//     outcome are). The bucket keys come from the database in the CHECK set's own lower-case spelling
+//     while the enum's members are upper-case — which would be a broken click-through, except that a
+//     generated enum's UnmarshalText upper-cases before matching, so `outcome=denied` is accepted.
+//     That is the whole reason this is allowed, so it is written here rather than assumed: if the
+//     generator ever stops normalizing case, this list is wrong and the click-through breaks.
+//   - A DATE-RANGE facet may be carried as DATETIME rather than a calendar date (audit's since/until
+//     are, and they are timestamps because the ledger is written by the millisecond). The console must
+//     then declare `argType: "datetime"` so it widens a picked day to that day's RFC-3339 endpoints;
+//     the console guard checks exactly that, against this mirror.
+func (f Facet) ArgTypes() []string {
+	switch f.Kind {
+	case KindEnum:
+		return []string{"string", "enum"}
+	case KindDateRange:
+		return []string{"string", "datetime"}
+	default:
+		return []string{f.ArgType()}
 	}
 }
 
@@ -228,6 +261,20 @@ type ObjectType struct {
 	StatsEndpoint string
 	Facets        []Facet
 	NonFacetArgs  []NonFacetArg
+	// Ledger is the REASON a type's token is not an RID type token, and empty for every ordinary
+	// collection. It is the single, narrow escape from the token check below, and it exists because
+	// of one real case: the audit log (M58).
+	//
+	// The kind rule is unchanged — an action INVOCATION is still not listable. What a ledger says is
+	// that the RECORD of those invocations is a collection: its rows have identity, attributes and
+	// history, and they list and filter exactly like an object. There is no RID type token for such
+	// a row because an audit entry's RID belongs to the service that PRODUCED the action (tenant,
+	// person, …), never to `audit` — so registering one would make rid.TokenOf describe identifiers
+	// that never exist, which is worse than admitting the exception.
+	//
+	// Register still refuses a Ledger token that IS an RID token, so the field cannot smuggle a real
+	// type past the check it exempts.
+	Ledger string
 }
 
 // Registry holds the registered object types plus the deliberate exemptions. The zero value is not
@@ -285,8 +332,12 @@ func (r *Registry) Register(o ObjectType) error {
 	switch {
 	case o.Type == "":
 		return errors.New("facet: object type has no Type")
-	case !listableTypeTokens()[o.Type]:
-		return fmt.Errorf("facet: %q is not a registered object or link type token (pkg/rid)", o.Type)
+	case o.Ledger == "" && !listableTypeTokens()[o.Type]:
+		return fmt.Errorf("facet: %q is not a registered object or link type token (pkg/rid) — "+
+			"a collection whose rows carry no type of their own must say so via Ledger", o.Type)
+	case o.Ledger != "" && listableTypeTokens()[o.Type]:
+		return fmt.Errorf("facet: %q is a registered type token, so it must not claim Ledger — "+
+			"the escape is for collections that have NO token, not a way around the check", o.Type)
 	case o.Module == "":
 		return fmt.Errorf("facet: object type %q has no Module", o.Type)
 	case o.ListEndpoint == "":
@@ -323,7 +374,7 @@ func (r *Registry) Register(o ObjectType) error {
 	// cutoff would silently get the other one's. Cross-facet, so it cannot live in validateFacet.
 	topN := 0
 	for _, f := range o.Facets {
-		if f.Kind != KindRef {
+		if f.Buckets.Strategy != StrategyTopN {
 			continue
 		}
 		if topN == 0 {
@@ -331,8 +382,8 @@ func (r *Registry) Register(o ObjectType) error {
 			continue
 		}
 		if f.Buckets.TopN != topN {
-			return fmt.Errorf("facet: %s ref facet %q declares TopN %d but the type already uses %d — "+
-				"one stats query binds a single top_n for every ref branch", o.Type, f.Key, f.Buckets.TopN, topN)
+			return fmt.Errorf("facet: %s top-N facet %q declares TopN %d but the type already uses %d — "+
+				"one stats query binds a single top_n for every top-N branch", o.Type, f.Key, f.Buckets.TopN, topN)
 		}
 	}
 	for _, n := range o.NonFacetArgs {
@@ -371,7 +422,7 @@ func validateFacet(objectType string, f Facet) error {
 		if len(f.Values) == 0 {
 			return fmt.Errorf("%s: enum facet must declare Values (the CHECK set, in chart order)", where)
 		}
-	case KindRef, KindDateRange, KindBool, KindNumericRange:
+	case KindRef, KindCode, KindDateRange, KindBool, KindNumericRange:
 		if len(f.Values) > 0 {
 			return fmt.Errorf("%s: Values is meaningful only for an enum facet", where)
 		}
@@ -399,8 +450,10 @@ func validateBuckets(where string, f Facet) error {
 			return fmt.Errorf("%s: identity buckets require an enum facet", where)
 		}
 	case StrategyTopN:
-		if f.Kind != KindRef {
-			return fmt.Errorf("%s: topN buckets require a ref facet", where)
+		// ref and code both rank an open value set: the difference is whether the key is an RID that
+		// needs a labeler or a code that reads as itself.
+		if f.Kind != KindRef && f.Kind != KindCode {
+			return fmt.Errorf("%s: topN buckets require a ref or code facet", where)
 		}
 		if b.TopN <= 0 {
 			return fmt.Errorf("%s: topN buckets require a positive TopN", where)

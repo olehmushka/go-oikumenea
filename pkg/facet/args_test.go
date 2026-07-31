@@ -44,8 +44,8 @@ func TestEveryFacetHasItsQueryArg(t *testing.T) {
 						o.Type, f.Key, arg, o.ListEndpoint)
 					continue
 				}
-				if want := f.ArgType(); got.Type != want {
-					t.Errorf("%s.%s arg %q is %s in the contract, but a %s facet must be carried as %s",
+				if want := f.ArgTypes(); !argTypeAllowed(got.Type, want) {
+					t.Errorf("%s.%s arg %q is %s in the contract, but a %s facet must be carried as one of %v",
 						o.Type, f.Key, arg, got.Type, f.Kind, want)
 				}
 				if got.Optional == f.Required {
@@ -131,6 +131,21 @@ func checkClass(t *testing.T, o ObjectType, n NonFacetArg, a ArgSpec) {
 	default:
 		t.Errorf("%s arg %q carries unknown class %q", o.Type, a.Name, n.Class)
 	}
+}
+
+// argTypeAllowed accepts a Conjure ENUM reference wherever "enum" is legal: the IR mirror records a
+// named enum as its reference token ("oikumenea.audit.AuditOutcome"), not as the word "enum", so the
+// match is on shape rather than on a literal.
+func argTypeAllowed(got string, allowed []string) bool {
+	for _, w := range allowed {
+		if got == w {
+			return true
+		}
+		if w == "enum" && strings.Contains(got, ".") {
+			return true
+		}
+	}
+	return false
 }
 
 // requireSupersededByFacet proves a "superseded" exemption names a facet that genuinely replaces the

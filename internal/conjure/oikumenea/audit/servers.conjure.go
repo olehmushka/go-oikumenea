@@ -24,6 +24,26 @@ exactly like `person.read` (PDP over the closure + shadow gate) once authorizati
 type AuditService interface {
 	// Query the log, filterable by actor/target/unit/action/outcome/time, token-paginated.
 	Query(ctx context.Context, authHeader bearertoken.Token, actorPersonIdArg *string, actorTypeArg *AuditActorType, targetTypeArg *string, targetIdArg *string, unitIdArg *string, actionArg *string, outcomeArg *AuditOutcome, sinceArg *datetime.DateTime, untilArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditEntryPage, error)
+	/*
+	   Facet distributions over the ledger — the dashboard half of the facet vocabulary (M58 /
+	   D-ObjectFacets). Takes exactly the filter args `query` takes (minus paging) plus an optional
+	   `facets` CSV, so a dashboard and a list are two renderings of ONE request state and a chart
+	   segment is a link to the same URL with one more filter applied.
+
+	   Counted INSIDE the row-level security policy that governs `query` itself: `totalCount`
+	   equals the number of rows exhaustively paging `query` with these same filters would return.
+	   One round-trip serves the whole dashboard.
+
+	   `since`/`until` prune the month partitions, and are the only thing that bounds how much of
+	   an ever-growing ledger this reads. Nothing is defaulted here — a hidden window would make
+	   `totalCount` disagree with the caller's own filters — so the console sends its default
+	   window as a real, visible filter.
+
+	   The path is `/stats/audit` rather than `/audit/stats` because the server's router rejects a
+	   literal path segment that is a sibling of `{entryId}` — see the route-conflict guard in
+	   `internal/platform/transport`.
+	*/
+	AuditStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, actorPersonIdArg *string, actorTypeArg *AuditActorType, targetTypeArg *string, targetIdArg *string, unitIdArg *string, actionArg *string, outcomeArg *AuditOutcome, sinceArg *datetime.DateTime, untilArg *datetime.DateTime) (AuditStats, error)
 	// Read one entry by its Action RID. Returns Audit:AuditEntryNotFound when absent.
 	Get(ctx context.Context, authHeader bearertoken.Token, entryIdArg string) (AuditEntry, error)
 	/*
@@ -52,6 +72,9 @@ func RegisterRoutesAuditService(router wrouter.Router, impl AuditService, router
 	resource := wresource.New("auditservice", router)
 	if err := resource.Get("Query", "/audit/v1/audit", httpserver.NewJSONHandler(handler.HandleQuery, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add query route")
+	}
+	if err := resource.Get("AuditStats", "/audit/v1/stats/audit", httpserver.NewJSONHandler(handler.HandleAuditStats, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add auditStats route")
 	}
 	if err := resource.Get("Get", "/audit/v1/audit/{entryId}", httpserver.NewJSONHandler(handler.HandleGet, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add get route")
@@ -145,6 +168,81 @@ func (a *auditServiceHandler) HandleQuery(rw http.ResponseWriter, req *http.Requ
 		pageTokenArg = &pageTokenArgInternal
 	}
 	respArg, err := a.impl.Query(req.Context(), bearertoken.Token(authHeader), actorPersonIdArg, actorTypeArg, targetTypeArg, targetIdArg, unitIdArg, actionArg, outcomeArg, sinceArg, untilArg, pageSizeArg, pageTokenArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (a *auditServiceHandler) HandleAuditStats(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var facetsArg *string
+	if facetsArgStr := req.URL.Query().Get("facets"); facetsArgStr != "" {
+		facetsArgInternal := facetsArgStr
+		facetsArg = &facetsArgInternal
+	}
+	var actorPersonIdArg *string
+	if actorPersonIdArgStr := req.URL.Query().Get("actorPersonId"); actorPersonIdArgStr != "" {
+		actorPersonIdArgInternal := actorPersonIdArgStr
+		actorPersonIdArg = &actorPersonIdArgInternal
+	}
+	var actorTypeArg *AuditActorType
+	if actorTypeArgStr := req.URL.Query().Get("actorType"); actorTypeArgStr != "" {
+		var actorTypeArgInternal AuditActorType
+		if err := actorTypeArgInternal.UnmarshalText([]byte(actorTypeArgStr)); err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"actorType\" as AuditActorType")
+		}
+		actorTypeArg = &actorTypeArgInternal
+	}
+	var targetTypeArg *string
+	if targetTypeArgStr := req.URL.Query().Get("targetType"); targetTypeArgStr != "" {
+		targetTypeArgInternal := targetTypeArgStr
+		targetTypeArg = &targetTypeArgInternal
+	}
+	var targetIdArg *string
+	if targetIdArgStr := req.URL.Query().Get("targetId"); targetIdArgStr != "" {
+		targetIdArgInternal := targetIdArgStr
+		targetIdArg = &targetIdArgInternal
+	}
+	var unitIdArg *string
+	if unitIdArgStr := req.URL.Query().Get("unitId"); unitIdArgStr != "" {
+		unitIdArgInternal := unitIdArgStr
+		unitIdArg = &unitIdArgInternal
+	}
+	var actionArg *string
+	if actionArgStr := req.URL.Query().Get("action"); actionArgStr != "" {
+		actionArgInternal := actionArgStr
+		actionArg = &actionArgInternal
+	}
+	var outcomeArg *AuditOutcome
+	if outcomeArgStr := req.URL.Query().Get("outcome"); outcomeArgStr != "" {
+		var outcomeArgInternal AuditOutcome
+		if err := outcomeArgInternal.UnmarshalText([]byte(outcomeArgStr)); err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"outcome\" as AuditOutcome")
+		}
+		outcomeArg = &outcomeArgInternal
+	}
+	var sinceArg *datetime.DateTime
+	if sinceArgStr := req.URL.Query().Get("since"); sinceArgStr != "" {
+		sinceArgInternal, err := datetime.ParseDateTime(sinceArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"since\" as datetime")
+		}
+		sinceArg = &sinceArgInternal
+	}
+	var untilArg *datetime.DateTime
+	if untilArgStr := req.URL.Query().Get("until"); untilArgStr != "" {
+		untilArgInternal, err := datetime.ParseDateTime(untilArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"until\" as datetime")
+		}
+		untilArg = &untilArgInternal
+	}
+	respArg, err := a.impl.AuditStats(req.Context(), bearertoken.Token(authHeader), facetsArg, actorPersonIdArg, actorTypeArg, targetTypeArg, targetIdArg, unitIdArg, actionArg, outcomeArg, sinceArg, untilArg)
 	if err != nil {
 		return err
 	}

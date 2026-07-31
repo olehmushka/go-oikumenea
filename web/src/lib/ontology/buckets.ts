@@ -44,10 +44,11 @@ export function bucketPatch(
     case "bool":
     case "ref":
       return { [f.params[0]]: bucketKey };
+    case "code":
+      return { [f.params[0]]: bucketKey };
     case "date-range":
-      return f.buckets === "bands"
-        ? ageBandPatch(f, bucketKey, now)
-        : monthPatch(f, bucketKey);
+      if (f.buckets === "bands") return ageBandPatch(f, bucketKey, now);
+      return /^\d{4}-\d{2}-\d{2}$/.test(bucketKey) ? dayPatch(f, bucketKey) : monthPatch(f, bucketKey);
     case "numeric-range":
       return numericBandPatch(f, bucketKey);
     default:
@@ -95,6 +96,42 @@ function monthPatch(f: FilterDef, key: string): FilterPatch | null {
   const first = new Date(Date.UTC(year, month - 1, 1));
   const last = new Date(Date.UTC(year, month, 0)); // day 0 of the next month = last of this one
   return { [f.params[0]]: isoDate(first), [f.params[1]]: isoDate(last) };
+}
+
+/** `2026-07-30` → that day's bounds, in whichever form the facet's args take. */
+function dayPatch(f: FilterDef, key: string): FilterPatch | null {
+  if (f.params.length < 2) return null;
+  return f.argType === "datetime"
+    ? { [f.params[0]]: dayBound(key, false), [f.params[1]]: dayBound(key, true) }
+    : { [f.params[0]]: key, [f.params[1]]: key };
+}
+
+/**
+ * A calendar day widened to one end of its RFC-3339 span, for an arg the contract types as a
+ * DATETIME (audit's since/until). The upper bound is the last representable millisecond of the day
+ * rather than the next midnight, because the endpoint's bounds are INCLUSIVE — `until` at the next
+ * day's 00:00:00 would silently swallow one instant of the following day into every bucket.
+ *
+ * The one place this conversion lives: the filter control and the histogram's click-through must
+ * agree exactly, or a clicked bar and a typed date would select different rows.
+ */
+export function dayBound(day: string, upper: boolean): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return day; // empty (a cleared input) or already a timestamp
+  return upper ? `${day}T23:59:59.999Z` : `${day}T00:00:00.000Z`;
+}
+
+/** The inverse, for seeding a `<input type="date">` from whatever the URL holds. */
+export function dayInput(value: string): string {
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(value);
+  return m ? m[1] : "";
+}
+
+/** `-P30D` → the ISO timestamp 30 days before `now`; anything else passes through unchanged. A
+ *  dashboard's default window is written relatively so a shared link means "the last 30 days" when
+ *  the reader opens it, not when the author did. */
+export function resolveDefaultParam(value: string, now: Date): string {
+  const m = /^-P(\d+)D$/.exec(value);
+  return m ? plusDays(now, -Number(m[1])).toISOString() : value;
 }
 
 /** A numeric band needs a min/max PAIR; with a single scalar arg only a one-value band is expressible. */

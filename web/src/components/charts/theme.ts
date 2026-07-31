@@ -120,6 +120,21 @@ export function fmtMonth(key: string, locale: string): string {
   }).format(d);
 }
 
+/** `2026-07-30` → `30 Jul` in the active locale (the year lives on the axis, not on every tick). */
+export function fmtDay(key: string, locale: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return key;
+  return new Intl.DateTimeFormat(INTL_TAG[locale] ?? "en", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  }).format(new Date(`${key}T00:00:00Z`));
+}
+
+/** A dateTrunc bucket key rendered at whichever grain it came back at. */
+export function fmtTimeBucket(key: string, locale: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(key) ? fmtDay(key, locale) : fmtMonth(key, locale);
+}
+
 /** Truncate a label to fit a fixed gutter; the full text always survives in the mark's <title>. */
 export function clip(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1)}…`;

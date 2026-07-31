@@ -986,7 +986,7 @@ type MembershipStatsRow struct {
 	Ord    pgtype.Int8
 }
 
-// ============================ dashboard aggregates (M57) ============================
+// ==================== the roster's own dashboard aggregate (M57 ticket 2) ====================
 // The INSTANCE-ADMIN dashboard aggregate for the membership roster (M57 / D-ObjectFacets): every
 // selected facet's distribution plus the total, in ONE round-trip and ONE scan of the candidate set.
 // The candidate CTE carries ListMemberships' filter block VERBATIM — the list and the dashboard must

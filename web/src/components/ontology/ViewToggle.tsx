@@ -10,7 +10,8 @@
 
 import Link from "next/link";
 import { T } from "@/components/T";
-import { exploreHref } from "@/lib/ontology/filters";
+import { dashboardDefaults, exploreHref } from "@/lib/ontology/filters";
+import { OBJECT_TYPES } from "@/lib/ontology/registry";
 
 export type ViewKey = "table" | "tree" | "dashboard";
 
@@ -34,6 +35,9 @@ export function ViewToggle({
   defaultView?: ViewKey;
 }) {
   if (views.length < 2) return null;
+  // The dashboard link carries the type's default window (audit's last 30 days) when the URL sets
+  // none of it — so arriving at the dashboard is already scoped, and the chip says so.
+  const defaults = dashboardDefaults(OBJECT_TYPES[type], sp, new Date());
   const labels: Record<ViewKey, string> = {
     table: "Table",
     tree: "Tree",
@@ -44,7 +48,10 @@ export function ViewToggle({
       {views.map((v) => (
         <Link
           key={v}
-          href={exploreHref(type, sp, { view: v === defaultView ? undefined : v })}
+          href={exploreHref(type, sp, {
+            view: v === defaultView ? undefined : v,
+            ...(v === "dashboard" ? defaults : {}),
+          })}
           className={v === current ? "btn-primary" : "btn-ghost"}
           aria-current={v === current ? "page" : undefined}
         >

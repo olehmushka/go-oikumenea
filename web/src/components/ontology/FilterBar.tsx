@@ -20,6 +20,7 @@ import { SearchSelect } from "@/components/SearchSelect";
 import { UnitSelect } from "@/components/UnitSelect";
 import { useTg } from "@/lib/locale";
 import { holds, type Capabilities, NO_CAPS } from "@/lib/ontology/caps";
+import { dayBound, dayInput } from "@/lib/ontology/buckets";
 import { exploreHref, filterParams } from "@/lib/ontology/filters";
 import { OBJECT_TYPES, type FilterDef } from "@/lib/ontology/registry";
 import { ridTail } from "@/lib/ontology/rid";
@@ -265,25 +266,74 @@ function Widget({
     );
   }
 
+  // A `code` facet is an OPEN text dimension — no CHECK set to enumerate and no RID to pick. Where a
+  // catalog exists behind it (audit.action → the R-29 action types) it gets a select over that
+  // catalog; otherwise a free-text box, because the honest control for an open set is typing.
+  if (f.kind === "code") {
+    if (f.catalog === "actionType") {
+      return (
+        <ScopedSelect
+          path="/audit/v1/action-types"
+          // The catalog is keyed by `code`, not by a RID — map it onto the {id, code} shape the
+          // control reads, so the value it selects IS the code the filter arg takes.
+          pick={(d) =>
+            (Array.isArray(d) ? d : []).map((a) => {
+              const code = (a as { code?: string }).code ?? "";
+              return { id: code, code };
+            })
+          }
+          value={val(p0)}
+          onChange={(id) => set(p0, id)}
+          unscopedLabel=""
+        />
+      );
+    }
+    return (
+      <input
+        type="text"
+        className="input w-44"
+        defaultValue={val(p0)}
+        autoComplete="off"
+        onBlur={(e) => {
+          if (e.currentTarget.value.trim() !== val(p0)) set(p0, e.currentTarget.value.trim());
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            set(p0, e.currentTarget.value.trim());
+          }
+        }}
+      />
+    );
+  }
+
   // ARITY COMES FROM params, NOT kind: unit.level is a numeric-range with ONE param (the contract's
   // pre-existing scalar arg). Rendering a min/max pair off the kind would send args that do not exist.
   if (f.kind === "date-range" || f.kind === "numeric-range") {
     const inputType = f.kind === "date-range" ? "date" : "number";
+    // A datetime-typed range (audit's since/until) still gets a DATE picker — an operator filters by
+    // day, not by second — but the value SENT has to be that day's RFC-3339 endpoints, because the
+    // contract's arg is a timestamp and a bare YYYY-MM-DD is a 400. Lower bound → start of day, upper
+    // bound → end of day, so picking the same date twice selects exactly that day. dayInput() renders
+    // a stored timestamp back as a date, so the control round-trips.
+    const wire = (raw: string, isUpper: boolean) =>
+      f.argType === "datetime" ? dayBound(raw, isUpper) : raw;
     return (
       <span className="flex items-center gap-1">
-        {f.params.map((p) => (
+        {f.params.map((p, i) => (
           <input
             key={p}
             type={inputType}
             className="input w-36"
-            defaultValue={val(p)}
+            defaultValue={f.argType === "datetime" ? dayInput(val(p)) : val(p)}
             onBlur={(e) => {
-              if (e.currentTarget.value !== val(p)) set(p, e.currentTarget.value);
+              const next = wire(e.currentTarget.value, i === f.params.length - 1);
+              if (next !== val(p)) set(p, next);
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
-                set(p, e.currentTarget.value);
+                set(p, wire(e.currentTarget.value, i === f.params.length - 1));
               }
             }}
           />

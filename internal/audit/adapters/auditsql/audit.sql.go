@@ -11,6 +11,185 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const auditStats = `-- name: AuditStats :many
+
+WITH cand AS MATERIALIZED (
+  SELECT actor_type, actor_person_id, action, target_type, target_id, unit_id, outcome, created_at
+  FROM oikumenea.audit_log
+  WHERE ($1::uuid IS NULL OR actor_person_id = $1::uuid)
+    AND ($2::text     IS NULL OR actor_type      = $2)
+    AND ($3::text    IS NULL OR target_type     = $3)
+    AND ($4::text      IS NULL OR target_id       = $4)
+    AND ($5::uuid        IS NULL OR unit_id         = $5::uuid)
+    AND ($6::text         IS NULL OR action          = $6)
+    AND ($7::text        IS NULL OR outcome         = $7)
+    AND ($8::timestamptz   IS NULL OR created_at      >= $8)
+    AND ($9::timestamptz   IS NULL OR created_at      <= $9)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n, NULL::bigint AS ord
+FROM cand
+UNION ALL
+SELECT 'actorType'::text, c.actor_type::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE $10::boolean GROUP BY 2
+UNION ALL
+SELECT 'outcome'::text, c.outcome::text, count(*)::bigint, NULL::bigint
+FROM cand c WHERE $11::boolean GROUP BY 2
+UNION ALL
+SELECT 'actorPersonId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $12::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.actor_person_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE $13::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'unitId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $12::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.unit_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE $14::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'action'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $12::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.action::text AS k, count(*) AS n
+            FROM cand c
+            WHERE $15::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'targetType'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $12::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.target_type::text AS k, count(*) AS n
+            FROM cand c
+            WHERE $16::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'targetId'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $12::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint, NULL::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.target_id::text AS k, count(*) AS n
+            FROM cand c
+            WHERE $17::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'createdAt'::text, to_char(date_trunc('day', c.created_at), 'YYYY-MM-DD'), count(*)::bigint, NULL::bigint
+FROM cand c WHERE $18::boolean GROUP BY 2
+`
+
+type AuditStatsParams struct {
+	ActorPersonID     pgtype.Text
+	ActorType         pgtype.Text
+	TargetType        pgtype.Text
+	TargetID          pgtype.Text
+	UnitID            pgtype.Text
+	Action            pgtype.Text
+	Outcome           pgtype.Text
+	Since             pgtype.Timestamptz
+	Until             pgtype.Timestamptz
+	WantActorType     bool
+	WantOutcome       bool
+	TopN              int32
+	WantActorPersonID bool
+	WantUnitID        bool
+	WantAction        bool
+	WantTargetType    bool
+	WantTargetID      bool
+	WantCreatedAt     bool
+}
+
+type AuditStatsRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+	Ord    pgtype.Int8
+}
+
+// ==================== the ledger's dashboard aggregate (M58 ticket 1) ====================
+// Every selected facet's distribution plus the total, in ONE round-trip and ONE scan of the candidate
+// set (M58 / D-ObjectFacets). The candidate CTE carries QueryAuditLog's filter block VERBATIM — minus
+// the keyset cursor, which is a page boundary and not a filter — so the list and the dashboard see one
+// world. A branch whose want_* flag is false is SKIPPED by the planner, not merely dropped from the
+// response, so asking for two facets costs two facets.
+//
+// ONE ARM, unlike the five M57 types, and the reason is worth stating rather than inferring: audit
+// visibility is the RLS policy on audit_log (a unit_id reach probe; NULL-unit rows admin-only), not an
+// app-layer reach predicate the query folds in. There is therefore no subject to pass and no scoped
+// twin — but the read MUST run on the request-pinned connection, where the app.* GUCs the policy reads
+// are set. On the bare pool this same statement returns a confident ZERO.
+//
+// created_at is the PARTITION KEY (monthly range partitions, review-2026-07 R-07): a since/until bound
+// prunes whole partitions, and without one this scans the entire ledger. That is why the console sends
+// a default window as a real filter rather than this query inventing one.
+//
+// Day grain, not month: an audit trail is read day by day, and a monthly bar hides the spike an
+// auditor is looking for.
+func (q *Queries) AuditStats(ctx context.Context, arg AuditStatsParams) ([]AuditStatsRow, error) {
+	rows, err := q.db.Query(ctx, auditStats,
+		arg.ActorPersonID,
+		arg.ActorType,
+		arg.TargetType,
+		arg.TargetID,
+		arg.UnitID,
+		arg.Action,
+		arg.Outcome,
+		arg.Since,
+		arg.Until,
+		arg.WantActorType,
+		arg.WantOutcome,
+		arg.TopN,
+		arg.WantActorPersonID,
+		arg.WantUnitID,
+		arg.WantAction,
+		arg.WantTargetType,
+		arg.WantTargetID,
+		arg.WantCreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AuditStatsRow
+	for rows.Next() {
+		var i AuditStatsRow
+		if err := rows.Scan(
+			&i.Facet,
+			&i.Bucket,
+			&i.N,
+			&i.Ord,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const ensureAuditPartitions = `-- name: EnsureAuditPartitions :exec
 SELECT oikumenea.ensure_audit_partition(CURRENT_DATE),
        oikumenea.ensure_audit_partition((date_trunc('month', CURRENT_DATE) + interval '1 month')::date)

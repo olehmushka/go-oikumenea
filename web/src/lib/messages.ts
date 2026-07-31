@@ -448,6 +448,25 @@ const glossaryUkr: Record<string, string> = {
     "Точний підрахунок за вікном, а не наближення за межами місяця.",
   "Months already past are overdue documents, not a forecast.":
     "Минулі місяці — це прострочені документи, а не прогноз.",
+  // ── audit dashboard (M58 ticket 1) ──
+  "Audit entry": "Запис аудиту", "Actor type": "Тип виконавця",
+  "When": "Коли", "Success": "Успіх", "Denied": "Відмовлено", "Error": "Помилка",
+  "System": "Система", "Top actions": "Найчастіші дії", "Top actors": "Найактивніші виконавці",
+  "Actions per day": "Дії за днями",
+  "A denial rate is the number an auditor opens this dashboard for.":
+    "Частка відмов — саме той показник, заради якого аудитор відкриває цей дашборд.",
+  "By day, not by month: a monthly bar hides the spike an audit trail is read for.":
+    "За днями, а не за місяцями: місячний стовпчик приховує сплеск, заради якого читають журнал.",
+  "The dotted action code is its own label — the catalog behind it is GET /audit/v1/action-types.":
+    "Крапковий код дії є власною назвою — за ним стоїть каталог GET /audit/v1/action-types.",
+  "The unlabelled bucket is system actions, which name a subsystem rather than a person.":
+    "Непідписана частка — системні дії, які називають підсистему, а не особу.",
+  "A system action names a subsystem instead of a person.":
+    "Системна дія називає підсистему замість особи.",
+  "Inclusive bounds. They also prune the ledger's monthly partitions, so a narrower window is a faster page.":
+    "Межі включно. Вони також відсікають місячні партиції журналу, тож вужче вікно — швидша сторінка.",
+  "The append-only ledger of every permission-sensitive action (D-Audit).":
+    "Журнал лише-для-додавання кожної дії, чутливої до дозволів (D-Audit).",
   // command-palette specifics
   "Overview": "Огляд", "Ontology": "Онтологія", "Authorize": "Авторизація",
   "Localization": "Локалізація", "Audit": "Аудит",
@@ -976,6 +995,25 @@ const glossarySpa: Record<string, string> = {
     "Un conteo exacto sobre la ventana, no una aproximación por límites de mes.",
   "Months already past are overdue documents, not a forecast.":
     "Los meses ya pasados son documentos vencidos, no un pronóstico.",
+  // ── audit dashboard (M58 ticket 1) ──
+  "Audit entry": "Entrada de auditoría", "Actor type": "Tipo de actor",
+  "When": "Cuándo", "Success": "Éxito", "Denied": "Denegado", "Error": "Error",
+  "System": "Sistema", "Top actions": "Acciones más frecuentes", "Top actors": "Actores más activos",
+  "Actions per day": "Acciones por día",
+  "A denial rate is the number an auditor opens this dashboard for.":
+    "La tasa de denegaciones es la cifra por la que un auditor abre este panel.",
+  "By day, not by month: a monthly bar hides the spike an audit trail is read for.":
+    "Por día, no por mes: una barra mensual oculta el pico por el que se lee una traza de auditoría.",
+  "The dotted action code is its own label — the catalog behind it is GET /audit/v1/action-types.":
+    "El código de acción con puntos es su propia etiqueta; el catálogo detrás es GET /audit/v1/action-types.",
+  "The unlabelled bucket is system actions, which name a subsystem rather than a person.":
+    "El grupo sin etiqueta son acciones del sistema, que nombran un subsistema en lugar de una persona.",
+  "A system action names a subsystem instead of a person.":
+    "Una acción del sistema nombra un subsistema en lugar de una persona.",
+  "Inclusive bounds. They also prune the ledger's monthly partitions, so a narrower window is a faster page.":
+    "Límites inclusivos. También podan las particiones mensuales del registro, así que una ventana más estrecha es una página más rápida.",
+  "The append-only ledger of every permission-sensitive action (D-Audit).":
+    "El registro de solo anexado de cada acción sensible a permisos (D-Audit).",
   // command-palette specifics
   "Overview": "Resumen", "Ontology": "Ontología", "Authorize": "Autorizar",
   "Localization": "Localización", "Audit": "Auditoría",
@@ -1504,6 +1542,25 @@ const glossaryPor: Record<string, string> = {
     "Uma contagem exata na janela, não uma aproximação por limites de mês.",
   "Months already past are overdue documents, not a forecast.":
     "Meses já passados são documentos vencidos, não uma previsão.",
+  // ── audit dashboard (M58 ticket 1) ──
+  "Audit entry": "Registro de auditoria", "Actor type": "Tipo de ator",
+  "When": "Quando", "Success": "Sucesso", "Denied": "Negado", "Error": "Erro",
+  "System": "Sistema", "Top actions": "Ações mais frequentes", "Top actors": "Atores mais ativos",
+  "Actions per day": "Ações por dia",
+  "A denial rate is the number an auditor opens this dashboard for.":
+    "A taxa de negações é o número pelo qual um auditor abre este painel.",
+  "By day, not by month: a monthly bar hides the spike an audit trail is read for.":
+    "Por dia, não por mês: uma barra mensal esconde o pico pelo qual se lê uma trilha de auditoria.",
+  "The dotted action code is its own label — the catalog behind it is GET /audit/v1/action-types.":
+    "O código de ação com pontos é o próprio rótulo — o catálogo por trás é GET /audit/v1/action-types.",
+  "The unlabelled bucket is system actions, which name a subsystem rather than a person.":
+    "O grupo sem rótulo são ações do sistema, que nomeiam um subsistema em vez de uma pessoa.",
+  "A system action names a subsystem instead of a person.":
+    "Uma ação do sistema nomeia um subsistema em vez de uma pessoa.",
+  "Inclusive bounds. They also prune the ledger's monthly partitions, so a narrower window is a faster page.":
+    "Limites inclusivos. Eles também podam as partições mensais do registro, então uma janela mais estreita é uma página mais rápida.",
+  "The append-only ledger of every permission-sensitive action (D-Audit).":
+    "O livro-razão somente-anexação de cada ação sensível a permissões (D-Audit).",
   // command-palette specifics
   "Overview": "Visão geral", "Ontology": "Ontologia", "Authorize": "Autorizar",
   "Localization": "Localização", "Audit": "Auditoria",

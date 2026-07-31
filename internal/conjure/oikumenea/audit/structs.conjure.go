@@ -270,6 +270,147 @@ func (o *AuditEntryPage) UnmarshalYAML(unmarshal func(interface{}) error) error 
 }
 
 /*
+Facet distributions over the SAME set `query` returns under the same filters (M58 /
+D-ObjectFacets): `totalCount` is what exhaustively paging that endpoint would yield, not an
+estimate and not a page count.
+
+Visibility is the row-level security policy on `audit_log`, exactly as it is for `query`:
+entries whose unit is outside the caller's reach are not counted, and NULL-unit (system /
+instance-plane) entries are counted only for an instance admin. There is no separate scoped
+query because there is no separate scoped read.
+
+The ledger is month-partitioned and unbounded, so `since`/`until` are the only lever that
+limits how much of it a dashboard touches — the console sends a default window rather than
+this endpoint applying one, so that `totalCount` always describes exactly the filters in the
+request.
+*/
+type AuditStats struct {
+	TotalCount int                 `json:"totalCount"`
+	Facets     []FacetDistribution `json:"facets"`
+}
+
+func (o AuditStats) MarshalJSON() ([]byte, error) {
+	if o.Facets == nil {
+		o.Facets = make([]FacetDistribution, 0)
+	}
+	type _tmpAuditStats AuditStats
+	return safejson.Marshal(_tmpAuditStats(o))
+}
+
+func (o *AuditStats) UnmarshalJSON(data []byte) error {
+	type _tmpAuditStats AuditStats
+	var rawAuditStats _tmpAuditStats
+	if err := safejson.Unmarshal(data, &rawAuditStats); err != nil {
+		return err
+	}
+	if rawAuditStats.Facets == nil {
+		rawAuditStats.Facets = make([]FacetDistribution, 0)
+	}
+	*o = AuditStats(rawAuditStats)
+	return nil
+}
+
+func (o AuditStats) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *AuditStats) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+One bucket of a facet distribution (M58 / D-ObjectFacets).
+
+`key` is the bucket's stable, locale-agnostic identity — an enum value, a `YYYY-MM-DD` day,
+a RID for a `ref` facet, or a plain code for a `code` facet (`action`, `targetType`) — and
+is exactly what you pass back as the corresponding query filter, which is what makes a chart
+segment and a filter the same act. Two synthetic keys never name a real value: `(unknown)`
+is the NULL bucket (mandatory for a nullable column, so the gap is visible rather than
+dropped) and `(other)` is a top-N facet's collapsed tail; neither is a usable filter value.
+
+`label` carries a display name as a locale → text map (D-i18n) and is present only for `ref`
+buckets, whose keys are RIDs. A `code` bucket carries none by design: the key is its own
+label. Best effort — an id with no resolvable name simply carries no label.
+*/
+type FacetBucket struct {
+	Key   string             `json:"key"`
+	Label *map[string]string `json:"label,omitempty"`
+	Count int                `json:"count"`
+}
+
+func (o FacetBucket) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *FacetBucket) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+One facet's buckets, in chart order — for an enum, the declared CHECK-set order with
+zero-count buckets included so a chart's shape is stable across filterings; for the daily
+histogram, ascending by day; for a ref or code facet, descending by count with
+`(other)`/`(unknown)` last.
+*/
+type FacetDistribution struct {
+	Facet   string        `json:"facet"`
+	Buckets []FacetBucket `json:"buckets"`
+}
+
+func (o FacetDistribution) MarshalJSON() ([]byte, error) {
+	if o.Buckets == nil {
+		o.Buckets = make([]FacetBucket, 0)
+	}
+	type _tmpFacetDistribution FacetDistribution
+	return safejson.Marshal(_tmpFacetDistribution(o))
+}
+
+func (o *FacetDistribution) UnmarshalJSON(data []byte) error {
+	type _tmpFacetDistribution FacetDistribution
+	var rawFacetDistribution _tmpFacetDistribution
+	if err := safejson.Unmarshal(data, &rawFacetDistribution); err != nil {
+		return err
+	}
+	if rawFacetDistribution.Buckets == nil {
+		rawFacetDistribution.Buckets = make([]FacetBucket, 0)
+	}
+	*o = FacetDistribution(rawFacetDistribution)
+	return nil
+}
+
+func (o FacetDistribution) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *FacetDistribution) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
 A paginated, reverse-chronological history of one object, read from the audit ledger
 (D-Temporal tier b, R-31). Serves the "what did this record say / who changed it when"
 question a Gotham-style dossier timeline needs.

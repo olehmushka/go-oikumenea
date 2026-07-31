@@ -54,6 +54,7 @@ Facet kinds and what each contributes:
 | `date-range` | `<key>From` / `<key>To` (RFC 3339 / `date`) | `date_trunc` to a caller-chosen grain, or named bands | `order.issuedOn`, `person.birthdate` |
 | `bool` | `true`/`false` | two buckets | `unit.pdpScoped` |
 | `numeric-range` | `<key>Min` / `<key>Max` | fixed-width bands | `unit.level` |
+| `code` | one plaintext code | top-N by count + `other`; **the key is its own label** (nothing to resolve) | `audit.action`, `audit.targetType` |
 
 ## The three rules that keep a facet legal
 
@@ -221,11 +222,45 @@ Facets and components in brief; each is expanded to the table form above when it
 | **location** (`location_locations`) | `countryId`, `typeId`, `hasCoordinate` | Locations per country bar · type mix bar · geocoded-vs-not tile |
 | **languoid** (`language_languoids`) | `level`, `macroarea`, `status`, `family` | Level mix donut · macroarea bar · endangerment-status bar (**ordered by severity**) |
 | **assignment** (`authz_role_assignments`) | `roleId`, `targetUnitId`, `scope`, `graphId`, `active`, `expiresAt`(range) | Grants per role bar · unit-vs-subtree donut · expiring-soon tile + histogram · active-vs-revoked tiles |
-| **audit** (`audit_log`) | *already has 9 filter args* — formalize as facets: `actorType`, `action`, `targetType`, `outcome`, `unitId`, `since`/`until` | Actions per day histogram · outcome donut (denied toned `red`) · top actions bar · top actors bar |
 
-`audit` is the cheapest and most convincing first M58 module: its filter args already exist, so it
-becomes a stats endpoint and a dashboard with no contract churn — the "audit analytics" use the R-29
-action-type catalog was partly built for.
+#### `audit` — [audit](../modules/audit.md) · `audit_log` — **BUILT (M58 ticket 1)**
+
+The first **ledger**: an audit row records one Action, and that Action's RID belongs to the service
+that produced it, so there is no `audit` token in `pkg/rid` for the catalog to validate against.
+`ObjectType.Ledger` carries the reason and is the only escape from the token check; the kind rule
+itself is untouched — an action *invocation* is still not listable, but the RECORD of one is a row in
+a collection like any other.
+
+| Facet | Kind | Source | Notes |
+|---|---|---|---|
+| `actorType` | enum | `actor_type` | `person` / `system`. Carried on the wire as a Conjure ENUM, which is legal because a generated enum upper-cases on unmarshal — so a bucket key (`person`, the DB's own spelling) is still a usable filter value |
+| `actorPersonId` | ref | `actor_person_id` → person | Nullable; the `(unknown)` bucket is exactly the system half of `actorType` |
+| `action` | code | `action` | The dotted action code. `pkg/action`'s registry (R-29) is its value set, but the column carries no CHECK — an enum whose `Values` zero-filled 288 buckets would be absurd |
+| `targetType` | code | `target_type` | The acted-on entity kind; open-set text |
+| `targetId` | code | `target_id` | A FILTER facet with no chart (the `link__member_of.personId` precedent) — polymorphic, so its buckets carry no labels and must not |
+| `outcome` | enum | `outcome` | `success` / `denied` / `error` |
+| `unitId` | ref | `unit_id` → unit | The column the RLS read policy probes. NULL = a system / instance-plane event, visible only to an instance admin — so that bucket is empty for everyone else BY THE POLICY, not by a Go-side trim |
+| `createdAt` | date-range | `created_at` | **ArgOverride `since`/`until`** (they predate the vocabulary, the membership case). Conjure **datetime**, not calendar dates, so the console declares `argType: "datetime"` and widens a picked day to its RFC-3339 endpoints. `dateTrunc` at **DAY** grain — the first |
+
+**Components.** ① **Outcome donut**, denied toned `red` — a denial rate is the number an auditor opens
+this dashboard for. ② **Actions per day** histogram; day rather than month, because a monthly bar hides
+the spike an audit trail is read for. ③ **Top actions** bar. ④ **Top actors** bar, whose unlabelled
+bucket is the system actions.
+
+> **Two things are structurally different here, and both are properties of the ledger.**
+> **Visibility is RLS**: `audit_log` is `FORCE ROW LEVEL SECURITY` with a `unit_id` reach probe, and
+> the transport gate is the coarse `audit.read`-anywhere — so the aggregate ships **ONE arm**, with no
+> subject and no scoped twin. The whole of the visibility decision is which connection it runs on; on
+> the bare pool it answers a confident zero, which is what the `db` source guard now covers for audit
+> too. And the table is **month-partitioned and unbounded**: `since`/`until` are the only pruning
+> lever, so the console's dashboard link carries a **30-day default window in the URL** — a visible,
+> clearable chip rather than a server-side default that would make `totalCount` disagree with the
+> caller's own filters.
+
+`audit` was the cheapest and most convincing first M58 module for the reason the milestone gave (its
+filter args already existed) and for one it did not: every way it differs from the M57 five is a
+place where the kernel had quietly assumed something — an RID-typed collection, a closed value set,
+an app-layer visibility predicate, a month-grain axis. All four assumptions are now named.
 
 ---
 
@@ -302,6 +337,13 @@ idiom — so the mechanism cannot decay into an allowlist. `filters:` blocks mus
 literal `key`/`kind`/`params` literals; the constraint is stated in `registry.ts` beside the
 interface, where the edit happens.
 
+M58 ticket 1 adds three more checks, each earned by something the audit ledger does that nothing else
+does: **`Ledger` must explain itself** (a reason of substance, a token that is NOT registered, and no
+more than one such type in the catalog — a second ledger is a conversation, not a copy-paste); a
+**`code` facet may not name a RefType** (its key is its own label, so a labeler would be a promise
+never kept); and the console's **`argType`** must match the contract's (a `datetime` arg the console
+does not know about produces a control and a chart link that both 400).
+
 The **non-facet classes** gained a fourth in the same ticket: `superseded`, for an arg a facet's own
 args have replaced and that the expand-only contract cannot remove (`unit.level`). Its check is
 earned like the others — the named successor must exist, be a RANGE facet over the same column, take
@@ -348,6 +390,11 @@ inverse of a calendar month. Same non-vacuity floor, same live-negative fixtures
   never had the problem — `birthdateFrom`/`birthdateTo` already existed, and the inverse of an age
   band is a birthdate range (`age >= lo ⟺ birthdate <= today − lo years`, `age <= hi ⟺ birthdate >=
   today − (hi+1) years + 1 day`).
+- **A ledger's aggregate has ONE arm, and that is not a shortcut.** Every M57 type ships an
+  admin/scoped pair because the visibility predicate is folded into SQL. `audit` ships one, because
+  its visibility is the RLS policy — the query carries no subject at all. What replaces the parity
+  guard there is the source guard: unpinned, the same statement answers a confident zero. If a future
+  type's policy ever needs an app-layer predicate as WELL, the pair comes back.
 - **D-ObjectFacets rule 2 has no live case yet.** Every facet in the catalog is `pii:none`/`pii:basic`
   with an empty `ReadPermission`, so no caller has ever seen a facet omitted. The console's
   absent-is-not-empty branch (an omitted facet draws NO card, never a zeroed one) is therefore

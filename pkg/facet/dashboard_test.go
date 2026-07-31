@@ -331,6 +331,44 @@ func TestConsoleBucketStrategiesMatchTheCatalog(t *testing.T) {
 	}
 }
 
+// TestConsoleArgTypesMatchTheContract holds the console's `argType` against the IR mirror. It exists
+// because of one concrete failure: audit's since/until are Conjure DATETIMEs, so a control that sends
+// a bare `2026-07-30` gets a 400, and a histogram bar that links to one sends the operator to an error
+// page rather than to its own rows. The console must therefore know a range arg is a timestamp — and
+// knowing it is exactly the kind of fact that rots when it lives only in someone's memory.
+//
+// Both directions: a datetime arg the console does not declare, and a declaration on an arg the
+// contract types as a plain date.
+func TestConsoleArgTypesMatchTheContract(t *testing.T) {
+	parsed := parseConsoleRegistry(t)
+	for _, o := range Default.All() {
+		byKey := map[string]consoleFilter{}
+		for _, d := range parsed[o.Type] {
+			byKey[d.key] = d
+		}
+		shipped := map[string]ArgSpec{}
+		for _, a := range listArgs[o.Type] {
+			shipped[a.Name] = a
+		}
+		for _, f := range o.Facets {
+			d, ok := byKey[f.Key]
+			if !ok {
+				continue // console_test.go already reports the missing FilterDef
+			}
+			want := ""
+			for _, arg := range f.Args() {
+				if shipped[arg].Type == "datetime" {
+					want = "datetime"
+				}
+			}
+			if d.argType != want {
+				t.Errorf("%s.%s: console argType=%q, contract wants %q — a datetime arg needs day bounds, "+
+					"a date arg must not get them", o.Type, f.Key, d.argType, want)
+			}
+		}
+	}
+}
+
 // TestConsoleDashboardsAreNonVacuous is what makes the regex parse safe, exactly as
 // TestConsoleFilterDefsAreNonVacuous does for the filter blocks.
 func TestConsoleDashboardsAreNonVacuous(t *testing.T) {

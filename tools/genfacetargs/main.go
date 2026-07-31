@@ -83,6 +83,10 @@ type argSpec struct {
 // genactionendpoints parses pkg/action/registry.go. Deliberately strict: it requires the three fields
 // in declaration order, so a reformat that breaks it trips the zero-bindings guard below rather than
 // silently dropping a type.
+// typeDeclRe counts the object types the catalog DECLARES, so a binding the strict regex misses is a
+// hard error rather than a silently thinner mirror.
+var typeDeclRe = regexp.MustCompile(`(?m)^\s*Type:\s*"[a-z_][a-z0-9_]*",`)
+
 var bindingRe = regexp.MustCompile(`Type:\s*"([a-z_][a-z0-9_]*)",\s*Module:\s*"([a-z][a-z0-9_-]*)",\s*ListEndpoint:\s*"([A-Za-z]+)\.([A-Za-z][A-Za-z0-9]*)",` +
 	`(?:\s*StatsEndpoint:\s*"([A-Za-z]+)\.([A-Za-z][A-Za-z0-9]*)",)?`)
 
@@ -111,6 +115,15 @@ func main() {
 	matches := bindingRe.FindAllStringSubmatch(string(catSrc), -1)
 	if len(matches) == 0 {
 		log.Fatalf("genfacetargs: parsed 0 object types from %s — matcher regex out of date?", *catPath)
+	}
+	// A PARTIAL miss is the dangerous one: zero bindings is loud, but one type silently skipped (a
+	// field slipped between Type: and Module:, which the strict regex requires adjacent) writes a
+	// mirror that looks healthy and quietly stops checking that type. Count the Type: declarations
+	// and demand they all matched.
+	if declared := len(typeDeclRe.FindAllString(string(catSrc), -1)); declared != len(matches) {
+		log.Fatalf("genfacetargs: %s declares %d object types but only %d matched the binding regex — "+
+			"a field between Type:, Module: and ListEndpoint: breaks the match and would drop a type "+
+			"from the mirror", *catPath, declared, len(matches))
 	}
 
 	// Index the IR by "Service.endpoint".

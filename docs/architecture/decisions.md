@@ -2653,6 +2653,18 @@ implementation and recorded so the remaining tickets do not re-litigate them:
   gains a `graph` arg that narrows the expansion to one graph. `graph` is classified as a traversal
   arg, not a facet; it is rejected on its own. The default is deliberately the same closure set the
   read-scope predicate walks, so the filter cannot widen what a caller may see.
+- **A LEDGER may be faceted, though an action may not.** The kind rule stands — an action
+  *invocation* is not a collection — but the RECORD of one is: `audit_log`'s rows have identity,
+  attributes and history, and they list and filter exactly like an object. They also have no RID type
+  token, because each row's RID is minted by the service that PRODUCED the action (`kind=action`,
+  generic type 0), so registering an `audit` type would make `rid.TokenOf` describe identifiers that
+  never exist. `ObjectType.Ledger` is therefore a one-field escape from the token check that carries
+  its own REASON, is refused for a token that is registered, and is held to at most one type by a
+  guard — a second ledger is an argument to have here, not a precedent to follow (M58 ticket 1).
+- **A facet may name an OPEN value set (`KindCode`).** `audit.action` has a registry behind it
+  (`pkg/action`, R-29) but no CHECK constraint, and `target_type` has neither. A `code` facet is
+  ranked top-N like a ref and carries NO labels, because its key is its own label — which is also why
+  it may not declare a `RefType`.
 - **`unit.level` binds `levelMin`/`levelMax`, and the legacy scalar is *superseded*, not removed.**
   Until M57 ticket 3 the facet pinned the pre-existing scalar `level` via `ArgOverride` and the range
   args were "additive and deferred to when the bands are consumed". A dashboard consumes them: a band

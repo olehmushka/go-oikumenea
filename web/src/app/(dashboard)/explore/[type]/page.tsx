@@ -13,6 +13,7 @@ import { ViewToggle, type ViewKey } from "@/components/ontology/ViewToggle";
 import { OBJECT_TYPES, type Row } from "@/lib/ontology/registry";
 import {
   apiQuery,
+  dashboardDefaults,
   exploreExtraQuery,
   hasActiveFilters,
   readQuery,
@@ -55,6 +56,11 @@ export default async function ExplorePage({
 
   const sp = toSearchParams(await searchParams);
   const view = sp.get("view") ?? undefined;
+  // A dashboard that opens on a bare URL still gets its default window: /explore/audit IS the
+  // dashboard now, so applying the defaults only on the toggle link would leave the commonest entry
+  // point scanning the whole ledger. Written into `sp`, so every downstream consumer — the outbound
+  // query, the chips, the pager, every chart segment — sees one filter set.
+  for (const [k, v] of Object.entries(dashboardDefaults(def, sp, new Date()))) sp.set(k, v);
   // Units support a hierarchical (expand-on-click) Tree view alongside the flat Table; any type with
   // a registry dashboard also has a chart view over the same filters (M57, D-ConsoleDashboards).
   //

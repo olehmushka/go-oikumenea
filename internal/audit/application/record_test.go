@@ -11,6 +11,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/audit/domain"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/pkg/action"
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
 
 type stubRepo struct{ inserted bool }
@@ -19,6 +20,9 @@ func (r *stubRepo) Insert(context.Context, domain.Entry) error                  
 func (r *stubRepo) Get(context.Context, string) (domain.Entry, error)            { return domain.Entry{}, nil }
 func (r *stubRepo) Query(context.Context, domain.Filter) ([]domain.Entry, error) { return nil, nil }
 func (r *stubRepo) EnsureCurrentPartitions(context.Context) error                { return nil }
+func (r *stubRepo) Stats(context.Context, domain.Filter, stats.Selection) ([]stats.Group, error) {
+	return nil, nil
+}
 
 // a well-formed action RID (kind nibble = 3) so domain.Validate passes and the action-type gate runs.
 const actionRID = "00000000-0000-8300-8000-000000000000"

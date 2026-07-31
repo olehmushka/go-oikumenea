@@ -84,7 +84,7 @@ export interface ListDef {
 
 /** The kinds mirror pkg/facet's Kind verbatim (D-ObjectFacets); a facet is declared once by the
  *  module that owns the table and consumed twice — as a list filter here and as M57's groupBy key. */
-export type FilterKind = "enum" | "ref" | "date-range" | "bool" | "numeric-range";
+export type FilterKind = "enum" | "ref" | "code" | "date-range" | "bool" | "numeric-range";
 
 /** Which picker loads a `ref` filter's options. A token, not an imported EntityKind: importing from
  *  a "use client" module would drag it into a registry that server components import. */
@@ -129,6 +129,14 @@ export interface FilterDef {
   values?: { value: string; label: string }[];
   /** ref only */
   control?: RefControl;
+  /**
+   * `code` only: the catalog a code facet's values come from, when one exists. `audit.action` has the
+   * R-29 action-type registry behind it, so the control is a select over that; a code facet WITHOUT a
+   * catalog (targetType, targetId) gets a text box, which is the honest control for an open set.
+   * Separate from `control` because a code facet is not a ref — its value is the code itself, and
+   * conflating the two unions would let a ref facet name a catalog that returns no RIDs.
+   */
+  catalog?: "actionType";
   /** ref only: the param whose current value scopes this one's options (domain → unitKind) */
   dependsOn?: string;
   /** the arg is NON-optional in the contract (unit.org — listUnits rejects an unscoped listing) */
@@ -150,6 +158,15 @@ export interface FilterDef {
    * guard holds this against the catalog, so it cannot drift into decoration.
    */
   buckets?: "bands" | "dateTrunc";
+  /**
+   * The CONTRACT's type for a range facet's args, declared only where it is not the default `date`.
+   * `audit.createdAt` binds `since`/`until`, which are Conjure DATETIMEs: sending them a bare
+   * `YYYY-MM-DD` is a 400, so every producer of a bound (the filter control and the histogram's
+   * click-through alike) has to widen a day to its RFC-3339 endpoints. Declared rather than sniffed,
+   * and checked against the IR mirror by pkg/facet's guard, so the console and the contract cannot
+   * disagree about what a date means.
+   */
+  argType?: "date" | "datetime";
   /** the SQL semantics an operator would otherwise reverse-engineer from a surprising count */
   hint?: string;
 }
@@ -198,6 +215,19 @@ export interface DashboardDef {
   /** the stats endpoint path — `/stats/<collection>`, never `/<collection>/stats` (httprouter) */
   path: string;
   charts: ChartDef[];
+  /**
+   * Filters the Dashboard link applies when none of them is set — for a collection that is unbounded
+   * by nature (the audit ledger is month-partitioned and grows forever, and `since`/`until` are the
+   * only thing that prunes it).
+   *
+   * They land in the URL, so they are visible chips the operator can clear, and `totalCount` still
+   * describes exactly the filters in the request. A DEFAULT ON THE SERVER would be the opposite: a
+   * hidden narrowing that makes the count disagree with the caller's own filter set, which is the
+   * mistake the no-implicit-status-filter rule already forbids elsewhere.
+   *
+   * A value of the form `-P<n>D` means "n days before now", resolved per request.
+   */
+  defaultParams?: Record<string, string>;
 }
 
 export interface ObjectTypeDef {
@@ -269,6 +299,20 @@ const relTone = (v: unknown): Tone => {
   if (["active", "married"].includes(low)) return "green";
   if (["ended", "withdrawn", "disestablished", "divorced", "dissolved", "annulled", "widowed"].includes(low)) return "slate";
   return "amber";
+};
+
+/** Audit outcomes wear their own tones: a denial is the finding, an error is the operational fault. */
+const auditTone = (v: unknown): Tone => {
+  switch (String(v ?? "").toUpperCase()) {
+    case "SUCCESS":
+      return "green";
+    case "DENIED":
+      return "red";
+    case "ERROR":
+      return "amber";
+    default:
+      return "slate";
+  }
 };
 
 // ── the registry ────────────────────────────────────────────────────────────
@@ -1652,6 +1696,110 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
       { label: "Body", value: (e) => s(e.body) },
       { label: "Reviewed", value: (e) => s(e.reviewOn) },
       { label: "Effective from", value: (e) => s(e.effectiveFrom) },
+    ],
+  },
+
+  // The audit LEDGER (M58 ticket 1) — `kind: "action"` because its rows are exactly that: the record
+  // of one Action. It is the first explorable type that is not RID-typed (an entry's RID belongs to
+  // the service that produced the action), which pkg/facet admits through its `Ledger` escape.
+  //
+  // Two things here exist nowhere else in this file. `argType: "datetime"` on the createdAt filter:
+  // `since`/`until` are Conjure datetimes, so a bare YYYY-MM-DD is a 400 — the day-bounds helper in
+  // lib/ontology/buckets converts, for both the filter control and the histogram's click-through.
+  // And `defaultParams`: the ledger is month-partitioned and unbounded, so the dashboard opens on a
+  // 30-day window — carried in the URL as a real, visible, clearable filter, never a hidden default
+  // that would make totalCount disagree with the caller's own filter set.
+  audit: {
+    type: "audit",
+    kind: "action",
+    label: "Audit entry",
+    labelPlural: "Audit log",
+    module: "audit",
+    requires: "audit.read",
+    blurb: "The append-only ledger of every permission-sensitive action (D-Audit).",
+    list: {
+      path: "/audit/v1/audit",
+      search: "?pageSize=50",
+      parse: pageParse("entries"),
+    },
+    get: (id) => `/audit/v1/audit/${id}`,
+    title: (e) => s(e.action) || ridTail(e.id),
+    subtitle: (e) => s(e.targetType),
+    columns: [
+      { key: "createdAt", header: "When", value: (e) => s(e.createdAt) },
+      { key: "action", header: "Action", value: (e) => s(e.action), render: "mono" },
+      { key: "actor", header: "Actor", value: (e) => s(e.subsystem) || (s(e.actorPersonId) ? ridTail(s(e.actorPersonId)!) : undefined), render: "mono" },
+      { key: "targetType", header: "Target", value: (e) => s(e.targetType), render: "pill", tone: () => "slate" },
+      { key: "targetId", header: "Target id", value: (e) => (s(e.targetId) ? ridTail(s(e.targetId)!) : undefined), render: "mono" },
+      { key: "outcome", header: "Outcome", value: (e) => s(e.outcome), render: "pill", tone: (e) => auditTone(e.outcome) },
+    ],
+    filters: [
+      {
+        // The values are the DATABASE's spelling, not the Conjure enum's: a bucket key arrives as
+        // `person`, and a bucket key must be a usable filter value. The wire accepts it because a
+        // generated enum upper-cases before matching (see Facet.ArgTypes).
+        key: "actorType", kind: "enum", label: "Actor type", params: ["actorType"],
+        values: [
+          { value: "person", label: "Person" },
+          { value: "system", label: "System" },
+        ],
+        hint: "A system action names a subsystem instead of a person.",
+      },
+      { key: "actorPersonId", kind: "ref", label: "Actor", params: ["actorPersonId"], control: "person" },
+      { key: "action", kind: "code", label: "Action", params: ["action"], catalog: "actionType" },
+      { key: "targetType", kind: "code", label: "Target type", params: ["targetType"] },
+      { key: "targetId", kind: "code", label: "Target id", params: ["targetId"] },
+      {
+        key: "outcome", kind: "enum", label: "Outcome", params: ["outcome"],
+        values: [
+          { value: "success", label: "Success" },
+          { value: "denied", label: "Denied" },
+          { value: "error", label: "Error" },
+        ],
+      },
+      { key: "unitId", kind: "ref", label: "Unit", params: ["unitId"], control: "unit" },
+      {
+        // ArgOverride in the catalog: `since`/`until` predate the From/To convention, and they are
+        // DATETIMES rather than calendar dates.
+        key: "createdAt", kind: "date-range", label: "When", params: ["since", "until"],
+        buckets: "dateTrunc", argType: "datetime",
+        hint: "Inclusive bounds. They also prune the ledger's monthly partitions, so a narrower window is a faster page.",
+      },
+    ],
+    dashboard: {
+      path: "/audit/v1/stats/audit",
+      defaultParams: { since: "-P30D" },
+      charts: [
+        {
+          key: "outcome", title: "Outcome", form: "donut", facet: "outcome",
+          tone: { success: "green", denied: "red", error: "amber" },
+          note: "A denial rate is the number an auditor opens this dashboard for.",
+        },
+        {
+          key: "perDay", title: "Actions per day", form: "histogram", facet: "createdAt", pastDue: false,
+          note: "By day, not by month: a monthly bar hides the spike an audit trail is read for.",
+        },
+        {
+          key: "actions", title: "Top actions", form: "bar", facet: "action", orientation: "horizontal",
+          note: "The dotted action code is its own label — the catalog behind it is GET /audit/v1/action-types.",
+        },
+        {
+          key: "actors", title: "Top actors", form: "bar", facet: "actorPersonId", orientation: "horizontal",
+          note: "The unlabelled bucket is system actions, which name a subsystem rather than a person.",
+        },
+      ],
+    },
+    properties: [
+      { label: "Action", value: (e) => s(e.action), render: "mono" },
+      { label: "When", value: (e) => s(e.createdAt) },
+      { label: "Actor type", value: (e) => s(e.actorType), render: "pill" },
+      { label: "Actor", value: (e) => s(e.actorPersonId) ?? s(e.subsystem), render: "mono" },
+      { label: "Principal", value: (e) => s(e.actorPrincipalId), render: "mono" },
+      { label: "Target type", value: (e) => s(e.targetType) },
+      { label: "Target id", value: (e) => s(e.targetId), render: "mono" },
+      { label: "Unit", value: (e) => s(e.unitId), render: "mono" },
+      { label: "Outcome", value: (e) => s(e.outcome), render: "pill", tone: (e) => auditTone(e.outcome) },
+      { label: "Request id", value: (e) => s(e.requestId), render: "mono" },
     ],
   },
 };

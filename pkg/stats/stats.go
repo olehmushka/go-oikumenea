@@ -202,8 +202,13 @@ func (s Selection) Facets() []facet.Facet { return s.selected }
 // parameter is bound and unused. pkg/facet refuses a type whose ref facets disagree, so "shared" is
 // an invariant here rather than an assumption.
 func (s Selection) TopN() int {
+	// Every TOP-N facet, not just the ref ones: M58's `code` kind ranks an open value set exactly as a
+	// ref ranks RIDs, and a selection of code facets alone (audit's action + targetType, with no ref
+	// among them) would otherwise bind top_n = 0 and collapse EVERY bucket into `(other)` — a chart
+	// that is not empty, not an error, and entirely wrong. Register already holds one TopN per type,
+	// so the first is the type's.
 	for _, f := range s.selected {
-		if f.Kind == facet.KindRef {
+		if f.Buckets.Strategy == facet.StrategyTopN {
 			return f.Buckets.TopN
 		}
 	}

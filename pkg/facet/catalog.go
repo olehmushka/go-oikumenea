@@ -18,7 +18,7 @@ package facet
 // that is exactly why pkg/action's catalog+generator+test triad works. Module ownership is carried by
 // the mandatory Module field and enforced by the plaintext/table guards.
 func catalog() []ObjectType {
-	return []ObjectType{personType(), unitType(), membershipType(), orderType(), documentType()}
+	return []ObjectType{personType(), unitType(), membershipType(), orderType(), documentType(), auditType()}
 }
 
 // Default is the process-wide registry, built from the catalog. It panics on a malformed catalog:
@@ -482,6 +482,132 @@ func documentType() ObjectType {
 				Note: "Nullable, and the (unknown) bucket is the meaningful `(no expiry)` set — a " +
 					"permanent document, not missing data. M57's `expiring soon` tile reads the " +
 					"near-future buckets and tones past-due ones red.",
+			},
+		},
+		NonFacetArgs: []NonFacetArg{
+			{Arg: "pageSize", Class: ClassPaging, Why: "keyset page size (pkg/listing clamp)"},
+			{Arg: "pageToken", Class: ClassPaging, Why: "keyset cursor (pkg/listing codec)"},
+		},
+	}
+}
+
+// ── audit ───────────────────────────────────────────────────────────────────
+//
+// The first LEDGER type (M58), and the first that is not RID-typed: an audit row records one Action,
+// and that Action's RID belongs to the service that produced it (tenant, person, …), so there is no
+// `audit` token in pkg/rid to validate against — see ObjectType.Ledger for why inventing one would be
+// worse than the exception.
+//
+// Three things differ from the five M57 types, and each is a property of the ledger rather than a
+// special case:
+//
+//   - VISIBILITY IS RLS. `audit_log` is FORCE ROW LEVEL SECURITY with a unit_id-probing read policy,
+//     and the transport gate is the coarse RequireAnywhere(audit.read). So the aggregate is ONE query
+//     with no subject predicate — safe only because the read goes through the request-pinned
+//     connection, where the app.* GUCs the policy reads are set. On the bare pool the same query
+//     returns a confident ZERO (the M56/M57 bug shape the db source guard exists for).
+//   - `since`/`until` PREDATE the vocabulary, exactly as membership's effectiveFromAfter/Before do,
+//     so the createdAt facet pins them with an ArgOverride. They are Conjure `datetime`, not the
+//     calendar `date` every other range facet takes — the console declares that per FilterDef and the
+//     arg guard checks it, because sending a bare YYYY-MM-DD to them is a 400.
+//   - THE TABLE IS MONTH-PARTITIONED and never stops growing, so an unfiltered aggregate scans every
+//     partition. `since`/`until` are the only pruning lever there is, which is why the console's
+//     dashboard link carries a default window as a REAL, visible, clearable filter rather than the
+//     endpoint defaulting one behind the caller's back.
+//
+// Every column is pii:none — the pii:special ceiling is the before/after payload (D-PIITiers), which
+// is not, and can never be, a facet.
+func auditType() ObjectType {
+	return ObjectType{
+		// Type / Module / ListEndpoint / StatsEndpoint stay ADJACENT and in this order: the IR-mirror
+		// generator matches them as one strict pattern, and a field wedged between them drops the whole
+		// type from the mirror (now a hard error rather than a thinner mirror — genfacetargs).
+		Type:          "audit",
+		Module:        "audit",
+		ListEndpoint:  "AuditService.query",
+		StatsEndpoint: "AuditService.auditStats",
+		Ledger: "the append-only ledger of Actions (D-Audit): its rows are the RECORDS of actions, " +
+			"which list and filter like any collection, but each row's RID is minted by the producing " +
+			"service (kind=action, generic type 0), so no `audit` type exists in pkg/rid to name it",
+		Facets: []Facet{
+			{
+				Key:     "actorType",
+				Kind:    KindEnum,
+				Table:   "oikumenea.audit_log",
+				Column:  "actor_type",
+				Values:  []string{"person", "system"},
+				Buckets: Buckets{Strategy: StrategyIdentity},
+				Note:    "The two actor kinds (D-Audit). There is no super_admin kind — an instance admin is a person.",
+			},
+			{
+				Key:     "actorPersonId",
+				Kind:    KindRef,
+				Table:   "oikumenea.audit_log",
+				Column:  "actor_person_id",
+				RefType: "person",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
+				Note:    "NULL for system actions, whose actor is the `subsystem` string — the (unknown) bucket is exactly the system half of actorType.",
+			},
+			{
+				Key:     "action",
+				Kind:    KindCode,
+				Table:   "oikumenea.audit_log",
+				Column:  "action",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15},
+				Note: "The dotted action code. pkg/action's registry (R-29) is its value set, but the " +
+					"column carries no CHECK — hence KindCode rather than an enum whose Values would " +
+					"zero-fill 288 buckets.",
+			},
+			{
+				Key:     "targetType",
+				Kind:    KindCode,
+				Table:   "oikumenea.audit_log",
+				Column:  "target_type",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15},
+				Note:    "The acted-on entity kind (unit, person, role_assignment, …); open-set text, like `action`.",
+			},
+			{
+				Key:     "targetId",
+				Kind:    KindCode,
+				Table:   "oikumenea.audit_log",
+				Column:  "target_id",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
+				Note: "A FILTER facet with no chart, like link__member_of.personId: it is the drill-down " +
+					"the object-history view uses. POLYMORPHIC (a RID uuid text OR a natural code — the " +
+					"D-ResourceIdentifiers carve-out), so its buckets carry no labels and must not.",
+			},
+			{
+				Key:     "outcome",
+				Kind:    KindEnum,
+				Table:   "oikumenea.audit_log",
+				Column:  "outcome",
+				Values:  []string{"success", "denied", "error"},
+				Buckets: Buckets{Strategy: StrategyIdentity},
+				Note:    "M58 tones the denied segment red — a denial rate is the number an auditor opens this dashboard for.",
+			},
+			{
+				Key:     "unitId",
+				Kind:    KindRef,
+				Table:   "oikumenea.audit_log",
+				Column:  "unit_id",
+				RefType: "unit",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
+				Note: "The unit context the RLS read policy probes. NULL = a system / instance-plane " +
+					"event, visible only to an instance admin — so the (unknown) bucket is empty for " +
+					"everyone else BY THE POLICY, not by a Go-side trim.",
+			},
+			{
+				Key:         "createdAt",
+				Kind:        KindDateRange,
+				Table:       "oikumenea.audit_log",
+				Column:      "created_at",
+				ArgOverride: []string{"since", "until"},
+				Buckets:     Buckets{Strategy: StrategyDateTrunc, Grain: "day"},
+				Note: "ArgOverride: `since`/`until` predate this vocabulary (the membership " +
+					"effectiveFromAfter/Before case). They are Conjure DATETIME, not calendar dates, and " +
+					"they are the partition-pruning lever for a month-partitioned ledger. DAY grain — " +
+					"the first: an audit trail is read day by day, and a month bar would hide the spike " +
+					"an auditor is looking for. NOT NULL, so no (unknown) bucket.",
 			},
 		},
 		NonFacetArgs: []NonFacetArg{

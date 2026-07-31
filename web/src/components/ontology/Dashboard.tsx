@@ -30,7 +30,7 @@ import { Histogram } from "@/components/charts/Histogram";
 import { PyramidChart, type PyramidRow } from "@/components/charts/PyramidChart";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { segmentTiles, StatTile, StatTileRow } from "@/components/charts/StatTile";
-import { fmtInt, fmtMonth, fmtPct, TONE_FILL, type Segment } from "@/components/charts/theme";
+import { fmtInt, fmtPct, fmtTimeBucket, TONE_FILL, type Segment } from "@/components/charts/theme";
 import { getActiveLocale, pickLabel } from "@/lib/i18n";
 import { tg } from "@/lib/messages";
 import { oikumenea } from "@/lib/api/server";
@@ -45,7 +45,7 @@ import {
   facetsCsv,
   foldTail,
   isSyntheticBucket,
-  monthSpan,
+  timeSpan,
   splitUnknown,
   type StatsBucket,
   type StatsResponse,
@@ -53,6 +53,10 @@ import {
 
 /** How many days ahead the document "expiring soon" tile looks. */
 const EXPIRY_WINDOW_DAYS = 90;
+
+/** The `facets` CSV that asks for the total and no distributions. NOT the empty string, which the
+ *  endpoint reads as "every facet the caller may read" — a list of nothing is a lone separator. */
+const COUNT_ONLY = ",";
 
 export async function Dashboard({ type, search }: { type: string; search: string }) {
   const def = OBJECT_TYPES[type];
@@ -80,9 +84,10 @@ export async function Dashboard({ type, search }: { type: string; search: string
       if (f && f.params.length >= 2) {
         extras.push({
           id: c.key,
-          // `facets=` — the count alone. The window is what the tile claims, so it is counted, not
-          // approximated from the month buckets the histogram beside it draws.
-          query: statsQuery(def, sp, "", {
+          // `facets=,` — the COUNT ALONE. The separator matters: an EMPTY `facets` means "every facet
+          // the caller may read" (the omitted-arg default), so passing "" here quietly asked for the
+          // whole dashboard a second time. A list of nothing is what asks for nothing.
+          query: statsQuery(def, sp, COUNT_ONLY, {
             [f.params[0]]: isoDate(now),
             [f.params[1]]: isoDate(plusDays(now, EXPIRY_WINDOW_DAYS)),
           }),
@@ -219,14 +224,18 @@ function HistogramCard({ chart, buckets, ctx }: CardProps) {
   // documents with no expiry) rather than drawn at either end of it.
   const { rest, unknown } = splitUnknown(buckets);
   const present = new Map(rest.map((b) => [b.key, b]));
-  const dense = monthSpan(rest.map((b) => b.key));
+  const dense = timeSpan(rest.map((b) => b.key));
   const keys = dense.length > 0 ? dense : rest.map((b) => b.key);
-  const thisMonth = `${ctx.now.getUTCFullYear()}-${String(ctx.now.getUTCMonth() + 1).padStart(2, "0")}`;
+  // Compare like with like: a day-grain axis needs today's DAY, a month-grain axis today's month.
+  const nowKey =
+    dense.length > 0 && /^\d{4}-\d{2}-\d{2}$/.test(dense[0])
+      ? ctx.now.toISOString().slice(0, 10)
+      : `${ctx.now.getUTCFullYear()}-${String(ctx.now.getUTCMonth() + 1).padStart(2, "0")}`;
 
   const segments: Segment[] = keys.map((key) => {
     const b = present.get(key) ?? { key, count: 0 };
     const seg = toSegment(b, chart, ctx);
-    return chart.pastDue && key < thisMonth ? { ...seg, color: TONE_FILL.red } : seg;
+    return chart.pastDue && key < nowKey ? { ...seg, color: TONE_FILL.red } : seg;
   });
 
   return (
@@ -406,8 +415,12 @@ function bucketLabel(b: StatsBucket, chart: ChartDef, ctx: Ctx): string {
   if (f?.kind === "enum") return tg(enumLabel(ctx.def, f.params[0], b.key) ?? b.key, ctx.locale);
   if (f?.kind === "bool") return tg(b.key === "true" ? "Yes" : "No", ctx.locale);
   if (f?.kind === "ref") return pickLabel(b.label, ctx.locale) || ridTail(b.key);
-  if (f?.buckets === "dateTrunc") return fmtMonth(b.key, ctx.locale);
-  return b.key.replace("-", "–"); // a band reads as a range, not a subtraction
+  // A CODE bucket is shown VERBATIM: its key is its label, and it is also the filter value the
+  // segment links with — `service-principal.grant` prettied into an en dash would be a label that
+  // does not match the thing it filters on.
+  if (f?.kind === "code") return b.key;
+  if (f?.buckets === "dateTrunc") return fmtTimeBucket(b.key, ctx.locale);
+  return b.key.replace("-", "–"); // a BAND reads as a range, not a subtraction
 }
 
 /** An enum option's English label, looked up by the filter's own wire param. */

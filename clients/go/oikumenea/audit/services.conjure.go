@@ -21,6 +21,26 @@ exactly like `person.read` (PDP over the closure + shadow gate) once authorizati
 type AuditServiceClient interface {
 	// Query the log, filterable by actor/target/unit/action/outcome/time, token-paginated.
 	Query(ctx context.Context, authHeader bearertoken.Token, actorPersonIdArg *string, actorTypeArg *AuditActorType, targetTypeArg *string, targetIdArg *string, unitIdArg *string, actionArg *string, outcomeArg *AuditOutcome, sinceArg *datetime.DateTime, untilArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditEntryPage, error)
+	/*
+	   Facet distributions over the ledger — the dashboard half of the facet vocabulary (M58 /
+	   D-ObjectFacets). Takes exactly the filter args `query` takes (minus paging) plus an optional
+	   `facets` CSV, so a dashboard and a list are two renderings of ONE request state and a chart
+	   segment is a link to the same URL with one more filter applied.
+
+	   Counted INSIDE the row-level security policy that governs `query` itself: `totalCount`
+	   equals the number of rows exhaustively paging `query` with these same filters would return.
+	   One round-trip serves the whole dashboard.
+
+	   `since`/`until` prune the month partitions, and are the only thing that bounds how much of
+	   an ever-growing ledger this reads. Nothing is defaulted here — a hidden window would make
+	   `totalCount` disagree with the caller's own filters — so the console sends its default
+	   window as a real, visible filter.
+
+	   The path is `/stats/audit` rather than `/audit/stats` because the server's router rejects a
+	   literal path segment that is a sibling of `{entryId}` — see the route-conflict guard in
+	   `internal/platform/transport`.
+	*/
+	AuditStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, actorPersonIdArg *string, actorTypeArg *AuditActorType, targetTypeArg *string, targetIdArg *string, unitIdArg *string, actionArg *string, outcomeArg *AuditOutcome, sinceArg *datetime.DateTime, untilArg *datetime.DateTime) (AuditStats, error)
 	// Read one entry by its Action RID. Returns Audit:AuditEntryNotFound when absent.
 	Get(ctx context.Context, authHeader bearertoken.Token, entryIdArg string) (AuditEntry, error)
 	/*
@@ -100,6 +120,55 @@ func (c *auditServiceClient) Query(ctx context.Context, authHeader bearertoken.T
 	return *returnVal, nil
 }
 
+func (c *auditServiceClient) AuditStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, actorPersonIdArg *string, actorTypeArg *AuditActorType, targetTypeArg *string, targetIdArg *string, unitIdArg *string, actionArg *string, outcomeArg *AuditOutcome, sinceArg *datetime.DateTime, untilArg *datetime.DateTime) (AuditStats, error) {
+	var returnVal *AuditStats
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("AuditStats"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/audit/v1/stats/audit"))
+	queryParams := make(url.Values)
+	if facetsArg != nil {
+		queryParams.Set("facets", fmt.Sprint(*facetsArg))
+	}
+	if actorPersonIdArg != nil {
+		queryParams.Set("actorPersonId", fmt.Sprint(*actorPersonIdArg))
+	}
+	if actorTypeArg != nil {
+		queryParams.Set("actorType", fmt.Sprint(*actorTypeArg))
+	}
+	if targetTypeArg != nil {
+		queryParams.Set("targetType", fmt.Sprint(*targetTypeArg))
+	}
+	if targetIdArg != nil {
+		queryParams.Set("targetId", fmt.Sprint(*targetIdArg))
+	}
+	if unitIdArg != nil {
+		queryParams.Set("unitId", fmt.Sprint(*unitIdArg))
+	}
+	if actionArg != nil {
+		queryParams.Set("action", fmt.Sprint(*actionArg))
+	}
+	if outcomeArg != nil {
+		queryParams.Set("outcome", fmt.Sprint(*outcomeArg))
+	}
+	if sinceArg != nil {
+		queryParams.Set("since", fmt.Sprint(*sinceArg))
+	}
+	if untilArg != nil {
+		queryParams.Set("until", fmt.Sprint(*untilArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(AuditStats), werror.WrapWithContextParams(ctx, err, "auditStats failed")
+	}
+	if returnVal == nil {
+		return *new(AuditStats), werror.ErrorWithContextParams(ctx, "auditStats response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
 func (c *auditServiceClient) Get(ctx context.Context, authHeader bearertoken.Token, entryIdArg string) (AuditEntry, error) {
 	var returnVal *AuditEntry
 	var requestParams []httpclient.RequestParam
@@ -166,6 +235,26 @@ exactly like `person.read` (PDP over the closure + shadow gate) once authorizati
 type AuditServiceClientWithAuth interface {
 	// Query the log, filterable by actor/target/unit/action/outcome/time, token-paginated.
 	Query(ctx context.Context, actorPersonIdArg *string, actorTypeArg *AuditActorType, targetTypeArg *string, targetIdArg *string, unitIdArg *string, actionArg *string, outcomeArg *AuditOutcome, sinceArg *datetime.DateTime, untilArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (AuditEntryPage, error)
+	/*
+	   Facet distributions over the ledger — the dashboard half of the facet vocabulary (M58 /
+	   D-ObjectFacets). Takes exactly the filter args `query` takes (minus paging) plus an optional
+	   `facets` CSV, so a dashboard and a list are two renderings of ONE request state and a chart
+	   segment is a link to the same URL with one more filter applied.
+
+	   Counted INSIDE the row-level security policy that governs `query` itself: `totalCount`
+	   equals the number of rows exhaustively paging `query` with these same filters would return.
+	   One round-trip serves the whole dashboard.
+
+	   `since`/`until` prune the month partitions, and are the only thing that bounds how much of
+	   an ever-growing ledger this reads. Nothing is defaulted here — a hidden window would make
+	   `totalCount` disagree with the caller's own filters — so the console sends its default
+	   window as a real, visible filter.
+
+	   The path is `/stats/audit` rather than `/audit/stats` because the server's router rejects a
+	   literal path segment that is a sibling of `{entryId}` — see the route-conflict guard in
+	   `internal/platform/transport`.
+	*/
+	AuditStats(ctx context.Context, facetsArg *string, actorPersonIdArg *string, actorTypeArg *AuditActorType, targetTypeArg *string, targetIdArg *string, unitIdArg *string, actionArg *string, outcomeArg *AuditOutcome, sinceArg *datetime.DateTime, untilArg *datetime.DateTime) (AuditStats, error)
 	// Read one entry by its Action RID. Returns Audit:AuditEntryNotFound when absent.
 	Get(ctx context.Context, entryIdArg string) (AuditEntry, error)
 	/*
@@ -198,6 +287,10 @@ func (c *auditServiceClientWithAuth) Query(ctx context.Context, actorPersonIdArg
 	return c.client.Query(ctx, c.authHeader, actorPersonIdArg, actorTypeArg, targetTypeArg, targetIdArg, unitIdArg, actionArg, outcomeArg, sinceArg, untilArg, pageSizeArg, pageTokenArg)
 }
 
+func (c *auditServiceClientWithAuth) AuditStats(ctx context.Context, facetsArg *string, actorPersonIdArg *string, actorTypeArg *AuditActorType, targetTypeArg *string, targetIdArg *string, unitIdArg *string, actionArg *string, outcomeArg *AuditOutcome, sinceArg *datetime.DateTime, untilArg *datetime.DateTime) (AuditStats, error) {
+	return c.client.AuditStats(ctx, c.authHeader, facetsArg, actorPersonIdArg, actorTypeArg, targetTypeArg, targetIdArg, unitIdArg, actionArg, outcomeArg, sinceArg, untilArg)
+}
+
 func (c *auditServiceClientWithAuth) Get(ctx context.Context, entryIdArg string) (AuditEntry, error) {
 	return c.client.Get(ctx, c.authHeader, entryIdArg)
 }
@@ -225,6 +318,14 @@ func (c *auditServiceClientWithTokenProvider) Query(ctx context.Context, actorPe
 		return *new(AuditEntryPage), err
 	}
 	return c.client.Query(ctx, bearertoken.Token(token), actorPersonIdArg, actorTypeArg, targetTypeArg, targetIdArg, unitIdArg, actionArg, outcomeArg, sinceArg, untilArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *auditServiceClientWithTokenProvider) AuditStats(ctx context.Context, facetsArg *string, actorPersonIdArg *string, actorTypeArg *AuditActorType, targetTypeArg *string, targetIdArg *string, unitIdArg *string, actionArg *string, outcomeArg *AuditOutcome, sinceArg *datetime.DateTime, untilArg *datetime.DateTime) (AuditStats, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(AuditStats), err
+	}
+	return c.client.AuditStats(ctx, bearertoken.Token(token), facetsArg, actorPersonIdArg, actorTypeArg, targetTypeArg, targetIdArg, unitIdArg, actionArg, outcomeArg, sinceArg, untilArg)
 }
 
 func (c *auditServiceClientWithTokenProvider) Get(ctx context.Context, entryIdArg string) (AuditEntry, error) {

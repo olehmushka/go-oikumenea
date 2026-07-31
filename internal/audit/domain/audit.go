@@ -15,6 +15,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
 
 // ActorType is one of the two audited actor kinds (D-Audit). There is no super_admin kind — an
@@ -147,6 +149,11 @@ type Repository interface {
 	Insert(ctx context.Context, e Entry) error
 	Get(ctx context.Context, id string) (Entry, error)
 	Query(ctx context.Context, f Filter) ([]Entry, error)
+	// Stats returns the dashboard aggregate over the SAME candidate set Query pages under the same
+	// filter (M58 / D-ObjectFacets) — the Filter's Cursor and Limit are ignored, because a page
+	// boundary is not a predicate. One arm: audit visibility is the RLS policy, not a folded-in reach
+	// predicate, so the caller's only obligation is to read on the request-pinned connection.
+	Stats(ctx context.Context, f Filter, sel stats.Selection) ([]stats.Group, error)
 	// EnsureCurrentPartitions rolls the monthly range-partition window forward (review-2026-07 R-07):
 	// idempotently create the current + next month's partition so live inserts never fall to the
 	// DEFAULT catch-all. Called at boot; safe to repeat.

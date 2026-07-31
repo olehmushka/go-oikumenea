@@ -122,6 +122,26 @@ var documentFacetNargs = map[string][]string{
 	"expiresOn":        {"expires_on_from", "expires_on_to"},
 }
 
+// The ledger ships ONE aggregate arm, not two: audit visibility is the RLS policy on audit_log rather
+// than a reach predicate folded into SQL, so there is no scoped twin to hold identical. What the
+// parity check still buys is the thing that would break quietly — the list and the dashboard must
+// filter on the SAME nargs, or a chart would describe rows its own list does not return.
+var auditFilterQueries = []struct{ module, query string }{
+	{"audit", "QueryAuditLog"},
+	{"audit", "AuditStats"},
+}
+
+var auditFacetNargs = map[string][]string{
+	"actorType":     {"actor_type"},
+	"actorPersonId": {"actor_person_id"},
+	"action":        {"action"},
+	"targetType":    {"target_type"},
+	"targetId":      {"target_id"},
+	"outcome":       {"outcome"},
+	"unitId":        {"unit_id"},
+	"createdAt":     {"since", "until"},
+}
+
 var nargRe = regexp.MustCompile(`sqlc\.narg\('([a-z_][a-z0-9_]*)'\)`)
 
 func TestPersonFacetNargsAppearInEveryQuery(t *testing.T) {
@@ -144,6 +164,10 @@ func TestDocumentFacetNargsAppearInEveryQuery(t *testing.T) {
 	assertFacetNargParity(t, "document", documentFilterQueries, documentFacetNargs)
 }
 
+func TestAuditFacetNargsAppearInEveryQuery(t *testing.T) {
+	assertFacetNargParity(t, "audit", auditFilterQueries, auditFacetNargs)
+}
+
 // TestEveryRegisteredTypeHasANargGroup closes the hole the per-type tests above leave: a NEW facet
 // block added to the catalog with no entry here would simply go unchecked, and the guard would stay
 // green while the drift it exists to catch went unpoliced. Registering a type is therefore a
@@ -151,6 +175,7 @@ func TestDocumentFacetNargsAppearInEveryQuery(t *testing.T) {
 func TestEveryRegisteredTypeHasANargGroup(t *testing.T) {
 	covered := map[string]bool{
 		"person": true, "unit": true, "link__member_of": true, "order": true, "document": true,
+		"audit": true,
 	}
 	for _, o := range Default.All() {
 		if !covered[o.Type] {

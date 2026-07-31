@@ -45,6 +45,7 @@ var (
 	consoleReqRe     = regexp.MustCompile(`\brequired: true\b`)
 	consoleReqsRe    = regexp.MustCompile(`\brequires: "([^"]*)"`)
 	consoleBucketsRe = regexp.MustCompile(`\bbuckets: "([^"]*)"`)
+	consoleArgTypeRe = regexp.MustCompile(`\bargType: "([^"]*)"`)
 	consoleStringRe  = regexp.MustCompile(`"([^"]*)"`)
 )
 
@@ -60,6 +61,8 @@ type consoleFilter struct {
 	// Parsed here (one parser for the file) and asserted in dashboard_test.go, where the reason it
 	// exists lives.
 	buckets string
+	// M58: the contract type of a range facet's args, declared only where it is not a calendar date.
+	argType string
 }
 
 // consoleExempt lists registered object types that deliberately carry no console filter block, with
@@ -161,6 +164,9 @@ func parseConsoleFilters(t *testing.T, typeToken, arr string) []consoleFilter {
 		}
 		if m := consoleBucketsRe.FindStringSubmatch(obj); m != nil {
 			f.buckets = m[1]
+		}
+		if m := consoleArgTypeRe.FindStringSubmatch(obj); m != nil {
+			f.argType = m[1]
 		}
 		if f.key == "" {
 			t.Errorf("%s: %s has a FilterDef with no `key:` — the guard cannot check it", consoleRegistryPath, typeToken)

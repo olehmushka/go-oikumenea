@@ -70,6 +70,51 @@ types:
         fields:
           entries: list<AuditEntry>
           nextPageToken: optional<string>
+      FacetBucket:
+        docs: |
+          One bucket of a facet distribution (M58 / D-ObjectFacets).
+
+          `key` is the bucket's stable, locale-agnostic identity — an enum value, a `YYYY-MM-DD` day,
+          a RID for a `ref` facet, or a plain code for a `code` facet (`action`, `targetType`) — and
+          is exactly what you pass back as the corresponding query filter, which is what makes a chart
+          segment and a filter the same act. Two synthetic keys never name a real value: `(unknown)`
+          is the NULL bucket (mandatory for a nullable column, so the gap is visible rather than
+          dropped) and `(other)` is a top-N facet's collapsed tail; neither is a usable filter value.
+
+          `label` carries a display name as a locale → text map (D-i18n) and is present only for `ref`
+          buckets, whose keys are RIDs. A `code` bucket carries none by design: the key is its own
+          label. Best effort — an id with no resolvable name simply carries no label.
+        fields:
+          key: string
+          label: optional<map<string, string>>
+          count: integer
+      FacetDistribution:
+        docs: |
+          One facet's buckets, in chart order — for an enum, the declared CHECK-set order with
+          zero-count buckets included so a chart's shape is stable across filterings; for the daily
+          histogram, ascending by day; for a ref or code facet, descending by count with
+          `(other)`/`(unknown)` last.
+        fields:
+          facet: string
+          buckets: list<FacetBucket>
+      AuditStats:
+        docs: |
+          Facet distributions over the SAME set `query` returns under the same filters (M58 /
+          D-ObjectFacets): `totalCount` is what exhaustively paging that endpoint would yield, not an
+          estimate and not a page count.
+
+          Visibility is the row-level security policy on `audit_log`, exactly as it is for `query`:
+          entries whose unit is outside the caller's reach are not counted, and NULL-unit (system /
+          instance-plane) entries are counted only for an instance admin. There is no separate scoped
+          query because there is no separate scoped read.
+
+          The ledger is month-partitioned and unbounded, so `since`/`until` are the only lever that
+          limits how much of it a dashboard touches — the console sends a default window rather than
+          this endpoint applying one, so that `totalCount` always describes exactly the filters in the
+          request.
+        fields:
+          totalCount: integer
+          facets: list<FacetDistribution>
       ActionType:
         docs: |
           One registered action type (D-ActionTypes, review-2026-09 R-29): the machine catalog behind
@@ -208,6 +253,15 @@ types:
         code: NOT_FOUND
         safe-args:
           auditEntryId: string
+      AuditQueryInvalid:
+        docs: |
+          A malformed read: an undeclared `facets` key, or a filter value the vocabulary rejects
+          (M58 / D-ObjectFacets). A facet the caller may not READ is never this error — it is omitted
+          from the response (rule 2).
+        namespace: Audit
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
 services:
   AuditService:
     name: Audit Service
@@ -256,6 +310,73 @@ services:
             type: optional<string>
             param-type: query
         returns: AuditEntryPage
+      auditStats:
+        http: GET /stats/audit
+        docs: |
+          Facet distributions over the ledger — the dashboard half of the facet vocabulary (M58 /
+          D-ObjectFacets). Takes exactly the filter args `query` takes (minus paging) plus an optional
+          `facets` CSV, so a dashboard and a list are two renderings of ONE request state and a chart
+          segment is a link to the same URL with one more filter applied.
+
+          Counted INSIDE the row-level security policy that governs `query` itself: `totalCount`
+          equals the number of rows exhaustively paging `query` with these same filters would return.
+          One round-trip serves the whole dashboard.
+
+          `since`/`until` prune the month partitions, and are the only thing that bounds how much of
+          an ever-growing ledger this reads. Nothing is defaulted here — a hidden window would make
+          `totalCount` disagree with the caller's own filters — so the console sends its default
+          window as a real, visible filter.
+
+          The path is `/stats/audit` rather than `/audit/stats` because the server's router rejects a
+          literal path segment that is a sibling of `{entryId}` — see the route-conflict guard in
+          `internal/platform/transport`.
+        args:
+          facets:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Optional comma-separated facet keys to compute (`action,outcome,createdAt`). Omitted or
+              empty = every facet the caller may read; an explicit list of nothing (`facets=,`)
+              returns `totalCount` alone. An undeclared facet key is an Audit:AuditQueryInvalid.
+          actorPersonId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `query`.
+          actorType:
+            type: optional<AuditActorType>
+            param-type: query
+            docs: Facet filter — see `query`.
+          targetType:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `query`.
+          targetId:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Facet filter — see `query`. A drill-down rather than a chart: grouping by a polymorphic
+              id is not a dimension anyone reads.
+          unitId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `query`.
+          action:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — the dotted action code (the `listActionTypes` catalog is its value set).
+          outcome:
+            type: optional<AuditOutcome>
+            param-type: query
+            docs: Facet filter — see `query`.
+          since:
+            type: optional<datetime>
+            param-type: query
+            docs: Facet filter — INCLUSIVE lower bound on `createdAt`, and the partition-pruning lever.
+          until:
+            type: optional<datetime>
+            param-type: query
+            docs: Facet filter — INCLUSIVE upper bound on `createdAt`.
+        returns: AuditStats
       get:
         http: GET /audit/{entryId}
         docs: Read one entry by its Action RID. Returns Audit:AuditEntryNotFound when absent.

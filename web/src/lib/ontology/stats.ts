@@ -83,6 +83,32 @@ export function monthSpan(keys: string[]): string[] {
 }
 
 /**
+ * The inclusive `YYYY-MM-DD` sequence covering the buckets present — `monthSpan`'s day-grain sibling,
+ * for the audit ledger's per-day histogram. Same reason and same bounded loop: a gap left unfilled
+ * compresses a quiet fortnight into nothing, and a gap-filler over an unbounded ledger must not spin.
+ * The cap is generous enough for a multi-year window and finite either way.
+ */
+export function daySpan(keys: string[]): string[] {
+  const days = keys.filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k)).sort();
+  if (days.length < 2) return days;
+  const out: string[] = [];
+  const cursor = new Date(`${days[0]}T00:00:00Z`);
+  const last = days[days.length - 1];
+  for (let i = 0; i < 1500; i++) {
+    const key = cursor.toISOString().slice(0, 10);
+    out.push(key);
+    if (key === last) break;
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return out;
+}
+
+/** The dense axis for a dateTrunc distribution, whichever grain it came back at. */
+export function timeSpan(keys: string[]): string[] {
+  return keys.some((k) => /^\d{4}-\d{2}-\d{2}$/.test(k)) ? daySpan(keys) : monthSpan(keys);
+}
+
+/**
  * Keep the `max` largest segments and fold the rest — including any pre-existing `(other)` — into one
  * inert `(other)`. Order is preserved for the survivors (an enum's CHART order, a ref's count order);
  * the fold always lands last. Returns `folded` so the chart can say so.

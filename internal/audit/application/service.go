@@ -15,6 +15,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/pkg/action"
 	"github.com/olegamysk/go-oikumenea/pkg/listing"
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
 
 // MaxPageSize caps a client-requested page size (API conventions: token pagination, bounded pages).
@@ -30,7 +31,14 @@ type Service struct {
 	pool        db.DBTX
 	newRepo     RepositoryFactory
 	defaultSize func() int
+	// labeler resolves a dashboard's ref-bucket RIDs to locale→text names (M58 / D-ObjectFacets).
+	// Optional: unset, a chart segment carries its RID and the client falls back to the RID tail.
+	labeler stats.Labeler
 }
+
+// SetBucketLabeler binds the optional dashboard label resolver, wired at the composition root from
+// the same per-type labelers the links service uses.
+func (s *Service) SetBucketLabeler(l stats.Labeler) { s.labeler = l }
 
 // NewService wires the service with the read pool, the repository factory, and a refreshable
 // default page size.
@@ -64,6 +72,42 @@ func (s *Service) Record(ctx context.Context, conn db.DBTX, e domain.Entry) erro
 }
 
 // Get reads one entry by its Action RID, returning domain.ErrNotFound when absent.
+// Stats answers the ledger dashboard (M58 / D-ObjectFacets): the selected facets' distributions plus
+// the total, over exactly the set Query would page under the same filter. It shares QueryParams with
+// the list on purpose — the two views must describe one world, and a second params struct is a second
+// thing that can drift — and simply ignores the paging fields, since a page boundary is not a filter.
+//
+// It is the ONE stats path that does not route through stats.Compute, and the reason is that Compute
+// exists to own the arm convention ("an empty subject is the admin arm, and a non-admin with no
+// subject reads nothing" — M57 ticket 2). There is no arm here: the aggregate carries no subject
+// parameter at all, because audit visibility is the RLS policy on audit_log. The whole of the
+// visibility decision is which CONNECTION this runs on, and reader() is that connection — on the bare
+// pool the policy matches nothing and this answers a confident zero.
+func (s *Service) Stats(ctx context.Context, p QueryParams, sel stats.Selection) (stats.Result, error) {
+	groups, err := s.newRepo(s.reader(ctx)).Stats(ctx, domain.Filter{
+		ActorPersonID: p.ActorPersonID,
+		ActorType:     p.ActorType,
+		TargetType:    p.TargetType,
+		TargetID:      p.TargetID,
+		UnitID:        p.UnitID,
+		Action:        p.Action,
+		Outcome:       p.Outcome,
+		Since:         p.Since,
+		Until:         p.Until,
+	}, sel)
+	if err != nil {
+		return stats.Result{}, err
+	}
+	res := stats.Assemble(sel, groups)
+	// Label the two ref facets (actorPersonId → person, unitId → unit) through the same resolvers the
+	// links service uses, so an object reads identically in a graph row and in a chart segment. The
+	// `action`/`targetType` code facets carry no labels by construction: the key IS the label.
+	if err := stats.Label(ctx, s.labeler, sel, &res); err != nil {
+		return stats.Result{}, err
+	}
+	return res, nil
+}
+
 func (s *Service) Get(ctx context.Context, id string) (domain.Entry, error) {
 	return s.newRepo(s.reader(ctx)).Get(ctx, id)
 }

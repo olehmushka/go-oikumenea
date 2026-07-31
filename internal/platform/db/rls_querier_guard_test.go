@@ -36,20 +36,32 @@ func TestModuleListPathsUseTheRequestPinnedConnection(t *testing.T) {
 	cases := []struct {
 		module string
 		fns    []string
+		// helper names the module's pinned-connection accessor and the platform function it must
+		// call. Four modules route through `querier(ctx)` → db.RequestQuerier; audit's is `reader(ctx)`
+		// → db.RequestDBTX, because its repository factory takes a DBTX so an audited write can pass
+		// the caller's transaction. The rule is the same; only the surface differs, so the guard is
+		// parameterized rather than duplicated — and a module that names NEITHER still fails.
+		helper string
+		pinned string
 	}{
 		// membership_memberships and order_orders are RLS-protected on their unit column (0005).
 		{"membership", []string{"ListMemberships", "ListVisibleMemberships",
 			// M57: the read-scope dashboard aggregate, same predicate without a LIMIT.
 			"VisiblePersonStatsForSubject",
 			// M57 ticket 2: the roster's own dashboard, same predicate without a LIMIT.
-			"MembershipStats"}},
-		{"order", []string{"ListOrders", "ListVisibleOrders", "OrderStats"}},
+			"MembershipStats"}, "", ""},
+		{"order", []string{"ListOrders", "ListVisibleOrders", "OrderStats"}, "", ""},
 		// document_documents has NO policy, but the read-scope arm's holder semi-join probes
 		// membership_memberships, which does — so the same rule binds.
-		{"document", []string{"ListDocuments", "ListVisibleDocuments", "DocumentStats"}},
+		{"document", []string{"ListDocuments", "ListVisibleDocuments", "DocumentStats"}, "", ""},
 		// tenant_units is RLS-protected (0005/0042); the unit dashboard folds the shadow gate into
 		// SQL, so it reads through the same pinned connection the list does.
-		{"tenant", []string{"ListUnits", "UnitStats"}},
+		{"tenant", []string{"ListUnits", "UnitStats"}, "", ""},
+		// audit_log carries a SELECT policy keyed on unit_id (0005), and it is the ONE type whose
+		// visibility is ENTIRELY that policy — the aggregate folds in no predicate of its own, so the
+		// pinned connection is not defence in depth here, it IS the defence. Unpinned, the ledger
+		// dashboard answers a confident zero to an instance admin.
+		{"audit", []string{"Query", "Stats"}, "reader", "db.RequestDBTX"},
 	}
 
 	for _, c := range cases {
@@ -82,13 +94,17 @@ func TestModuleListPathsUseTheRequestPinnedConnection(t *testing.T) {
 			// The helper every module routes through must itself be the pinned one. Checking it
 			// separately is what lets the per-function check accept `s.newRepo(s.querier(ctx))`
 			// without that becoming an unverified indirection.
-			querier, ok := bodies["querier"]
-			if !ok {
-				t.Fatalf("%s/application has no querier(ctx) helper", c.module)
+			helper, pinned := c.helper, c.pinned
+			if helper == "" {
+				helper, pinned = "querier", "db.RequestQuerier"
 			}
-			if !strings.Contains(querier, "db.RequestQuerier") {
-				t.Errorf("%s/application querier(ctx) does not call db.RequestQuerier — every read routed "+
-					"through it silently loses the app.* RLS GUCs", c.module)
+			accessor, ok := bodies[helper]
+			if !ok {
+				t.Fatalf("%s/application has no %s(ctx) helper", c.module, helper)
+			}
+			if !strings.Contains(accessor, pinned) {
+				t.Errorf("%s/application %s(ctx) does not call %s — every read routed through it "+
+					"silently loses the app.* RLS GUCs", c.module, helper, pinned)
 			}
 
 			for _, name := range c.fns {
@@ -100,12 +116,12 @@ func TestModuleListPathsUseTheRequestPinnedConnection(t *testing.T) {
 				if !strings.Contains(src, "s.newRepo") {
 					continue // delegates without building a repo itself
 				}
-				if strings.Contains(src, "s.querier") || strings.Contains(src, "db.RequestQuerier") {
+				if strings.Contains(src, "s."+helper) || strings.Contains(src, pinned) {
 					continue
 				}
-				t.Errorf("%s.%s builds its repository from the bare pool: use s.querier(ctx) (or "+
-					"db.RequestQuerier(ctx, s.pool)), or any predicate over an RLS-protected table "+
-					"silently matches nothing", c.module, name)
+				t.Errorf("%s.%s builds its repository from the bare pool: use s.%s(ctx) (or "+
+					"%s(ctx, s.pool)), or any predicate over an RLS-protected table "+
+					"silently matches nothing", c.module, name, helper, pinned)
 			}
 		})
 	}

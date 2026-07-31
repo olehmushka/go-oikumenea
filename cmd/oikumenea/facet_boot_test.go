@@ -45,6 +45,14 @@ func TestFacetObjectTypesAreRegisteredRIDTypes(t *testing.T) {
 	for _, o := range facet.Default.All() {
 		info, ok := tokens[o.Type]
 		switch {
+		// A LEDGER is the declared exception (M58): its rows are the records of Actions minted by
+		// other services, so it has no token of its own — and must not have one, or it would be an
+		// ordinary type claiming an escape it does not need. Both halves are asserted, here as in
+		// Register, because this copy exists precisely to survive that validation being relaxed.
+		case o.Ledger != "":
+			if ok {
+				t.Errorf("facet type %q claims Ledger but IS a registered token (kind=%s)", o.Type, rid.Kind(info.Kind))
+			}
 		case !ok:
 			t.Errorf("facet type %q is not a registry token in pkg/rid", o.Type)
 		case rid.Kind(info.Kind) != rid.KindObject && rid.Kind(info.Kind) != rid.KindLink:

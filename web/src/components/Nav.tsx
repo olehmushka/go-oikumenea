@@ -46,7 +46,9 @@ const TOOLS: { href: string; key: string; requires?: string }[] = [
     key: "nav.connectors",
     requires: "connector.read",
   },
-  { href: "/audit", key: "nav.audit", requires: "audit.read" },
+  // No /audit here since M58 ticket 1: the ledger is an EXPLORE entry now (list + dashboard over its
+  // nine filters), and the old path redirects there. A tools link beside it would be two doors into
+  // one room, which is what "Membership lookup" vs "/explore/link__member_of" earned its rename for.
 ];
 
 function Item({

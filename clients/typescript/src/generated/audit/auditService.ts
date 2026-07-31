@@ -3,6 +3,7 @@ import { AuditActorType } from "./auditActorType";
 import { IAuditEntry } from "./auditEntry";
 import { IAuditEntryPage } from "./auditEntryPage";
 import { AuditOutcome } from "./auditOutcome";
+import { IAuditStats } from "./auditStats";
 import { IObjectHistory } from "./objectHistory";
 import type { IHttpApiBridge } from "conjure-client";
 
@@ -17,6 +18,27 @@ const __undefined: undefined = undefined;
 export interface IAuditService {
     /** Query the log, filterable by actor/target/unit/action/outcome/time, token-paginated. */
     query(actorPersonId?: string | null, actorType?: AuditActorType | null, targetType?: string | null, targetId?: string | null, unitId?: string | null, action?: string | null, outcome?: AuditOutcome | null, since?: string | null, until?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IAuditEntryPage>;
+    /**
+     * Facet distributions over the ledger — the dashboard half of the facet vocabulary (M58 /
+     * D-ObjectFacets). Takes exactly the filter args `query` takes (minus paging) plus an optional
+     * `facets` CSV, so a dashboard and a list are two renderings of ONE request state and a chart
+     * segment is a link to the same URL with one more filter applied.
+     *
+     * Counted INSIDE the row-level security policy that governs `query` itself: `totalCount`
+     * equals the number of rows exhaustively paging `query` with these same filters would return.
+     * One round-trip serves the whole dashboard.
+     *
+     * `since`/`until` prune the month partitions, and are the only thing that bounds how much of
+     * an ever-growing ledger this reads. Nothing is defaulted here — a hidden window would make
+     * `totalCount` disagree with the caller's own filters — so the console sends its default
+     * window as a real, visible filter.
+     *
+     * The path is `/stats/audit` rather than `/audit/stats` because the server's router rejects a
+     * literal path segment that is a sibling of `{entryId}` — see the route-conflict guard in
+     * `internal/platform/transport`.
+     *
+     */
+    auditStats(facets?: string | null, actorPersonId?: string | null, actorType?: AuditActorType | null, targetType?: string | null, targetId?: string | null, unitId?: string | null, action?: string | null, outcome?: AuditOutcome | null, since?: string | null, until?: string | null): Promise<IAuditStats>;
     /** Read one entry by its Action RID. Returns Audit:AuditEntryNotFound when absent. */
     get(entryId: string): Promise<IAuditEntry>;
     /**
@@ -63,6 +85,52 @@ export class AuditService implements IAuditService {
                 "until": until,
                 "pageSize": pageSize,
                 "pageToken": pageToken,
+            },
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Facet distributions over the ledger — the dashboard half of the facet vocabulary (M58 /
+     * D-ObjectFacets). Takes exactly the filter args `query` takes (minus paging) plus an optional
+     * `facets` CSV, so a dashboard and a list are two renderings of ONE request state and a chart
+     * segment is a link to the same URL with one more filter applied.
+     *
+     * Counted INSIDE the row-level security policy that governs `query` itself: `totalCount`
+     * equals the number of rows exhaustively paging `query` with these same filters would return.
+     * One round-trip serves the whole dashboard.
+     *
+     * `since`/`until` prune the month partitions, and are the only thing that bounds how much of
+     * an ever-growing ledger this reads. Nothing is defaulted here — a hidden window would make
+     * `totalCount` disagree with the caller's own filters — so the console sends its default
+     * window as a real, visible filter.
+     *
+     * The path is `/stats/audit` rather than `/audit/stats` because the server's router rejects a
+     * literal path segment that is a sibling of `{entryId}` — see the route-conflict guard in
+     * `internal/platform/transport`.
+     *
+     */
+    public auditStats(facets?: string | null, actorPersonId?: string | null, actorType?: AuditActorType | null, targetType?: string | null, targetId?: string | null, unitId?: string | null, action?: string | null, outcome?: AuditOutcome | null, since?: string | null, until?: string | null): Promise<IAuditStats> {
+        return this.bridge.call<IAuditStats>(
+            "AuditService",
+            "auditStats",
+            "GET",
+            "/audit/v1/stats/audit",
+            __undefined,
+            __undefined,
+            {
+                "facets": facets,
+                "actorPersonId": actorPersonId,
+                "actorType": actorType,
+                "targetType": targetType,
+                "targetId": targetId,
+                "unitId": unitId,
+                "action": action,
+                "outcome": outcome,
+                "since": since,
+                "until": until,
             },
             __undefined,
             __undefined,

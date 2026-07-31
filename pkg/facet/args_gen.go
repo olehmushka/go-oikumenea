@@ -17,6 +17,19 @@ type ArgSpec struct {
 // listArgs is every param-type=query arg on each registered object type's list endpoint,
 // keyed by the object type token and sorted by arg name.
 var listArgs = map[string][]ArgSpec{
+	"audit": {
+		{Name: "action", Type: "string", Optional: true},
+		{Name: "actorPersonId", Type: "string", Optional: true},
+		{Name: "actorType", Type: "oikumenea.audit.AuditActorType", Optional: true},
+		{Name: "outcome", Type: "oikumenea.audit.AuditOutcome", Optional: true},
+		{Name: "pageSize", Type: "integer", Optional: true},
+		{Name: "pageToken", Type: "string", Optional: true},
+		{Name: "since", Type: "datetime", Optional: true},
+		{Name: "targetId", Type: "string", Optional: true},
+		{Name: "targetType", Type: "string", Optional: true},
+		{Name: "unitId", Type: "string", Optional: true},
+		{Name: "until", Type: "datetime", Optional: true},
+	},
 	"document": {
 		{Name: "expiresOnFrom", Type: "string", Optional: true},
 		{Name: "expiresOnTo", Type: "string", Optional: true},
@@ -83,6 +96,18 @@ var listArgs = map[string][]ArgSpec{
 // endpoint, keyed by the object type token. A type absent here has no stats endpoint yet;
 // args_test.go holds that against an explicit pending list rather than letting it pass unnoticed.
 var statsArgs = map[string][]ArgSpec{
+	"audit": {
+		{Name: "action", Type: "string", Optional: true},
+		{Name: "actorPersonId", Type: "string", Optional: true},
+		{Name: "actorType", Type: "oikumenea.audit.AuditActorType", Optional: true},
+		{Name: "facets", Type: "string", Optional: true},
+		{Name: "outcome", Type: "oikumenea.audit.AuditOutcome", Optional: true},
+		{Name: "since", Type: "datetime", Optional: true},
+		{Name: "targetId", Type: "string", Optional: true},
+		{Name: "targetType", Type: "string", Optional: true},
+		{Name: "unitId", Type: "string", Optional: true},
+		{Name: "until", Type: "datetime", Optional: true},
+	},
 	"document": {
 		{Name: "expiresOnFrom", Type: "string", Optional: true},
 		{Name: "expiresOnTo", Type: "string", Optional: true},

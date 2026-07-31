@@ -51,6 +51,30 @@ var statsAggregateGroups = []struct {
 		{"document", "DocumentStats"},
 		{"document", "DocumentStatsForSubject"},
 	}},
+	// The LEDGER has ONE arm, and that is a property of the type rather than an omission: audit
+	// visibility is the RLS policy on audit_log, so there is no scoped twin to hold identical. The
+	// group is still declared, because the OTHER assertion in this file — every declared facet has a
+	// branch, and every branch names a declared facet — is exactly as load-bearing with one arm as
+	// with four, and the coverage test below refuses a registered type that names no group at all.
+	{"audit", []struct{ module, query string }{
+		{"audit", "AuditStats"},
+	}},
+}
+
+// TestEveryRegisteredTypeHasAnAggregateGroup is the coverage floor: a type registered in the catalog
+// with no group here would have its aggregate half unchecked in BOTH directions, and the guard would
+// stay green while the drift it exists to catch went unpoliced.
+func TestEveryRegisteredTypeHasAnAggregateGroup(t *testing.T) {
+	covered := map[string]bool{}
+	for _, g := range statsAggregateGroups {
+		covered[g.objectType] = true
+	}
+	for _, o := range Default.All() {
+		if o.StatsEndpoint != "" && !covered[o.Type] {
+			t.Errorf("object type %q ships a stats endpoint but declares no aggregate group in "+
+				"statsparity_test.go — its GROUP BY branches are unchecked", o.Type)
+		}
+	}
 }
 
 func TestStatsAggregateHalvesAreIdentical(t *testing.T) {

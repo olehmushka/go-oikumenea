@@ -1301,6 +1301,26 @@
         ],
         "type": "string"
       },
+      "AuditStats": {
+        "description": "Facet distributions over the SAME set `query` returns under the same filters (M58 /\nD-ObjectFacets): `totalCount` is what exhaustively paging that endpoint would yield, not an\nestimate and not a page count.\n\nVisibility is the row-level security policy on `audit_log`, exactly as it is for `query`:\nentries whose unit is outside the caller's reach are not counted, and NULL-unit (system /\ninstance-plane) entries are counted only for an instance admin. There is no separate scoped\nquery because there is no separate scoped read.\n\nThe ledger is month-partitioned and unbounded, so `since`/`until` are the only lever that\nlimits how much of it a dashboard touches — the console sends a default window rather than\nthis endpoint applying one, so that `totalCount` always describes exactly the filters in the\nrequest.\n",
+        "properties": {
+          "facets": {
+            "items": {
+              "$ref": "#/components/schemas/FacetDistribution"
+            },
+            "type": "array"
+          },
+          "totalCount": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "facets",
+          "totalCount"
+        ],
+        "type": "object"
+      },
       "AuthorizeQuery": {
         "description": "One question in a batch decision.",
         "properties": {
@@ -15833,6 +15853,132 @@
           }
         },
         "summary": "The reverse-chronological audit history of one object (D-Temporal tier b, R-31): every",
+        "tags": [
+          "AuditService"
+        ]
+      }
+    },
+    "/audit/v1/stats/audit": {
+      "get": {
+        "description": "Facet distributions over the ledger — the dashboard half of the facet vocabulary (M58 /\nD-ObjectFacets). Takes exactly the filter args `query` takes (minus paging) plus an optional\n`facets` CSV, so a dashboard and a list are two renderings of ONE request state and a chart\nsegment is a link to the same URL with one more filter applied.\n\nCounted INSIDE the row-level security policy that governs `query` itself: `totalCount`\nequals the number of rows exhaustively paging `query` with these same filters would return.\nOne round-trip serves the whole dashboard.\n\n`since`/`until` prune the month partitions, and are the only thing that bounds how much of\nan ever-growing ledger this reads. Nothing is defaulted here — a hidden window would make\n`totalCount` disagree with the caller's own filters — so the console sends its default\nwindow as a real, visible filter.\n\nThe path is `/stats/audit` rather than `/audit/stats` because the server's router rejects a\nliteral path segment that is a sibling of `{entryId}` — see the route-conflict guard in\n`internal/platform/transport`.\n",
+        "operationId": "AuditService_auditStats",
+        "parameters": [
+          {
+            "description": "Optional comma-separated facet keys to compute (`action,outcome,createdAt`). Omitted or\nempty = every facet the caller may read; an explicit list of nothing (`facets=,`)\nreturns `totalCount` alone. An undeclared facet key is an Audit:AuditQueryInvalid.\n",
+            "in": "query",
+            "name": "facets",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `query`.",
+            "in": "query",
+            "name": "actorPersonId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `query`.",
+            "in": "query",
+            "name": "actorType",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/AuditActorType"
+            }
+          },
+          {
+            "description": "Facet filter — see `query`.",
+            "in": "query",
+            "name": "targetType",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `query`. A drill-down rather than a chart: grouping by a polymorphic\nid is not a dimension anyone reads.\n",
+            "in": "query",
+            "name": "targetId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `query`.",
+            "in": "query",
+            "name": "unitId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — the dotted action code (the `listActionTypes` catalog is its value set).",
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — see `query`.",
+            "in": "query",
+            "name": "outcome",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/AuditOutcome"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE lower bound on `createdAt`, and the partition-pruning lever.",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Facet filter — INCLUSIVE upper bound on `createdAt`.",
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditStats"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Facet distributions over the ledger — the dashboard half of the facet vocabulary (M58 /",
         "tags": [
           "AuditService"
         ]

@@ -9,6 +9,7 @@
 // Isomorphic and pure: imports only the registry, so the Server Component and the "use client"
 // FilterBar share one implementation rather than two that agree by inspection.
 
+import { resolveDefaultParam } from "./buckets";
 import type { ObjectTypeDef } from "./registry";
 
 /** Next's searchParams (a param may repeat) normalized to a URLSearchParams. */
@@ -80,8 +81,10 @@ export function apiQuery(def: ObjectTypeDef, sp: URLSearchParams): string {
  * `overrides` applies the extra narrowing a multi-call chart needs (the pyramid's `sex` wings), and
  * an `undefined` there clears an inherited filter.
  *
- * `facets` MUST be non-empty: `facets=` is the wire form of "count only, no distributions", so
- * sending an accidental empty list draws an empty dashboard rather than the whole one.
+ * `facets` is passed through verbatim, and the two empty-looking forms mean OPPOSITE things: `""`
+ * (or the arg omitted) selects EVERY facet the caller may read, while `","` — a list of nothing —
+ * selects none and returns the total alone. Ask for the charts you draw; ask for `","` when you want
+ * only a count.
  */
 export function statsQuery(
   def: ObjectTypeDef,
@@ -99,6 +102,29 @@ export function statsQuery(
   }
   q.set("facets", facets);
   return `?${q.toString()}`;
+}
+
+/**
+ * The dashboard's default filters, resolved against `now` and applied ONLY where the URL sets none of
+ * them (D-ConsoleDashboards, M58). It exists for a collection that is unbounded by nature — the audit
+ * ledger — where opening a dashboard over all of history is a scan of every partition.
+ *
+ * Deliberately all-or-nothing: if the operator has set ANY of the defaulted params, the window is
+ * theirs and nothing is added. And deliberately applied to the URL rather than to the request, so the
+ * narrowing is a visible chip they can clear, and `totalCount` always describes exactly what the URL
+ * says. A server-side default would make the count disagree with the caller's own filter set.
+ */
+export function dashboardDefaults(
+  def: ObjectTypeDef,
+  sp: URLSearchParams,
+  now: Date,
+): Record<string, string> {
+  const defaults = def.dashboard?.defaultParams;
+  if (!defaults) return {};
+  if (Object.keys(defaults).some((p) => (sp.get(p) ?? "").trim() !== "")) return {};
+  return Object.fromEntries(
+    Object.entries(defaults).map(([p, v]) => [p, resolveDefaultParam(v, now)]),
+  );
 }
 
 /**
