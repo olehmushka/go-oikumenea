@@ -94,12 +94,12 @@ func (s ExternalOrganizationService) UpsertExternalOrgKind(ctx context.Context, 
 
 // ============================ organizations ============================
 
-func (s ExternalOrganizationService) ListExternalOrgs(ctx context.Context, token bearertoken.Token, query, kind, country, status *string, pageSize *int, pageToken *string) (externalorgapi.ExternalOrgPage, error) {
+func (s ExternalOrganizationService) ListExternalOrgs(ctx context.Context, token bearertoken.Token, query, kind, country, status, source, confidence *string, asOfFrom, asOfTo *datetime.DateTime, pageSize *int, pageToken *string) (externalorgapi.ExternalOrgPage, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
 		return externalorgapi.ExternalOrgPage{}, err
 	}
 	limit := pageSizeOr(pageSize)
-	rows, err := s.app.ListOrgs(ctx, strOr(query), strOr(kind), strOr(country), strOr(status), decodeToken(pageToken), limit)
+	rows, err := s.app.ListOrgs(ctx, strOr(query), orgFilter(kind, country, status, source, confidence, asOfFrom, asOfTo), decodeToken(pageToken), limit)
 	if err != nil {
 		return externalorgapi.ExternalOrgPage{}, s.mapError(ctx, err)
 	}

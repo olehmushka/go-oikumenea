@@ -28,10 +28,9 @@ import (
 	"github.com/olegamysk/go-oikumenea/pkg/crypto"
 	"github.com/olegamysk/go-oikumenea/pkg/listing"
 	"github.com/olegamysk/go-oikumenea/pkg/personalcode"
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 	"github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
-
-	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
 
 // Page-size policy (API conventions: token pagination, bounded pages).

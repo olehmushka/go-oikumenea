@@ -345,6 +345,54 @@ types:
         fields:
           taxa: list<Taxon>
           nextPageToken: optional<string>
+      # ---- facet distributions (M58 / D-ObjectFacets) ----
+      FacetBucket:
+        docs: |
+          One bucket of a facet distribution (M58 / D-ObjectFacets).
+
+          `key` is the bucket's stable, locale-agnostic identity — here always a RID, since every
+          taxon facet is a `ref` — and is exactly what you pass back as the corresponding query
+          filter, which is what makes a chart segment and a filter the same act. Two synthetic keys
+          never name a real value: `(unknown)` is the NULL bucket (mandatory for a nullable column,
+          so the gap is visible rather than dropped) and `(other)` is a top-N facet's collapsed tail;
+          neither is a usable filter value.
+
+          `label` carries a display name as a locale → text map (D-i18n). Best effort — an id with no
+          resolvable name simply carries no label.
+        fields:
+          key: string
+          label: optional<map<string, string>>
+          count: integer
+      FacetDistribution:
+        docs: |
+          One facet's buckets, in chart order — for `rankId` the taxonomy rank's OWN ordinal (a rank
+          ladder re-sorted by frequency would destroy the only ordering that means anything), and for
+          every other facet descending by count with `(other)`/`(unknown)` last.
+        fields:
+          facet: string
+          buckets: list<FacetBucket>
+      TaxonStats:
+        docs: |
+          Facet distributions over the SAME set `listTaxa` returns under the same filters (M58 /
+          D-ObjectFacets): `totalCount` is what exhaustively paging that endpoint would yield, not an
+          estimate and not a page count.
+
+          TWO of the four facets do NOT partition the result set, and this is a property of a
+          taxonomy rather than an inaccuracy:
+
+          - `subtree` counts each taxon under EVERY ancestor it has, because that is what makes the
+            chart drillable — a bucket's count is its whole subtree size and clicking it returns
+            exactly those rows, then re-grouping within them yields that subtree's own internal
+            nodes, recursively, all the way down.
+          - `classification` counts EFFECTIVE theism tags, resolved to the nearest declaring ancestor
+            (what `getEffectiveClassifications` returns), and a taxon may carry several.
+
+          So for those two, the buckets' counts SUM TO MORE than `totalCount`. What holds for every
+          facet without exception is the property the vocabulary actually rests on: a bucket's count
+          equals the number of rows `listTaxa` returns under that bucket's own filter.
+        fields:
+          totalCount: integer
+          facets: list<FacetDistribution>
       OrgPolicyList:
         fields:
           policies: list<OrgPolicy>
@@ -759,15 +807,29 @@ services:
           rank:
             type: optional<string>
             param-type: query
-            docs: Filter by rank code (religion/branch/…).
+            docs: |
+              Filter by rank, accepting EITHER the rank's code (religion/branch/…) or its RID. It
+              began as a code-only filter; the RID form was added with the M58 facet vocabulary,
+              because a `rankId` chart segment's bucket key is a `rank_id` RID and a bucket key must
+              remain a usable filter value. Both spellings select the same rows.
           parent:
             type: optional<string>
             param-type: query
-            docs: Restrict to descendants of this taxon (via the closure).
+            docs: |
+              Restrict to PROPER descendants of this taxon (via the closure, depth > 0 — the taxon
+              itself is not included). This is the click-through of the `subtree` facet, whose bucket
+              count is exactly the number of rows this returns for that ancestor.
           religion:
             type: optional<string>
             param-type: query
-            docs: Restrict to one root religion taxon.
+            docs: Restrict to one root religion taxon, by RID or by code.
+          classification:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Restrict to taxa whose EFFECTIVE theism classification includes this one — declared on
+              the taxon or inherited from its nearest declaring ancestor, the same resolution
+              `getEffectiveClassifications` performs. Accepts a RID or a code.
           query:
             type: optional<string>
             param-type: query
@@ -779,6 +841,56 @@ services:
             type: optional<string>
             param-type: query
         returns: TaxonPage
+      taxonStats:
+        http: GET /stats/taxa
+        docs: |
+          Facet distributions over the taxonomy — the dashboard half of the facet vocabulary (M58 /
+          D-ObjectFacets). Takes exactly the filter args `listTaxa` takes (minus paging) plus an
+          optional `facets` CSV, so a dashboard and a list are two renderings of ONE request state
+          and a chart segment is a link to the same URL with one more filter applied.
+
+          `totalCount` equals the number of rows exhaustively paging `listTaxa` with these same
+          filters would return. One round-trip serves the whole dashboard.
+
+          ONE aggregate arm, with no subject and no scoped twin — but for the OPPOSITE reason to the
+          audit ledger's single arm. The taxonomy is flat instance-global reference data with no
+          row-level security and no unit reach (the RLS in this module is on the unit-scoped
+          `religion_org_*` tables, not here), so `religion.read` held anywhere is the whole
+          visibility decision and there is nothing for a second arm to narrow.
+
+          `subtree` and `classification` do not partition the result set — see TaxonStats.
+
+          The path is `/stats/taxa` rather than `/taxa/stats` because the server's router rejects a
+          literal path segment that is a sibling of `{taxonId}`.
+        args:
+          facets:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Optional comma-separated facet keys to compute (`rankId,subtree`). Omitted or empty =
+              every facet the caller may read; an explicit list of nothing (`facets=,`) returns
+              `totalCount` alone. An undeclared facet key is a Religion:Invalid.
+          rank:
+            type: optional<string>
+            param-type: query
+            docs: Filter by rank (code or RID), as on the list.
+          parent:
+            type: optional<string>
+            param-type: query
+            docs: Restrict to proper descendants of this taxon, as on the list.
+          religion:
+            type: optional<string>
+            param-type: query
+            docs: Restrict to one root religion taxon, as on the list.
+          classification:
+            type: optional<string>
+            param-type: query
+            docs: Restrict by effective theism classification, as on the list.
+          query:
+            type: optional<string>
+            param-type: query
+            docs: Case-insensitive code/name filter, as on the list.
+        returns: TaxonStats
       createTaxon:
         http: POST /taxa
         args:

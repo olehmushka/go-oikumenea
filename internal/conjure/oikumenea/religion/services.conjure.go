@@ -30,7 +30,28 @@ type ReligionServiceClient interface {
 	ListPolicyKinds(ctx context.Context, authHeader bearertoken.Token) (PolicyKindList, error)
 	UpsertPolicyKind(ctx context.Context, authHeader bearertoken.Token, requestArg UpsertPolicyKindRequest) (PolicyKind, error)
 	// Search/filter the taxonomy. Filters compose; results carry closure depth where a parent/root is given.
-	ListTaxa(ctx context.Context, authHeader bearertoken.Token, rankArg *string, parentArg *string, religionArg *string, queryArg *string, pageSizeArg *int, pageTokenArg *string) (TaxonPage, error)
+	ListTaxa(ctx context.Context, authHeader bearertoken.Token, rankArg *string, parentArg *string, religionArg *string, classificationArg *string, queryArg *string, pageSizeArg *int, pageTokenArg *string) (TaxonPage, error)
+	/*
+	   Facet distributions over the taxonomy — the dashboard half of the facet vocabulary (M58 /
+	   D-ObjectFacets). Takes exactly the filter args `listTaxa` takes (minus paging) plus an
+	   optional `facets` CSV, so a dashboard and a list are two renderings of ONE request state
+	   and a chart segment is a link to the same URL with one more filter applied.
+
+	   `totalCount` equals the number of rows exhaustively paging `listTaxa` with these same
+	   filters would return. One round-trip serves the whole dashboard.
+
+	   ONE aggregate arm, with no subject and no scoped twin — but for the OPPOSITE reason to the
+	   audit ledger's single arm. The taxonomy is flat instance-global reference data with no
+	   row-level security and no unit reach (the RLS in this module is on the unit-scoped
+	   `religion_org_*` tables, not here), so `religion.read` held anywhere is the whole
+	   visibility decision and there is nothing for a second arm to narrow.
+
+	   `subtree` and `classification` do not partition the result set — see TaxonStats.
+
+	   The path is `/stats/taxa` rather than `/taxa/stats` because the server's router rejects a
+	   literal path segment that is a sibling of `{taxonId}`.
+	*/
+	TaxonStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, rankArg *string, parentArg *string, religionArg *string, classificationArg *string, queryArg *string) (TaxonStats, error)
 	CreateTaxon(ctx context.Context, authHeader bearertoken.Token, requestArg CreateTaxonRequest) (Taxon, error)
 	GetTaxon(ctx context.Context, authHeader bearertoken.Token, taxonIdArg string) (Taxon, error)
 	UpdateTaxon(ctx context.Context, authHeader bearertoken.Token, taxonIdArg string, requestArg UpdateTaxonRequest) (Taxon, error)
@@ -259,7 +280,7 @@ func (c *religionServiceClient) UpsertPolicyKind(ctx context.Context, authHeader
 	return *returnVal, nil
 }
 
-func (c *religionServiceClient) ListTaxa(ctx context.Context, authHeader bearertoken.Token, rankArg *string, parentArg *string, religionArg *string, queryArg *string, pageSizeArg *int, pageTokenArg *string) (TaxonPage, error) {
+func (c *religionServiceClient) ListTaxa(ctx context.Context, authHeader bearertoken.Token, rankArg *string, parentArg *string, religionArg *string, classificationArg *string, queryArg *string, pageSizeArg *int, pageTokenArg *string) (TaxonPage, error) {
 	var returnVal *TaxonPage
 	var requestParams []httpclient.RequestParam
 	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListTaxa"))
@@ -274,6 +295,9 @@ func (c *religionServiceClient) ListTaxa(ctx context.Context, authHeader bearert
 	}
 	if religionArg != nil {
 		queryParams.Set("religion", fmt.Sprint(*religionArg))
+	}
+	if classificationArg != nil {
+		queryParams.Set("classification", fmt.Sprint(*classificationArg))
 	}
 	if queryArg != nil {
 		queryParams.Set("query", fmt.Sprint(*queryArg))
@@ -292,6 +316,43 @@ func (c *religionServiceClient) ListTaxa(ctx context.Context, authHeader bearert
 	}
 	if returnVal == nil {
 		return *new(TaxonPage), werror.ErrorWithContextParams(ctx, "listTaxa response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *religionServiceClient) TaxonStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, rankArg *string, parentArg *string, religionArg *string, classificationArg *string, queryArg *string) (TaxonStats, error) {
+	var returnVal *TaxonStats
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("TaxonStats"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/religion/v1/stats/taxa"))
+	queryParams := make(url.Values)
+	if facetsArg != nil {
+		queryParams.Set("facets", fmt.Sprint(*facetsArg))
+	}
+	if rankArg != nil {
+		queryParams.Set("rank", fmt.Sprint(*rankArg))
+	}
+	if parentArg != nil {
+		queryParams.Set("parent", fmt.Sprint(*parentArg))
+	}
+	if religionArg != nil {
+		queryParams.Set("religion", fmt.Sprint(*religionArg))
+	}
+	if classificationArg != nil {
+		queryParams.Set("classification", fmt.Sprint(*classificationArg))
+	}
+	if queryArg != nil {
+		queryParams.Set("query", fmt.Sprint(*queryArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(TaxonStats), werror.WrapWithContextParams(ctx, err, "taxonStats failed")
+	}
+	if returnVal == nil {
+		return *new(TaxonStats), werror.ErrorWithContextParams(ctx, "taxonStats response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -1198,7 +1259,28 @@ type ReligionServiceClientWithAuth interface {
 	ListPolicyKinds(ctx context.Context) (PolicyKindList, error)
 	UpsertPolicyKind(ctx context.Context, requestArg UpsertPolicyKindRequest) (PolicyKind, error)
 	// Search/filter the taxonomy. Filters compose; results carry closure depth where a parent/root is given.
-	ListTaxa(ctx context.Context, rankArg *string, parentArg *string, religionArg *string, queryArg *string, pageSizeArg *int, pageTokenArg *string) (TaxonPage, error)
+	ListTaxa(ctx context.Context, rankArg *string, parentArg *string, religionArg *string, classificationArg *string, queryArg *string, pageSizeArg *int, pageTokenArg *string) (TaxonPage, error)
+	/*
+	   Facet distributions over the taxonomy — the dashboard half of the facet vocabulary (M58 /
+	   D-ObjectFacets). Takes exactly the filter args `listTaxa` takes (minus paging) plus an
+	   optional `facets` CSV, so a dashboard and a list are two renderings of ONE request state
+	   and a chart segment is a link to the same URL with one more filter applied.
+
+	   `totalCount` equals the number of rows exhaustively paging `listTaxa` with these same
+	   filters would return. One round-trip serves the whole dashboard.
+
+	   ONE aggregate arm, with no subject and no scoped twin — but for the OPPOSITE reason to the
+	   audit ledger's single arm. The taxonomy is flat instance-global reference data with no
+	   row-level security and no unit reach (the RLS in this module is on the unit-scoped
+	   `religion_org_*` tables, not here), so `religion.read` held anywhere is the whole
+	   visibility decision and there is nothing for a second arm to narrow.
+
+	   `subtree` and `classification` do not partition the result set — see TaxonStats.
+
+	   The path is `/stats/taxa` rather than `/taxa/stats` because the server's router rejects a
+	   literal path segment that is a sibling of `{taxonId}`.
+	*/
+	TaxonStats(ctx context.Context, facetsArg *string, rankArg *string, parentArg *string, religionArg *string, classificationArg *string, queryArg *string) (TaxonStats, error)
 	CreateTaxon(ctx context.Context, requestArg CreateTaxonRequest) (Taxon, error)
 	GetTaxon(ctx context.Context, taxonIdArg string) (Taxon, error)
 	UpdateTaxon(ctx context.Context, taxonIdArg string, requestArg UpdateTaxonRequest) (Taxon, error)
@@ -1320,8 +1402,12 @@ func (c *religionServiceClientWithAuth) UpsertPolicyKind(ctx context.Context, re
 	return c.client.UpsertPolicyKind(ctx, c.authHeader, requestArg)
 }
 
-func (c *religionServiceClientWithAuth) ListTaxa(ctx context.Context, rankArg *string, parentArg *string, religionArg *string, queryArg *string, pageSizeArg *int, pageTokenArg *string) (TaxonPage, error) {
-	return c.client.ListTaxa(ctx, c.authHeader, rankArg, parentArg, religionArg, queryArg, pageSizeArg, pageTokenArg)
+func (c *religionServiceClientWithAuth) ListTaxa(ctx context.Context, rankArg *string, parentArg *string, religionArg *string, classificationArg *string, queryArg *string, pageSizeArg *int, pageTokenArg *string) (TaxonPage, error) {
+	return c.client.ListTaxa(ctx, c.authHeader, rankArg, parentArg, religionArg, classificationArg, queryArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *religionServiceClientWithAuth) TaxonStats(ctx context.Context, facetsArg *string, rankArg *string, parentArg *string, religionArg *string, classificationArg *string, queryArg *string) (TaxonStats, error) {
+	return c.client.TaxonStats(ctx, c.authHeader, facetsArg, rankArg, parentArg, religionArg, classificationArg, queryArg)
 }
 
 func (c *religionServiceClientWithAuth) CreateTaxon(ctx context.Context, requestArg CreateTaxonRequest) (Taxon, error) {
@@ -1597,12 +1683,20 @@ func (c *religionServiceClientWithTokenProvider) UpsertPolicyKind(ctx context.Co
 	return c.client.UpsertPolicyKind(ctx, bearertoken.Token(token), requestArg)
 }
 
-func (c *religionServiceClientWithTokenProvider) ListTaxa(ctx context.Context, rankArg *string, parentArg *string, religionArg *string, queryArg *string, pageSizeArg *int, pageTokenArg *string) (TaxonPage, error) {
+func (c *religionServiceClientWithTokenProvider) ListTaxa(ctx context.Context, rankArg *string, parentArg *string, religionArg *string, classificationArg *string, queryArg *string, pageSizeArg *int, pageTokenArg *string) (TaxonPage, error) {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
 		return *new(TaxonPage), err
 	}
-	return c.client.ListTaxa(ctx, bearertoken.Token(token), rankArg, parentArg, religionArg, queryArg, pageSizeArg, pageTokenArg)
+	return c.client.ListTaxa(ctx, bearertoken.Token(token), rankArg, parentArg, religionArg, classificationArg, queryArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *religionServiceClientWithTokenProvider) TaxonStats(ctx context.Context, facetsArg *string, rankArg *string, parentArg *string, religionArg *string, classificationArg *string, queryArg *string) (TaxonStats, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(TaxonStats), err
+	}
+	return c.client.TaxonStats(ctx, bearertoken.Token(token), facetsArg, rankArg, parentArg, religionArg, classificationArg, queryArg)
 }
 
 func (c *religionServiceClientWithTokenProvider) CreateTaxon(ctx context.Context, requestArg CreateTaxonRequest) (Taxon, error) {

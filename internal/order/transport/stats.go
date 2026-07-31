@@ -8,12 +8,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/palantir/pkg/bearertoken"
-
 	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
 	orderapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/order"
 	"github.com/olegamysk/go-oikumenea/pkg/facet"
 	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/palantir/pkg/bearertoken"
 )
 
 // OrderStats implements GET /order/v1/stats/orders — the dashboard half of the order facet

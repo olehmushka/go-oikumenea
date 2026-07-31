@@ -37,6 +37,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/education"
 	educationapp "github.com/olegamysk/go-oikumenea/internal/education/application"
 	"github.com/olegamysk/go-oikumenea/internal/externalorg"
+	externalorgapp "github.com/olegamysk/go-oikumenea/internal/externalorg/application"
 	"github.com/olegamysk/go-oikumenea/internal/finance"
 	"github.com/olegamysk/go-oikumenea/internal/geo"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation"
@@ -63,6 +64,7 @@ import (
 	rankapp "github.com/olegamysk/go-oikumenea/internal/rank/application"
 	rankdomain "github.com/olegamysk/go-oikumenea/internal/rank/domain"
 	"github.com/olegamysk/go-oikumenea/internal/religion"
+	religionapp "github.com/olegamysk/go-oikumenea/internal/religion/application"
 	"github.com/olegamysk/go-oikumenea/internal/search"
 	"github.com/olegamysk/go-oikumenea/internal/tenant"
 	"github.com/olegamysk/go-oikumenea/internal/vehicle"
@@ -518,8 +520,11 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// institutional-tie edges FK. Instance-global reference data, catalog-typed, provisional/resolved +
 	// attribution; a hermenea import target (the `external-organizations` object-type is registered on the
 	// dataimport side). Writes record via the audit service; translatable names assemble via localization.
+	// Held for the dashboard bucket labelers below (M58 ticket 2); nil when the module is disabled.
+	var externalOrgSvc *externalorgapp.Service
 	if install.ModuleEnabled("externalorg") {
-		if _, err := externalorg.Register(info, pool, auditSvc, locSvc, enforcer); err != nil {
+		externalOrgSvc, err = externalorg.Register(info, pool, auditSvc, locSvc, enforcer)
+		if err != nil {
 			cleanup()
 			return nil, err
 		}
@@ -546,8 +551,10 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// catalog-driven level marker + theism classification, the per-faith catalogs, and the per-unit
 	// organization attributes (profile/classifications/policies). Org nodes reuse tenant units; the
 	// canonical/tradition/affiliation graphs are migration-seeded. Reuses tenantSvc for createChildOrg.
+	// Held for the dashboard bucket labelers below (M58 ticket 2); nil when the module is disabled.
+	var religionSvc *religionapp.Service
 	if install.ModuleEnabled("religion") {
-		religionSvc, err := religion.Register(info, pool, auditSvc, locSvc, tenantSvc, enforcer, cipher)
+		religionSvc, err = religion.Register(info, pool, auditSvc, locSvc, tenantSvc, enforcer, cipher)
 		if err != nil {
 			cleanup()
 			return nil, err
@@ -600,6 +607,14 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	orderSvc.SetBucketLabeler(statsLabeler)
 	documentSvc.SetBucketLabeler(statsLabeler)
 	auditSvc.SetBucketLabeler(statsLabeler)
+	// Optional modules: a disabled module has no service to label, and its facets are simply never
+	// requested — the endpoint that would serve them is not routed either.
+	if externalOrgSvc != nil {
+		externalOrgSvc.SetBucketLabeler(statsLabeler)
+	}
+	if religionSvc != nil {
+		religionSvc.SetBucketLabeler(statsLabeler)
+	}
 
 	// Identity-federation: the external-IdP seam. Its application service is the (issuer, subject)
 	// resolver the validation middleware binds to.

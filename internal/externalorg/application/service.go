@@ -21,6 +21,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/externalorg/domain"
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/pkg/listing"
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 
@@ -38,6 +39,7 @@ type Service struct {
 	pool    *pgxpool.Pool
 	newRepo RepositoryFactory
 	audit   *auditapp.Service
+	labeler stats.Labeler
 }
 
 // NewService wires the service with the pool, repository factory, and audit service.
@@ -79,9 +81,35 @@ func (s *Service) GetOrg(ctx context.Context, id string) (domain.Organization, e
 	return o, mapNotFound(err, domain.ErrNotFound)
 }
 
-func (s *Service) ListOrgs(ctx context.Context, query, kindCode, countryID, status, after string, pageSize int) ([]domain.Organization, error) {
-	return s.newRepo(s.querier(ctx)).ListOrgs(ctx, query, kindCode, countryID, status, after, clampPageSize(pageSize)+1)
+func (s *Service) ListOrgs(ctx context.Context, query string, f domain.OrgFilter, after string, pageSize int) ([]domain.Organization, error) {
+	if err := f.Validate(); err != nil {
+		return nil, err
+	}
+	return s.newRepo(s.querier(ctx)).ListOrgs(ctx, query, f, after, clampPageSize(pageSize)+1)
 }
+
+// OrgStats is the dashboard half of the facet vocabulary (M58 / D-ObjectFacets): the same filters
+// ListOrgs takes, aggregated instead of paged.
+//
+// It calls stats.Compute with isAdmin=true, which is the arm convention's way of saying "no
+// visibility predicate" — and here that is a statement of fact rather than a privilege escalation.
+// `external_organizations` is flat instance-global reference data: no row-level security, no unit
+// reach, no shadow flag. The transport has already required `externalorg.read`, which is the whole
+// gate on the list endpoint too, so any caller who reaches this line may read every row it counts.
+// A scoped arm would have nothing to narrow.
+func (s *Service) OrgStats(ctx context.Context, query string, f domain.OrgFilter, sel stats.Selection) (stats.Result, error) {
+	if err := f.Validate(); err != nil {
+		return stats.Result{}, err
+	}
+	return stats.Compute(ctx, s.labeler, sel, true, "", func(string) ([]stats.Group, error) {
+		return s.newRepo(s.querier(ctx)).OrgStats(ctx, query, f, sel)
+	})
+}
+
+// SetBucketLabeler injects the composition root's ref-bucket resolver (kind and country RIDs to
+// locale->text names). Set once at boot; a nil labeler simply leaves buckets unlabelled, exactly as
+// an unresolvable id does.
+func (s *Service) SetBucketLabeler(l stats.Labeler) { s.labeler = l }
 
 func (s *Service) CreateOrg(ctx context.Context, in domain.OrgInput) (domain.Organization, error) {
 	if err := in.Validate(); err != nil {

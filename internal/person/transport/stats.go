@@ -8,11 +8,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/palantir/pkg/bearertoken"
-
 	personapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/person"
 	"github.com/olegamysk/go-oikumenea/pkg/facet"
 	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/palantir/pkg/bearertoken"
 )
 
 // PersonStats implements GET /person/v1/stats/persons — the dashboard half of the person facet

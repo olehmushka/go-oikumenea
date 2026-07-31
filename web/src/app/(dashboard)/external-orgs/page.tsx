@@ -1,10 +1,20 @@
 "use client";
 
-// External-organizations workspace (M30 / D-ExternalOrgs). Browse/create external organizations a person
-// is tied to but the deploying org neither owns nor commands — parties, government bodies, foreign
-// military, NGOs, lobbying registrants. Catalog-typed, provisional/resolved + attribution, hermenea-fed
-// (Wikidata). The kind catalog is managed here too. These are external reference data, independent of the
-// deploying org's units, and never enter the PDP graph.
+// External-organizations workspace (M30 / D-ExternalOrgs). External organizations a person is tied to
+// but the deploying org neither owns nor commands — parties, government bodies, foreign military, NGOs,
+// lobbying registrants. Catalog-typed, provisional/resolved + attribution, hermenea-fed (Wikidata). The
+// kind catalog is managed here too. These are external reference data, independent of the deploying
+// org's units, and never enter the PDP graph.
+//
+// M58 ticket 2 moved BROWSING out. /explore/external_organization is the registry's real reader: six
+// facet filters, keyset paging that does not drop its token, and a dashboard over the same filter set.
+// What stays here is EDITING — creation, the kind catalog, and the per-row merge/edit/delete forms,
+// which are richer than the generic action runner (a merge has to pick its surviving org).
+//
+// The table below is therefore a bounded EDIT surface, not a listing: it shows one page and says so.
+// That is the difference from the pre-M58 page, which fetched 200 rows, offered two of the six
+// filters client-side, and silently dropped the next-page token — presenting a truncation as a
+// registry.
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -24,24 +34,33 @@ type Org = {
 
 const label = (m: LocaleMap, fallback: string) => pickLabel(m) || fallback;
 
+// The edit surface's page size. Small on purpose: this is a working set to act on, not a listing —
+// the listing is /explore/external_organization.
+const EDIT_PAGE = 50;
+
 export default function ExternalOrgsPage() {
+  const tr = useTg();
   const [kinds, setKinds] = useState<Kind[]>([]);
   const [orgs, setOrgs] = useState<Org[]>([]);
-  const [kindFilter, setKindFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [truncated, setTruncated] = useState(false);
   const [err, setErr] = useState<unknown>(null);
 
+  // One page, and the next-page token is READ rather than discarded — its presence is what the notice
+  // below reports. Filtering is deliberately not offered here; it is the explorer's job now.
   function reload() {
     api.externalOrg
-      .listExternalOrgs(undefined, kindFilter || undefined, undefined, statusFilter || undefined, 200)
-      .then((r) => setOrgs((r.orgs ?? []) as unknown as Org[]))
+      .listExternalOrgs(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, EDIT_PAGE)
+      .then((r) => {
+        setOrgs((r.orgs ?? []) as unknown as Org[]);
+        setTruncated(Boolean(r.nextPageToken));
+      })
       .catch(setErr);
   }
   function reloadKinds() {
     api.externalOrg.listExternalOrgKinds().then((r) => setKinds((r.kinds ?? []) as unknown as Kind[])).catch(() => {});
   }
   useEffect(() => { reloadKinds(); }, []);
-  useEffect(() => { reload(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [kindFilter, statusFilter]);
+  useEffect(() => { reload(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   return (
     <div>
@@ -58,17 +77,16 @@ export default function ExternalOrgsPage() {
 
       <Card className="mt-6">
         <div className="mb-2 flex items-center gap-3">
-          <h2 className="text-sm font-semibold text-slate-900"><T>Registry</T></h2>
-          <select className="input ml-auto w-auto text-xs" value={kindFilter} onChange={(e) => setKindFilter(e.target.value)}>
-            <option value="">— all kinds —</option>
-            {kinds.map((k) => <option key={k.id} value={k.code}>{label(k.name, k.code)}</option>)}
-          </select>
-          <select className="input w-auto text-xs" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="">— any status —</option>
-            <option value="resolved">resolved</option>
-            <option value="provisional">provisional</option>
-          </select>
+          <h2 className="text-sm font-semibold text-slate-900"><T>Edit</T></h2>
+          <Link href="/explore/external_organization" className="ml-auto text-xs text-indigo-600 hover:underline">
+            <T>Browse, filter and chart the whole registry →</T>
+          </Link>
         </div>
+        <p className="mb-3 text-xs text-slate-500">
+          {truncated
+            ? tr("The first page only — there are more. Use the explorer to find a specific organization; this table is here to edit the ones in front of you.")
+            : tr("Every organization in the registry. Use the explorer to filter or chart them.")}
+        </p>
         <Table head={<><th className="th"><T>Name</T></th><th className="th"><T>Kind</T></th><th className="th"><T>Country</T></th><th className="th">Wikidata</th><th className="th"><T>Status</T></th><th className="th"><T>Source</T></th><th className="th"></th></>}>
           {orgs.map((o) => (
             <tr key={o.id} className="border-t">

@@ -8,12 +8,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/palantir/pkg/bearertoken"
-
 	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
 	documentapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/document"
 	"github.com/olegamysk/go-oikumenea/pkg/facet"
 	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/palantir/pkg/bearertoken"
 )
 
 // DocumentStats implements GET /document/v1/stats/documents — the dashboard half of the document facet

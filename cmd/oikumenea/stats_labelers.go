@@ -40,6 +40,13 @@ func refLabelSources() []struct{ typ, table, col, entity string } {
 		{"position", "membership_positions", "title", "position"},
 		{"order_type", "order_order_types", "name", "order_type"},
 		{"document_type", "document_document_types", "name", "document_type"},
+		// M58 ticket 2 — the external-organization and taxonomy dashboards. `taxon` resolves twice
+		// over: as the `religionId` facet's root and as the `subtree` facet's ancestor, which is one
+		// table and therefore one resolver.
+		{"external_org_kind", "external_org_kinds", "name", "external_org_kind"},
+		{"taxon", "religion_taxa", "name", "taxon"},
+		{"taxon_rank", "religion_taxon_ranks", "name", "taxon_rank"},
+		{"classification", "religion_classifications", "name", "classification"},
 	}
 }
 

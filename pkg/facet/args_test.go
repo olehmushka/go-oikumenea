@@ -197,6 +197,16 @@ func requireDrivesResolves(t *testing.T, o ObjectType, n NonFacetArg) {
 		t.Errorf("%s arg %q is classified %s with no Drives", o.Type, n.Arg, n.Class)
 		return
 	}
+	// A raw-pgx module has no queries directory: Drives names an adapter METHOD rather than a sqlc
+	// query, and rawpgx_test.go's funcCalls is what resolves it. Same requirement — the exemption must
+	// name something real — read from the Go source instead of the SQL.
+	if rawPgxTypes()[o.Type] {
+		if _, ok := funcCalls(t, o.Module)[n.Drives]; !ok {
+			t.Errorf("%s arg %q (class %s) claims to drive %q, but internal/%s/adapters declares no "+
+				"such func — the exemption names nothing real", o.Type, n.Arg, n.Class, n.Drives, o.Module)
+		}
+		return
+	}
 	dir := filepath.Join("..", "..", "internal", o.Module, "adapters", "queries")
 	entries, err := os.ReadDir(dir)
 	if err != nil {

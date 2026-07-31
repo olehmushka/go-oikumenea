@@ -1,10 +1,17 @@
 "use client";
 
-// Religion workspace (M22 / D-Religion). Browse the recursive multi-faith taxonomy (religion → branch →
-// tradition → sub-tradition → denomination) with rank/religion/text filters, create a taxon, and inspect
-// a taxon's effective theism classification (nearest-declared-wins) + edit the tags declared on it.
-// Per-unit religion profiles/classifications are managed from the unit object view.
+// Religion workspace (M22 / D-Religion). EDIT the recursive multi-faith taxonomy (religion → branch →
+// tradition → sub-tradition → denomination): create a taxon, and inspect a taxon's effective theism
+// classification (nearest-declared-wins) + edit the tags declared on it. Per-unit religion profiles /
+// classifications are managed from the unit object view.
+//
+// M58 ticket 2 moved BROWSING out. /explore/taxon is the taxonomy's real reader: filters on rank, root
+// religion, subtree and effective theism, keyset paging, and a dashboard over the same filter set —
+// including a subtree chart that drills down the tree one click at a time. What stays here is the
+// TREE EDITOR, which needs the whole tree in hand to render containment, and a free-text find to reach
+// the node being changed.
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api/client";
 import { PageHeader, Card, Table, Mono, Pill } from "@/components/ui";
@@ -35,8 +42,6 @@ export default function ReligionPage() {
   const [classifications, setClassifications] = useState<Classification[]>([]);
   const [religions, setReligions] = useState<Taxon[]>([]);
   const [taxa, setTaxa] = useState<Taxon[]>([]);
-  const [rankFilter, setRankFilter] = useState("");
-  const [religionFilter, setReligionFilter] = useState("");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Taxon | null>(null);
   const [err, setErr] = useState<unknown>(null);
@@ -44,19 +49,18 @@ export default function ReligionPage() {
   useEffect(() => {
     api.religion.listTaxonRanks().then((r) => setRanks((r.taxonRanks ?? []) as unknown as Rank[])).catch(() => {});
     api.religion.listClassifications().then((r) => setClassifications((r.classifications ?? []) as unknown as Classification[])).catch(() => {});
-    api.religion.listTaxa("religion", undefined, undefined, undefined, 100).then((r) => setReligions((r.taxa ?? []) as unknown as Taxon[])).catch(() => {});
+    // positional args: rank, parent, religion, classification, query, pageSize, pageToken
+    api.religion.listTaxa("religion", undefined, undefined, undefined, undefined, 100).then((r) => setReligions((r.taxa ?? []) as unknown as Taxon[])).catch(() => {});
   }, []);
 
   function reload() {
     const params = new URLSearchParams({ pageSize: "200" });
-    if (rankFilter) params.set("rank", rankFilter);
-    if (religionFilter) params.set("religion", religionFilter);
     if (query.trim()) params.set("query", query.trim());
     api.request<{ taxa: Taxon[] }>("GET", `/religion/v1/taxa?${params.toString()}`)
       .then((r) => setTaxa(r.taxa ?? []))
       .catch(setErr);
   }
-  useEffect(reload, [rankFilter, religionFilter, query]);
+  useEffect(reload, [query]);
 
   return (
     <div>
@@ -68,25 +72,20 @@ export default function ReligionPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
           <Card>
+            {/*
+              M58 ticket 2 moved FACET FILTERING out to /explore/taxon, which does it properly: rank,
+              root religion, subtree and effective theism, over keyset paging, with a dashboard on the
+              same filter set. What stays is the free-text find — a search arg, not a facet, and the
+              affordance a tree EDITOR actually needs to reach the node it is about to change.
+            */}
             <div className="mb-3 flex flex-wrap items-end gap-2">
-              <div>
-                <label className="block text-xs text-slate-500"><T>Rank</T></label>
-                <select className="input w-40" value={rankFilter} onChange={(e) => setRankFilter(e.target.value)}>
-                  <option value="">{tr("all ranks")}</option>
-                  {ranks.map((r) => <option key={r.id} value={r.code}>{pickLabel(r.name)}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-slate-500"><T>Religion</T></label>
-                <select className="input w-44" value={religionFilter} onChange={(e) => setReligionFilter(e.target.value)}>
-                  <option value="">{tr("all faiths")}</option>
-                  {religions.map((r) => <option key={r.id} value={r.code}>{pickLabel(r.name)}</option>)}
-                </select>
-              </div>
               <div className="flex-1 min-w-[12rem]">
-                <label className="block text-xs text-slate-500"><T>Search</T></label>
+                <label className="block text-xs text-slate-500"><T>Find</T></label>
                 <input className="input w-full" placeholder={tr("code or name")} value={query} onChange={(e) => setQuery(e.target.value)} />
               </div>
+              <Link href="/explore/taxon" className="pb-2 text-xs text-indigo-600 hover:underline">
+                <T>Browse, filter and chart the taxonomy →</T>
+              </Link>
             </div>
             <TaxaTable taxa={taxa} selected={selected} onSelect={setSelected} />
           </Card>

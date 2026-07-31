@@ -75,6 +75,36 @@ There is deliberately **no bucket-size suppression**: every counted row is a row
 already read and page through the same list endpoint under the same filters, so a k-anonymity floor
 would protect nothing it does not already protect.
 
+### The fourth rule, and the one property it relaxes (M58 ticket 2)
+
+4. **A bucket's count is the number of rows its own filter returns.** This is the property the whole
+   vocabulary rests on — it is what makes a chart segment and a filter *the same act* — and it is
+   asserted per bucket by every module's differential test.
+
+Almost every facet also **partitions**: each counted row lands in exactly one bucket, so a
+distribution sums to `totalCount`. Two shapes cannot, and both arrived with the taxonomy in M58
+ticket 2 — the first *tree* to reach the vocabulary. `Facet.NonPartitioning` is the reason string
+that marks them (the `Ledger` pattern: it carries its own justification, so a second one costs an
+argument rather than a copy-paste):
+
+- a **closure** facet (`taxon.subtree`) counts each row under every ancestor it has;
+- an **M:N** facet (`taxon.classification`) counts each row under every tag it carries.
+
+**What that exempts is the sum, and nothing else.** Rule 4 is untouched: the overlap is *between
+buckets*, never between a bucket and its own filter. Two build-time guards keep it contained
+(`pkg/facet/rawpgx_test.go`): the reason must be ≥ 40 characters, and the facet's `Table` must not be
+the listed table — a row has one value in its own column, so a facet grouping one *cannot* overlap,
+and an exemption there would be imitation rather than need.
+
+The closure facet has one further requirement that is easy to miss and was found by the differential
+test rather than by reading: **its buckets must be confined to the current candidate set.** Once a
+caller has filtered to X's subtree, X's own ancestors are still ancestors of every remaining row, so
+they would otherwise appear as buckets — and `parent` is single-valued, so clicking one *replaces*
+the anchor and **widens** the result, landing on more rows than the bucket counted. Joining the
+ancestor back to the candidate set confines the buckets to taxa strictly inside the current view,
+where a bucket's subtree is contained in the candidate set and rule 4 holds at every depth. At the
+top level every ancestor is a candidate anyway, so the rule is uniform rather than conditional.
+
 ---
 
 ## Catalog
@@ -210,16 +240,16 @@ Facets and components in brief; each is expanded to the table form above when it
 
 | Type | Facets | Components |
 |---|---|---|
-| **organization** (`tenant_organizations`) | `domain`, `visibility`, `state` | Orgs per domain bar · state tiles |
+| **organization** (`tenant_organizations`) | `domain`, `visibility`, `state` | Orgs per domain bar · state tiles. The only M58 type with an app-layer visibility predicate — `gateUnits` trims *after* the page is cut, so it needs the full M57 two-arm treatment (rule 3) |
 | **company** (`company_org_profiles`) | `legalForm`, `ownershipCategory`, `countryId`, `industryClass`, `foundedOn`(range), `state` | Legal-form bar · ownership donut · industry (NACE) top-15 bar · foundings-per-year histogram · country bar |
-| **vehicle** (`vehicle_vehicles`) | `typeId`, `brandId`, `modelId`, `color`, `status`, `manufactureDate`(range), `registrationCountry` | Type mix bar · brand top-15 bar · fleet-age histogram · colour bar (**bars coloured by the `platform_colors` hex**, the one place the palette is the data) · status tiles |
+| **vehicle** (`vehicle_vehicles`) | `typeId`, `brandId`, `modelId`, `color`, `status`, `manufactureDate`(range), `registrationCountry` | Type mix bar · brand top-15 bar · fleet-age histogram · colour bar · status tiles. ⚠️ **Defect (M58 ticket-2 survey):** the colour-by-`platform_colors`-hex component this row used to promise has nothing to hang on — `vehicle_vehicles.color` is plain TEXT with no FK to `platform_colors`. Either the column gains the FK or the component drops; decide in vehicle's own ticket. `brandId` and `registrationCountry` are also two-hop (`vehicle_models.brand_id`, `vehicle_registrations.country_id`). Raw-pgx module — see the guard arm below |
 | **finance-account** (`finance_accounts`) | `institutionId`, `currency`, `accountTypeId`, `status` | Accounts per bank bar · currency donut · type mix bar · status tiles |
 | **finance-card** (`finance_cards`) | `networkId`, `cardType`, `status` | Network bar · debit/credit donut · status tiles |
 | **institution** (`education_org_profiles`) | `kindId`, `countryId`, `foundedOn`(range), `state` | Kind mix bar · country bar · state tiles |
-| **enrollment** (`person_education_enrollments`) | `institutionId`, `programId`, `degreeLevelId`, `status`, `startedOn`(range) | Enrollments per intake histogram · degree-level bar (ISCED-ordered, **not** count-ordered) · status tiles |
-| **religion-taxon** (`religion_taxa`) | `rankId`, `parent`, `religionId`, `classification` | Taxa per rank bar · per-religion tree-size bar · theism classification donut |
-| **external-org** (`external_organizations`) | `kind`, `country`, `status`, `source`, `confidence`, `asOf`(range) | Kind mix bar · country bar · provisional/resolved tiles · **confidence × source heat bar** (the OSINT attribution quality view, D-OverlayFoundation) |
-| **location** (`location_locations`) | `countryId`, `typeId`, `hasCoordinate` | Locations per country bar · type mix bar · geocoded-vs-not tile |
+| **enrollment** (`person_education_enrollments`) | `institutionId`, `degreeLevelId`, `status`, `effectiveFrom`(range) | Enrollments per intake histogram · degree-level bar (ISCED-ordered, **not** count-ordered) · status tiles. ⚠️ **Defect (M58 ticket-2 survey):** `programId` and `startedOn` name columns that do not exist — the nearest are `field_of_study` (free TEXT, so a `code` facet at best) and `effective_from`. Corrected above. Also has **no top-level list**: only `GET /education/v1/persons/{personId}/enrollments` |
+
+
+| **location** (`location_locations`) | `countryId`, `typeId` | Locations per country bar · type mix bar. ⚠️ **Defect (M58 ticket-2 survey):** `hasCoordinate` is DEGENERATE — `location_locations.geom` is `NOT NULL`, so the facet is constant-true and the geocoded-vs-not tile would always read 100%. Dropped above. Also: `listLocations` REQUIRES a spatial window (`Location:QueryWindowRequired`), so this type needs an unwindowed list mode before it can have a dashboard at all |
 | **languoid** (`language_languoids`) | `level`, `macroarea`, `status`, `family` | Level mix donut · macroarea bar · endangerment-status bar (**ordered by severity**) |
 | **assignment** (`authz_role_assignments`) | `roleId`, `targetUnitId`, `scope`, `graphId`, `active`, `expiresAt`(range) | Grants per role bar · unit-vs-subtree donut · expiring-soon tile + histogram · active-vs-revoked tiles |
 
@@ -261,6 +291,81 @@ bucket is the system actions.
 filter args already existed) and for one it did not: every way it differs from the M57 five is a
 place where the kernel had quietly assumed something — an RID-typed collection, a closed value set,
 an app-layer visibility predicate, a month-grain axis. All four assumptions are now named.
+
+#### `external_organization` — [external-organizations](../modules/external-organizations.md) · `external_organizations` — **BUILT (M58 ticket 2)**
+
+The first **vertical** on the seam, and the cheapest one: four of its six args already existed (M30).
+
+| Facet | Kind | Source | Notes |
+|---|---|---|---|
+| `kind` | ref → external_org_kind | `kind_id` | **ArgOverride `kind`**, and the arg was **WIDENED** to accept a code *or* a RID. It took a kind code; a ref bucket's key is the kind's RID, and a bucket key must remain a usable filter value. Widening beat adding a second arg meaning almost the same thing — the precedent religion's own `religion` arg had already set. `ClassSuperseded` could not be used: that class is restricted to RANGE kinds |
+| `countryId` | ref → country | `country_id` | **ArgOverride `country`** (M30, and it already carried a RID). Nullable — an org may be supranational or unattributed |
+| `status` | enum | `status` | `provisional` / `resolved`. A provisional row is an unresolved import stub awaiting a merge |
+| `source` | enum | `source` | `self_declared` / `operator_verified` / `imported` — the D-OverlayFoundation attribution column-set. Chart order is ascending authority, **not** alphabetical |
+| `confidence` | enum | `confidence` | `confirmed` / `probable` / `possible`. Descending certainty; crossed with `source` this is the view the dashboard exists for, and a frequency sort would scramble both axes |
+| `asOf` | date-range | `as_of` | When the assertion was *observed*, not the row's lifetime (`created_at` is deliberately not faceted). Nullable ⇒ mandatory `(unknown)`, which reads as "asserted without an observation date". Conjure **datetime**, so the console declares `argType: "datetime"` |
+
+**Components.** ① **Resolution tiles** (`status`). ② **Attribution confidence donut**, `possible` toned
+red. ③ **Attribution source** bar. ④ **Kinds** bar. ⑤ **Top countries** bar. ⑥ **Observations per
+month** histogram.
+
+> **ONE aggregate arm — for the OPPOSITE reason to the ledger's.** Audit's single arm is a visibility
+> decision made entirely by the connection the query runs on. This one is the *absence* of a
+> visibility decision: `external_organizations` is flat instance-global reference data with no
+> row-level security, no unit reach and no shadow flag, so `externalorg.read` held anywhere is the
+> whole gate and there is nothing for a second arm to narrow.
+
+#### `taxon` — [religion](../modules/religion.md) · `religion_taxa` — **BUILT (M58 ticket 2)**
+
+The first **tree**, and therefore the origin of the non-partitioning property above.
+
+| Facet | Kind | Source | Notes |
+|---|---|---|---|
+| `rankId` | ref → taxon_rank | `religion_taxa.rank_id` | **ArgOverride `rank`**, **WIDENED** to code-or-RID like `external_organization.kind`. Ordered by the rank's OWN ordinal via the SQL-supplied `Ord` (the rank-seniority path `topNBuckets` already honours): religion → branch → tradition is a ladder, and re-sorting it by frequency destroys the only ordering that means anything |
+| `religionId` | ref → taxon | `religion_taxa.religion_id` | **ArgOverride `religion`**, which already accepted code-or-RID. The denormalized root. Unlike `subtree` this one **does** partition — every taxon has exactly one root, and a root's own row has none, which is the `(unknown)` bucket |
+| `subtree` | ref → taxon | `religion_taxa_closure.ancestor_id` | **NON-PARTITIONING.** **ArgOverride `parent`**, which already meant proper descendants. Counted with `depth > 0` on **both** sides, so the reflexive `(t,t,0)` row is excluded from the bucket exactly as from the click-through — otherwise the two disagree by precisely one row. Buckets are confined to the candidate set (see rule 4 above). The one facet whose `Table` is not the listed table |
+| `classification` | ref → classification | `religion_taxon_classifications.classification_id` | **NON-PARTITIONING.** **EFFECTIVE** tags, resolved to the nearest *declaring* ancestor through the closure — the same resolution `getEffectiveClassifications` performs, so the chart and the object view agree. Counting only directly-declared tags would partition and would also be useless: theism is declared on roots and inherited by everything below, so nearly every bucket would be `(unknown)` |
+
+**Components.** ① **Taxa per rank** bar, in the ladder's own order. ② **Theism donut** (effective).
+③ **Subtree size** bar — the recursive drill: click a bar to descend, and the chart re-draws over that
+subtree's own branches, repeating all the way down. ④ **Per root religion** bar, which does partition.
+
+> **Why a closure facet rather than an exact-parent one.** Grouping by `parent_id` and filtering to an
+> exact parent partitions cleanly and then **dead-ends**: after one click every remaining row shares
+> one parent, so the chart collapses to a single bucket and there is nowhere to go. The closure facet
+> keeps working at every depth, at the cost of overlapping buckets — and the overlap is between
+> buckets, never between a bucket and its own filter. That trade is the whole content of
+> `Facet.NonPartitioning`.
+
+> **ONE aggregate arm**, for the same reason as `external_organization`: the taxonomy is flat
+> instance-global reference data. The row-level security in this module is on the unit-scoped
+> `religion_org_*` tables, not here.
+
+**Both are raw-pgx modules**, and that is the fifth kernel assumption M58 has named — see below.
+
+### The raw-pgx arm of the parity guards (M58 ticket 2)
+
+`sqlparity_test.go` and `statsparity_test.go` prove a type's list and its dashboard see one world by
+parsing `internal/<module>/adapters/queries/*.sql`: every facet's `sqlc.narg` in every query, and the
+aggregate half byte-identical across arms. That is a proof about **static text**, and it works because
+sqlc queries are static text.
+
+Four modules are not. `religion` and `externalorg` (this ticket), `vehicle` and `finance` (still to
+come) build SQL at runtime, each by a documented choice in its package doc. They have no `queries`
+directory at all, so the existing guards cannot see them — and a registered type nothing checks is
+exactly the hole those files' coverage floors exist to refuse.
+
+The **invariant is unchanged**; only the proof is, because the mechanism the proof was written in does
+not exist here (`pkg/facet/rawpgx_test.go`):
+
+| sqlc modules | raw-pgx modules |
+|---|---|
+| every facet's `sqlc.narg` appears in the list query and the stats query | the list path and the stats path both call ONE shared filter builder, checked by **parsing the adapter's AST** — a comment naming the builder must not satisfy it |
+| the aggregate half is byte-identical across arms | the aggregate is a single named `const`, referenced by the stats path — with one arm there is nothing to compare to, so what is worth proving is that the text has one definition and cannot drift from a copy |
+| every branch names a declared facet, and every facet has a branch | the same, read out of the const |
+
+The two sqlc-shaped coverage floors **defer** to it rather than exempting the types: each still
+requires that *something* checks the type, it just is not that file.
 
 ---
 
@@ -364,6 +469,24 @@ inverse of a calendar month. Same non-vacuity floor, same live-negative fixtures
 
 ## Open seams
 
+- **Two M58 types have no RID token of their own.** `company` (`company_org_profiles`) and
+  `institution` (`education_org_profiles`) are **sidecar tables on `tenant_organizations`**
+  (M41 / D-UnifiedOrgGraph): their primary keys FK to `tenant_organizations(id)`, whose RID is
+  `organization` (4/1/6). `facet.Register` refuses a `Type` that is not a registered `pkg/rid` token,
+  and the `Ledger` escape cannot absorb them — it is capped at ONE by a guard and `audit` holds it,
+  correctly, since these tables are not ledgers and their rows *do* have a type token; it just is not
+  theirs alone. So both are **blocked** on a catalog decision, in the same register as the four
+  assumptions ticket 1 surfaced. Three shapes are on the table, none yet argued: a declared
+  "profile of an existing token" arm; a `domain`-discriminated `organization` type whose facets differ
+  per domain; or new RID types for the profiles, which is a schema change and the most invasive.
+  **Decide before starting either type's ticket, not during it.**
+- **A per-module action catalog whose `targetType` is the module, not the object type.** The object
+  view sources its inline actions by matching `ActionType.targetType` to the registry type, so
+  `taxon`'s actions do not surface there: `religion.taxon.update` and friends declare
+  `TargetType: "religion"`. That is why M58 ticket 2 kept the taxonomy editor on `/religion` rather
+  than folding it into the object view the way `external_organization` could (its actions do declare
+  `external_organization`). Retargeting them is a one-word change per row and a real data question —
+  `target_type` is written into `audit_log`, so new rows would stop matching historical ones.
 - **Cross-type dashboards.** Every dashboard is single-type by construction (per-module stats
   endpoints, D-ObjectFacets). "Persons by unit *and* by rank at once" is a two-facet cross-tab, not
   supported; a genuine cross-type roll-up would want the fan-in service D-ObjectFacets rejected, and

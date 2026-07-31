@@ -68,6 +68,45 @@ types:
       ExternalOrgKindList:
         fields:
           kinds: list<ExternalOrgKind>
+      # ---- facet distributions (M58 / D-ObjectFacets) ----
+      FacetBucket:
+        docs: |
+          One bucket of a facet distribution (M58 / D-ObjectFacets).
+
+          `key` is the bucket's stable, locale-agnostic identity — an enum value, a `YYYY-MM` month,
+          or a RID for a `ref` facet — and is exactly what you pass back as the corresponding query
+          filter, which is what makes a chart segment and a filter the same act. Two synthetic keys
+          never name a real value: `(unknown)` is the NULL bucket (mandatory for a nullable column,
+          so the gap is visible rather than dropped) and `(other)` is a top-N facet's collapsed tail;
+          neither is a usable filter value.
+
+          `label` carries a display name as a locale → text map (D-i18n) and is present only for
+          `ref` buckets, whose keys are RIDs. Best effort — an id with no resolvable name simply
+          carries no label.
+        fields:
+          key: string
+          label: optional<map<string, string>>
+          count: integer
+      FacetDistribution:
+        docs: |
+          One facet's buckets, in chart order — for an enum, the declared CHECK-set order with
+          zero-count buckets included so a chart's shape is stable across filterings; for the asOf
+          histogram, ascending by month; for a ref facet, descending by count with
+          `(other)`/`(unknown)` last.
+        fields:
+          facet: string
+          buckets: list<FacetBucket>
+      ExternalOrgStats:
+        docs: |
+          Facet distributions over the SAME set `listExternalOrgs` returns under the same filters
+          (M58 / D-ObjectFacets): `totalCount` is what exhaustively paging that endpoint would yield,
+          not an estimate and not a page count.
+
+          Every facet here partitions the result set — each counted row lands in exactly one bucket
+          of each distribution, so a distribution's counts sum to `totalCount`.
+        fields:
+          totalCount: integer
+          facets: list<FacetDistribution>
       # ---- request bodies ----
       UpsertExternalOrgKindRequest:
         docs: Create/update (by code) an external-org-kind catalog entry. name is the default-locale fallback.
@@ -157,7 +196,11 @@ services:
           kind:
             type: optional<string>
             param-type: query
-            docs: Optional kind-code filter.
+            docs: |
+              Optional kind filter, accepting EITHER the kind's code or its RID. It began as a
+              code-only filter; the RID form was added with the M58 facet vocabulary, because a `kind`
+              chart segment's bucket key is a `kind_id` RID and a bucket key must remain a usable
+              filter value. Both spellings select the same rows.
           country:
             type: optional<string>
             param-type: query
@@ -166,6 +209,24 @@ services:
             type: optional<string>
             param-type: query
             docs: Optional status filter (provisional | resolved).
+          source:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Optional attribution-source filter (self_declared | operator_verified | imported) —
+              the D-OverlayFoundation attribution column-set.
+          confidence:
+            type: optional<string>
+            param-type: query
+            docs: Optional attribution-confidence filter (confirmed | probable | possible).
+          asOfFrom:
+            type: optional<datetime>
+            param-type: query
+            docs: Optional lower bound (inclusive) on asOf, when the asserted value was observed.
+          asOfTo:
+            type: optional<datetime>
+            param-type: query
+            docs: Optional upper bound (inclusive) on asOf.
           pageSize:
             type: optional<integer>
             param-type: query
@@ -173,6 +234,65 @@ services:
             type: optional<string>
             param-type: query
         returns: ExternalOrgPage
+      externalOrgStats:
+        http: GET /stats/external-orgs
+        docs: |
+          Facet distributions over the registry — the dashboard half of the facet vocabulary (M58 /
+          D-ObjectFacets). Takes exactly the filter args `listExternalOrgs` takes (minus paging) plus
+          an optional `facets` CSV, so a dashboard and a list are two renderings of ONE request state
+          and a chart segment is a link to the same URL with one more filter applied.
+
+          `totalCount` equals the number of rows exhaustively paging `listExternalOrgs` with these
+          same filters would return. One round-trip serves the whole dashboard.
+
+          ONE aggregate arm, with no subject and no scoped twin — but for the OPPOSITE reason to the
+          audit ledger's single arm. `external_organizations` is a flat instance-global reference
+          table with no row-level security and no unit reach: `externalorg.read` held anywhere is the
+          whole visibility decision, so there is nothing for a second arm to narrow.
+
+          The path is `/stats/external-orgs` rather than `/external-orgs/stats` because the server's
+          router rejects a literal path segment that is a sibling of `{orgId}`.
+        args:
+          facets:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Optional comma-separated facet keys to compute (`kind,status,source`). Omitted or empty
+              = every facet the caller may read; an explicit list of nothing (`facets=,`) returns
+              `totalCount` alone. An undeclared facet key is an ExternalOrg:Invalid.
+          query:
+            type: optional<string>
+            param-type: query
+            docs: Optional case-insensitive name/code filter, as on the list.
+          kind:
+            type: optional<string>
+            param-type: query
+            docs: Optional kind filter (code or RID), as on the list.
+          country:
+            type: optional<string>
+            param-type: query
+            docs: Optional country RID filter, as on the list.
+          status:
+            type: optional<string>
+            param-type: query
+            docs: Optional status filter (provisional | resolved), as on the list.
+          source:
+            type: optional<string>
+            param-type: query
+            docs: Optional attribution-source filter, as on the list.
+          confidence:
+            type: optional<string>
+            param-type: query
+            docs: Optional attribution-confidence filter, as on the list.
+          asOfFrom:
+            type: optional<datetime>
+            param-type: query
+            docs: Optional lower bound (inclusive) on asOf, as on the list.
+          asOfTo:
+            type: optional<datetime>
+            param-type: query
+            docs: Optional upper bound (inclusive) on asOf, as on the list.
+        returns: ExternalOrgStats
       createExternalOrg:
         http: POST /external-orgs
         args:

@@ -63,7 +63,7 @@ export function ReligionTaxonPicker({
       const all: Taxon[] = [];
       let token: string | undefined;
       do {
-        const page = await api.religion.listTaxa(undefined, undefined, undefined, undefined, 200, token);
+        const page = await api.religion.listTaxa(undefined, undefined, undefined, undefined, undefined, 200, token);
         all.push(...((page?.taxa ?? []) as unknown as Taxon[]));
         token = page?.nextPageToken ?? undefined;
       } while (token);

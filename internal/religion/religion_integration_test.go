@@ -147,7 +147,7 @@ func TestTaxonomySeedAndResolution(t *testing.T) {
 	svc := newService(t, pool)
 	ctx := context.Background()
 
-	religions, err := svc.ListTaxa(ctx, "religion", "", "", "", "", 100)
+	religions, err := svc.ListTaxa(ctx, "", domain.TaxonFilter{Rank: rptr("religion")}, "", 100)
 	if err != nil {
 		t.Fatalf("list religions: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestTaxonomySeedAndResolution(t *testing.T) {
 	}
 
 	// Filter by religion CODE (regression: the param must not be compared against the uuid column).
-	christianTaxa, err := svc.ListTaxa(ctx, "", "", "christianity", "", "", 300)
+	christianTaxa, err := svc.ListTaxa(ctx, "", domain.TaxonFilter{Religion: rptr("christianity")}, "", 300)
 	if err != nil {
 		t.Fatalf("list by religion code: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestTaxonomySeedAndResolution(t *testing.T) {
 		t.Fatalf("expected the Christian subtree, got %d", len(christianTaxa))
 	}
 	// A childless root religion resolves to just itself (religion_id = its own id).
-	zoro, err := svc.ListTaxa(ctx, "", "", "zoroastrianism", "", "", 50)
+	zoro, err := svc.ListTaxa(ctx, "", domain.TaxonFilter{Religion: rptr("zoroastrianism")}, "", 50)
 	if err != nil {
 		t.Fatalf("list by childless religion: %v", err)
 	}

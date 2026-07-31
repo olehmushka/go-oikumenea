@@ -177,10 +177,16 @@ func TestEveryRegisteredTypeHasANargGroup(t *testing.T) {
 		"person": true, "unit": true, "link__member_of": true, "order": true, "document": true,
 		"audit": true,
 	}
+	// A raw-pgx module has no queries/*.sql for narg parity to read, so the SAME invariant — the list
+	// and the stats path apply one predicate — is proven in rawpgx_test.go by an AST check that both
+	// call one shared builder. Deferring rather than exempting: the type is still required to be
+	// checked SOMEWHERE, this file just is not where.
+	raw := rawPgxTypes()
 	for _, o := range Default.All() {
-		if !covered[o.Type] {
+		if !covered[o.Type] && !raw[o.Type] {
 			t.Errorf("object type %q is registered in the catalog but has no narg-parity group in "+
-				"sqlparity_test.go — its filter block is unchecked", o.Type)
+				"sqlparity_test.go (and is not a raw-pgx type checked by rawpgx_test.go) — its filter "+
+				"block is unchecked", o.Type)
 		}
 	}
 }

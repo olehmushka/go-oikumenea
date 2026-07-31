@@ -3,7 +3,9 @@
 
 package action
 
-import "testing"
+import (
+	"testing"
+)
 
 // TestRequestTypesResolve is the drift guard for the parameter-schema seam (review-2026-09 R-29):
 // every action that names a RequestType must resolve to a generated param set, and that set must be

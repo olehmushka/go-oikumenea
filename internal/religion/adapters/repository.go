@@ -11,7 +11,6 @@ package adapters
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -364,39 +363,42 @@ func (r *Repository) SetTaxonParent(ctx context.Context, id, parentID string) er
 	return nil
 }
 
-func (r *Repository) ListTaxa(ctx context.Context, rank, parent, religion, query, after string, limit int) ([]domain.Taxon, error) {
-	conds := []string{"t.deleted_at IS NULL"}
-	args := []any{}
-	add := func(a any) string { args = append(args, a); return "$" + itoa(len(args)) }
+// ListTaxa pages the taxonomy under the shared facet predicate. The filter block comes from
+// buildTaxonFilter (stats.go) — the SAME builder TaxonStats uses, so `totalCount` describes exactly
+// the set this pages. Only the keyset cursor, the limit and the depth projection are added here: a
+// page boundary is not a filter, and the depth column is a projection rather than a predicate.
+func (r *Repository) ListTaxa(ctx context.Context, query string, f domain.TaxonFilter, after string, limit int) ([]domain.Taxon, error) {
+	a := &argBuf{}
+	where := buildTaxonFilter(a, query, f)
+	// Depth is reported RELATIVE to the parent the caller asked about, and is 0 without one. It binds
+	// the same value the filter already bound, a second time: a projection and a predicate are
+	// separate uses, and sharing one placeholder across them would couple the builder to this query.
 	depthExpr := "0"
-	if rank != "" {
-		conds = append(conds, "rk.code = "+add(rank))
+	if f.Parent != nil {
+		depthExpr = "(SELECT depth FROM oikumenea.religion_taxa_closure c WHERE c.ancestor_id = " +
+			a.add(*f.Parent) + "::uuid AND c.descendant_id = t.id)"
 	}
-	if parent != "" {
-		// descendants of parent (excluding self); depth from the closure
-		conds = append(conds, "t.id IN (SELECT descendant_id FROM oikumenea.religion_taxa_closure WHERE ancestor_id = "+add(parent)+" AND depth > 0)")
-		depthExpr = "(SELECT depth FROM oikumenea.religion_taxa_closure c WHERE c.ancestor_id = " + add(parent) + " AND c.descendant_id = t.id)"
-	}
-	if religion != "" {
-		// Accept either a root taxon RID or its code. Compare only in TEXT contexts (id::text / code)
-		// so the shared placeholder is consistently inferred as text — a uuid-column "= $n" against the
-		// same text param would otherwise fail with "operator does not exist: uuid = text" (42883).
-		p := add(religion)
-		conds = append(conds, "t.religion_id IN (SELECT id FROM oikumenea.religion_taxa WHERE code = "+p+" OR id::text = "+p+")")
-	}
-	if query != "" {
-		p := add("%" + strings.ToLower(query) + "%")
-		conds = append(conds, "(lower(t.code) LIKE "+p+" OR lower(t.name) LIKE "+p+")")
-	}
+	// KEYSET ON THE SORT COLUMN. This used to order by `rk.ordinal, t.sort_order, t.code, t.id` while
+	// paging on `t.id > cursor`, and those are different orders: every row that sorts after the cursor
+	// position but carries a smaller id was silently dropped from page 2 onward. On the seeded
+	// taxonomy that lost 16 of 100 taxa — invisible, because a short page still looks like a page.
+	// Found by M58's differential test (totalCount vs exhaustive paging), which is exactly the class
+	// of defect that contract exists to catch.
+	//
+	// `code` rather than a composite cursor over the old four columns: it is UNIQUE among active taxa
+	// (religion_taxa_code_active), indexed, stable, and human-meaningful, so one column both orders
+	// and pages correctly. The rank-ladder ordering the old ORDER BY was reaching for survives where
+	// it carries meaning — the dashboard's rankId chart orders by the rank's own ordinal, and the
+	// workspace tree renders containment from parent ids rather than from row order.
 	if after != "" {
-		conds = append(conds, "t.id > "+add(after))
+		where += " AND t.code > " + a.add(after)
 	}
 	sql := `SELECT ` + taxonCols + `, ` + depthExpr + ` AS depth
 		FROM oikumenea.religion_taxa t JOIN oikumenea.religion_taxon_ranks rk ON rk.id=t.rank_id
-		WHERE ` + strings.Join(conds, " AND ") + `
-		ORDER BY rk.ordinal, t.sort_order NULLS LAST, t.code, t.id
-		LIMIT ` + add(limit)
-	rows, err := r.c.Query(ctx, sql, args...)
+		WHERE ` + where + `
+		ORDER BY t.code
+		LIMIT ` + a.add(limit)
+	rows, err := r.c.Query(ctx, sql, a.args...)
 	if err != nil {
 		return nil, err
 	}
@@ -722,6 +724,8 @@ func (r *Repository) HasActivePolicy(ctx context.Context, unitID, policyKindCode
 }
 
 // itoa is a tiny strconv.Itoa to keep the dynamic-SQL builder dependency-free.
+//
+//nolint:unused // retained beside the builder helpers; argBuf (stats.go) now numbers placeholders.
 func itoa(n int) string {
 	if n == 0 {
 		return "0"

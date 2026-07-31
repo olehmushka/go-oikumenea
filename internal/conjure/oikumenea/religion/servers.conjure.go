@@ -33,7 +33,28 @@ type ReligionService interface {
 	ListPolicyKinds(ctx context.Context, authHeader bearertoken.Token) (PolicyKindList, error)
 	UpsertPolicyKind(ctx context.Context, authHeader bearertoken.Token, requestArg UpsertPolicyKindRequest) (PolicyKind, error)
 	// Search/filter the taxonomy. Filters compose; results carry closure depth where a parent/root is given.
-	ListTaxa(ctx context.Context, authHeader bearertoken.Token, rankArg *string, parentArg *string, religionArg *string, queryArg *string, pageSizeArg *int, pageTokenArg *string) (TaxonPage, error)
+	ListTaxa(ctx context.Context, authHeader bearertoken.Token, rankArg *string, parentArg *string, religionArg *string, classificationArg *string, queryArg *string, pageSizeArg *int, pageTokenArg *string) (TaxonPage, error)
+	/*
+	   Facet distributions over the taxonomy — the dashboard half of the facet vocabulary (M58 /
+	   D-ObjectFacets). Takes exactly the filter args `listTaxa` takes (minus paging) plus an
+	   optional `facets` CSV, so a dashboard and a list are two renderings of ONE request state
+	   and a chart segment is a link to the same URL with one more filter applied.
+
+	   `totalCount` equals the number of rows exhaustively paging `listTaxa` with these same
+	   filters would return. One round-trip serves the whole dashboard.
+
+	   ONE aggregate arm, with no subject and no scoped twin — but for the OPPOSITE reason to the
+	   audit ledger's single arm. The taxonomy is flat instance-global reference data with no
+	   row-level security and no unit reach (the RLS in this module is on the unit-scoped
+	   `religion_org_*` tables, not here), so `religion.read` held anywhere is the whole
+	   visibility decision and there is nothing for a second arm to narrow.
+
+	   `subtree` and `classification` do not partition the result set — see TaxonStats.
+
+	   The path is `/stats/taxa` rather than `/taxa/stats` because the server's router rejects a
+	   literal path segment that is a sibling of `{taxonId}`.
+	*/
+	TaxonStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, rankArg *string, parentArg *string, religionArg *string, classificationArg *string, queryArg *string) (TaxonStats, error)
 	CreateTaxon(ctx context.Context, authHeader bearertoken.Token, requestArg CreateTaxonRequest) (Taxon, error)
 	GetTaxon(ctx context.Context, authHeader bearertoken.Token, taxonIdArg string) (Taxon, error)
 	UpdateTaxon(ctx context.Context, authHeader bearertoken.Token, taxonIdArg string, requestArg UpdateTaxonRequest) (Taxon, error)
@@ -147,6 +168,9 @@ func RegisterRoutesReligionService(router wrouter.Router, impl ReligionService, 
 	}
 	if err := resource.Get("ListTaxa", "/religion/v1/taxa", httpserver.NewJSONHandler(handler.HandleListTaxa, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listTaxa route")
+	}
+	if err := resource.Get("TaxonStats", "/religion/v1/stats/taxa", httpserver.NewJSONHandler(handler.HandleTaxonStats, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add taxonStats route")
 	}
 	if err := resource.Post("CreateTaxon", "/religion/v1/taxa", httpserver.NewJSONHandler(handler.HandleCreateTaxon, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add createTaxon route")
@@ -445,6 +469,11 @@ func (r *religionServiceHandler) HandleListTaxa(rw http.ResponseWriter, req *htt
 		religionArgInternal := religionArgStr
 		religionArg = &religionArgInternal
 	}
+	var classificationArg *string
+	if classificationArgStr := req.URL.Query().Get("classification"); classificationArgStr != "" {
+		classificationArgInternal := classificationArgStr
+		classificationArg = &classificationArgInternal
+	}
 	var queryArg *string
 	if queryArgStr := req.URL.Query().Get("query"); queryArgStr != "" {
 		queryArgInternal := queryArgStr
@@ -463,7 +492,50 @@ func (r *religionServiceHandler) HandleListTaxa(rw http.ResponseWriter, req *htt
 		pageTokenArgInternal := pageTokenArgStr
 		pageTokenArg = &pageTokenArgInternal
 	}
-	respArg, err := r.impl.ListTaxa(req.Context(), bearertoken.Token(authHeader), rankArg, parentArg, religionArg, queryArg, pageSizeArg, pageTokenArg)
+	respArg, err := r.impl.ListTaxa(req.Context(), bearertoken.Token(authHeader), rankArg, parentArg, religionArg, classificationArg, queryArg, pageSizeArg, pageTokenArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (r *religionServiceHandler) HandleTaxonStats(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var facetsArg *string
+	if facetsArgStr := req.URL.Query().Get("facets"); facetsArgStr != "" {
+		facetsArgInternal := facetsArgStr
+		facetsArg = &facetsArgInternal
+	}
+	var rankArg *string
+	if rankArgStr := req.URL.Query().Get("rank"); rankArgStr != "" {
+		rankArgInternal := rankArgStr
+		rankArg = &rankArgInternal
+	}
+	var parentArg *string
+	if parentArgStr := req.URL.Query().Get("parent"); parentArgStr != "" {
+		parentArgInternal := parentArgStr
+		parentArg = &parentArgInternal
+	}
+	var religionArg *string
+	if religionArgStr := req.URL.Query().Get("religion"); religionArgStr != "" {
+		religionArgInternal := religionArgStr
+		religionArg = &religionArgInternal
+	}
+	var classificationArg *string
+	if classificationArgStr := req.URL.Query().Get("classification"); classificationArgStr != "" {
+		classificationArgInternal := classificationArgStr
+		classificationArg = &classificationArgInternal
+	}
+	var queryArg *string
+	if queryArgStr := req.URL.Query().Get("query"); queryArgStr != "" {
+		queryArgInternal := queryArgStr
+		queryArg = &queryArgInternal
+	}
+	respArg, err := r.impl.TaxonStats(req.Context(), bearertoken.Token(authHeader), facetsArg, rankArg, parentArg, religionArg, classificationArg, queryArg)
 	if err != nil {
 		return err
 	}

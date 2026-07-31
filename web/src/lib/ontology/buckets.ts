@@ -95,7 +95,14 @@ function monthPatch(f: FilterDef, key: string): FilterPatch | null {
   const month = Number(m[2]);
   const first = new Date(Date.UTC(year, month - 1, 1));
   const last = new Date(Date.UTC(year, month, 0)); // day 0 of the next month = last of this one
-  return { [f.params[0]]: isoDate(first), [f.params[1]]: isoDate(last) };
+  // Same argType branch dayPatch makes, and for the same reason: a DATETIME arg rejects a bare
+  // calendar date outright (400), so without this every month segment of a datetime facet is a dead
+  // link. It only surfaced with external_organization.asOf — the first month-grain DATETIME facet;
+  // the earlier month facets (document.issuedOn/expiresOn, order.issuedOn) are calendar dates, and
+  // audit's datetime facet buckets by DAY, so the two halves of this branch had never met.
+  return f.argType === "datetime"
+    ? { [f.params[0]]: dayBound(isoDate(first), false), [f.params[1]]: dayBound(isoDate(last), true) }
+    : { [f.params[0]]: isoDate(first), [f.params[1]]: isoDate(last) };
 }
 
 /** `2026-07-30` → that day's bounds, in whichever form the facet's args take. */

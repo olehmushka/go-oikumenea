@@ -28,7 +28,11 @@ export type EntityKind =
   | "rank"
   | "institution"
   | "publication"
-  | "scholarship";
+  | "scholarship"
+  | "externalOrgKind"
+  | "taxon"
+  | "taxonRank"
+  | "classification";
 
 type Option = { id: string; label: string; hint?: string };
 
@@ -153,6 +157,47 @@ const REGISTRY: Record<EntityKind, KindConfig> = {
       id: str(s.id) ?? "",
       label: str(s.name) || str(s.code) || str(s.id) || "",
       hint: str(s.code),
+    }),
+  },
+  // M58 ticket 2 — the ref-facet pickers for the external-organization and taxonomy dashboards.
+  // Each is a small closed catalog, so a single page is the whole set rather than a truncation.
+  externalOrgKind: {
+    path: "/external-orgs/v1/external-org-kinds",
+    pick: (d) => (d as { kinds?: unknown[] })?.kinds ?? [],
+    toOption: (k, locale) => ({
+      id: str(k.id) ?? "",
+      label: pickLabel(map(k.name), locale) || str(k.code) || str(k.id) || "",
+      hint: str(k.code),
+    }),
+  },
+  taxon: {
+    // The taxonomy is hundreds of nodes, not thousands, so one page is the whole tree. It serves BOTH
+    // the `religionId` filter (roots) and the `subtree` filter (any ancestor): one table, one picker.
+    // rankCode is the hint, because "Baptists" means little without "denomination" beside it.
+    path: "/religion/v1/taxa?pageSize=500",
+    pick: (d) => (d as { taxa?: unknown[] })?.taxa ?? [],
+    toOption: (t, locale) => ({
+      id: str(t.id) ?? "",
+      label: pickLabel(map(t.name), locale) || str(t.code) || str(t.id) || "",
+      hint: str(t.rankCode) || str(t.code),
+    }),
+  },
+  taxonRank: {
+    path: "/religion/v1/taxon-ranks",
+    pick: (d) => (d as { taxonRanks?: unknown[] })?.taxonRanks ?? [],
+    toOption: (r, locale) => ({
+      id: str(r.id) ?? "",
+      label: pickLabel(map(r.name), locale) || str(r.code) || str(r.id) || "",
+      hint: str(r.code),
+    }),
+  },
+  classification: {
+    path: "/religion/v1/classifications",
+    pick: (d) => (d as { classifications?: unknown[] })?.classifications ?? [],
+    toOption: (c, locale) => ({
+      id: str(c.id) ?? "",
+      label: pickLabel(map(c.name), locale) || str(c.code) || str(c.id) || "",
+      hint: str(c.code),
     }),
   },
 };

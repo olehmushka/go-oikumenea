@@ -8,13 +8,12 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/palantir/pkg/bearertoken"
-
 	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
 	tenantapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/tenant"
 	"github.com/olegamysk/go-oikumenea/internal/tenant/domain"
 	"github.com/olegamysk/go-oikumenea/pkg/facet"
 	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/palantir/pkg/bearertoken"
 )
 
 // UnitStats implements GET /tenant/v1/stats/units — the dashboard half of the unit facet vocabulary

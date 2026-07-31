@@ -2612,6 +2612,29 @@ without its arg, or an arg without its facet, fails the build.
   through the same list endpoint under the same filters, so a k-anonymity floor would protect nothing
   it does not already protect. Stated explicitly so it is not re-litigated as an oversight.
 
+**AMENDED (M58 ticket 2) — a fifth rule, and the one property it may relax.** The load-bearing
+property is not that a distribution sums to `totalCount` but that **a bucket's count equals the number
+of rows its own filter returns** — that is what makes a chart segment and a list filter the same act,
+and it holds without exception. Summation is the *usual* consequence, and two shapes cannot deliver
+it: a **closure** facet (grouping over a transitive-closure ancestor) and an **M:N** facet (grouping
+over a join table) count each row once per bucket it belongs to. `Facet.NonPartitioning` carries the
+reason such a facet overlaps, on the `Ledger` pattern — the reason is the declaration, so a second one
+costs an argument rather than a copy-paste — and it exempts the summation assertion and **nothing
+else**. Two build-time guards contain it: the reason must be substantive, and the facet's table must
+not be the listed table (a row has one value in its own column, so a facet grouping one cannot
+overlap; an exemption there is imitation, not need). A closure facet additionally confines its buckets
+to the current candidate set, without which a single-valued ancestor filter would *widen* rather than
+narrow when a bucket is clicked — breaking the very property this rule protects.
+
+**AMENDED (M58 ticket 2) — "static sqlc `GROUP BY` queries" is the mechanism, not the requirement.**
+Four modules (`religion`, `externalorg`, and the still-to-come `vehicle`, `finance`) build their SQL
+at runtime by a documented per-module choice and ship no `queries/*.sql` at all, so the sqlc-shaped
+parity guards cannot read them. The requirement — the list and the stats path apply ONE predicate, and
+the aggregate has ONE definition — is unchanged; the proof becomes an **AST check** that both paths
+call one shared filter builder plus a single named aggregate const (`pkg/facet/rawpgx_test.go`). The
+sqlc-shaped coverage floors **defer** to that guard rather than exempting the types, so a registered
+type is still required to be checked somewhere.
+
 **Why.** The console shows every module as a flat list and nothing else: an operator cannot see age
 structure, sex structure, status mix or rank distribution, and cannot narrow a list by anything
 structural. The contract made that unavoidable — of ~90 list/search endpoints only five carry a real

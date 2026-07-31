@@ -8,14 +8,13 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/palantir/pkg/bearertoken"
-	"github.com/palantir/pkg/datetime"
-
 	"github.com/olegamysk/go-oikumenea/internal/audit/application"
 	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
 	auditapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/audit"
 	"github.com/olegamysk/go-oikumenea/pkg/facet"
 	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/palantir/pkg/bearertoken"
+	"github.com/palantir/pkg/datetime"
 )
 
 // AuditStats implements GET /audit/v1/stats/audit — the dashboard half of the audit facet vocabulary

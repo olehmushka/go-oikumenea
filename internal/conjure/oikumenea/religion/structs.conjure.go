@@ -983,6 +983,88 @@ func (o *EffectiveType) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+/*
+One bucket of a facet distribution (M58 / D-ObjectFacets).
+
+`key` is the bucket's stable, locale-agnostic identity — here always a RID, since every
+taxon facet is a `ref` — and is exactly what you pass back as the corresponding query
+filter, which is what makes a chart segment and a filter the same act. Two synthetic keys
+never name a real value: `(unknown)` is the NULL bucket (mandatory for a nullable column,
+so the gap is visible rather than dropped) and `(other)` is a top-N facet's collapsed tail;
+neither is a usable filter value.
+
+`label` carries a display name as a locale → text map (D-i18n). Best effort — an id with no
+resolvable name simply carries no label.
+*/
+type FacetBucket struct {
+	Key   string             `json:"key"`
+	Label *map[string]string `json:"label,omitempty"`
+	Count int                `json:"count"`
+}
+
+func (o FacetBucket) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *FacetBucket) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+One facet's buckets, in chart order — for `rankId` the taxonomy rank's OWN ordinal (a rank
+ladder re-sorted by frequency would destroy the only ordering that means anything), and for
+every other facet descending by count with `(other)`/`(unknown)` last.
+*/
+type FacetDistribution struct {
+	Facet   string        `json:"facet"`
+	Buckets []FacetBucket `json:"buckets"`
+}
+
+func (o FacetDistribution) MarshalJSON() ([]byte, error) {
+	if o.Buckets == nil {
+		o.Buckets = make([]FacetBucket, 0)
+	}
+	type _tmpFacetDistribution FacetDistribution
+	return safejson.Marshal(_tmpFacetDistribution(o))
+}
+
+func (o *FacetDistribution) UnmarshalJSON(data []byte) error {
+	type _tmpFacetDistribution FacetDistribution
+	var rawFacetDistribution _tmpFacetDistribution
+	if err := safejson.Unmarshal(data, &rawFacetDistribution); err != nil {
+		return err
+	}
+	if rawFacetDistribution.Buckets == nil {
+		rawFacetDistribution.Buckets = make([]FacetBucket, 0)
+	}
+	*o = FacetDistribution(rawFacetDistribution)
+	return nil
+}
+
+func (o FacetDistribution) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *FacetDistribution) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // A per-tradition grouping of clergy grades (e.g. Christianity → major/minor orders).
 type GradeCategory struct {
 	Id string `json:"id"`
@@ -2154,6 +2236,67 @@ func (o TaxonRankList) MarshalYAML() (interface{}, error) {
 }
 
 func (o *TaxonRankList) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+Facet distributions over the SAME set `listTaxa` returns under the same filters (M58 /
+D-ObjectFacets): `totalCount` is what exhaustively paging that endpoint would yield, not an
+estimate and not a page count.
+
+TWO of the four facets do NOT partition the result set, and this is a property of a
+taxonomy rather than an inaccuracy:
+
+  - `subtree` counts each taxon under EVERY ancestor it has, because that is what makes the
+    chart drillable — a bucket's count is its whole subtree size and clicking it returns
+    exactly those rows, then re-grouping within them yields that subtree's own internal
+    nodes, recursively, all the way down.
+  - `classification` counts EFFECTIVE theism tags, resolved to the nearest declaring ancestor
+    (what `getEffectiveClassifications` returns), and a taxon may carry several.
+
+So for those two, the buckets' counts SUM TO MORE than `totalCount`. What holds for every
+facet without exception is the property the vocabulary actually rests on: a bucket's count
+equals the number of rows `listTaxa` returns under that bucket's own filter.
+*/
+type TaxonStats struct {
+	TotalCount int                 `json:"totalCount"`
+	Facets     []FacetDistribution `json:"facets"`
+}
+
+func (o TaxonStats) MarshalJSON() ([]byte, error) {
+	if o.Facets == nil {
+		o.Facets = make([]FacetDistribution, 0)
+	}
+	type _tmpTaxonStats TaxonStats
+	return safejson.Marshal(_tmpTaxonStats(o))
+}
+
+func (o *TaxonStats) UnmarshalJSON(data []byte) error {
+	type _tmpTaxonStats TaxonStats
+	var rawTaxonStats _tmpTaxonStats
+	if err := safejson.Unmarshal(data, &rawTaxonStats); err != nil {
+		return err
+	}
+	if rawTaxonStats.Facets == nil {
+		rawTaxonStats.Facets = make([]FacetDistribution, 0)
+	}
+	*o = TaxonStats(rawTaxonStats)
+	return nil
+}
+
+func (o TaxonStats) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *TaxonStats) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

@@ -98,7 +98,11 @@ export type RefControl =
   | "unitKind"
   | "orderType"
   | "documentType"
-  | "position";
+  | "position"
+  | "externalOrgKind"
+  | "taxon"
+  | "taxonRank"
+  | "classification";
 
 /**
  * One filterable dimension of an object type — the console half of a `pkg/facet` Facet.
@@ -299,6 +303,20 @@ const relTone = (v: unknown): Tone => {
   if (["active", "married"].includes(low)) return "green";
   if (["ended", "withdrawn", "disestablished", "divorced", "dissolved", "annulled", "widowed"].includes(low)) return "slate";
   return "amber";
+};
+
+/** D-OverlayFoundation attribution confidence: a `possible` row is the one an analyst must revisit. */
+const confidenceTone = (v: unknown): Tone => {
+  switch (String(v ?? "").toLowerCase()) {
+    case "confirmed":
+      return "green";
+    case "probable":
+      return "amber";
+    case "possible":
+      return "red";
+    default:
+      return "slate";
+  }
 };
 
 /** Audit outcomes wear their own tones: a denial is the finding, an error is the operational fault. */
@@ -1802,6 +1820,166 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
       { label: "Request id", value: (e) => s(e.requestId), render: "mono" },
     ],
   },
+  external_organization: {
+    type: "external_organization",
+    kind: "object",
+    label: "External organization",
+    labelPlural: "External organizations",
+    module: "externalorg",
+    blurb:
+      "The registry of organizations OUTSIDE this instance — parties, government bodies, foreign " +
+      "military, NGOs, registrants — that a person can be tied to (D-ExternalOrgs).",
+    list: {
+      path: "/external-orgs/v1/external-orgs",
+      search: "?pageSize=50",
+      searchParam: "query",
+      parse: pageParse("orgs"),
+    },
+    get: (id) => `/external-orgs/v1/external-orgs/${id}`,
+    title: (o) => loc(o.name) || s(o.code) || ridTail(o.id),
+    subtitle: (o) => s(o.code),
+    columns: [
+      { key: "name", header: "Name", value: (o) => loc(o.name) },
+      { key: "code", header: "Code", value: (o) => s(o.code), render: "mono" },
+      { key: "kind", header: "Kind", value: (o) => s(o.kindLabel) || ridTail(s(o.kindId) ?? ""), render: "pill", tone: () => "slate" },
+      { key: "country", header: "Country", value: (o) => s(o.countryLabel) },
+      { key: "status", header: "Status", value: (o) => s(o.status), render: "pill", tone: (o) => (s(o.status) === "resolved" ? "green" : "amber") },
+      { key: "confidence", header: "Confidence", value: (o) => s(o.confidence), render: "pill", tone: (o) => confidenceTone(o.confidence) },
+    ],
+    filters: [
+      { key: "kind", kind: "ref", label: "Kind", params: ["kind"], control: "externalOrgKind" },
+      { key: "countryId", kind: "ref", label: "Country", params: ["country"], control: "country" },
+      {
+        key: "status", kind: "enum", label: "Status", params: ["status"],
+        values: [
+          { value: "provisional", label: "Provisional" },
+          { value: "resolved", label: "Resolved" },
+        ],
+        hint: "A provisional row is an unresolved import stub awaiting a merge.",
+      },
+      {
+        key: "source", kind: "enum", label: "Source", params: ["source"],
+        values: [
+          { value: "self_declared", label: "Self-declared" },
+          { value: "operator_verified", label: "Operator-verified" },
+          { value: "imported", label: "Imported" },
+        ],
+      },
+      {
+        key: "confidence", kind: "enum", label: "Confidence", params: ["confidence"],
+        values: [
+          { value: "confirmed", label: "Confirmed" },
+          { value: "probable", label: "Probable" },
+          { value: "possible", label: "Possible" },
+        ],
+      },
+      {
+        // Conjure DATETIME, like audit's since/until — so the console widens a picked day to that
+        // day's RFC-3339 endpoints rather than sending a bare calendar date.
+        key: "asOf", kind: "date-range", label: "Observed", params: ["asOfFrom", "asOfTo"],
+        buckets: "dateTrunc", argType: "datetime",
+        hint: "When the assertion was observed or held true. Inclusive bounds; either one excludes rows with no observation date.",
+      },
+    ],
+    dashboard: {
+      path: "/external-orgs/v1/stats/external-orgs",
+      charts: [
+        { key: "status", title: "Resolution", form: "tiles", facet: "status", tone: { resolved: "green", provisional: "amber" } },
+        {
+          key: "confidence", title: "Attribution confidence", form: "donut", facet: "confidence",
+          tone: { confirmed: "green", probable: "amber", possible: "red" },
+          note: "Crossed with source, this is the OSINT attribution-quality view (D-OverlayFoundation).",
+        },
+        { key: "source", title: "Attribution source", form: "bar", facet: "source", orientation: "horizontal" },
+        { key: "kind", title: "Kinds", form: "bar", facet: "kind", orientation: "horizontal" },
+        { key: "country", title: "Top countries", form: "bar", facet: "countryId", orientation: "horizontal" },
+        {
+          key: "asOf", title: "Observations per month", form: "histogram", facet: "asOf", pastDue: false,
+          note: "The (unknown) bucket is rows asserted without an observation date.",
+        },
+      ],
+    },
+    properties: [
+      { label: "Name", value: (o) => loc(o.name) },
+      { label: "Code", value: (o) => s(o.code), render: "mono" },
+      { label: "Kind", value: (o) => s(o.kindLabel) || s(o.kindId), render: "pill" },
+      { label: "Country", value: (o) => s(o.countryLabel) },
+      { label: "Status", value: (o) => s(o.status), render: "pill", tone: (o) => (s(o.status) === "resolved" ? "green" : "amber") },
+      { label: "Source", value: (o) => s(o.source), render: "pill" },
+      { label: "Confidence", value: (o) => s(o.confidence), render: "pill", tone: (o) => confidenceTone(o.confidence) },
+      { label: "Observed", value: (o) => s(o.asOf) },
+      { label: "Wikidata", value: (o) => s(o.wikidataId), render: "mono" },
+    ],
+  },
+
+  taxon: {
+    type: "taxon",
+    kind: "object",
+    label: "Religion taxon",
+    labelPlural: "Religion taxonomy",
+    module: "religion",
+    blurb:
+      "One node in the multi-faith classification tree — religion → branch → tradition → " +
+      "sub-tradition → denomination (D-Religion).",
+    list: {
+      path: "/religion/v1/taxa",
+      search: "?pageSize=50",
+      searchParam: "query",
+      parse: pageParse("taxa"),
+    },
+    get: (id) => `/religion/v1/taxa/${id}`,
+    title: (t) => loc(t.name) || s(t.code) || ridTail(t.id),
+    subtitle: (t) => s(t.rankCode),
+    columns: [
+      { key: "name", header: "Name", value: (t) => loc(t.name) },
+      { key: "code", header: "Code", value: (t) => s(t.code), render: "mono" },
+      { key: "rankCode", header: "Rank", value: (t) => s(t.rankCode), render: "pill", tone: () => "slate" },
+      { key: "depth", header: "Depth", value: (t) => (typeof t.depth === "number" ? String(t.depth) : undefined) },
+      { key: "wikidataId", header: "Wikidata", value: (t) => s(t.wikidataId), render: "mono" },
+    ],
+    filters: [
+      { key: "rankId", kind: "ref", label: "Rank", params: ["rank"], control: "taxonRank" },
+      { key: "religionId", kind: "ref", label: "Root religion", params: ["religion"], control: "taxon" },
+      {
+        key: "subtree", kind: "ref", label: "Within subtree of", params: ["parent"], control: "taxon",
+        hint: "Every PROPER descendant of the chosen taxon, at any depth — the taxon itself is not included.",
+      },
+      {
+        key: "classification", kind: "ref", label: "Theism", params: ["classification"], control: "classification",
+        hint: "Matches the EFFECTIVE tag: declared on the taxon, or inherited from its nearest declaring ancestor.",
+      },
+    ],
+    dashboard: {
+      path: "/religion/v1/stats/taxa",
+      charts: [
+        {
+          key: "rank", title: "Taxa per rank", form: "bar", facet: "rankId", orientation: "horizontal",
+          note: "In the rank ladder's own order (religion → branch → …), not by count: a ladder sorted by frequency loses the only ordering that means anything.",
+        },
+        {
+          key: "classification", title: "Theism", form: "donut", facet: "classification",
+          note: "EFFECTIVE tags, resolved to the nearest declaring ancestor — declared theism is inherited down the tree. A taxon may carry several, so the slices sum to more than the total. Picking a slice replaces any theism already filtered rather than intersecting with it.",
+        },
+        {
+          key: "subtree", title: "Subtree size", form: "bar", facet: "subtree", orientation: "horizontal",
+          note: "Each bar is one taxon's whole subtree. Click it to descend — the chart re-draws over that subtree's own branches, and repeats all the way down. Once you are inside a subtree only taxa BELOW it are offered, so every bar is a step further in rather than back out. Counts overlap by construction: a taxon is inside every ancestor's subtree, so these sum to more than the total.",
+        },
+        {
+          key: "religion", title: "Per root religion", form: "bar", facet: "religionId", orientation: "horizontal",
+          note: "This one DOES partition — every taxon has exactly one root, and the (unknown) bucket is the roots themselves.",
+        },
+      ],
+    },
+    properties: [
+      { label: "Name", value: (t) => loc(t.name) },
+      { label: "Code", value: (t) => s(t.code), render: "mono" },
+      { label: "Rank", value: (t) => s(t.rankCode), render: "pill" },
+      { label: "Parent", value: (t) => s(t.parentId), render: "mono" },
+      { label: "Root religion", value: (t) => s(t.religionId), render: "mono" },
+      { label: "Description", value: (t) => s(t.description) },
+      { label: "Wikidata", value: (t) => s(t.wikidataId), render: "mono" },
+    ],
+  },
 };
 
 /**
@@ -1822,6 +2000,8 @@ const READ_CODE_BY_MODULE: Record<string, string> = {
   language: "language.read",
   location: "location.read",
   education: "education.read",
+  externalorg: "externalorg.read",
+  religion: "religion.read",
 };
 
 /**

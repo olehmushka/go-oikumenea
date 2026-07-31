@@ -182,18 +182,22 @@ func (r *Repository) UpdateOrg(ctx context.Context, id string, up domain.OrgUpda
 	return scanOrg(row)
 }
 
-func (r *Repository) ListOrgs(ctx context.Context, query, kindCode, countryID, status, after string, lim int) ([]domain.Organization, error) {
+// ListOrgs pages the registry under the shared facet predicate. The filter block comes from
+// buildOrgFilter (stats.go) — the SAME builder OrgStats uses, so `totalCount` describes exactly the
+// set this pages. Only the keyset cursor and the limit are added here: a page boundary is not a
+// filter, which is precisely why it is not in the shared builder.
+func (r *Repository) ListOrgs(ctx context.Context, query string, f domain.OrgFilter, after string, lim int) ([]domain.Organization, error) {
+	a := &argBuf{}
+	where := buildOrgFilter(a, query, f)
+	if after != "" {
+		where += " AND o.id > " + a.add(after) + "::uuid"
+	}
 	rows, err := r.c.Query(ctx, `
 		SELECT `+qualify(orgCols, "o")+`
 		FROM oikumenea.external_organizations o
 		JOIN oikumenea.external_org_kinds k ON k.id = o.kind_id
-		WHERE o.deleted_at IS NULL
-		  AND ($1 = '' OR o.name ILIKE '%'||$1||'%' OR o.code ILIKE '%'||$1||'%')
-		  AND ($2 = '' OR k.code = $2)
-		  AND ($3 = '' OR o.country_id = $3::uuid)
-		  AND ($4 = '' OR o.status = $4)
-		  AND ($5 = '' OR o.id > $5::uuid)
-		ORDER BY o.id LIMIT $6`, query, kindCode, countryID, status, after, lim)
+		WHERE `+where+`
+		ORDER BY o.id LIMIT `+a.add(lim), a.args...)
 	if err != nil {
 		return nil, err
 	}

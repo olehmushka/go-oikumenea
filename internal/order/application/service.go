@@ -31,9 +31,8 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/pkg/events"
 	"github.com/olegamysk/go-oikumenea/pkg/listing"
-	"github.com/palantir/witchcraft-go-tracing/wtracing"
-
 	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 
 // Page-size policy (API conventions: token pagination, bounded pages).
