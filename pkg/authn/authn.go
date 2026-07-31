@@ -12,7 +12,9 @@
 // never validates anything itself.
 package authn
 
-import "context"
+import (
+	"context"
+)
 
 // Subject is the resolved PDP context attached to an authenticated request. It is EITHER a person
 // or a machine, never both:

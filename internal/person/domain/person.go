@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/olegamysk/go-oikumenea/pkg/rid"
-
 	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
 

@@ -26,6 +26,7 @@ import (
 	tenantdomain "github.com/olegamysk/go-oikumenea/internal/tenant/domain"
 	"github.com/olegamysk/go-oikumenea/pkg/crypto"
 	"github.com/olegamysk/go-oikumenea/pkg/listing"
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 
@@ -60,7 +61,11 @@ type Repo interface {
 	CountUnitsClassifiedBy(ctx context.Context, taxonID string) (int, error)
 	IsDescendant(ctx context.Context, ancestorID, candidateID string) (bool, error)
 	SetTaxonParent(ctx context.Context, id, parentID string) error
-	ListTaxa(ctx context.Context, rank, parent, religion, query, after string, limit int) ([]domain.Taxon, error)
+	ListTaxa(ctx context.Context, query string, f domain.TaxonFilter, after string, limit int) ([]domain.Taxon, error)
+	// TaxonStats is the aggregate half of the SAME predicate ListTaxa applies (M58 / D-ObjectFacets).
+	// Both build their WHERE from one shared builder, which is what a build-time guard checks — the
+	// raw-pgx counterpart of the sqlc narg-parity guard, since this module writes its SQL by hand.
+	TaxonStats(ctx context.Context, query string, f domain.TaxonFilter, sel stats.Selection) ([]stats.Group, error)
 	RebuildClosure(ctx context.Context) (domain.ClosureReport, error)
 	EffectiveClassificationsForTaxon(ctx context.Context, taxonID string) ([]domain.Classification, error)
 	SetTaxonClassifications(ctx context.Context, taxonID string, classificationIDs []string) error
@@ -128,6 +133,8 @@ type Service struct {
 	audit   *auditapp.Service
 	tenant  *tenantapp.Service
 	cipher  *crypto.Cipher // envelope cipher for pii:special affiliation values (D-SpecialPII, M24)
+
+	labeler stats.Labeler
 
 	churchMu  sync.Mutex
 	churchDom string // cached `church` domain RID (seeded at boot, stable)
@@ -215,9 +222,35 @@ func (s *Service) GetTaxon(ctx context.Context, id string) (domain.Taxon, error)
 	return s.newRepo(s.querier(ctx)).GetTaxon(ctx, id)
 }
 
-func (s *Service) ListTaxa(ctx context.Context, rank, parent, religion, query, after string, pageSize int) ([]domain.Taxon, error) {
-	return s.newRepo(s.querier(ctx)).ListTaxa(ctx, rank, parent, religion, query, after, clampPageSize(pageSize)+1)
+func (s *Service) ListTaxa(ctx context.Context, query string, f domain.TaxonFilter, after string, pageSize int) ([]domain.Taxon, error) {
+	if err := f.Validate(); err != nil {
+		return nil, err
+	}
+	return s.newRepo(s.querier(ctx)).ListTaxa(ctx, query, f, after, clampPageSize(pageSize)+1)
 }
+
+// TaxonStats is the dashboard half of the facet vocabulary (M58 ticket 2 / D-ObjectFacets): the same
+// filters ListTaxa takes, aggregated instead of paged.
+//
+// It calls stats.Compute with isAdmin=true, which is the arm convention's way of saying "no
+// visibility predicate" — and here that is a statement of fact rather than a privilege escalation.
+// The taxonomy is flat instance-global reference data: the row-level security in this module is on
+// the unit-scoped religion_org_* tables, not on religion_taxa. The transport has already required
+// `religion.read`, which is the whole gate on the list endpoint too, so any caller who reaches this
+// line may read every row it counts. A scoped arm would have nothing to narrow.
+func (s *Service) TaxonStats(ctx context.Context, query string, f domain.TaxonFilter, sel stats.Selection) (stats.Result, error) {
+	if err := f.Validate(); err != nil {
+		return stats.Result{}, err
+	}
+	return stats.Compute(ctx, s.labeler, sel, true, "", func(string) ([]stats.Group, error) {
+		return s.newRepo(s.querier(ctx)).TaxonStats(ctx, query, f, sel)
+	})
+}
+
+// SetBucketLabeler injects the composition root's ref-bucket resolver (taxon, rank and classification
+// RIDs to locale->text names). Set once at boot; a nil labeler simply leaves buckets unlabelled,
+// exactly as an unresolvable id does.
+func (s *Service) SetBucketLabeler(l stats.Labeler) { s.labeler = l }
 
 func (s *Service) CreateTaxon(ctx context.Context, in domain.TaxonInput) (domain.Taxon, error) {
 	if err := in.Validate(); err != nil {

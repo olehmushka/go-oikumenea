@@ -8,12 +8,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/palantir/pkg/bearertoken"
-
 	authzdomain "github.com/olegamysk/go-oikumenea/internal/authorization/domain"
 	membershipapi "github.com/olegamysk/go-oikumenea/internal/conjure/oikumenea/membership"
 	"github.com/olegamysk/go-oikumenea/pkg/facet"
 	"github.com/olegamysk/go-oikumenea/pkg/stats"
+	"github.com/palantir/pkg/bearertoken"
 )
 
 // MembershipStats implements GET /membership/v1/stats/memberships — the dashboard half of the link__member_of facet

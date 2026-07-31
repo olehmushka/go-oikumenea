@@ -207,19 +207,21 @@ func (s ReligionService) UpsertPolicyKind(ctx context.Context, token bearertoken
 
 // ============================ taxonomy ============================
 
-func (s ReligionService) ListTaxa(ctx context.Context, token bearertoken.Token, rank, parent, religion, query *string, pageSize *int, pageToken *string) (religionapi.TaxonPage, error) {
+func (s ReligionService) ListTaxa(ctx context.Context, token bearertoken.Token, rank, parent, religion, classification, query *string, pageSize *int, pageToken *string) (religionapi.TaxonPage, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
 		return religionapi.TaxonPage{}, err
 	}
 	limit := pageSizeOr(pageSize)
-	rows, err := s.app.ListTaxa(ctx, strOr(rank), strOr(parent), strOr(religion), strOr(query), decodeToken(pageToken), limit)
+	rows, err := s.app.ListTaxa(ctx, strOr(query), taxonFilter(rank, parent, religion, classification), decodeToken(pageToken), limit)
 	if err != nil {
 		return religionapi.TaxonPage{}, s.mapError(ctx, err)
 	}
 	var next *string
 	if len(rows) > limit {
 		rows = rows[:limit]
-		t := encodeToken(rows[len(rows)-1].ID)
+		// The cursor is the CODE, matching ListTaxa's ORDER BY. An id cursor against a differently
+		// ordered list is what silently dropped rows before M58 ticket 2.
+		t := encodeToken(rows[len(rows)-1].Code)
 		next = &t
 	}
 	apiRows, err := s.taxaAPI(ctx, rows)

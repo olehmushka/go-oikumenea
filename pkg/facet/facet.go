@@ -149,6 +149,31 @@ type Facet struct {
 	// Note records anything a reader would otherwise have to reverse-engineer: a cross-module Table,
 	// non-obvious "active row" semantics, or the reason for an ArgOverride.
 	Note string
+	// NonPartitioning is the REASON this facet's buckets OVERLAP, and empty for every ordinary facet
+	// — the Ledger pattern: it carries its own justification, so a second one costs an argument
+	// rather than a copy-paste.
+	//
+	// Almost every facet partitions its result set: each counted row lands in exactly one bucket, so
+	// the buckets sum to totalCount, and the M57 differential test asserts precisely that. Two shapes
+	// genuinely cannot, and both are M58's religion taxonomy (the first tree to reach the vocabulary):
+	//
+	//   - a CLOSURE facet (taxon.subtree) counts each row under EVERY ancestor it has. That overlap is
+	//     not a flaw to be corrected — it is what makes the chart drillable. A bucket's count is a
+	//     whole subtree's size; clicking it returns exactly those rows; re-grouping within them yields
+	//     that subtree's own internal nodes, recursively, all the way down. An exact-parent facet
+	//     would partition honestly and then dead-end after one click, because every remaining row
+	//     would share one parent.
+	//   - an M:N facet (taxon.classification) counts a row once per tag it carries.
+	//
+	// WHAT THIS EXEMPTS IS EXACTLY ONE ASSERTION AND NO OTHER. The sum-to-totalCount check becomes
+	// sum >= totalCount. The property the whole vocabulary rests on — a bucket's count equals the
+	// number of rows the list returns under that bucket's own filter — is NOT relaxed, and is still
+	// verified per bucket by the module's differential test. The overlap is between buckets, never
+	// between a bucket and its own filter.
+	//
+	// Legal only on a topN ref/code facet: an enum's identity buckets come from a CHECK set, one value
+	// per row by construction, and a date or band bucket is a single row's single value.
+	NonPartitioning string
 }
 
 // Args returns the contract query-arg name(s) this facet binds. DERIVED from Key and Kind — never
@@ -438,6 +463,11 @@ func validateFacet(objectType string, f Facet) error {
 		}
 	} else if f.RefType != "" {
 		return fmt.Errorf("%s: RefType is meaningful only for a ref facet", where)
+	}
+	if f.NonPartitioning != "" && f.Kind != KindRef && f.Kind != KindCode {
+		return fmt.Errorf("%s: NonPartitioning is legal only on a ref or code facet — an enum's "+
+			"identity buckets come from a CHECK set (one value per row) and a date or band bucket is "+
+			"a single row's single value, so neither CAN overlap", where)
 	}
 	return validateBuckets(where, f)
 }

@@ -40,7 +40,7 @@ var (
 	// The `dashboard: {` opener inside an object-type entry.
 	consoleDashboardRe = regexp.MustCompile(`(?m)^\s*dashboard: \{`)
 	// `charts: [` inside a dashboard block.
-	consoleChartsRe = regexp.MustCompile(`(?m)^\s*charts: \[`)
+	consoleChartsRe   = regexp.MustCompile(`(?m)^\s*charts: \[`)
 	consoleDashPathRe = regexp.MustCompile(`\bpath: "([^"]*)"`)
 	chartFormRe       = regexp.MustCompile(`\bform: "([^"]*)"`)
 	chartFacetRe      = regexp.MustCompile(`\bfacet: "([^"]*)"`)
@@ -519,4 +519,101 @@ func statsPathsFromContract(t *testing.T) map[string]string {
 		}
 	}
 	return out
+}
+
+// TestDatetimeFacetsHaveAWidenedBucketInverse closes the gap M58 ticket 2 found LIVE and by nothing
+// else: a facet whose args the contract types as DATETIME must have its bucket→filter inverse emit
+// RFC-3339 endpoints, because a datetime arg rejects a bare `YYYY-MM-DD` outright with a 400. A
+// segment that navigates to an error is not a broken chart — the chart looks perfect — it is a
+// broken LINK, and only a real request finds it.
+//
+// `dayPatch` had the branch from ticket 1 (audit buckets by day and its since/until are datetimes).
+// `monthPatch` did not, and had never needed to: every earlier month-grain facet
+// (document.issuedOn/expiresOn, order.issuedOn) takes calendar dates. `external_organization.asOf` is
+// the first month-grain DATETIME facet, so the two halves had never met.
+//
+// The guard is structural rather than behavioural — there is no JS test runner in web/, and every
+// other console guard in this package parses the TypeScript the same way — but it is anchored on the
+// CATALOG: it only demands the branch for a grain some registered datetime facet actually uses, so it
+// cannot become a blanket style rule.
+func TestDatetimeFacetsHaveAWidenedBucketInverse(t *testing.T) {
+	parsed := parseConsoleRegistry(t)
+	body, err := os.ReadFile(filepath.Join("..", "..", "web", "src", "lib", "ontology", "buckets.ts"))
+	if err != nil {
+		t.Fatalf("read buckets.ts: %v", err)
+	}
+	src := string(body)
+
+	// grain -> the patch function that inverts it.
+	fn := map[string]string{"day": "dayPatch", "month": "monthPatch", "year": "yearPatch"}
+	need := map[string]string{} // patch fn -> the facet that demands it, for the message
+	for _, o := range Default.All() {
+		for _, f := range o.Facets {
+			if f.Kind != KindDateRange || f.Buckets.Strategy != StrategyDateTrunc {
+				continue
+			}
+			d, ok := findConsoleFilter(parsed[o.Type], f.Key)
+			if !ok || d.argType != "datetime" {
+				continue
+			}
+			name, ok := fn[f.Buckets.Grain]
+			if !ok {
+				t.Errorf("%s.%s: datetime facet buckets by grain %q, which buckets.ts has no inverse for",
+					o.Type, f.Key, f.Buckets.Grain)
+				continue
+			}
+			need[name] = o.Type + "." + f.Key
+		}
+	}
+	if len(need) == 0 {
+		t.Fatal("no datetime dateTrunc facet in the catalog — this guard is vacuous, and it exists " +
+			"because the failure it catches is invisible without a live request")
+	}
+	for name, facetName := range need {
+		fnBody, ok := tsFuncBody(src, name)
+		if !ok {
+			t.Errorf("buckets.ts declares no %s, but %s needs it", name, facetName)
+			continue
+		}
+		if !strings.Contains(fnBody, `argType === "datetime"`) || !strings.Contains(fnBody, "dayBound") {
+			t.Errorf("buckets.ts %s does not widen to RFC-3339 for a datetime arg (needs the "+
+				"`argType === \"datetime\"` branch and dayBound), but %s is a datetime facet at that "+
+				"grain — every one of its segments would link to a 400", name, facetName)
+		}
+	}
+}
+
+func findConsoleFilter(fs []consoleFilter, key string) (consoleFilter, bool) {
+	for _, f := range fs {
+		if f.key == key {
+			return f, true
+		}
+	}
+	return consoleFilter{}, false
+}
+
+// tsFuncBody extracts one top-level `function name(...) {...}` body by brace matching — enough for a
+// hand-written module, and it fails closed (not found) rather than matching something else.
+func tsFuncBody(src, name string) (string, bool) {
+	i := strings.Index(src, "function "+name+"(")
+	if i < 0 {
+		return "", false
+	}
+	open := strings.Index(src[i:], "{")
+	if open < 0 {
+		return "", false
+	}
+	depth, start := 0, i+open
+	for j := start; j < len(src); j++ {
+		switch src[j] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return src[start : j+1], true
+			}
+		}
+	}
+	return "", false
 }

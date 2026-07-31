@@ -213,8 +213,8 @@ func TestPAN(t *testing.T) {
 		}
 	}
 	for _, bad := range []string{
-		"4111111111111112", // Luhn fails
-		"411111",           // too short
+		"4111111111111112",     // Luhn fails
+		"411111",               // too short
 		"41111111111111111111", // too long (20)
 	} {
 		if _, err := r.Validate("pan", bad, ""); !errors.Is(err, ErrInvalid) {

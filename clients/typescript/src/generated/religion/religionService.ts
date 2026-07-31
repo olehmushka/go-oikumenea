@@ -50,6 +50,7 @@ import { ITaxon } from "./taxon";
 import { ITaxonPage } from "./taxonPage";
 import { ITaxonRank } from "./taxonRank";
 import { ITaxonRankList } from "./taxonRankList";
+import { ITaxonStats } from "./taxonStats";
 import { IUpdateAffiliationRequest } from "./updateAffiliationRequest";
 import { IUpdateClergyCredentialRequest } from "./updateClergyCredentialRequest";
 import { IUpdateSiteRequest } from "./updateSiteRequest";
@@ -87,7 +88,29 @@ export interface IReligionService {
     listPolicyKinds(): Promise<IPolicyKindList>;
     upsertPolicyKind(request: IUpsertPolicyKindRequest): Promise<IPolicyKind>;
     /** Search/filter the taxonomy. Filters compose; results carry closure depth where a parent/root is given. */
-    listTaxa(rank?: string | null, parent?: string | null, religion?: string | null, query?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<ITaxonPage>;
+    listTaxa(rank?: string | null, parent?: string | null, religion?: string | null, classification?: string | null, query?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<ITaxonPage>;
+    /**
+     * Facet distributions over the taxonomy — the dashboard half of the facet vocabulary (M58 /
+     * D-ObjectFacets). Takes exactly the filter args `listTaxa` takes (minus paging) plus an
+     * optional `facets` CSV, so a dashboard and a list are two renderings of ONE request state
+     * and a chart segment is a link to the same URL with one more filter applied.
+     *
+     * `totalCount` equals the number of rows exhaustively paging `listTaxa` with these same
+     * filters would return. One round-trip serves the whole dashboard.
+     *
+     * ONE aggregate arm, with no subject and no scoped twin — but for the OPPOSITE reason to the
+     * audit ledger's single arm. The taxonomy is flat instance-global reference data with no
+     * row-level security and no unit reach (the RLS in this module is on the unit-scoped
+     * `religion_org_*` tables, not here), so `religion.read` held anywhere is the whole
+     * visibility decision and there is nothing for a second arm to narrow.
+     *
+     * `subtree` and `classification` do not partition the result set — see TaxonStats.
+     *
+     * The path is `/stats/taxa` rather than `/taxa/stats` because the server's router rejects a
+     * literal path segment that is a sibling of `{taxonId}`.
+     *
+     */
+    taxonStats(facets?: string | null, rank?: string | null, parent?: string | null, religion?: string | null, classification?: string | null, query?: string | null): Promise<ITaxonStats>;
     createTaxon(request: ICreateTaxonRequest): Promise<ITaxon>;
     getTaxon(taxonId: string): Promise<ITaxon>;
     updateTaxon(taxonId: string, request: IUpdateTaxonRequest): Promise<ITaxon>;
@@ -297,7 +320,7 @@ export class ReligionService implements IReligionService {
     }
 
     /** Search/filter the taxonomy. Filters compose; results carry closure depth where a parent/root is given. */
-    public listTaxa(rank?: string | null, parent?: string | null, religion?: string | null, query?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<ITaxonPage> {
+    public listTaxa(rank?: string | null, parent?: string | null, religion?: string | null, classification?: string | null, query?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<ITaxonPage> {
         return this.bridge.call<ITaxonPage>(
             "ReligionService",
             "listTaxa",
@@ -309,9 +332,53 @@ export class ReligionService implements IReligionService {
                 "rank": rank,
                 "parent": parent,
                 "religion": religion,
+                "classification": classification,
                 "query": query,
                 "pageSize": pageSize,
                 "pageToken": pageToken,
+            },
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Facet distributions over the taxonomy — the dashboard half of the facet vocabulary (M58 /
+     * D-ObjectFacets). Takes exactly the filter args `listTaxa` takes (minus paging) plus an
+     * optional `facets` CSV, so a dashboard and a list are two renderings of ONE request state
+     * and a chart segment is a link to the same URL with one more filter applied.
+     *
+     * `totalCount` equals the number of rows exhaustively paging `listTaxa` with these same
+     * filters would return. One round-trip serves the whole dashboard.
+     *
+     * ONE aggregate arm, with no subject and no scoped twin — but for the OPPOSITE reason to the
+     * audit ledger's single arm. The taxonomy is flat instance-global reference data with no
+     * row-level security and no unit reach (the RLS in this module is on the unit-scoped
+     * `religion_org_*` tables, not here), so `religion.read` held anywhere is the whole
+     * visibility decision and there is nothing for a second arm to narrow.
+     *
+     * `subtree` and `classification` do not partition the result set — see TaxonStats.
+     *
+     * The path is `/stats/taxa` rather than `/taxa/stats` because the server's router rejects a
+     * literal path segment that is a sibling of `{taxonId}`.
+     *
+     */
+    public taxonStats(facets?: string | null, rank?: string | null, parent?: string | null, religion?: string | null, classification?: string | null, query?: string | null): Promise<ITaxonStats> {
+        return this.bridge.call<ITaxonStats>(
+            "ReligionService",
+            "taxonStats",
+            "GET",
+            "/religion/v1/stats/taxa",
+            __undefined,
+            __undefined,
+            {
+                "facets": facets,
+                "rank": rank,
+                "parent": parent,
+                "religion": religion,
+                "classification": classification,
+                "query": query,
             },
             __undefined,
             __undefined,

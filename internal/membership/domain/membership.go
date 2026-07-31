@@ -20,7 +20,6 @@ import (
 	"time"
 
 	persondomain "github.com/olegamysk/go-oikumenea/internal/person/domain"
-
 	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
 

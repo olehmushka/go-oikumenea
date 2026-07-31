@@ -3,7 +3,9 @@
 
 package rid
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestDecodeFields(t *testing.T) {
 	// A crafted person/object/person RID: byte6=0x81 (v8|kind1), byte7=0x01 (app), byte8=0x86

@@ -69,10 +69,15 @@ func TestEveryRegisteredTypeHasAnAggregateGroup(t *testing.T) {
 	for _, g := range statsAggregateGroups {
 		covered[g.objectType] = true
 	}
+	// A raw-pgx module writes its aggregate as a Go const rather than a .sql query, so the same two
+	// assertions — one definition, and a branch per declared facet in both directions — are made in
+	// rawpgx_test.go. Deferring, not exempting.
+	raw := rawPgxTypes()
 	for _, o := range Default.All() {
-		if o.StatsEndpoint != "" && !covered[o.Type] {
+		if o.StatsEndpoint != "" && !covered[o.Type] && !raw[o.Type] {
 			t.Errorf("object type %q ships a stats endpoint but declares no aggregate group in "+
-				"statsparity_test.go — its GROUP BY branches are unchecked", o.Type)
+				"statsparity_test.go (and is not a raw-pgx type checked by rawpgx_test.go) — its "+
+				"GROUP BY branches are unchecked", o.Type)
 		}
 	}
 }

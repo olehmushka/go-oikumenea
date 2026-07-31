@@ -10,6 +10,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/clients/go/internal/conjureerrors"
 	"github.com/palantir/conjure-go-runtime/v2/conjure-go-client/httpclient"
 	"github.com/palantir/pkg/bearertoken"
+	"github.com/palantir/pkg/datetime"
 	werror "github.com/palantir/witchcraft-go-error"
 )
 
@@ -21,7 +22,25 @@ instance-scope `externalorg.manage`. Writes are audited in-process (D-Audit).
 type ExternalOrganizationServiceClient interface {
 	ListExternalOrgKinds(ctx context.Context, authHeader bearertoken.Token) (ExternalOrgKindList, error)
 	UpsertExternalOrgKind(ctx context.Context, authHeader bearertoken.Token, requestArg UpsertExternalOrgKindRequest) (ExternalOrgKind, error)
-	ListExternalOrgs(ctx context.Context, authHeader bearertoken.Token, queryArg *string, kindArg *string, countryArg *string, statusArg *string, pageSizeArg *int, pageTokenArg *string) (ExternalOrgPage, error)
+	ListExternalOrgs(ctx context.Context, authHeader bearertoken.Token, queryArg *string, kindArg *string, countryArg *string, statusArg *string, sourceArg *string, confidenceArg *string, asOfFromArg *datetime.DateTime, asOfToArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (ExternalOrgPage, error)
+	/*
+	   Facet distributions over the registry — the dashboard half of the facet vocabulary (M58 /
+	   D-ObjectFacets). Takes exactly the filter args `listExternalOrgs` takes (minus paging) plus
+	   an optional `facets` CSV, so a dashboard and a list are two renderings of ONE request state
+	   and a chart segment is a link to the same URL with one more filter applied.
+
+	   `totalCount` equals the number of rows exhaustively paging `listExternalOrgs` with these
+	   same filters would return. One round-trip serves the whole dashboard.
+
+	   ONE aggregate arm, with no subject and no scoped twin — but for the OPPOSITE reason to the
+	   audit ledger's single arm. `external_organizations` is a flat instance-global reference
+	   table with no row-level security and no unit reach: `externalorg.read` held anywhere is the
+	   whole visibility decision, so there is nothing for a second arm to narrow.
+
+	   The path is `/stats/external-orgs` rather than `/external-orgs/stats` because the server's
+	   router rejects a literal path segment that is a sibling of `{orgId}`.
+	*/
+	ExternalOrgStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, queryArg *string, kindArg *string, countryArg *string, statusArg *string, sourceArg *string, confidenceArg *string, asOfFromArg *datetime.DateTime, asOfToArg *datetime.DateTime) (ExternalOrgStats, error)
 	CreateExternalOrg(ctx context.Context, authHeader bearertoken.Token, requestArg CreateExternalOrgRequest) (ExternalOrganization, error)
 	GetExternalOrg(ctx context.Context, authHeader bearertoken.Token, orgIdArg string) (ExternalOrganization, error)
 	UpdateExternalOrg(ctx context.Context, authHeader bearertoken.Token, orgIdArg string, requestArg UpdateExternalOrgRequest) (ExternalOrganization, error)
@@ -73,7 +92,7 @@ func (c *externalOrganizationServiceClient) UpsertExternalOrgKind(ctx context.Co
 	return *returnVal, nil
 }
 
-func (c *externalOrganizationServiceClient) ListExternalOrgs(ctx context.Context, authHeader bearertoken.Token, queryArg *string, kindArg *string, countryArg *string, statusArg *string, pageSizeArg *int, pageTokenArg *string) (ExternalOrgPage, error) {
+func (c *externalOrganizationServiceClient) ListExternalOrgs(ctx context.Context, authHeader bearertoken.Token, queryArg *string, kindArg *string, countryArg *string, statusArg *string, sourceArg *string, confidenceArg *string, asOfFromArg *datetime.DateTime, asOfToArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (ExternalOrgPage, error) {
 	var returnVal *ExternalOrgPage
 	var requestParams []httpclient.RequestParam
 	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListExternalOrgs"))
@@ -92,6 +111,18 @@ func (c *externalOrganizationServiceClient) ListExternalOrgs(ctx context.Context
 	if statusArg != nil {
 		queryParams.Set("status", fmt.Sprint(*statusArg))
 	}
+	if sourceArg != nil {
+		queryParams.Set("source", fmt.Sprint(*sourceArg))
+	}
+	if confidenceArg != nil {
+		queryParams.Set("confidence", fmt.Sprint(*confidenceArg))
+	}
+	if asOfFromArg != nil {
+		queryParams.Set("asOfFrom", fmt.Sprint(*asOfFromArg))
+	}
+	if asOfToArg != nil {
+		queryParams.Set("asOfTo", fmt.Sprint(*asOfToArg))
+	}
 	if pageSizeArg != nil {
 		queryParams.Set("pageSize", fmt.Sprint(*pageSizeArg))
 	}
@@ -106,6 +137,52 @@ func (c *externalOrganizationServiceClient) ListExternalOrgs(ctx context.Context
 	}
 	if returnVal == nil {
 		return *new(ExternalOrgPage), werror.ErrorWithContextParams(ctx, "listExternalOrgs response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *externalOrganizationServiceClient) ExternalOrgStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, queryArg *string, kindArg *string, countryArg *string, statusArg *string, sourceArg *string, confidenceArg *string, asOfFromArg *datetime.DateTime, asOfToArg *datetime.DateTime) (ExternalOrgStats, error) {
+	var returnVal *ExternalOrgStats
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ExternalOrgStats"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/external-orgs/v1/stats/external-orgs"))
+	queryParams := make(url.Values)
+	if facetsArg != nil {
+		queryParams.Set("facets", fmt.Sprint(*facetsArg))
+	}
+	if queryArg != nil {
+		queryParams.Set("query", fmt.Sprint(*queryArg))
+	}
+	if kindArg != nil {
+		queryParams.Set("kind", fmt.Sprint(*kindArg))
+	}
+	if countryArg != nil {
+		queryParams.Set("country", fmt.Sprint(*countryArg))
+	}
+	if statusArg != nil {
+		queryParams.Set("status", fmt.Sprint(*statusArg))
+	}
+	if sourceArg != nil {
+		queryParams.Set("source", fmt.Sprint(*sourceArg))
+	}
+	if confidenceArg != nil {
+		queryParams.Set("confidence", fmt.Sprint(*confidenceArg))
+	}
+	if asOfFromArg != nil {
+		queryParams.Set("asOfFrom", fmt.Sprint(*asOfFromArg))
+	}
+	if asOfToArg != nil {
+		queryParams.Set("asOfTo", fmt.Sprint(*asOfToArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(ExternalOrgStats), werror.WrapWithContextParams(ctx, err, "externalOrgStats failed")
+	}
+	if returnVal == nil {
+		return *new(ExternalOrgStats), werror.ErrorWithContextParams(ctx, "externalOrgStats response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -201,7 +278,25 @@ instance-scope `externalorg.manage`. Writes are audited in-process (D-Audit).
 type ExternalOrganizationServiceClientWithAuth interface {
 	ListExternalOrgKinds(ctx context.Context) (ExternalOrgKindList, error)
 	UpsertExternalOrgKind(ctx context.Context, requestArg UpsertExternalOrgKindRequest) (ExternalOrgKind, error)
-	ListExternalOrgs(ctx context.Context, queryArg *string, kindArg *string, countryArg *string, statusArg *string, pageSizeArg *int, pageTokenArg *string) (ExternalOrgPage, error)
+	ListExternalOrgs(ctx context.Context, queryArg *string, kindArg *string, countryArg *string, statusArg *string, sourceArg *string, confidenceArg *string, asOfFromArg *datetime.DateTime, asOfToArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (ExternalOrgPage, error)
+	/*
+	   Facet distributions over the registry — the dashboard half of the facet vocabulary (M58 /
+	   D-ObjectFacets). Takes exactly the filter args `listExternalOrgs` takes (minus paging) plus
+	   an optional `facets` CSV, so a dashboard and a list are two renderings of ONE request state
+	   and a chart segment is a link to the same URL with one more filter applied.
+
+	   `totalCount` equals the number of rows exhaustively paging `listExternalOrgs` with these
+	   same filters would return. One round-trip serves the whole dashboard.
+
+	   ONE aggregate arm, with no subject and no scoped twin — but for the OPPOSITE reason to the
+	   audit ledger's single arm. `external_organizations` is a flat instance-global reference
+	   table with no row-level security and no unit reach: `externalorg.read` held anywhere is the
+	   whole visibility decision, so there is nothing for a second arm to narrow.
+
+	   The path is `/stats/external-orgs` rather than `/external-orgs/stats` because the server's
+	   router rejects a literal path segment that is a sibling of `{orgId}`.
+	*/
+	ExternalOrgStats(ctx context.Context, facetsArg *string, queryArg *string, kindArg *string, countryArg *string, statusArg *string, sourceArg *string, confidenceArg *string, asOfFromArg *datetime.DateTime, asOfToArg *datetime.DateTime) (ExternalOrgStats, error)
 	CreateExternalOrg(ctx context.Context, requestArg CreateExternalOrgRequest) (ExternalOrganization, error)
 	GetExternalOrg(ctx context.Context, orgIdArg string) (ExternalOrganization, error)
 	UpdateExternalOrg(ctx context.Context, orgIdArg string, requestArg UpdateExternalOrgRequest) (ExternalOrganization, error)
@@ -227,8 +322,12 @@ func (c *externalOrganizationServiceClientWithAuth) UpsertExternalOrgKind(ctx co
 	return c.client.UpsertExternalOrgKind(ctx, c.authHeader, requestArg)
 }
 
-func (c *externalOrganizationServiceClientWithAuth) ListExternalOrgs(ctx context.Context, queryArg *string, kindArg *string, countryArg *string, statusArg *string, pageSizeArg *int, pageTokenArg *string) (ExternalOrgPage, error) {
-	return c.client.ListExternalOrgs(ctx, c.authHeader, queryArg, kindArg, countryArg, statusArg, pageSizeArg, pageTokenArg)
+func (c *externalOrganizationServiceClientWithAuth) ListExternalOrgs(ctx context.Context, queryArg *string, kindArg *string, countryArg *string, statusArg *string, sourceArg *string, confidenceArg *string, asOfFromArg *datetime.DateTime, asOfToArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (ExternalOrgPage, error) {
+	return c.client.ListExternalOrgs(ctx, c.authHeader, queryArg, kindArg, countryArg, statusArg, sourceArg, confidenceArg, asOfFromArg, asOfToArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *externalOrganizationServiceClientWithAuth) ExternalOrgStats(ctx context.Context, facetsArg *string, queryArg *string, kindArg *string, countryArg *string, statusArg *string, sourceArg *string, confidenceArg *string, asOfFromArg *datetime.DateTime, asOfToArg *datetime.DateTime) (ExternalOrgStats, error) {
+	return c.client.ExternalOrgStats(ctx, c.authHeader, facetsArg, queryArg, kindArg, countryArg, statusArg, sourceArg, confidenceArg, asOfFromArg, asOfToArg)
 }
 
 func (c *externalOrganizationServiceClientWithAuth) CreateExternalOrg(ctx context.Context, requestArg CreateExternalOrgRequest) (ExternalOrganization, error) {
@@ -276,12 +375,20 @@ func (c *externalOrganizationServiceClientWithTokenProvider) UpsertExternalOrgKi
 	return c.client.UpsertExternalOrgKind(ctx, bearertoken.Token(token), requestArg)
 }
 
-func (c *externalOrganizationServiceClientWithTokenProvider) ListExternalOrgs(ctx context.Context, queryArg *string, kindArg *string, countryArg *string, statusArg *string, pageSizeArg *int, pageTokenArg *string) (ExternalOrgPage, error) {
+func (c *externalOrganizationServiceClientWithTokenProvider) ListExternalOrgs(ctx context.Context, queryArg *string, kindArg *string, countryArg *string, statusArg *string, sourceArg *string, confidenceArg *string, asOfFromArg *datetime.DateTime, asOfToArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (ExternalOrgPage, error) {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
 		return *new(ExternalOrgPage), err
 	}
-	return c.client.ListExternalOrgs(ctx, bearertoken.Token(token), queryArg, kindArg, countryArg, statusArg, pageSizeArg, pageTokenArg)
+	return c.client.ListExternalOrgs(ctx, bearertoken.Token(token), queryArg, kindArg, countryArg, statusArg, sourceArg, confidenceArg, asOfFromArg, asOfToArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *externalOrganizationServiceClientWithTokenProvider) ExternalOrgStats(ctx context.Context, facetsArg *string, queryArg *string, kindArg *string, countryArg *string, statusArg *string, sourceArg *string, confidenceArg *string, asOfFromArg *datetime.DateTime, asOfToArg *datetime.DateTime) (ExternalOrgStats, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(ExternalOrgStats), err
+	}
+	return c.client.ExternalOrgStats(ctx, bearertoken.Token(token), facetsArg, queryArg, kindArg, countryArg, statusArg, sourceArg, confidenceArg, asOfFromArg, asOfToArg)
 }
 
 func (c *externalOrganizationServiceClientWithTokenProvider) CreateExternalOrg(ctx context.Context, requestArg CreateExternalOrgRequest) (ExternalOrganization, error) {

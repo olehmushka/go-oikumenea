@@ -18,7 +18,10 @@ package facet
 // that is exactly why pkg/action's catalog+generator+test triad works. Module ownership is carried by
 // the mandatory Module field and enforced by the plaintext/table guards.
 func catalog() []ObjectType {
-	return []ObjectType{personType(), unitType(), membershipType(), orderType(), documentType(), auditType()}
+	return []ObjectType{
+		personType(), unitType(), membershipType(), orderType(), documentType(), auditType(),
+		externalOrgType(), taxonType(),
+	}
 }
 
 // Default is the process-wide registry, built from the catalog. It panics on a malformed catalog:
@@ -611,6 +614,191 @@ func auditType() ObjectType {
 			},
 		},
 		NonFacetArgs: []NonFacetArg{
+			{Arg: "pageSize", Class: ClassPaging, Why: "keyset page size (pkg/listing clamp)"},
+			{Arg: "pageToken", Class: ClassPaging, Why: "keyset cursor (pkg/listing codec)"},
+		},
+	}
+}
+
+// ── external organization ───────────────────────────────────────────────────
+//
+// M58 ticket 2, and the first VERTICAL to reach the vocabulary. A flat instance-global reference
+// table: no row-level security, no unit reach, no shadow flag — `externalorg.read` held anywhere is
+// the whole visibility decision. So its aggregate ships ONE arm, like the audit ledger's, for the
+// exact OPPOSITE reason: audit's single arm is a visibility decision made entirely by the connection
+// the query runs on, this one is the absence of any visibility decision to make.
+//
+// Four of its six args already existed (M30, D-ExternalOrgs); `source`, `confidence` and the `asOf`
+// range are new, and all three are the D-OverlayFoundation attribution column-set, which is why the
+// confidence x source view is the chart this type exists to draw.
+func externalOrgType() ObjectType {
+	return ObjectType{
+		Type:          "external_organization",
+		Module:        "externalorg",
+		ListEndpoint:  "ExternalOrganizationService.listExternalOrgs",
+		StatsEndpoint: "ExternalOrganizationService.externalOrgStats",
+		Facets: []Facet{
+			{
+				Key:     "kind",
+				Kind:    KindRef,
+				Table:   "oikumenea.external_organizations",
+				Column:  "kind_id",
+				RefType: "external_org_kind",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15},
+				Note: "The arg predates this vocabulary and took a kind CODE, while a ref bucket's key " +
+					"is the kind's RID — so the filter was WIDENED to accept either spelling rather than " +
+					"gaining a second arg. A bucket key must remain a usable filter value; that is the " +
+					"whole reason, and it is the same widening religion's `religion` arg already had.",
+			},
+			{
+				Key:     "countryId",
+				Kind:    KindRef,
+				Table:   "oikumenea.external_organizations",
+				Column:  "country_id",
+				RefType: "country",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
+				// The arg is `country` and already carried a RID, so only the NAME needed pinning.
+				ArgOverride: []string{"country"},
+				Note: "ArgOverride: the arg is `country` (M30), not the derived `countryId`. It already " +
+					"took a country RID, so the bucket key was a usable filter value from the start. " +
+					"Nullable — an external org may be supranational or simply unattributed.",
+			},
+			{
+				Key:     "status",
+				Kind:    KindEnum,
+				Table:   "oikumenea.external_organizations",
+				Column:  "status",
+				Values:  []string{"provisional", "resolved"},
+				Buckets: Buckets{Strategy: StrategyIdentity},
+				Note:    "A provisional row is an unresolved import stub awaiting a merge into a canonical org.",
+			},
+			{
+				Key:     "source",
+				Kind:    KindEnum,
+				Table:   "oikumenea.external_organizations",
+				Column:  "source",
+				Values:  []string{"self_declared", "operator_verified", "imported"},
+				Buckets: Buckets{Strategy: StrategyIdentity},
+				Note: "The D-OverlayFoundation attribution column-set (conventions.md, Attribution). " +
+					"Chart order is ascending authority, not alphabetical.",
+			},
+			{
+				Key:     "confidence",
+				Kind:    KindEnum,
+				Table:   "oikumenea.external_organizations",
+				Column:  "confidence",
+				Values:  []string{"confirmed", "probable", "possible"},
+				Buckets: Buckets{Strategy: StrategyIdentity},
+				Note: "The other half of the attribution column-set. Chart order is descending " +
+					"certainty: crossed with `source` it is the OSINT attribution-quality view this " +
+					"dashboard exists for, and a frequency sort would scramble both axes.",
+			},
+			{
+				Key:     "asOf",
+				Kind:    KindDateRange,
+				Table:   "oikumenea.external_organizations",
+				Column:  "as_of",
+				Buckets: Buckets{Strategy: StrategyDateTrunc, Grain: "month", IncludeUnknown: true},
+				Note: "When the asserted value was observed or held true — attribution, not row " +
+					"lifetime (created_at is not faceted). Nullable, so an (unknown) bucket is mandatory " +
+					"and reads as `asserted without an observation date`. Conjure DATETIME, like audit's " +
+					"since/until, so the console declares argType datetime.",
+			},
+		},
+		NonFacetArgs: []NonFacetArg{
+			{Arg: "query", Class: ClassSearch, Why: "case-insensitive name/code substring match", Drives: "ListOrgs"},
+			{Arg: "pageSize", Class: ClassPaging, Why: "keyset page size (pkg/listing clamp)"},
+			{Arg: "pageToken", Class: ClassPaging, Why: "keyset cursor (pkg/listing codec)"},
+		},
+	}
+}
+
+// ── religion taxon ──────────────────────────────────────────────────────────
+//
+// M58 ticket 2, and the first TREE to reach the vocabulary — which is where the non-partitioning
+// property comes from. `religion_taxa` is flat instance-global reference data (the row-level security
+// in this module is on the unit-scoped religion_org_* tables, not here), so like external_organization
+// it ships ONE aggregate arm because there is no visibility decision to make.
+//
+// Two of its four facets overlap by construction, and each carries its own reason. See
+// Facet.NonPartitioning: what that exempts is the buckets-sum-to-totalCount assertion and nothing
+// else — every bucket here still returns exactly the rows it counted when clicked.
+func taxonType() ObjectType {
+	return ObjectType{
+		Type:          "taxon",
+		Module:        "religion",
+		ListEndpoint:  "ReligionService.listTaxa",
+		StatsEndpoint: "ReligionService.taxonStats",
+		Facets: []Facet{
+			{
+				Key:         "rankId",
+				Kind:        KindRef,
+				Table:       "oikumenea.religion_taxa",
+				Column:      "rank_id",
+				RefType:     "taxon_rank",
+				ArgOverride: []string{"rank"},
+				Buckets:     Buckets{Strategy: StrategyTopN, TopN: 15},
+				Note: "ArgOverride: the arg is `rank` (M22) and took a rank CODE, so it was WIDENED to " +
+					"accept the RID a bucket key carries rather than gaining a second arg. Ordered by " +
+					"the rank's OWN ordinal via the SQL-supplied Ord (the rank-seniority path topNBuckets " +
+					"already honours): religion -> branch -> tradition is a ladder, and re-sorting it by " +
+					"frequency would destroy the only ordering that means anything.",
+			},
+			{
+				Key:         "religionId",
+				Kind:        KindRef,
+				Table:       "oikumenea.religion_taxa",
+				Column:      "religion_id",
+				RefType:     "taxon",
+				ArgOverride: []string{"religion"},
+				Buckets:     Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
+				Note: "ArgOverride: the arg is `religion` (M22), which already accepted a root taxon RID " +
+					"or its code. The denormalized root, derived via the closure — so unlike `subtree` " +
+					"this one DOES partition: every taxon has exactly one root, and a root's own row has " +
+					"none, which is the (unknown) bucket.",
+			},
+			{
+				Key:         "subtree",
+				Kind:        KindRef,
+				Table:       "oikumenea.religion_taxa_closure",
+				Column:      "ancestor_id",
+				RefType:     "taxon",
+				ArgOverride: []string{"parent"},
+				Buckets:     Buckets{Strategy: StrategyTopN, TopN: 15},
+				NonPartitioning: "a closure facet counts each taxon under EVERY ancestor it has, which " +
+					"is what makes the chart drillable rather than a defect: the bucket's count is its " +
+					"whole subtree size, clicking it returns exactly those rows, and re-grouping within " +
+					"them yields that subtree's own internal nodes, recursively. The honest alternative " +
+					"— grouping by parent_id and filtering to an exact parent — partitions cleanly and " +
+					"then dead-ends after one click, because every remaining row shares one parent.",
+				Note: "ArgOverride: the arg is `parent` (M22), which already meant PROPER descendants " +
+					"via the closure. Counted with depth > 0 on both sides, so the reflexive (t,t,0) row " +
+					"is excluded from the bucket exactly as it is from the click-through — otherwise the " +
+					"two would disagree by precisely one row. The one facet whose Table is not the listed " +
+					"table.",
+			},
+			{
+				Key:         "classification",
+				Kind:        KindRef,
+				Table:       "oikumenea.religion_taxon_classifications",
+				Column:      "classification_id",
+				RefType:     "classification",
+				ArgOverride: []string{"classification"},
+				Buckets:     Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
+				NonPartitioning: "theism tags are M:N (a taxon may be both dualistic and monotheistic) " +
+					"AND inherited, so a taxon is counted once per EFFECTIVE tag it resolves to. Counting " +
+					"only directly-declared tags would partition, and would also be useless: tags are " +
+					"declared on roots and inherited by everything below, so nearly every bucket would " +
+					"be (unknown).",
+				Note: "ArgOverride is the derived name, pinned because the arg and Key coincide only by " +
+					"luck and the guard must check the pinning rather than assume it. EFFECTIVE tags, " +
+					"resolved to the nearest DECLARING ancestor through religion_taxa_closure — the same " +
+					"resolution getEffectiveClassifications performs, so the chart and the object view " +
+					"agree. (unknown) = no declaring ancestor anywhere up the tree.",
+			},
+		},
+		NonFacetArgs: []NonFacetArg{
+			{Arg: "query", Class: ClassSearch, Why: "case-insensitive code/name substring match", Drives: "ListTaxa"},
 			{Arg: "pageSize", Class: ClassPaging, Why: "keyset page size (pkg/listing clamp)"},
 			{Arg: "pageToken", Class: ClassPaging, Why: "keyset cursor (pkg/listing codec)"},
 		},

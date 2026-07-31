@@ -4643,6 +4643,26 @@
         ],
         "type": "object"
       },
+      "ExternalOrgStats": {
+        "description": "Facet distributions over the SAME set `listExternalOrgs` returns under the same filters\n(M58 / D-ObjectFacets): `totalCount` is what exhaustively paging that endpoint would yield,\nnot an estimate and not a page count.\n\nEvery facet here partitions the result set — each counted row lands in exactly one bucket\nof each distribution, so a distribution's counts sum to `totalCount`.\n",
+        "properties": {
+          "facets": {
+            "items": {
+              "$ref": "#/components/schemas/FacetDistribution"
+            },
+            "type": "array"
+          },
+          "totalCount": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "facets",
+          "totalCount"
+        ],
+        "type": "object"
+      },
       "ExternalOrganization": {
         "description": "An external organization at registry grade. Soft-deleted, not destroyed. The RID is the\nexternal handle. Carries the D-OverlayFoundation provisional/resolved status + attribution.\n",
         "properties": {
@@ -11923,6 +11943,26 @@
         },
         "required": [
           "taxonRanks"
+        ],
+        "type": "object"
+      },
+      "TaxonStats": {
+        "description": "Facet distributions over the SAME set `listTaxa` returns under the same filters (M58 /\nD-ObjectFacets): `totalCount` is what exhaustively paging that endpoint would yield, not an\nestimate and not a page count.\n\nTWO of the four facets do NOT partition the result set, and this is a property of a\ntaxonomy rather than an inaccuracy:\n\n- `subtree` counts each taxon under EVERY ancestor it has, because that is what makes the\n  chart drillable — a bucket's count is its whole subtree size and clicking it returns\n  exactly those rows, then re-grouping within them yields that subtree's own internal\n  nodes, recursively, all the way down.\n- `classification` counts EFFECTIVE theism tags, resolved to the nearest declaring ancestor\n  (what `getEffectiveClassifications` returns), and a taxon may carry several.\n\nSo for those two, the buckets' counts SUM TO MORE than `totalCount`. What holds for every\nfacet without exception is the property the vocabulary actually rests on: a bucket's count\nequals the number of rows `listTaxa` returns under that bucket's own filter.\n",
+        "properties": {
+          "facets": {
+            "items": {
+              "$ref": "#/components/schemas/FacetDistribution"
+            },
+            "type": "array"
+          },
+          "totalCount": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "facets",
+          "totalCount"
         ],
         "type": "object"
       },
@@ -25251,7 +25291,7 @@
             }
           },
           {
-            "description": "Optional kind-code filter.",
+            "description": "Optional kind filter, accepting EITHER the kind's code or its RID. It began as a\ncode-only filter; the RID form was added with the M58 facet vocabulary, because a `kind`\nchart segment's bucket key is a `kind_id` RID and a bucket key must remain a usable\nfilter value. Both spellings select the same rows.\n",
             "in": "query",
             "name": "kind",
             "required": false,
@@ -25274,6 +25314,44 @@
             "name": "status",
             "required": false,
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional attribution-source filter (self_declared | operator_verified | imported) —\nthe D-OverlayFoundation attribution column-set.\n",
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional attribution-confidence filter (confirmed | probable | possible).",
+            "in": "query",
+            "name": "confidence",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional lower bound (inclusive) on asOf, when the asserted value was observed.",
+            "in": "query",
+            "name": "asOfFrom",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional upper bound (inclusive) on asOf.",
+            "in": "query",
+            "name": "asOfTo",
+            "required": false,
+            "schema": {
+              "format": "date-time",
               "type": "string"
             }
           },
@@ -25526,6 +25604,123 @@
           }
         },
         "summary": "Resolve a provisional stub (orgId) into a canonical organization (intoOrgId); tombstones the stub.",
+        "tags": [
+          "ExternalOrganizationService"
+        ]
+      }
+    },
+    "/external-orgs/v1/stats/external-orgs": {
+      "get": {
+        "description": "Facet distributions over the registry — the dashboard half of the facet vocabulary (M58 /\nD-ObjectFacets). Takes exactly the filter args `listExternalOrgs` takes (minus paging) plus\nan optional `facets` CSV, so a dashboard and a list are two renderings of ONE request state\nand a chart segment is a link to the same URL with one more filter applied.\n\n`totalCount` equals the number of rows exhaustively paging `listExternalOrgs` with these\nsame filters would return. One round-trip serves the whole dashboard.\n\nONE aggregate arm, with no subject and no scoped twin — but for the OPPOSITE reason to the\naudit ledger's single arm. `external_organizations` is a flat instance-global reference\ntable with no row-level security and no unit reach: `externalorg.read` held anywhere is the\nwhole visibility decision, so there is nothing for a second arm to narrow.\n\nThe path is `/stats/external-orgs` rather than `/external-orgs/stats` because the server's\nrouter rejects a literal path segment that is a sibling of `{orgId}`.\n",
+        "operationId": "ExternalOrganizationService_externalOrgStats",
+        "parameters": [
+          {
+            "description": "Optional comma-separated facet keys to compute (`kind,status,source`). Omitted or empty\n= every facet the caller may read; an explicit list of nothing (`facets=,`) returns\n`totalCount` alone. An undeclared facet key is an ExternalOrg:Invalid.\n",
+            "in": "query",
+            "name": "facets",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional case-insensitive name/code filter, as on the list.",
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional kind filter (code or RID), as on the list.",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional country RID filter, as on the list.",
+            "in": "query",
+            "name": "country",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional status filter (provisional | resolved), as on the list.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional attribution-source filter, as on the list.",
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional attribution-confidence filter, as on the list.",
+            "in": "query",
+            "name": "confidence",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional lower bound (inclusive) on asOf, as on the list.",
+            "in": "query",
+            "name": "asOfFrom",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional upper bound (inclusive) on asOf, as on the list.",
+            "in": "query",
+            "name": "asOfTo",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalOrgStats"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Facet distributions over the registry — the dashboard half of the facet vocabulary (M58 /",
         "tags": [
           "ExternalOrganizationService"
         ]
@@ -36847,13 +37042,22 @@
         ]
       }
     },
-    "/religion/v1/taxa": {
+    "/religion/v1/stats/taxa": {
       "get": {
-        "description": "Search/filter the taxonomy. Filters compose; results carry closure depth where a parent/root is given.",
-        "operationId": "ReligionService_listTaxa",
+        "description": "Facet distributions over the taxonomy — the dashboard half of the facet vocabulary (M58 /\nD-ObjectFacets). Takes exactly the filter args `listTaxa` takes (minus paging) plus an\noptional `facets` CSV, so a dashboard and a list are two renderings of ONE request state\nand a chart segment is a link to the same URL with one more filter applied.\n\n`totalCount` equals the number of rows exhaustively paging `listTaxa` with these same\nfilters would return. One round-trip serves the whole dashboard.\n\nONE aggregate arm, with no subject and no scoped twin — but for the OPPOSITE reason to the\naudit ledger's single arm. The taxonomy is flat instance-global reference data with no\nrow-level security and no unit reach (the RLS in this module is on the unit-scoped\n`religion_org_*` tables, not here), so `religion.read` held anywhere is the whole\nvisibility decision and there is nothing for a second arm to narrow.\n\n`subtree` and `classification` do not partition the result set — see TaxonStats.\n\nThe path is `/stats/taxa` rather than `/taxa/stats` because the server's router rejects a\nliteral path segment that is a sibling of `{taxonId}`.\n",
+        "operationId": "ReligionService_taxonStats",
         "parameters": [
           {
-            "description": "Filter by rank code (religion/branch/…).",
+            "description": "Optional comma-separated facet keys to compute (`rankId,subtree`). Omitted or empty =\nevery facet the caller may read; an explicit list of nothing (`facets=,`) returns\n`totalCount` alone. An undeclared facet key is a Religion:Invalid.\n",
+            "in": "query",
+            "name": "facets",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by rank (code or RID), as on the list.",
             "in": "query",
             "name": "rank",
             "required": false,
@@ -36862,7 +37066,7 @@
             }
           },
           {
-            "description": "Restrict to descendants of this taxon (via the closure).",
+            "description": "Restrict to proper descendants of this taxon, as on the list.",
             "in": "query",
             "name": "parent",
             "required": false,
@@ -36871,9 +37075,97 @@
             }
           },
           {
-            "description": "Restrict to one root religion taxon.",
+            "description": "Restrict to one root religion taxon, as on the list.",
             "in": "query",
             "name": "religion",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Restrict by effective theism classification, as on the list.",
+            "in": "query",
+            "name": "classification",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Case-insensitive code/name filter, as on the list.",
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxonStats"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerializableError"
+                }
+              }
+            },
+            "description": "Conjure SerializableError envelope (errorCode/errorName/parameters)."
+          }
+        },
+        "summary": "Facet distributions over the taxonomy — the dashboard half of the facet vocabulary (M58 /",
+        "tags": [
+          "ReligionService"
+        ]
+      }
+    },
+    "/religion/v1/taxa": {
+      "get": {
+        "description": "Search/filter the taxonomy. Filters compose; results carry closure depth where a parent/root is given.",
+        "operationId": "ReligionService_listTaxa",
+        "parameters": [
+          {
+            "description": "Filter by rank, accepting EITHER the rank's code (religion/branch/…) or its RID. It\nbegan as a code-only filter; the RID form was added with the M58 facet vocabulary,\nbecause a `rankId` chart segment's bucket key is a `rank_id` RID and a bucket key must\nremain a usable filter value. Both spellings select the same rows.\n",
+            "in": "query",
+            "name": "rank",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Restrict to PROPER descendants of this taxon (via the closure, depth \u003e 0 — the taxon\nitself is not included). This is the click-through of the `subtree` facet, whose bucket\ncount is exactly the number of rows this returns for that ancestor.\n",
+            "in": "query",
+            "name": "parent",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Restrict to one root religion taxon, by RID or by code.",
+            "in": "query",
+            "name": "religion",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Restrict to taxa whose EFFECTIVE theism classification includes this one — declared on\nthe taxon or inherited from its nearest declaring ancestor, the same resolution\n`getEffectiveClassifications` performs. Accepts a RID or a code.\n",
+            "in": "query",
+            "name": "classification",
             "required": false,
             "schema": {
               "type": "string"

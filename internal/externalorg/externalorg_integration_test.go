@@ -62,6 +62,8 @@ func newService(t *testing.T, pool *pgxpool.Pool) *application.Service {
 
 func uniq(prefix string) string { return fmt.Sprintf("%s-%d", prefix, time.Now().UnixNano()) }
 
+func ptr[T any](v T) *T { return &v }
+
 func kindID(t *testing.T, pool *pgxpool.Pool, code string) string {
 	t.Helper()
 	var id string
@@ -118,7 +120,7 @@ func TestKindCatalogAndCreate(t *testing.T) {
 		t.Fatalf("defaults: status=%s source=%s", party.Status, party.Source)
 	}
 
-	got, err := svc.ListOrgs(ctx, "", "party", "", "", "", 100)
+	got, err := svc.ListOrgs(ctx, "", domain.OrgFilter{Kind: ptr("party")}, "", 100)
 	if err != nil {
 		t.Fatalf("ListOrgs(kind=party): %v", err)
 	}

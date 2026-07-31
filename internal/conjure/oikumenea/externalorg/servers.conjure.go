@@ -11,6 +11,7 @@ import (
 	"github.com/palantir/conjure-go-runtime/v2/conjure-go-contract/errors"
 	"github.com/palantir/conjure-go-runtime/v2/conjure-go-server/httpserver"
 	"github.com/palantir/pkg/bearertoken"
+	"github.com/palantir/pkg/datetime"
 	werror "github.com/palantir/witchcraft-go-error"
 	"github.com/palantir/witchcraft-go-server/v2/witchcraft/wresource"
 	"github.com/palantir/witchcraft-go-server/v2/wrouter"
@@ -24,7 +25,25 @@ instance-scope `externalorg.manage`. Writes are audited in-process (D-Audit).
 type ExternalOrganizationService interface {
 	ListExternalOrgKinds(ctx context.Context, authHeader bearertoken.Token) (ExternalOrgKindList, error)
 	UpsertExternalOrgKind(ctx context.Context, authHeader bearertoken.Token, requestArg UpsertExternalOrgKindRequest) (ExternalOrgKind, error)
-	ListExternalOrgs(ctx context.Context, authHeader bearertoken.Token, queryArg *string, kindArg *string, countryArg *string, statusArg *string, pageSizeArg *int, pageTokenArg *string) (ExternalOrgPage, error)
+	ListExternalOrgs(ctx context.Context, authHeader bearertoken.Token, queryArg *string, kindArg *string, countryArg *string, statusArg *string, sourceArg *string, confidenceArg *string, asOfFromArg *datetime.DateTime, asOfToArg *datetime.DateTime, pageSizeArg *int, pageTokenArg *string) (ExternalOrgPage, error)
+	/*
+	   Facet distributions over the registry — the dashboard half of the facet vocabulary (M58 /
+	   D-ObjectFacets). Takes exactly the filter args `listExternalOrgs` takes (minus paging) plus
+	   an optional `facets` CSV, so a dashboard and a list are two renderings of ONE request state
+	   and a chart segment is a link to the same URL with one more filter applied.
+
+	   `totalCount` equals the number of rows exhaustively paging `listExternalOrgs` with these
+	   same filters would return. One round-trip serves the whole dashboard.
+
+	   ONE aggregate arm, with no subject and no scoped twin — but for the OPPOSITE reason to the
+	   audit ledger's single arm. `external_organizations` is a flat instance-global reference
+	   table with no row-level security and no unit reach: `externalorg.read` held anywhere is the
+	   whole visibility decision, so there is nothing for a second arm to narrow.
+
+	   The path is `/stats/external-orgs` rather than `/external-orgs/stats` because the server's
+	   router rejects a literal path segment that is a sibling of `{orgId}`.
+	*/
+	ExternalOrgStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, queryArg *string, kindArg *string, countryArg *string, statusArg *string, sourceArg *string, confidenceArg *string, asOfFromArg *datetime.DateTime, asOfToArg *datetime.DateTime) (ExternalOrgStats, error)
 	CreateExternalOrg(ctx context.Context, authHeader bearertoken.Token, requestArg CreateExternalOrgRequest) (ExternalOrganization, error)
 	GetExternalOrg(ctx context.Context, authHeader bearertoken.Token, orgIdArg string) (ExternalOrganization, error)
 	UpdateExternalOrg(ctx context.Context, authHeader bearertoken.Token, orgIdArg string, requestArg UpdateExternalOrgRequest) (ExternalOrganization, error)
@@ -48,6 +67,9 @@ func RegisterRoutesExternalOrganizationService(router wrouter.Router, impl Exter
 	}
 	if err := resource.Get("ListExternalOrgs", "/external-orgs/v1/external-orgs", httpserver.NewJSONHandler(handler.HandleListExternalOrgs, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listExternalOrgs route")
+	}
+	if err := resource.Get("ExternalOrgStats", "/external-orgs/v1/stats/external-orgs", httpserver.NewJSONHandler(handler.HandleExternalOrgStats, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add externalOrgStats route")
 	}
 	if err := resource.Post("CreateExternalOrg", "/external-orgs/v1/external-orgs", httpserver.NewJSONHandler(handler.HandleCreateExternalOrg, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add createExternalOrg route")
@@ -126,6 +148,32 @@ func (e *externalOrganizationServiceHandler) HandleListExternalOrgs(rw http.Resp
 		statusArgInternal := statusArgStr
 		statusArg = &statusArgInternal
 	}
+	var sourceArg *string
+	if sourceArgStr := req.URL.Query().Get("source"); sourceArgStr != "" {
+		sourceArgInternal := sourceArgStr
+		sourceArg = &sourceArgInternal
+	}
+	var confidenceArg *string
+	if confidenceArgStr := req.URL.Query().Get("confidence"); confidenceArgStr != "" {
+		confidenceArgInternal := confidenceArgStr
+		confidenceArg = &confidenceArgInternal
+	}
+	var asOfFromArg *datetime.DateTime
+	if asOfFromArgStr := req.URL.Query().Get("asOfFrom"); asOfFromArgStr != "" {
+		asOfFromArgInternal, err := datetime.ParseDateTime(asOfFromArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"asOfFrom\" as datetime")
+		}
+		asOfFromArg = &asOfFromArgInternal
+	}
+	var asOfToArg *datetime.DateTime
+	if asOfToArgStr := req.URL.Query().Get("asOfTo"); asOfToArgStr != "" {
+		asOfToArgInternal, err := datetime.ParseDateTime(asOfToArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"asOfTo\" as datetime")
+		}
+		asOfToArg = &asOfToArgInternal
+	}
 	var pageSizeArg *int
 	if pageSizeArgStr := req.URL.Query().Get("pageSize"); pageSizeArgStr != "" {
 		pageSizeArgInternal, err := strconv.Atoi(pageSizeArgStr)
@@ -139,7 +187,71 @@ func (e *externalOrganizationServiceHandler) HandleListExternalOrgs(rw http.Resp
 		pageTokenArgInternal := pageTokenArgStr
 		pageTokenArg = &pageTokenArgInternal
 	}
-	respArg, err := e.impl.ListExternalOrgs(req.Context(), bearertoken.Token(authHeader), queryArg, kindArg, countryArg, statusArg, pageSizeArg, pageTokenArg)
+	respArg, err := e.impl.ListExternalOrgs(req.Context(), bearertoken.Token(authHeader), queryArg, kindArg, countryArg, statusArg, sourceArg, confidenceArg, asOfFromArg, asOfToArg, pageSizeArg, pageTokenArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (e *externalOrganizationServiceHandler) HandleExternalOrgStats(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var facetsArg *string
+	if facetsArgStr := req.URL.Query().Get("facets"); facetsArgStr != "" {
+		facetsArgInternal := facetsArgStr
+		facetsArg = &facetsArgInternal
+	}
+	var queryArg *string
+	if queryArgStr := req.URL.Query().Get("query"); queryArgStr != "" {
+		queryArgInternal := queryArgStr
+		queryArg = &queryArgInternal
+	}
+	var kindArg *string
+	if kindArgStr := req.URL.Query().Get("kind"); kindArgStr != "" {
+		kindArgInternal := kindArgStr
+		kindArg = &kindArgInternal
+	}
+	var countryArg *string
+	if countryArgStr := req.URL.Query().Get("country"); countryArgStr != "" {
+		countryArgInternal := countryArgStr
+		countryArg = &countryArgInternal
+	}
+	var statusArg *string
+	if statusArgStr := req.URL.Query().Get("status"); statusArgStr != "" {
+		statusArgInternal := statusArgStr
+		statusArg = &statusArgInternal
+	}
+	var sourceArg *string
+	if sourceArgStr := req.URL.Query().Get("source"); sourceArgStr != "" {
+		sourceArgInternal := sourceArgStr
+		sourceArg = &sourceArgInternal
+	}
+	var confidenceArg *string
+	if confidenceArgStr := req.URL.Query().Get("confidence"); confidenceArgStr != "" {
+		confidenceArgInternal := confidenceArgStr
+		confidenceArg = &confidenceArgInternal
+	}
+	var asOfFromArg *datetime.DateTime
+	if asOfFromArgStr := req.URL.Query().Get("asOfFrom"); asOfFromArgStr != "" {
+		asOfFromArgInternal, err := datetime.ParseDateTime(asOfFromArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"asOfFrom\" as datetime")
+		}
+		asOfFromArg = &asOfFromArgInternal
+	}
+	var asOfToArg *datetime.DateTime
+	if asOfToArgStr := req.URL.Query().Get("asOfTo"); asOfToArgStr != "" {
+		asOfToArgInternal, err := datetime.ParseDateTime(asOfToArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"asOfTo\" as datetime")
+		}
+		asOfToArg = &asOfToArgInternal
+	}
+	respArg, err := e.impl.ExternalOrgStats(req.Context(), bearertoken.Token(authHeader), facetsArg, queryArg, kindArg, countryArg, statusArg, sourceArg, confidenceArg, asOfFromArg, asOfToArg)
 	if err != nil {
 		return err
 	}

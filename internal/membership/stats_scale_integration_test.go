@@ -25,10 +25,9 @@ import (
 	"testing"
 	"time"
 
+	documentdomain "github.com/olegamysk/go-oikumenea/internal/document/domain"
 	membershipdomain "github.com/olegamysk/go-oikumenea/internal/membership/domain"
 	orderdomain "github.com/olegamysk/go-oikumenea/internal/order/domain"
-
-	documentdomain "github.com/olegamysk/go-oikumenea/internal/document/domain"
 	"github.com/olegamysk/go-oikumenea/pkg/facet"
 	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
