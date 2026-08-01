@@ -112,7 +112,7 @@ export async function Dashboard({ type, search }: { type: string; search: string
     return <ErrorNotice error={e} />;
   }
 
-  const ctx: Ctx = { def, sp, locale, now, total: main.totalCount };
+  const ctx: Ctx = { def, sp, locale, now, total: main.totalCount, swatches: await swatches(dash.charts) };
 
   return (
     <div className="space-y-4">
@@ -138,6 +138,13 @@ type Ctx = {
   locale: string;
   now: Date;
   total: number;
+  /**
+   * `platform_colors` RID → hex, fetched once per dashboard and only when a chart declares
+   * `swatch: "color"` (M58 ticket 3 / D-Color). The stats response carries a bucket's KEY and its
+   * locale→text label, never its hex — a palette entry's swatch is catalog data, not aggregate data,
+   * so the one chart that paints with it resolves it here rather than widening every bucket.
+   */
+  swatches?: Map<string, string>;
 };
 
 function Chart({
@@ -383,6 +390,32 @@ function StatCard({ chart, buckets, side, ctx }: CardProps & { side: Map<string,
 
 type CardProps = { chart: ChartDef; buckets: StatsBucket[]; ctx: Ctx };
 
+/**
+ * The `platform_colors` palette as RID → hex, for the one chart form that paints with the colour its
+ * buckets NAME rather than with an encoding chosen for it (M58 ticket 3 / D-Color).
+ *
+ * Fetched only when some chart declares it, and failure is non-fatal: an unreachable or
+ * un-permitted palette leaves the map empty and every bar falls back to the magnitude fill, which is
+ * a plainer chart rather than a broken one. `hex` is optional on the catalog row too — a palette
+ * entry with no swatch takes the same fallback.
+ */
+async function swatches(charts: ChartDef[]): Promise<Map<string, string> | undefined> {
+  if (!charts.some((c) => c.swatch === "color")) return undefined;
+  try {
+    const ok = await oikumenea();
+    const res = (await ok.request("GET", "/platform/v1/colors", {
+      query: "domain=vehicle",
+    })) as { colors?: { id?: string; hex?: string }[] };
+    const out = new Map<string, string>();
+    for (const c of res.colors ?? []) {
+      if (c.id && c.hex) out.set(c.id, c.hex);
+    }
+    return out;
+  } catch {
+    return undefined;
+  }
+}
+
 // ── buckets → segments ──────────────────────────────────────────────────────
 
 function toSegments(buckets: StatsBucket[], chart: ChartDef, ctx: Ctx): Segment[] {
@@ -392,12 +425,17 @@ function toSegments(buckets: StatsBucket[], chart: ChartDef, ctx: Ctx): Segment[
 function toSegment(b: StatsBucket, chart: ChartDef, ctx: Ctx): Segment {
   const patch = bucketPatch(ctx.def, chart.facet, b.key, ctx.now);
   const tone: Tone | undefined = chart.tone?.[b.key];
+  // A declared swatch wins over the chart's own hue, but never over a status tone: a status colour
+  // means the same thing everywhere in the console and must not be repainted by data. Only a REAL
+  // bucket is looked up — `(unknown)` and `(other)` name no palette row and keep the synthetic fill.
+  const swatch =
+    chart.swatch && !isSyntheticBucket(b.key) ? ctx.swatches?.get(b.key) : undefined;
   return {
     key: b.key,
     label: bucketLabel(b, chart, ctx),
     count: b.count,
     href: patch ? exploreHref(ctx.def.type, ctx.sp, patch) : undefined,
-    color: tone ? TONE_FILL[tone] : undefined,
+    color: tone ? TONE_FILL[tone] : swatch,
   };
 }
 

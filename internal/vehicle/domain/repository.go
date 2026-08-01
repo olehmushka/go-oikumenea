@@ -5,6 +5,8 @@ package domain
 
 import (
 	"context"
+
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
 
 // Repository is the vehicle module's persistence port (implemented by adapters over raw pgx). It is
@@ -27,7 +29,13 @@ type Repository interface {
 	InsertVehicle(ctx context.Context, in VehicleInput) (Vehicle, error)
 	GetVehicle(ctx context.Context, id string) (Vehicle, error)
 	UpdateVehicle(ctx context.Context, id string, up VehicleUpdate) (Vehicle, error)
-	ListVehicles(ctx context.Context, query, after string, lim int) ([]Vehicle, error)
+	// ListVehicles pages the same set VehicleStats aggregates, under the same VehicleFilter — one
+	// shared predicate, so `totalCount` describes exactly what paging returns (M58 / D-ObjectFacets).
+	ListVehicles(ctx context.Context, query, after string, f VehicleFilter, lim int) ([]Vehicle, error)
+	// VehicleStats is the dashboard half: one round-trip, one scan, every selected facet's
+	// distribution plus the total. ONE arm — vehicle_vehicles has no row-level security and no unit
+	// reach, so there is no visibility predicate for a second arm to narrow.
+	VehicleStats(ctx context.Context, query string, f VehicleFilter, sel stats.Selection) ([]stats.Group, error)
 	SoftDeleteVehicle(ctx context.Context, id string) (int64, error)
 
 	// registrations (ownership history)

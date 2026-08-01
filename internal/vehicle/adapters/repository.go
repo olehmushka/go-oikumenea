@@ -371,12 +371,20 @@ func (r *Repository) UpdateVehicle(ctx context.Context, id string, up domain.Veh
 	return r.GetVehicle(ctx, rid)
 }
 
-func (r *Repository) ListVehicles(ctx context.Context, query, after string, lim int) ([]domain.Vehicle, error) {
+// ListVehicles pages the same candidate set VehicleStats aggregates, under the same filters — the
+// WHERE comes from buildVehicleFilter, which is the one place either path may build a predicate
+// (M58 ticket 3; pkg/facet/rawpgx_test.go proves the call by AST). The keyset cursor is appended
+// HERE and not in the builder: a page boundary is not a filter, and folding it in would make the
+// dashboard count one page instead of the whole set.
+func (r *Repository) ListVehicles(ctx context.Context, query, after string, f domain.VehicleFilter, lim int) ([]domain.Vehicle, error) {
+	a := &argBuf{}
+	where := buildVehicleFilter(a, query, f)
+	if after != "" {
+		where += " AND v.id > " + a.add(after) + "::uuid"
+	}
 	rows, err := r.c.Query(ctx, vehicleSelect+`
-		WHERE v.deleted_at IS NULL
-		  AND ($1 = '' OR v.vin ILIKE '%'||$1||'%')
-		  AND ($2 = '' OR v.id > $2::uuid)
-		ORDER BY v.id LIMIT $3`, query, after, lim)
+		WHERE `+where+`
+		ORDER BY v.id LIMIT `+a.add(lim), a.args...)
 	if err != nil {
 		return nil, err
 	}

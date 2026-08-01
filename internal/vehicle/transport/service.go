@@ -232,12 +232,29 @@ func (s VehicleService) CreateVehicle(ctx context.Context, token bearertoken.Tok
 	return s.vehicleWithLabels(ctx, v)
 }
 
-func (s VehicleService) ListVehicles(ctx context.Context, token bearertoken.Token, query *string, pageSize *int, pageToken *string) (vehicleapi.VehiclePage, error) {
+// ListVehicles pages the same set VehicleStats aggregates. The filter comes from the shared
+// vehicleFilter helper (stats.go), so a chart segment and a list filter are the same act.
+func (s VehicleService) ListVehicles(
+	ctx context.Context,
+	token bearertoken.Token,
+	query *string,
+	typeID *string,
+	brandID *string,
+	modelID *string,
+	color *string,
+	status *string,
+	manufactureDateFrom *string,
+	manufactureDateTo *string,
+	registrationCountry *string,
+	pageSize *int,
+	pageToken *string,
+) (vehicleapi.VehiclePage, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
 		return vehicleapi.VehiclePage{}, err
 	}
 	limit := pageSizeOr(pageSize)
-	rows, err := s.app.ListVehicles(ctx, strOr(query), decodeToken(pageToken), limit)
+	f := vehicleFilter(typeID, brandID, modelID, color, status, manufactureDateFrom, manufactureDateTo, registrationCountry)
+	rows, err := s.app.ListVehicles(ctx, strOr(query), decodeToken(pageToken), f, limit)
 	if err != nil {
 		return vehicleapi.VehiclePage{}, s.mapError(ctx, err)
 	}

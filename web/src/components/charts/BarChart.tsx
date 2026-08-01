@@ -45,6 +45,28 @@ export function BarChart({
 }
 
 const fillOf = (s: Segment): string => s.color ?? (s.href ? MAGNITUDE : SYNTHETIC_FILL);
+
+/**
+ * A hairline outline for a fill too light to have an edge against the white surface — the relief the
+ * palette's own contrast rule demands, applied where the fill is DATA rather than a chosen hue
+ * (M58 ticket 3: the vehicle colour chart paints `white` and `silver` bars). Every validated palette
+ * slot clears the bar already, so this is inert for every other chart.
+ *
+ * Relative luminance per WCAG 2.x; the 0.75 cut is above the lightest categorical slot and below a
+ * plausible "silver".
+ */
+function strokeOf(s: Segment): string | undefined {
+  const m = /^#([0-9a-f]{6})$/i.exec(s.color ?? "");
+  if (!m) return undefined;
+  const n = parseInt(m[1], 16);
+  const lin = (c: number) => {
+    const v = c / 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  };
+  const L =
+    0.2126 * lin((n >> 16) & 0xff) + 0.7152 * lin((n >> 8) & 0xff) + 0.0722 * lin(n & 0xff);
+  return L > 0.75 ? INK.grid : undefined;
+}
 const readout = (s: Segment, locale: string, unit?: string): string =>
   `${s.label}: ${fmtInt(s.count, locale)}${unit ? ` ${unit}` : ""}`;
 
@@ -97,6 +119,7 @@ function HorizontalBars({
               radius={radius}
               right
               fill={fillOf(s)}
+              stroke={strokeOf(s)}
             />
             <text
               x={labelGutter + w + 6}
@@ -163,6 +186,7 @@ function VerticalBars({
               radius={GEO.radius}
               top
               fill={fillOf(s)}
+              stroke={strokeOf(s)}
             />
             <text
               x={bx + bw / 2}

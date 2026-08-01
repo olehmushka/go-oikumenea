@@ -18,10 +18,12 @@ func TestDefaultRegistryBuilds(t *testing.T) {
 	}
 	// M56 registered the first five; M58 ticket 1 added `audit`, the first LEDGER type (no RID token),
 	// and ticket 2 added the first two VERTICALS — `external_organization` and `taxon`, the latter the
-	// first TREE and so the first type with non-partitioning facets.
+	// first TREE and so the first type with non-partitioning facets. Ticket 3 added `vehicle`,
+	// `account` and `card`: the remaining raw-pgx modules, and `card` the first type whose
+	// COLLECTION-LEVEL LIST this vocabulary had to add (cards were per-account only).
 	want := []string{
 		"person", "unit", "link__member_of", "order", "document", "audit",
-		"external_organization", "taxon",
+		"external_organization", "taxon", "vehicle", "account", "card",
 	}
 	for _, w := range want {
 		o, ok := Default.Get(w)

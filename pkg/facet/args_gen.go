@@ -17,6 +17,14 @@ type ArgSpec struct {
 // listArgs is every param-type=query arg on each registered object type's list endpoint,
 // keyed by the object type token and sorted by arg name.
 var listArgs = map[string][]ArgSpec{
+	"account": {
+		{Name: "accountTypeId", Type: "string", Optional: true},
+		{Name: "currency", Type: "string", Optional: true},
+		{Name: "institutionId", Type: "string", Optional: true},
+		{Name: "pageSize", Type: "integer", Optional: true},
+		{Name: "pageToken", Type: "string", Optional: true},
+		{Name: "status", Type: "string", Optional: true},
+	},
 	"audit": {
 		{Name: "action", Type: "string", Optional: true},
 		{Name: "actorPersonId", Type: "string", Optional: true},
@@ -29,6 +37,13 @@ var listArgs = map[string][]ArgSpec{
 		{Name: "targetType", Type: "string", Optional: true},
 		{Name: "unitId", Type: "string", Optional: true},
 		{Name: "until", Type: "datetime", Optional: true},
+	},
+	"card": {
+		{Name: "cardType", Type: "string", Optional: true},
+		{Name: "networkId", Type: "string", Optional: true},
+		{Name: "pageSize", Type: "integer", Optional: true},
+		{Name: "pageToken", Type: "string", Optional: true},
+		{Name: "status", Type: "string", Optional: true},
 	},
 	"document": {
 		{Name: "expiresOnFrom", Type: "string", Optional: true},
@@ -111,12 +126,32 @@ var listArgs = map[string][]ArgSpec{
 		{Name: "unitKind", Type: "string", Optional: true},
 		{Name: "visibility", Type: "string", Optional: true},
 	},
+	"vehicle": {
+		{Name: "brandId", Type: "string", Optional: true},
+		{Name: "color", Type: "string", Optional: true},
+		{Name: "manufactureDateFrom", Type: "string", Optional: true},
+		{Name: "manufactureDateTo", Type: "string", Optional: true},
+		{Name: "modelId", Type: "string", Optional: true},
+		{Name: "pageSize", Type: "integer", Optional: true},
+		{Name: "pageToken", Type: "string", Optional: true},
+		{Name: "query", Type: "string", Optional: true},
+		{Name: "registrationCountry", Type: "string", Optional: true},
+		{Name: "status", Type: "string", Optional: true},
+		{Name: "typeId", Type: "string", Optional: true},
+	},
 }
 
 // statsArgs is every param-type=query arg on each registered object type's M57 STATS
 // endpoint, keyed by the object type token. A type absent here has no stats endpoint yet;
 // args_test.go holds that against an explicit pending list rather than letting it pass unnoticed.
 var statsArgs = map[string][]ArgSpec{
+	"account": {
+		{Name: "accountTypeId", Type: "string", Optional: true},
+		{Name: "currency", Type: "string", Optional: true},
+		{Name: "facets", Type: "string", Optional: true},
+		{Name: "institutionId", Type: "string", Optional: true},
+		{Name: "status", Type: "string", Optional: true},
+	},
 	"audit": {
 		{Name: "action", Type: "string", Optional: true},
 		{Name: "actorPersonId", Type: "string", Optional: true},
@@ -128,6 +163,12 @@ var statsArgs = map[string][]ArgSpec{
 		{Name: "targetType", Type: "string", Optional: true},
 		{Name: "unitId", Type: "string", Optional: true},
 		{Name: "until", Type: "datetime", Optional: true},
+	},
+	"card": {
+		{Name: "cardType", Type: "string", Optional: true},
+		{Name: "facets", Type: "string", Optional: true},
+		{Name: "networkId", Type: "string", Optional: true},
+		{Name: "status", Type: "string", Optional: true},
 	},
 	"document": {
 		{Name: "expiresOnFrom", Type: "string", Optional: true},
@@ -199,5 +240,17 @@ var statsArgs = map[string][]ArgSpec{
 		{Name: "state", Type: "string", Optional: true},
 		{Name: "unitKind", Type: "string", Optional: true},
 		{Name: "visibility", Type: "string", Optional: true},
+	},
+	"vehicle": {
+		{Name: "brandId", Type: "string", Optional: true},
+		{Name: "color", Type: "string", Optional: true},
+		{Name: "facets", Type: "string", Optional: true},
+		{Name: "manufactureDateFrom", Type: "string", Optional: true},
+		{Name: "manufactureDateTo", Type: "string", Optional: true},
+		{Name: "modelId", Type: "string", Optional: true},
+		{Name: "query", Type: "string", Optional: true},
+		{Name: "registrationCountry", Type: "string", Optional: true},
+		{Name: "status", Type: "string", Optional: true},
+		{Name: "typeId", Type: "string", Optional: true},
 	},
 }

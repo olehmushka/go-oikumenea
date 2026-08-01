@@ -1,12 +1,25 @@
 "use client";
 
-// Finance workspace (M44 / D-Finance). Browse/create bank accounts and drill into one to see and record
+// Finance workspace (M44 / D-Finance). Create bank accounts and drill into one to see and record
 // its holders (the polymorphic person|company ownership edges) and its cards. The IBAN/PAN are
 // envelope-encrypted at rest; the IBAN is shown (decrypted) only when an account is opened, the full PAN
 // only when a card is opened — both for authorized callers. Account-type / card-network catalogs are
 // managed here too. A bank is a `company`-domain organization (M21/M41). A person's held accounts are
 // surfaced on the person object view.
+//
+// M58 ticket 3 moved BROWSING out. /explore/account and /explore/card are the registries' real
+// readers: facet filters, keyset paging that does not drop its token, and a dashboard over the same
+// filter set. `card` got a top-level list in that ticket precisely so it could have one — before it,
+// cards were reachable only through their account, so there was no collection to browse or count.
+//
+// What stays here is EDITING — creation, the account-type/card-network catalogs, the per-account
+// holder and card panels, and the IBAN/PAN REVEAL, which is this page's alone: a decrypted
+// identifier is fetched one row at a time for an authorized caller and is never listed anywhere,
+// explorer included (PCI-DSS Req 3; D-DataScope CDE scope).
+//
+// The table below is therefore a bounded EDIT surface, not a listing: it shows one page and says so.
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api/client";
 import { SearchSelect } from "@/components/SearchSelect";
@@ -33,15 +46,29 @@ type Card = {
 
 const label = (m: LocaleMap, fallback: string) => pickLabel(m) || fallback;
 
+// The edit surface's page size. Small on purpose: this is a working set to act on, not a listing —
+// the listings are /explore/account and /explore/card.
+const EDIT_PAGE = 50;
+
 export default function FinancePage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [accountTypes, setAccountTypes] = useState<Catalog[]>([]);
   const [networks, setNetworks] = useState<Catalog[]>([]);
   const [selected, setSelected] = useState<Account | null>(null);
+  const [truncated, setTruncated] = useState(false);
   const [err, setErr] = useState<unknown>(null);
+  const tr = useTg();
 
+  // One page, and the next-page token is READ rather than discarded — its presence is what the notice
+  // below reports. Filtering is deliberately not offered here; it is the explorer's job now.
   function reload() {
-    api.finance.listAccounts(undefined, 100).then((r) => setAccounts((r.accounts ?? []) as unknown as Account[])).catch(setErr);
+    api.finance
+      .listAccounts(undefined, undefined, undefined, undefined, EDIT_PAGE)
+      .then((r) => {
+        setAccounts((r.accounts ?? []) as unknown as Account[]);
+        setTruncated(Boolean(r.nextPageToken));
+      })
+      .catch(setErr);
   }
   useEffect(() => {
     api.finance.listAccountTypes().then((r) => setAccountTypes((r.types ?? []) as unknown as Catalog[])).catch(() => {});
@@ -66,7 +93,22 @@ export default function FinancePage() {
       </div>
 
       <Card className="mt-6">
-        <h2 className="mb-2 text-sm font-semibold text-slate-900"><T>Accounts</T></h2>
+        <div className="mb-2 flex items-center gap-3">
+          <h2 className="text-sm font-semibold text-slate-900"><T>Edit</T></h2>
+          <span className="ml-auto flex items-center gap-3 text-xs">
+            <Link href="/explore/account" className="text-indigo-600 hover:underline">
+              <T>Browse accounts →</T>
+            </Link>
+            <Link href="/explore/card" className="text-indigo-600 hover:underline">
+              <T>Browse cards →</T>
+            </Link>
+          </span>
+        </div>
+        <p className="mb-3 text-xs text-slate-500">
+          {truncated
+            ? tr("The first page only — there are more. Use the explorer to find a specific account; this table is here to edit the ones in front of you.")
+            : tr("Every account in the registry. Use the explorer to filter or chart them.")}
+        </p>
         <Table head={<><th className="th"><T>Account</T></th><th className="th"><T>Bank</T></th><th className="th"><T>Type</T></th><th className="th"><T>Currency</T></th><th className="th"><T>Status</T></th><th className="th"></th></>}>
           {accounts.map((a) => (
             <tr key={a.id} className="border-t">
@@ -177,7 +219,7 @@ function AccountDetail({ account, networks, setErr }: { account: Account; networ
     api.finance.listAccountHolders(account.id).then((r) => setHolders((r.holders ?? []) as unknown as Holder[])).catch(setErr);
   }
   function reloadCards() {
-    api.finance.listCards(account.id).then((r) => setCards((r.cards ?? []) as unknown as Card[])).catch(setErr);
+    api.finance.listAccountCards(account.id).then((r) => setCards((r.cards ?? []) as unknown as Card[])).catch(setErr);
   }
   useEffect(() => {
     api.finance.getAccount(account.id).then((a) => setFull(a as unknown as Account)).catch(setErr);

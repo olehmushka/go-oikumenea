@@ -23,6 +23,48 @@ func (s *seeder) catID(table, code string) (string, error) {
 	return id, nil
 }
 
+// catIDs resolves every ACTIVE row of a per-domain catalog, for the cases where the seeder wants to
+// spread values across a whole palette rather than pin one code (the vehicle colours). Best effort:
+// an empty result leaves the caller's column null, which is a legal state for every column that uses
+// this.
+func (s *seeder) catIDs(table, domain string) []string {
+	rows, err := s.tx.Query(s.ctx,
+		fmt.Sprintf(`SELECT id::text FROM oikumenea.%s WHERE domain=$1 AND deleted_at IS NULL ORDER BY sort_order, code`, table), domain)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return out
+		}
+		out = append(out, id)
+	}
+	return out
+}
+
+// catCodes resolves every ACTIVE row of a flat (non-domain-partitioned) catalog. The sibling of
+// catIDs, for the catalogs that have no `domain` column.
+func (s *seeder) catCodes(table string) []string {
+	rows, err := s.tx.Query(s.ctx,
+		fmt.Sprintf(`SELECT id::text FROM oikumenea.%s WHERE deleted_at IS NULL ORDER BY sort_order, code`, table))
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return out
+		}
+		out = append(out, id)
+	}
+	return out
+}
+
 func (s *seeder) phaseDEnrichment() error {
 	all := s.allPersons()
 	// resolve catalog ids we reference
@@ -174,10 +216,27 @@ func (s *seeder) phaseDEnrichment() error {
 			modelIDs = append(modelIDs, mid)
 		}
 	}
+	// The vehicle palette (D-Color, domain='vehicle'). Seeding a colour matters beyond realism: a
+	// vehicle's color_id is a HARD FK into platform_colors, and the console's colour chart paints each
+	// bar the colour its bucket names — with every row NULL the chart is one (unknown) bar and the
+	// swatch path is never exercised. Same for manufacture_date and the fleet-age histogram, whose
+	// month buckets are what the click-through inverse runs on.
+	vehicleColors := s.catIDs("platform_colors", "vehicle")
 	for _, p := range all {
 		if s.chance(0.3) {
-			vid, err := s.ins("vehicle", `INSERT INTO oikumenea.vehicle_vehicles (type_id, model_id, vin, attributes) VALUES ($1,$2,$3,'{"seed":"demo"}') RETURNING id`,
-				carType, modelIDs[s.rng.Intn(len(modelIDs))], fmt.Sprintf("DEMOVIN%08d", s.rng.Intn(100_000_000)))
+			// Nullable in the schema and left null for a slice of rows on purpose: the (unknown) bucket
+			// is a real part of both distributions and a seed where every row is populated would hide
+			// the case where it is not.
+			var colorID any
+			if len(vehicleColors) > 0 && s.chance(0.85) {
+				colorID = vehicleColors[s.rng.Intn(len(vehicleColors))]
+			}
+			var mdate any
+			if s.chance(0.9) {
+				mdate = time.Date(2005+s.rng.Intn(20), time.Month(1+s.rng.Intn(12)), 1+s.rng.Intn(28), 0, 0, 0, 0, time.UTC)
+			}
+			vid, err := s.ins("vehicle", `INSERT INTO oikumenea.vehicle_vehicles (type_id, model_id, vin, color_id, manufacture_date, attributes) VALUES ($1,$2,$3,$4,$5,'{"seed":"demo"}') RETURNING id`,
+				carType, modelIDs[s.rng.Intn(len(modelIDs))], fmt.Sprintf("DEMOVIN%08d", s.rng.Intn(100_000_000)), colorID, mdate)
 			if err != nil {
 				return err
 			}

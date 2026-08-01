@@ -59,9 +59,36 @@ holder-scope gate. Migration `0010_finance_overlays` (M44, built).
 `FinanceService` (`/finance/v1`): catalog reads + instance-scope upserts (account-types / card-networks);
 `createAccount`/`listAccounts`/`getAccount`/`updateAccount`/`deleteAccount` (IBAN encrypted on write,
 decrypted on read for authorized callers); `listAccountHolders`/`addAccountHolder`/`endAccountHolding`
-(the polymorphic holder edge); `listCards`/`addCard`/`getCard`/`updateCard`/`deleteCard` (PAN encrypted;
-BIN/last-4 returned in clear); and the read-only `listPersonAccounts` (`GET /persons/{id}/accounts`).
-Translatable catalog names are returned as a `locale → text` map (D-i18n).
+(the polymorphic holder edge); `listAccountCards`/`addCard`/`getCard`/`updateCard`/`deleteCard` (PAN
+encrypted; BIN/last-4 returned in clear); and the read-only `listPersonAccounts`
+(`GET /persons/{id}/accounts`). Translatable catalog names are returned as a `locale → text` map
+(D-i18n).
+
+**Facets and the dashboards (M58 ticket 3 / D-ObjectFacets).** This module owns TWO faceted object
+types. `listAccounts` takes `institutionId`, `currency`, `accountTypeId`, `status`, with
+`accountStats` at `GET /stats/accounts`; `listCards` takes `networkId`, `cardType`, `status`, with
+`cardStats` at `GET /stats/cards`. Each type has its own filter builder and its own aggregate const —
+a single shared one would satisfy neither direction of the branch-coverage guard, and the two facet
+sets are disjoint. Both ship ONE aggregate arm: neither table carries row-level security or a unit
+reach, so `finance.read` held anywhere is the whole visibility decision.
+
+**`listCards` is NEW at the collection level, and the rename that came with it.** Cards were
+previously reachable only per-account, so there was no collection for a dashboard to describe. The
+per-account list is now **`listAccountCards`** (beside `listAccountHolders`; the HTTP path
+`GET /accounts/{accountId}/cards` is unchanged), and the plain `listCards` is the instance-wide
+registry at `GET /cards`.
+
+That registry is **metadata only**, and the boundary is compliance rather than convenience: retained
+PANs put `finance_cards` in PCI-DSS CDE scope (D-DataScope). It returns exactly the projection the
+per-account list already returned — `bin`, `lastFour`, network, type, status, expiry — under exactly
+the `finance.read` that already gated it, so it widens the SCOPE of a permitted read and discloses no
+new field; that is why it needed no new permission code. The PAN is decrypted by `getCard` alone.
+
+Nothing encrypted is faceted and nothing encrypted can be: there is no plaintext to GROUP BY, and
+D-DataScope's aggregation rule forbids the surface independently of that. The blind indexes are
+technically groupable and are still not facets — they are per-value HMACs, so their buckets would BE
+the identifiers. `bin`/`last_four` are clear and are still not facets: they identify one card rather
+than describing a population.
 
 ## Dependencies
 

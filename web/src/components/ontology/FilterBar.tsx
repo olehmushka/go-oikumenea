@@ -389,6 +389,18 @@ function Widget({
           unscopedLabel="pick a unit first"
         />
       );
+    // Models are listable only per brand (`GET /brands/{brandId}/models`), so this is scoped rather
+    // than a flat EntitySelect — the unitKind→domain shape, one catalog level down.
+    case "model":
+      return (
+        <ScopedSelect
+          path={val(f.dependsOn ?? "") ? `/vehicle/v1/brands/${encodeURIComponent(val(f.dependsOn!))}/models` : null}
+          pick={(d) => (d as { models?: unknown[] })?.models ?? []}
+          value={val(p0)}
+          onChange={(id) => set(p0, id)}
+          unscopedLabel="pick a brand first"
+        />
+      );
     default:
       return (
         <EntitySelect

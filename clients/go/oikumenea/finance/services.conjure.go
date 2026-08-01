@@ -25,7 +25,31 @@ type FinanceServiceClient interface {
 	ListCardNetworks(ctx context.Context, authHeader bearertoken.Token) (CardNetworkList, error)
 	UpsertCardNetwork(ctx context.Context, authHeader bearertoken.Token, requestArg UpsertCardNetworkRequest) (CardNetwork, error)
 	CreateAccount(ctx context.Context, authHeader bearertoken.Token, requestArg CreateAccountRequest) (Account, error)
-	ListAccounts(ctx context.Context, authHeader bearertoken.Token, institutionIdArg *string, pageSizeArg *int, pageTokenArg *string) (AccountPage, error)
+	/*
+	   List accounts, token-paginated, narrowed by any combination of the facet filters below
+	   (M58 / D-ObjectFacets). Every filter here is also a distribution on `accountStats`. The
+	   IBAN is never listed. Gated by `finance.read`.
+	*/
+	ListAccounts(ctx context.Context, authHeader bearertoken.Token, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string, pageSizeArg *int, pageTokenArg *string) (AccountPage, error)
+	/*
+	   Facet distributions over the account registry — the dashboard half of the facet vocabulary
+	   (M58 / D-ObjectFacets). Takes exactly the filter args `listAccounts` takes (minus paging)
+	   plus an optional `facets` CSV, so a dashboard and a list are two renderings of ONE request
+	   state and a chart segment is a link to the same URL with one more filter applied.
+
+	   `totalCount` equals the number of rows exhaustively paging `listAccounts` with these same
+	   filters would return. One round-trip serves the whole dashboard.
+
+	   ONE aggregate arm, with no subject and no scoped twin — for `externalOrgStats`' reason, not
+	   the audit ledger's. `finance_accounts` carries no row-level security and no unit reach:
+	   `finance.read` held anywhere is the whole visibility decision, so there is nothing for a
+	   second arm to narrow. (Person-held rows are additionally holder-scoped on the PERSON views;
+	   that is a different endpoint, and this registry-level listing is not one of them.)
+
+	   The path is `/stats/accounts` rather than `/accounts/stats` because the server's router
+	   rejects a literal path segment that is a sibling of `{accountId}`.
+	*/
+	AccountStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string) (AccountStats, error)
 	// Returns the account with the decrypted IBAN for authorized callers.
 	GetAccount(ctx context.Context, authHeader bearertoken.Token, accountIdArg string) (Account, error)
 	UpdateAccount(ctx context.Context, authHeader bearertoken.Token, accountIdArg string, requestArg UpdateAccountRequest) (Account, error)
@@ -34,7 +58,39 @@ type FinanceServiceClient interface {
 	AddAccountHolder(ctx context.Context, authHeader bearertoken.Token, accountIdArg string, requestArg AddAccountHolderRequest) (AccountHolder, error)
 	// End an active holding (closes effectiveTo); the account and its history remain.
 	EndAccountHolding(ctx context.Context, authHeader bearertoken.Token, holderIdArg string) (AccountHolder, error)
-	ListCards(ctx context.Context, authHeader bearertoken.Token, accountIdArg string) (CardList, error)
+	/*
+	   The cards on ONE account. Named for its scope, beside `listAccountHolders` — M58 gave the
+	   plain `listCards` to the instance-wide registry below, which is the collection every other
+	   faceted object type's list endpoint is named for. The HTTP path is unchanged.
+	*/
+	ListAccountCards(ctx context.Context, authHeader bearertoken.Token, accountIdArg string) (CardList, error)
+	/*
+	   The instance-wide card registry, token-paginated and narrowed by the facet filters below
+	   (M58 / D-ObjectFacets) — the collection-level list `cardStats` draws its dashboard over.
+
+	   METADATA ONLY. `bin`, `lastFour`, network, type, status and expiry are clear columns and are
+	   returned; the PAN is envelope-encrypted at rest and is decrypted only by `getCard`, for an
+	   authorized caller, one card at a time (PCI-DSS Req 3; D-DataScope CDE scope). Browsing the
+	   registry is gated by the same `finance.read` that already gates `listAccounts` and
+	   `listAccountCards` — this endpoint widens the SCOPE of a read the code already permits, and
+	   discloses no field those endpoints did not already return.
+	*/
+	ListCards(ctx context.Context, authHeader bearertoken.Token, networkIdArg *string, cardTypeArg *string, statusArg *string, pageSizeArg *int, pageTokenArg *string) (CardPage, error)
+	/*
+	   Facet distributions over the card registry — the dashboard half of the facet vocabulary
+	   (M58 / D-ObjectFacets). Takes exactly the filter args `listCards` takes (minus paging) plus
+	   an optional `facets` CSV.
+
+	   `totalCount` equals the number of rows exhaustively paging `listCards` with these same
+	   filters would return.
+
+	   ONE aggregate arm, for the same reason `accountStats` has one: no row-level security, no
+	   unit reach, `finance.read` held anywhere is the whole visibility decision.
+
+	   The path is `/stats/cards` rather than `/cards/stats` because the server's router rejects a
+	   literal path segment that is a sibling of `{cardId}`.
+	*/
+	CardStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, networkIdArg *string, cardTypeArg *string, statusArg *string) (CardStats, error)
 	AddCard(ctx context.Context, authHeader bearertoken.Token, accountIdArg string, requestArg AddCardRequest) (Card, error)
 	// Returns the card with the decrypted PAN for authorized callers.
 	GetCard(ctx context.Context, authHeader bearertoken.Token, cardIdArg string) (Card, error)
@@ -140,7 +196,7 @@ func (c *financeServiceClient) CreateAccount(ctx context.Context, authHeader bea
 	return *returnVal, nil
 }
 
-func (c *financeServiceClient) ListAccounts(ctx context.Context, authHeader bearertoken.Token, institutionIdArg *string, pageSizeArg *int, pageTokenArg *string) (AccountPage, error) {
+func (c *financeServiceClient) ListAccounts(ctx context.Context, authHeader bearertoken.Token, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string, pageSizeArg *int, pageTokenArg *string) (AccountPage, error) {
 	var returnVal *AccountPage
 	var requestParams []httpclient.RequestParam
 	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListAccounts"))
@@ -149,6 +205,15 @@ func (c *financeServiceClient) ListAccounts(ctx context.Context, authHeader bear
 	queryParams := make(url.Values)
 	if institutionIdArg != nil {
 		queryParams.Set("institutionId", fmt.Sprint(*institutionIdArg))
+	}
+	if currencyArg != nil {
+		queryParams.Set("currency", fmt.Sprint(*currencyArg))
+	}
+	if accountTypeIdArg != nil {
+		queryParams.Set("accountTypeId", fmt.Sprint(*accountTypeIdArg))
+	}
+	if statusArg != nil {
+		queryParams.Set("status", fmt.Sprint(*statusArg))
 	}
 	if pageSizeArg != nil {
 		queryParams.Set("pageSize", fmt.Sprint(*pageSizeArg))
@@ -164,6 +229,40 @@ func (c *financeServiceClient) ListAccounts(ctx context.Context, authHeader bear
 	}
 	if returnVal == nil {
 		return *new(AccountPage), werror.ErrorWithContextParams(ctx, "listAccounts response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *financeServiceClient) AccountStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string) (AccountStats, error) {
+	var returnVal *AccountStats
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("AccountStats"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/finance/v1/stats/accounts"))
+	queryParams := make(url.Values)
+	if facetsArg != nil {
+		queryParams.Set("facets", fmt.Sprint(*facetsArg))
+	}
+	if institutionIdArg != nil {
+		queryParams.Set("institutionId", fmt.Sprint(*institutionIdArg))
+	}
+	if currencyArg != nil {
+		queryParams.Set("currency", fmt.Sprint(*currencyArg))
+	}
+	if accountTypeIdArg != nil {
+		queryParams.Set("accountTypeId", fmt.Sprint(*accountTypeIdArg))
+	}
+	if statusArg != nil {
+		queryParams.Set("status", fmt.Sprint(*statusArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(AccountStats), werror.WrapWithContextParams(ctx, err, "accountStats failed")
+	}
+	if returnVal == nil {
+		return *new(AccountStats), werror.ErrorWithContextParams(ctx, "accountStats response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -267,19 +366,84 @@ func (c *financeServiceClient) EndAccountHolding(ctx context.Context, authHeader
 	return *returnVal, nil
 }
 
-func (c *financeServiceClient) ListCards(ctx context.Context, authHeader bearertoken.Token, accountIdArg string) (CardList, error) {
+func (c *financeServiceClient) ListAccountCards(ctx context.Context, authHeader bearertoken.Token, accountIdArg string) (CardList, error) {
 	var returnVal *CardList
 	var requestParams []httpclient.RequestParam
-	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListCards"))
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListAccountCards"))
 	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
 	requestParams = append(requestParams, httpclient.WithPathf("/finance/v1/accounts/%s/cards", url.PathEscape(fmt.Sprint(accountIdArg))))
 	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
 	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
 	if _, err := c.client.Get(ctx, requestParams...); err != nil {
-		return *new(CardList), werror.WrapWithContextParams(ctx, err, "listCards failed")
+		return *new(CardList), werror.WrapWithContextParams(ctx, err, "listAccountCards failed")
 	}
 	if returnVal == nil {
-		return *new(CardList), werror.ErrorWithContextParams(ctx, "listCards response cannot be nil")
+		return *new(CardList), werror.ErrorWithContextParams(ctx, "listAccountCards response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *financeServiceClient) ListCards(ctx context.Context, authHeader bearertoken.Token, networkIdArg *string, cardTypeArg *string, statusArg *string, pageSizeArg *int, pageTokenArg *string) (CardPage, error) {
+	var returnVal *CardPage
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListCards"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/finance/v1/cards"))
+	queryParams := make(url.Values)
+	if networkIdArg != nil {
+		queryParams.Set("networkId", fmt.Sprint(*networkIdArg))
+	}
+	if cardTypeArg != nil {
+		queryParams.Set("cardType", fmt.Sprint(*cardTypeArg))
+	}
+	if statusArg != nil {
+		queryParams.Set("status", fmt.Sprint(*statusArg))
+	}
+	if pageSizeArg != nil {
+		queryParams.Set("pageSize", fmt.Sprint(*pageSizeArg))
+	}
+	if pageTokenArg != nil {
+		queryParams.Set("pageToken", fmt.Sprint(*pageTokenArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(CardPage), werror.WrapWithContextParams(ctx, err, "listCards failed")
+	}
+	if returnVal == nil {
+		return *new(CardPage), werror.ErrorWithContextParams(ctx, "listCards response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *financeServiceClient) CardStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, networkIdArg *string, cardTypeArg *string, statusArg *string) (CardStats, error) {
+	var returnVal *CardStats
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("CardStats"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/finance/v1/stats/cards"))
+	queryParams := make(url.Values)
+	if facetsArg != nil {
+		queryParams.Set("facets", fmt.Sprint(*facetsArg))
+	}
+	if networkIdArg != nil {
+		queryParams.Set("networkId", fmt.Sprint(*networkIdArg))
+	}
+	if cardTypeArg != nil {
+		queryParams.Set("cardType", fmt.Sprint(*cardTypeArg))
+	}
+	if statusArg != nil {
+		queryParams.Set("status", fmt.Sprint(*statusArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(CardStats), werror.WrapWithContextParams(ctx, err, "cardStats failed")
+	}
+	if returnVal == nil {
+		return *new(CardStats), werror.ErrorWithContextParams(ctx, "cardStats response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -378,7 +542,31 @@ type FinanceServiceClientWithAuth interface {
 	ListCardNetworks(ctx context.Context) (CardNetworkList, error)
 	UpsertCardNetwork(ctx context.Context, requestArg UpsertCardNetworkRequest) (CardNetwork, error)
 	CreateAccount(ctx context.Context, requestArg CreateAccountRequest) (Account, error)
-	ListAccounts(ctx context.Context, institutionIdArg *string, pageSizeArg *int, pageTokenArg *string) (AccountPage, error)
+	/*
+	   List accounts, token-paginated, narrowed by any combination of the facet filters below
+	   (M58 / D-ObjectFacets). Every filter here is also a distribution on `accountStats`. The
+	   IBAN is never listed. Gated by `finance.read`.
+	*/
+	ListAccounts(ctx context.Context, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string, pageSizeArg *int, pageTokenArg *string) (AccountPage, error)
+	/*
+	   Facet distributions over the account registry — the dashboard half of the facet vocabulary
+	   (M58 / D-ObjectFacets). Takes exactly the filter args `listAccounts` takes (minus paging)
+	   plus an optional `facets` CSV, so a dashboard and a list are two renderings of ONE request
+	   state and a chart segment is a link to the same URL with one more filter applied.
+
+	   `totalCount` equals the number of rows exhaustively paging `listAccounts` with these same
+	   filters would return. One round-trip serves the whole dashboard.
+
+	   ONE aggregate arm, with no subject and no scoped twin — for `externalOrgStats`' reason, not
+	   the audit ledger's. `finance_accounts` carries no row-level security and no unit reach:
+	   `finance.read` held anywhere is the whole visibility decision, so there is nothing for a
+	   second arm to narrow. (Person-held rows are additionally holder-scoped on the PERSON views;
+	   that is a different endpoint, and this registry-level listing is not one of them.)
+
+	   The path is `/stats/accounts` rather than `/accounts/stats` because the server's router
+	   rejects a literal path segment that is a sibling of `{accountId}`.
+	*/
+	AccountStats(ctx context.Context, facetsArg *string, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string) (AccountStats, error)
 	// Returns the account with the decrypted IBAN for authorized callers.
 	GetAccount(ctx context.Context, accountIdArg string) (Account, error)
 	UpdateAccount(ctx context.Context, accountIdArg string, requestArg UpdateAccountRequest) (Account, error)
@@ -387,7 +575,39 @@ type FinanceServiceClientWithAuth interface {
 	AddAccountHolder(ctx context.Context, accountIdArg string, requestArg AddAccountHolderRequest) (AccountHolder, error)
 	// End an active holding (closes effectiveTo); the account and its history remain.
 	EndAccountHolding(ctx context.Context, holderIdArg string) (AccountHolder, error)
-	ListCards(ctx context.Context, accountIdArg string) (CardList, error)
+	/*
+	   The cards on ONE account. Named for its scope, beside `listAccountHolders` — M58 gave the
+	   plain `listCards` to the instance-wide registry below, which is the collection every other
+	   faceted object type's list endpoint is named for. The HTTP path is unchanged.
+	*/
+	ListAccountCards(ctx context.Context, accountIdArg string) (CardList, error)
+	/*
+	   The instance-wide card registry, token-paginated and narrowed by the facet filters below
+	   (M58 / D-ObjectFacets) — the collection-level list `cardStats` draws its dashboard over.
+
+	   METADATA ONLY. `bin`, `lastFour`, network, type, status and expiry are clear columns and are
+	   returned; the PAN is envelope-encrypted at rest and is decrypted only by `getCard`, for an
+	   authorized caller, one card at a time (PCI-DSS Req 3; D-DataScope CDE scope). Browsing the
+	   registry is gated by the same `finance.read` that already gates `listAccounts` and
+	   `listAccountCards` — this endpoint widens the SCOPE of a read the code already permits, and
+	   discloses no field those endpoints did not already return.
+	*/
+	ListCards(ctx context.Context, networkIdArg *string, cardTypeArg *string, statusArg *string, pageSizeArg *int, pageTokenArg *string) (CardPage, error)
+	/*
+	   Facet distributions over the card registry — the dashboard half of the facet vocabulary
+	   (M58 / D-ObjectFacets). Takes exactly the filter args `listCards` takes (minus paging) plus
+	   an optional `facets` CSV.
+
+	   `totalCount` equals the number of rows exhaustively paging `listCards` with these same
+	   filters would return.
+
+	   ONE aggregate arm, for the same reason `accountStats` has one: no row-level security, no
+	   unit reach, `finance.read` held anywhere is the whole visibility decision.
+
+	   The path is `/stats/cards` rather than `/cards/stats` because the server's router rejects a
+	   literal path segment that is a sibling of `{cardId}`.
+	*/
+	CardStats(ctx context.Context, facetsArg *string, networkIdArg *string, cardTypeArg *string, statusArg *string) (CardStats, error)
 	AddCard(ctx context.Context, accountIdArg string, requestArg AddCardRequest) (Card, error)
 	// Returns the card with the decrypted PAN for authorized callers.
 	GetCard(ctx context.Context, cardIdArg string) (Card, error)
@@ -426,8 +646,12 @@ func (c *financeServiceClientWithAuth) CreateAccount(ctx context.Context, reques
 	return c.client.CreateAccount(ctx, c.authHeader, requestArg)
 }
 
-func (c *financeServiceClientWithAuth) ListAccounts(ctx context.Context, institutionIdArg *string, pageSizeArg *int, pageTokenArg *string) (AccountPage, error) {
-	return c.client.ListAccounts(ctx, c.authHeader, institutionIdArg, pageSizeArg, pageTokenArg)
+func (c *financeServiceClientWithAuth) ListAccounts(ctx context.Context, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string, pageSizeArg *int, pageTokenArg *string) (AccountPage, error) {
+	return c.client.ListAccounts(ctx, c.authHeader, institutionIdArg, currencyArg, accountTypeIdArg, statusArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *financeServiceClientWithAuth) AccountStats(ctx context.Context, facetsArg *string, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string) (AccountStats, error) {
+	return c.client.AccountStats(ctx, c.authHeader, facetsArg, institutionIdArg, currencyArg, accountTypeIdArg, statusArg)
 }
 
 func (c *financeServiceClientWithAuth) GetAccount(ctx context.Context, accountIdArg string) (Account, error) {
@@ -454,8 +678,16 @@ func (c *financeServiceClientWithAuth) EndAccountHolding(ctx context.Context, ho
 	return c.client.EndAccountHolding(ctx, c.authHeader, holderIdArg)
 }
 
-func (c *financeServiceClientWithAuth) ListCards(ctx context.Context, accountIdArg string) (CardList, error) {
-	return c.client.ListCards(ctx, c.authHeader, accountIdArg)
+func (c *financeServiceClientWithAuth) ListAccountCards(ctx context.Context, accountIdArg string) (CardList, error) {
+	return c.client.ListAccountCards(ctx, c.authHeader, accountIdArg)
+}
+
+func (c *financeServiceClientWithAuth) ListCards(ctx context.Context, networkIdArg *string, cardTypeArg *string, statusArg *string, pageSizeArg *int, pageTokenArg *string) (CardPage, error) {
+	return c.client.ListCards(ctx, c.authHeader, networkIdArg, cardTypeArg, statusArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *financeServiceClientWithAuth) CardStats(ctx context.Context, facetsArg *string, networkIdArg *string, cardTypeArg *string, statusArg *string) (CardStats, error) {
+	return c.client.CardStats(ctx, c.authHeader, facetsArg, networkIdArg, cardTypeArg, statusArg)
 }
 
 func (c *financeServiceClientWithAuth) AddCard(ctx context.Context, accountIdArg string, requestArg AddCardRequest) (Card, error) {
@@ -527,12 +759,20 @@ func (c *financeServiceClientWithTokenProvider) CreateAccount(ctx context.Contex
 	return c.client.CreateAccount(ctx, bearertoken.Token(token), requestArg)
 }
 
-func (c *financeServiceClientWithTokenProvider) ListAccounts(ctx context.Context, institutionIdArg *string, pageSizeArg *int, pageTokenArg *string) (AccountPage, error) {
+func (c *financeServiceClientWithTokenProvider) ListAccounts(ctx context.Context, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string, pageSizeArg *int, pageTokenArg *string) (AccountPage, error) {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
 		return *new(AccountPage), err
 	}
-	return c.client.ListAccounts(ctx, bearertoken.Token(token), institutionIdArg, pageSizeArg, pageTokenArg)
+	return c.client.ListAccounts(ctx, bearertoken.Token(token), institutionIdArg, currencyArg, accountTypeIdArg, statusArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *financeServiceClientWithTokenProvider) AccountStats(ctx context.Context, facetsArg *string, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string) (AccountStats, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(AccountStats), err
+	}
+	return c.client.AccountStats(ctx, bearertoken.Token(token), facetsArg, institutionIdArg, currencyArg, accountTypeIdArg, statusArg)
 }
 
 func (c *financeServiceClientWithTokenProvider) GetAccount(ctx context.Context, accountIdArg string) (Account, error) {
@@ -583,12 +823,28 @@ func (c *financeServiceClientWithTokenProvider) EndAccountHolding(ctx context.Co
 	return c.client.EndAccountHolding(ctx, bearertoken.Token(token), holderIdArg)
 }
 
-func (c *financeServiceClientWithTokenProvider) ListCards(ctx context.Context, accountIdArg string) (CardList, error) {
+func (c *financeServiceClientWithTokenProvider) ListAccountCards(ctx context.Context, accountIdArg string) (CardList, error) {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
 		return *new(CardList), err
 	}
-	return c.client.ListCards(ctx, bearertoken.Token(token), accountIdArg)
+	return c.client.ListAccountCards(ctx, bearertoken.Token(token), accountIdArg)
+}
+
+func (c *financeServiceClientWithTokenProvider) ListCards(ctx context.Context, networkIdArg *string, cardTypeArg *string, statusArg *string, pageSizeArg *int, pageTokenArg *string) (CardPage, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(CardPage), err
+	}
+	return c.client.ListCards(ctx, bearertoken.Token(token), networkIdArg, cardTypeArg, statusArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *financeServiceClientWithTokenProvider) CardStats(ctx context.Context, facetsArg *string, networkIdArg *string, cardTypeArg *string, statusArg *string) (CardStats, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(CardStats), err
+	}
+	return c.client.CardStats(ctx, bearertoken.Token(token), facetsArg, networkIdArg, cardTypeArg, statusArg)
 }
 
 func (c *financeServiceClientWithTokenProvider) AddCard(ctx context.Context, accountIdArg string, requestArg AddCardRequest) (Card, error) {

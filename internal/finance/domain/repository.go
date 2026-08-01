@@ -5,6 +5,8 @@ package domain
 
 import (
 	"context"
+
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
 
 // Repository is the finance persistence port (the domain owns it; adapters implement it). Bound to one
@@ -19,7 +21,12 @@ type Repository interface {
 	// accounts (StoredAccount carries the envelope columns)
 	InsertAccount(ctx context.Context, in AccountInput) (StoredAccount, error)
 	GetAccount(ctx context.Context, id string) (StoredAccount, error)
-	ListAccounts(ctx context.Context, institutionID, after string, lim int) ([]StoredAccount, error)
+	// ListAccounts pages the same set AccountStats aggregates, under the same AccountFilter — one
+	// shared predicate, so `totalCount` describes exactly what paging returns (M58 / D-ObjectFacets).
+	ListAccounts(ctx context.Context, after string, f AccountFilter, lim int) ([]StoredAccount, error)
+	// AccountStats is the dashboard half. ONE arm — finance_accounts has no row-level security and no
+	// unit reach, so there is no visibility predicate for a second arm to narrow.
+	AccountStats(ctx context.Context, f AccountFilter, sel stats.Selection) ([]stats.Group, error)
 	UpdateAccount(ctx context.Context, id string, up AccountUpdate) (StoredAccount, error)
 	SoftDeleteAccount(ctx context.Context, id string) (int64, error)
 
@@ -33,6 +40,12 @@ type Repository interface {
 	InsertCard(ctx context.Context, accountID string, in CardInput) (StoredCard, error)
 	GetCard(ctx context.Context, id string) (StoredCard, error)
 	ListCardsByAccount(ctx context.Context, accountID string) ([]StoredCard, error)
+	// ListCards pages the INSTANCE-WIDE card registry — the collection-level list M58 ticket 3 added
+	// so the card dashboard has a set to describe. Metadata only: the PAN is decrypted by GetCard
+	// alone, one card at a time (PCI-DSS Req 3; D-DataScope CDE scope).
+	ListCards(ctx context.Context, after string, f CardFilter, lim int) ([]StoredCard, error)
+	// CardStats is that registry's dashboard half. ONE arm, same reason as AccountStats.
+	CardStats(ctx context.Context, f CardFilter, sel stats.Selection) ([]stats.Group, error)
 	UpdateCard(ctx context.Context, id string, up CardUpdate) (StoredCard, error)
 	SoftDeleteCard(ctx context.Context, id string) (int64, error)
 

@@ -1,9 +1,19 @@
 "use client";
 
-// Vehicle workspace (M26 / D-Vehicles). Browse/create vehicles and drill into one to see and record its
+// Vehicle workspace (M26 / D-Vehicles). Create vehicles and drill into one to see and record its
 // registrations (the ownership+plate history) and the brand→manufacturer links. Brand/model/type and
 // plate-number catalogs are managed here too. The plate region is a WOF geo_places region (placetype=
 // region) resolved per country. A person's vehicles are surfaced on the person object view.
+//
+// M58 ticket 3 moved BROWSING out. /explore/vehicle is the registry's real reader: seven facet
+// filters, keyset paging that does not drop its token, and a dashboard over the same filter set.
+// What stays here is EDITING — creation, the brand/model catalogs, and the per-vehicle registration
+// panel, which is richer than the generic action runner (registering a vehicle has to resolve a plate
+// region against the gazetteer).
+//
+// The table below is therefore a bounded EDIT surface, not a listing: it shows one page and says so.
+// That is the difference from the pre-M58 page, which fetched 100 rows, offered no filters and
+// silently dropped the next-page token — presenting a truncation as a registry.
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -31,16 +41,30 @@ type Place = { id: string; name: string };
 
 const label = (m: LocaleMap, fallback: string) => pickLabel(m) || fallback;
 
+// The edit surface's page size. Small on purpose: this is a working set to act on, not a listing —
+// the listing is /explore/vehicle.
+const EDIT_PAGE = 50;
+
 export default function VehiclesPage() {
   const [types, setTypes] = useState<Catalog[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [numberTypes, setNumberTypes] = useState<Catalog[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [truncated, setTruncated] = useState(false);
   const [selected, setSelected] = useState<Vehicle | null>(null);
   const [err, setErr] = useState<unknown>(null);
+  const tr = useTg();
 
+  // One page, and the next-page token is READ rather than discarded — its presence is what the notice
+  // below reports. Filtering is deliberately not offered here; it is the explorer's job now.
   function reload() {
-    api.vehicle.listVehicles(undefined, 100).then((r) => setVehicles((r.vehicles ?? []) as unknown as Vehicle[])).catch(setErr);
+    api.vehicle
+      .listVehicles(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, EDIT_PAGE)
+      .then((r) => {
+        setVehicles((r.vehicles ?? []) as unknown as Vehicle[]);
+        setTruncated(Boolean(r.nextPageToken));
+      })
+      .catch(setErr);
   }
   useEffect(() => {
     api.vehicle.listVehicleTypes().then((r) => setTypes((r.types ?? []) as unknown as Catalog[])).catch(() => {});
@@ -63,7 +87,17 @@ export default function VehiclesPage() {
       </div>
 
       <Card className="mt-6">
-        <h2 className="mb-2 text-sm font-semibold text-slate-900"><T>Registry</T></h2>
+        <div className="mb-2 flex items-center gap-3">
+          <h2 className="text-sm font-semibold text-slate-900"><T>Edit</T></h2>
+          <Link href="/explore/vehicle" className="ml-auto text-xs text-indigo-600 hover:underline">
+            <T>Browse, filter and chart the whole fleet →</T>
+          </Link>
+        </div>
+        <p className="mb-3 text-xs text-slate-500">
+          {truncated
+            ? tr("The first page only — there are more. Use the explorer to find a specific vehicle; this table is here to edit the ones in front of you.")
+            : tr("Every vehicle in the registry. Use the explorer to filter or chart them.")}
+        </p>
         <Table head={<><th className="th"><T>Vehicle</T></th><th className="th">VIN</th><th className="th"><T>Make</T></th><th className="th"><T>Status</T></th><th className="th"></th></>}>
           {vehicles.map((v) => (
             <tr key={v.id} className="border-t">

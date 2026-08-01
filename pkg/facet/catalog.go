@@ -20,7 +20,7 @@ package facet
 func catalog() []ObjectType {
 	return []ObjectType{
 		personType(), unitType(), membershipType(), orderType(), documentType(), auditType(),
-		externalOrgType(), taxonType(),
+		externalOrgType(), taxonType(), vehicleType(), accountType(), cardType(),
 	}
 }
 
@@ -799,6 +799,246 @@ func taxonType() ObjectType {
 		},
 		NonFacetArgs: []NonFacetArg{
 			{Arg: "query", Class: ClassSearch, Why: "case-insensitive code/name substring match", Drives: "ListTaxa"},
+			{Arg: "pageSize", Class: ClassPaging, Why: "keyset page size (pkg/listing clamp)"},
+			{Arg: "pageToken", Class: ClassPaging, Why: "keyset cursor (pkg/listing codec)"},
+		},
+	}
+}
+
+// ── vehicle ─────────────────────────────────────────────────────────────────
+//
+// M58 ticket 3, and the third RAW-PGX module to reach the vocabulary (religion and externalorg were
+// ticket 2's). It has no adapters/queries/*.sql for the sqlc-shaped parity guards to parse, so the
+// list/stats agreement is proved the other way — one shared buildVehicleFilter and one named
+// vehicleAggregate const, checked by AST in rawpgx_test.go. Adding a raw-pgx type is a TWO-place
+// change: this block and rawPgxGroups.
+//
+// ONE aggregate arm, for external_organization's reason and NOT the audit ledger's. The two single-arm
+// cases are not interchangeable and the distinction is load-bearing: audit's single arm IS a
+// visibility decision, made entirely by the connection the query runs on (unpinned, it answers a
+// confident zero). This one is the ABSENCE of a visibility decision — vehicle_vehicles has no
+// row-level security, no unit column and no reach predicate, so `vehicle.read` held anywhere is the
+// whole gate and there is nothing for a second arm to narrow.
+//
+// Every faceted column is pii:none. `vin` is pii:basic and deliberately unfaceted — it is an identity
+// for one vehicle, not a distribution, and it is already the `query` search arg.
+func vehicleType() ObjectType {
+	return ObjectType{
+		// Type / Module / ListEndpoint / StatsEndpoint stay ADJACENT and in this order — genfacetargs
+		// matches them as one strict pattern and a field wedged between them is a hard error.
+		Type:          "vehicle",
+		Module:        "vehicle",
+		ListEndpoint:  "VehicleService.listVehicles",
+		StatsEndpoint: "VehicleService.vehicleStats",
+		Facets: []Facet{
+			{
+				Key:     "typeId",
+				Kind:    KindRef,
+				Table:   "oikumenea.vehicle_vehicles",
+				Column:  "type_id",
+				RefType: "vehicle_type",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15},
+				Note:    "-> oikumenea.vehicle_types, the instance-extensible catalog. NOT NULL.",
+			},
+			{
+				Key:     "brandId",
+				Kind:    KindRef,
+				Table:   "oikumenea.vehicle_models",
+				Column:  "brand_id",
+				RefType: "vehicle_brand",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
+				Note: "ANOTHER TABLE (still vehicle's), and TWO-HOP: a vehicle has no brand column — the " +
+					"brand hangs off its model. vehicleSelect already LEFT JOINs vehicle_models and " +
+					"projects m.brand_id, so this is the projection the list path has always returned, not " +
+					"a new join. The (unknown) bucket is the vehicles with no model, which therefore have " +
+					"no brand either.",
+			},
+			{
+				Key:     "modelId",
+				Kind:    KindRef,
+				Table:   "oikumenea.vehicle_vehicles",
+				Column:  "model_id",
+				RefType: "vehicle_model",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
+				Note:    "Nullable — a vehicle of a known type may have an unknown model.",
+			},
+			{
+				Key:     "color",
+				Kind:    KindRef,
+				Table:   "oikumenea.vehicle_vehicles",
+				Column:  "color_id",
+				RefType: "color",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
+				Note: "-> oikumenea.platform_colors (domain='vehicle'), a HARD FK since M42/D-Color. It is " +
+					"worth stating plainly because facets.md recorded the opposite for a while: the " +
+					"ticket-2 survey read the CREATE TABLE and missed the ALTER 600 lines later in the same " +
+					"consolidated migration, and reported free text where a real catalog FK had stood since " +
+					"M42. The console tints this facet's bars from platform_colors.hex, which is only " +
+					"honest because the key is a catalog RID. Nullable.",
+			},
+			{
+				Key:     "status",
+				Kind:    KindEnum,
+				Table:   "oikumenea.vehicle_vehicles",
+				Column:  "status",
+				Values:  []string{"active", "scrapped", "exported"},
+				Buckets: Buckets{Strategy: StrategyIdentity},
+			},
+			{
+				Key:    "manufactureDate",
+				Kind:   KindDateRange,
+				Table:  "oikumenea.vehicle_vehicles",
+				Column: "manufacture_date",
+				Buckets: Buckets{
+					Strategy:       StrategyDateTrunc,
+					Grain:          "month",
+					IncludeUnknown: true,
+				},
+				Note: "A calendar DATE column, not a timestamptz — so the bounds are plain YYYY-MM-DD and " +
+					"the console's month bucket inverse needs NO RFC-3339 widening, the opposite of " +
+					"external_organization.asOf. Nullable, so the (unknown) bucket is mandatory and reads " +
+					"as `manufacture date not recorded`; setting either bound EXCLUDES those rows (SQL " +
+					"three-valued logic). M58 buckets it by month — the fleet-age curve.",
+			},
+			{
+				Key:     "registrationCountry",
+				Kind:    KindRef,
+				Table:   "oikumenea.vehicle_registrations",
+				Column:  "country_id",
+				RefType: "country",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
+				Note: "ANOTHER TABLE (still vehicle's), and the one facet here that had to choose a SET. " +
+					"vehicle_registrations is ownership HISTORY — one-to-many, so grouping it raw would " +
+					"count a re-registered vehicle under every country it has ever worn plates in, and " +
+					"would need NonPartitioning. It is instead confined to the ACTIVE registration, of " +
+					"which CloseActiveRegistrationsForVehicle guarantees at most one per vehicle, so the " +
+					"distribution PARTITIONS honestly and NonPartitioning is neither taken nor needed. " +
+					"That is the person.rankId precedent (match the active row), and it is also the " +
+					"question the chart is read for: where is this fleet registered NOW. Matched as an " +
+					"EXISTS semi-join, never a join. The (unknown) bucket is never-registered or " +
+					"deregistered vehicles.",
+			},
+		},
+		NonFacetArgs: []NonFacetArg{
+			{Arg: "query", Class: ClassSearch, Why: "case-insensitive VIN substring match", Drives: "ListVehicles"},
+			{Arg: "pageSize", Class: ClassPaging, Why: "keyset page size (pkg/listing clamp)"},
+			{Arg: "pageToken", Class: ClassPaging, Why: "keyset cursor (pkg/listing codec)"},
+		},
+	}
+}
+
+// ── finance account ─────────────────────────────────────────────────────────
+//
+// M58 ticket 3. Raw-pgx, like vehicle; ONE aggregate arm, for the same absence-of-a-decision reason.
+//
+// The pii:sensitive columns — iban_ciphertext, iban_wrapped_dek, key_ref, iban_blind_index — are
+// deliberately unfaceted and CANNOT be faceted: there is no plaintext to GROUP BY, and D-DataScope's
+// aggregation rule forbids the surface independently of that (rule 1, asserted in plaintext_test.go).
+// The blind index is technically groupable and is still not a facet: it is a per-value HMAC, so its
+// distribution is a row count per distinct IBAN and its buckets would BE the identifiers.
+func accountType() ObjectType {
+	return ObjectType{
+		Type:          "account",
+		Module:        "finance",
+		ListEndpoint:  "FinanceService.listAccounts",
+		StatsEndpoint: "FinanceService.accountStats",
+		Facets: []Facet{
+			{
+				Key:     "institutionId",
+				Kind:    KindRef,
+				Table:   "oikumenea.finance_accounts",
+				Column:  "institution_id",
+				RefType: "organization",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15},
+				Note: "-> oikumenea.tenant_organizations. The holding BANK is a `company`-domain tenant " +
+					"organization (M21/M41, D-UnifiedOrgGraph), never a finance-owned entity — which is why " +
+					"the RefType is `organization` and the buckets label through the tenant labeler. NOT NULL.",
+			},
+			{
+				Key:     "currency",
+				Kind:    KindCode,
+				Table:   "oikumenea.finance_accounts",
+				Column:  "currency",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
+				Note: "ISO 4217. KindCode rather than enum: the column carries NO CHECK, so the value set is " +
+					"open — the audit.action case. The key is its own label (`UAH` reads as itself), so " +
+					"nothing is resolved to draw the chart. Nullable.",
+			},
+			{
+				Key:     "accountTypeId",
+				Kind:    KindRef,
+				Table:   "oikumenea.finance_accounts",
+				Column:  "account_type_id",
+				RefType: "account_type",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
+				Note:    "-> oikumenea.finance_account_types, the instance-extensible catalog. Nullable.",
+			},
+			{
+				Key:     "status",
+				Kind:    KindEnum,
+				Table:   "oikumenea.finance_accounts",
+				Column:  "status",
+				Values:  []string{"active", "closed", "frozen"},
+				Buckets: Buckets{Strategy: StrategyIdentity},
+				Note:    "M58 tones the frozen segment red — a frozen account is the one an analyst opens this dashboard for.",
+			},
+		},
+		NonFacetArgs: []NonFacetArg{
+			{Arg: "pageSize", Class: ClassPaging, Why: "keyset page size (pkg/listing clamp)"},
+			{Arg: "pageToken", Class: ClassPaging, Why: "keyset cursor (pkg/listing codec)"},
+		},
+	}
+}
+
+// ── finance card ────────────────────────────────────────────────────────────
+//
+// M58 ticket 3, and the first type whose COLLECTION-LEVEL LIST this vocabulary had to add: cards were
+// reachable only per-account (GET /accounts/{accountId}/cards), so there was no collection for a
+// dashboard to describe. The per-account list is now listAccountCards, beside listAccountHolders, and
+// the plain listCards is the registry — the name every other faceted type's list endpoint carries.
+//
+// The new list is METADATA ONLY and that is a compliance boundary, not a convenience: retained PANs
+// put this table in PCI-DSS CDE scope (D-DataScope). pan_ciphertext / pan_wrapped_dek / key_ref /
+// pan_blind_index are unfaceted and unlisted; the PAN is decrypted only by getCard, one card at a
+// time, for an authorized caller. `bin` and `last_four` are CLEAR columns and are still not facets:
+// they identify one card rather than describing a population, and a top-N over last_four is a
+// meaningless ranking of four-digit suffixes.
+func cardType() ObjectType {
+	return ObjectType{
+		Type:          "card",
+		Module:        "finance",
+		ListEndpoint:  "FinanceService.listCards",
+		StatsEndpoint: "FinanceService.cardStats",
+		Facets: []Facet{
+			{
+				Key:     "networkId",
+				Kind:    KindRef,
+				Table:   "oikumenea.finance_cards",
+				Column:  "network_id",
+				RefType: "card_network",
+				Buckets: Buckets{Strategy: StrategyTopN, TopN: 15, IncludeUnknown: true},
+				Note:    "-> oikumenea.finance_card_networks, the instance-extensible catalog. Nullable.",
+			},
+			{
+				Key:     "cardType",
+				Kind:    KindEnum,
+				Table:   "oikumenea.finance_cards",
+				Column:  "card_type",
+				Values:  []string{"debit", "credit"},
+				Buckets: Buckets{Strategy: StrategyIdentity},
+				Note: "The Key is `cardType`, not `type`: the arg sits beside `status` and `networkId` on a " +
+					"card endpoint, where a bare `type` would read as the card's network.",
+			},
+			{
+				Key:     "status",
+				Kind:    KindEnum,
+				Table:   "oikumenea.finance_cards",
+				Column:  "status",
+				Values:  []string{"active", "blocked", "expired"},
+				Buckets: Buckets{Strategy: StrategyIdentity},
+			},
+		},
+		NonFacetArgs: []NonFacetArg{
 			{Arg: "pageSize", Class: ClassPaging, Why: "keyset page size (pkg/listing clamp)"},
 			{Arg: "pageToken", Class: ClassPaging, Why: "keyset cursor (pkg/listing codec)"},
 		},

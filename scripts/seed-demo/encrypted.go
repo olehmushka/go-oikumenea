@@ -31,7 +31,15 @@ func (s *seeder) phaseEEncrypted() error {
 	}
 
 	// ---- finance: accounts (at the demo bank) + holders + cards ----
+	//
+	// The account-type and card-network catalogs are seeded by pinax but were never REFERENCED here,
+	// so every demo account and card carried a NULL account_type_id / network_id. That is invisible
+	// until something groups by them: the M58 dashboards then draw a single (unknown) bar, and the
+	// bucket→filter click-through those facets exist for is never exercised, because (unknown) is
+	// deliberately not a filterable value. Same shape as the vehicle colour gap next door.
 	bank := dir.companyOrgID
+	accountTypes := s.catCodes("finance_account_types")
+	cardNetworks := s.catCodes("finance_card_networks")
 	for i, p := range all {
 		if i%10 != 0 { // ~30 account holders
 			continue
@@ -41,9 +49,16 @@ func (s *seeder) phaseEEncrypted() error {
 		if err != nil {
 			return err
 		}
+		// Left NULL for a slice of rows on purpose: the (unknown) bucket is a real part of the
+		// distribution, and a seed where every row is populated hides the case where it is not.
+		var acctType any
+		if len(accountTypes) > 0 && s.chance(0.85) {
+			acctType = accountTypes[s.rng.Intn(len(accountTypes))]
+		}
 		acc, err := s.ins("finance_account", `INSERT INTO oikumenea.finance_accounts
-			(institution_id, iban_ciphertext, iban_wrapped_dek, key_ref, iban_blind_index, currency)
-			VALUES ($1,$2,$3,$4,$5,'UAH') RETURNING id`, bank, ct, dek, kr, bi)
+			(institution_id, iban_ciphertext, iban_wrapped_dek, key_ref, iban_blind_index, currency, account_type_id)
+			VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`, bank, ct, dek, kr, bi,
+			s.pick([]string{"UAH", "UAH", "UAH", "USD", "EUR"}), acctType)
 		if err != nil {
 			return err
 		}
@@ -56,9 +71,13 @@ func (s *seeder) phaseEEncrypted() error {
 		if err != nil {
 			return err
 		}
+		var network any
+		if len(cardNetworks) > 0 && s.chance(0.9) {
+			network = cardNetworks[s.rng.Intn(len(cardNetworks))]
+		}
 		if err := s.exec("finance_card", `INSERT INTO oikumenea.finance_cards
-			(account_id, pan_ciphertext, pan_wrapped_dek, key_ref, pan_blind_index, bin, last_four, card_type, cardholder_person_id)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, acc, pct, pdek, pkr, pbi, pan[:6], pan[len(pan)-4:], s.pick([]string{"debit", "credit"}), p.id); err != nil {
+			(account_id, pan_ciphertext, pan_wrapped_dek, key_ref, pan_blind_index, bin, last_four, card_type, network_id, cardholder_person_id)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, acc, pct, pdek, pkr, pbi, pan[:6], pan[len(pan)-4:], s.pick([]string{"debit", "credit"}), network, p.id); err != nil {
 			return err
 		}
 	}

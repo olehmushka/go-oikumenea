@@ -19,6 +19,7 @@ import { IUpsertNumberTypeRequest } from "./upsertNumberTypeRequest";
 import { IUpsertVehicleTypeRequest } from "./upsertVehicleTypeRequest";
 import { IVehicle } from "./vehicle";
 import { IVehiclePage } from "./vehiclePage";
+import { IVehicleStats } from "./vehicleStats";
 import { IVehicleType } from "./vehicleType";
 import { IVehicleTypeList } from "./vehicleTypeList";
 import type { IHttpApiBridge } from "conjure-client";
@@ -43,7 +44,32 @@ export interface IVehicleService {
     listRegistrationNumberTypes(): Promise<IRegistrationNumberTypeList>;
     upsertRegistrationNumberType(request: IUpsertNumberTypeRequest): Promise<IRegistrationNumberType>;
     createVehicle(request: ICreateVehicleRequest): Promise<IVehicle>;
-    listVehicles(query?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IVehiclePage>;
+    /**
+     * List vehicles, token-paginated, narrowed by any combination of the facet filters below
+     * (M58 / D-ObjectFacets). Every filter here is also a distribution on `vehicleStats`, so a
+     * dashboard and a list are two renderings of one request state. Gated by `vehicle.read`.
+     *
+     */
+    listVehicles(query?: string | null, typeId?: string | null, brandId?: string | null, modelId?: string | null, color?: string | null, status?: string | null, manufactureDateFrom?: string | null, manufactureDateTo?: string | null, registrationCountry?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IVehiclePage>;
+    /**
+     * Facet distributions over the fleet — the dashboard half of the facet vocabulary (M58 /
+     * D-ObjectFacets). Takes exactly the filter args `listVehicles` takes (minus paging) plus an
+     * optional `facets` CSV, so a dashboard and a list are two renderings of ONE request state
+     * and a chart segment is a link to the same URL with one more filter applied.
+     *
+     * `totalCount` equals the number of rows exhaustively paging `listVehicles` with these same
+     * filters would return. One round-trip serves the whole dashboard.
+     *
+     * ONE aggregate arm, with no subject and no scoped twin — for the same reason
+     * `externalOrgStats` has one, and NOT the audit ledger's reason. `vehicle_vehicles` carries no
+     * row-level security, no unit column and no reach predicate: `vehicle.read` held anywhere is
+     * the whole visibility decision, so there is nothing for a second arm to narrow.
+     *
+     * The path is `/stats/vehicles` rather than `/vehicles/stats` because the server's router
+     * rejects a literal path segment that is a sibling of `{vehicleId}`.
+     *
+     */
+    vehicleStats(facets?: string | null, query?: string | null, typeId?: string | null, brandId?: string | null, modelId?: string | null, color?: string | null, status?: string | null, manufactureDateFrom?: string | null, manufactureDateTo?: string | null, registrationCountry?: string | null): Promise<IVehicleStats>;
     getVehicle(vehicleId: string): Promise<IVehicle>;
     updateVehicle(vehicleId: string, request: IUpdateVehicleRequest): Promise<IVehicle>;
     deleteVehicle(vehicleId: string): Promise<void>;
@@ -204,7 +230,13 @@ export class VehicleService implements IVehicleService {
         );
     }
 
-    public listVehicles(query?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IVehiclePage> {
+    /**
+     * List vehicles, token-paginated, narrowed by any combination of the facet filters below
+     * (M58 / D-ObjectFacets). Every filter here is also a distribution on `vehicleStats`, so a
+     * dashboard and a list are two renderings of one request state. Gated by `vehicle.read`.
+     *
+     */
+    public listVehicles(query?: string | null, typeId?: string | null, brandId?: string | null, modelId?: string | null, color?: string | null, status?: string | null, manufactureDateFrom?: string | null, manufactureDateTo?: string | null, registrationCountry?: string | null, pageSize?: number | null, pageToken?: string | null): Promise<IVehiclePage> {
         return this.bridge.call<IVehiclePage>(
             "VehicleService",
             "listVehicles",
@@ -214,8 +246,60 @@ export class VehicleService implements IVehicleService {
             __undefined,
             {
                 "query": query,
+                "typeId": typeId,
+                "brandId": brandId,
+                "modelId": modelId,
+                "color": color,
+                "status": status,
+                "manufactureDateFrom": manufactureDateFrom,
+                "manufactureDateTo": manufactureDateTo,
+                "registrationCountry": registrationCountry,
                 "pageSize": pageSize,
                 "pageToken": pageToken,
+            },
+            __undefined,
+            __undefined,
+            __undefined
+        );
+    }
+
+    /**
+     * Facet distributions over the fleet — the dashboard half of the facet vocabulary (M58 /
+     * D-ObjectFacets). Takes exactly the filter args `listVehicles` takes (minus paging) plus an
+     * optional `facets` CSV, so a dashboard and a list are two renderings of ONE request state
+     * and a chart segment is a link to the same URL with one more filter applied.
+     *
+     * `totalCount` equals the number of rows exhaustively paging `listVehicles` with these same
+     * filters would return. One round-trip serves the whole dashboard.
+     *
+     * ONE aggregate arm, with no subject and no scoped twin — for the same reason
+     * `externalOrgStats` has one, and NOT the audit ledger's reason. `vehicle_vehicles` carries no
+     * row-level security, no unit column and no reach predicate: `vehicle.read` held anywhere is
+     * the whole visibility decision, so there is nothing for a second arm to narrow.
+     *
+     * The path is `/stats/vehicles` rather than `/vehicles/stats` because the server's router
+     * rejects a literal path segment that is a sibling of `{vehicleId}`.
+     *
+     */
+    public vehicleStats(facets?: string | null, query?: string | null, typeId?: string | null, brandId?: string | null, modelId?: string | null, color?: string | null, status?: string | null, manufactureDateFrom?: string | null, manufactureDateTo?: string | null, registrationCountry?: string | null): Promise<IVehicleStats> {
+        return this.bridge.call<IVehicleStats>(
+            "VehicleService",
+            "vehicleStats",
+            "GET",
+            "/vehicle/v1/stats/vehicles",
+            __undefined,
+            __undefined,
+            {
+                "facets": facets,
+                "query": query,
+                "typeId": typeId,
+                "brandId": brandId,
+                "modelId": modelId,
+                "color": color,
+                "status": status,
+                "manufactureDateFrom": manufactureDateFrom,
+                "manufactureDateTo": manufactureDateTo,
+                "registrationCountry": registrationCountry,
             },
             __undefined,
             __undefined,

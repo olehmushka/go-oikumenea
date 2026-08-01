@@ -166,6 +166,59 @@ func (o *AccountPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+/*
+Facet distributions over the SAME set `listAccounts` returns under the same filters (M58 /
+D-ObjectFacets): `totalCount` is what exhaustively paging that endpoint would yield, not an
+estimate and not a page count.
+
+Every facet here partitions the result set — each counted row lands in exactly one bucket
+of each distribution, so a distribution's counts sum to `totalCount`.
+
+There is deliberately NO facet over the IBAN. It is envelope-encrypted at rest with no
+plaintext to group, and D-DataScope's aggregation rule forbids the surface regardless.
+*/
+type AccountStats struct {
+	TotalCount int                 `json:"totalCount"`
+	Facets     []FacetDistribution `json:"facets"`
+}
+
+func (o AccountStats) MarshalJSON() ([]byte, error) {
+	if o.Facets == nil {
+		o.Facets = make([]FacetDistribution, 0)
+	}
+	type _tmpAccountStats AccountStats
+	return safejson.Marshal(_tmpAccountStats(o))
+}
+
+func (o *AccountStats) UnmarshalJSON(data []byte) error {
+	type _tmpAccountStats AccountStats
+	var rawAccountStats _tmpAccountStats
+	if err := safejson.Unmarshal(data, &rawAccountStats); err != nil {
+		return err
+	}
+	if rawAccountStats.Facets == nil {
+		rawAccountStats.Facets = make([]FacetDistribution, 0)
+	}
+	*o = AccountStats(rawAccountStats)
+	return nil
+}
+
+func (o AccountStats) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *AccountStats) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // A bank-account kind (current/savings/deposit/loan…); instance-extensible.
 type AccountType struct {
 	Id   string `json:"id"`
@@ -473,6 +526,101 @@ func (o *CardNetworkList) UnmarshalYAML(unmarshal func(interface{}) error) error
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+/*
+A keyset page of the instance-wide card registry (M58). Carries the same METADATA-ONLY
+projection `listAccountCards` does — the PAN is never listed, only decrypted on `getCard`
+for an authorized caller (PCI-DSS Req 3; D-DataScope CDE scope).
+*/
+type CardPage struct {
+	Cards         []Card  `json:"cards"`
+	NextPageToken *string `json:"nextPageToken,omitempty"`
+}
+
+func (o CardPage) MarshalJSON() ([]byte, error) {
+	if o.Cards == nil {
+		o.Cards = make([]Card, 0)
+	}
+	type _tmpCardPage CardPage
+	return safejson.Marshal(_tmpCardPage(o))
+}
+
+func (o *CardPage) UnmarshalJSON(data []byte) error {
+	type _tmpCardPage CardPage
+	var rawCardPage _tmpCardPage
+	if err := safejson.Unmarshal(data, &rawCardPage); err != nil {
+		return err
+	}
+	if rawCardPage.Cards == nil {
+		rawCardPage.Cards = make([]Card, 0)
+	}
+	*o = CardPage(rawCardPage)
+	return nil
+}
+
+func (o CardPage) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *CardPage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+Facet distributions over the SAME set `listCards` returns under the same filters (M58 /
+D-ObjectFacets). As with accounts, there is NO facet over the PAN — it is envelope-encrypted
+and inside PCI-DSS CDE scope. `bin` and `lastFour` are clear, but they are display columns
+for identifying one card, not distributions to group a registry by.
+*/
+type CardStats struct {
+	TotalCount int                 `json:"totalCount"`
+	Facets     []FacetDistribution `json:"facets"`
+}
+
+func (o CardStats) MarshalJSON() ([]byte, error) {
+	if o.Facets == nil {
+		o.Facets = make([]FacetDistribution, 0)
+	}
+	type _tmpCardStats CardStats
+	return safejson.Marshal(_tmpCardStats(o))
+}
+
+func (o *CardStats) UnmarshalJSON(data []byte) error {
+	type _tmpCardStats CardStats
+	var rawCardStats _tmpCardStats
+	if err := safejson.Unmarshal(data, &rawCardStats); err != nil {
+		return err
+	}
+	if rawCardStats.Facets == nil {
+		rawCardStats.Facets = make([]FacetDistribution, 0)
+	}
+	*o = CardStats(rawCardStats)
+	return nil
+}
+
+func (o CardStats) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *CardStats) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // Create a bank account. The IBAN is validated (ISO 13616 mod-97), encrypted, and blind-indexed.
 type CreateAccountRequest struct {
 	InstitutionId string  `json:"institutionId"`
@@ -490,6 +638,89 @@ func (o CreateAccountRequest) MarshalYAML() (interface{}, error) {
 }
 
 func (o *CreateAccountRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+One bucket of a facet distribution (M58 / D-ObjectFacets).
+
+`key` is the bucket's stable, locale-agnostic identity — an enum value, a currency code, or
+a RID for a `ref` facet — and is exactly what you pass back as the corresponding query
+filter, which is what makes a chart segment and a filter the same act. Two synthetic keys
+never name a real value: `(unknown)` is the NULL bucket (mandatory for a nullable column,
+so the gap is visible rather than dropped) and `(other)` is a top-N facet's collapsed tail;
+neither is a usable filter value.
+
+`label` carries a display name as a locale → text map (D-i18n) and is present only for
+`ref` buckets, whose keys are RIDs. Best effort — an id with no resolvable name simply
+carries no label.
+*/
+type FacetBucket struct {
+	Key   string             `json:"key"`
+	Label *map[string]string `json:"label,omitempty"`
+	Count int                `json:"count"`
+}
+
+func (o FacetBucket) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *FacetBucket) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+One facet's buckets, in chart order — for an enum, the declared CHECK-set order with
+zero-count buckets included so a chart's shape is stable across filterings; for a ref or
+code facet, descending by count with `(other)`/`(unknown)` last.
+*/
+type FacetDistribution struct {
+	Facet   string        `json:"facet"`
+	Buckets []FacetBucket `json:"buckets"`
+}
+
+func (o FacetDistribution) MarshalJSON() ([]byte, error) {
+	if o.Buckets == nil {
+		o.Buckets = make([]FacetBucket, 0)
+	}
+	type _tmpFacetDistribution FacetDistribution
+	return safejson.Marshal(_tmpFacetDistribution(o))
+}
+
+func (o *FacetDistribution) UnmarshalJSON(data []byte) error {
+	type _tmpFacetDistribution FacetDistribution
+	var rawFacetDistribution _tmpFacetDistribution
+	if err := safejson.Unmarshal(data, &rawFacetDistribution); err != nil {
+		return err
+	}
+	if rawFacetDistribution.Buckets == nil {
+		rawFacetDistribution.Buckets = make([]FacetBucket, 0)
+	}
+	*o = FacetDistribution(rawFacetDistribution)
+	return nil
+}
+
+func (o FacetDistribution) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *FacetDistribution) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err
