@@ -32,7 +32,12 @@ export type EntityKind =
   | "externalOrgKind"
   | "taxon"
   | "taxonRank"
-  | "classification";
+  | "classification"
+  | "vehicleType"
+  | "brand"
+  | "color"
+  | "accountType"
+  | "cardNetwork";
 
 type Option = { id: string; label: string; hint?: string };
 
@@ -198,6 +203,56 @@ const REGISTRY: Record<EntityKind, KindConfig> = {
       id: str(c.id) ?? "",
       label: pickLabel(map(c.name), locale) || str(c.code) || str(c.id) || "",
       hint: str(c.code),
+    }),
+  },
+  // M58 ticket 3 — the ref-facet pickers for the vehicle, account and card dashboards. Each is a
+  // small closed catalog, so one page is the whole set rather than a truncation. `model` is absent
+  // deliberately: models are listable only per brand, so the filter bar renders it as a ScopedSelect.
+  vehicleType: {
+    path: "/vehicle/v1/vehicle-types",
+    pick: (d) => (d as { types?: unknown[] })?.types ?? [],
+    toOption: (t, locale) => ({
+      id: str(t.id) ?? "",
+      label: pickLabel(map(t.name), locale) || str(t.code) || str(t.id) || "",
+      hint: str(t.code),
+    }),
+  },
+  brand: {
+    path: "/vehicle/v1/brands",
+    pick: (d) => (d as { brands?: unknown[] })?.brands ?? [],
+    toOption: (b, locale) => ({
+      id: str(b.id) ?? "",
+      label: pickLabel(map(b.name), locale) || str(b.code) || str(b.id) || "",
+      hint: str(b.code),
+    }),
+  },
+  // Scoped to the vehicle palette: platform_colors is per-domain (eye | hair | vehicle), and offering
+  // eye colours as a vehicle filter would list values no vehicle can hold (D-Color).
+  color: {
+    path: "/platform/v1/colors?domain=vehicle",
+    pick: (d) => (d as { colors?: unknown[] })?.colors ?? [],
+    toOption: (c, locale) => ({
+      id: str(c.id) ?? "",
+      label: pickLabel(map(c.name), locale) || str(c.code) || str(c.id) || "",
+      hint: str(c.code),
+    }),
+  },
+  accountType: {
+    path: "/finance/v1/account-types",
+    pick: (d) => (d as { types?: unknown[] })?.types ?? [],
+    toOption: (t, locale) => ({
+      id: str(t.id) ?? "",
+      label: pickLabel(map(t.name), locale) || str(t.code) || str(t.id) || "",
+      hint: str(t.code),
+    }),
+  },
+  cardNetwork: {
+    path: "/finance/v1/card-networks",
+    pick: (d) => (d as { networks?: unknown[] })?.networks ?? [],
+    toOption: (n, locale) => ({
+      id: str(n.id) ?? "",
+      label: pickLabel(map(n.name), locale) || str(n.code) || str(n.id) || "",
+      hint: str(n.code),
     }),
   },
 };

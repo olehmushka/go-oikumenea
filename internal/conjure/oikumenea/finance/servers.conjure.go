@@ -28,7 +28,31 @@ type FinanceService interface {
 	ListCardNetworks(ctx context.Context, authHeader bearertoken.Token) (CardNetworkList, error)
 	UpsertCardNetwork(ctx context.Context, authHeader bearertoken.Token, requestArg UpsertCardNetworkRequest) (CardNetwork, error)
 	CreateAccount(ctx context.Context, authHeader bearertoken.Token, requestArg CreateAccountRequest) (Account, error)
-	ListAccounts(ctx context.Context, authHeader bearertoken.Token, institutionIdArg *string, pageSizeArg *int, pageTokenArg *string) (AccountPage, error)
+	/*
+	   List accounts, token-paginated, narrowed by any combination of the facet filters below
+	   (M58 / D-ObjectFacets). Every filter here is also a distribution on `accountStats`. The
+	   IBAN is never listed. Gated by `finance.read`.
+	*/
+	ListAccounts(ctx context.Context, authHeader bearertoken.Token, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string, pageSizeArg *int, pageTokenArg *string) (AccountPage, error)
+	/*
+	   Facet distributions over the account registry — the dashboard half of the facet vocabulary
+	   (M58 / D-ObjectFacets). Takes exactly the filter args `listAccounts` takes (minus paging)
+	   plus an optional `facets` CSV, so a dashboard and a list are two renderings of ONE request
+	   state and a chart segment is a link to the same URL with one more filter applied.
+
+	   `totalCount` equals the number of rows exhaustively paging `listAccounts` with these same
+	   filters would return. One round-trip serves the whole dashboard.
+
+	   ONE aggregate arm, with no subject and no scoped twin — for `externalOrgStats`' reason, not
+	   the audit ledger's. `finance_accounts` carries no row-level security and no unit reach:
+	   `finance.read` held anywhere is the whole visibility decision, so there is nothing for a
+	   second arm to narrow. (Person-held rows are additionally holder-scoped on the PERSON views;
+	   that is a different endpoint, and this registry-level listing is not one of them.)
+
+	   The path is `/stats/accounts` rather than `/accounts/stats` because the server's router
+	   rejects a literal path segment that is a sibling of `{accountId}`.
+	*/
+	AccountStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, institutionIdArg *string, currencyArg *string, accountTypeIdArg *string, statusArg *string) (AccountStats, error)
 	// Returns the account with the decrypted IBAN for authorized callers.
 	GetAccount(ctx context.Context, authHeader bearertoken.Token, accountIdArg string) (Account, error)
 	UpdateAccount(ctx context.Context, authHeader bearertoken.Token, accountIdArg string, requestArg UpdateAccountRequest) (Account, error)
@@ -37,7 +61,39 @@ type FinanceService interface {
 	AddAccountHolder(ctx context.Context, authHeader bearertoken.Token, accountIdArg string, requestArg AddAccountHolderRequest) (AccountHolder, error)
 	// End an active holding (closes effectiveTo); the account and its history remain.
 	EndAccountHolding(ctx context.Context, authHeader bearertoken.Token, holderIdArg string) (AccountHolder, error)
-	ListCards(ctx context.Context, authHeader bearertoken.Token, accountIdArg string) (CardList, error)
+	/*
+	   The cards on ONE account. Named for its scope, beside `listAccountHolders` — M58 gave the
+	   plain `listCards` to the instance-wide registry below, which is the collection every other
+	   faceted object type's list endpoint is named for. The HTTP path is unchanged.
+	*/
+	ListAccountCards(ctx context.Context, authHeader bearertoken.Token, accountIdArg string) (CardList, error)
+	/*
+	   The instance-wide card registry, token-paginated and narrowed by the facet filters below
+	   (M58 / D-ObjectFacets) — the collection-level list `cardStats` draws its dashboard over.
+
+	   METADATA ONLY. `bin`, `lastFour`, network, type, status and expiry are clear columns and are
+	   returned; the PAN is envelope-encrypted at rest and is decrypted only by `getCard`, for an
+	   authorized caller, one card at a time (PCI-DSS Req 3; D-DataScope CDE scope). Browsing the
+	   registry is gated by the same `finance.read` that already gates `listAccounts` and
+	   `listAccountCards` — this endpoint widens the SCOPE of a read the code already permits, and
+	   discloses no field those endpoints did not already return.
+	*/
+	ListCards(ctx context.Context, authHeader bearertoken.Token, networkIdArg *string, cardTypeArg *string, statusArg *string, pageSizeArg *int, pageTokenArg *string) (CardPage, error)
+	/*
+	   Facet distributions over the card registry — the dashboard half of the facet vocabulary
+	   (M58 / D-ObjectFacets). Takes exactly the filter args `listCards` takes (minus paging) plus
+	   an optional `facets` CSV.
+
+	   `totalCount` equals the number of rows exhaustively paging `listCards` with these same
+	   filters would return.
+
+	   ONE aggregate arm, for the same reason `accountStats` has one: no row-level security, no
+	   unit reach, `finance.read` held anywhere is the whole visibility decision.
+
+	   The path is `/stats/cards` rather than `/cards/stats` because the server's router rejects a
+	   literal path segment that is a sibling of `{cardId}`.
+	*/
+	CardStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, networkIdArg *string, cardTypeArg *string, statusArg *string) (CardStats, error)
 	AddCard(ctx context.Context, authHeader bearertoken.Token, accountIdArg string, requestArg AddCardRequest) (Card, error)
 	// Returns the card with the decrypted PAN for authorized callers.
 	GetCard(ctx context.Context, authHeader bearertoken.Token, cardIdArg string) (Card, error)
@@ -72,6 +128,9 @@ func RegisterRoutesFinanceService(router wrouter.Router, impl FinanceService, ro
 	if err := resource.Get("ListAccounts", "/finance/v1/accounts", httpserver.NewJSONHandler(handler.HandleListAccounts, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listAccounts route")
 	}
+	if err := resource.Get("AccountStats", "/finance/v1/stats/accounts", httpserver.NewJSONHandler(handler.HandleAccountStats, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add accountStats route")
+	}
 	if err := resource.Get("GetAccount", "/finance/v1/accounts/{accountId}", httpserver.NewJSONHandler(handler.HandleGetAccount, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getAccount route")
 	}
@@ -90,8 +149,14 @@ func RegisterRoutesFinanceService(router wrouter.Router, impl FinanceService, ro
 	if err := resource.Post("EndAccountHolding", "/finance/v1/holders/{holderId}/end", httpserver.NewJSONHandler(handler.HandleEndAccountHolding, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add endAccountHolding route")
 	}
-	if err := resource.Get("ListCards", "/finance/v1/accounts/{accountId}/cards", httpserver.NewJSONHandler(handler.HandleListCards, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+	if err := resource.Get("ListAccountCards", "/finance/v1/accounts/{accountId}/cards", httpserver.NewJSONHandler(handler.HandleListAccountCards, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listAccountCards route")
+	}
+	if err := resource.Get("ListCards", "/finance/v1/cards", httpserver.NewJSONHandler(handler.HandleListCards, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listCards route")
+	}
+	if err := resource.Get("CardStats", "/finance/v1/stats/cards", httpserver.NewJSONHandler(handler.HandleCardStats, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add cardStats route")
 	}
 	if err := resource.Post("AddCard", "/finance/v1/accounts/{accountId}/cards", httpserver.NewJSONHandler(handler.HandleAddCard, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add addCard route")
@@ -202,6 +267,21 @@ func (f *financeServiceHandler) HandleListAccounts(rw http.ResponseWriter, req *
 		institutionIdArgInternal := institutionIdArgStr
 		institutionIdArg = &institutionIdArgInternal
 	}
+	var currencyArg *string
+	if currencyArgStr := req.URL.Query().Get("currency"); currencyArgStr != "" {
+		currencyArgInternal := currencyArgStr
+		currencyArg = &currencyArgInternal
+	}
+	var accountTypeIdArg *string
+	if accountTypeIdArgStr := req.URL.Query().Get("accountTypeId"); accountTypeIdArgStr != "" {
+		accountTypeIdArgInternal := accountTypeIdArgStr
+		accountTypeIdArg = &accountTypeIdArgInternal
+	}
+	var statusArg *string
+	if statusArgStr := req.URL.Query().Get("status"); statusArgStr != "" {
+		statusArgInternal := statusArgStr
+		statusArg = &statusArgInternal
+	}
 	var pageSizeArg *int
 	if pageSizeArgStr := req.URL.Query().Get("pageSize"); pageSizeArgStr != "" {
 		pageSizeArgInternal, err := strconv.Atoi(pageSizeArgStr)
@@ -215,7 +295,45 @@ func (f *financeServiceHandler) HandleListAccounts(rw http.ResponseWriter, req *
 		pageTokenArgInternal := pageTokenArgStr
 		pageTokenArg = &pageTokenArgInternal
 	}
-	respArg, err := f.impl.ListAccounts(req.Context(), bearertoken.Token(authHeader), institutionIdArg, pageSizeArg, pageTokenArg)
+	respArg, err := f.impl.ListAccounts(req.Context(), bearertoken.Token(authHeader), institutionIdArg, currencyArg, accountTypeIdArg, statusArg, pageSizeArg, pageTokenArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (f *financeServiceHandler) HandleAccountStats(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var facetsArg *string
+	if facetsArgStr := req.URL.Query().Get("facets"); facetsArgStr != "" {
+		facetsArgInternal := facetsArgStr
+		facetsArg = &facetsArgInternal
+	}
+	var institutionIdArg *string
+	if institutionIdArgStr := req.URL.Query().Get("institutionId"); institutionIdArgStr != "" {
+		institutionIdArgInternal := institutionIdArgStr
+		institutionIdArg = &institutionIdArgInternal
+	}
+	var currencyArg *string
+	if currencyArgStr := req.URL.Query().Get("currency"); currencyArgStr != "" {
+		currencyArgInternal := currencyArgStr
+		currencyArg = &currencyArgInternal
+	}
+	var accountTypeIdArg *string
+	if accountTypeIdArgStr := req.URL.Query().Get("accountTypeId"); accountTypeIdArgStr != "" {
+		accountTypeIdArgInternal := accountTypeIdArgStr
+		accountTypeIdArg = &accountTypeIdArgInternal
+	}
+	var statusArg *string
+	if statusArgStr := req.URL.Query().Get("status"); statusArgStr != "" {
+		statusArgInternal := statusArgStr
+		statusArg = &statusArgInternal
+	}
+	respArg, err := f.impl.AccountStats(req.Context(), bearertoken.Token(authHeader), facetsArg, institutionIdArg, currencyArg, accountTypeIdArg, statusArg)
 	if err != nil {
 		return err
 	}
@@ -356,7 +474,7 @@ func (f *financeServiceHandler) HandleEndAccountHolding(rw http.ResponseWriter, 
 	return codecs.JSON.Encode(rw, respArg)
 }
 
-func (f *financeServiceHandler) HandleListCards(rw http.ResponseWriter, req *http.Request) error {
+func (f *financeServiceHandler) HandleListAccountCards(rw http.ResponseWriter, req *http.Request) error {
 	authHeader, err := httpserver.ParseBearerTokenHeader(req)
 	if err != nil {
 		return errors.WrapWithPermissionDenied(err)
@@ -369,7 +487,81 @@ func (f *financeServiceHandler) HandleListCards(rw http.ResponseWriter, req *htt
 	if !ok {
 		return werror.WrapWithContextParams(req.Context(), errors.NewInvalidArgument(), "path parameter \"accountId\" not present")
 	}
-	respArg, err := f.impl.ListCards(req.Context(), bearertoken.Token(authHeader), accountIdArg)
+	respArg, err := f.impl.ListAccountCards(req.Context(), bearertoken.Token(authHeader), accountIdArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (f *financeServiceHandler) HandleListCards(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var networkIdArg *string
+	if networkIdArgStr := req.URL.Query().Get("networkId"); networkIdArgStr != "" {
+		networkIdArgInternal := networkIdArgStr
+		networkIdArg = &networkIdArgInternal
+	}
+	var cardTypeArg *string
+	if cardTypeArgStr := req.URL.Query().Get("cardType"); cardTypeArgStr != "" {
+		cardTypeArgInternal := cardTypeArgStr
+		cardTypeArg = &cardTypeArgInternal
+	}
+	var statusArg *string
+	if statusArgStr := req.URL.Query().Get("status"); statusArgStr != "" {
+		statusArgInternal := statusArgStr
+		statusArg = &statusArgInternal
+	}
+	var pageSizeArg *int
+	if pageSizeArgStr := req.URL.Query().Get("pageSize"); pageSizeArgStr != "" {
+		pageSizeArgInternal, err := strconv.Atoi(pageSizeArgStr)
+		if err != nil {
+			return werror.WrapWithContextParams(req.Context(), errors.WrapWithInvalidArgument(err), "failed to parse \"pageSize\" as integer")
+		}
+		pageSizeArg = &pageSizeArgInternal
+	}
+	var pageTokenArg *string
+	if pageTokenArgStr := req.URL.Query().Get("pageToken"); pageTokenArgStr != "" {
+		pageTokenArgInternal := pageTokenArgStr
+		pageTokenArg = &pageTokenArgInternal
+	}
+	respArg, err := f.impl.ListCards(req.Context(), bearertoken.Token(authHeader), networkIdArg, cardTypeArg, statusArg, pageSizeArg, pageTokenArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (f *financeServiceHandler) HandleCardStats(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var facetsArg *string
+	if facetsArgStr := req.URL.Query().Get("facets"); facetsArgStr != "" {
+		facetsArgInternal := facetsArgStr
+		facetsArg = &facetsArgInternal
+	}
+	var networkIdArg *string
+	if networkIdArgStr := req.URL.Query().Get("networkId"); networkIdArgStr != "" {
+		networkIdArgInternal := networkIdArgStr
+		networkIdArg = &networkIdArgInternal
+	}
+	var cardTypeArg *string
+	if cardTypeArgStr := req.URL.Query().Get("cardType"); cardTypeArgStr != "" {
+		cardTypeArgInternal := cardTypeArgStr
+		cardTypeArg = &cardTypeArgInternal
+	}
+	var statusArg *string
+	if statusArgStr := req.URL.Query().Get("status"); statusArgStr != "" {
+		statusArgInternal := statusArgStr
+		statusArg = &statusArgInternal
+	}
+	respArg, err := f.impl.CardStats(req.Context(), bearertoken.Token(authHeader), facetsArg, networkIdArg, cardTypeArg, statusArg)
 	if err != nil {
 		return err
 	}

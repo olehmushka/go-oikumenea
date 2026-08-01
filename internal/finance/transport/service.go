@@ -148,12 +148,23 @@ func (s FinanceService) CreateAccount(ctx context.Context, token bearertoken.Tok
 	return s.accountWithLabels(ctx, a)
 }
 
-func (s FinanceService) ListAccounts(ctx context.Context, token bearertoken.Token, institutionID *string, pageSize *int, pageToken *string) (financeapi.AccountPage, error) {
+// ListAccounts pages the same set AccountStats aggregates. The filter comes from the shared
+// accountFilter helper (stats.go), so a chart segment and a list filter are the same act.
+func (s FinanceService) ListAccounts(
+	ctx context.Context,
+	token bearertoken.Token,
+	institutionID *string,
+	currency *string,
+	accountTypeID *string,
+	status *string,
+	pageSize *int,
+	pageToken *string,
+) (financeapi.AccountPage, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
 		return financeapi.AccountPage{}, err
 	}
 	limit := pageSizeOr(pageSize)
-	rows, err := s.app.ListAccounts(ctx, strOr(institutionID), decodeToken(pageToken), limit)
+	rows, err := s.app.ListAccounts(ctx, decodeToken(pageToken), accountFilter(institutionID, currency, accountTypeID, status), limit)
 	if err != nil {
 		return financeapi.AccountPage{}, s.mapError(ctx, err)
 	}
@@ -253,11 +264,13 @@ func (s FinanceService) EndAccountHolding(ctx context.Context, token bearertoken
 
 // ============================ cards ============================
 
-func (s FinanceService) ListCards(ctx context.Context, token bearertoken.Token, accountID string) (financeapi.CardList, error) {
+// ListAccountCards is the per-account view (renamed from ListCards in M58 ticket 3; the HTTP path is
+// unchanged). ListCards below is now the instance-wide registry.
+func (s FinanceService) ListAccountCards(ctx context.Context, token bearertoken.Token, accountID string) (financeapi.CardList, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, readPerm); err != nil {
 		return financeapi.CardList{}, err
 	}
-	rows, err := s.app.ListCards(ctx, accountID)
+	rows, err := s.app.ListAccountCards(ctx, accountID)
 	if err != nil {
 		return financeapi.CardList{}, s.mapError(ctx, err)
 	}

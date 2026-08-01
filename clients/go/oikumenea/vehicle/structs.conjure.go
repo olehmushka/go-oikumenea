@@ -146,6 +146,90 @@ func (o *CreateVehicleRequest) UnmarshalYAML(unmarshal func(interface{}) error) 
 	return safejson.Unmarshal(jsonBytes, *&o)
 }
 
+/*
+One bucket of a facet distribution (M58 / D-ObjectFacets).
+
+`key` is the bucket's stable, locale-agnostic identity — an enum value, a `YYYY-MM` month,
+or a RID for a `ref` facet — and is exactly what you pass back as the corresponding query
+filter, which is what makes a chart segment and a filter the same act. Two synthetic keys
+never name a real value: `(unknown)` is the NULL bucket (mandatory for a nullable column,
+so the gap is visible rather than dropped) and `(other)` is a top-N facet's collapsed tail;
+neither is a usable filter value.
+
+`label` carries a display name as a locale → text map (D-i18n) and is present only for
+`ref` buckets, whose keys are RIDs. Best effort — an id with no resolvable name simply
+carries no label.
+*/
+type FacetBucket struct {
+	Key   string             `json:"key"`
+	Label *map[string]string `json:"label,omitempty"`
+	Count int                `json:"count"`
+}
+
+func (o FacetBucket) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *FacetBucket) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+One facet's buckets, in chart order — for an enum, the declared CHECK-set order with
+zero-count buckets included so a chart's shape is stable across filterings; for the
+manufactureDate histogram, ascending by month; for a ref facet, descending by count with
+`(other)`/`(unknown)` last.
+*/
+type FacetDistribution struct {
+	Facet   string        `json:"facet"`
+	Buckets []FacetBucket `json:"buckets"`
+}
+
+func (o FacetDistribution) MarshalJSON() ([]byte, error) {
+	if o.Buckets == nil {
+		o.Buckets = make([]FacetBucket, 0)
+	}
+	type _tmpFacetDistribution FacetDistribution
+	return safejson.Marshal(_tmpFacetDistribution(o))
+}
+
+func (o *FacetDistribution) UnmarshalJSON(data []byte) error {
+	type _tmpFacetDistribution FacetDistribution
+	var rawFacetDistribution _tmpFacetDistribution
+	if err := safejson.Unmarshal(data, &rawFacetDistribution); err != nil {
+		return err
+	}
+	if rawFacetDistribution.Buckets == nil {
+		rawFacetDistribution.Buckets = make([]FacetBucket, 0)
+	}
+	*o = FacetDistribution(rawFacetDistribution)
+	return nil
+}
+
+func (o FacetDistribution) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *FacetDistribution) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
 // A brand is MANUFACTURED_BY a company (link__manufactured_by); temporal (changes with acquisitions).
 type Manufacturer struct {
 	Id        string `json:"id"`
@@ -779,6 +863,58 @@ func (o VehiclePage) MarshalYAML() (interface{}, error) {
 }
 
 func (o *VehiclePage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+/*
+Facet distributions over the SAME set `listVehicles` returns under the same filters
+(M58 / D-ObjectFacets): `totalCount` is what exhaustively paging that endpoint would yield,
+not an estimate and not a page count.
+
+Every facet here partitions the result set — each counted row lands in exactly one bucket
+of each distribution, so a distribution's counts sum to `totalCount`. `registrationCountry`
+partitions too, and does so BECAUSE it is confined to the one ACTIVE registration a vehicle
+may hold; the ownership history behind it is one-to-many and would not.
+*/
+type VehicleStats struct {
+	TotalCount int                 `json:"totalCount"`
+	Facets     []FacetDistribution `json:"facets"`
+}
+
+func (o VehicleStats) MarshalJSON() ([]byte, error) {
+	if o.Facets == nil {
+		o.Facets = make([]FacetDistribution, 0)
+	}
+	type _tmpVehicleStats VehicleStats
+	return safejson.Marshal(_tmpVehicleStats(o))
+}
+
+func (o *VehicleStats) UnmarshalJSON(data []byte) error {
+	type _tmpVehicleStats VehicleStats
+	var rawVehicleStats _tmpVehicleStats
+	if err := safejson.Unmarshal(data, &rawVehicleStats); err != nil {
+		return err
+	}
+	if rawVehicleStats.Facets == nil {
+		rawVehicleStats.Facets = make([]FacetDistribution, 0)
+	}
+	*o = VehicleStats(rawVehicleStats)
+	return nil
+}
+
+func (o VehicleStats) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *VehicleStats) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
 	if err != nil {
 		return err

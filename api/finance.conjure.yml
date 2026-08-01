@@ -151,6 +151,64 @@ types:
       AccountHolderList:
         fields:
           holders: list<AccountHolder>
+      CardPage:
+        docs: |
+          A keyset page of the instance-wide card registry (M58). Carries the same METADATA-ONLY
+          projection `listAccountCards` does — the PAN is never listed, only decrypted on `getCard`
+          for an authorized caller (PCI-DSS Req 3; D-DataScope CDE scope).
+        fields:
+          cards: list<Card>
+          nextPageToken: optional<string>
+      # ---- facet distributions (M58 / D-ObjectFacets) ----
+      FacetBucket:
+        docs: |
+          One bucket of a facet distribution (M58 / D-ObjectFacets).
+
+          `key` is the bucket's stable, locale-agnostic identity — an enum value, a currency code, or
+          a RID for a `ref` facet — and is exactly what you pass back as the corresponding query
+          filter, which is what makes a chart segment and a filter the same act. Two synthetic keys
+          never name a real value: `(unknown)` is the NULL bucket (mandatory for a nullable column,
+          so the gap is visible rather than dropped) and `(other)` is a top-N facet's collapsed tail;
+          neither is a usable filter value.
+
+          `label` carries a display name as a locale → text map (D-i18n) and is present only for
+          `ref` buckets, whose keys are RIDs. Best effort — an id with no resolvable name simply
+          carries no label.
+        fields:
+          key: string
+          label: optional<map<string, string>>
+          count: integer
+      FacetDistribution:
+        docs: |
+          One facet's buckets, in chart order — for an enum, the declared CHECK-set order with
+          zero-count buckets included so a chart's shape is stable across filterings; for a ref or
+          code facet, descending by count with `(other)`/`(unknown)` last.
+        fields:
+          facet: string
+          buckets: list<FacetBucket>
+      AccountStats:
+        docs: |
+          Facet distributions over the SAME set `listAccounts` returns under the same filters (M58 /
+          D-ObjectFacets): `totalCount` is what exhaustively paging that endpoint would yield, not an
+          estimate and not a page count.
+
+          Every facet here partitions the result set — each counted row lands in exactly one bucket
+          of each distribution, so a distribution's counts sum to `totalCount`.
+
+          There is deliberately NO facet over the IBAN. It is envelope-encrypted at rest with no
+          plaintext to group, and D-DataScope's aggregation rule forbids the surface regardless.
+        fields:
+          totalCount: integer
+          facets: list<FacetDistribution>
+      CardStats:
+        docs: |
+          Facet distributions over the SAME set `listCards` returns under the same filters (M58 /
+          D-ObjectFacets). As with accounts, there is NO facet over the PAN — it is envelope-encrypted
+          and inside PCI-DSS CDE scope. `bin` and `lastFour` are clear, but they are display columns
+          for identifying one card, not distributions to group a registry by.
+        fields:
+          totalCount: integer
+          facets: list<FacetDistribution>
       # ---- request bodies ----
       UpsertAccountTypeRequest:
         docs: Create/update (by code) an account-type catalog entry. name is the default-locale fallback.
@@ -266,11 +324,31 @@ services:
         returns: Account
       listAccounts:
         http: GET /accounts
+        docs: |
+          List accounts, token-paginated, narrowed by any combination of the facet filters below
+          (M58 / D-ObjectFacets). Every filter here is also a distribution on `accountStats`. The
+          IBAN is never listed. Gated by `finance.read`.
         args:
           institutionId:
             type: optional<string>
             param-type: query
-            docs: Optional filter to one holding bank.
+            docs: |
+              Facet filter — the holding bank's RID. A `company`-domain `tenant_organizations` row
+              (M21/M41), never a finance-owned entity.
+          currency:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Facet filter — ISO 4217 code (`UAH`, `USD`). An OPEN value set: the column carries no
+              CHECK, so this is matched as a code rather than validated against an enum.
+          accountTypeId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — account-type RID (`finance_account_types`). Nullable column.
+          status:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — `active` | `closed` | `frozen`.
           pageSize:
             type: optional<integer>
             param-type: query
@@ -278,6 +356,50 @@ services:
             type: optional<string>
             param-type: query
         returns: AccountPage
+      accountStats:
+        http: GET /stats/accounts
+        docs: |
+          Facet distributions over the account registry — the dashboard half of the facet vocabulary
+          (M58 / D-ObjectFacets). Takes exactly the filter args `listAccounts` takes (minus paging)
+          plus an optional `facets` CSV, so a dashboard and a list are two renderings of ONE request
+          state and a chart segment is a link to the same URL with one more filter applied.
+
+          `totalCount` equals the number of rows exhaustively paging `listAccounts` with these same
+          filters would return. One round-trip serves the whole dashboard.
+
+          ONE aggregate arm, with no subject and no scoped twin — for `externalOrgStats`' reason, not
+          the audit ledger's. `finance_accounts` carries no row-level security and no unit reach:
+          `finance.read` held anywhere is the whole visibility decision, so there is nothing for a
+          second arm to narrow. (Person-held rows are additionally holder-scoped on the PERSON views;
+          that is a different endpoint, and this registry-level listing is not one of them.)
+
+          The path is `/stats/accounts` rather than `/accounts/stats` because the server's router
+          rejects a literal path segment that is a sibling of `{accountId}`.
+        args:
+          facets:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Optional comma-separated facet keys to compute (`currency,status`). Omitted or empty
+              means EVERY facet; a list of nothing (`,`) means none, i.e. `totalCount` alone. Naming a
+              facet this type does not declare is a 400.
+          institutionId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — the holding bank's RID.
+          currency:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — ISO 4217 code.
+          accountTypeId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — account-type RID.
+          status:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — `active` | `closed` | `frozen`.
+        returns: AccountStats
       getAccount:
         http: GET /accounts/{accountId}
         docs: Returns the account with the decrypted IBAN for authorized callers.
@@ -313,11 +435,83 @@ services:
           holderId: { type: string, param-type: path }
         returns: AccountHolder
       # ---- cards ----
-      listCards:
+      listAccountCards:
         http: GET /accounts/{accountId}/cards
+        docs: |
+          The cards on ONE account. Named for its scope, beside `listAccountHolders` — M58 gave the
+          plain `listCards` to the instance-wide registry below, which is the collection every other
+          faceted object type's list endpoint is named for. The HTTP path is unchanged.
         args:
           accountId: { type: string, param-type: path }
         returns: CardList
+      listCards:
+        http: GET /cards
+        docs: |
+          The instance-wide card registry, token-paginated and narrowed by the facet filters below
+          (M58 / D-ObjectFacets) — the collection-level list `cardStats` draws its dashboard over.
+
+          METADATA ONLY. `bin`, `lastFour`, network, type, status and expiry are clear columns and are
+          returned; the PAN is envelope-encrypted at rest and is decrypted only by `getCard`, for an
+          authorized caller, one card at a time (PCI-DSS Req 3; D-DataScope CDE scope). Browsing the
+          registry is gated by the same `finance.read` that already gates `listAccounts` and
+          `listAccountCards` — this endpoint widens the SCOPE of a read the code already permits, and
+          discloses no field those endpoints did not already return.
+        args:
+          networkId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — card-network RID (`finance_card_networks`). Nullable column.
+          cardType:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — `debit` | `credit`.
+          status:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — `active` | `blocked` | `expired`.
+          pageSize:
+            type: optional<integer>
+            param-type: query
+          pageToken:
+            type: optional<string>
+            param-type: query
+        returns: CardPage
+      cardStats:
+        http: GET /stats/cards
+        docs: |
+          Facet distributions over the card registry — the dashboard half of the facet vocabulary
+          (M58 / D-ObjectFacets). Takes exactly the filter args `listCards` takes (minus paging) plus
+          an optional `facets` CSV.
+
+          `totalCount` equals the number of rows exhaustively paging `listCards` with these same
+          filters would return.
+
+          ONE aggregate arm, for the same reason `accountStats` has one: no row-level security, no
+          unit reach, `finance.read` held anywhere is the whole visibility decision.
+
+          The path is `/stats/cards` rather than `/cards/stats` because the server's router rejects a
+          literal path segment that is a sibling of `{cardId}`.
+        args:
+          facets:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Optional comma-separated facet keys to compute (`networkId,cardType`). Omitted or empty
+              means EVERY facet; a list of nothing (`,`) means none, i.e. `totalCount` alone. Naming a
+              facet this type does not declare is a 400.
+          networkId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — card-network RID.
+          cardType:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — `debit` | `credit`.
+          status:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — `active` | `blocked` | `expired`.
+        returns: CardStats
       addCard:
         http: POST /accounts/{accountId}/cards
         args:

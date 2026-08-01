@@ -242,16 +242,15 @@ Facets and components in brief; each is expanded to the table form above when it
 |---|---|---|
 | **organization** (`tenant_organizations`) | `domain`, `visibility`, `state` | Orgs per domain bar · state tiles. The only M58 type with an app-layer visibility predicate — `gateUnits` trims *after* the page is cut, so it needs the full M57 two-arm treatment (rule 3) |
 | **company** (`company_org_profiles`) | `legalForm`, `ownershipCategory`, `countryId`, `industryClass`, `foundedOn`(range), `state` | Legal-form bar · ownership donut · industry (NACE) top-15 bar · foundings-per-year histogram · country bar |
-| **vehicle** (`vehicle_vehicles`) | `typeId`, `brandId`, `modelId`, `color`, `status`, `manufactureDate`(range), `registrationCountry` | Type mix bar · brand top-15 bar · fleet-age histogram · colour bar · status tiles. ⚠️ **Defect (M58 ticket-2 survey):** the colour-by-`platform_colors`-hex component this row used to promise has nothing to hang on — `vehicle_vehicles.color` is plain TEXT with no FK to `platform_colors`. Either the column gains the FK or the component drops; decide in vehicle's own ticket. `brandId` and `registrationCountry` are also two-hop (`vehicle_models.brand_id`, `vehicle_registrations.country_id`). Raw-pgx module — see the guard arm below |
-| **finance-account** (`finance_accounts`) | `institutionId`, `currency`, `accountTypeId`, `status` | Accounts per bank bar · currency donut · type mix bar · status tiles |
-| **finance-card** (`finance_cards`) | `networkId`, `cardType`, `status` | Network bar · debit/credit donut · status tiles |
+| ~~**vehicle**~~ | — | **BUILT (M58 ticket 3)** — see below |
+| ~~**finance-account**~~ / ~~**finance-card**~~ | — | **BUILT (M58 ticket 3)** as `account` and `card` — see below |
 | **institution** (`education_org_profiles`) | `kindId`, `countryId`, `foundedOn`(range), `state` | Kind mix bar · country bar · state tiles |
 | **enrollment** (`person_education_enrollments`) | `institutionId`, `degreeLevelId`, `status`, `effectiveFrom`(range) | Enrollments per intake histogram · degree-level bar (ISCED-ordered, **not** count-ordered) · status tiles. ⚠️ **Defect (M58 ticket-2 survey):** `programId` and `startedOn` name columns that do not exist — the nearest are `field_of_study` (free TEXT, so a `code` facet at best) and `effective_from`. Corrected above. Also has **no top-level list**: only `GET /education/v1/persons/{personId}/enrollments` |
 
 
 | **location** (`location_locations`) | `countryId`, `typeId` | Locations per country bar · type mix bar. ⚠️ **Defect (M58 ticket-2 survey):** `hasCoordinate` is DEGENERATE — `location_locations.geom` is `NOT NULL`, so the facet is constant-true and the geocoded-vs-not tile would always read 100%. Dropped above. Also: `listLocations` REQUIRES a spatial window (`Location:QueryWindowRequired`), so this type needs an unwindowed list mode before it can have a dashboard at all |
 | **languoid** (`language_languoids`) | `level`, `macroarea`, `status`, `family` | Level mix donut · macroarea bar · endangerment-status bar (**ordered by severity**) |
-| **assignment** (`authz_role_assignments`) | `roleId`, `targetUnitId`, `scope`, `graphId`, `active`, `expiresAt`(range) | Grants per role bar · unit-vs-subtree donut · expiring-soon tile + histogram · active-vs-revoked tiles |
+| **assignment** (`authz_role_assignments`) | `roleId`, `targetUnitId`, `scope`, `graphId`, ~~`active`~~, ~~`expiresAt`~~ | Grants per role bar · unit-vs-subtree donut. ⚠️ `listAssignments` returns only ACTIVE assignments and **keeps** that default (decided in ticket 3 — see [open seams](#open-seams)), so `active` and `expiresAt` are **struck** along with the expiring-soon tile and the active-vs-revoked tiles: a distribution whose every row is active is a chart with one bar. Also has **no unconditional list** — it requires exactly one of `subjectPersonId`/`targetUnitId` |
 
 #### `audit` — [audit](../modules/audit.md) · `audit_log` — **BUILT (M58 ticket 1)**
 
@@ -343,6 +342,87 @@ subtree's own branches, repeating all the way down. ④ **Per root religion** ba
 
 **Both are raw-pgx modules**, and that is the fifth kernel assumption M58 has named — see below.
 
+#### `vehicle` — [vehicles](../modules/vehicle.md) · `vehicle_vehicles` — **BUILT (M58 ticket 3)**
+
+The third raw-pgx module, and the first type this vocabulary reached whose facets are all ordinary.
+It is the repetition ticket 2 was supposed to be — see the review entry for what it cost anyway.
+
+| Facet | Kind | Source | Notes |
+|---|---|---|---|
+| `typeId` | ref → vehicle_type | `type_id` | The instance-extensible catalog. NOT NULL |
+| `brandId` | ref → vehicle_brand | `vehicle_models.brand_id` | **TWO-HOP** — a vehicle has no brand column; the brand hangs off its model. Not a new join: `vehicleSelect` has always LEFT JOINed `vehicle_models` and projected the derived `brand_id`. `(unknown)` = the vehicles with no model, which therefore have no brand |
+| `modelId` | ref → vehicle_model | `model_id` | Nullable — a vehicle of a known type may have an unknown model |
+| `color` | ref → color | `color_id` | → `platform_colors` (domain='vehicle'), a **hard FK since M42/D-Color**. See the correction below. Nullable |
+| `status` | enum | `status` | `active` / `scrapped` / `exported` |
+| `manufactureDate` | date-range | `manufacture_date` | A calendar **DATE**, not a timestamptz — so the month bucket inverse sends bare `YYYY-MM-DD` bounds and needs **no** RFC-3339 widening, the opposite of `external_organization.asOf`. Nullable ⇒ mandatory `(unknown)` |
+| `registrationCountry` | ref → country | `vehicle_registrations.country_id` | **ACTIVE registration only**, and that choice is what makes it partition — see below. `(unknown)` = never registered or deregistered |
+
+**Components.** ① **Fleet status** tiles, `scrapped` toned red. ② **Type mix** bar. ③ **Top brands**
+bar. ④ **Colours** bar, **painted the colours it names**. ⑤ **Fleet age** histogram by month of
+manufacture. ⑥ **Registered in** bar.
+
+> **The `color` defect this table used to record DID NOT EXIST.** The ticket-2 survey reported
+> `vehicle_vehicles.color` as free TEXT with no FK, and proposed either adding one or dropping the
+> component. Both were unnecessary: [0009_enrichment.sql:824-834](../../migrations/0009_enrichment.sql)
+> replaced `color` with `color_id uuid REFERENCES oikumenea.platform_colors(id)`, backfilled it,
+> **dropped the old column** and indexed it — under M42/D-Color, long before M58. The survey read the
+> `CREATE TABLE` near the top of a 900-line consolidated migration and never reached the `ALTER` 600
+> lines below it. The lesson is narrow and worth keeping: **since the migration consolidation
+> (46 files → 15), a table's shape is no longer its `CREATE TABLE`** — a column may be added, altered
+> or dropped later in the same file. Grep the column, not the table.
+
+> **A facet that had to choose a SET, and chose the one that partitions.** `vehicle_registrations` is
+> ownership HISTORY — one-to-many, so grouping it raw counts a re-registered vehicle under every
+> country it has ever worn plates in, which would need `Facet.NonPartitioning` and would legitimately
+> earn it (the table is not the listed table). It is instead confined to the **ACTIVE** registration,
+> of which `CloseActiveRegistrationsForVehicle` guarantees at most one per vehicle. That is the
+> `person.rankId` precedent — match the active row — and it is also the question the chart is read
+> for: *where is this fleet registered now*. The exemption exists; it was not taken, because a set
+> that partitions honestly is better than an exemption that is available.
+
+> **ONE aggregate arm**, for `external_organization`'s reason and **not** the ledger's: no row-level
+> security, no unit column, no reach — `vehicle.read` held anywhere is the whole gate.
+
+#### `account` / `card` — [finance](../modules/finance.md) · `finance_accounts`, `finance_cards` — **BUILT (M58 ticket 3)**
+
+The first module to bring **two object types at once**, and `card` is the first type whose
+**collection-level list this vocabulary had to add**.
+
+| Facet | Kind | Source | Notes |
+|---|---|---|---|
+| `account.institutionId` | ref → organization | `institution_id` | The holding **bank** is a `company`-domain `tenant_organizations` row (M21/M41, D-UnifiedOrgGraph), never a finance-owned entity — so the RefType is `organization` and the buckets label through the same resolver that names an org everywhere else. NOT NULL |
+| `account.currency` | code | `currency` | ISO 4217. `KindCode`, not enum: the column carries **no CHECK**, so the value set is open — the `audit.action` case. The key is its own label. Nullable |
+| `account.accountTypeId` | ref → account_type | `account_type_id` | Instance-extensible catalog. Nullable |
+| `account.status` | enum | `status` | `active` / `closed` / `frozen`, `frozen` toned red |
+| `card.networkId` | ref → card_network | `network_id` | Instance-extensible catalog. Nullable |
+| `card.cardType` | enum | `card_type` | `debit` / `credit`. Keyed `cardType`, not `type`: beside `networkId` a bare `type` reads as the card's network |
+| `card.status` | enum | `status` | `active` / `blocked` / `expired` |
+
+**Components.** *account*: ① status tiles ② accounts-per-bank bar ③ currency donut ④ type-mix bar.
+*card*: ① status tiles ② networks bar ③ debit/credit donut.
+
+> **`card` had no collection to describe, so the ticket built one.** Cards were reachable only at
+> `GET /accounts/{accountId}/cards` — unpaged, per account. `GET /cards` is new, and the naming moved
+> with it: the per-account list is now **`listAccountCards`**, beside the `listAccountHolders` already
+> there, and the plain `listCards` names the registry, as every other faceted type's list endpoint
+> does. **HTTP paths are unchanged**, so no client URL broke.
+>
+> The new list is **metadata only**, and that is a compliance boundary rather than a convenience:
+> retained PANs put `finance_cards` in **PCI-DSS CDE scope** (D-DataScope). It returns exactly the
+> projection the per-account list already returned — `bin`, `lastFour`, network, type, status, expiry
+> — under exactly the `finance.read` that already gated it. It **widens the scope of a read the code
+> already permits and discloses no new field**; that is why it needed no new permission code. The PAN
+> is decrypted by `getCard` alone, one card at a time.
+
+> **What has no facet here, and cannot.** `iban_*` and `pan_*` are envelope-encrypted: there is no
+> plaintext to GROUP BY, and D-DataScope's aggregation rule forbids the surface independently of
+> that. The **blind index** is technically groupable and is still not a facet — it is a per-value
+> HMAC, so its distribution is one row per distinct IBAN and its buckets would BE the identifiers.
+> `bin`/`last_four` are clear and are still not facets: they identify one card rather than describing
+> a population, and a top-N over four-digit suffixes ranks nothing.
+
+> **ONE aggregate arm** on both, same reason as `vehicle`.
+
 ### The raw-pgx arm of the parity guards (M58 ticket 2)
 
 `sqlparity_test.go` and `statsparity_test.go` prove a type's list and its dashboard see one world by
@@ -350,10 +430,19 @@ parsing `internal/<module>/adapters/queries/*.sql`: every facet's `sqlc.narg` in
 aggregate half byte-identical across arms. That is a proof about **static text**, and it works because
 sqlc queries are static text.
 
-Four modules are not. `religion` and `externalorg` (this ticket), `vehicle` and `finance` (still to
-come) build SQL at runtime, each by a documented choice in its package doc. They have no `queries`
+Four modules are not. `religion` and `externalorg` (ticket 2), `vehicle` and `finance` (ticket 3)
+build SQL at runtime, each by a documented choice in its package doc. They have no `queries`
 directory at all, so the existing guards cannot see them — and a registered type nothing checks is
 exactly the hole those files' coverage floors exist to refuse.
+
+**All four are now covered, and ticket 3 was the first test of whether the guard generalizes** — it
+was written alongside religion and externalorg, so until three types it had never been applied to one
+it did not already describe. It held without amendment. The one thing it had not seen is **two object
+types in one module**: `account` and `card` both live in `finance`, so the module's AST is parsed
+twice and each group must find its own builder and its own aggregate const. That falls out of the
+existing design (the groups key on the object type and look functions up by name) rather than needing
+a change, but it is the reason `financeAggregate` does not exist: one shared const would satisfy
+neither direction of the branch-coverage check, and the two types' facet sets are disjoint.
 
 The **invariant is unchanged**; only the proof is, because the mechanism the proof was written in does
 not exist here (`pkg/facet/rawpgx_test.go`):
@@ -469,6 +558,23 @@ inverse of a calendar month. Same non-vacuity floor, same live-negative fixtures
 
 ## Open seams
 
+- **`assignment` keeps its implicit active-only filter, and DROPS two catalogued facets.** Decided
+  ahead of its ticket (M58 ticket 3), so the ticket does not re-litigate it. `listAssignments` returns
+  only ACTIVE assignments, which is a hidden default of exactly the shape M56 rejected for
+  `link__member_of` — and the tranche table above catalogues `active` and `expiresAt` facets that
+  cannot coexist with it, since a distribution over `active` whose every row is active is a chart with
+  one bar. The endpoint's semantics stand and **those two facets are struck**: the assignments
+  dashboard describes the ACTIVE grant population and says so. The alternative — dropping the default
+  the way membership did — was rejected because these are not symmetric cases: an ended membership is
+  ordinary directory history, while a revoked grant is a security artefact whose reachability is an
+  authz-plane read-surface decision, not a facet-vocabulary one. `roleId`, `targetUnitId`, `scope` and
+  `graphId` are unaffected.
+- **A table's shape is no longer its `CREATE TABLE`.** The migration consolidation (46 files → 15)
+  means a column may be created near the top of a file and altered or dropped 600 lines below it, in
+  that same file. The M58 ticket-2 survey read `vehicle_vehicles`' `CREATE TABLE`, recorded a defect
+  that had been fixed by an `ALTER` in the same file since M42, and the correction cost ticket 3 a
+  round of re-deciding. Nothing structural to fix — but **grep the column, not the table**, and prefer
+  the live schema to the DDL when both are available.
 - **Two M58 types have no RID token of their own.** `company` (`company_org_profiles`) and
   `institution` (`education_org_profiles`) are **sidecar tables on `tenant_organizations`**
   (M41 / D-UnifiedOrgGraph): their primary keys FK to `tenant_organizations(id)`, whose RID is

@@ -63,6 +63,23 @@ number-types); `createVehicle`/`listVehicles`/`getVehicle`/`updateVehicle`/`dele
 (`GET /geo/v1/places?country=&placetype=region`). Translatable catalog names are returned as a
 `locale → text` map (D-i18n); vehicle/registration display labels are best-effort default-locale strings.
 
+**Facets and the dashboard (M58 ticket 3 / D-ObjectFacets).** `listVehicles` takes seven facet
+filters — `typeId`, `brandId`, `modelId`, `color`, `status`, `manufactureDateFrom`/`To`,
+`registrationCountry` — and `vehicleStats` (`GET /stats/vehicles`, never `/vehicles/stats`: the router
+rejects a literal sibling of `{vehicleId}`) returns the same set's distributions plus `totalCount`.
+One shared `buildVehicleFilter` serves both paths, proved by AST rather than by sqlc narg parity —
+this module writes SQL at runtime and has no `queries/` directory (see
+[facets.md](../architecture/facets.md#the-raw-pgx-arm-of-the-parity-guards-m58-ticket-2)). ONE
+aggregate arm: no row-level security, no unit column, no reach, so `vehicle.read` held anywhere is
+the whole visibility decision.
+
+Two facets are worth knowing about before reading a chart. `brandId` is **two-hop** — a vehicle has
+no brand column, so it matches through the model, and vehicles with no model land in `(unknown)`.
+`registrationCountry` counts the **ACTIVE** registration only: registration is one-to-many ownership
+history, so the alternative would count a re-registered vehicle under every country it has ever worn
+plates in. Confined to the active row (at most one per vehicle) the distribution partitions, and it
+answers the question the chart exists for — where the fleet is registered *now*.
+
 ## Dependencies
 
 - [company](company.md) (M21) — the manufacturer behind a brand + a company owner of a registration.

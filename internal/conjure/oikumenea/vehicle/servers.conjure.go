@@ -32,7 +32,30 @@ type VehicleService interface {
 	ListRegistrationNumberTypes(ctx context.Context, authHeader bearertoken.Token) (RegistrationNumberTypeList, error)
 	UpsertRegistrationNumberType(ctx context.Context, authHeader bearertoken.Token, requestArg UpsertNumberTypeRequest) (RegistrationNumberType, error)
 	CreateVehicle(ctx context.Context, authHeader bearertoken.Token, requestArg CreateVehicleRequest) (Vehicle, error)
-	ListVehicles(ctx context.Context, authHeader bearertoken.Token, queryArg *string, pageSizeArg *int, pageTokenArg *string) (VehiclePage, error)
+	/*
+	   List vehicles, token-paginated, narrowed by any combination of the facet filters below
+	   (M58 / D-ObjectFacets). Every filter here is also a distribution on `vehicleStats`, so a
+	   dashboard and a list are two renderings of one request state. Gated by `vehicle.read`.
+	*/
+	ListVehicles(ctx context.Context, authHeader bearertoken.Token, queryArg *string, typeIdArg *string, brandIdArg *string, modelIdArg *string, colorArg *string, statusArg *string, manufactureDateFromArg *string, manufactureDateToArg *string, registrationCountryArg *string, pageSizeArg *int, pageTokenArg *string) (VehiclePage, error)
+	/*
+	   Facet distributions over the fleet — the dashboard half of the facet vocabulary (M58 /
+	   D-ObjectFacets). Takes exactly the filter args `listVehicles` takes (minus paging) plus an
+	   optional `facets` CSV, so a dashboard and a list are two renderings of ONE request state
+	   and a chart segment is a link to the same URL with one more filter applied.
+
+	   `totalCount` equals the number of rows exhaustively paging `listVehicles` with these same
+	   filters would return. One round-trip serves the whole dashboard.
+
+	   ONE aggregate arm, with no subject and no scoped twin — for the same reason
+	   `externalOrgStats` has one, and NOT the audit ledger's reason. `vehicle_vehicles` carries no
+	   row-level security, no unit column and no reach predicate: `vehicle.read` held anywhere is
+	   the whole visibility decision, so there is nothing for a second arm to narrow.
+
+	   The path is `/stats/vehicles` rather than `/vehicles/stats` because the server's router
+	   rejects a literal path segment that is a sibling of `{vehicleId}`.
+	*/
+	VehicleStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, queryArg *string, typeIdArg *string, brandIdArg *string, modelIdArg *string, colorArg *string, statusArg *string, manufactureDateFromArg *string, manufactureDateToArg *string, registrationCountryArg *string) (VehicleStats, error)
 	GetVehicle(ctx context.Context, authHeader bearertoken.Token, vehicleIdArg string) (Vehicle, error)
 	UpdateVehicle(ctx context.Context, authHeader bearertoken.Token, vehicleIdArg string, requestArg UpdateVehicleRequest) (Vehicle, error)
 	DeleteVehicle(ctx context.Context, authHeader bearertoken.Token, vehicleIdArg string) error
@@ -84,6 +107,9 @@ func RegisterRoutesVehicleService(router wrouter.Router, impl VehicleService, ro
 	}
 	if err := resource.Get("ListVehicles", "/vehicle/v1/vehicles", httpserver.NewJSONHandler(handler.HandleListVehicles, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add listVehicles route")
+	}
+	if err := resource.Get("VehicleStats", "/vehicle/v1/stats/vehicles", httpserver.NewJSONHandler(handler.HandleVehicleStats, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add vehicleStats route")
 	}
 	if err := resource.Get("GetVehicle", "/vehicle/v1/vehicles/{vehicleId}", httpserver.NewJSONHandler(handler.HandleGetVehicle, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add getVehicle route")
@@ -290,6 +316,46 @@ func (v *vehicleServiceHandler) HandleListVehicles(rw http.ResponseWriter, req *
 		queryArgInternal := queryArgStr
 		queryArg = &queryArgInternal
 	}
+	var typeIdArg *string
+	if typeIdArgStr := req.URL.Query().Get("typeId"); typeIdArgStr != "" {
+		typeIdArgInternal := typeIdArgStr
+		typeIdArg = &typeIdArgInternal
+	}
+	var brandIdArg *string
+	if brandIdArgStr := req.URL.Query().Get("brandId"); brandIdArgStr != "" {
+		brandIdArgInternal := brandIdArgStr
+		brandIdArg = &brandIdArgInternal
+	}
+	var modelIdArg *string
+	if modelIdArgStr := req.URL.Query().Get("modelId"); modelIdArgStr != "" {
+		modelIdArgInternal := modelIdArgStr
+		modelIdArg = &modelIdArgInternal
+	}
+	var colorArg *string
+	if colorArgStr := req.URL.Query().Get("color"); colorArgStr != "" {
+		colorArgInternal := colorArgStr
+		colorArg = &colorArgInternal
+	}
+	var statusArg *string
+	if statusArgStr := req.URL.Query().Get("status"); statusArgStr != "" {
+		statusArgInternal := statusArgStr
+		statusArg = &statusArgInternal
+	}
+	var manufactureDateFromArg *string
+	if manufactureDateFromArgStr := req.URL.Query().Get("manufactureDateFrom"); manufactureDateFromArgStr != "" {
+		manufactureDateFromArgInternal := manufactureDateFromArgStr
+		manufactureDateFromArg = &manufactureDateFromArgInternal
+	}
+	var manufactureDateToArg *string
+	if manufactureDateToArgStr := req.URL.Query().Get("manufactureDateTo"); manufactureDateToArgStr != "" {
+		manufactureDateToArgInternal := manufactureDateToArgStr
+		manufactureDateToArg = &manufactureDateToArgInternal
+	}
+	var registrationCountryArg *string
+	if registrationCountryArgStr := req.URL.Query().Get("registrationCountry"); registrationCountryArgStr != "" {
+		registrationCountryArgInternal := registrationCountryArgStr
+		registrationCountryArg = &registrationCountryArgInternal
+	}
 	var pageSizeArg *int
 	if pageSizeArgStr := req.URL.Query().Get("pageSize"); pageSizeArgStr != "" {
 		pageSizeArgInternal, err := strconv.Atoi(pageSizeArgStr)
@@ -303,7 +369,70 @@ func (v *vehicleServiceHandler) HandleListVehicles(rw http.ResponseWriter, req *
 		pageTokenArgInternal := pageTokenArgStr
 		pageTokenArg = &pageTokenArgInternal
 	}
-	respArg, err := v.impl.ListVehicles(req.Context(), bearertoken.Token(authHeader), queryArg, pageSizeArg, pageTokenArg)
+	respArg, err := v.impl.ListVehicles(req.Context(), bearertoken.Token(authHeader), queryArg, typeIdArg, brandIdArg, modelIdArg, colorArg, statusArg, manufactureDateFromArg, manufactureDateToArg, registrationCountryArg, pageSizeArg, pageTokenArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (v *vehicleServiceHandler) HandleVehicleStats(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var facetsArg *string
+	if facetsArgStr := req.URL.Query().Get("facets"); facetsArgStr != "" {
+		facetsArgInternal := facetsArgStr
+		facetsArg = &facetsArgInternal
+	}
+	var queryArg *string
+	if queryArgStr := req.URL.Query().Get("query"); queryArgStr != "" {
+		queryArgInternal := queryArgStr
+		queryArg = &queryArgInternal
+	}
+	var typeIdArg *string
+	if typeIdArgStr := req.URL.Query().Get("typeId"); typeIdArgStr != "" {
+		typeIdArgInternal := typeIdArgStr
+		typeIdArg = &typeIdArgInternal
+	}
+	var brandIdArg *string
+	if brandIdArgStr := req.URL.Query().Get("brandId"); brandIdArgStr != "" {
+		brandIdArgInternal := brandIdArgStr
+		brandIdArg = &brandIdArgInternal
+	}
+	var modelIdArg *string
+	if modelIdArgStr := req.URL.Query().Get("modelId"); modelIdArgStr != "" {
+		modelIdArgInternal := modelIdArgStr
+		modelIdArg = &modelIdArgInternal
+	}
+	var colorArg *string
+	if colorArgStr := req.URL.Query().Get("color"); colorArgStr != "" {
+		colorArgInternal := colorArgStr
+		colorArg = &colorArgInternal
+	}
+	var statusArg *string
+	if statusArgStr := req.URL.Query().Get("status"); statusArgStr != "" {
+		statusArgInternal := statusArgStr
+		statusArg = &statusArgInternal
+	}
+	var manufactureDateFromArg *string
+	if manufactureDateFromArgStr := req.URL.Query().Get("manufactureDateFrom"); manufactureDateFromArgStr != "" {
+		manufactureDateFromArgInternal := manufactureDateFromArgStr
+		manufactureDateFromArg = &manufactureDateFromArgInternal
+	}
+	var manufactureDateToArg *string
+	if manufactureDateToArgStr := req.URL.Query().Get("manufactureDateTo"); manufactureDateToArgStr != "" {
+		manufactureDateToArgInternal := manufactureDateToArgStr
+		manufactureDateToArg = &manufactureDateToArgInternal
+	}
+	var registrationCountryArg *string
+	if registrationCountryArgStr := req.URL.Query().Get("registrationCountry"); registrationCountryArgStr != "" {
+		registrationCountryArgInternal := registrationCountryArgStr
+		registrationCountryArg = &registrationCountryArgInternal
+	}
+	respArg, err := v.impl.VehicleStats(req.Context(), bearertoken.Token(authHeader), facetsArg, queryArg, typeIdArg, brandIdArg, modelIdArg, colorArg, statusArg, manufactureDateFromArg, manufactureDateToArg, registrationCountryArg)
 	if err != nil {
 		return err
 	}

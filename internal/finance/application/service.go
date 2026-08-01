@@ -26,6 +26,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/pkg/crypto"
 	"github.com/olegamysk/go-oikumenea/pkg/listing"
 	"github.com/olegamysk/go-oikumenea/pkg/personalcode"
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 
@@ -48,7 +49,16 @@ type Service struct {
 	audit   *auditapp.Service
 	cipher  *crypto.Cipher
 	codes   *personalcode.Registry
+	// labeler resolves ref-bucket RIDs to locale->text names; injected at the composition root. ONE
+	// labeler serves both object types this module owns — it dispatches on the ref TYPE token, and
+	// account's `organization` buckets and card's `card_network` buckets are different tokens.
+	labeler stats.Labeler
 }
+
+// SetBucketLabeler injects the composition root's ref-bucket resolver (bank organization, account-type
+// and card-network RIDs to locale->text names). Set once at boot; a nil labeler simply leaves buckets
+// unlabelled, exactly as an unresolvable id does.
+func (s *Service) SetBucketLabeler(l stats.Labeler) { s.labeler = l }
 
 // NewService wires the service with the pool, repository factory, audit service, the envelope cipher
 // (D-CryptoProvider), and the personal-code validator registry (D-PersonalCodes, for IBAN/PAN).
@@ -151,8 +161,11 @@ func (s *Service) GetAccount(ctx context.Context, id string) (domain.Account, er
 }
 
 // ListAccounts returns accounts WITHOUT the decrypted IBAN (never listed).
-func (s *Service) ListAccounts(ctx context.Context, institutionID, after string, pageSize int) ([]domain.Account, error) {
-	stored, err := s.newRepo(s.querier(ctx)).ListAccounts(ctx, institutionID, after, clampPageSize(pageSize)+1)
+func (s *Service) ListAccounts(ctx context.Context, after string, f domain.AccountFilter, pageSize int) ([]domain.Account, error) {
+	if err := f.Validate(); err != nil {
+		return nil, err
+	}
+	stored, err := s.newRepo(s.querier(ctx)).ListAccounts(ctx, after, f, clampPageSize(pageSize)+1)
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +280,10 @@ func (s *Service) EndAccountHolding(ctx context.Context, holderID string) (domai
 
 // ============================ cards ============================
 
-func (s *Service) ListCards(ctx context.Context, accountID string) ([]domain.Card, error) {
+// ListAccountCards is the per-account view, renamed from ListCards in M58 ticket 3 when the plain
+// name went to the instance-wide registry below (the contract made the same move: listAccountCards
+// sits beside listAccountHolders, and the HTTP path is unchanged).
+func (s *Service) ListAccountCards(ctx context.Context, accountID string) ([]domain.Card, error) {
 	if _, err := s.newRepo(s.querier(ctx)).GetAccount(ctx, accountID); err != nil {
 		return nil, mapNotFound(err, domain.ErrAccountNotFound)
 	}
@@ -280,6 +296,55 @@ func (s *Service) ListCards(ctx context.Context, accountID string) ([]domain.Car
 		out = append(out, toCard(c, "")) // PAN not decrypted in a list
 	}
 	return out, nil
+}
+
+// ListCards pages the INSTANCE-WIDE card registry (M58 ticket 3) — the collection-level list the card
+// dashboard describes. Cards were previously reachable only through their account, so there was no
+// collection for a facet vocabulary to page or count.
+//
+// toCard is called with an empty PAN, exactly as the per-account list does: this endpoint widens the
+// SCOPE of a read `finance.read` already permits and discloses no field the per-account list did not
+// already return. The PAN is decrypted by GetCard alone (PCI-DSS Req 3; D-DataScope CDE scope).
+func (s *Service) ListCards(ctx context.Context, after string, f domain.CardFilter, pageSize int) ([]domain.Card, error) {
+	if err := f.Validate(); err != nil {
+		return nil, err
+	}
+	stored, err := s.newRepo(s.querier(ctx)).ListCards(ctx, after, f, clampPageSize(pageSize)+1)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Card, 0, len(stored))
+	for _, c := range stored {
+		out = append(out, toCard(c, ""))
+	}
+	return out, nil
+}
+
+// AccountStats and CardStats are the dashboard halves of the facet vocabulary (M58 ticket 3 /
+// D-ObjectFacets): the same filters their lists take, aggregated instead of paged.
+//
+// Both call stats.Compute with isAdmin=true, which is the arm convention's way of saying "no
+// visibility predicate" — and here that is a statement of fact rather than a privilege escalation.
+// Neither finance_accounts nor finance_cards carries row-level security or a unit reach; the
+// transport has already required `finance.read`, which is the whole gate on the list endpoints too,
+// so any caller who reaches these lines may read every row they count. A scoped arm would have
+// nothing to narrow.
+func (s *Service) AccountStats(ctx context.Context, f domain.AccountFilter, sel stats.Selection) (stats.Result, error) {
+	if err := f.Validate(); err != nil {
+		return stats.Result{}, err
+	}
+	return stats.Compute(ctx, s.labeler, sel, true, "", func(string) ([]stats.Group, error) {
+		return s.newRepo(s.querier(ctx)).AccountStats(ctx, f, sel)
+	})
+}
+
+func (s *Service) CardStats(ctx context.Context, f domain.CardFilter, sel stats.Selection) (stats.Result, error) {
+	if err := f.Validate(); err != nil {
+		return stats.Result{}, err
+	}
+	return stats.Compute(ctx, s.labeler, sel, true, "", func(string) ([]stats.Group, error) {
+		return s.newRepo(s.querier(ctx)).CardStats(ctx, f, sel)
+	})
 }
 
 // AddCard validates + encrypts the PAN (deriving BIN + last-4 from the normalized digits), guards the

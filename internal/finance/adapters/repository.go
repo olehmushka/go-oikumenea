@@ -156,6 +156,11 @@ func (r *Repository) UpsertCardNetwork(ctx context.Context, code, name string, s
 const accountCols = `id, institution_id, iban_ciphertext, iban_wrapped_dek, key_ref, iban_blind_index,
 	currency, account_type_id, status, created_at, updated_at`
 
+// accountColsA is accountCols qualified with the `a` alias buildAccountFilter's predicate expects.
+// Same column list in the same order, so scanAccountRows serves both.
+const accountColsA = `a.id, a.institution_id, a.iban_ciphertext, a.iban_wrapped_dek, a.key_ref,
+	a.iban_blind_index, a.currency, a.account_type_id, a.status, a.created_at, a.updated_at`
+
 func (r *Repository) InsertAccount(ctx context.Context, in domain.AccountInput) (domain.StoredAccount, error) {
 	row := r.c.QueryRow(ctx, `
 		INSERT INTO oikumenea.finance_accounts
@@ -173,13 +178,23 @@ func (r *Repository) GetAccount(ctx context.Context, id string) (domain.StoredAc
 	return scanAccount(row)
 }
 
-func (r *Repository) ListAccounts(ctx context.Context, institutionID, after string, lim int) ([]domain.StoredAccount, error) {
-	rows, err := r.c.Query(ctx, `SELECT `+accountCols+`
-		FROM oikumenea.finance_accounts
-		WHERE deleted_at IS NULL
-		  AND ($1 = '' OR institution_id = $1::uuid)
-		  AND ($2 = '' OR id > $2::uuid)
-		ORDER BY id LIMIT $3`, institutionID, after, lim)
+// ListAccounts pages the same candidate set AccountStats aggregates, under the same filters — the
+// WHERE comes from buildAccountFilter, which is the one place either path may build a predicate
+// (M58 ticket 3; pkg/facet/rawpgx_test.go proves the call by AST). The keyset cursor is appended
+// HERE and not in the builder: a page boundary is not a filter.
+//
+// The projection is accountCols, which carries the envelope columns because the application layer
+// decrypts on getAccount — it never decrypts for a list, and the transport's list mapper drops them.
+func (r *Repository) ListAccounts(ctx context.Context, after string, f domain.AccountFilter, lim int) ([]domain.StoredAccount, error) {
+	b := &argBuf{}
+	where := buildAccountFilter(b, f)
+	if after != "" {
+		where += " AND a.id > " + b.add(after) + "::uuid"
+	}
+	rows, err := r.c.Query(ctx, `SELECT `+accountColsA+`
+		FROM oikumenea.finance_accounts a
+		WHERE `+where+`
+		ORDER BY a.id LIMIT `+b.add(lim), b.args...)
 	if err != nil {
 		return nil, err
 	}
@@ -324,6 +339,12 @@ func scanHolderRows(rows pgx.Rows) (domain.AccountHolder, error) {
 const cardCols = `id, account_id, pan_ciphertext, pan_wrapped_dek, key_ref, pan_blind_index, bin, last_four,
 	network_id, card_type, expiry_month, expiry_year, cardholder_person_id, status, created_at, updated_at`
 
+// cardColsC is cardCols qualified with the `c` alias buildCardFilter's predicate expects. Same column
+// list in the same order, so scanCardRows serves both.
+const cardColsC = `c.id, c.account_id, c.pan_ciphertext, c.pan_wrapped_dek, c.key_ref, c.pan_blind_index,
+	c.bin, c.last_four, c.network_id, c.card_type, c.expiry_month, c.expiry_year, c.cardholder_person_id,
+	c.status, c.created_at, c.updated_at`
+
 func (r *Repository) InsertCard(ctx context.Context, accountID string, in domain.CardInput) (domain.StoredCard, error) {
 	row := r.c.QueryRow(ctx, `
 		INSERT INTO oikumenea.finance_cards
@@ -346,6 +367,42 @@ func (r *Repository) ListCardsByAccount(ctx context.Context, accountID string) (
 	rows, err := r.c.Query(ctx, `SELECT `+cardCols+`
 		FROM oikumenea.finance_cards WHERE account_id = $1 AND deleted_at IS NULL
 		ORDER BY created_at DESC`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.StoredCard
+	for rows.Next() {
+		c, err := scanCardRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// ListCards pages the instance-wide card registry — the collection-level list M58 ticket 3 added so
+// the card dashboard has a set to describe. It shares buildCardFilter with CardStats, which is what
+// makes a chart segment and a filter the same act (pkg/facet/rawpgx_test.go proves the call by AST).
+//
+// Keyset on `id`, matching ListAccounts, rather than ListCardsByAccount's `created_at DESC`: that one
+// returns one account's few cards unpaged, where a stable unique cursor buys nothing; this one pages
+// the whole table and a non-unique ORDER BY column would drop rows across a page boundary — the
+// defect M58 ticket 2 found in listTaxa, which had ordered by one thing and paged on another.
+//
+// The projection is cardCols, which carries the envelope columns; the transport's LIST mapper drops
+// them. The PAN is decrypted only by getCard, one card at a time (PCI-DSS Req 3; D-DataScope).
+func (r *Repository) ListCards(ctx context.Context, after string, f domain.CardFilter, lim int) ([]domain.StoredCard, error) {
+	b := &argBuf{}
+	where := buildCardFilter(b, f)
+	if after != "" {
+		where += " AND c.id > " + b.add(after) + "::uuid"
+	}
+	rows, err := r.c.Query(ctx, `SELECT `+cardColsC+`
+		FROM oikumenea.finance_cards c
+		WHERE `+where+`
+		ORDER BY c.id LIMIT `+b.add(lim), b.args...)
 	if err != nil {
 		return nil, err
 	}

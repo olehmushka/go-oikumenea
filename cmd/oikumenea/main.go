@@ -39,6 +39,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/externalorg"
 	externalorgapp "github.com/olegamysk/go-oikumenea/internal/externalorg/application"
 	"github.com/olegamysk/go-oikumenea/internal/finance"
+	financeapp "github.com/olegamysk/go-oikumenea/internal/finance/application"
 	"github.com/olegamysk/go-oikumenea/internal/geo"
 	"github.com/olegamysk/go-oikumenea/internal/identityfederation"
 	identityapp "github.com/olegamysk/go-oikumenea/internal/identityfederation/application"
@@ -68,6 +69,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/search"
 	"github.com/olegamysk/go-oikumenea/internal/tenant"
 	"github.com/olegamysk/go-oikumenea/internal/vehicle"
+	vehicleapp "github.com/olegamysk/go-oikumenea/internal/vehicle/application"
 	"github.com/olegamysk/go-oikumenea/internal/watchlistclient"
 	"github.com/olegamysk/go-oikumenea/pkg/authn"
 	"github.com/olegamysk/go-oikumenea/pkg/config/envoverlay"
@@ -490,8 +492,9 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// model/type catalogs, the vehicle object (VIN), the brand→manufacturer link, and the ownership+
 	// plate registration record (plate region → the WOF geo_places gazetteer). Writes record via the
 	// audit service; translatable catalog names assemble via localization.
+	var vehicleSvc *vehicleapp.Service
 	if install.ModuleEnabled("vehicle") {
-		vehicleSvc, err := vehicle.Register(info, pool, auditSvc, locSvc, enforcer, colorSvc)
+		vehicleSvc, err = vehicle.Register(info, pool, auditSvc, locSvc, enforcer, colorSvc)
 		if err != nil {
 			cleanup()
 			return nil, err
@@ -505,8 +508,9 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	// tenant organization (M21/M41); ownership is a polymorphic person|company holder link. Reuses the
 	// shared cipher (D-CryptoProvider) + the personal-code validator registry (D-PersonalCodes: IBAN/PAN)
 	// already built for the document module. A person purge crypto-erases solely-held accounts + cards.
+	var financeSvc *financeapp.Service
 	if install.ModuleEnabled("finance") {
-		financeSvc, err := finance.Register(info, pool, auditSvc, locSvc, enforcer, cipher, personalcode.New())
+		financeSvc, err = finance.Register(info, pool, auditSvc, locSvc, enforcer, cipher, personalcode.New())
 		if err != nil {
 			cleanup()
 			return nil, err
@@ -614,6 +618,12 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	}
 	if religionSvc != nil {
 		religionSvc.SetBucketLabeler(statsLabeler)
+	}
+	if vehicleSvc != nil {
+		vehicleSvc.SetBucketLabeler(statsLabeler)
+	}
+	if financeSvc != nil {
+		financeSvc.SetBucketLabeler(statsLabeler)
 	}
 
 	// Identity-federation: the external-IdP seam. Its application service is the (issuer, subject)

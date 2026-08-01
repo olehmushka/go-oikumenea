@@ -173,6 +173,47 @@ types:
       ManufacturerList:
         fields:
           manufacturers: list<Manufacturer>
+      # ---- facet distributions (M58 / D-ObjectFacets) ----
+      FacetBucket:
+        docs: |
+          One bucket of a facet distribution (M58 / D-ObjectFacets).
+
+          `key` is the bucket's stable, locale-agnostic identity — an enum value, a `YYYY-MM` month,
+          or a RID for a `ref` facet — and is exactly what you pass back as the corresponding query
+          filter, which is what makes a chart segment and a filter the same act. Two synthetic keys
+          never name a real value: `(unknown)` is the NULL bucket (mandatory for a nullable column,
+          so the gap is visible rather than dropped) and `(other)` is a top-N facet's collapsed tail;
+          neither is a usable filter value.
+
+          `label` carries a display name as a locale → text map (D-i18n) and is present only for
+          `ref` buckets, whose keys are RIDs. Best effort — an id with no resolvable name simply
+          carries no label.
+        fields:
+          key: string
+          label: optional<map<string, string>>
+          count: integer
+      FacetDistribution:
+        docs: |
+          One facet's buckets, in chart order — for an enum, the declared CHECK-set order with
+          zero-count buckets included so a chart's shape is stable across filterings; for the
+          manufactureDate histogram, ascending by month; for a ref facet, descending by count with
+          `(other)`/`(unknown)` last.
+        fields:
+          facet: string
+          buckets: list<FacetBucket>
+      VehicleStats:
+        docs: |
+          Facet distributions over the SAME set `listVehicles` returns under the same filters
+          (M58 / D-ObjectFacets): `totalCount` is what exhaustively paging that endpoint would yield,
+          not an estimate and not a page count.
+
+          Every facet here partitions the result set — each counted row lands in exactly one bucket
+          of each distribution, so a distribution's counts sum to `totalCount`. `registrationCountry`
+          partitions too, and does so BECAUSE it is confined to the one ACTIVE registration a vehicle
+          may hold; the ownership history behind it is one-to-many and would not.
+        fields:
+          totalCount: integer
+          facets: list<FacetDistribution>
       # ---- request bodies ----
       UpsertVehicleTypeRequest:
         docs: Create/update (by code) a vehicle-type catalog node. name is the default-locale fallback.
@@ -339,11 +380,59 @@ services:
         returns: Vehicle
       listVehicles:
         http: GET /vehicles
+        docs: |
+          List vehicles, token-paginated, narrowed by any combination of the facet filters below
+          (M58 / D-ObjectFacets). Every filter here is also a distribution on `vehicleStats`, so a
+          dashboard and a list are two renderings of one request state. Gated by `vehicle.read`.
         args:
           query:
             type: optional<string>
             param-type: query
             docs: Optional case-insensitive VIN filter.
+          typeId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — vehicle-type RID (`vehicle_types`).
+          brandId:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Facet filter — brand RID. TWO-HOP: the brand hangs off the vehicle's model
+              (`vehicle_models.brand_id`), so this matches vehicles whose model belongs to the brand.
+          modelId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — model RID (`vehicle_models`). Nullable column; the no-model rows are the `(unknown)` bucket.
+          color:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Facet filter — colour RID (`platform_colors`, domain='vehicle' — D-Color/M42). A hard FK,
+              not free text.
+          status:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — `active` | `scrapped` | `exported`.
+          manufactureDateFrom:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Facet filter — INCLUSIVE lower bound on `manufactureDate` (`YYYY-MM-DD`). A calendar
+              DATE, not a datetime. Vehicles with no manufacture date are excluded whenever either
+              bound is set; the no-date set is a distinct bucket on the stats endpoint.
+          manufactureDateTo:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — INCLUSIVE upper bound on `manufactureDate` (`YYYY-MM-DD`).
+          registrationCountry:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Facet filter — country RID of the vehicle's ACTIVE registration
+              (`vehicle_registrations.country_id` where status='active'). An EXISTS semi-join, never a
+              join: registration is ownership HISTORY, and joining it would multiply a vehicle across
+              every country it has ever worn plates in. A vehicle holds at most one active
+              registration, so this filter and its distribution both partition.
           pageSize:
             type: optional<integer>
             param-type: query
@@ -351,6 +440,69 @@ services:
             type: optional<string>
             param-type: query
         returns: VehiclePage
+      vehicleStats:
+        http: GET /stats/vehicles
+        docs: |
+          Facet distributions over the fleet — the dashboard half of the facet vocabulary (M58 /
+          D-ObjectFacets). Takes exactly the filter args `listVehicles` takes (minus paging) plus an
+          optional `facets` CSV, so a dashboard and a list are two renderings of ONE request state
+          and a chart segment is a link to the same URL with one more filter applied.
+
+          `totalCount` equals the number of rows exhaustively paging `listVehicles` with these same
+          filters would return. One round-trip serves the whole dashboard.
+
+          ONE aggregate arm, with no subject and no scoped twin — for the same reason
+          `externalOrgStats` has one, and NOT the audit ledger's reason. `vehicle_vehicles` carries no
+          row-level security, no unit column and no reach predicate: `vehicle.read` held anywhere is
+          the whole visibility decision, so there is nothing for a second arm to narrow.
+
+          The path is `/stats/vehicles` rather than `/vehicles/stats` because the server's router
+          rejects a literal path segment that is a sibling of `{vehicleId}`.
+        args:
+          facets:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Optional comma-separated facet keys to compute (`typeId,status,color`). Omitted or empty
+              means EVERY facet; a list of nothing (`,`) means none, i.e. `totalCount` alone. Naming a
+              facet this type does not declare is a 400.
+          query:
+            type: optional<string>
+            param-type: query
+            docs: Optional case-insensitive VIN filter.
+          typeId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — vehicle-type RID.
+          brandId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — brand RID (two-hop via the model).
+          modelId:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — model RID.
+          color:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — colour RID (`platform_colors`).
+          status:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — `active` | `scrapped` | `exported`.
+          manufactureDateFrom:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — INCLUSIVE lower bound on `manufactureDate` (`YYYY-MM-DD`).
+          manufactureDateTo:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — INCLUSIVE upper bound on `manufactureDate` (`YYYY-MM-DD`).
+          registrationCountry:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — country RID of the ACTIVE registration.
+        returns: VehicleStats
       getVehicle:
         http: GET /vehicles/{vehicleId}
         args:

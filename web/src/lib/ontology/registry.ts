@@ -102,7 +102,15 @@ export type RefControl =
   | "externalOrgKind"
   | "taxon"
   | "taxonRank"
-  | "classification";
+  | "classification"
+  // M58 ticket 3. Banks reuse `org` — a bank IS a company-domain tenant organization (M41), not a
+  // finance-owned entity, so a separate control would be a second list of the same rows.
+  | "vehicleType"
+  | "brand"
+  | "model"
+  | "color"
+  | "accountType"
+  | "cardNetwork";
 
 /**
  * One filterable dimension of an object type — the console half of a `pkg/facet` Facet.
@@ -210,6 +218,18 @@ export interface ChartDef {
   splitBy?: { param: string; values: string[] };
   /** stat only: a number computed from the distribution (a ratio) or from an extra bounded count */
   derived?: "revocationRate" | "expiringSoon";
+  /**
+   * Paint each segment with the colour its bucket NAMES, resolved from the `platform_colors` palette
+   * (M42 / D-Color) — the one chart in the console where colour is the data rather than an encoding
+   * chosen for it. Only legal on a `ref` facet whose RefType is `color`, which is what keeps it from
+   * spreading: a bucket key must be a palette RID for a hex to exist to look up.
+   *
+   * It does NOT violate theme.ts's "colour is assigned by job" rule, because it is not carrying
+   * identity — the relief rule still holds, the bar ships its direct label and count, and a bucket
+   * whose palette row has no `hex` (the column is optional) simply falls back to the magnitude fill.
+   * White and silver segments get a hairline border for the same reason.
+   */
+  swatch?: "color";
   /** the SQL semantics an operator would otherwise reverse-engineer from a surprising count */
   note?: string;
 }
@@ -1980,6 +2000,207 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
       { label: "Wikidata", value: (t) => s(t.wikidataId), render: "mono" },
     ],
   },
+
+  vehicle: {
+    type: "vehicle",
+    kind: "object",
+    label: "Vehicle",
+    labelPlural: "Vehicles",
+    module: "vehicle",
+    blurb:
+      "A physical vehicle at registry grade (D-Vehicles) — catalog-typed, optionally VIN-identified, " +
+      "with its ownership + plate history as registrations.",
+    list: {
+      path: "/vehicle/v1/vehicles",
+      search: "?pageSize=50",
+      searchParam: "query",
+      parse: pageParse("vehicles"),
+    },
+    get: (id) => `/vehicle/v1/vehicles/${id}`,
+    title: (v) => s(v.vin) || ridTail(v.id),
+    subtitle: (v) => s(v.modelLabel) || s(v.typeLabel),
+    columns: [
+      { key: "vin", header: "VIN", value: (v) => s(v.vin), render: "mono" },
+      { key: "type", header: "Type", value: (v) => s(v.typeLabel) || ridTail(s(v.typeId) ?? ""), render: "pill", tone: () => "slate" },
+      { key: "brand", header: "Brand", value: (v) => s(v.brandLabel) },
+      { key: "model", header: "Model", value: (v) => s(v.modelLabel) },
+      { key: "color", header: "Colour", value: (v) => s(v.colorLabel) },
+      { key: "manufactureDate", header: "Manufactured", value: (v) => s(v.manufactureDate) },
+      { key: "status", header: "Status", value: (v) => s(v.status), render: "pill", tone: (v) => (s(v.status) === "active" ? "green" : "slate") },
+    ],
+    filters: [
+      { key: "typeId", kind: "ref", label: "Type", params: ["typeId"], control: "vehicleType" },
+      { key: "brandId", kind: "ref", label: "Brand", params: ["brandId"], control: "brand",
+        hint: "Two-hop: a vehicle's brand comes from its model, so vehicles with no model are excluded." },
+      { key: "modelId", kind: "ref", label: "Model", params: ["modelId"], control: "model", dependsOn: "brandId" },
+      { key: "color", kind: "ref", label: "Colour", params: ["color"], control: "color" },
+      {
+        key: "status", kind: "enum", label: "Status", params: ["status"],
+        values: [
+          { value: "active", label: "Active" },
+          { value: "scrapped", label: "Scrapped" },
+          { value: "exported", label: "Exported" },
+        ],
+      },
+      {
+        // A calendar DATE (manufacture_date is a `date` column), so NO argType — the month bucket
+        // inverse sends bare YYYY-MM-DD bounds, the opposite of external_organization.asOf.
+        key: "manufactureDate", kind: "date-range", label: "Manufactured", params: ["manufactureDateFrom", "manufactureDateTo"],
+        buckets: "dateTrunc",
+        hint: "Inclusive bounds; either one excludes vehicles with no recorded manufacture date.",
+      },
+      { key: "registrationCountry", kind: "ref", label: "Registered in", params: ["registrationCountry"], control: "country",
+        hint: "The country of the vehicle's ACTIVE registration — where it is registered now, not everywhere it has been." },
+    ],
+    dashboard: {
+      path: "/vehicle/v1/stats/vehicles",
+      charts: [
+        { key: "status", title: "Fleet status", form: "tiles", facet: "status", tone: { active: "green", scrapped: "red", exported: "amber" } },
+        { key: "typeId", title: "Type mix", form: "bar", facet: "typeId", orientation: "horizontal" },
+        { key: "brandId", title: "Top brands", form: "bar", facet: "brandId", orientation: "horizontal" },
+        {
+          key: "color", title: "Colours", form: "bar", facet: "color", orientation: "horizontal",
+          swatch: "color",
+          note: "Each bar is painted the colour it names, from the platform_colors palette (D-Color).",
+        },
+        {
+          key: "manufactureDate", title: "Fleet age", form: "histogram", facet: "manufactureDate", pastDue: false,
+          note: "By month of manufacture. The (unknown) bucket is vehicles with no recorded date.",
+        },
+        { key: "registrationCountry", title: "Registered in", form: "bar", facet: "registrationCountry", orientation: "horizontal" },
+      ],
+    },
+    properties: [
+      { label: "VIN", value: (v) => s(v.vin), render: "mono" },
+      { label: "Type", value: (v) => s(v.typeLabel) || s(v.typeId), render: "pill" },
+      { label: "Brand", value: (v) => s(v.brandLabel) },
+      { label: "Model", value: (v) => s(v.modelLabel) },
+      { label: "Colour", value: (v) => s(v.colorLabel) },
+      { label: "Manufactured", value: (v) => s(v.manufactureDate) },
+      { label: "Status", value: (v) => s(v.status), render: "pill", tone: (v) => (s(v.status) === "active" ? "green" : "slate") },
+    ],
+  },
+
+  account: {
+    type: "account",
+    kind: "object",
+    label: "Bank account",
+    labelPlural: "Bank accounts",
+    module: "finance",
+    blurb:
+      "A bank account at registry grade (D-Finance). The IBAN is envelope-encrypted and never listed — " +
+      "it is decrypted on the object view alone, for an authorized caller.",
+    list: {
+      path: "/finance/v1/accounts",
+      search: "?pageSize=50",
+      parse: pageParse("accounts"),
+    },
+    get: (id) => `/finance/v1/accounts/${id}`,
+    title: (a) => s(a.institutionLabel) || ridTail(a.id),
+    subtitle: (a) => s(a.currency),
+    columns: [
+      { key: "institution", header: "Bank", value: (a) => s(a.institutionLabel) || ridTail(s(a.institutionId) ?? "") },
+      { key: "currency", header: "Currency", value: (a) => s(a.currency), render: "mono" },
+      { key: "accountType", header: "Type", value: (a) => s(a.accountTypeLabel) },
+      { key: "status", header: "Status", value: (a) => s(a.status), render: "pill", tone: (a) => (s(a.status) === "active" ? "green" : s(a.status) === "frozen" ? "red" : "slate") },
+    ],
+    filters: [
+      { key: "institutionId", kind: "ref", label: "Bank", params: ["institutionId"], control: "org",
+        hint: "A bank is a company-domain organization (M41), not a finance-owned entity." },
+      // An OPEN value set — the column carries no CHECK — so a text box, not a select. The
+      // audit.targetType precedent: a code facet WITHOUT a catalog gets the honest control.
+      { key: "currency", kind: "code", label: "Currency", params: ["currency"],
+        hint: "ISO 4217 (UAH, USD). Matched exactly; the column has no constraint to enumerate." },
+      { key: "accountTypeId", kind: "ref", label: "Account type", params: ["accountTypeId"], control: "accountType" },
+      {
+        key: "status", kind: "enum", label: "Status", params: ["status"],
+        values: [
+          { value: "active", label: "Active" },
+          { value: "closed", label: "Closed" },
+          { value: "frozen", label: "Frozen" },
+        ],
+      },
+    ],
+    dashboard: {
+      path: "/finance/v1/stats/accounts",
+      charts: [
+        { key: "status", title: "Account status", form: "tiles", facet: "status", tone: { active: "green", frozen: "red", closed: "slate" } },
+        { key: "institutionId", title: "Accounts per bank", form: "bar", facet: "institutionId", orientation: "horizontal" },
+        { key: "currency", title: "Currency", form: "donut", facet: "currency" },
+        { key: "accountTypeId", title: "Type mix", form: "bar", facet: "accountTypeId", orientation: "horizontal" },
+      ],
+    },
+    properties: [
+      { label: "Bank", value: (a) => s(a.institutionLabel) || s(a.institutionId) },
+      { label: "IBAN", value: (a) => s(a.iban), render: "mono" },
+      { label: "Currency", value: (a) => s(a.currency), render: "mono" },
+      { label: "Account type", value: (a) => s(a.accountTypeLabel) },
+      { label: "Status", value: (a) => s(a.status), render: "pill", tone: (a) => (s(a.status) === "active" ? "green" : s(a.status) === "frozen" ? "red" : "slate") },
+    ],
+  },
+
+  card: {
+    type: "card",
+    kind: "object",
+    label: "Payment card",
+    labelPlural: "Payment cards",
+    module: "finance",
+    blurb:
+      "A payment card hanging off an account (D-Finance). The PAN is envelope-encrypted and never " +
+      "listed; only the BIN and last four are clear. There is no CVV field, ever (PCI-DSS Req 3.2).",
+    // The instance-wide registry M58 ticket 3 added. Before it, cards were reachable only through
+    // their account, so there was no collection to browse, page or count.
+    list: {
+      path: "/finance/v1/cards",
+      search: "?pageSize=50",
+      parse: pageParse("cards"),
+    },
+    get: (id) => `/finance/v1/cards/${id}`,
+    title: (c) => (s(c.lastFour) ? `•••• ${s(c.lastFour)}` : ridTail(c.id)),
+    subtitle: (c) => s(c.networkLabel) || s(c.cardType),
+    columns: [
+      { key: "lastFour", header: "Card", value: (c) => (s(c.lastFour) ? `•••• ${s(c.lastFour)}` : undefined), render: "mono" },
+      { key: "bin", header: "BIN", value: (c) => s(c.bin), render: "mono" },
+      { key: "network", header: "Network", value: (c) => s(c.networkLabel) || ridTail(s(c.networkId) ?? "") },
+      { key: "cardType", header: "Type", value: (c) => s(c.cardType), render: "pill", tone: (c) => (s(c.cardType) === "credit" ? "indigo" : "slate") },
+      { key: "status", header: "Status", value: (c) => s(c.status), render: "pill", tone: (c) => (s(c.status) === "active" ? "green" : s(c.status) === "blocked" ? "red" : "amber") },
+    ],
+    filters: [
+      { key: "networkId", kind: "ref", label: "Network", params: ["networkId"], control: "cardNetwork" },
+      {
+        key: "cardType", kind: "enum", label: "Card type", params: ["cardType"],
+        values: [
+          { value: "debit", label: "Debit" },
+          { value: "credit", label: "Credit" },
+        ],
+      },
+      {
+        key: "status", kind: "enum", label: "Status", params: ["status"],
+        values: [
+          { value: "active", label: "Active" },
+          { value: "blocked", label: "Blocked" },
+          { value: "expired", label: "Expired" },
+        ],
+      },
+    ],
+    dashboard: {
+      path: "/finance/v1/stats/cards",
+      charts: [
+        { key: "status", title: "Card status", form: "tiles", facet: "status", tone: { active: "green", blocked: "red", expired: "amber" } },
+        { key: "networkId", title: "Networks", form: "bar", facet: "networkId", orientation: "horizontal" },
+        { key: "cardType", title: "Debit vs credit", form: "donut", facet: "cardType" },
+      ],
+    },
+    properties: [
+      { label: "Card", value: (c) => (s(c.lastFour) ? `•••• ${s(c.lastFour)}` : undefined), render: "mono" },
+      { label: "PAN", value: (c) => s(c.pan), render: "mono" },
+      { label: "BIN", value: (c) => s(c.bin), render: "mono" },
+      { label: "Network", value: (c) => s(c.networkLabel) || s(c.networkId) },
+      { label: "Card type", value: (c) => s(c.cardType), render: "pill" },
+      { label: "Expires", value: (c) => (c.expiryMonth && c.expiryYear ? `${String(c.expiryMonth).padStart(2, "0")}/${c.expiryYear}` : undefined) },
+      { label: "Status", value: (c) => s(c.status), render: "pill", tone: (c) => (s(c.status) === "active" ? "green" : s(c.status) === "blocked" ? "red" : "amber") },
+    ],
+  },
 };
 
 /**
@@ -2002,6 +2223,8 @@ const READ_CODE_BY_MODULE: Record<string, string> = {
   education: "education.read",
   externalorg: "externalorg.read",
   religion: "religion.read",
+  vehicle: "vehicle.read",
+  finance: "finance.read",
 };
 
 /**

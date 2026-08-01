@@ -47,6 +47,18 @@ func refLabelSources() []struct{ typ, table, col, entity string } {
 		{"taxon", "religion_taxa", "name", "taxon"},
 		{"taxon_rank", "religion_taxon_ranks", "name", "taxon_rank"},
 		{"classification", "religion_classifications", "name", "classification"},
+		// M58 ticket 3 — the vehicle, account and card dashboards. `organization` is already above and
+		// is REUSED by account.institutionId: a bank is a company-domain tenant organization (M41 /
+		// D-UnifiedOrgGraph), not a finance-owned entity, so it must be named by the same resolver that
+		// names it everywhere else. `color` is the platform-owned palette (M42 / D-Color) — a real
+		// catalog with translated names, which is what makes the console's tinted colour chart honest
+		// rather than a guess at free text.
+		{"vehicle_type", "vehicle_types", "name", "vehicle_type"},
+		{"vehicle_brand", "vehicle_brands", "name", "vehicle_brand"},
+		{"vehicle_model", "vehicle_models", "name", "vehicle_model"},
+		{"color", "platform_colors", "name", "color"},
+		{"account_type", "finance_account_types", "name", "account_type"},
+		{"card_network", "finance_card_networks", "name", "card_network"},
 	}
 }
 

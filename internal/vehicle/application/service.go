@@ -22,6 +22,7 @@ import (
 	"github.com/olegamysk/go-oikumenea/internal/platform/db"
 	"github.com/olegamysk/go-oikumenea/internal/vehicle/domain"
 	"github.com/olegamysk/go-oikumenea/pkg/listing"
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 	"github.com/palantir/witchcraft-go-tracing/wtracing"
 )
 
@@ -40,6 +41,8 @@ type Service struct {
 	newRepo RepositoryFactory
 	audit   *auditapp.Service
 	colors  domain.ColorLookup
+	// labeler resolves ref-bucket RIDs to locale->text names; injected at the composition root.
+	labeler stats.Labeler
 }
 
 // NewService wires the service with the pool, repository factory, audit service, and the color catalog
@@ -148,9 +151,35 @@ func (s *Service) GetVehicle(ctx context.Context, id string) (domain.Vehicle, er
 	return v, mapNotFound(err, domain.ErrVehicleNotFound)
 }
 
-func (s *Service) ListVehicles(ctx context.Context, query, after string, pageSize int) ([]domain.Vehicle, error) {
-	return s.newRepo(s.querier(ctx)).ListVehicles(ctx, query, after, clampPageSize(pageSize)+1)
+func (s *Service) ListVehicles(ctx context.Context, query, after string, f domain.VehicleFilter, pageSize int) ([]domain.Vehicle, error) {
+	if err := f.Validate(); err != nil {
+		return nil, err
+	}
+	return s.newRepo(s.querier(ctx)).ListVehicles(ctx, query, after, f, clampPageSize(pageSize)+1)
 }
+
+// VehicleStats is the dashboard half of the facet vocabulary (M58 ticket 3 / D-ObjectFacets): the
+// same filters ListVehicles takes, aggregated instead of paged.
+//
+// It calls stats.Compute with isAdmin=true, which is the arm convention's way of saying "no
+// visibility predicate" — and here that is a statement of fact rather than a privilege escalation.
+// `vehicle_vehicles` is flat instance-global registry data: no row-level security, no unit column, no
+// reach. The transport has already required `vehicle.read`, which is the whole gate on the list
+// endpoint too, so any caller who reaches this line may read every row it counts. A scoped arm would
+// have nothing to narrow.
+func (s *Service) VehicleStats(ctx context.Context, query string, f domain.VehicleFilter, sel stats.Selection) (stats.Result, error) {
+	if err := f.Validate(); err != nil {
+		return stats.Result{}, err
+	}
+	return stats.Compute(ctx, s.labeler, sel, true, "", func(string) ([]stats.Group, error) {
+		return s.newRepo(s.querier(ctx)).VehicleStats(ctx, query, f, sel)
+	})
+}
+
+// SetBucketLabeler injects the composition root's ref-bucket resolver (type, brand, model, colour and
+// country RIDs to locale->text names). Set once at boot; a nil labeler simply leaves buckets
+// unlabelled, exactly as an unresolvable id does.
+func (s *Service) SetBucketLabeler(l stats.Labeler) { s.labeler = l }
 
 func (s *Service) CreateVehicle(ctx context.Context, in domain.VehicleInput) (domain.Vehicle, error) {
 	if err := in.Validate(); err != nil {

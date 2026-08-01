@@ -29,7 +29,30 @@ type VehicleServiceClient interface {
 	ListRegistrationNumberTypes(ctx context.Context, authHeader bearertoken.Token) (RegistrationNumberTypeList, error)
 	UpsertRegistrationNumberType(ctx context.Context, authHeader bearertoken.Token, requestArg UpsertNumberTypeRequest) (RegistrationNumberType, error)
 	CreateVehicle(ctx context.Context, authHeader bearertoken.Token, requestArg CreateVehicleRequest) (Vehicle, error)
-	ListVehicles(ctx context.Context, authHeader bearertoken.Token, queryArg *string, pageSizeArg *int, pageTokenArg *string) (VehiclePage, error)
+	/*
+	   List vehicles, token-paginated, narrowed by any combination of the facet filters below
+	   (M58 / D-ObjectFacets). Every filter here is also a distribution on `vehicleStats`, so a
+	   dashboard and a list are two renderings of one request state. Gated by `vehicle.read`.
+	*/
+	ListVehicles(ctx context.Context, authHeader bearertoken.Token, queryArg *string, typeIdArg *string, brandIdArg *string, modelIdArg *string, colorArg *string, statusArg *string, manufactureDateFromArg *string, manufactureDateToArg *string, registrationCountryArg *string, pageSizeArg *int, pageTokenArg *string) (VehiclePage, error)
+	/*
+	   Facet distributions over the fleet — the dashboard half of the facet vocabulary (M58 /
+	   D-ObjectFacets). Takes exactly the filter args `listVehicles` takes (minus paging) plus an
+	   optional `facets` CSV, so a dashboard and a list are two renderings of ONE request state
+	   and a chart segment is a link to the same URL with one more filter applied.
+
+	   `totalCount` equals the number of rows exhaustively paging `listVehicles` with these same
+	   filters would return. One round-trip serves the whole dashboard.
+
+	   ONE aggregate arm, with no subject and no scoped twin — for the same reason
+	   `externalOrgStats` has one, and NOT the audit ledger's reason. `vehicle_vehicles` carries no
+	   row-level security, no unit column and no reach predicate: `vehicle.read` held anywhere is
+	   the whole visibility decision, so there is nothing for a second arm to narrow.
+
+	   The path is `/stats/vehicles` rather than `/vehicles/stats` because the server's router
+	   rejects a literal path segment that is a sibling of `{vehicleId}`.
+	*/
+	VehicleStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, queryArg *string, typeIdArg *string, brandIdArg *string, modelIdArg *string, colorArg *string, statusArg *string, manufactureDateFromArg *string, manufactureDateToArg *string, registrationCountryArg *string) (VehicleStats, error)
 	GetVehicle(ctx context.Context, authHeader bearertoken.Token, vehicleIdArg string) (Vehicle, error)
 	UpdateVehicle(ctx context.Context, authHeader bearertoken.Token, vehicleIdArg string, requestArg UpdateVehicleRequest) (Vehicle, error)
 	DeleteVehicle(ctx context.Context, authHeader bearertoken.Token, vehicleIdArg string) error
@@ -216,7 +239,7 @@ func (c *vehicleServiceClient) CreateVehicle(ctx context.Context, authHeader bea
 	return *returnVal, nil
 }
 
-func (c *vehicleServiceClient) ListVehicles(ctx context.Context, authHeader bearertoken.Token, queryArg *string, pageSizeArg *int, pageTokenArg *string) (VehiclePage, error) {
+func (c *vehicleServiceClient) ListVehicles(ctx context.Context, authHeader bearertoken.Token, queryArg *string, typeIdArg *string, brandIdArg *string, modelIdArg *string, colorArg *string, statusArg *string, manufactureDateFromArg *string, manufactureDateToArg *string, registrationCountryArg *string, pageSizeArg *int, pageTokenArg *string) (VehiclePage, error) {
 	var returnVal *VehiclePage
 	var requestParams []httpclient.RequestParam
 	requestParams = append(requestParams, httpclient.WithRPCMethodName("ListVehicles"))
@@ -225,6 +248,30 @@ func (c *vehicleServiceClient) ListVehicles(ctx context.Context, authHeader bear
 	queryParams := make(url.Values)
 	if queryArg != nil {
 		queryParams.Set("query", fmt.Sprint(*queryArg))
+	}
+	if typeIdArg != nil {
+		queryParams.Set("typeId", fmt.Sprint(*typeIdArg))
+	}
+	if brandIdArg != nil {
+		queryParams.Set("brandId", fmt.Sprint(*brandIdArg))
+	}
+	if modelIdArg != nil {
+		queryParams.Set("modelId", fmt.Sprint(*modelIdArg))
+	}
+	if colorArg != nil {
+		queryParams.Set("color", fmt.Sprint(*colorArg))
+	}
+	if statusArg != nil {
+		queryParams.Set("status", fmt.Sprint(*statusArg))
+	}
+	if manufactureDateFromArg != nil {
+		queryParams.Set("manufactureDateFrom", fmt.Sprint(*manufactureDateFromArg))
+	}
+	if manufactureDateToArg != nil {
+		queryParams.Set("manufactureDateTo", fmt.Sprint(*manufactureDateToArg))
+	}
+	if registrationCountryArg != nil {
+		queryParams.Set("registrationCountry", fmt.Sprint(*registrationCountryArg))
 	}
 	if pageSizeArg != nil {
 		queryParams.Set("pageSize", fmt.Sprint(*pageSizeArg))
@@ -240,6 +287,55 @@ func (c *vehicleServiceClient) ListVehicles(ctx context.Context, authHeader bear
 	}
 	if returnVal == nil {
 		return *new(VehiclePage), werror.ErrorWithContextParams(ctx, "listVehicles response cannot be nil")
+	}
+	return *returnVal, nil
+}
+
+func (c *vehicleServiceClient) VehicleStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, queryArg *string, typeIdArg *string, brandIdArg *string, modelIdArg *string, colorArg *string, statusArg *string, manufactureDateFromArg *string, manufactureDateToArg *string, registrationCountryArg *string) (VehicleStats, error) {
+	var returnVal *VehicleStats
+	var requestParams []httpclient.RequestParam
+	requestParams = append(requestParams, httpclient.WithRPCMethodName("VehicleStats"))
+	requestParams = append(requestParams, httpclient.WithHeader("Authorization", fmt.Sprint("Bearer ", authHeader)))
+	requestParams = append(requestParams, httpclient.WithPathf("/vehicle/v1/stats/vehicles"))
+	queryParams := make(url.Values)
+	if facetsArg != nil {
+		queryParams.Set("facets", fmt.Sprint(*facetsArg))
+	}
+	if queryArg != nil {
+		queryParams.Set("query", fmt.Sprint(*queryArg))
+	}
+	if typeIdArg != nil {
+		queryParams.Set("typeId", fmt.Sprint(*typeIdArg))
+	}
+	if brandIdArg != nil {
+		queryParams.Set("brandId", fmt.Sprint(*brandIdArg))
+	}
+	if modelIdArg != nil {
+		queryParams.Set("modelId", fmt.Sprint(*modelIdArg))
+	}
+	if colorArg != nil {
+		queryParams.Set("color", fmt.Sprint(*colorArg))
+	}
+	if statusArg != nil {
+		queryParams.Set("status", fmt.Sprint(*statusArg))
+	}
+	if manufactureDateFromArg != nil {
+		queryParams.Set("manufactureDateFrom", fmt.Sprint(*manufactureDateFromArg))
+	}
+	if manufactureDateToArg != nil {
+		queryParams.Set("manufactureDateTo", fmt.Sprint(*manufactureDateToArg))
+	}
+	if registrationCountryArg != nil {
+		queryParams.Set("registrationCountry", fmt.Sprint(*registrationCountryArg))
+	}
+	requestParams = append(requestParams, httpclient.WithQueryValues(queryParams))
+	requestParams = append(requestParams, httpclient.WithJSONResponse(&returnVal))
+	requestParams = append(requestParams, httpclient.WithRequestConjureErrorDecoder(conjureerrors.Decoder()))
+	if _, err := c.client.Get(ctx, requestParams...); err != nil {
+		return *new(VehicleStats), werror.WrapWithContextParams(ctx, err, "vehicleStats failed")
+	}
+	if returnVal == nil {
+		return *new(VehicleStats), werror.ErrorWithContextParams(ctx, "vehicleStats response cannot be nil")
 	}
 	return *returnVal, nil
 }
@@ -423,7 +519,30 @@ type VehicleServiceClientWithAuth interface {
 	ListRegistrationNumberTypes(ctx context.Context) (RegistrationNumberTypeList, error)
 	UpsertRegistrationNumberType(ctx context.Context, requestArg UpsertNumberTypeRequest) (RegistrationNumberType, error)
 	CreateVehicle(ctx context.Context, requestArg CreateVehicleRequest) (Vehicle, error)
-	ListVehicles(ctx context.Context, queryArg *string, pageSizeArg *int, pageTokenArg *string) (VehiclePage, error)
+	/*
+	   List vehicles, token-paginated, narrowed by any combination of the facet filters below
+	   (M58 / D-ObjectFacets). Every filter here is also a distribution on `vehicleStats`, so a
+	   dashboard and a list are two renderings of one request state. Gated by `vehicle.read`.
+	*/
+	ListVehicles(ctx context.Context, queryArg *string, typeIdArg *string, brandIdArg *string, modelIdArg *string, colorArg *string, statusArg *string, manufactureDateFromArg *string, manufactureDateToArg *string, registrationCountryArg *string, pageSizeArg *int, pageTokenArg *string) (VehiclePage, error)
+	/*
+	   Facet distributions over the fleet — the dashboard half of the facet vocabulary (M58 /
+	   D-ObjectFacets). Takes exactly the filter args `listVehicles` takes (minus paging) plus an
+	   optional `facets` CSV, so a dashboard and a list are two renderings of ONE request state
+	   and a chart segment is a link to the same URL with one more filter applied.
+
+	   `totalCount` equals the number of rows exhaustively paging `listVehicles` with these same
+	   filters would return. One round-trip serves the whole dashboard.
+
+	   ONE aggregate arm, with no subject and no scoped twin — for the same reason
+	   `externalOrgStats` has one, and NOT the audit ledger's reason. `vehicle_vehicles` carries no
+	   row-level security, no unit column and no reach predicate: `vehicle.read` held anywhere is
+	   the whole visibility decision, so there is nothing for a second arm to narrow.
+
+	   The path is `/stats/vehicles` rather than `/vehicles/stats` because the server's router
+	   rejects a literal path segment that is a sibling of `{vehicleId}`.
+	*/
+	VehicleStats(ctx context.Context, facetsArg *string, queryArg *string, typeIdArg *string, brandIdArg *string, modelIdArg *string, colorArg *string, statusArg *string, manufactureDateFromArg *string, manufactureDateToArg *string, registrationCountryArg *string) (VehicleStats, error)
 	GetVehicle(ctx context.Context, vehicleIdArg string) (Vehicle, error)
 	UpdateVehicle(ctx context.Context, vehicleIdArg string, requestArg UpdateVehicleRequest) (Vehicle, error)
 	DeleteVehicle(ctx context.Context, vehicleIdArg string) error
@@ -484,8 +603,12 @@ func (c *vehicleServiceClientWithAuth) CreateVehicle(ctx context.Context, reques
 	return c.client.CreateVehicle(ctx, c.authHeader, requestArg)
 }
 
-func (c *vehicleServiceClientWithAuth) ListVehicles(ctx context.Context, queryArg *string, pageSizeArg *int, pageTokenArg *string) (VehiclePage, error) {
-	return c.client.ListVehicles(ctx, c.authHeader, queryArg, pageSizeArg, pageTokenArg)
+func (c *vehicleServiceClientWithAuth) ListVehicles(ctx context.Context, queryArg *string, typeIdArg *string, brandIdArg *string, modelIdArg *string, colorArg *string, statusArg *string, manufactureDateFromArg *string, manufactureDateToArg *string, registrationCountryArg *string, pageSizeArg *int, pageTokenArg *string) (VehiclePage, error) {
+	return c.client.ListVehicles(ctx, c.authHeader, queryArg, typeIdArg, brandIdArg, modelIdArg, colorArg, statusArg, manufactureDateFromArg, manufactureDateToArg, registrationCountryArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *vehicleServiceClientWithAuth) VehicleStats(ctx context.Context, facetsArg *string, queryArg *string, typeIdArg *string, brandIdArg *string, modelIdArg *string, colorArg *string, statusArg *string, manufactureDateFromArg *string, manufactureDateToArg *string, registrationCountryArg *string) (VehicleStats, error) {
+	return c.client.VehicleStats(ctx, c.authHeader, facetsArg, queryArg, typeIdArg, brandIdArg, modelIdArg, colorArg, statusArg, manufactureDateFromArg, manufactureDateToArg, registrationCountryArg)
 }
 
 func (c *vehicleServiceClientWithAuth) GetVehicle(ctx context.Context, vehicleIdArg string) (Vehicle, error) {
@@ -609,12 +732,20 @@ func (c *vehicleServiceClientWithTokenProvider) CreateVehicle(ctx context.Contex
 	return c.client.CreateVehicle(ctx, bearertoken.Token(token), requestArg)
 }
 
-func (c *vehicleServiceClientWithTokenProvider) ListVehicles(ctx context.Context, queryArg *string, pageSizeArg *int, pageTokenArg *string) (VehiclePage, error) {
+func (c *vehicleServiceClientWithTokenProvider) ListVehicles(ctx context.Context, queryArg *string, typeIdArg *string, brandIdArg *string, modelIdArg *string, colorArg *string, statusArg *string, manufactureDateFromArg *string, manufactureDateToArg *string, registrationCountryArg *string, pageSizeArg *int, pageTokenArg *string) (VehiclePage, error) {
 	token, err := c.tokenProvider(ctx)
 	if err != nil {
 		return *new(VehiclePage), err
 	}
-	return c.client.ListVehicles(ctx, bearertoken.Token(token), queryArg, pageSizeArg, pageTokenArg)
+	return c.client.ListVehicles(ctx, bearertoken.Token(token), queryArg, typeIdArg, brandIdArg, modelIdArg, colorArg, statusArg, manufactureDateFromArg, manufactureDateToArg, registrationCountryArg, pageSizeArg, pageTokenArg)
+}
+
+func (c *vehicleServiceClientWithTokenProvider) VehicleStats(ctx context.Context, facetsArg *string, queryArg *string, typeIdArg *string, brandIdArg *string, modelIdArg *string, colorArg *string, statusArg *string, manufactureDateFromArg *string, manufactureDateToArg *string, registrationCountryArg *string) (VehicleStats, error) {
+	token, err := c.tokenProvider(ctx)
+	if err != nil {
+		return *new(VehicleStats), err
+	}
+	return c.client.VehicleStats(ctx, bearertoken.Token(token), facetsArg, queryArg, typeIdArg, brandIdArg, modelIdArg, colorArg, statusArg, manufactureDateFromArg, manufactureDateToArg, registrationCountryArg)
 }
 
 func (c *vehicleServiceClientWithTokenProvider) GetVehicle(ctx context.Context, vehicleIdArg string) (Vehicle, error) {

@@ -65,6 +65,35 @@ var rawPgxGroups = []struct {
 		callers:    []string{"ListTaxa", "TaxonStats"},
 		aggregate:  "taxonAggregate",
 	},
+	// M58 ticket 3 — the two raw-pgx modules the header above predicted, and the first types this
+	// guard was NOT written alongside. Everything it asserts was derived from religion and externalorg;
+	// these three are where it either generalizes or turns out to have described two implementations
+	// rather than an invariant.
+	{
+		objectType: "vehicle",
+		module:     "vehicle",
+		builder:    "buildVehicleFilter",
+		callers:    []string{"ListVehicles", "VehicleStats"},
+		aggregate:  "vehicleAggregate",
+	},
+	{
+		objectType: "account",
+		module:     "finance",
+		builder:    "buildAccountFilter",
+		callers:    []string{"ListAccounts", "AccountStats"},
+		aggregate:  "accountAggregate",
+	},
+	// Two types in ONE module, which neither ticket-2 group was: the guard keys on the object type and
+	// looks the module's functions up by name, so `finance` is parsed twice and each group must find
+	// its own builder and its own aggregate const. A single shared financeAggregate would satisfy
+	// neither branch-coverage direction.
+	{
+		objectType: "card",
+		module:     "finance",
+		builder:    "buildCardFilter",
+		callers:    []string{"ListCards", "CardStats"},
+		aggregate:  "cardAggregate",
+	},
 }
 
 // rawPgxTypes is the set the sqlc-shaped coverage floors defer to, so that neither file has to know
