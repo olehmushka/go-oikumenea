@@ -288,6 +288,26 @@ function Widget({
         />
       );
     }
+    if (f.catalog === "languoidFamily") {
+      return (
+        <ScopedSelect
+          // The forest ROOTS are the family list, so the catalog is the list endpoint narrowed to
+          // level=family — there is no separate families collection to fetch.
+          path="/language/v1/languages?level=family&pageSize=1000"
+          // Keyed by GLOTTOCODE, not by RID: `family` filters on family_code, so the value the
+          // control selects must be the code itself (the actionType arm's shape, one level in).
+          pick={(d) =>
+            ((d as { languoids?: unknown[] })?.languoids ?? []).map((l) => {
+              const code = (l as { code?: string }).code ?? "";
+              return { id: code, code };
+            })
+          }
+          value={val(p0)}
+          onChange={(id) => set(p0, id)}
+          unscopedLabel=""
+        />
+      );
+    }
     return (
       <input
         type="text"

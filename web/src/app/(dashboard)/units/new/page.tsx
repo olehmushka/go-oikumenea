@@ -34,7 +34,7 @@ export default async function NewUnitPage({
     const ok = await oikumenea();
     const [domainsRes, orgsRes, kindsRes] = await Promise.all([
       ok.tenant.listDomains(),
-      ok.tenant.listOrganizations(domain, 200),
+      ok.tenant.listOrganizations(domain, undefined, undefined, 200),
       ok.tenant.listUnitKinds(domain),
     ]);
     const dom = (domainsRes.domains ?? []).find((d) => d.id === domain);

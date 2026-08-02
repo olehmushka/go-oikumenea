@@ -240,7 +240,7 @@ Facets and components in brief; each is expanded to the table form above when it
 
 | Type | Facets | Components |
 |---|---|---|
-| **organization** (`tenant_organizations`) | `domain`, `visibility`, `state` | Orgs per domain bar · state tiles. The only M58 type with an app-layer visibility predicate — `gateUnits` trims *after* the page is cut, so it needs the full M57 two-arm treatment (rule 3) |
+| ~~**organization**~~ | — | **BUILT (M58 ticket 4)** — see below |
 | **company** (`company_org_profiles`) | `legalForm`, `ownershipCategory`, `countryId`, `industryClass`, `foundedOn`(range), `state` | Legal-form bar · ownership donut · industry (NACE) top-15 bar · foundings-per-year histogram · country bar |
 | ~~**vehicle**~~ | — | **BUILT (M58 ticket 3)** — see below |
 | ~~**finance-account**~~ / ~~**finance-card**~~ | — | **BUILT (M58 ticket 3)** as `account` and `card` — see below |
@@ -249,7 +249,7 @@ Facets and components in brief; each is expanded to the table form above when it
 
 
 | **location** (`location_locations`) | `countryId`, `typeId` | Locations per country bar · type mix bar. ⚠️ **Defect (M58 ticket-2 survey):** `hasCoordinate` is DEGENERATE — `location_locations.geom` is `NOT NULL`, so the facet is constant-true and the geocoded-vs-not tile would always read 100%. Dropped above. Also: `listLocations` REQUIRES a spatial window (`Location:QueryWindowRequired`), so this type needs an unwindowed list mode before it can have a dashboard at all |
-| **languoid** (`language_languoids`) | `level`, `macroarea`, `status`, `family` | Level mix donut · macroarea bar · endangerment-status bar (**ordered by severity**) |
+| ~~**languoid**~~ | — | **BUILT (M58 ticket 4)** — see below |
 | **assignment** (`authz_role_assignments`) | `roleId`, `targetUnitId`, `scope`, `graphId`, ~~`active`~~, ~~`expiresAt`~~ | Grants per role bar · unit-vs-subtree donut. ⚠️ `listAssignments` returns only ACTIVE assignments and **keeps** that default (decided in ticket 3 — see [open seams](#open-seams)), so `active` and `expiresAt` are **struck** along with the expiring-soon tile and the active-vs-revoked tiles: a distribution whose every row is active is a chart with one bar. Also has **no unconditional list** — it requires exactly one of `subjectPersonId`/`targetUnitId` |
 
 #### `audit` — [audit](../modules/audit.md) · `audit_log` — **BUILT (M58 ticket 1)**
@@ -423,6 +423,120 @@ The first module to bring **two object types at once**, and `card` is the first 
 
 > **ONE aggregate arm** on both, same reason as `vehicle`.
 
+#### `organization` — [tenant](../modules/tenant.md) · `tenant_organizations` — **BUILT (M58 ticket 4)**
+
+The tenant module's **second** object type, and the **last** M58 type with an app-layer visibility
+predicate.
+
+| Facet | Kind | Source | Notes |
+|---|---|---|---|
+| `domain` | ref → domain | `domain_id` | The org-kind catalog (D-TenantOrganizations, M40). The `domain` arg predates this vocabulary and already took a domain RID, so a bucket key was a usable filter value from the start — no widening, no `ArgOverride`. NOT NULL |
+| `visibility` | enum | `visibility` | `public` / `shadow`. Narrows, never widens — but see below: for an org a non-admin's `shadow` bucket is **structurally** zero rather than reach-dependent |
+| `state` | enum | `state` | `active` / `suspended` / `archived`; suspended amber, archived slate |
+
+**Components.** ① orgs-per-domain bar ② lifecycle tiles ③ **visibility donut** — a third component
+beyond the two this table originally catalogued, added because the facet is declared and the seed
+change gives it two buckets. Recorded here rather than shipped silently.
+
+> **The tranche row above was right about the shape and wrong about the predicate.** It said
+> organization "needs the full M57 two-arm treatment (rule 3)". Two arms: yes. Unit's arm: no.
+>
+> `listOrganizations` is gated by **`gateUnits`** — the *unit* gate, applied to organization rows. On
+> a unit that gate is real: `FilterVisibleUnits` probes the subject's reach with
+> `ReadableUnitsForSubjectAmong`, and a shadow unit inside the reach passes. On an organization it is
+> not. That probe's only match arms test `a.target_unit_id = cand.unit_id`, and
+> `authz_role_assignments.target_unit_id` is `NOT NULL REFERENCES tenant_units` — **an organization
+> RID can never appear in it.** The reach set for an org is empty by construction, and a shadow
+> organization is visible to an instance admin and to nobody else.
+>
+> So the scoped arm is `AND visibility = 'public'`, not
+> `visibility='public' OR id IN (SELECT authz_readable_units(@subject))`. Copying unit's predicate
+> would compile, pass every guard, and count **exactly the same rows today** — and then, on the day
+> org reachability is fixed, the list would still show zero shadow orgs while the chart showed some,
+> and the differential would break in the direction nobody looks at. The honest arm matches
+> `gateUnits`' actual behaviour, which is what the differential contract asks for.
+>
+> That is a load-bearing claim about *another module's* schema, so it is asserted rather than
+> assumed: `TestOrganizationShadowIsUnreachableForEveryNonAdmin` grants a subject **subtree** read
+> over the shadow org's own unit — checking the reach really took — and shows the org count does not
+> move. It is written to go **red** the day the gap is closed, which is exactly the day this arm must
+> change. The gap itself is an [open seam](#open-seams), not this ticket's to fix.
+
+> **`domain` collapses its tail in SQL; `UnitStats`' ref branches do not.** The kernel's `topNBuckets`
+> orders and appends `(unknown)`/`(other)` but never truncates, so a facet declaring `TopN 15` whose
+> SQL emits every group renders more bars than it promised. Unit's branches get away with it because
+> a unit's org/domain/kind cardinality is a handful of catalog rows; the domain catalog is
+> instance-extensible, so this one keeps its own promise. The asymmetry is deliberate and it is
+> organization's side that is right.
+
+> **What is not faceted.** `tenant_organizations.search_text` is `pii:basic` and `listOrganizations`
+> ships no `query` arg. Adding one is a search decision, not a facet one — out of scope here.
+
+#### `languoid` — [language](../modules/language.md) · `language_languoids` — **BUILT (M58 ticket 4)**
+
+27 177 rows of instance-global reference data. The **second** type with an R-21 search twin (after
+person) and the **first** with a composite code facet.
+
+| Facet | Kind | Source | Notes |
+|---|---|---|---|
+| `level` | enum | `level` | `family` / `language` / `dialect`, in **tree order** — not alphabetical, not by frequency. The arg predates the vocabulary and took the same values, so no `ArgOverride`; what changed is the SQL |
+| `macroarea` | code | `macroarea` | **Set-valued, semicolon-joined.** `KindCode`, not enum: no CHECK, so the value set is open (the `audit.action` case) and the key is its own label. Nullable ⇒ `(unknown)` mandatory |
+| `status` | enum | `status` | AES endangerment. The CHECK set is **already in severity order** in the DDL, and that order is the chart's |
+| `family` | code | `family_code` | The denormalized root-family **glottocode**, derived via the closure. Code, not ref — a glottocode is not a RID and is its own label. `char(8)`, so keys are `rtrim()`ed. Nullable in the DDL ⇒ `(unknown)` mandatory |
+
+**Components.** ① level-mix donut ② **endangerment bar, ordered by severity** ③ macroarea bar
+④ largest-families top-15 bar.
+
+> **The composite code facet.** `macroarea` is set-valued and stored semicolon-joined (183 of 27 177
+> rows read `Africa;Eurasia`). It is grouped by the **literal string** rather than unnested, and that
+> is not a shortcut: the filter is an exact match, so each bucket's count equals what its own filter
+> returns — the property the whole vocabulary rests on. It therefore **partitions**, needs no
+> `NonPartitioning`, and **could not take one anyway**: the kernel refuses that exemption when the
+> facet's `Table` IS the listed table, because a row has one value in its own column and cannot
+> overlap. Unnesting would double-count and would need an exemption that is not available. The
+> composite keys read as what they are — a languoid spanning two macroareas — and
+> `TestLanguoidCompositeMacroareaRoundTrips` pins that `Africa;Eurasia` is a working filter value,
+> because if it ever stops being one the facet has to be redesigned rather than patched.
+
+> **`family_code` is `char(8)`, and the padding risk turned out to be theoretical — measured, not
+> assumed.** The column is `char(8)`, which pads on read, and the facet emits `rtrim(family_code)`.
+> Checking against the live catalog after the fact: **every glottocode is exactly 8 characters**
+> (`min(length)=max(length)=8`, zero padded rows), and the `::text` cast the branch already applies
+> **strips trailing blanks on its own** (`length('ab'::char(8)::text) = 2`). So the `rtrim` fixes
+> nothing today and would be redundant even if a short code appeared.
+>
+> It stays, and is documented as belt-and-braces rather than as a fix: it states the intent where the
+> conversion rule would otherwise be load-bearing and invisible. `TestLanguoidFamilyKeysAreTrimmed`
+> is likewise a regression guard for a change that removed the cast, not evidence of a bug that was
+> found. Recorded this way deliberately — ticket 3 spent a round re-deciding a `vehicle.color`
+> "defect" that had been fixed years earlier, and the cost there was a claim nobody had measured.
+
+> **`limit` → `pageSize`: the first WIRE BREAK this vocabulary has demanded.** `ClassPaging` covers
+> only `pageSize`/`pageToken`, and eleven other types hold that convention; `listLanguages` was the
+> lone holdout. The guard describes a real convention and the endpoint was the outlier, so the arg
+> was renamed rather than the guard widened. Every consumer is in-repo (the generated Go/TS SDKs, the
+> console's `search:` string, three positional `LanguagePicker` calls); `hermenea` does not call this
+> endpoint, and the one Go consumer uses the *domain* `Filter.Limit`, which deliberately keeps its
+> name — the rename was a contract decision and propagating it inward would churn the connector and
+> dataimport for nothing.
+
+> **The four facet predicates moved off the legacy `sqlc.arg(x)::text = ''` sentinels onto nargs.**
+> A sentinel forces one generic plan across every filter shape (R-21's whole argument) and is
+> invisible to the parity guard, which reads a facet's narg out of every list *and* stats query. The
+> two **traversal** args keep their sentinels: they are not facets and no aggregate counts them.
+
+> **ONE aggregate arm**, for `vehicle`'s and `external_organization`'s reason — the **absence** of a
+> visibility decision — and emphatically not `audit`'s, where the single arm *is* the decision, made
+> by the connection the query runs on. `language_languoids` has no RLS, no unit column and no reach
+> predicate; `language.read` held anywhere is the whole gate.
+
+> **`parent`/`topLevel` are `ClassTraversal`, and that stretches the class.** `unit.parent` switches
+> the endpoint to a *different* query (`ListChildUnits`); languoid's `parent` adds a predicate to the
+> same one. What it shares with unit's — the part the class is for — is that it selects a tree-walk
+> **mode** rather than describing the registry, so no aggregate counts it. Recorded rather than left
+> as an unremarked stretch. Neither is a facet on purpose: an exact-parent dimension partitions
+> honestly and then dead-ends after one click, which is `taxon.subtree`'s argument in reverse.
+
 ### The raw-pgx arm of the parity guards (M58 ticket 2)
 
 `sqlparity_test.go` and `statsparity_test.go` prove a type's list and its dashboard see one world by
@@ -569,6 +683,21 @@ inverse of a calendar month. Same non-vacuity floor, same live-negative fixtures
   ordinary directory history, while a revoked grant is a security artefact whose reachability is an
   authz-plane read-surface decision, not a facet-vocabulary one. `roleId`, `targetUnitId`, `scope` and
   `graphId` are unaffected.
+- **A shadow organization is reachable by nobody but an instance admin.** Found while building
+  organization's scoped aggregate arm (M58 ticket 4). `listOrganizations` is gated by **`gateUnits`**
+  — the unit gate, applied to organization rows — whose non-admin probe
+  (`ReadableUnitsForSubjectAmong`) matches only on `a.target_unit_id = cand.unit_id`. But
+  `authz_role_assignments.target_unit_id` is `NOT NULL REFERENCES tenant_units`, so an organization
+  RID matches nothing and the reach set is **empty by construction**. Shadow-org visibility is
+  therefore an admin-only bit in practice, whatever the visibility model reads like.
+  The facet ticket **models this honestly rather than fixing it**: the scoped arm is
+  `visibility = 'public'`, which is exactly what the list leaves, so the differential holds. Fixing
+  it is an authorization-plane read-surface change and needs its own argument — three shapes are
+  available, none argued: a nullable `target_org_id` on the assignment; an org-level `scope`; or
+  deriving org reach from unit reach (an org is reachable if any of its units is), which is the
+  cheapest and also the one that quietly changes what `shadow` means. Pinned by
+  `TestOrganizationShadowIsUnreachableForEveryNonAdmin`, which goes **red** on the day it is fixed —
+  and that is the signal to change the arm, not to relax the test.
 - **A table's shape is no longer its `CREATE TABLE`.** The migration consolidation (46 files → 15)
   means a column may be created near the top of a file and altered or dropped 600 lines below it, in
   that same file. The M58 ticket-2 survey read `vehicle_vehicles`' `CREATE TABLE`, recorded a defect

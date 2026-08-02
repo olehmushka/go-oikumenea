@@ -1063,6 +1063,160 @@ func (e *OrganizationCodeConflict) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type organizationInvalid struct {
+	Reason string `json:"reason"`
+}
+
+func (o organizationInvalid) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *organizationInvalid) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewOrganizationInvalid returns new instance of OrganizationInvalid error.
+func NewOrganizationInvalid(reasonArg string) *OrganizationInvalid {
+	return &OrganizationInvalid{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), organizationInvalid: organizationInvalid{Reason: reasonArg}}
+}
+
+// WrapWithOrganizationInvalid returns new instance of OrganizationInvalid error wrapping an existing error.
+func WrapWithOrganizationInvalid(err error, reasonArg string) *OrganizationInvalid {
+	return &OrganizationInvalid{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, organizationInvalid: organizationInvalid{Reason: reasonArg}}
+}
+
+// OrganizationInvalid is an error type.
+/*
+The organization's filter or facet arguments are malformed — a non-RID `domain`, a
+`visibility`/`state` value outside its CHECK set, or an undeclared facet key on
+`organizationStats`.
+*/
+type OrganizationInvalid struct {
+	errorInstanceID uuid.UUID
+	organizationInvalid
+	cause error
+	stack werror.StackTrace
+}
+
+// IsOrganizationInvalid returns true if err is an instance of OrganizationInvalid.
+func IsOrganizationInvalid(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*OrganizationInvalid)
+	return ok
+}
+
+func (e *OrganizationInvalid) Error() string {
+	return fmt.Sprintf("INVALID_ARGUMENT Tenant:OrganizationInvalid (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *OrganizationInvalid) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *OrganizationInvalid) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *OrganizationInvalid) Message() string {
+	return "INVALID_ARGUMENT Tenant:OrganizationInvalid"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *OrganizationInvalid) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *OrganizationInvalid) Code() errors.ErrorCode {
+	return errors.InvalidArgument
+}
+
+// Name returns an error name identifying error type.
+func (e *OrganizationInvalid) Name() string {
+	return "Tenant:OrganizationInvalid"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *OrganizationInvalid) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *OrganizationInvalid) Parameters() map[string]interface{} {
+	return map[string]interface{}{"reason": e.Reason}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *OrganizationInvalid) safeParams() map[string]interface{} {
+	return map[string]interface{}{"reason": e.Reason, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *OrganizationInvalid) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *OrganizationInvalid) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *OrganizationInvalid) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e OrganizationInvalid) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.organizationInvalid)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.InvalidArgument, ErrorName: "Tenant:OrganizationInvalid", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *OrganizationInvalid) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters organizationInvalid
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.organizationInvalid = parameters
+	return nil
+}
+
 type organizationNotFound struct {
 	OrgId string `json:"orgId"`
 }
@@ -2271,6 +2425,7 @@ func init() {
 	conjureerrors.RegisterErrorType("Tenant:GraphNotFound", reflect.TypeOf(GraphNotFound{}))
 	conjureerrors.RegisterErrorType("Tenant:GraphProtected", reflect.TypeOf(GraphProtected{}))
 	conjureerrors.RegisterErrorType("Tenant:OrganizationCodeConflict", reflect.TypeOf(OrganizationCodeConflict{}))
+	conjureerrors.RegisterErrorType("Tenant:OrganizationInvalid", reflect.TypeOf(OrganizationInvalid{}))
 	conjureerrors.RegisterErrorType("Tenant:OrganizationNotFound", reflect.TypeOf(OrganizationNotFound{}))
 	conjureerrors.RegisterErrorType("Tenant:TransitionInvalid", reflect.TypeOf(TransitionInvalid{}))
 	conjureerrors.RegisterErrorType("Tenant:UnitCodeConflict", reflect.TypeOf(UnitCodeConflict{}))

@@ -39,6 +39,10 @@ var (
 	ErrUnitKindCodeConflict = errors.New("unit kind code already exists in this domain")
 	ErrOrgNotFound          = errors.New("organization not found")
 	ErrOrgCodeConflict      = errors.New("organization code already exists")
+	// ErrInvalidOrg is the organization filter/facet sentinel (M58 ticket 4). Separate from
+	// ErrInvalidUnit because it maps to its own Conjure error: reusing Tenant:UnitInvalid for a
+	// malformed organization filter would name the wrong entity in the response the caller reads.
+	ErrInvalidOrg = errors.New("invalid organization")
 	// D-Languages (M18)
 	ErrUnknownLanguage      = errors.New("language does not exist")
 	ErrUnitLanguageNotFound = errors.New("unit language not found")
@@ -372,7 +376,12 @@ type Repository interface {
 	GetOrganization(ctx context.Context, id string) (Organization, error)
 	UpdateOrganization(ctx context.Context, id string, patch OrgPatch) (Organization, error)
 	SetOrgState(ctx context.Context, id string, state State) (Organization, error)
-	ListOrganizations(ctx context.Context, domainID *string, after string, limit int) ([]Organization, error)
+	ListOrganizations(ctx context.Context, f OrgFilter, after string, limit int) ([]Organization, error)
+	// OrganizationStats is the dashboard aggregate over the same candidate set ListOrganizations pages
+	// (M58 ticket 4 / D-ObjectFacets). An empty subjectPersonID is the instance-admin arm; otherwise
+	// the shadow gate is folded into SQL — for an organization that gate is `visibility = 'public'`,
+	// not unit's reach predicate. See OrganizationStatsForSubject for why.
+	OrganizationStats(ctx context.Context, subjectPersonID string, f OrgFilter, sel stats.Selection) ([]stats.Group, error)
 	CountActiveOrgsByCode(ctx context.Context, code, excludeID string) (int, error)
 	InsertOrgLifecycleEvent(ctx context.Context, orgID string, from, to State, reason, actorPersonID, requestID string) error
 

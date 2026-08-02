@@ -771,11 +771,13 @@ func (r *Repository) SetOrgState(ctx context.Context, id string, state domain.St
 	return toOrganization(row), nil
 }
 
-func (r *Repository) ListOrganizations(ctx context.Context, domainID *string, after string, limit int) ([]domain.Organization, error) {
+func (r *Repository) ListOrganizations(ctx context.Context, f domain.OrgFilter, after string, limit int) ([]domain.Organization, error) {
 	rows, err := r.q.ListOrganizations(ctx, tenantsql.ListOrganizationsParams{
-		DomainID: textPtr(domainID),
-		After:    textPtr(strPtrOrNil(after)),
-		Lim:      int32(limit),
+		DomainID:   textPtr(f.DomainID),
+		Visibility: textPtr(f.Visibility),
+		State:      textPtr(f.State),
+		After:      textPtr(strPtrOrNil(after)),
+		Lim:        int32(limit),
 	})
 	if err != nil {
 		return nil, err

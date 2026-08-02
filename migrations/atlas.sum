@@ -1,4 +1,4 @@
-h1:hHYAXFsypbO+u6Le+RFUL0vP46LVgpyqek4Yzt5TSUc=
+h1:o15Lh1hrn0pA41VvjdYIJ4RBWsIoJxK9Rw7ieHXIwwM=
 0001_platform_core.sql h1:c4WwIF4z9hfxCrl+IBaqR0fYO9ICqMz3Ga6iM/OXtpg=
 0002_tenant_rank.sql h1:bJbgk9xm7zrkXCjv1YWGSBtWDipt06zQrz8rDDWjZoA=
 0003_person_membership.sql h1:NS6tiM/3nkBNXaln2e6VzCXPUwhpo0I+T044Gi5miUc=
@@ -18,3 +18,4 @@ h1:hHYAXFsypbO+u6Le+RFUL0vP46LVgpyqek4Yzt5TSUc=
 0017_facet_lists.sql h1:80fb5ePG7OYYvX2qyZWu+J9k4yUY/dxyZDz2PQWk9Go=
 0018_facet_dashboards.sql h1:mSboNnRlWVVemS4A9bGNtP/NuE1pevQ8CgeqdT9DxIU=
 0019_facet_vehicle_finance.sql h1:i8zF3/UFLf9MbeXldFzN5pM1uF0t/7Xl+bNTvVIMz7o=
+0020_facet_language_tenant.sql h1:cnwMC1f/oiE3UDZRfHswVEeozD3XT0BYIs3gZ3Xbhxo=

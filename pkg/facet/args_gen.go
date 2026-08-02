@@ -68,6 +68,17 @@ var listArgs = map[string][]ArgSpec{
 		{Name: "source", Type: "string", Optional: true},
 		{Name: "status", Type: "string", Optional: true},
 	},
+	"languoid": {
+		{Name: "family", Type: "string", Optional: true},
+		{Name: "level", Type: "string", Optional: true},
+		{Name: "macroarea", Type: "string", Optional: true},
+		{Name: "pageSize", Type: "integer", Optional: true},
+		{Name: "pageToken", Type: "string", Optional: true},
+		{Name: "parent", Type: "string", Optional: true},
+		{Name: "query", Type: "string", Optional: true},
+		{Name: "status", Type: "string", Optional: true},
+		{Name: "topLevel", Type: "boolean", Optional: true},
+	},
 	"link__member_of": {
 		{Name: "effectiveFromAfter", Type: "string", Optional: true},
 		{Name: "effectiveFromBefore", Type: "string", Optional: true},
@@ -86,6 +97,13 @@ var listArgs = map[string][]ArgSpec{
 		{Name: "pageSize", Type: "integer", Optional: true},
 		{Name: "pageToken", Type: "string", Optional: true},
 		{Name: "status", Type: "string", Optional: true},
+	},
+	"organization": {
+		{Name: "domain", Type: "string", Optional: true},
+		{Name: "pageSize", Type: "integer", Optional: true},
+		{Name: "pageToken", Type: "string", Optional: true},
+		{Name: "state", Type: "string", Optional: true},
+		{Name: "visibility", Type: "string", Optional: true},
 	},
 	"person": {
 		{Name: "birthdateFrom", Type: "string", Optional: true},
@@ -191,6 +209,14 @@ var statsArgs = map[string][]ArgSpec{
 		{Name: "source", Type: "string", Optional: true},
 		{Name: "status", Type: "string", Optional: true},
 	},
+	"languoid": {
+		{Name: "facets", Type: "string", Optional: true},
+		{Name: "family", Type: "string", Optional: true},
+		{Name: "level", Type: "string", Optional: true},
+		{Name: "macroarea", Type: "string", Optional: true},
+		{Name: "query", Type: "string", Optional: true},
+		{Name: "status", Type: "string", Optional: true},
+	},
 	"link__member_of": {
 		{Name: "effectiveFromAfter", Type: "string", Optional: true},
 		{Name: "effectiveFromBefore", Type: "string", Optional: true},
@@ -207,6 +233,12 @@ var statsArgs = map[string][]ArgSpec{
 		{Name: "issuingUnitId", Type: "string", Optional: true},
 		{Name: "orderTypeId", Type: "string", Optional: true},
 		{Name: "status", Type: "string", Optional: true},
+	},
+	"organization": {
+		{Name: "domain", Type: "string", Optional: true},
+		{Name: "facets", Type: "string", Optional: true},
+		{Name: "state", Type: "string", Optional: true},
+		{Name: "visibility", Type: "string", Optional: true},
 	},
 	"person": {
 		{Name: "birthdateFrom", Type: "string", Optional: true},

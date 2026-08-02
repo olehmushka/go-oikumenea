@@ -142,6 +142,38 @@ var auditFacetNargs = map[string][]string{
 	"createdAt":     {"since", "until"},
 }
 
+// orgFilterQueries: the organization facets live in the flat list plus BOTH aggregate arms. The two
+// arms are the point — they differ by one gate line and must agree on everything else, or an admin
+// and a scoped caller applying the same filter would be shown different worlds.
+var orgFilterQueries = []struct{ module, query string }{
+	{"tenant", "ListOrganizations"},
+	{"tenant", "OrganizationStats"},
+	{"tenant", "OrganizationStatsForSubject"},
+}
+
+var orgFacetNargs = map[string][]string{
+	"domain":     {"domain_id"},
+	"visibility": {"visibility"},
+	"state":      {"state"},
+}
+
+// languoidFilterQueries: FOUR queries, because languoid is the second type with an R-21 search twin
+// (after person). List and Search, aggregate and aggregate-Search — each pair differing only by the
+// trigram line, and all four carrying one filter block.
+var languoidFilterQueries = []struct{ module, query string }{
+	{"language", "ListLanguoids"},
+	{"language", "SearchLanguoids"},
+	{"language", "LanguoidStats"},
+	{"language", "LanguoidStatsSearch"},
+}
+
+var languoidFacetNargs = map[string][]string{
+	"level":     {"level"},
+	"family":    {"family"},
+	"macroarea": {"macroarea"},
+	"status":    {"status"},
+}
+
 var nargRe = regexp.MustCompile(`sqlc\.narg\('([a-z_][a-z0-9_]*)'\)`)
 
 func TestPersonFacetNargsAppearInEveryQuery(t *testing.T) {
@@ -168,6 +200,14 @@ func TestAuditFacetNargsAppearInEveryQuery(t *testing.T) {
 	assertFacetNargParity(t, "audit", auditFilterQueries, auditFacetNargs)
 }
 
+func TestOrganizationFacetNargsAppearInEveryQuery(t *testing.T) {
+	assertFacetNargParity(t, "organization", orgFilterQueries, orgFacetNargs)
+}
+
+func TestLanguoidFacetNargsAppearInEveryQuery(t *testing.T) {
+	assertFacetNargParity(t, "languoid", languoidFilterQueries, languoidFacetNargs)
+}
+
 // TestEveryRegisteredTypeHasANargGroup closes the hole the per-type tests above leave: a NEW facet
 // block added to the catalog with no entry here would simply go unchecked, and the guard would stay
 // green while the drift it exists to catch went unpoliced. Registering a type is therefore a
@@ -175,7 +215,7 @@ func TestAuditFacetNargsAppearInEveryQuery(t *testing.T) {
 func TestEveryRegisteredTypeHasANargGroup(t *testing.T) {
 	covered := map[string]bool{
 		"person": true, "unit": true, "link__member_of": true, "order": true, "document": true,
-		"audit": true,
+		"audit": true, "organization": true, "languoid": true,
 	}
 	// A raw-pgx module has no queries/*.sql for narg parity to read, so the SAME invariant — the list
 	// and the stats path apply one predicate — is proven in rawpgx_test.go by an AST check that both
@@ -276,8 +316,9 @@ func queryBody(t *testing.T, module, query string) string {
 func TestParityGuardIsNonVacuous(t *testing.T) {
 	var all []struct{ module, query string }
 	for _, g := range [][]struct{ module, query string }{
-		personFilterQueries, unitFilterQueries,
+		personFilterQueries, unitFilterQueries, orgFilterQueries,
 		membershipFilterQueries, orderFilterQueries, documentFilterQueries,
+		languoidFilterQueries,
 	} {
 		all = append(all, g...)
 	}

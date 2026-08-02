@@ -20,10 +20,13 @@ func TestDefaultRegistryBuilds(t *testing.T) {
 	// and ticket 2 added the first two VERTICALS — `external_organization` and `taxon`, the latter the
 	// first TREE and so the first type with non-partitioning facets. Ticket 3 added `vehicle`,
 	// `account` and `card`: the remaining raw-pgx modules, and `card` the first type whose
-	// COLLECTION-LEVEL LIST this vocabulary had to add (cards were per-account only).
+	// COLLECTION-LEVEL LIST this vocabulary had to add (cards were per-account only). Ticket 4 added
+	// `organization` — the LAST type with an app-layer visibility predicate, and the tenant module's
+	// second — and `languoid`, the second type with an R-21 search twin and the first with a COMPOSITE
+	// (set-valued, semicolon-joined) code facet.
 	want := []string{
-		"person", "unit", "link__member_of", "order", "document", "audit",
-		"external_organization", "taxon", "vehicle", "account", "card",
+		"person", "unit", "organization", "link__member_of", "order", "document", "audit",
+		"external_organization", "taxon", "languoid", "vehicle", "account", "card",
 	}
 	for _, w := range want {
 		o, ok := Default.Get(w)

@@ -611,6 +611,10 @@ func initServer(ctx context.Context, info witchcraft.InitInfo, authenticator *mi
 	orderSvc.SetBucketLabeler(statsLabeler)
 	documentSvc.SetBucketLabeler(statsLabeler)
 	auditSvc.SetBucketLabeler(statsLabeler)
+	// languoid declares no ref facet — a glottocode and a macroarea are their own labels — so this
+	// labeler is INERT today. Wired anyway: adding a ref facet later must not silently ship a chart
+	// whose axis is RID tails.
+	languageSvc.SetBucketLabeler(statsLabeler)
 	// Optional modules: a disabled module has no service to label, and its facets are simply never
 	// requested — the endpoint that would serve them is not routed either.
 	if externalOrgSvc != nil {

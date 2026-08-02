@@ -64,8 +64,24 @@ Migration `migrations/20260601000018_language.sql` (RID service **13**, schema `
 
 `LanguageService` (`api/language.conjure.yml`, base `/language/v1`, `default-auth: header`) — read-only:
 
-- `GET /languages?level=&family=&query=&limit=` → `LanguoidList` (code order; `limit` clamped; the
-  catalog is ~27k so narrow with filters).
+- `GET /languages?level=&family=&macroarea=&status=&query=&pageSize=` → `LanguoidList` (code order;
+  `pageSize` clamped; the catalog is ~27k so narrow with filters). Plus the `parent`/`topLevel`
+  tree-walk args. A malformed `level`/`status` is a `LanguoidInvalid`.
+  > ⚠️ **Wire break (M58 ticket 4): the paging arg was `limit` and is now `pageSize`.** The facet
+  > vocabulary's paging class covers only `pageSize`/`pageToken`, a convention every other faceted
+  > type holds; this endpoint was the lone holdout, so the arg was renamed rather than the guard
+  > widened. `?limit=` is now inert — it does not error, it is ignored, and the server falls back to
+  > the default page size. Every in-repo consumer moved with it (the generated Go/TS SDKs, the
+  > console). The DOMAIN field is still `Filter.Limit`: the rename was a contract decision.
+- `GET /stats/languages?facets=&level=&family=&macroarea=&status=&query=` → `LanguoidStats`
+  (M58 ticket 4 / [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope)):
+  facet distributions over the **same** structural filters, so `totalCount` equals the rows
+  exhaustively paging `GET /languages` returns. **ONE arm, no subject** — the registry is
+  instance-global reference data with no RLS, no unit column and no reach predicate, so
+  `language.read` held anywhere is the whole gate. The tree-walk args have no counterpart: they
+  select a hierarchy mode rather than describing the registry. Path is `/stats/languages`, not
+  `/languages/stats` — a literal segment beside `{id}` makes the router refuse the route.
+  Facets and charts are catalogued in [facets.md](../architecture/facets.md).
 - `GET /languages/{id}` → `Languoid` (or `LanguoidNotFound`).
 - `GET /writing-systems` → `WritingSystemList`.
 
@@ -130,10 +146,6 @@ by their services and exposed there (each `name` is the languoid's `locale→tex
   (the import-reconciled locale→languoid links; not directly editable).
 
 ## Open seams / future
-
-- **Facets & dashboards (M58).** [D-ObjectFacets](../architecture/decisions.md#d-objectfacets--one-per-object-type-facet-vocabulary-driving-both-list-filters-and-per-module-stats-endpoints-extends-d-visibilityscope-d-personreadscope-constrained-by-d-datascope) lands filters + a stats endpoint + a console dashboard
-  for this module's listable types: `GET /languages/stats`; the existing `level`/`family`/`parent`/`topLevel` args become the declared facet set, extended with `macroarea` and endangerment `status` — the status bar orders by **severity, not count**.
-  Facets and proposed charts are catalogued in [facets.md](../architecture/facets.md).
 
 - **Richer script sourcing**: `language_writing_systems` currently comes from CLDR `languageData`;
   finer orthography data (ScriptSource) could extend it via another `language-scripts` source.

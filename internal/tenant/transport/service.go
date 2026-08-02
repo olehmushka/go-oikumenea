@@ -543,11 +543,11 @@ func (s Service) UpdateUnitKind(ctx context.Context, token bearertoken.Token, un
 
 // ---------------------------------------------------------------- organizations (M40)
 
-func (s Service) ListOrganizations(ctx context.Context, token bearertoken.Token, domainID *string, pageSize *int, pageToken *string) (tenantapi.OrganizationPage, error) {
+func (s Service) ListOrganizations(ctx context.Context, token bearertoken.Token, domainID *string, visibility *string, state *string, pageSize *int, pageToken *string) (tenantapi.OrganizationPage, error) {
 	if err := s.pep.RequireAnywhere(ctx, token, string(authzdomain.PermOrganizationRead)); err != nil {
 		return tenantapi.OrganizationPage{}, err
 	}
-	page, err := s.app.ListOrganizations(ctx, domainID, derefOr(pageSize, 0), derefOr(pageToken, ""))
+	page, err := s.app.ListOrganizations(ctx, orgFilterFrom(domainID, visibility, state), derefOr(pageSize, 0), derefOr(pageToken, ""))
 	if err != nil {
 		return tenantapi.OrganizationPage{}, s.mapError(ctx, err, errCtx{})
 	}
@@ -881,6 +881,8 @@ func (s Service) mapError(ctx context.Context, err error, c errCtx) error {
 		return tenantapi.NewTransitionInvalid(err.Error())
 	case errors.Is(err, domain.ErrInvalidUnit):
 		return tenantapi.NewUnitInvalid(err.Error())
+	case errors.Is(err, domain.ErrInvalidOrg):
+		return tenantapi.NewOrganizationInvalid(err.Error())
 	case errors.Is(err, domain.ErrGraphNotFound):
 		return tenantapi.NewGraphNotFound(c.graph)
 	case errors.Is(err, domain.ErrGraphCodeConflict):

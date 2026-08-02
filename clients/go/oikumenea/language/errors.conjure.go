@@ -15,6 +15,159 @@ import (
 	werror "github.com/palantir/witchcraft-go-error"
 )
 
+type languoidInvalid struct {
+	Reason string `json:"reason"`
+}
+
+func (o languoidInvalid) MarshalYAML() (interface{}, error) {
+	jsonBytes, err := safejson.Marshal(o)
+	if err != nil {
+		return nil, err
+	}
+	return safeyaml.JSONtoYAMLMapSlice(jsonBytes)
+}
+
+func (o *languoidInvalid) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	jsonBytes, err := safeyaml.UnmarshalerToJSONBytes(unmarshal)
+	if err != nil {
+		return err
+	}
+	return safejson.Unmarshal(jsonBytes, *&o)
+}
+
+// NewLanguoidInvalid returns new instance of LanguoidInvalid error.
+func NewLanguoidInvalid(reasonArg string) *LanguoidInvalid {
+	return &LanguoidInvalid{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), languoidInvalid: languoidInvalid{Reason: reasonArg}}
+}
+
+// WrapWithLanguoidInvalid returns new instance of LanguoidInvalid error wrapping an existing error.
+func WrapWithLanguoidInvalid(err error, reasonArg string) *LanguoidInvalid {
+	return &LanguoidInvalid{errorInstanceID: uuid.NewUUID(), stack: werror.NewStackTrace(), cause: err, languoidInvalid: languoidInvalid{Reason: reasonArg}}
+}
+
+// LanguoidInvalid is an error type.
+/*
+The languoid filter or facet arguments are malformed — a `level`/`status` value outside its
+CHECK set, or an undeclared facet key on `languoidStats`.
+*/
+type LanguoidInvalid struct {
+	errorInstanceID uuid.UUID
+	languoidInvalid
+	cause error
+	stack werror.StackTrace
+}
+
+// IsLanguoidInvalid returns true if err is an instance of LanguoidInvalid.
+func IsLanguoidInvalid(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.GetConjureError(err).(*LanguoidInvalid)
+	return ok
+}
+
+func (e *LanguoidInvalid) Error() string {
+	return fmt.Sprintf("INVALID_ARGUMENT Language:LanguoidInvalid (%s)", e.errorInstanceID)
+}
+
+// Cause returns the underlying cause of the error, or nil if none.
+// Note that cause is not serialized and sent over the wire.
+func (e *LanguoidInvalid) Cause() error {
+	return e.cause
+}
+
+// StackTrace returns the StackTrace for the error, or nil if none.
+// Note that stack traces are not serialized and sent over the wire.
+func (e *LanguoidInvalid) StackTrace() werror.StackTrace {
+	return e.stack
+}
+
+// Message returns the message body for the error.
+func (e *LanguoidInvalid) Message() string {
+	return "INVALID_ARGUMENT Language:LanguoidInvalid"
+}
+
+// Format implements fmt.Formatter, a requirement of werror.Werror.
+func (e *LanguoidInvalid) Format(state fmt.State, verb rune) {
+	werror.Format(e, e.safeParams(), state, verb)
+}
+
+// Code returns an enum describing error category.
+func (e *LanguoidInvalid) Code() errors.ErrorCode {
+	return errors.InvalidArgument
+}
+
+// Name returns an error name identifying error type.
+func (e *LanguoidInvalid) Name() string {
+	return "Language:LanguoidInvalid"
+}
+
+// InstanceID returns unique identifier of this particular error instance.
+func (e *LanguoidInvalid) InstanceID() uuid.UUID {
+	return e.errorInstanceID
+}
+
+// Parameters returns a set of named parameters detailing this particular error instance.
+func (e *LanguoidInvalid) Parameters() map[string]interface{} {
+	return map[string]interface{}{"reason": e.Reason}
+}
+
+// safeParams returns a set of named safe parameters detailing this particular error instance.
+func (e *LanguoidInvalid) safeParams() map[string]interface{} {
+	return map[string]interface{}{"reason": e.Reason, "errorInstanceId": e.errorInstanceID, "errorName": e.Name()}
+}
+
+// SafeParams returns a set of named safe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *LanguoidInvalid) SafeParams() map[string]interface{} {
+	safeParams, _ := werror.ParamsFromError(e.cause)
+	for k, v := range e.safeParams() {
+		if _, exists := safeParams[k]; !exists {
+			safeParams[k] = v
+		}
+	}
+	return safeParams
+}
+
+// unsafeParams returns a set of named unsafe parameters detailing this particular error instance.
+func (e *LanguoidInvalid) unsafeParams() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// UnsafeParams returns a set of named unsafe parameters detailing this particular error instance and
+// any underlying causes.
+func (e *LanguoidInvalid) UnsafeParams() map[string]interface{} {
+	_, unsafeParams := werror.ParamsFromError(e.cause)
+	for k, v := range e.unsafeParams() {
+		if _, exists := unsafeParams[k]; !exists {
+			unsafeParams[k] = v
+		}
+	}
+	return unsafeParams
+}
+
+func (e LanguoidInvalid) MarshalJSON() ([]byte, error) {
+	parameters, err := safejson.Marshal(e.languoidInvalid)
+	if err != nil {
+		return nil, err
+	}
+	return safejson.Marshal(errors.SerializableError{ErrorCode: errors.InvalidArgument, ErrorName: "Language:LanguoidInvalid", ErrorInstanceID: e.errorInstanceID, Parameters: json.RawMessage(parameters)})
+}
+
+func (e *LanguoidInvalid) UnmarshalJSON(data []byte) error {
+	var serializableError errors.SerializableError
+	if err := safejson.Unmarshal(data, &serializableError); err != nil {
+		return err
+	}
+	var parameters languoidInvalid
+	if err := safejson.Unmarshal([]byte(serializableError.Parameters), &parameters); err != nil {
+		return err
+	}
+	e.errorInstanceID = serializableError.ErrorInstanceID
+	e.languoidInvalid = parameters
+	return nil
+}
+
 type languoidNotFound struct {
 	LanguoidId string `json:"languoidId"`
 }
@@ -166,5 +319,6 @@ func (e *LanguoidNotFound) UnmarshalJSON(data []byte) error {
 }
 
 func init() {
+	conjureerrors.RegisterErrorType("Language:LanguoidInvalid", reflect.TypeOf(LanguoidInvalid{}))
 	conjureerrors.RegisterErrorType("Language:LanguoidNotFound", reflect.TypeOf(LanguoidNotFound{}))
 }

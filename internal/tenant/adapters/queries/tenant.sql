@@ -86,10 +86,15 @@ WHERE id = @id AND deleted_at IS NULL
 RETURNING *;
 
 -- name: ListOrganizations :many
--- Keyset pagination over the time-ordered RID (id), optional domain filter.
+-- Keyset pagination over the time-ordered RID (id), with the organization facet filters
+-- (M58 / D-ObjectFacets). The shadow gate is NOT here: it runs app-side in gateUnits once the page
+-- is cut, which is right for a page — a short page, never a skipped row. The dashboard's arm folds
+-- it into SQL instead, because a trimmed row would still have been counted.
 SELECT * FROM oikumenea.tenant_organizations
 WHERE deleted_at IS NULL
   AND (sqlc.narg('domain_id')::uuid IS NULL OR domain_id = sqlc.narg('domain_id')::uuid)
+  AND (sqlc.narg('visibility')::text IS NULL OR visibility = sqlc.narg('visibility')::text)
+  AND (sqlc.narg('state')::text IS NULL OR state = sqlc.narg('state')::text)
   AND (sqlc.narg('after')::uuid IS NULL OR id > sqlc.narg('after')::uuid)
 ORDER BY id
 LIMIT @lim;
@@ -280,6 +285,96 @@ FROM cand c WHERE sqlc.arg('want_state')::boolean GROUP BY 2
 UNION ALL
 SELECT 'pdpScoped'::text, c.pdp_scoped::text, count(*)::bigint
 FROM cand c WHERE sqlc.arg('want_pdp_scoped')::boolean GROUP BY 2;
+
+-- name: OrganizationStats :many
+-- The INSTANCE-ADMIN dashboard aggregate for the organization registry (M58 ticket 4 /
+-- D-ObjectFacets): every facet distribution in ONE round-trip and ONE scan. The candidate CTE carries
+-- ListOrganizations' filter block verbatim minus the keyset cursor, so the dashboard and the list see
+-- one world; a branch whose want_* flag is false is skipped by the planner, not merely dropped from
+-- the response.
+--
+-- Unlike UnitStats there is no @org_id: the organization registry is the instance's whole realm
+-- catalog rather than one org's tree.
+--
+-- `domain` collapses its tail to '(other)' IN SQL, which UnitStats' ref branches do not. That is
+-- deliberate rather than inconsistent: the kernel's topNBuckets ORDERS and appends the synthetic
+-- buckets but never truncates, so a facet declaring TopN 15 whose SQL emits every group would render
+-- more bars than it promised. Unit's branches get away with it because a unit's org/domain/kind
+-- cardinality is bounded by a handful of catalog rows; the domain catalog is instance-extensible, so
+-- this one keeps its own promise.
+WITH cand AS MATERIALIZED (
+  SELECT id, domain_id, visibility, state
+  FROM oikumenea.tenant_organizations
+  WHERE deleted_at IS NULL
+  AND (sqlc.narg('domain_id')::uuid IS NULL OR domain_id = sqlc.narg('domain_id')::uuid)
+  AND (sqlc.narg('visibility')::text IS NULL OR visibility = sqlc.narg('visibility')::text)
+  AND (sqlc.narg('state')::text IS NULL OR state = sqlc.narg('state')::text)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'domain'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.domain_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_domain')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'visibility'::text, c.visibility::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_visibility')::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_state')::boolean GROUP BY 2;
+
+-- name: OrganizationStatsForSubject :many
+-- The visibility-scoped arm of OrganizationStats: identical filters and BYTE-IDENTICAL aggregates,
+-- with the shadow gate folded into the candidate set.
+--
+-- THE GATE IS `visibility = 'public'` AND NOT UNIT'S REACH SET, and that is a decision rather than a
+-- simplification. UnitStatsForSubject writes
+--     visibility = 'public' OR id IN (SELECT oikumenea.authz_readable_units(@subject_person_id))
+-- because a shadow UNIT inside the subject's reach is genuinely visible. An ORGANIZATION never is:
+-- authz_role_assignments.target_unit_id is NOT NULL and REFERENCES tenant_units, so an organization
+-- RID matches neither arm of ReadableUnitsForSubjectAmong and the reach set is empty by construction.
+-- This predicate is therefore EXACTLY what gateUnits leaves on the list — which is the differential
+-- contract — while unit's predicate copied here would compile, pass every guard and count the same
+-- rows today, then start counting rows the list never returns the moment org reachability is fixed.
+-- That gap is an authorization-plane read-surface question, recorded as an open seam in
+-- docs/architecture/facets.md and deliberately not addressed here.
+--
+-- It takes NO subject parameter, for the same reason: there is nothing to probe.
+WITH cand AS MATERIALIZED (
+  SELECT id, domain_id, visibility, state
+  FROM oikumenea.tenant_organizations
+  WHERE deleted_at IS NULL
+  AND (sqlc.narg('domain_id')::uuid IS NULL OR domain_id = sqlc.narg('domain_id')::uuid)
+  AND (sqlc.narg('visibility')::text IS NULL OR visibility = sqlc.narg('visibility')::text)
+  AND (sqlc.narg('state')::text IS NULL OR state = sqlc.narg('state')::text)
+  AND visibility = 'public'
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'domain'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= sqlc.arg('top_n')::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.domain_id::text AS k, count(*) AS n
+            FROM cand c WHERE sqlc.arg('want_domain')::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'visibility'::text, c.visibility::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_visibility')::boolean GROUP BY 2
+UNION ALL
+SELECT 'state'::text, c.state::text, count(*)::bigint
+FROM cand c WHERE sqlc.arg('want_state')::boolean GROUP BY 2;
 
 -- name: ListChildUnits :many
 -- Direct children of @parent_id within graph @graph_id (the immediate edges, not the closure subtree).

@@ -217,6 +217,23 @@ not audited — D-ClosureDriftHealth)
 > page — not an error, and not a leak. `graph` is **not** a facet: it selects which DAG
 > `parent`/`rootsOnly` walk and adds no predicate to `tenant_units` (there is no column to filter or
 > group by), so the drift guard classifies it as a traversal arg.
+
+| `GET /organizations` | List organizations, token-paginated, filtered by the declared facets — `domain`, `visibility`, `state` (M58 ticket 4; [facets catalog](../architecture/facets.md)). Malformed values are `Tenant:OrganizationInvalid` | `organization.read` + shadow gate |
+| `GET /stats/organizations` | Facet distributions over the **same** filter args + an optional `facets` CSV. The shadow gate is folded **into the SQL**, as for units. No `org` arg: the organization registry is the instance's whole realm catalog, not one org's tree. Path is `/stats/organizations`, not `/organizations/stats` (router) | `organization.read` + shadow gate |
+
+> **The organization shadow gate is `visibility = 'public'`, and NOT unit's reach predicate**
+> (M58 ticket 4). `listOrganizations` is gated by `gateUnits` — the *unit* gate, applied to
+> organization rows. On a unit that gate is real; on an organization it is not.
+> `ReadableUnitsForSubjectAmong` matches only on `a.target_unit_id = cand.unit_id`, and
+> `authz_role_assignments.target_unit_id` is `NOT NULL REFERENCES tenant_units` — so an organization
+> RID can never appear in it and the reach set is **empty by construction**. A shadow organization is
+> visible to an instance admin and to nobody else.
+>
+> The dashboard's scoped arm therefore says exactly that, rather than copying unit's
+> `public OR in-reach`, which would count identical rows today and diverge silently the day org
+> reachability is fixed. That underlying gap is an authorization-plane read-surface question recorded
+> as an [open seam](../architecture/facets.md#open-seams) and pinned by
+> `TestOrganizationShadowIsUnreachableForEveryNonAdmin`, which goes red when it is closed.
 | `POST /units/{id}/edges` | Add a parent in a graph (body: `parentId`, `graph`) | `unit.edges.<graph>.manage` OR `unit.edges.manage` (D-EdgePerms) |
 | `DELETE /units/{id}/edges?graph={g}&parentId={p}` | Detach from a parent in a graph | `unit.edges.<graph>.manage` OR `unit.edges.manage` (D-EdgePerms) |
 | `GET /units/{id}/ancestors?graph={g}` | Ancestors in graph `g` (closure; default `command`) | `unit.read` + shadow gate |

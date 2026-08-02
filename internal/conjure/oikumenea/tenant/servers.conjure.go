@@ -72,6 +72,27 @@ type TenantService interface {
 	   `internal/platform/transport`.
 	*/
 	UnitStats(ctx context.Context, authHeader bearertoken.Token, orgArg string, facetsArg *string, domainArg *string, unitKindArg *string, levelArg *int, levelMinArg *int, levelMaxArg *int, visibilityArg *string, stateArg *string, pdpScopedArg *bool) (UnitStats, error)
+	/*
+	   Facet distributions over the organization registry — the dashboard half of the
+	   organization facet vocabulary (M58 / D-ObjectFacets). Takes exactly the filter args
+	   `listOrganizations` takes, minus paging, so a dashboard and a list are two renderings of
+	   one request state.
+
+	   Unlike `unitStats` there is no `org` arg: the organization registry is the instance's
+	   whole realm catalog, not a per-org tree.
+
+	   The shadow gate is folded into SQL: on the list `gateUnits` trims the page once it is cut,
+	   which is right for a page and wrong for a count. For an organization that gate reduces to
+	   `visibility = 'public'` for every non-instance-admin caller — a role assignment's
+	   `target_unit_id` FKs `tenant_units` and can never name an organization, so there is no
+	   reachable shadow org for the two surfaces to disagree about. `totalCount` therefore equals
+	   the rows exhaustively paging `listOrganizations` under these filters would return.
+
+	   The path is `/stats/organizations` rather than `/organizations/stats` because the server's
+	   router rejects a literal path segment that is a sibling of `{orgId}` — see the
+	   route-conflict guard in `internal/platform/transport`.
+	*/
+	OrganizationStats(ctx context.Context, authHeader bearertoken.Token, facetsArg *string, domainArg *string, visibilityArg *string, stateArg *string) (OrganizationStats, error)
 	// Attach the path unit as a child of parentId within a graph (default command). Returns Tenant:UnitCycleDetected on a cycle.
 	AddEdge(ctx context.Context, authHeader bearertoken.Token, unitIdArg string, requestArg AddEdgeRequest) (UnitEdge, error)
 	// Detach the path unit from a parent within a graph.
@@ -119,10 +140,11 @@ type TenantService interface {
 	// Rename / retire a unit kind or adjust its attr schema. Returns Tenant:UnitKindNotFound.
 	UpdateUnitKind(ctx context.Context, authHeader bearertoken.Token, unitKindIdArg string, requestArg UpdateUnitKindRequest) (UnitKind, error)
 	/*
-	   List organizations, token-paginated, optionally filtered by domain (D-TenantOrganizations,
-	   M40). Shadow-gated. Gated by organization.read.
+	   List organizations, token-paginated, optionally filtered by domain, visibility and state
+	   (D-TenantOrganizations, M40; facet vocabulary M58 / D-ObjectFacets). Shadow-gated. Gated by
+	   organization.read. A malformed filter is a Tenant:OrganizationInvalid.
 	*/
-	ListOrganizations(ctx context.Context, authHeader bearertoken.Token, domainArg *string, pageSizeArg *int, pageTokenArg *string) (OrganizationPage, error)
+	ListOrganizations(ctx context.Context, authHeader bearertoken.Token, domainArg *string, visibilityArg *string, stateArg *string, pageSizeArg *int, pageTokenArg *string) (OrganizationPage, error)
 	/*
 	   Create an organization and seed its command + operational graphs in one transaction
 	   (organization.create). Returns Tenant:OrganizationCodeConflict if the code exists.
@@ -165,6 +187,9 @@ func RegisterRoutesTenantService(router wrouter.Router, impl TenantService, rout
 	}
 	if err := resource.Get("UnitStats", "/tenant/v1/stats/units", httpserver.NewJSONHandler(handler.HandleUnitStats, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add unitStats route")
+	}
+	if err := resource.Get("OrganizationStats", "/tenant/v1/stats/organizations", httpserver.NewJSONHandler(handler.HandleOrganizationStats, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
+		return werror.WrapWithContextParams(context.TODO(), err, "failed to add organizationStats route")
 	}
 	if err := resource.Post("AddEdge", "/tenant/v1/units/{unitId}/edges", httpserver.NewJSONHandler(handler.HandleAddEdge, httpserver.StatusCodeMapper, httpserver.ErrHandler), routerParams...); err != nil {
 		return werror.WrapWithContextParams(context.TODO(), err, "failed to add addEdge route")
@@ -521,6 +546,39 @@ func (t *tenantServiceHandler) HandleUnitStats(rw http.ResponseWriter, req *http
 		pdpScopedArg = &pdpScopedArgInternal
 	}
 	respArg, err := t.impl.UnitStats(req.Context(), bearertoken.Token(authHeader), orgArg, facetsArg, domainArg, unitKindArg, levelArg, levelMinArg, levelMaxArg, visibilityArg, stateArg, pdpScopedArg)
+	if err != nil {
+		return err
+	}
+	rw.Header().Add("Content-Type", codecs.JSON.ContentType())
+	return codecs.JSON.Encode(rw, respArg)
+}
+
+func (t *tenantServiceHandler) HandleOrganizationStats(rw http.ResponseWriter, req *http.Request) error {
+	authHeader, err := httpserver.ParseBearerTokenHeader(req)
+	if err != nil {
+		return errors.WrapWithPermissionDenied(err)
+	}
+	var facetsArg *string
+	if facetsArgStr := req.URL.Query().Get("facets"); facetsArgStr != "" {
+		facetsArgInternal := facetsArgStr
+		facetsArg = &facetsArgInternal
+	}
+	var domainArg *string
+	if domainArgStr := req.URL.Query().Get("domain"); domainArgStr != "" {
+		domainArgInternal := domainArgStr
+		domainArg = &domainArgInternal
+	}
+	var visibilityArg *string
+	if visibilityArgStr := req.URL.Query().Get("visibility"); visibilityArgStr != "" {
+		visibilityArgInternal := visibilityArgStr
+		visibilityArg = &visibilityArgInternal
+	}
+	var stateArg *string
+	if stateArgStr := req.URL.Query().Get("state"); stateArgStr != "" {
+		stateArgInternal := stateArgStr
+		stateArg = &stateArgInternal
+	}
+	respArg, err := t.impl.OrganizationStats(req.Context(), bearertoken.Token(authHeader), facetsArg, domainArg, visibilityArg, stateArg)
 	if err != nil {
 		return err
 	}
@@ -976,6 +1034,16 @@ func (t *tenantServiceHandler) HandleListOrganizations(rw http.ResponseWriter, r
 		domainArgInternal := domainArgStr
 		domainArg = &domainArgInternal
 	}
+	var visibilityArg *string
+	if visibilityArgStr := req.URL.Query().Get("visibility"); visibilityArgStr != "" {
+		visibilityArgInternal := visibilityArgStr
+		visibilityArg = &visibilityArgInternal
+	}
+	var stateArg *string
+	if stateArgStr := req.URL.Query().Get("state"); stateArgStr != "" {
+		stateArgInternal := stateArgStr
+		stateArg = &stateArgInternal
+	}
 	var pageSizeArg *int
 	if pageSizeArgStr := req.URL.Query().Get("pageSize"); pageSizeArgStr != "" {
 		pageSizeArgInternal, err := strconv.Atoi(pageSizeArgStr)
@@ -989,7 +1057,7 @@ func (t *tenantServiceHandler) HandleListOrganizations(rw http.ResponseWriter, r
 		pageTokenArgInternal := pageTokenArgStr
 		pageTokenArg = &pageTokenArgInternal
 	}
-	respArg, err := t.impl.ListOrganizations(req.Context(), bearertoken.Token(authHeader), domainArg, pageSizeArg, pageTokenArg)
+	respArg, err := t.impl.ListOrganizations(req.Context(), bearertoken.Token(authHeader), domainArg, visibilityArg, stateArg, pageSizeArg, pageTokenArg)
 	if err != nil {
 		return err
 	}

@@ -107,7 +107,21 @@ func run(ctx context.Context, dsn, configPath string, seed int64, reset bool) er
 		var existing int
 		_ = s.scalar(&existing, `SELECT count(*) FROM oikumenea.tenant_organizations WHERE metadata->>'seed'='demo'`)
 		if existing > 0 {
-			return fmt.Errorf("demo data already present (%d demo orgs) — re-run with -reset to replace it", existing)
+			// Refresh the idempotent spreads and stop. Without this the seeder is all-or-nothing: a
+			// later ticket that needs an existing column to VARY (M58 ticket 4 needed org
+			// visibility/state to have more than one value, or their charts would each be a single
+			// bar) could only be applied by a full -reset — which is blocked on any dev database
+			// carrying hand-made rows the seeder does not own and must not delete. These passes only
+			// UPDATE rows tagged `seed:demo`, and are deterministic, so re-running changes nothing.
+			if err := s.spreadOrgFacets(); err != nil {
+				return fmt.Errorf("refresh org facets: %w", err)
+			}
+			if err := tx.Commit(ctx); err != nil {
+				return fmt.Errorf("commit: %w", err)
+			}
+			fmt.Printf("seed-demo: %d demo orgs already present — refreshed the facet spreads only "+
+				"(re-run with -reset to rebuild the dataset)\n", existing)
+			return nil
 		}
 	}
 

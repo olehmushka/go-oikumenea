@@ -72,6 +72,38 @@ types:
         docs: The writing systems, in code order.
         fields:
           writingSystems: list<WritingSystem>
+      FacetBucket:
+        docs: |
+          One bucket of a facet distribution (M58 / D-ObjectFacets).
+
+          `key` is the bucket's stable, locale-agnostic identity — an enum value (`dialect`) or an open
+          code (`Eurasia`, `indo1319`) — and is exactly what you pass back as the corresponding list
+          filter. Two synthetic keys never name a real value: `(unknown)` is the NULL bucket and
+          `(other)` a top-N facet's collapsed tail; neither is a usable filter value.
+
+          `label` carries a display name as a locale -> text map (D-i18n) and is present only for `ref`
+          buckets, whose keys are RIDs. The languoid type declares NO ref facet — a glottocode and a
+          macroarea are their own labels — so no bucket here carries one.
+        fields:
+          key: string
+          label: optional<map<string, string>>
+          count: integer
+      FacetDistribution:
+        docs: |
+          One facet's buckets, in chart order — for an enum, the declared CHECK-set order with
+          zero-count buckets included so a chart's shape is stable; for a code facet, descending by
+          count with `(other)`/`(unknown)` last.
+        fields:
+          facet: string
+          buckets: list<FacetBucket>
+      LanguoidStats:
+        docs: |
+          Facet distributions over the SAME set `listLanguages` returns under the same structural
+          filters (M58 / D-ObjectFacets), so `totalCount` equals the rows exhaustively paging
+          `listLanguages` would return.
+        fields:
+          totalCount: integer
+          facets: list<FacetDistribution>
     errors:
       LanguoidNotFound:
         docs: No languoid exists with the given RID.
@@ -79,6 +111,14 @@ types:
         code: NOT_FOUND
         safe-args:
           languoidId: string
+      LanguoidInvalid:
+        docs: |
+          The languoid filter or facet arguments are malformed — a `level`/`status` value outside its
+          CHECK set, or an undeclared facet key on `languoidStats`.
+        namespace: Language
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
 services:
   LanguageService:
     name: Language Service
@@ -93,8 +133,12 @@ services:
         http: GET /languages
         docs: |
           List languoids in code order, optionally filtered by level, root family (glottocode), and a
-          name/code substring. `limit` caps the page (default/clamped server-side) since the catalog is
-          large (~26k); narrow with the filters.
+          name/code substring. `pageSize` caps the page (default/clamped server-side) since the catalog
+          is large (~26k); narrow with the filters.
+
+          `pageSize` was named `limit` before M58 ticket 4. The rename is a WIRE BREAK, taken because
+          the paging-arg convention (`pageSize`/`pageToken`) is a checked invariant held by every other
+          faceted type, and this endpoint was the only holdout.
         args:
           level:
             type: optional<string>
@@ -104,6 +148,17 @@ services:
             type: optional<string>
             param-type: query
             docs: Filter to descendants of this root-family glottocode (via family_code).
+          macroarea:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Facet filter — the Glottolog macroarea, matched EXACTLY. The column is set-valued and
+              stored semicolon-joined, so a languoid spanning two macroareas is filtered as
+              `Africa;Eurasia` — which is also the bucket key the dashboard emits for it.
+          status:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — AES endangerment (`not_endangered` | `threatened` | `shifting` | `moribund` | `nearly_extinct` | `extinct`).
           parent:
             type: optional<string>
             param-type: query
@@ -116,10 +171,10 @@ services:
             type: optional<string>
             param-type: query
             docs: Case-insensitive substring match on name or glottocode.
-          limit:
+          pageSize:
             type: optional<integer>
             param-type: query
-            docs: Max rows to return (server clamps to a sane maximum).
+            docs: Max rows to return (server clamps to a sane maximum). Named `limit` before M58 ticket 4.
           pageToken:
             type: optional<string>
             param-type: query
@@ -127,6 +182,56 @@ services:
               Keyset cursor from a previous page's `nextPageToken` (a glottocode); returns the rows that
               sort after it in code order. Omit for the first page.
         returns: LanguoidList
+      languoidStats:
+        http: GET /stats/languages
+        docs: |
+          Facet distributions over the languoid registry — the dashboard half of the languoid facet
+          vocabulary (M58 / D-ObjectFacets). Takes exactly the STRUCTURAL filter args `listLanguages`
+          takes — `level`, `family`, `macroarea`, `status` and the free-text `query` — plus the
+          `facets` CSV, so a dashboard and a list are two renderings of one request state.
+
+          The tree-traversal args `parent`/`topLevel` have no counterpart here on purpose: they switch
+          the LIST to a one-level hierarchy walk rather than describing the registry, so there is
+          nothing for them to count.
+
+          ONE arm, and no subject. The languoid catalog is instance-global reference data — no
+          row-level security, no unit column, no reach predicate — so `language.read` held anywhere is
+          the whole visibility decision and there is none left to fold into the count.
+
+          The path is `/stats/languages` rather than `/languages/stats` because the server's router
+          rejects a literal path segment that is a sibling of `{id}` — see the route-conflict guard in
+          `internal/platform/transport`.
+        args:
+          facets:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Optional comma-separated facet keys to compute (`level,status`). Omitted or empty = every
+              facet the caller may read; an explicit list of nothing (`facets=,`) returns `totalCount`
+              alone. An undeclared facet key is a Language:LanguoidInvalid.
+          level:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listLanguages`.
+          family:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listLanguages`.
+          macroarea:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listLanguages`.
+          status:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listLanguages`.
+          query:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Case-insensitive substring match on name or glottocode — the same trigram-served
+              predicate `listLanguages` uses, so a searched list and its dashboard describe one set.
+        returns: LanguoidStats
       getLanguage:
         http: GET /languages/{id}
         docs: Fetch one languoid by its RID.

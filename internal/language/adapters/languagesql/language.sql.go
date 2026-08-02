@@ -51,6 +51,227 @@ func (q *Queries) GetLanguoid(ctx context.Context, id string) (GetLanguoidRow, e
 	return i, err
 }
 
+const languoidStats = `-- name: LanguoidStats :many
+WITH cand AS MATERIALIZED (
+  SELECT l.level, l.family_code, l.macroarea, l.status
+  FROM oikumenea.language_languoids l
+  WHERE ($1::text IS NULL OR l.level = $1::text)
+    AND ($2::text IS NULL OR l.family_code = $2::text)
+    AND ($3::text IS NULL OR l.macroarea = $3::text)
+    AND ($4::text IS NULL OR l.status = $4::text)
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'level'::text, c.level::text, count(*)::bigint
+FROM cand c WHERE $5::boolean GROUP BY 2
+UNION ALL
+SELECT 'status'::text, c.status::text, count(*)::bigint
+FROM cand c WHERE $6::boolean GROUP BY 2
+UNION ALL
+SELECT 'macroarea'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $7::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.macroarea::text AS k, count(*) AS n
+            FROM cand c WHERE $8::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'family'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $7::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT rtrim(c.family_code)::text AS k, count(*) AS n
+            FROM cand c WHERE $9::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+`
+
+type LanguoidStatsParams struct {
+	Level         pgtype.Text
+	Family        pgtype.Text
+	Macroarea     pgtype.Text
+	Status        pgtype.Text
+	WantLevel     bool
+	WantStatus    bool
+	TopN          int32
+	WantMacroarea bool
+	WantFamily    bool
+}
+
+type LanguoidStatsRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+}
+
+// The languoid dashboard aggregate (M58 ticket 4 / D-ObjectFacets): every selected facet's
+// distribution plus the total, in ONE round-trip and ONE scan. The candidate CTE carries
+// ListLanguoids' STRUCTURAL filter block verbatim, so the list and the dashboard see one world; a
+// branch whose want_* flag is false is skipped by the planner, not merely dropped from the response.
+//
+// ONE ARM, and no subject: language_languoids is instance-global reference data — no row-level
+// security, no unit column, no reach predicate. `language.read` held anywhere is the whole gate, so
+// there is no visibility decision for a second arm to make. That is the vehicle / external_organization
+// shape (the ABSENCE of a decision) and NOT the audit ledger's (a decision made entirely by which
+// connection the query runs on); the two are not interchangeable.
+//
+// The traversal args (parent / topLevel) have no counterpart here on purpose: they switch the LIST to
+// a one-level hierarchy walk rather than adding a predicate that describes the registry. Neither does
+// the keyset — a page boundary is not a filter.
+// macroarea is SET-VALUED, stored semicolon-joined, and grouped by the LITERAL string rather than
+// unnested: the filter is an exact match, so `Africa;Eurasia` is its own bucket AND its own usable
+// filter value, and the distribution PARTITIONS. Unnesting would double-count and would need the
+// NonPartitioning exemption, which this facet could not legally take anyway — the kernel refuses it
+// when the facet's table IS the listed table, because a row has one value in its own column.
+// family_code is char(8) and therefore SPACE-PADDED on read. The rtrim is not cosmetic: an untrimmed
+// key would not round-trip as a filter value, so the bucket would count rows its own click-through
+// could not return. (The ::text cast alone also strips, per the character-type conversion rule; the
+// rtrim says so out loud rather than depending on it.) 479 distinct families in the shipped catalog,
+// so the tail MUST be collapsed here — the kernel's topNBuckets orders and appends the synthetic
+// buckets but never truncates.
+func (q *Queries) LanguoidStats(ctx context.Context, arg LanguoidStatsParams) ([]LanguoidStatsRow, error) {
+	rows, err := q.db.Query(ctx, languoidStats,
+		arg.Level,
+		arg.Family,
+		arg.Macroarea,
+		arg.Status,
+		arg.WantLevel,
+		arg.WantStatus,
+		arg.TopN,
+		arg.WantMacroarea,
+		arg.WantFamily,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LanguoidStatsRow
+	for rows.Next() {
+		var i LanguoidStatsRow
+		if err := rows.Scan(&i.Facet, &i.Bucket, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const languoidStatsSearch = `-- name: LanguoidStatsSearch :many
+WITH cand AS MATERIALIZED (
+  SELECT l.level, l.family_code, l.macroarea, l.status
+  FROM oikumenea.language_languoids l
+  WHERE ($1::text IS NULL OR l.level = $1::text)
+    AND ($2::text IS NULL OR l.family_code = $2::text)
+    AND ($3::text IS NULL OR l.macroarea = $3::text)
+    AND ($4::text IS NULL OR l.status = $4::text)
+    AND l.search_text ILIKE '%' || $5::text || '%'
+)
+SELECT '(total)'::text AS facet, NULL::text AS bucket, count(*)::bigint AS n
+FROM cand
+UNION ALL
+SELECT 'level'::text, c.level::text, count(*)::bigint
+FROM cand c WHERE $6::boolean GROUP BY 2
+UNION ALL
+SELECT 'status'::text, c.status::text, count(*)::bigint
+FROM cand c WHERE $7::boolean GROUP BY 2
+UNION ALL
+SELECT 'macroarea'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $8::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT c.macroarea::text AS k, count(*) AS n
+            FROM cand c WHERE $9::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+UNION ALL
+SELECT 'family'::text,
+       CASE WHEN t.k IS NULL THEN '(unknown)'
+            WHEN t.rk <= $8::integer THEN t.k
+            ELSE '(other)' END,
+       sum(t.n)::bigint
+FROM (SELECT g.k, g.n, row_number() OVER (ORDER BY (g.k IS NULL), g.n DESC, g.k) AS rk
+      FROM (SELECT rtrim(c.family_code)::text AS k, count(*) AS n
+            FROM cand c WHERE $10::boolean
+            GROUP BY 1) g) t
+GROUP BY 2
+`
+
+type LanguoidStatsSearchParams struct {
+	Level         pgtype.Text
+	Family        pgtype.Text
+	Macroarea     pgtype.Text
+	Status        pgtype.Text
+	Q             string
+	WantLevel     bool
+	WantStatus    bool
+	TopN          int32
+	WantMacroarea bool
+	WantFamily    bool
+}
+
+type LanguoidStatsSearchRow struct {
+	Facet  string
+	Bucket pgtype.Text
+	N      int64
+}
+
+// The trigram-served twin of LanguoidStats, exactly as SearchLanguoids is ListLanguoids' twin
+// (R-21): identical filters and BYTE-IDENTICAL aggregates, with the substring predicate added to the
+// candidate set. The repository picks between the two on the SAME branch the list takes, so a
+// searched list and its dashboard cannot end up describing different sets.
+// macroarea is SET-VALUED, stored semicolon-joined, and grouped by the LITERAL string rather than
+// unnested: the filter is an exact match, so `Africa;Eurasia` is its own bucket AND its own usable
+// filter value, and the distribution PARTITIONS. Unnesting would double-count and would need the
+// NonPartitioning exemption, which this facet could not legally take anyway — the kernel refuses it
+// when the facet's table IS the listed table, because a row has one value in its own column.
+// family_code is char(8) and therefore SPACE-PADDED on read. The rtrim is not cosmetic: an untrimmed
+// key would not round-trip as a filter value, so the bucket would count rows its own click-through
+// could not return. (The ::text cast alone also strips, per the character-type conversion rule; the
+// rtrim says so out loud rather than depending on it.) 479 distinct families in the shipped catalog,
+// so the tail MUST be collapsed here — the kernel's topNBuckets orders and appends the synthetic
+// buckets but never truncates.
+func (q *Queries) LanguoidStatsSearch(ctx context.Context, arg LanguoidStatsSearchParams) ([]LanguoidStatsSearchRow, error) {
+	rows, err := q.db.Query(ctx, languoidStatsSearch,
+		arg.Level,
+		arg.Family,
+		arg.Macroarea,
+		arg.Status,
+		arg.Q,
+		arg.WantLevel,
+		arg.WantStatus,
+		arg.TopN,
+		arg.WantMacroarea,
+		arg.WantFamily,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LanguoidStatsSearchRow
+	for rows.Next() {
+		var i LanguoidStatsSearchRow
+		if err := rows.Scan(&i.Facet, &i.Bucket, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLanguoids = `-- name: ListLanguoids :many
 
 SELECT l.id, l.code, l.level, l.name, l.parent_id, l.family_code, l.iso639_3, l.macroarea, l.status,
@@ -59,22 +280,26 @@ SELECT l.id, l.code, l.level, l.name, l.parent_id, l.family_code, l.iso639_3, l.
     WHERE c.parent_id = l.id AND c.level <> 'dialect'
   ) AS has_children
 FROM oikumenea.language_languoids l
-WHERE ($1::text = '' OR l.level = $1::text)
-  AND ($2::text = '' OR l.family_code = $2::text)
-  AND ($3::text = '' OR l.parent_id::text = $3::text)
-  AND (NOT $4::bool OR l.parent_id IS NULL)
-  AND ($5::text = '' OR l.code > $5::text)
+WHERE ($1::text IS NULL OR l.level = $1::text)
+  AND ($2::text IS NULL OR l.family_code = $2::text)
+  AND ($3::text IS NULL OR l.macroarea = $3::text)
+  AND ($4::text IS NULL OR l.status = $4::text)
+  AND ($5::text = '' OR l.parent_id::text = $5::text)
+  AND (NOT $6::bool OR l.parent_id IS NULL)
+  AND ($7::text IS NULL OR l.code > $7::text)
 ORDER BY l.code
-LIMIT $6::int
+LIMIT $8::int
 `
 
 type ListLanguoidsParams struct {
-	Level    string
-	Family   string
-	Parent   string
-	TopLevel bool
-	After    string
-	Lim      int32
+	Level     pgtype.Text
+	Family    pgtype.Text
+	Macroarea pgtype.Text
+	Status    pgtype.Text
+	Parent    string
+	TopLevel  bool
+	After     pgtype.Text
+	Lim       int32
 }
 
 type ListLanguoidsRow struct {
@@ -93,11 +318,17 @@ type ListLanguoidsRow struct {
 // Language module queries (docs/modules/language.md; D-Languages, M18). Read-only lookups over the
 // RID-keyed Glottolog languoid forest + ISO-15924 writing-system registry. The catalog is written by
 // the hermenea import pipeline (language-scheme / language-scripts), not here.
-// Languoids in code order, optionally filtered by level, root family (family_code), immediate parent
-// (one tree level), top-level-only, and a keyset cursor (after: return rows whose code sorts strictly
-// after it, for pagination). The empty-string / false sentinels disable each filter; the limit is
-// clamped by the application. A text query routes to SearchLanguoids instead (review R-21): folding the
-// trigram predicate behind `(@q = ” OR …)` here would defeat the GIN index under a generic plan.
+// Languoids in code order, narrowed by the languoid facet set (M58 ticket 4 / D-ObjectFacets: level,
+// family, macroarea, status), the tree-traversal args (immediate parent / top-level-only), and a
+// keyset cursor (after: return rows whose code sorts strictly after it). The page size is clamped by
+// the application. A text query routes to SearchLanguoids instead (review R-21): folding the trigram
+// predicate behind `(@q = ” OR …)` here would defeat the GIN index under a generic plan.
+//
+// The four FACET predicates are nargs, not the `sqlc.arg(x)::text = ”` sentinels this query carried
+// before M58 ticket 4: the parity guard reads a facet's narg out of every list AND stats query to
+// prove the dashboard and the list see one world, and a sentinel is invisible to it. The two
+// TRAVERSAL args keep their sentinels — they are not facets and no aggregate counts them.
+//
 // has_children flags whether the node has any non-dialect child, so a tree browser can show an expand
 // affordance only where it leads somewhere (family → language; languages whose only children are
 // dialects read as leaves).
@@ -105,6 +336,8 @@ func (q *Queries) ListLanguoids(ctx context.Context, arg ListLanguoidsParams) ([
 	rows, err := q.db.Query(ctx, listLanguoids,
 		arg.Level,
 		arg.Family,
+		arg.Macroarea,
+		arg.Status,
 		arg.Parent,
 		arg.TopLevel,
 		arg.After,
@@ -182,24 +415,28 @@ SELECT l.id, l.code, l.level, l.name, l.parent_id, l.family_code, l.iso639_3, l.
     WHERE c.parent_id = l.id AND c.level <> 'dialect'
   ) AS has_children
 FROM oikumenea.language_languoids l
-WHERE ($1::text = '' OR l.level = $1::text)
-  AND ($2::text = '' OR l.family_code = $2::text)
-  AND ($3::text = '' OR l.parent_id::text = $3::text)
-  AND (NOT $4::bool OR l.parent_id IS NULL)
-  AND l.search_text ILIKE '%' || $5::text || '%'
-  AND ($6::text = '' OR l.code > $6::text)
+WHERE ($1::text IS NULL OR l.level = $1::text)
+  AND ($2::text IS NULL OR l.family_code = $2::text)
+  AND ($3::text IS NULL OR l.macroarea = $3::text)
+  AND ($4::text IS NULL OR l.status = $4::text)
+  AND ($5::text = '' OR l.parent_id::text = $5::text)
+  AND (NOT $6::bool OR l.parent_id IS NULL)
+  AND l.search_text ILIKE '%' || $7::text || '%'
+  AND ($8::text IS NULL OR l.code > $8::text)
 ORDER BY l.code
-LIMIT $7::int
+LIMIT $9::int
 `
 
 type SearchLanguoidsParams struct {
-	Level    string
-	Family   string
-	Parent   string
-	TopLevel bool
-	Q        string
-	After    string
-	Lim      int32
+	Level     pgtype.Text
+	Family    pgtype.Text
+	Macroarea pgtype.Text
+	Status    pgtype.Text
+	Parent    string
+	TopLevel  bool
+	Q         string
+	After     pgtype.Text
+	Lim       int32
 }
 
 type SearchLanguoidsRow struct {
@@ -223,6 +460,8 @@ func (q *Queries) SearchLanguoids(ctx context.Context, arg SearchLanguoidsParams
 	rows, err := q.db.Query(ctx, searchLanguoids,
 		arg.Level,
 		arg.Family,
+		arg.Macroarea,
+		arg.Status,
 		arg.Parent,
 		arg.TopLevel,
 		arg.Q,

@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/olegamysk/go-oikumenea/internal/tenant/domain"
 	"github.com/olegamysk/go-oikumenea/pkg/listing"
+	"github.com/olegamysk/go-oikumenea/pkg/stats"
 )
 
 // noExclude is the zero UUID used as the "exclude nothing" argument to the code-conflict counts on a
@@ -134,14 +135,19 @@ type OrgPage struct {
 	NextPageToken string
 }
 
-// ListOrganizations returns a keyset-paginated page of organizations, optionally filtered by domain.
-func (s *Service) ListOrganizations(ctx context.Context, domainID *string, pageSize int, pageToken string) (OrgPage, error) {
+// ListOrganizations returns a keyset-paginated page of organizations narrowed by the organization
+// facet set (M58 ticket 4 / D-ObjectFacets: domain, visibility, state). The shadow gate is NOT here —
+// it runs in the transport's gateUnits once the page is cut.
+func (s *Service) ListOrganizations(ctx context.Context, f domain.OrgFilter, pageSize int, pageToken string) (OrgPage, error) {
+	if err := f.Validate(); err != nil {
+		return OrgPage{}, err
+	}
 	size := pageSizePolicy.Resolve(pageSize)
 	after, err := listing.DecodeCursor(pageToken)
 	if err != nil {
 		return OrgPage{}, err
 	}
-	orgs, err := s.newRepo(s.querier(ctx)).ListOrganizations(ctx, domainID, after, size+1)
+	orgs, err := s.newRepo(s.querier(ctx)).ListOrganizations(ctx, f, after, size+1)
 	if err != nil {
 		return OrgPage{}, err
 	}
@@ -150,6 +156,22 @@ func (s *Service) ListOrganizations(ctx context.Context, domainID *string, pageS
 		return OrgPage{Orgs: orgs[:size], NextPageToken: listing.EncodeCursor(last.ID)}, nil
 	}
 	return OrgPage{Orgs: orgs}, nil
+}
+
+// OrganizationStats is the organization dashboard (M58 ticket 4 / D-ObjectFacets): every selected
+// facet's distribution plus the total, over EXACTLY the set ListOrganizations would page under the
+// same filters — with the shadow gate folded into the count rather than trimmed off the page.
+//
+// subjectPersonID is empty for an instance admin and the subject's RID otherwise, and the arm is
+// chosen on that in SQL. The filter is validated here, once, so both arms reject an ill-formed facet
+// value identically.
+func (s *Service) OrganizationStats(ctx context.Context, subjectPersonID string, isAdmin bool, f domain.OrgFilter, sel stats.Selection) (stats.Result, error) {
+	if err := f.Validate(); err != nil {
+		return stats.Result{}, err
+	}
+	return stats.Compute(ctx, s.labeler, sel, isAdmin, subjectPersonID, func(subject string) ([]stats.Group, error) {
+		return s.newRepo(s.querier(ctx)).OrganizationStats(ctx, subject, f, sel)
+	})
 }
 
 // GetOrganization reads one organization by RID.

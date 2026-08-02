@@ -148,7 +148,7 @@ export interface FilterDef {
    * Separate from `control` because a code facet is not a ref — its value is the code itself, and
    * conflating the two unions would let a ref facet name a catalog that returns no RIDs.
    */
-  catalog?: "actionType";
+  catalog?: "actionType" | "languoidFamily";
   /** ref only: the param whose current value scopes this one's options (domain → unitKind) */
   dependsOn?: string;
   /** the arg is NON-optional in the contract (unit.org — listUnits rejects an unscoped listing) */
@@ -568,6 +568,72 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
     actions: [
       { key: "deactivate", label: "Deactivate", method: "POST", path: (id) => `/person/v1/persons/${id}/deactivate`, confirm: "Deactivate this person?", appliesTo: (p) => String(p.status ?? "").toUpperCase() === "ACTIVE" },
       { key: "reactivate", label: "Reactivate", method: "POST", path: (id) => `/person/v1/persons/${id}/reactivate`, appliesTo: (p) => String(p.status ?? "").toUpperCase() !== "ACTIVE" },
+    ],
+  },
+
+  organization: {
+    type: "organization",
+    kind: "object",
+    label: "Organization",
+    labelPlural: "Organizations",
+    module: "tenant",
+    // The tenant module defaults to unit.read via READ_CODE_BY_MODULE; an organization is gated by
+    // its own code, so the override is required rather than cosmetic.
+    requires: "organization.read",
+    blurb:
+      "A realm a person joins (US Army, KhNU) — the owner of units and per-org graphs, classified by " +
+      "its domain (D-TenantOrganizations, M40). Every organization shares one instance-global person " +
+      "directory, so a person can serve across several over time.",
+    list: { path: "/tenant/v1/organizations", search: "?pageSize=50", parse: pageParse("organizations") },
+    get: (id) => `/tenant/v1/organizations/${id}`,
+    title: (o) => s(o.code) || ridTail(o.id),
+    subtitle: (o) => loc(o.name) || undefined,
+    columns: [
+      { key: "code", header: "Code", value: (o) => s(o.code), render: "mono" },
+      { key: "name", header: "Name", value: (o) => loc(o.name) },
+      { key: "visibility", header: "Visibility", value: (o) => s(o.visibility), render: "pill", tone: (o) => (s(o.visibility) === "public" ? "green" : "slate") },
+      { key: "state", header: "State", value: (o) => s(o.state), render: "pill", tone: (o) => (s(o.state) === "active" ? "green" : s(o.state) === "suspended" ? "amber" : "slate") },
+    ],
+    filters: [
+      { key: "domain", kind: "ref", label: "Domain", params: ["domain"], control: "domain" },
+      {
+        key: "visibility", kind: "enum", label: "Visibility", params: ["visibility"],
+        values: [
+          { value: "public", label: "Public" },
+          { value: "shadow", label: "Shadow" },
+        ],
+        hint: "A shadow organization is visible only to an instance admin — no role assignment can reach one, so for everyone else this filter returns nothing.",
+      },
+      {
+        key: "state", kind: "enum", label: "State", params: ["state"],
+        values: [
+          { value: "active", label: "Active" },
+          { value: "suspended", label: "Suspended" },
+          { value: "archived", label: "Archived" },
+        ],
+      },
+    ],
+    dashboard: {
+      path: "/tenant/v1/stats/organizations",
+      charts: [
+        { key: "domain", title: "Organizations per domain", form: "bar", facet: "domain", orientation: "horizontal" },
+        {
+          key: "state", title: "Lifecycle", form: "tiles", facet: "state",
+          tone: { active: "green", suspended: "amber", archived: "slate" },
+        },
+        {
+          key: "visibility", title: "Visibility", form: "donut", facet: "visibility",
+          tone: { public: "green", shadow: "slate" },
+          note: "The shadow slice is non-empty only for an instance admin: an organization RID can never appear in a role assignment's reach.",
+        },
+      ],
+    },
+    properties: [
+      { label: "Code", value: (o) => s(o.code), render: "mono" },
+      { label: "Name", value: (o) => loc(o.name) },
+      { label: "Domain", value: (o) => s(o.domainId), render: "mono" },
+      { label: "Visibility", value: (o) => s(o.visibility), render: "pill" },
+      { label: "State", value: (o) => s(o.state), render: "pill" },
     ],
   },
 
@@ -1204,7 +1270,7 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
     labelPlural: "Languages",
     module: "language",
     blurb: "A Glottolog languoid (family/language/dialect), keyed by glottocode; the genealogical catalog.",
-    list: { path: "/language/v1/languages", search: "?limit=100", searchParam: "query", parse: pageParse("languoids") },
+    list: { path: "/language/v1/languages", search: "?pageSize=100", searchParam: "query", parse: pageParse("languoids") },
     get: (id) => `/language/v1/languages/${id}`,
     title: (l) => loc(l.name) || s(l.code) || ridTail(l.id),
     subtitle: (l) => s(l.code),
@@ -1215,6 +1281,51 @@ export const OBJECT_TYPES: Record<string, ObjectTypeDef> = {
       { key: "iso", header: "ISO 639-3", value: (l) => s(l.iso6393), render: "mono" },
       { key: "family", header: "Family", value: (l) => s(l.familyCode), render: "mono" },
     ],
+    filters: [
+      {
+        key: "level", kind: "enum", label: "Level", params: ["level"],
+        values: [
+          { value: "family", label: "Family" },
+          { value: "language", label: "Language" },
+          { value: "dialect", label: "Dialect" },
+        ],
+      },
+      {
+        key: "macroarea", kind: "code", label: "Macroarea", params: ["macroarea"],
+        hint: "Set-valued and matched exactly: a languoid spanning two macroareas has its own bucket (\"Africa;Eurasia\"), which is also its own filter value.",
+      },
+      {
+        key: "status", kind: "enum", label: "Endangerment", params: ["status"],
+        values: [
+          { value: "not_endangered", label: "Not endangered" },
+          { value: "threatened", label: "Threatened" },
+          { value: "shifting", label: "Shifting" },
+          { value: "moribund", label: "Moribund" },
+          { value: "nearly_extinct", label: "Nearly extinct" },
+          { value: "extinct", label: "Extinct" },
+        ],
+      },
+      {
+        key: "family", kind: "code", label: "Family", params: ["family"], catalog: "languoidFamily",
+        hint: "The root-family glottocode (e.g. indo1319), derived via the closure — not a RID.",
+      },
+    ],
+    dashboard: {
+      path: "/language/v1/stats/languages",
+      charts: [
+        { key: "level", title: "Level mix", form: "donut", facet: "level" },
+        {
+          key: "status", title: "Endangerment", form: "bar", facet: "status", orientation: "vertical",
+          tone: { not_endangered: "green", threatened: "amber", shifting: "amber", moribund: "red", nearly_extinct: "red", extinct: "slate" },
+          note: "Ordered by SEVERITY — the CHECK set's own order — never by frequency. Re-sorting an endangerment profile by count destroys the only ordering that means anything.",
+        },
+        {
+          key: "macroarea", title: "Macroarea", form: "bar", facet: "macroarea", orientation: "horizontal",
+          note: "Grouped by the stored value, so a languoid spanning two macroareas is its own bar rather than counted twice.",
+        },
+        { key: "family", title: "Largest families", form: "bar", facet: "family", orientation: "horizontal" },
+      ],
+    },
     properties: [
       { label: "Glottocode", value: (l) => s(l.code), render: "mono" },
       { label: "Name", value: (l) => loc(l.name) },

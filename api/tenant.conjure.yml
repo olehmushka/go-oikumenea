@@ -228,6 +228,20 @@ types:
         fields:
           totalCount: integer
           facets: list<FacetDistribution>
+      OrganizationStats:
+        docs: |
+          Facet distributions over the SAME set `listOrganizations` returns under the same filters,
+          with the shadow gate folded INTO the count (M58 / D-ObjectFacets).
+
+          For an organization that gate is `visibility = 'public'` and NOT the reach predicate the
+          unit dashboard uses: a role assignment's `target_unit_id` FKs `tenant_units`, so an
+          organization RID can never appear in any subject's readable reach, and a shadow
+          organization is visible to an instance admin and to nobody else. That is exactly what
+          `gateUnits` leaves on the list, which is why `totalCount` equals the rows exhaustively
+          paging `listOrganizations` under these filters would return.
+        fields:
+          totalCount: integer
+          facets: list<FacetDistribution>
       UnitRefList:
         docs: An ordered list of unit references (ancestors), nearest first.
         fields:
@@ -446,6 +460,15 @@ types:
           childId: string
       UnitInvalid:
         docs: The unit's code or name is malformed, or the request is otherwise invalid.
+        namespace: Tenant
+        code: INVALID_ARGUMENT
+        safe-args:
+          reason: string
+      OrganizationInvalid:
+        docs: |
+          The organization's filter or facet arguments are malformed — a non-RID `domain`, a
+          `visibility`/`state` value outside its CHECK set, or an undeclared facet key on
+          `organizationStats`.
         namespace: Tenant
         code: INVALID_ARGUMENT
         safe-args:
@@ -713,6 +736,48 @@ services:
             param-type: query
             docs: Facet filter — see `listUnits`.
         returns: UnitStats
+      organizationStats:
+        http: GET /stats/organizations
+        docs: |
+          Facet distributions over the organization registry — the dashboard half of the
+          organization facet vocabulary (M58 / D-ObjectFacets). Takes exactly the filter args
+          `listOrganizations` takes, minus paging, so a dashboard and a list are two renderings of
+          one request state.
+
+          Unlike `unitStats` there is no `org` arg: the organization registry is the instance's
+          whole realm catalog, not a per-org tree.
+
+          The shadow gate is folded into SQL: on the list `gateUnits` trims the page once it is cut,
+          which is right for a page and wrong for a count. For an organization that gate reduces to
+          `visibility = 'public'` for every non-instance-admin caller — a role assignment's
+          `target_unit_id` FKs `tenant_units` and can never name an organization, so there is no
+          reachable shadow org for the two surfaces to disagree about. `totalCount` therefore equals
+          the rows exhaustively paging `listOrganizations` under these filters would return.
+
+          The path is `/stats/organizations` rather than `/organizations/stats` because the server's
+          router rejects a literal path segment that is a sibling of `{orgId}` — see the
+          route-conflict guard in `internal/platform/transport`.
+        args:
+          facets:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Optional comma-separated facet keys to compute (`domain,state`). Omitted or empty =
+              every facet the caller may read; an explicit list of nothing (`facets=,`) returns
+              `totalCount` alone. An undeclared facet key is a Tenant:OrganizationInvalid.
+          domain:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listOrganizations`.
+          visibility:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listOrganizations`. Narrows only; asking for `shadow` without instance-admin standing counts zero rather than erroring.
+          state:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — see `listOrganizations`.
+        returns: OrganizationStats
       addEdge:
         http: POST /units/{unitId}/edges
         docs: Attach the path unit as a child of parentId within a graph (default command). Returns Tenant:UnitCycleDetected on a cycle.
@@ -896,13 +961,25 @@ services:
       listOrganizations:
         http: GET /organizations
         docs: |
-          List organizations, token-paginated, optionally filtered by domain (D-TenantOrganizations,
-          M40). Shadow-gated. Gated by organization.read.
+          List organizations, token-paginated, optionally filtered by domain, visibility and state
+          (D-TenantOrganizations, M40; facet vocabulary M58 / D-ObjectFacets). Shadow-gated. Gated by
+          organization.read. A malformed filter is a Tenant:OrganizationInvalid.
         args:
           domain:
             type: optional<string>
             param-type: query
             docs: Optional domain RID filter (organizations of this kind).
+          visibility:
+            type: optional<string>
+            param-type: query
+            docs: |
+              Facet filter — `public` | `shadow`. Narrows only (D-VisibilityScope): asking for
+              `shadow` without instance-admin standing returns an empty page rather than an error,
+              because no role assignment can reach an organization.
+          state:
+            type: optional<string>
+            param-type: query
+            docs: Facet filter — `active` | `suspended` | `archived`.
           pageSize:
             type: optional<integer>
             param-type: query

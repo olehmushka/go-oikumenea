@@ -59,6 +59,22 @@ var statsAggregateGroups = []struct {
 	{"audit", []struct{ module, query string }{
 		{"audit", "AuditStats"},
 	}},
+	// M58 ticket 4. Organization's two arms differ by ONE line — the scoped CTE ends `AND visibility =
+	// 'public'` — and by nothing else, which is what makes byte-identity the right assertion here even
+	// though the two gates are not the same SHAPE as unit's (an org has no reach to probe, so the
+	// scoped arm carries no subject parameter at all).
+	{"organization", []struct{ module, query string }{
+		{"tenant", "OrganizationStats"},
+		{"tenant", "OrganizationStatsForSubject"},
+	}},
+	// Languoid's pair is not admin-vs-scoped — the registry is instance-global and has no visibility
+	// predicate — but the R-21 SEARCH twin, which needs the identical treatment for the identical
+	// reason: a searched dashboard whose aggregate drifted from the unsearched one would describe a
+	// different set with no sign that anything was wrong.
+	{"languoid", []struct{ module, query string }{
+		{"language", "LanguoidStats"},
+		{"language", "LanguoidStatsSearch"},
+	}},
 }
 
 // TestEveryRegisteredTypeHasAnAggregateGroup is the coverage floor: a type registered in the catalog
